@@ -376,6 +376,67 @@ export class X86Cpu {
     return this.registers.rax;
   }
 
+  /** High-speed zero-allocation dispatch for fmi2DoStep */
+  callDoStepFast(funcAddr: bigint, instancePtr: bigint, curTime: number, dt: number): void {
+    if (this.is64Bit) {
+      if (this.abi === "win64") {
+        this.registers.rcx = instancePtr;
+        this.registers.rdx = 0n;
+        this.registers.r8 = 0n;
+        this.registers.r9 = 1n; // noSetFMUState = 1
+        this.registers.xmm[1] = curTime;
+        this.registers.xmm[2] = dt;
+        this.registers.rsp -= 32n;
+        this.push(MAGIC_RET_ADDR);
+      } else {
+        this.registers.rdi = instancePtr;
+        this.registers.rsi = 1n;
+        this.registers.xmm[0] = curTime;
+        this.registers.xmm[1] = dt;
+        this.push(MAGIC_RET_ADDR);
+      }
+    } else {
+      this.push(1n);
+      this.push(MAGIC_RET_ADDR);
+    }
+    this.registers.rip = funcAddr;
+    this.runUntilReturn();
+    if (this.is64Bit && this.abi === "win64") {
+      this.registers.rsp += 32n;
+    }
+  }
+
+  /** High-speed zero-allocation dispatch for fmi2GetReal / fmi2SetReal */
+  callGetRealFast(funcAddr: bigint, instancePtr: bigint, vrPtr: bigint, nvr: bigint, valPtr: bigint): void {
+    if (this.is64Bit) {
+      if (this.abi === "win64") {
+        this.registers.rcx = instancePtr;
+        this.registers.rdx = vrPtr;
+        this.registers.r8 = nvr;
+        this.registers.r9 = valPtr;
+        this.registers.rsp -= 32n;
+        this.push(MAGIC_RET_ADDR);
+      } else {
+        this.registers.rdi = instancePtr;
+        this.registers.rsi = vrPtr;
+        this.registers.rdx = nvr;
+        this.registers.rcx = valPtr;
+        this.push(MAGIC_RET_ADDR);
+      }
+    } else {
+      this.push(valPtr);
+      this.push(nvr);
+      this.push(vrPtr);
+      this.push(instancePtr);
+      this.push(MAGIC_RET_ADDR);
+    }
+    this.registers.rip = funcAddr;
+    this.runUntilReturn();
+    if (this.is64Bit && this.abi === "win64") {
+      this.registers.rsp += 32n;
+    }
+  }
+
   /** Run instructions until RIP reaches MAGIC_RET_ADDR */
   private runUntilReturn(maxInstructions = 10_000_000): void {
     let count = 0;
@@ -416,6 +477,12 @@ export class X86Cpu {
     let rexR = false;
     let rexX = false;
     let rexB = false;
+
+    let hasPrefix66 = false;
+    if (b1 === 0x66) {
+      hasPrefix66 = true;
+      b1 = this.readU8(rip++);
+    }
 
     if (this.is64Bit && b1 >= 0x40 && b1 <= 0x4f) {
       rexW = (b1 & 0x08) !== 0;
@@ -1011,8 +1078,443 @@ export class X86Cpu {
       return;
     }
 
-    // Advance 1 byte if unrecognized opcode to prevent infinite stall
-    this.registers.rip = rip;
+    // 14. ADD r/m, r (0x01) or ADD r, r/m (0x03)
+    if (b1 === 0x01 || b1 === 0x03) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      if (modrm >> 6 === 3) {
+        const dest = b1 === 0x01 ? this.getRegById(rm) : this.getRegById(reg);
+        const src = b1 === 0x01 ? this.getRegById(reg) : this.getRegById(rm);
+        const res = this.updateFlagsAdd(dest, src, is64);
+        this.setRegById(b1 === 0x01 ? rm : reg, res);
+      } else {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        if (b1 === 0x01) {
+          const dest = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+          const src = this.getRegById(reg);
+          const res = this.updateFlagsAdd(dest, src, is64);
+          if (is64) this.writeU64(addr, res);
+          else this.writeU32(addr, Number(res & 0xffffffffn));
+        } else {
+          const dest = this.getRegById(reg);
+          const src = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+          const res = this.updateFlagsAdd(dest, src, is64);
+          this.setRegById(reg, res);
+        }
+        rip = nextRip;
+      }
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 15. SUB r/m, r (0x29) or SUB r, r/m (0x2B)
+    if (b1 === 0x29 || b1 === 0x2b) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      if (modrm >> 6 === 3) {
+        const dest = b1 === 0x29 ? this.getRegById(rm) : this.getRegById(reg);
+        const src = b1 === 0x29 ? this.getRegById(reg) : this.getRegById(rm);
+        const res = this.updateFlagsSub(dest, src, is64);
+        this.setRegById(b1 === 0x29 ? rm : reg, res);
+      } else {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        if (b1 === 0x29) {
+          const dest = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+          const src = this.getRegById(reg);
+          const res = this.updateFlagsSub(dest, src, is64);
+          if (is64) this.writeU64(addr, res);
+          else this.writeU32(addr, Number(res & 0xffffffffn));
+        } else {
+          const dest = this.getRegById(reg);
+          const src = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+          const res = this.updateFlagsSub(dest, src, is64);
+          this.setRegById(reg, res);
+        }
+        rip = nextRip;
+      }
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 16. CMP r/m, r (0x39) or CMP r, r/m (0x3B)
+    if (b1 === 0x39 || b1 === 0x3b) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      if (modrm >> 6 === 3) {
+        const a = b1 === 0x39 ? this.getRegById(rm) : this.getRegById(reg);
+        const b = b1 === 0x39 ? this.getRegById(reg) : this.getRegById(rm);
+        this.updateFlagsSub(a, b, is64);
+      } else {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        const val = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+        const a = b1 === 0x39 ? val : this.getRegById(reg);
+        const b = b1 === 0x39 ? this.getRegById(reg) : val;
+        this.updateFlagsSub(a, b, is64);
+        rip = nextRip;
+      }
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 17. CMP AL, imm8 (0x3C) or CMP EAX/RAX, imm32 (0x3D)
+    if (b1 === 0x3c) {
+      const imm8 = BigInt(this.readU8(rip++));
+      this.updateFlagsSub(this.registers.rax & 0xffn, imm8, false);
+      this.registers.rip = rip;
+      return;
+    }
+    if (b1 === 0x3d) {
+      const is64 = rexW || this.is64Bit;
+      const imm32 = BigInt(this.readI32(rip));
+      rip += 4n;
+      this.updateFlagsSub(this.registers.rax, imm32, is64);
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 18. TEST r/m, r (0x85)
+    if (b1 === 0x85) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      let val = 0n;
+      if (modrm >> 6 === 3) {
+        val = this.getRegById(rm);
+      } else {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        val = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+        rip = nextRip;
+      }
+      this.updateFlagsLogic(val & this.getRegById(reg), is64);
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 19. AND r/m, r (0x21) or AND r, r/m (0x23)
+    if (b1 === 0x21 || b1 === 0x23) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      if (modrm >> 6 === 3) {
+        const dest = b1 === 0x21 ? this.getRegById(rm) : this.getRegById(reg);
+        const src = b1 === 0x21 ? this.getRegById(reg) : this.getRegById(rm);
+        const res = dest & src;
+        this.updateFlagsLogic(res, is64);
+        this.setRegById(b1 === 0x21 ? rm : reg, res);
+      }
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 20. OR r/m, r (0x09) or OR r, r/m (0x0B)
+    if (b1 === 0x09 || b1 === 0x0b) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      if (modrm >> 6 === 3) {
+        const dest = b1 === 0x09 ? this.getRegById(rm) : this.getRegById(reg);
+        const src = b1 === 0x09 ? this.getRegById(reg) : this.getRegById(rm);
+        const res = dest | src;
+        this.updateFlagsLogic(res, is64);
+        this.setRegById(b1 === 0x09 ? rm : reg, res);
+      }
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 21. Immediate Arithmetic Group 1 (0x81 imm32, 0x83 imm8 sign-extended)
+    if (b1 === 0x81 || b1 === 0x83) {
+      const modrm = this.readU8(rip++);
+      const op = (modrm >> 3) & 7;
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      const is64 = rexW || this.is64Bit;
+      let imm = 0n;
+
+      let targetAddr = 0n;
+      if (modrm >> 6 !== 3) {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        targetAddr = addr;
+        rip = nextRip;
+      }
+
+      if (b1 === 0x83) {
+        const imm8 = (this.readU8(rip++) << 24) >> 24; // sign extend
+        imm = BigInt(imm8);
+      } else {
+        const imm32 = this.readI32(rip);
+        rip += 4n;
+        imm = BigInt(imm32);
+      }
+
+      const val =
+        modrm >> 6 === 3 ? this.getRegById(rm) : is64 ? this.readU64(targetAddr) : BigInt(this.readU32(targetAddr));
+      let res = val;
+
+      switch (op) {
+        case 0: // ADD
+          res = this.updateFlagsAdd(val, imm, is64);
+          break;
+        case 1: // OR
+          res = val | imm;
+          this.updateFlagsLogic(res, is64);
+          break;
+        case 4: // AND
+          res = val & imm;
+          this.updateFlagsLogic(res, is64);
+          break;
+        case 5: // SUB
+          res = this.updateFlagsSub(val, imm, is64);
+          break;
+        case 6: // XOR
+          res = val ^ imm;
+          this.updateFlagsLogic(res, is64);
+          break;
+        case 7: // CMP
+          this.updateFlagsSub(val, imm, is64);
+          this.registers.rip = rip;
+          return;
+      }
+
+      if (modrm >> 6 === 3) {
+        this.setRegById(rm, res);
+      } else {
+        if (is64) this.writeU64(targetAddr, res);
+        else this.writeU32(targetAddr, Number(res & 0xffffffffn));
+      }
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 22. MOVSXD r64, r/m32 (0x63)
+    if (b1 === 0x63) {
+      const modrm = this.readU8(rip++);
+      const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      let val32 = 0;
+      if (modrm >> 6 === 3) {
+        val32 = Number(this.getRegById(rm) & 0xffffffffn);
+      } else {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        val32 = this.readI32(addr);
+        rip = nextRip;
+      }
+      this.setRegById(reg, BigInt(val32));
+      this.registers.rip = rip;
+      return;
+    }
+
+    // 23. Two-Byte Opcodes starting with 0x0F (without 0x66 prefix)
+    if (!hasPrefix66 && b1 === 0x0f) {
+      const op2 = this.readU8(rip++);
+
+      // 0x0F 0x80 - 0x0F 0x8F: Conditional jumps Jcc rel32
+      if (op2 >= 0x80 && op2 <= 0x8f) {
+        const rel32 = this.readI32(rip);
+        rip += 4n;
+        const cond = this.checkCondition(op2 & 0x0f);
+        if (cond) {
+          this.registers.rip = rip + BigInt(rel32);
+        } else {
+          this.registers.rip = rip;
+        }
+        return;
+      }
+
+      // 0x0F 0xAF: IMUL r, r/m
+      if (op2 === 0xaf) {
+        const modrm = this.readU8(rip++);
+        const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+        const rm = (modrm & 7) + (rexB ? 8 : 0);
+        const is64 = rexW || this.is64Bit;
+        let src = 0n;
+        if (modrm >> 6 === 3) {
+          src = this.getRegById(rm);
+        } else {
+          const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+          src = is64 ? this.readU64(addr) : BigInt(this.readU32(addr));
+          rip = nextRip;
+        }
+        const res = (this.getRegById(reg) * src) & (is64 ? 0xffffffffffffffffn : 0xffffffffn);
+        this.setRegById(reg, res);
+        this.registers.rip = rip;
+        return;
+      }
+
+      // 0x0F 0xB6: MOVZX r32/r64, r/m8
+      if (op2 === 0xb6) {
+        const modrm = this.readU8(rip++);
+        const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+        const rm = (modrm & 7) + (rexB ? 8 : 0);
+        let bVal = 0;
+        if (modrm >> 6 === 3) {
+          bVal = Number(this.getRegById(rm) & 0xffn);
+        } else {
+          const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+          bVal = this.readU8(addr);
+          rip = nextRip;
+        }
+        this.setRegById(reg, BigInt(bVal));
+        this.registers.rip = rip;
+        return;
+      }
+
+      // 0x0F 0xB7: MOVZX r32/r64, r/m16
+      if (op2 === 0xb7) {
+        const modrm = this.readU8(rip++);
+        const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+        const rm = (modrm & 7) + (rexB ? 8 : 0);
+        let wVal = 0;
+        if (modrm >> 6 === 3) {
+          wVal = Number(this.getRegById(rm) & 0xffffn);
+        } else {
+          const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+          wVal = this.readU8(addr) | (this.readU8(addr + 1n) << 8);
+          rip = nextRip;
+        }
+        this.setRegById(reg, BigInt(wVal));
+        this.registers.rip = rip;
+        return;
+      }
+    }
+
+    // 24. Two-Byte Opcodes with 0x66 Prefix: 0x66 0x0F ...
+    if (hasPrefix66 && b1 === 0x0f) {
+      const op2 = this.readU8(rip++);
+
+      // 0x66 0x0F 0x2E: UCOMISD xmm1, xmm2/m64
+      // 0x66 0x0F 0x2F: COMISD xmm1, xmm2/m64
+      if (op2 === 0x2e || op2 === 0x2f) {
+        const modrm = this.readU8(rip++);
+        const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+        const rm = (modrm & 7) + (rexB ? 8 : 0);
+        let v2 = 0.0;
+        if (modrm >> 6 === 3) {
+          v2 = this.registers.xmm[rm] ?? 0.0;
+        } else {
+          const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+          v2 = this.readF64(addr);
+          rip = nextRip;
+        }
+        const v1 = this.registers.xmm[reg] ?? 0.0;
+        if (isNaN(v1) || isNaN(v2)) {
+          this.registers.eflags.zf = true;
+          this.registers.eflags.pf = true;
+          this.registers.eflags.cf = true;
+        } else if (v1 > v2) {
+          this.registers.eflags.zf = false;
+          this.registers.eflags.pf = false;
+          this.registers.eflags.cf = false;
+        } else if (v1 < v2) {
+          this.registers.eflags.zf = false;
+          this.registers.eflags.pf = false;
+          this.registers.eflags.cf = true;
+        } else {
+          this.registers.eflags.zf = true;
+          this.registers.eflags.pf = false;
+          this.registers.eflags.cf = false;
+        }
+        this.registers.rip = rip;
+        return;
+      }
+
+      // 0x66 0x0F 0xEF: PXOR xmm, xmm/m128
+      if (op2 === 0xef) {
+        const modrm = this.readU8(rip++);
+        const reg = ((modrm >> 3) & 7) + (rexR ? 8 : 0);
+        const rm = (modrm & 7) + (rexB ? 8 : 0);
+        if (modrm >> 6 === 3 && reg === rm) {
+          this.registers.xmm[reg] = 0.0;
+          this.registers.ymm[reg * 4] = 0.0;
+          this.registers.ymm[reg * 4 + 1] = 0.0;
+        }
+        this.registers.rip = rip;
+        return;
+      }
+    }
+
+    // 25. Group 5 Opcodes (0xFF): INC, DEC, CALL r/m64, JMP r/m64, PUSH r/m64
+    if (b1 === 0xff) {
+      const modrm = this.readU8(rip++);
+      const op = (modrm >> 3) & 7;
+      const rm = (modrm & 7) + (rexB ? 8 : 0);
+      let targetAddr = 0n;
+
+      if (modrm >> 6 === 3) {
+        targetAddr = this.getRegById(rm);
+      } else {
+        const [addr, nextRip] = this.resolveEffectiveAddress(modrm >> 6, rm, rip, rexB, rexX);
+        targetAddr = this.readU64(addr);
+        rip = nextRip;
+      }
+
+      if (op === 2) {
+        // CALL r/m64
+        this.push(rip);
+        this.registers.rip = targetAddr;
+        return;
+      }
+
+      if (op === 4) {
+        // JMP r/m64
+        this.registers.rip = targetAddr;
+        return;
+      }
+
+      if (op === 6) {
+        // PUSH r/m64
+        this.push(targetAddr);
+        this.registers.rip = rip;
+        return;
+      }
+    }
+
+    // Throw explicit diagnostic error for unhandled opcodes (replacing silent 1-byte skipping)
+    throw new Error(
+      `x86 CPU emulation error: unrecognized or unsupported opcode 0x${b1.toString(16).padStart(2, "0")} at RIP=0x${this.registers.rip.toString(16)}`,
+    );
+  }
+
+  private updateFlagsSub(a: bigint, b: bigint, is64: boolean): bigint {
+    const mask = is64 ? 0xffffffffffffffffn : 0xffffffffn;
+    const signBit = is64 ? 0x8000000000000000n : 0x80000000n;
+    const aVal = a & mask;
+    const bVal = b & mask;
+    const res = (aVal - bVal) & mask;
+    this.registers.eflags.zf = res === 0n;
+    this.registers.eflags.sf = (res & signBit) !== 0n;
+    this.registers.eflags.cf = aVal < bVal;
+    this.registers.eflags.of = ((aVal ^ bVal) & (aVal ^ res) & signBit) !== 0n;
+    return res;
+  }
+
+  private updateFlagsAdd(a: bigint, b: bigint, is64: boolean): bigint {
+    const mask = is64 ? 0xffffffffffffffffn : 0xffffffffn;
+    const signBit = is64 ? 0x8000000000000000n : 0x80000000n;
+    const aVal = a & mask;
+    const bVal = b & mask;
+    const res = (aVal + bVal) & mask;
+    this.registers.eflags.zf = res === 0n;
+    this.registers.eflags.sf = (res & signBit) !== 0n;
+    this.registers.eflags.cf = res < aVal;
+    this.registers.eflags.of = (~(aVal ^ bVal) & (aVal ^ res) & signBit) !== 0n;
+    return res;
+  }
+
+  private updateFlagsLogic(res: bigint, is64: boolean): void {
+    const signBit = is64 ? 0x8000000000000000n : 0x80000000n;
+    this.registers.eflags.zf = (res & (is64 ? 0xffffffffffffffffn : 0xffffffffn)) === 0n;
+    this.registers.eflags.sf = (res & signBit) !== 0n;
+    this.registers.eflags.cf = false;
+    this.registers.eflags.of = false;
   }
 
   private readI32(addr: bigint): number {

@@ -202,3 +202,45 @@ COPY --from=build-cli /app/apps/cli apps/cli
 ENV NODE_ENV=production
 # The container will run as an executable CLI
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
+
+# ==============================================================================
+# Hardened Enterprise Intranet Appliance (Single Container for Regulated Utilities)
+# ==============================================================================
+FROM node:24-alpine AS appliance
+WORKDIR /app
+
+# Create unprivileged application user & directories
+RUN mkdir -p /app/apps/api/data /app/apps/api/uploads /app/apps/api/public/thumbnails \
+  && chown -R node:node /app
+
+COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+
+# Copy built API backend
+COPY --from=build-api --chown=node:node /app/packages packages
+COPY --from=build-api --chown=node:node /app/languages languages
+COPY --from=build-api --chown=node:node /app/apps/api apps/api
+
+# Copy pre-compiled Web SPA assets and IDE workbench
+COPY --from=build-web --chown=node:node /app/apps/web/dist apps/web/dist
+COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
+COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
+
+USER node
+EXPOSE 8080
+
+ENV NODE_ENV=production \
+    PORT=8080 \
+    ENTERPRISE_APPLIANCE=true \
+    AIRGAP_ENFORCED=true \
+    STATIC_WEB_DIR=/app/apps/web/dist \
+    STATIC_IDE_DIR=/app/apps/ide/dist \
+    NODE_OPTIONS="--max-old-space-size=4096"
+
+VOLUME ["/app/apps/api/data", "/app/apps/api/uploads"]
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1
+
+ENTRYPOINT ["node", "apps/api/dist/main.js"]
+

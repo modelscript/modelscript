@@ -80,4 +80,32 @@ describe("URDF Kinematics & Featherstone Algorithms (@modelscript/urdf)", () => 
     const a1 = aba.jointAccelerations.get("joint_1")!;
     assert.ok(a1 > 0, `Expected positive joint_1 acceleration under positive torque, got ${a1}`);
   });
+
+  it("should satisfy RNEA vs ABA dynamics consistency (forward and inverse equivalence)", () => {
+    const robot = parseUrdf(ROBOT_DECK);
+    const q = new Map([
+      ["joint_1", 0.3],
+      ["joint_2", -0.5],
+    ]);
+    const qd = new Map([
+      ["joint_1", 1.2],
+      ["joint_2", -0.8],
+    ]);
+    const qdd = new Map([
+      ["joint_1", 2.5],
+      ["joint_2", -1.5],
+    ]);
+
+    // Compute inverse dynamics torques using RNEA
+    const rnea = computeInverseDynamicsRnea(robot, q, qd, qdd, 9.80665);
+
+    // Feed computed torques into ABA forward dynamics
+    const aba = computeForwardDynamicsAba(robot, q, qd, rnea.jointTorques, 9.80665);
+
+    const qdd1_recovered = aba.jointAccelerations.get("joint_1")!;
+    const qdd2_recovered = aba.jointAccelerations.get("joint_2")!;
+
+    assert.ok(Math.abs(qdd1_recovered - 2.5) < 1e-3, `Expected joint_1 qdd ~ 2.5, got ${qdd1_recovered}`);
+    assert.ok(Math.abs(qdd2_recovered - -1.5) < 1e-3, `Expected joint_2 qdd ~ -1.5, got ${qdd2_recovered}`);
+  });
 });

@@ -13,11 +13,8 @@ hero:
       text: Get Started
       link: /guide/introduction
     - theme: alt
-      text: Try in Browser (Playground)
+      text: Try Playground
       link: https://modelscript.org/playground
-    - theme: alt
-      text: Launch Web IDE
-      link: https://ide.modelscript.org
     - theme: alt
       text: View on GitHub
       link: https://github.com/modelscript/modelscript
@@ -29,7 +26,7 @@ features:
     link: /architecture/glr-parser
   - icon: 🔍
     title: Real-Time Linting & Diagnostics
-    details: Over 200 compiler lint rules across 7 languages covering syntax errors, unresolved references, type mismatches, and structural consistency checks.
+    details: Over 250 compiler lint rules across 33 languages covering syntax errors, unresolved references, type mismatches, and structural consistency checks.
     link: /reference/linter-rules
   - icon: 🧬
     title: Arena DAE Flattening
@@ -49,7 +46,11 @@ features:
     link: /architecture/overview
 ---
 
+<HomeStats />
+
 <HomeQuickStart />
+
+<HomeLanguages />
 
 <HomePackages />
 

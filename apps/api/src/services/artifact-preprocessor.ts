@@ -130,22 +130,29 @@ export async function pregenerateServerSvgThumbnail(
         const svg = renderOlgaSchematicSvg(model);
         const allPipes = (model.flowpaths || []).flatMap((fp) => fp.pipes || []);
         const totalLength = allPipes.reduce((acc, p) => acc + (p.length || 0), 0);
+        let minElev = Infinity;
+        let maxElev = -Infinity;
+        for (const p of allPipes) {
+          if (typeof p.elevation === "number") {
+            minElev = Math.min(minElev, p.elevation);
+            maxElev = Math.max(maxElev, p.elevation);
+          }
+        }
+        const elevDelta = Number.isFinite(maxElev - minElev) ? Math.max(0, Math.round(maxElev - minElev)) : 0;
 
         result.svg = svg;
         result.metadata = {
           networkTitle: model.title || baseTitle,
           flowpathCount: model.flowpaths?.length || 0,
           pipeCount: allPipes.length,
-          totalLengthKm: totalLength > 0 ? +(totalLength / 1000).toFixed(1) : 42.5,
+          totalLengthKm: totalLength > 0 ? +(totalLength / 1000).toFixed(1) : 0,
         };
         result.viewConfigAdditions = {
           networkTitle: model.title || baseTitle,
           flowpathCount: model.flowpaths?.length || 0,
           pipeCount: allPipes.length,
-          totalLengthKm: totalLength > 0 ? +(totalLength / 1000).toFixed(1) : 42.5,
-          elevationDeltaMeters: 480,
-          slugRiskScore: 0.18,
-          maxLiquidHoldupFraction: 0.38,
+          totalLengthKm: totalLength > 0 ? +(totalLength / 1000).toFixed(1) : 0,
+          elevationDeltaMeters: elevDelta,
           title: model.title || baseTitle,
         };
         break;
@@ -159,6 +166,14 @@ export async function pregenerateServerSvgThumbnail(
         const compCount = model.components ? model.components.size : 0;
         const connCount = model.connections?.length || 0;
 
+        let dynamicStates = 0;
+        for (const comp of model.components?.values() ?? []) {
+          const t = comp.type?.toUpperCase() || "";
+          if (t === "IN" || t === "INTEGRATOR" || t === "LAG" || t === "POLE") dynamicStates += 1;
+          else if (t === "TF" || t === "SECOND_ORDER") dynamicStates += 2;
+          else dynamicStates += 1;
+        }
+
         result.svg = svg;
         result.metadata = {
           modelName: model.title || baseTitle,
@@ -167,11 +182,9 @@ export async function pregenerateServerSvgThumbnail(
         };
         result.viewConfigAdditions = {
           modelName: model.title || baseTitle,
-          stateCount: compCount * 2,
+          stateCount: dynamicStates,
           inputCount: Math.max(1, Math.floor(compCount / 3)),
           outputCount: Math.max(1, Math.floor(compCount / 3)),
-          gainMarginDb: 14.2,
-          phaseMarginDeg: 48.5,
           title: model.title || baseTitle,
         };
         break;
@@ -185,6 +198,17 @@ export async function pregenerateServerSvgThumbnail(
         const compCount = model.components ? model.components.size : 0;
         const connCount = model.connections?.length || 0;
 
+        let chamberP = 10.0;
+        let totalMdot = 0;
+        let mainMr = 6.0;
+        for (const comp of model.components?.values() ?? []) {
+          if (comp.type === "CHAMBER") {
+            if (comp.parameters?.["PC"]) chamberP = +(Number(comp.parameters["PC"]) / 1e6).toFixed(1);
+            if (comp.parameters?.["MR"]) mainMr = Number(comp.parameters["MR"]);
+          }
+          if (comp.parameters?.["MDOT"]) totalMdot += Number(comp.parameters["MDOT"]);
+        }
+
         result.svg = svg;
         result.metadata = {
           engineName: model.title || baseTitle,
@@ -193,12 +217,9 @@ export async function pregenerateServerSvgThumbnail(
         };
         result.viewConfigAdditions = {
           engineName: model.title || baseTitle,
-          chamberPressureMpa: 14.5,
-          massFlowKgSec: 480,
-          ispSeaLevelSec: 320,
-          ispVacuumSec: 452,
-          turbopumpRpm: 28500,
-          mixtureRatio: 6.0,
+          chamberPressureMpa: chamberP,
+          massFlowKgSec: totalMdot > 0 ? totalMdot : 100,
+          mixtureRatio: mainMr,
           title: model.title || baseTitle,
         };
         break;
@@ -210,6 +231,17 @@ export async function pregenerateServerSvgThumbnail(
 
         const model = parseLps(content);
         const svg = renderLpsSchematicSvg(model);
+
+        let minP = Infinity;
+        let maxP = -Infinity;
+        for (const node of model.nodes) {
+          if (typeof node.pressure === "number") {
+            minP = Math.min(minP, node.pressure);
+            maxP = Math.max(maxP, node.pressure);
+          }
+        }
+        const minPBar = Number.isFinite(minP) ? +(minP / 1e5).toFixed(1) : 40.0;
+        const maxPBar = Number.isFinite(maxP) ? +(maxP / 1e5).toFixed(1) : 60.0;
 
         result.svg = svg;
         result.metadata = {
@@ -223,9 +255,8 @@ export async function pregenerateServerSvgThumbnail(
           totalPipes: model.pipes.length,
           totalNodes: model.nodes.length,
           totalCompressors: model.compressors.length,
-          totalLinePackMmscf: 450,
-          minPressureBar: 42.0,
-          maxPressureBar: 78.5,
+          minPressureBar: minPBar,
+          maxPressureBar: maxPBar,
           title: model.title || baseTitle,
         };
         break;
@@ -236,21 +267,34 @@ export async function pregenerateServerSvgThumbnail(
 
         const model = parseGtmModel(content);
         const svg = renderGtSuiteSchematicSvg(model);
-        const cylinders = (model.components || []).filter((c) => c.kind === "cylinder");
+        const cylinders = (model.components || []).filter((c) => c.kind === "cylinder") as any[];
+        const cylCount = cylinders.length || 4;
+        let boreMm = 85.0;
+        let strokeMm = 88.0;
+        let totalDisplacementL = 0;
+        for (const c of cylinders) {
+          if (typeof c.displacementM3 === "number") {
+            totalDisplacementL += c.displacementM3 * 1000.0;
+          } else if (typeof c.boreM === "number" && typeof c.strokeM === "number") {
+            boreMm = c.boreM * 1000.0;
+            strokeMm = c.strokeM * 1000.0;
+          }
+        }
+        const dispLiters =
+          totalDisplacementL > 0
+            ? +totalDisplacementL.toFixed(2)
+            : +((cylCount * (Math.PI * Math.pow(boreMm / 20.0, 2) * (strokeMm / 10.0))) / 1000.0).toFixed(2);
 
         result.svg = svg;
         result.metadata = {
           engineModel: model.title || model.name || baseTitle,
-          cylinderCount: cylinders.length || 4,
-          displacementLiters: 2.0,
+          cylinderCount: cylCount,
+          displacementLiters: dispLiters > 0 ? dispLiters : 2.0,
         };
         result.viewConfigAdditions = {
           engineModel: model.title || model.name || baseTitle,
-          cylinderCount: cylinders.length || 4,
-          displacementLiters: 2.0,
-          peakPressureBar: 145,
-          imepBar: 18.2,
-          thermalEfficiencyPct: 41.5,
+          cylinderCount: cylCount,
+          displacementLiters: dispLiters > 0 ? dispLiters : 2.0,
           title: model.title || model.name || baseTitle,
         };
         break;
@@ -301,6 +345,137 @@ export async function pregenerateServerSvgThumbnail(
           dnvCompliant: true,
           title: model.vessels[0]?.name ? `${model.vessels[0].name} Mooring System` : baseTitle,
         };
+        break;
+      }
+
+      case "aspen": {
+        const { parseAspen } = await import("@modelscript/aspen");
+        const { renderAspenSvg } = await import("@modelscript/diagram/aspen-diagram-builder");
+        const doc = parseAspen(content);
+        result.svg = renderAspenSvg(doc);
+        result.metadata = { blockCount: doc.blocks.size, streamCount: doc.streams.size };
+        result.viewConfigAdditions = { title: doc.title || baseTitle };
+        break;
+      }
+
+      case "swmm": {
+        const { parseSwmm } = await import("@modelscript/swmm");
+        const { renderSwmmSvg } = await import("@modelscript/diagram/swmm-diagram-builder");
+        const model = parseSwmm(content);
+        result.svg = renderSwmmSvg(model as any);
+        result.metadata = { junctionCount: model.junctions.size, conduitCount: model.conduits.size };
+        result.viewConfigAdditions = { title: model.title || baseTitle };
+        break;
+      }
+
+      case "touchstone": {
+        const { parseTouchstone, verifyPassivity } = await import("@modelscript/touchstone");
+        const { renderTouchstoneSvg } = await import("@modelscript/diagram/touchstone-diagram-builder");
+        const net = parseTouchstone(content);
+        const passivity = verifyPassivity(net);
+        result.svg = renderTouchstoneSvg({
+          portCount: net.numPorts,
+          referenceImpedance: net.options.referenceResistance,
+          isPassive: passivity.isPassive,
+        });
+        result.metadata = { portCount: net.numPorts, isPassive: passivity.isPassive };
+        result.viewConfigAdditions = { title: baseTitle };
+        break;
+      }
+
+      case "ibis": {
+        const { parseIbis } = await import("@modelscript/ibis");
+        const { renderIbisBufferSvg } = await import("@modelscript/diagram/touchstone-diagram-builder");
+        const model = parseIbis(content);
+        const comps = Array.from(model.components.values());
+        const firstComp = comps[0];
+        result.svg = renderIbisBufferSvg({
+          componentName: firstComp?.name || baseTitle,
+          pins: firstComp
+            ? Array.from(firstComp.pins.values()).map((p: any) => ({ pin: p.pin, signal: p.signal, model: p.model }))
+            : [],
+        });
+        result.metadata = { componentCount: model.components.size, modelCount: model.models.size };
+        result.viewConfigAdditions = { title: firstComp?.name || baseTitle };
+        break;
+      }
+
+      case "opendss": {
+        const { parseOpenDss } = await import("@modelscript/opendss");
+        const { renderOpenDssSvg } = await import("@modelscript/diagram/opendss-diagram-builder");
+        const deck = parseOpenDss(content);
+        result.svg = renderOpenDssSvg(deck as any);
+        result.metadata = {
+          lineCount: deck.lines.size,
+          loadCount: deck.loads.size,
+          transformerCount: deck.transformers.size,
+        };
+        result.viewConfigAdditions = { title: deck.circuit ? `Circuit.${deck.circuit.name}` : baseTitle };
+        break;
+      }
+
+      case "openscenario": {
+        const { parseOpenScenario } = await import("@modelscript/openscenario");
+        const { renderOpenScenarioSvg } = await import("@modelscript/diagram/openscenario-diagram-builder");
+        const scen = parseOpenScenario(content);
+        result.svg = renderOpenScenarioSvg({
+          title: scen.header.description || baseTitle,
+          entities: Array.from(scen.entities.values()).map((e: any) => ({ name: e.name, category: e.category })),
+        });
+        result.metadata = { entityCount: scen.entities.size };
+        result.viewConfigAdditions = { title: scen.header.description || baseTitle };
+        break;
+      }
+
+      case "relap5": {
+        const { parseRelap5 } = await import("@modelscript/relap5");
+        const { renderRelap5Svg } = await import("@modelscript/diagram/relap5-diagram-builder");
+        const deck = parseRelap5(content);
+        result.svg = renderRelap5Svg(deck as any);
+        result.metadata = { volumeCount: deck.volumes.size, junctionCount: deck.junctions.size };
+        result.viewConfigAdditions = { title: deck.title || baseTitle };
+        break;
+      }
+
+      case "eclipse": {
+        const { parseEclipse } = await import("@modelscript/eclipse");
+        const { renderEclipseSvg } = await import("@modelscript/diagram/eclipse-diagram-builder");
+        const deck = parseEclipse(content);
+        result.svg = renderEclipseSvg(deck as any);
+        result.metadata = { wellCount: deck.wells.size, nz: deck.dimensions?.nz ?? 4 };
+        result.viewConfigAdditions = { title: deck.title || baseTitle };
+        break;
+      }
+
+      case "sbml": {
+        const { parseSbml } = await import("@modelscript/sbml");
+        const { renderSbmlSvg } = await import("@modelscript/diagram/sbml-diagram-builder");
+        const doc = parseSbml(content);
+        result.svg = renderSbmlSvg(doc.model);
+        result.metadata = { speciesCount: doc.model.species.size, reactionCount: doc.model.reactions.size };
+        result.viewConfigAdditions = { title: doc.model.name || doc.model.id || baseTitle };
+        break;
+      }
+
+      case "jsbsim": {
+        const { parseJsbsim } = await import("@modelscript/jsbsim");
+        const { renderJsbsimSvg } = await import("@modelscript/diagram/jsbsim-diagram-builder");
+        const doc = parseJsbsim(content);
+        result.svg = renderJsbsimSvg({
+          name: doc.model.name,
+          metrics: {
+            wingspan: doc.model.metrics?.wingspan,
+            chord: doc.model.metrics?.chord,
+            wingarea: doc.model.metrics?.wingArea,
+            aerorp: doc.model.metrics?.aeroCenter,
+          },
+          massBalance: {
+            emptywt: doc.model.massBalance?.emptyWeight,
+            cg: doc.model.massBalance?.cgLocation,
+          },
+        });
+        result.metadata = { wingspan: doc.model.metrics?.wingspan, emptyWeight: doc.model.massBalance?.emptyWeight };
+        result.viewConfigAdditions = { title: doc.model.name || baseTitle };
         break;
       }
 

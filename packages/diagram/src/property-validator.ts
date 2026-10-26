@@ -12,6 +12,22 @@ export interface PropertyValidationError {
   message: string;
 }
 
+const patternRegexCache = new Map<string, RegExp | null>();
+
+function getCachedPatternRegex(pattern: string): RegExp | null {
+  if (patternRegexCache.has(pattern)) {
+    return patternRegexCache.get(pattern)!;
+  }
+  try {
+    const reg = new RegExp(pattern);
+    patternRegexCache.set(pattern, reg);
+    return reg;
+  } catch {
+    patternRegexCache.set(pattern, null);
+    return null;
+  }
+}
+
 /**
  * Validates a single field value against its configuration and current context values.
  * Returns an error string or null if valid.
@@ -50,13 +66,9 @@ export function validatePropertyValue(
 
   // 3. Regex pattern check
   if (validation.pattern) {
-    try {
-      const reg = new RegExp(validation.pattern);
-      if (!reg.test(String(value))) {
-        return `${field.label || field.key} has an invalid format.`;
-      }
-    } catch {
-      // Ignore invalid regex patterns in schema
+    const reg = getCachedPatternRegex(validation.pattern);
+    if (reg && !reg.test(String(value))) {
+      return `${field.label || field.key} has an invalid format.`;
     }
   }
 

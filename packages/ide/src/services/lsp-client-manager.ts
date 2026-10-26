@@ -84,6 +84,8 @@ export function buildDynamicDocumentSelector(
     "spck",
     "sim",
     "mbs",
+    "c",
+    "h",
   ];
 
   if (contributedLanguages.length > 0) {
@@ -107,6 +109,7 @@ export function buildDynamicDocumentSelector(
       { language: "scad" },
       { language: "cfd" },
       { language: "fea" },
+      { language: "c" },
     );
   }
 

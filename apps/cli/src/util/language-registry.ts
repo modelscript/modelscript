@@ -171,6 +171,12 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
     isBuiltIn: true,
   },
   {
+    id: "c",
+    name: "C",
+    extensions: [".c", ".h"],
+    isBuiltIn: true,
+  },
+  {
     id: "easy5",
     name: "EASY5",
     extensions: [".ez5", ".ezm", ".ezd", ".eas"],

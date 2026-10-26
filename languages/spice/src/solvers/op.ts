@@ -10,6 +10,7 @@
 
 import type { OperatingPoint, SpiceCircuit, SpiceComponent } from "../types.js";
 import {
+  DenseLU,
   DenseMatrix,
   buildMnaIndexing,
   flattenSpiceCircuit,
@@ -56,6 +57,8 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
 
   const matrix = new DenseMatrix(indexing.totalSize);
   const rhs = new Float64Array(indexing.totalSize);
+  const newSolution = new Float64Array(indexing.totalSize);
+  const luSolver = new DenseLU(indexing.totalSize);
 
   let converged = false;
   let iterations = 0;
@@ -133,9 +136,9 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
       }
     }
 
-    // Solve linear system
-    const newSolution = solveLinearSystem(matrix, rhs);
-    if (!newSolution) {
+    // Solve linear system in-place
+    const solved = solveLinearSystem(matrix, rhs, newSolution, luSolver);
+    if (!solved) {
       break; // Matrix singular or non-convergent
     }
 
@@ -148,7 +151,7 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
 
     if (maxDiff < tol) {
       converged = true;
-      solution = new Float64Array(newSolution);
+      solution.set(newSolution);
       break;
     }
 

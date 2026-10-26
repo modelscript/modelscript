@@ -5,6 +5,12 @@ paths-ignore:
   - "**/test/**"
   - "**/testsuite/**"
   - "**/validation/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/coverage/**"
+  - "**/data/**"
+  - "**/.cache/**"
+  - "**/vscode-web/**"
   - "scripts/**"
   - "languages/*/build.js"
 

@@ -241,7 +241,7 @@ export function synchronizeModelicaToEasy5(
     }
 
     // Check for component declaration line
-    const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(.*))?$/i.exec(trimmed);
+    const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*[A-Za-z0-9_/]+|[A-Za-z0-9_/]+)(?:\s|$)/i.exec(trimmed);
     if (cmpMatch && !trimmed.startsWith("XP:") && !trimmed.startsWith("S0:") && !trimmed.startsWith("PORTS:")) {
       // If previous component needed XP line inserted
       if (currentCompId && !seenXpForCurrentComp && updatedParams.has(currentCompId)) {

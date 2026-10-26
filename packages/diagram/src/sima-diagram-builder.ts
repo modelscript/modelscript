@@ -26,6 +26,9 @@ export interface SimaCatenaryViewParams {
   fairleadTotalTension?: number | undefined;
   horizontalTension?: number | undefined;
   fairleadVerticalTension?: number | undefined;
+  vesselName?: string | undefined;
+  vesselLength?: number | undefined;
+  vesselDraft?: number | undefined;
   profile?: { x: number; z: number }[] | undefined;
 }
 
@@ -114,6 +117,14 @@ export function renderSimaCatenaryProfileSvg(params: SimaCatenaryViewParams): st
   const hKn = params.horizontalTension ? (params.horizontalTension / 1000).toFixed(0) : "N/A";
   const flAngle = params.fairleadAngleDeg ? params.fairleadAngleDeg.toFixed(1) : "32.0";
 
+  const vDraft = params.vesselDraft ?? Math.min(25, depth * 0.1);
+  const vLength = params.vesselLength ?? Math.min(80, span * 0.15);
+  const draftPx = Math.max(16, Math.min(45, (vDraft / depth) * plotH));
+  const lengthPx = Math.max(40, Math.min(100, (vLength / span) * plotW));
+  const sternPx = lengthPx * 0.65;
+  const bowPx = lengthPx * 0.35;
+  const hullPath = `M ${(-sternPx).toFixed(1)},${(-draftPx).toFixed(1)} L ${(bowPx * 0.6).toFixed(1)},${(-draftPx).toFixed(1)} L ${bowPx.toFixed(1)},0 L ${(-sternPx + 6).toFixed(1)},0 Z`;
+
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%" style="background-color: #0b1120; font-family: ui-sans-serif, system-ui, sans-serif;">
   <defs>
@@ -169,8 +180,9 @@ export function renderSimaCatenaryProfileSvg(params: SimaCatenaryViewParams): st
 
   <!-- Floater Hull & Fairlead (Surface Right) -->
   <g transform="translate(${scaleX(fairleadPt.x)}, ${scaleZ(fairleadPt.z)})">
-    <!-- Vessel hull stub -->
-    <path d="M -30,-25 L 20,-25 L 35,0 L -20,0 Z" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+    <!-- Vessel hull profile -->
+    <path d="${hullPath}" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
+    ${params.vesselName ? `<text x="${(-sternPx / 2).toFixed(1)}" y="${(-draftPx - 8).toFixed(1)}" fill="#bae6fd" font-size="10" font-weight="600" text-anchor="middle">${params.vesselName}</text>` : ""}
     <circle cx="0" cy="0" r="6" fill="#38bdf8" stroke="#ffffff" stroke-width="2"/>
     <text x="-15" y="-32" fill="#bae6fd" font-size="11" font-weight="700">Fairlead</text>
   </g>

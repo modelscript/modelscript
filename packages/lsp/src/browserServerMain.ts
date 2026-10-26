@@ -273,8 +273,23 @@ const stepWsIndex = new StepWorkspaceIndex();
 workspaceManager.setWorkspaceIndex("step", stepWsIndex);
 workspaceManager.unifiedWorkspace.registerWorkspace("step", stepWsIndex, { priority: 2, name: "step" });
 
+import {
+  AspenWorkspaceIndex,
+  aspenLanguage,
+  getAspenDocumentSymbols,
+  getAspenHover,
+  validateAspen,
+} from "@modelscript/aspen";
+import { cLanguage } from "@modelscript/c";
 import { cfdLanguage } from "@modelscript/cfd";
 import { Easy5WorkspaceIndex, easy5Language } from "@modelscript/easy5";
+import {
+  EclipseWorkspaceIndex,
+  eclipseLanguage,
+  getEclipseDocumentSymbols,
+  getEclipseHover,
+  validateEclipse,
+} from "@modelscript/eclipse";
 import { feaLanguage } from "@modelscript/fea";
 import { fortranLanguage } from "@modelscript/fortran";
 import {
@@ -285,13 +300,55 @@ import {
   validateGensys,
 } from "@modelscript/gensys";
 import { GtSuiteWorkspaceIndex, gtsuiteLanguage } from "@modelscript/gtsuite";
+import {
+  IbisWorkspaceIndex,
+  getIbisDocumentSymbols,
+  getIbisHover,
+  ibisLanguage,
+  validateIbis,
+} from "@modelscript/ibis";
+import {
+  JsbsimWorkspaceIndex,
+  getJsbsimDocumentSymbols,
+  getJsbsimHover,
+  jsbsimLanguage,
+  validateJsbsim,
+} from "@modelscript/jsbsim";
 import { lpsLanguage } from "@modelscript/lps";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { olgaLanguage } from "@modelscript/olga";
+import {
+  OpenDssWorkspaceIndex,
+  getOpenDssDocumentSymbols,
+  getOpenDssHover,
+  openDssLanguage,
+  validateOpenDss,
+} from "@modelscript/opendss";
+import {
+  OpenScenarioWorkspaceIndex,
+  getOpenScenarioDocumentSymbols,
+  getOpenScenarioHover,
+  openScenarioLanguage,
+  validateOpenScenario,
+} from "@modelscript/openscenario";
 import { PscadWorkspaceIndex, pscadLanguage } from "@modelscript/pscad";
 import { PsseWorkspaceIndex, psseLanguage } from "@modelscript/psse";
+import {
+  Relap5WorkspaceIndex,
+  getRelap5DocumentSymbols,
+  getRelap5Hover,
+  relap5Language,
+  validateRelap5,
+} from "@modelscript/relap5";
 import { RocetsWorkspaceIndex, rocetsLanguage } from "@modelscript/rocets";
+import {
+  SbmlWorkspaceIndex,
+  getSbmlDocumentSymbols,
+  getSbmlHover,
+  sbmlLanguage,
+  validateSbml,
+} from "@modelscript/sbml";
 import scadLangFallback from "@modelscript/scad/language";
 import { SimaWorkspaceIndex, simaLanguage } from "@modelscript/sima";
 import {
@@ -302,7 +359,21 @@ import {
   validateSimpack,
 } from "@modelscript/simpack";
 import { StepWorkspaceIndex, stepLanguage } from "@modelscript/step";
+import {
+  SwmmWorkspaceIndex,
+  getSwmmDocumentSymbols,
+  getSwmmHover,
+  swmmLanguage,
+  validateSwmm,
+} from "@modelscript/swmm";
 import sysml2LangFallback from "@modelscript/sysml2/language";
+import {
+  TouchstoneWorkspaceIndex,
+  getTouchstoneDocumentSymbols,
+  getTouchstoneHover,
+  touchstoneLanguage,
+  validateTouchstone,
+} from "@modelscript/touchstone";
 import { registerActionRouter } from "./handlers/actionRouter.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
@@ -346,6 +417,52 @@ workspaceManager.unifiedWorkspace.registerWorkspace("sima", simaWsIndex, { prior
 const gtsuiteWsIndex = new GtSuiteWorkspaceIndex();
 workspaceManager.setWorkspaceIndex("gtsuite", gtsuiteWsIndex);
 workspaceManager.unifiedWorkspace.registerWorkspace("gtsuite", gtsuiteWsIndex, { priority: 2, name: "gtsuite" });
+
+const aspenWsIndex = new AspenWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("aspen", aspenWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("aspen", aspenWsIndex, { priority: 2, name: "aspen" });
+
+const swmmWsIndex = new SwmmWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("swmm", swmmWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("swmm", swmmWsIndex, { priority: 2, name: "swmm" });
+
+const touchstoneWsIndex = new TouchstoneWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("touchstone", touchstoneWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("touchstone", touchstoneWsIndex, {
+  priority: 2,
+  name: "touchstone",
+});
+
+const ibisWsIndex = new IbisWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("ibis", ibisWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("ibis", ibisWsIndex, { priority: 2, name: "ibis" });
+
+const opendssWsIndex = new OpenDssWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("opendss", opendssWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("opendss", opendssWsIndex, { priority: 2, name: "opendss" });
+
+const openscenarioWsIndex = new OpenScenarioWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("openscenario", openscenarioWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("openscenario", openscenarioWsIndex, {
+  priority: 2,
+  name: "openscenario",
+});
+
+const relap5WsIndex = new Relap5WorkspaceIndex();
+workspaceManager.setWorkspaceIndex("relap5", relap5WsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("relap5", relap5WsIndex, { priority: 2, name: "relap5" });
+
+const eclipseWsIndex = new EclipseWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("eclipse", eclipseWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("eclipse", eclipseWsIndex, { priority: 2, name: "eclipse" });
+
+const sbmlWsIndex = new SbmlWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("sbml", sbmlWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("sbml", sbmlWsIndex, { priority: 2, name: "sbml" });
+
+const jsbsimWsIndex = new JsbsimWorkspaceIndex();
+workspaceManager.setWorkspaceIndex("jsbsim", jsbsimWsIndex);
+workspaceManager.unifiedWorkspace.registerWorkspace("jsbsim", jsbsimWsIndex, { priority: 2, name: "jsbsim" });
 
 const moWs = workspaceManager.getWorkspaceIndex("modelica");
 if (moWs) {
@@ -1001,6 +1118,22 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     });
 
     globalLanguageRegistry.register({
+      id: "c",
+      name: "C",
+      extensions: [".c", ".h"],
+      languageDef: cLanguage,
+      actionHandlers: {
+        lint_c_file: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintC } = await import("@modelscript/c");
+          return lintC(text);
+        },
+      },
+      disposables: [],
+    });
+
+    globalLanguageRegistry.register({
       id: "sima",
       name: "SIMA",
       extensions: [".inp", ".sima", ".sys", ".hyd"],
@@ -1299,6 +1432,576 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       },
       disposables: [],
     });
+
+    // Register Aspen Plus Chemical Process Language Plugin
+    globalLanguageRegistry.register({
+      id: "aspen",
+      name: "Aspen",
+      extensions: [".in", ".inp", ".bkp"],
+      languageDef: aspenLanguage,
+      workspaceIndex: new AspenWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getAspenDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getAspenHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateAspen(text);
+        },
+      },
+      actionHandlers: {
+        lint_aspen_flowsheet: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseAspen, lintAspen } = await import("@modelscript/aspen");
+          const deck = parseAspen(text);
+          return lintAspen(deck);
+        },
+        aspen_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseAspen, lowerAspenToDae } = await import("@modelscript/aspen");
+          const deck = parseAspen(text);
+          const dae = lowerAspenToDae(deck);
+          return {
+            modelName: "AspenFlowsheet",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        aspen_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseAspen, aspenToModelica } = await import("@modelscript/aspen");
+          const deck = parseAspen(text);
+          return aspenToModelica(deck);
+        },
+        aspen_solve_flash: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseAspen, solveFlashRachfordRice } = await import("@modelscript/aspen");
+          const deck = parseAspen(text);
+          const streamId = params?.streamId ?? deck.streams.keys().next().value ?? "FEED";
+          const s = deck.streams.get(streamId);
+          const comps = Array.from(s?.moleFractions.keys() ?? deck.components.keys());
+          const fracs = comps.map((c) => s?.moleFractions.get(c) ?? 1.0 / comps.length);
+          return solveFlashRachfordRice({
+            temperature: s?.temperature ?? 75.0,
+            pressure: s?.pressure ?? 1.2,
+            components: comps,
+            moleFractions: fracs,
+            totalFlow: s?.moleFlow ?? 100.0,
+          });
+        },
+      },
+      disposables: [],
+    });
+
+    // Register US EPA SWMM Stormwater & Wastewater Language Plugin
+    globalLanguageRegistry.register({
+      id: "swmm",
+      name: "SWMM",
+      extensions: [".inp"],
+      languageDef: swmmLanguage,
+      workspaceIndex: new SwmmWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getSwmmDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getSwmmHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateSwmm(text);
+        },
+      },
+      actionHandlers: {
+        lint_swmm_network: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseSwmm, lintSwmm } = await import("@modelscript/swmm");
+          const deck = parseSwmm(text);
+          return lintSwmm(deck);
+        },
+        swmm_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSwmm, lowerSwmmToDae } = await import("@modelscript/swmm");
+          const deck = parseSwmm(text);
+          const dae = lowerSwmmToDae(deck);
+          return {
+            modelName: "SwmmNetwork",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        swmm_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSwmm, swmmToModelica } = await import("@modelscript/swmm");
+          const deck = parseSwmm(text);
+          return swmmToModelica(deck);
+        },
+        swmm_route_flow: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSwmm, routeNetworkFlow } = await import("@modelscript/swmm");
+          const deck = parseSwmm(text);
+          return routeNetworkFlow(deck);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register Touchstone Multiport RF & Signal Integrity Language Plugin
+    globalLanguageRegistry.register({
+      id: "touchstone",
+      name: "Touchstone",
+      extensions: [".s1p", ".s2p", ".s3p", ".s4p", ".sNp", ".ts"],
+      languageDef: touchstoneLanguage,
+      workspaceIndex: new TouchstoneWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getTouchstoneDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getTouchstoneHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateTouchstone(text);
+        },
+      },
+      actionHandlers: {
+        lint_touchstone_deck: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseTouchstone, lintTouchstone } = await import("@modelscript/touchstone");
+          const deck = parseTouchstone(text);
+          return lintTouchstone(deck);
+        },
+        touchstone_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseTouchstone, lowerTouchstoneToDae } = await import("@modelscript/touchstone");
+          const deck = parseTouchstone(text);
+          const dae = lowerTouchstoneToDae(deck);
+          return {
+            modelName: "TouchstoneNetwork",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        touchstone_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseTouchstone, touchstoneToModelica } = await import("@modelscript/touchstone");
+          const deck = parseTouchstone(text);
+          return touchstoneToModelica(deck);
+        },
+        touchstone_passivity: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseTouchstone, verifyPassivity } = await import("@modelscript/touchstone");
+          const deck = parseTouchstone(text);
+          return verifyPassivity(deck);
+        },
+        touchstone_vector_fit: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseTouchstone, fitStateSpaceModel } = await import("@modelscript/touchstone");
+          const deck = parseTouchstone(text);
+          return fitStateSpaceModel(deck, params?.order ?? 4);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register ANSI/EIA-656 IBIS Semiconductor Buffer Language Plugin
+    globalLanguageRegistry.register({
+      id: "ibis",
+      name: "IBIS",
+      extensions: [".ibs"],
+      languageDef: ibisLanguage,
+      workspaceIndex: new IbisWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getIbisDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getIbisHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateIbis(text);
+        },
+      },
+      actionHandlers: {
+        lint_ibis_deck: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintIbis, parseIbis } = await import("@modelscript/ibis");
+          const deck = parseIbis(text);
+          return lintIbis(deck);
+        },
+        ibis_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerIbisToDae, parseIbis } = await import("@modelscript/ibis");
+          const deck = parseIbis(text);
+          const dae = lowerIbisToDae(deck);
+          return {
+            modelName: "IbisBuffer",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        ibis_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { ibisToModelica, parseIbis } = await import("@modelscript/ibis");
+          const deck = parseIbis(text);
+          return ibisToModelica(deck);
+        },
+        ibis_eval_buffer: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseIbis, evaluateBufferCurrent } = await import("@modelscript/ibis");
+          const deck = parseIbis(text);
+          const model = deck.models.get(params?.modelName ?? "DEFAULT") ?? deck.models.values().next().value;
+          if (!model) return null;
+          return evaluateBufferCurrent(model, params?.voltage ?? 1.2);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register EPRI OpenDSS Distribution Grid Language Plugin
+    globalLanguageRegistry.register({
+      id: "opendss",
+      name: "OpenDSS",
+      extensions: [".dss"],
+      languageDef: openDssLanguage,
+      workspaceIndex: new OpenDssWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) =>
+          getOpenDssDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          return getOpenDssHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+        },
+        validate: (doc: any) => validateOpenDss(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      },
+      actionHandlers: {
+        lint_opendss: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseOpenDss, lintOpenDss } = await import("@modelscript/opendss");
+          return lintOpenDss(parseOpenDss(text));
+        },
+        opendss_powerflow: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpenDss, solveDistributionPowerFlow } = await import("@modelscript/opendss");
+          return solveDistributionPowerFlow(parseOpenDss(text));
+        },
+        opendss_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpenDss, lowerOpenDssToDae } = await import("@modelscript/opendss");
+          const dae = lowerOpenDssToDae(parseOpenDss(text));
+          return {
+            modelName: "DistributionGrid",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        opendss_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseOpenDss, openDssToModelica } = await import("@modelscript/opendss");
+          return openDssToModelica(parseOpenDss(text));
+        },
+      },
+      disposables: [],
+    });
+
+    // Register ASAM OpenSCENARIO Autonomous Driving Language Plugin
+    globalLanguageRegistry.register({
+      id: "openscenario",
+      name: "OpenSCENARIO",
+      extensions: [".xosc", ".osc"],
+      languageDef: openScenarioLanguage,
+      workspaceIndex: new OpenScenarioWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) =>
+          getOpenScenarioDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          return getOpenScenarioHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+        },
+        validate: (doc: any) => validateOpenScenario(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      },
+      actionHandlers: {
+        lint_openscenario: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseOpenScenario, lintOpenScenario } = await import("@modelscript/openscenario");
+          return lintOpenScenario(parseOpenScenario(text));
+        },
+        openscenario_simulate: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpenScenario, simulateScenario } = await import("@modelscript/openscenario");
+          return simulateScenario(parseOpenScenario(text), params?.options);
+        },
+        openscenario_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseOpenScenario, lowerOpenScenarioToDae } = await import("@modelscript/openscenario");
+          const dae = lowerOpenScenarioToDae(parseOpenScenario(text));
+          return {
+            modelName: "ScenarioSimulation",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        openscenario_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseOpenScenario, openScenarioToModelica } = await import("@modelscript/openscenario");
+          return openScenarioToModelica(parseOpenScenario(text), params?.modelName);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register US NRC RELAP5-3D Thermal-Hydraulics Language Plugin
+    globalLanguageRegistry.register({
+      id: "relap5",
+      name: "RELAP5",
+      extensions: [".i", ".inp", ".r5"],
+      languageDef: relap5Language,
+      workspaceIndex: new Relap5WorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) =>
+          getRelap5DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          return getRelap5Hover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+        },
+        validate: (doc: any) => validateRelap5(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      },
+      actionHandlers: {
+        lint_relap5: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseRelap5, lintRelap5 } = await import("@modelscript/relap5");
+          return lintRelap5(parseRelap5(text));
+        },
+        relap5_kinetics: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRelap5, solvePointKinetics } = await import("@modelscript/relap5");
+          return solvePointKinetics(parseRelap5(text), params?.options);
+        },
+        relap5_kinetics_solve: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRelap5, solvePointKinetics } = await import("@modelscript/relap5");
+          return solvePointKinetics(parseRelap5(text), params?.options);
+        },
+        relap5_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRelap5, lowerRelap5ToDae } = await import("@modelscript/relap5");
+          const dae = lowerRelap5ToDae(parseRelap5(text));
+          return {
+            modelName: "Relap5Simulation",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        relap5_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseRelap5, relap5ToModelica } = await import("@modelscript/relap5");
+          return relap5ToModelica(parseRelap5(text), params?.modelName);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register Schlumberger ECLIPSE Reservoir Language Plugin
+    globalLanguageRegistry.register({
+      id: "eclipse",
+      name: "ECLIPSE",
+      extensions: [".data", ".dat", ".inc"],
+      languageDef: eclipseLanguage,
+      workspaceIndex: new EclipseWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) =>
+          getEclipseDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          return getEclipseHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+        },
+        validate: (doc: any) => validateEclipse(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      },
+      actionHandlers: {
+        lint_eclipse: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseEclipse, lintEclipse } = await import("@modelscript/eclipse");
+          return lintEclipse(parseEclipse(text));
+        },
+        eclipse_solve: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEclipse, solveReservoirDepletion } = await import("@modelscript/eclipse");
+          return solveReservoirDepletion(parseEclipse(text), params?.options);
+        },
+        eclipse_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseEclipse, lowerEclipseToDae } = await import("@modelscript/eclipse");
+          const dae = lowerEclipseToDae(parseEclipse(text));
+          return {
+            modelName: "EclipseReservoir",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        eclipse_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseEclipse, eclipseToModelica } = await import("@modelscript/eclipse");
+          return eclipseToModelica(parseEclipse(text), params?.modelName);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register Systems Biology Markup Language Plugin
+    globalLanguageRegistry.register({
+      id: "sbml",
+      name: "SBML",
+      extensions: [".sbml", ".xml"],
+      languageDef: sbmlLanguage,
+      workspaceIndex: new SbmlWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) =>
+          getSbmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          return getSbmlHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+        },
+        validate: (doc: any) => validateSbml(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      },
+      actionHandlers: {
+        lint_sbml: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseSbml, lintSbml } = await import("@modelscript/sbml");
+          return lintSbml(parseSbml(text));
+        },
+        sbml_simulate: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSbml, solveReactions } = await import("@modelscript/sbml");
+          return solveReactions(parseSbml(text), params?.options);
+        },
+        sbml_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSbml, lowerSbmlToDae } = await import("@modelscript/sbml");
+          const dae = lowerSbmlToDae(parseSbml(text));
+          return {
+            modelName: "SbmlModel",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        sbml_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSbml, sbmlToModelica } = await import("@modelscript/sbml");
+          return sbmlToModelica(parseSbml(text), params?.modelName);
+        },
+      },
+      disposables: [],
+    });
+
+    // Register JSBSim 6-DOF Flight Dynamics Language Plugin
+    globalLanguageRegistry.register({
+      id: "jsbsim",
+      name: "JSBSim Flight Dynamics",
+      extensions: [".xml"],
+      languageDef: jsbsimLanguage,
+      workspaceIndex: new JsbsimWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) =>
+          getJsbsimDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          return getJsbsimHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
+        },
+        validate: (doc: any) => validateJsbsim(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      },
+      actionHandlers: {
+        lint_jsbsim: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseJsbsim, lintJsbsim } = await import("@modelscript/jsbsim");
+          return lintJsbsim(parseJsbsim(text));
+        },
+        jsbsim_simulate: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseJsbsim, solveFlightDynamics } = await import("@modelscript/jsbsim");
+          return solveFlightDynamics(parseJsbsim(text), params?.options);
+        },
+        jsbsim_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseJsbsim, lowerJsbsimToDae } = await import("@modelscript/jsbsim");
+          const dae = lowerJsbsimToDae(parseJsbsim(text));
+          return {
+            modelName: "JsbsimModel",
+            variableCount: dae.variables().length,
+            equationCount: dae.equations().length,
+          };
+        },
+        jsbsim_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseJsbsim, jsbsimToModelica } = await import("@modelscript/jsbsim");
+          return jsbsimToModelica(parseJsbsim(text), params?.modelName);
+        },
+      },
+      disposables: [],
+    });
+
     if (!builtinLanguagesLogged) {
       builtinLanguagesLogged = true;
       connection.console.info("[lsp] Built-in languages registered into globalLanguageRegistry");

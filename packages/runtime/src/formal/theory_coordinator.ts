@@ -173,8 +173,11 @@ export class SemanticTheoryCoordinator {
   private oracles = new Map<string, TheoryOracle>();
   /** Currently asserted theory literals keyed by literal ID. */
   private activeLiterals = new Map<number, TheoryLiteral>();
-  /** Deduplicated shared equalities exchanged between oracles. */
-  private knownEqualities = new Map<string, SharedEquality>();
+  /** Deduplicated shared equalities exchanged between oracles, keyed by packed 64-bit pair ID. */
+  private knownEqualities = new Map<bigint, SharedEquality>();
+  /** Interned variable names to 32-bit IDs for packed 64-bit equality keys. */
+  private varToId = new Map<string, number>();
+  private idToVar: string[] = [];
   /** Union-Find parent map for variable equivalence classes. */
   private parentMap = new Map<string, string>();
   /** Tightest intersected interval `[low, high]` for each canonical variable representative. */
@@ -200,7 +203,7 @@ export class SemanticTheoryCoordinator {
   /** Backtracking stack of solver state snapshots for `pushLevel()` / `popLevel()`. */
   private levelStack: {
     literalIds: number[];
-    equalityKeys: string[];
+    equalityKeys: bigint[];
     worklistSnapshot?: PropagationEvent[] | undefined;
     parentSnapshot?: Map<string, string> | undefined;
     boundsSnapshot?: Map<string, [number, number]> | undefined;
@@ -819,6 +822,8 @@ export class SemanticTheoryCoordinator {
   public reset(): void {
     this.activeLiterals.clear();
     this.knownEqualities.clear();
+    this.varToId.clear();
+    this.idToVar = [];
     this.parentMap.clear();
     this.canonicalBounds.clear();
     this.canonicalBoundJustifications.clear();
@@ -861,11 +866,26 @@ export class SemanticTheoryCoordinator {
     return subs ? subs.has(oracle) : false;
   }
 
+  private getVarId(name: string): number {
+    let id = this.varToId.get(name);
+    if (id === undefined) {
+      id = this.idToVar.length;
+      this.varToId.set(name, id);
+      this.idToVar.push(name);
+    }
+    return id;
+  }
+
   /**
-   * Generates a canonical equality key for undirected pairs: (min, max).
+   * Generates a canonical packed 64-bit equality key for undirected pairs: (min, max).
+   * High 32 bits: min(idA, idB), Low 32 bits: max(idA, idB).
    */
-  private makeEqualityKey(varA: string, varB: string): string {
-    return varA < varB ? `${varA}===#===${varB}` : `${varB}===#===${varA}`;
+  private makeEqualityKey(varA: string, varB: string): bigint {
+    const idA = this.getVarId(varA);
+    const idB = this.getVarId(varB);
+    const min = idA < idB ? idA : idB;
+    const max = idA < idB ? idB : idA;
+    return (BigInt(min) << 32n) | BigInt(max);
   }
 
   /**

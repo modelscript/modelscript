@@ -64,14 +64,22 @@ function computeJacobian(
   t: number,
   y: number[],
   f0: number[],
+  outJ?: Float64Array[] | undefined,
+  yPertScratch?: number[] | undefined,
 ): Float64Array[] {
   const n = y.length;
-  const J: Float64Array[] = new Array(n);
-  for (let i = 0; i < n; i++) {
-    J[i] = new Float64Array(n);
+  let J = outJ;
+  if (!J) {
+    J = new Array(n);
+    for (let i = 0; i < n; i++) {
+      J[i] = new Float64Array(n);
+    }
   }
 
-  const yPert = [...y];
+  const yPert = yPertScratch ?? new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    yPert[i] = y[i] ?? 0;
+  }
   for (let j = 0; j < n; j++) {
     const yj = y[j] ?? 0;
     const h = Math.max(1e-8, 1e-8 * Math.abs(yj));
@@ -186,6 +194,15 @@ export function trbdf2(
   const w = Math.SQRT2 / 4.0; // weighting for error estimation
 
   const delta = new Float64Array(n);
+  const yGamma = new Array<number>(n);
+  const yNew = new Array<number>(n);
+  const yPertScratch = new Array<number>(n);
+  const JScratch: Float64Array[] = new Array(n);
+  const W: Float64Array[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    JScratch[i] = new Float64Array(n);
+    W[i] = new Float64Array(n);
+  }
 
   while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
     if (tEnd > t0) {
@@ -203,13 +220,11 @@ export function trbdf2(
     stats.fEvals++;
 
     // Compute Jacobian J at (t, y)
-    const J = computeJacobian(f, t, y, f0);
+    const J = computeJacobian(f, t, y, f0, JScratch, yPertScratch);
     stats.jacobianEvals!++;
 
     // Form iteration matrix W = M - d * h * J
-    const W: Float64Array[] = new Array(n);
     for (let i = 0; i < n; i++) {
-      W[i] = new Float64Array(n);
       for (let j = 0; j < n; j++) {
         const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
         W[i]![j] = mij - d * h * (J[i]![j] ?? 0);
@@ -223,7 +238,7 @@ export function trbdf2(
     // ── Stage 1: Trapezoidal rule at t + gamma * h ──
     // y_gamma - y0 = (gamma * h / 2) * (f(t, y0) + f(t + gamma*h, y_gamma))
     const tGamma = t + gamma * h;
-    let yGamma = [...y]; // initial guess
+    for (let i = 0; i < n; i++) yGamma[i] = y[i]!; // initial guess
 
     let stage1Converged = false;
     for (let iter = 0; iter < maxNewtonIters; iter++) {
@@ -269,7 +284,7 @@ export function trbdf2(
     const cGamma = 1.0 / (gamma * (2.0 - gamma));
     const c0 = Math.pow(1.0 - gamma, 2) / (gamma * (2.0 - gamma));
 
-    let yNew = [...yGamma]; // initial guess from stage 1
+    for (let i = 0; i < n; i++) yNew[i] = yGamma[i]!; // initial guess from stage 1
 
     let stage2Converged = false;
     for (let iter = 0; iter < maxNewtonIters; iter++) {

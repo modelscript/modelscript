@@ -283,6 +283,16 @@ end RCFilter;`;
         { filename: "chua_circuit.fmu", expected: "fmu" },
         { filename: "cad_bracket.step", expected: "cad-step" },
         { filename: "ontology.owl", expected: "owl2" },
+        { filename: "column.aspen", expected: "aspen" },
+        { filename: "drainage.swmm", expected: "swmm" },
+        { filename: "filter.s2p", expected: "touchstone" },
+        { filename: "buffer.ibs", expected: "ibis" },
+        { filename: "feeder.dss", expected: "opendss" },
+        { filename: "cut_in.xosc", expected: "openscenario" },
+        { filename: "primary_loop.r5", expected: "relap5" },
+        { filename: "black_oil.data", expected: "eclipse" },
+        { filename: "glycolysis.sbml", expected: "sbml" },
+        { filename: "c172.jsbsim", expected: "jsbsim" },
       ];
 
       for (const { filename, expected } of testCases) {

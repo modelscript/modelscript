@@ -43,7 +43,17 @@ function resolveArtifactPlaceholderType(vt?: string): string {
     v === "calc" ||
     v === "simpack" ||
     v === "spck" ||
-    v === "sim"
+    v === "sim" ||
+    v === "aspen" ||
+    v === "swmm" ||
+    v === "touchstone" ||
+    v === "ibis" ||
+    v === "opendss" ||
+    v === "openscenario" ||
+    v === "relap5" ||
+    v === "eclipse" ||
+    v === "sbml" ||
+    v === "jsbsim"
   )
     return "plot";
   if (v === "fea-deck" || v === "fea-inp") return "fea";
@@ -59,6 +69,19 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     assert.strictEqual(resolveArtifactPlaceholderType("psout"), "plot");
     assert.strictEqual(resolveArtifactPlaceholderType("psse"), "plot");
     assert.strictEqual(resolveArtifactPlaceholderType("raw"), "plot");
+  });
+
+  it("resolves domain modeling languages (process, water, RF, power, AV, nuclear, reservoir, bio, aero)", () => {
+    assert.strictEqual(resolveArtifactPlaceholderType("aspen"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("swmm"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("touchstone"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("ibis"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("opendss"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("openscenario"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("relap5"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("eclipse"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("sbml"), "plot");
+    assert.strictEqual(resolveArtifactPlaceholderType("jsbsim"), "plot");
   });
 
   it("resolves aerospace, marine, pipeline, railway, and multibody engineering formats", () => {

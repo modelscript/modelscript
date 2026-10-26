@@ -173,8 +173,10 @@ export function tsit5(
   let y = [...y0];
 
   // Evaluate initial stage k[0] = f(t0, y0)
+  const kBuffer = new Float64Array(7 * n);
   const k: number[][] = new Array(7);
   k[0] = f(t, y);
+  for (let i = 0; i < n; i++) kBuffer[i] = k[0][i] ?? 0;
   stats.fEvals++;
 
   if (denseOutputs && outputTimes[0] !== undefined && Math.abs(outputTimes[0] - t) < 1e-12) {
@@ -221,6 +223,52 @@ export function tsit5(
   const yStage = new Array<number>(n);
   const yNew = new Array<number>(n);
 
+  // WebAssembly Linear Memory Acceleration for Tsit5 stages and embedded error
+  const wasm: any = getDefaultWasmExports();
+  const hasWasm = Boolean(
+    wasm &&
+    typeof wasm.tsit5_combine_stage === "function" &&
+    typeof wasm.tsit5_compute_step_and_error === "function" &&
+    typeof wasm.__new === "function" &&
+    n > 0,
+  );
+
+  let yPtr = 0;
+  let kBasePtr = 0;
+  let yStagePtr = 0;
+  let yNewPtr = 0;
+  const aRowPtrs: number[] = [];
+  let b5Ptr = 0;
+  let ePtr = 0;
+
+  if (hasWasm) {
+    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+    yPtr = alloc(n * 8);
+    kBasePtr = alloc(7 * n * 8);
+    yStagePtr = alloc(n * 8);
+    yNewPtr = alloc(n * 8);
+
+    for (let s = 1; s <= 5; s++) {
+      const a_row = TSIT5_A[s]!;
+      const ptr = alloc(s * 8);
+      const view = new Float64Array(wasm.memory.buffer, ptr, s);
+      for (let j = 0; j < s; j++) view[j] = a_row[j] ?? 0;
+      aRowPtrs.push(ptr);
+    }
+
+    b5Ptr = alloc(6 * 8);
+    const b5View = new Float64Array(wasm.memory.buffer, b5Ptr, 6);
+    for (let j = 0; j < 6; j++) b5View[j] = TSIT5_B5[j] ?? 0;
+
+    ePtr = alloc(7 * 8);
+    const eView = new Float64Array(wasm.memory.buffer, ePtr, 7);
+    for (let j = 0; j < 7; j++) eView[j] = TSIT5_E[j] ?? 0;
+
+    // Copy initial y and k0
+    new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
+    new Float64Array(wasm.memory.buffer, kBasePtr, n).set(kBuffer.subarray(0, n));
+  }
+
   let prevEventVals: number[] = [];
   if (effEventFunctions && effEventFunctions.length > 0) {
     prevEventVals = computeEventValuesWithProbe(t, y);
@@ -238,46 +286,102 @@ export function tsit5(
       break;
     }
 
-    // Stages 1 to 5
-    for (let s = 1; s <= 5; s++) {
-      const a_row = TSIT5_A[s]!;
-      const c_s = TSIT5_C[s]!;
+    let maxErrorRatio = 0.0;
+
+    if (hasWasm) {
+      const kView = new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n);
+      const stageOutView = new Float64Array(wasm.memory.buffer, yStagePtr, n);
+
+      // Stages 1 to 5 via WASM SIMD / linear memory kernel
+      for (let s = 1; s <= 5; s++) {
+        const c_s = TSIT5_C[s]!;
+        wasm.tsit5_combine_stage(n, yPtr, kBasePtr, aRowPtrs[s - 1]!, s, h, yStagePtr);
+        for (let i = 0; i < n; i++) {
+          yStage[i] = stageOutView[i]!;
+        }
+        const fs = f(t + c_s * h, yStage);
+        k[s] = fs;
+        const sOffset = s * n;
+        for (let i = 0; i < n; i++) {
+          const val = fs[i] ?? 0;
+          kBuffer[sOffset + i] = val;
+          kView[sOffset + i] = val;
+        }
+        stats.fEvals++;
+      }
+
+      // Compute candidate state yNew
+      wasm.tsit5_combine_stage(n, yPtr, kBasePtr, b5Ptr, 6, h, yNewPtr);
+      const yNewView = new Float64Array(wasm.memory.buffer, yNewPtr, n);
+      for (let i = 0; i < n; i++) {
+        yNew[i] = yNewView[i]!;
+      }
+
+      // Stage 6 (FSAL evaluation: f at new candidate state)
+      const f6 = f(t + h, yNew);
+      k[6] = f6;
+      const offset6 = 6 * n;
+      for (let i = 0; i < n; i++) {
+        const val = f6[i] ?? 0;
+        kBuffer[offset6 + i] = val;
+        kView[offset6 + i] = val;
+      }
+      stats.fEvals++;
+
+      // Compute normalized embedded error norm in WASM
+      maxErrorRatio = wasm.tsit5_compute_step_and_error(n, yPtr, kBasePtr, b5Ptr, ePtr, h, atol, rtol, yNewPtr);
+    } else {
+      // TypeScript fallback for environments without WASM exports
+      // Stages 1 to 5
+      for (let s = 1; s <= 5; s++) {
+        const a_row = TSIT5_A[s]!;
+        const c_s = TSIT5_C[s]!;
+        for (let i = 0; i < n; i++) {
+          let sum = 0;
+          for (let j = 0; j < s; j++) {
+            sum += (a_row[j] ?? 0) * kBuffer[j * n + i]!;
+          }
+          yStage[i] = (y[i] ?? 0) + h * sum;
+        }
+        const fs = f(t + c_s * h, yStage);
+        k[s] = fs;
+        const sOffset = s * n;
+        for (let i = 0; i < n; i++) {
+          kBuffer[sOffset + i] = fs[i] ?? 0;
+        }
+        stats.fEvals++;
+      }
+
+      // Candidate new state yNew (using 5th-order weights TSIT5_B5)
       for (let i = 0; i < n; i++) {
         let sum = 0;
-        for (let j = 0; j < s; j++) {
-          sum += (a_row[j] ?? 0) * (k[j]?.[i] ?? 0);
+        for (let j = 0; j <= 5; j++) {
+          sum += (TSIT5_B5[j] ?? 0) * kBuffer[j * n + i]!;
         }
-        yStage[i] = (y[i] ?? 0) + h * sum;
+        yNew[i] = (y[i] ?? 0) + h * sum;
       }
-      k[s] = f(t + c_s * h, yStage);
+
+      // Stage 6 (FSAL evaluation: f at new candidate state)
+      const f6 = f(t + h, yNew);
+      k[6] = f6;
+      const offset6 = 6 * n;
+      for (let i = 0; i < n; i++) {
+        kBuffer[offset6 + i] = f6[i] ?? 0;
+      }
       stats.fEvals++;
-    }
 
-    // Candidate new state yNew (using 5th-order weights TSIT5_B5)
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let j = 0; j <= 5; j++) {
-        sum += (TSIT5_B5[j] ?? 0) * (k[j]?.[i] ?? 0);
-      }
-      yNew[i] = (y[i] ?? 0) + h * sum;
-    }
-
-    // Stage 6 (FSAL evaluation: f at new candidate state)
-    k[6] = f(t + h, yNew);
-    stats.fEvals++;
-
-    // Compute error estimate: err = h * sum(E[j] * k[j])
-    let maxErrorRatio = 0.0;
-    for (let i = 0; i < n; i++) {
-      let err_i = 0;
-      for (let j = 0; j <= 6; j++) {
-        err_i += (TSIT5_E[j] ?? 0) * (k[j]?.[i] ?? 0);
-      }
-      err_i = Math.abs(h * err_i);
-      const sc_i = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
-      const ratio = err_i / sc_i;
-      if (ratio > maxErrorRatio) {
-        maxErrorRatio = ratio;
+      // Compute error estimate: err = h * sum(E[j] * k[j])
+      for (let i = 0; i < n; i++) {
+        let err_i = 0;
+        for (let j = 0; j <= 6; j++) {
+          err_i += (TSIT5_E[j] ?? 0) * kBuffer[j * n + i]!;
+        }
+        err_i = Math.abs(h * err_i);
+        const sc_i = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
+        const ratio = err_i / sc_i;
+        if (ratio > maxErrorRatio) {
+          maxErrorRatio = ratio;
+        }
       }
     }
 
@@ -379,8 +483,14 @@ export function tsit5(
 
           t = tEvent;
           k[0] = f(t, y);
+          for (let i = 0; i < n; i++) kBuffer[i] = k[0][i] ?? 0;
           stats.fEvals++;
           prevEventVals = computeEventValuesWithProbe(t, y);
+
+          if (hasWasm) {
+            new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
+            new Float64Array(wasm.memory.buffer, kBasePtr, n).set(kBuffer.subarray(0, n));
+          }
 
           h = Math.max(minStep, Math.min(h * 0.5, maxStep));
           continue;
@@ -413,6 +523,10 @@ export function tsit5(
         y[i] = yNew[i]!;
       }
 
+      if (hasWasm) {
+        new Float64Array(wasm.memory.buffer, yPtr, n).set(new Float64Array(wasm.memory.buffer, yNewPtr, n));
+      }
+
       // Step online STL monitors
       if (options.stlMonitors && options.stlMonitors.length > 0) {
         let earlyStop = false;
@@ -427,6 +541,10 @@ export function tsit5(
 
       // FSAL: k[0] of next step is k[6] of current step
       k[0] = k[6]!;
+      kBuffer.copyWithin(0, 6 * n, 7 * n);
+      if (hasWasm) {
+        new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n).copyWithin(0, 6 * n, 7 * n);
+      }
 
       // Step size adaptation (5th order: factor ~ (1/err)^(1/5))
       const factor = Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(maxErrorRatio, -0.2)));

@@ -26,7 +26,9 @@ export default defineConfig({
     languageAlias: {
       abaqus: "ini",
       owl: "lisp",
+      rocets: "c",
       scad: "c",
+      sysml: "rust",
     },
     config(md) {
       const defaultCodeInline = md.renderer.rules.code_inline;
@@ -158,6 +160,7 @@ export default defineConfig({
         items: [
           { text: "Playground", link: "https://modelscript.org/playground" },
           { text: "Web IDE", link: "https://ide.modelscript.org" },
+          { text: "Native Desktop App", link: "https://github.com/modelscript/modelscript/releases" },
           {
             text: "VS Code Extension",
             link: "https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript",
@@ -248,6 +251,24 @@ export default defineConfig({
             { text: "CFD (SU2 / OpenFOAM)", link: "/languages/cfd" },
             { text: "FEA Structural Analysis", link: "/languages/fea" },
             { text: "CSV Telemetry", link: "/languages/csv" },
+            { text: "CCSDS Space Telemetry", link: "/languages/ccsds" },
+            { text: "EnergyPlus Thermal", link: "/languages/energyplus" },
+            { text: "EPANET Water Networks", link: "/languages/epanet" },
+            { text: "OpenDRIVE Roads", link: "/languages/opendrive" },
+            { text: "PLCopen Automation", link: "/languages/plcopen" },
+            { text: "Verilog-A Devices", link: "/languages/verilog-a" },
+            { text: "Fortran Integration", link: "/languages/fortran" },
+            { text: "C Integration", link: "/languages/c" },
+            { text: "Aspen Chemical Process", link: "/languages/aspen" },
+            { text: "SWMM Urban Hydrology", link: "/languages/swmm" },
+            { text: "Touchstone RF / SI", link: "/languages/touchstone" },
+            { text: "IBIS Buffer Modeling", link: "/languages/ibis" },
+            { text: "OpenDSS Distribution", link: "/languages/opendss" },
+            { text: "OpenSCENARIO AV Safety", link: "/languages/openscenario" },
+            { text: "RELAP5 Nuclear Loops", link: "/languages/relap5" },
+            { text: "ECLIPSE Reservoir", link: "/languages/eclipse" },
+            { text: "SBML Systems Biology", link: "/languages/sbml" },
+            { text: "JSBSim Flight Dynamics", link: "/languages/jsbsim" },
           ],
         },
       ],

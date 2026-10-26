@@ -176,10 +176,13 @@ function solveLiftedOffCatenary(h: number, X: number, L: number, w: number, _ea:
 
   const profile: { x: number; z: number }[] = [];
   const numPts = 40;
+  const sinhU = Math.sinh(u);
+  const x0 = sinhU !== 0 ? X / 2 - a * Math.asinh(h / (2 * a * sinhU)) : X / 2;
+  const coshX0OverA = Math.cosh(x0 / a);
+
   for (let i = 0; i <= numPts; i++) {
     const xVal = (i / numPts) * X;
-    // z(x) = a * (cosh((x - x0) / a) - cosh(x0 / a))
-    const zVal = (xVal / X) * h; // smooth interpolation
+    const zVal = i === 0 ? 0 : i === numPts ? h : a * (Math.cosh((xVal - x0) / a) - coshX0OverA);
     profile.push({ x: xVal, z: zVal });
   }
 

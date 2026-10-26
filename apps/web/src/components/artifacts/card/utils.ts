@@ -41,7 +41,17 @@ export function resolvePlaceholder(vt?: string): PlaceholderType {
     v === "rocets" ||
     v === "lps" ||
     v === "sima" ||
-    v === "gtsuite"
+    v === "gtsuite" ||
+    v === "aspen" ||
+    v === "swmm" ||
+    v === "touchstone" ||
+    v === "ibis" ||
+    v === "opendss" ||
+    v === "openscenario" ||
+    v === "relap5" ||
+    v === "eclipse" ||
+    v === "sbml" ||
+    v === "jsbsim"
   ) {
     return "plot";
   }

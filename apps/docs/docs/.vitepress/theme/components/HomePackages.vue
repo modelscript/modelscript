@@ -13,7 +13,7 @@ interface PackageInfo {
 const packages: PackageInfo[] = [
   {
     name: "@modelscript/cli",
-    description: "The unified msc command-line toolchain — flatten, simulate, optimize, lint, render, and execute the digital thread.",
+    description: "The unified msx command-line toolchain — flatten, simulate, optimize, lint, render, and execute the digital thread.",
     install: "npm install -g @modelscript/cli",
     docsLink: "/cli/overview",
     npmLink: "https://www.npmjs.com/package/@modelscript/cli",
@@ -65,13 +65,32 @@ const copiedPkg = ref<string | null>(null);
 
 async function copyInstall(install: string, name: string) {
   try {
-    await navigator.clipboard.writeText(install);
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(install);
+    } else {
+      throw new Error("Clipboard API unavailable");
+    }
     copiedPkg.value = name;
     setTimeout(() => {
       if (copiedPkg.value === name) copiedPkg.value = null;
     }, 2000);
   } catch {
-    // fallback
+    const textArea = document.createElement("textarea");
+    textArea.value = install;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand("copy");
+      copiedPkg.value = name;
+      setTimeout(() => {
+        if (copiedPkg.value === name) copiedPkg.value = null;
+      }, 2000);
+    } finally {
+      document.body.removeChild(textArea);
+    }
   }
 }
 </script>

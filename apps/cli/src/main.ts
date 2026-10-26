@@ -492,6 +492,62 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "aspen <action> [files..]",
+      "Inspect, lint, solve, and lower Aspen Plus chemical process flowsheets (.in, .inp, .bkp)",
+      () => import("./commands/aspen.js"),
+      "AspenCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "swmm <action> [files..]",
+      "Inspect, lint, route, and lower US EPA SWMM 5.x stormwater networks (.inp)",
+      () => import("./commands/swmm.js"),
+      "SwmmCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "touchstone <action> [files..]",
+      "Inspect, lint, verify passivity, and lower Touchstone N-Port models (.s1p ... .sNp, .ts)",
+      () => import("./commands/touchstone.js"),
+      "TouchstoneCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "ibis <action> [files..]",
+      "Inspect, lint, evaluate, and lower ANSI/EIA-656-B IBIS buffer models (.ibs)",
+      () => import("./commands/ibis.js"),
+      "IbisCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "opendss <action> [files..]",
+      "Inspect, lint, solve power flow, and lower EPRI OpenDSS distribution circuits (.dss)",
+      () => import("./commands/opendss.js"),
+      "OpenDssCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "c <action> [files..]",
+      "Inspect, lint, and bridge C99/ANSI C files and headers (.c, .h)",
+      () => import("./commands/c.js"),
+      "CCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "openscenario <action> [files..]",
+      "Inspect, lint, simulate, and lower ASAM OpenSCENARIO scenario files (.xosc, .osc)",
+      () => import("./commands/openscenario.js"),
+      "OpenScenarioCommand",
+    ),
+  )
+  .command(
+    lazy(
       "pscad <action> [files..]",
       "Inspect, lint, diff, and simulate PSCAD projects (.pscx, .pslx)",
       () => import("./commands/pscad.js"),
@@ -504,6 +560,38 @@ await yargs(rawArgs)
       "Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)",
       () => import("./commands/psse.js"),
       "PsseCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "relap5 <action> [files..]",
+      "Inspect, lint, solve kinetics, and lower US NRC RELAP5-3D decks (.i, .inp, .r5)",
+      () => import("./commands/relap5.js"),
+      "Relap5Command",
+    ),
+  )
+  .command(
+    lazy(
+      "eclipse <action> [files..]",
+      "Inspect, lint, solve reservoir depletion, and lower Schlumberger ECLIPSE decks (.data, .dat, .inc)",
+      () => import("./commands/eclipse.js"),
+      "EclipseCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "sbml <action> [files..]",
+      "Inspect, lint, simulate biochemical networks, and lower SBML models (.sbml, .xml)",
+      () => import("./commands/sbml.js"),
+      "SbmlCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "jsbsim <action> [files..]",
+      "Inspect, lint, simulate 6-DOF flight dynamics, and lower JSBSim models (.xml)",
+      () => import("./commands/jsbsim.js"),
+      "JsbsimCommand",
     ),
   )
   .command(

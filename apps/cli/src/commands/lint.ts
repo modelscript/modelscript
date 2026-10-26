@@ -913,6 +913,27 @@ export const Lint: CommandModule<any, LintArgs> = {
           continue;
         }
 
+        if (langId === "c") {
+          const { lintC } = await import("@modelscript/c");
+          const cDiags = lintC(item.text);
+          for (const cd of cDiags) {
+            const startOffset = lineColToByte(item.text, cd.line ?? 1, cd.col ?? 1);
+            const endOffset = startOffset + 5;
+            diagnostics.push({
+              severity: cd.severity,
+              lintName: cd.rule,
+              code: `M${cd.code}`,
+              domain: "c",
+              message: cd.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset,
+            });
+          }
+          continue;
+        }
+
         if (langId === "easy5") {
           const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
           const model = parseEasy5(item.text);

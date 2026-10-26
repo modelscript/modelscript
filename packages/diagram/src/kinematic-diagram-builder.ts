@@ -62,38 +62,163 @@ export interface KinematicDiagramGraph {
   cells: KinematicDiagramCell[];
 }
 
-/**
- * Constructs an interactive AntV X6 graph model for a multibody mechanism.
- */
-export function buildKinematicDiagram(system: KinematicSystemLike): KinematicDiagramGraph {
-  const cells: KinematicDiagramCell[] = [];
-  const bodyCoords = new Map<string, { x: number; y: number }>();
+export interface KinematicLayoutResult {
+  bodyCoords: Map<string, { x: number; y: number; width: number; height: number; cx: number; cy: number }>;
+  svgWidth: number;
+  svgHeight: number;
+}
 
-  // 1. Position bodies on a responsive grid
-  const cols = Math.max(1, Math.ceil(Math.sqrt(system.bodies.length || 1)));
+/**
+ * Computes topological kinematic tree layout:
+ * 1. Identifies ground/inertial base root(s).
+ * 2. Assigns bodies to kinematic depth layers via BFS traversal across joint connections.
+ * 3. Centers and balances bodies at each hierarchical level.
+ */
+export function computeKinematicTreeLayout(
+  system: KinematicSystemLike,
+  options?: { width?: number | undefined; height?: number | undefined } | undefined,
+): KinematicLayoutResult {
   const cellWidth = 140;
   const cellHeight = 70;
   const gapX = 80;
   const gapY = 80;
 
-  system.bodies.forEach((body, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const x = 50 + col * (cellWidth + gapX);
-    const y = 50 + row * (cellHeight + gapY);
+  const bodies = system.bodies || [];
+  if (bodies.length === 0) {
+    return {
+      bodyCoords: new Map(),
+      svgWidth: options?.width ?? 400,
+      svgHeight: options?.height ?? 300,
+    };
+  }
 
-    bodyCoords.set(body.id, { x: x + cellWidth / 2, y: y + cellHeight / 2 });
+  // 1. Build adjacency list of joints (undirected topology)
+  const adj = new Map<string, string[]>();
+  for (const b of bodies) {
+    adj.set(b.id, []);
+  }
+  for (const j of system.joints || []) {
+    adj.get(j.fromBody)?.push(j.toBody);
+    adj.get(j.toBody)?.push(j.fromBody);
+  }
 
+  // 2. Identify ground / base roots
+  const groundRoots = bodies.filter((b) => b.isGround || b.id.toLowerCase() === "ground" || b.id === "$inertial");
+  const startRoots = groundRoots.length > 0 ? groundRoots : [bodies[0]!];
+
+  // 3. BFS tree assignment
+  const depthMap = new Map<string, number>();
+  const visited = new Set<string>();
+  const queue: string[] = [];
+
+  for (const root of startRoots) {
+    depthMap.set(root.id, 0);
+    visited.add(root.id);
+    queue.push(root.id);
+  }
+
+  while (queue.length > 0) {
+    const currId = queue.shift()!;
+    const currDepth = depthMap.get(currId)!;
+    const neighbors = adj.get(currId) || [];
+    for (const n of neighbors) {
+      if (!visited.has(n)) {
+        visited.add(n);
+        depthMap.set(n, currDepth + 1);
+        queue.push(n);
+      }
+    }
+  }
+
+  // Handle any unvisited bodies (disconnected kinematic chains)
+  for (const b of bodies) {
+    if (!visited.has(b.id)) {
+      const maxCurrentDepth = Math.max(0, ...depthMap.values());
+      depthMap.set(b.id, maxCurrentDepth + 1);
+      visited.add(b.id);
+      queue.push(b.id);
+      while (queue.length > 0) {
+        const currId = queue.shift()!;
+        const currDepth = depthMap.get(currId)!;
+        const neighbors = adj.get(currId) || [];
+        for (const n of neighbors) {
+          if (!visited.has(n)) {
+            visited.add(n);
+            depthMap.set(n, currDepth + 1);
+            queue.push(n);
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Group bodies by depth level
+  const levels = new Map<number, KinematicBodyLike[]>();
+  for (const b of bodies) {
+    const d = depthMap.get(b.id) ?? 0;
+    if (!levels.has(d)) levels.set(d, []);
+    levels.get(d)!.push(b);
+  }
+
+  const depthKeys = Array.from(levels.keys()).sort((a, b) => a - b);
+  const maxDepth = depthKeys.length > 0 ? depthKeys[depthKeys.length - 1]! : 0;
+
+  // Calculate maximum level width
+  let maxLevelWidth = 0;
+  for (const d of depthKeys) {
+    const count = levels.get(d)!.length;
+    const levelWidth = count * cellWidth + (count - 1) * gapX;
+    if (levelWidth > maxLevelWidth) maxLevelWidth = levelWidth;
+  }
+
+  const svgWidth = options?.width ?? Math.max(400, maxLevelWidth + 100);
+  const svgHeight = options?.height ?? Math.max(300, 100 + (maxDepth + 1) * (cellHeight + gapY));
+
+  // 5. Position bodies centered per level
+  const bodyCoords = new Map<string, { x: number; y: number; width: number; height: number; cx: number; cy: number }>();
+  for (const d of depthKeys) {
+    const list = levels.get(d)!;
+    const count = list.length;
+    const levelWidth = count * cellWidth + (count - 1) * gapX;
+    const startX = Math.max(50, (svgWidth - levelWidth) / 2);
+    const y = 50 + d * (cellHeight + gapY);
+
+    list.forEach((body, idx) => {
+      const x = startX + idx * (cellWidth + gapX);
+      bodyCoords.set(body.id, {
+        x,
+        y,
+        width: cellWidth,
+        height: cellHeight,
+        cx: x + cellWidth / 2,
+        cy: y + cellHeight / 2,
+      });
+    });
+  }
+
+  return { bodyCoords, svgWidth, svgHeight };
+}
+
+/**
+ * Constructs an interactive AntV X6 graph model for a multibody mechanism.
+ */
+export function buildKinematicDiagram(system: KinematicSystemLike): KinematicDiagramGraph {
+  const { bodyCoords } = computeKinematicTreeLayout(system);
+  const cells: KinematicDiagramCell[] = [];
+
+  // 1. Position bodies via kinematic tree hierarchy
+  system.bodies.forEach((body) => {
+    const coords = bodyCoords.get(body.id) ?? { x: 50, y: 50, width: 140, height: 70, cx: 120, cy: 85 };
     const isGround = body.isGround || body.id === "ground" || body.id === "$inertial";
     const massLabel = body.mass !== undefined ? `${body.mass.toFixed(1)} kg` : "";
 
     cells.push({
       id: `body_${body.id}`,
       shape: "rect",
-      x,
-      y,
-      width: cellWidth,
-      height: cellHeight,
+      x: coords.x,
+      y: coords.y,
+      width: coords.width,
+      height: coords.height,
       label: `${body.name || body.id}\n${massLabel}`,
       attrs: {
         body: {
@@ -219,44 +344,33 @@ export function renderKinematicSvg(
   const jointStroke = isDark ? "#22c55e" : "#16a34a";
   const forceStroke = isDark ? "#f59e0b" : "#d97706";
 
-  const cellWidth = 140;
-  const cellHeight = 70;
-  const gapX = 80;
-  const gapY = 80;
-
-  const cols = Math.max(1, Math.ceil(Math.sqrt(system.bodies.length || 1)));
-  const rows = Math.max(1, Math.ceil((system.bodies.length || 1) / cols));
-  const svgWidth = options?.width ?? Math.max(400, 100 + cols * (cellWidth + gapX));
-  const svgHeight = options?.height ?? Math.max(300, 100 + rows * (cellHeight + gapY));
+  const { bodyCoords, svgWidth, svgHeight } = computeKinematicTreeLayout(system, options);
 
   const bodyCenters = new Map<string, { x: number; y: number }>();
+  for (const [id, coord] of bodyCoords.entries()) {
+    bodyCenters.set(id, { x: coord.cx, y: coord.cy });
+  }
 
   let svgElements = "";
 
   // 1. Layout bodies
-  system.bodies.forEach((body, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const x = 50 + col * (cellWidth + gapX);
-    const y = 50 + row * (cellHeight + gapY);
-
-    bodyCenters.set(body.id, { x: x + cellWidth / 2, y: y + cellHeight / 2 });
-
+  system.bodies.forEach((body) => {
+    const coord = bodyCoords.get(body.id) ?? { x: 50, y: 50, width: 140, height: 70, cx: 120, cy: 85 };
     const isGround = body.isGround || body.id === "ground" || body.id === "$inertial";
     const massText = body.mass !== undefined ? `${body.mass.toFixed(1)} kg` : "";
 
     svgElements += `
-    <g id="body_${body.id}" transform="translate(${x}, ${y})">
-      <rect width="${cellWidth}" height="${cellHeight}" rx="6" ry="6"
+    <g id="body_${body.id}" transform="translate(${coord.x}, ${coord.y})">
+      <rect width="${coord.width}" height="${coord.height}" rx="6" ry="6"
             fill="${isGround ? groundFill : bodyFill}"
             stroke="${isGround ? textMuted : bodyStroke}"
             stroke-width="${isGround ? 3 : 2}"
             ${isGround ? 'stroke-dasharray="4 2"' : ""} />
-      <text x="${cellWidth / 2}" y="${cellHeight / 2 - 4}" text-anchor="middle"
+      <text x="${coord.width / 2}" y="${coord.height / 2 - 4}" text-anchor="middle"
             font-family="Inter, sans-serif" font-size="12" font-weight="600" fill="${textColor}">
         ${escapeXml(body.name || body.id)}
       </text>
-      <text x="${cellWidth / 2}" y="${cellHeight / 2 + 14}" text-anchor="middle"
+      <text x="${coord.width / 2}" y="${coord.height / 2 + 14}" text-anchor="middle"
             font-family="Inter, sans-serif" font-size="10" fill="${textMuted}">
         ${escapeXml(massText)}
       </text>

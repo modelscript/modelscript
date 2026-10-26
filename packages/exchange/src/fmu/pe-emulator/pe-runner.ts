@@ -66,9 +66,28 @@ export class PeDllFmuRunner implements WasmFmuRunner {
   }
 
   private hookImports(): void {
-    // Register common C-runtime hooks into CPU hook table
+    // 1. Register common C-runtime hooks into CPU hook table
+    const hookMap = new Map<string, bigint>();
     for (const [funcName] of this.cruntime.handlers) {
-      this.cpu.registerHostHook(funcName);
+      const hookAddr = this.cpu.registerHostHook(funcName);
+      hookMap.set(funcName, hookAddr);
+    }
+
+    // 2. Patch IAT entries for imported functions
+    for (const imp of this.loader.imports) {
+      let hookAddr = hookMap.get(imp.functionName);
+      if (!hookAddr) {
+        hookAddr = this.cpu.registerHostHook(imp.functionName);
+        hookMap.set(imp.functionName, hookAddr);
+      }
+      const targetOff = imp.iatRva;
+      if (targetOff >= 0 && targetOff + (this.loader.header.is64Bit ? 8 : 4) <= this.memory.size) {
+        if (this.loader.header.is64Bit) {
+          this.memory.dataView.setBigUint64(targetOff, hookAddr, true);
+        } else {
+          this.memory.dataView.setUint32(targetOff, Number(hookAddr & 0xffffffffn), true);
+        }
+      }
     }
   }
 

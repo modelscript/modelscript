@@ -172,7 +172,7 @@ export function parseCSourceModel(cSource: string, modelIdentifier: string): Par
 
   // 1. Match FMI or C variable declarations: e.g. "double v_x = 0.0;", "der_x = ...", "v_u = ..."
   const varDeclRegex =
-    /(?:double|real_t|fmi2Real)\s+([A-Za-z0-9_]+)(?:\s*=\s*([+-]?[0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?))?\s*;/g;
+    /(?:double|real_t|fmi2Real)\s+([A-Za-z0-9_]+)(?:\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?))?\s*;/g;
   let match: RegExpExecArray | null;
   while ((match = varDeclRegex.exec(cSource)) !== null) {
     const name = match[1]!;
@@ -195,8 +195,19 @@ export function parseCSourceModel(cSource: string, modelIdentifier: string): Par
   }
 
   // 2. Fallback: match array definitions (e.g. states[N], derivatives[N])
-  const nStatesMatch = cSource.match(/_wasm_get_n_states\(\)\s*\{[^}]*return\s+(\d+)\s*;/);
-  let numStates = nStatesMatch ? parseInt(nStatesMatch[1]!, 10) : stateNames.length;
+  let numStates = stateNames.length;
+  const fnIdx = cSource.indexOf("_wasm_get_n_states");
+  if (fnIdx !== -1) {
+    const braceIdx = cSource.indexOf("{", fnIdx);
+    const closeBraceIdx = braceIdx !== -1 ? cSource.indexOf("}", braceIdx) : -1;
+    if (braceIdx !== -1 && closeBraceIdx !== -1) {
+      const body = cSource.slice(braceIdx + 1, closeBraceIdx);
+      const retMatch = body.match(/\breturn\s+(\d+)\s*;/);
+      if (retMatch) {
+        numStates = parseInt(retMatch[1]!, 10);
+      }
+    }
+  }
   if (numStates === 0 && derNames.length > 0) numStates = derNames.length;
   if (numStates === 0) numStates = Math.max(1, stateNames.length);
 
@@ -224,7 +235,7 @@ export function parseCSourceModel(cSource: string, modelIdentifier: string): Par
       for (let j = 0; j < numStates; j++) {
         const sj = stateNames[j]!;
         const coeffMatch =
-          eqText.match(new RegExp(`([+-]?[0-9]*\\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\\*${sj}`)) ||
+          eqText.match(new RegExp(`([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)\\*${sj}`)) ||
           eqText.match(new RegExp(`([+-])?${sj}`));
         if (coeffMatch) {
           let coeff = 1.0;
@@ -236,7 +247,7 @@ export function parseCSourceModel(cSource: string, modelIdentifier: string): Par
       for (let k = 0; k < inputNames.length; k++) {
         const uk = inputNames[k]!;
         const coeffMatch =
-          eqText.match(new RegExp(`([+-]?[0-9]*\\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\\*${uk}`)) ||
+          eqText.match(new RegExp(`([+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)\\*${uk}`)) ||
           eqText.match(new RegExp(`([+-])?${uk}`));
         if (coeffMatch) {
           let coeff = 1.0;

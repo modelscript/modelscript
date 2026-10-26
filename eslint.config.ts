@@ -72,6 +72,7 @@ export default defineConfig([
       "packages/exchange/validation/fmi/exported_fmus/**",
       "packages/exchange/validation/fmi/reference_fmus/**",
       "packages/exchange/validation/fmi/reference_fmus_repo/**",
+      "packages/exchange/src/fmu/pe-emulator/wasm-engine/*.cjs",
       "**/scratch*",
       "**/scratch*/**",
       "packages/simulate/src/wasm/**",

@@ -183,3 +183,23 @@ export interface X86RegisterState {
 }
 
 export type CRuntimeHook = (cpu: any, memory: GuestMemorySpace) => void;
+
+export interface BatchSimulationOptions {
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  stepSize?: number | undefined;
+  stepsCount?: number | undefined;
+  outputValueReferences?: number[] | undefined;
+  inputs?: Record<string, number | ((t: number) => number)> | undefined;
+  sampleDecimation?: number | undefined;
+  includeInitial?: boolean | undefined;
+}
+
+export interface BatchSimulationResult {
+  timeSteps: number;
+  finalTime: number;
+  timeBuffer: Float64Array;
+  outputMatrix: Float64Array;
+  outputMap: Map<string, Float64Array>;
+  executionTimeMs: number;
+}

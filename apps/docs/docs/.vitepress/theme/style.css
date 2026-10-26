@@ -115,3 +115,59 @@ body {
     transform: none;
   }
 }
+
+/* SSR Fallback for Hero 3D Engine */
+.turbine-ssr-fallback {
+  position: relative;
+  width: 100%;
+  height: 560px;
+  min-height: 460px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.turbine-ssr-fallback .fallback-aura {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    rgba(14, 165, 233, 0.3) 0%,
+    rgba(124, 58, 237, 0.2) 45%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  filter: blur(56px);
+  pointer-events: none;
+}
+
+.turbine-ssr-fallback .fallback-img {
+  position: relative;
+  max-height: 320px;
+  width: auto;
+  filter: drop-shadow(0 16px 36px rgba(116, 123, 255, 0.35));
+  z-index: 1;
+}
+
+@media (max-width: 959px) {
+  .turbine-ssr-fallback {
+    height: 440px;
+  }
+  .turbine-ssr-fallback .fallback-img {
+    max-height: 260px;
+  }
+}
+
+@media (max-width: 640px) {
+  .turbine-ssr-fallback {
+    height: 360px;
+  }
+  .turbine-ssr-fallback .fallback-img {
+    max-height: 200px;
+  }
+}

@@ -130,7 +130,7 @@ END-ISO-10303-21;
     const mockContext: any = {
       connection: mockConnection,
       documents: { get: (uri: string) => docMap.get(uri) },
-      workspaceManager: new WorkspaceManager(),
+      workspaceManager: new WorkspaceManager(undefined, { seedDemoThreads: true }),
       validationService: {
         modelicaProofResultsByUri: new Map(),
         modelicaDaeVerificationResultsByUri: new Map(),
@@ -202,7 +202,7 @@ END-ISO-10303-21;
       sendNotification: () => {},
     };
 
-    const wm = new WorkspaceManager();
+    const wm = new WorkspaceManager(undefined, { seedDemoThreads: true });
     const mockDocManager: any = {
       documents: new Map(),
       documentTrees: new Map(),

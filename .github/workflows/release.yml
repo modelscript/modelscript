@@ -131,8 +131,8 @@ jobs:
       - name: Deploy Docs
         uses: peaceiris/actions-gh-pages@v4
         with:
-          personal_token: ${{ secrets.MODELSCRIPT_DOCS_DEPLOY_PAT || secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
-          external_repository: modelscript/docs.modelscript.org
+          personal_token: ${{ secrets.MODELSCRIPT_DOCS_DEPLOY_PAT || secrets.MODELSCRIPT_SITE_DEPLOY_PAT || secrets.DEPLOY_PAT }}
+          external_repository: modelscript-docs/modelscript-docs.github.io
           publish_dir: ./apps/docs/docs/.vitepress/dist
           cname: docs.modelscript.org
 

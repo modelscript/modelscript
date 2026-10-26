@@ -957,8 +957,96 @@ interface GridNode {
   cost: number;
   /** Number of 90-degree bends accumulated along the path. */
   bends: number;
+  /** Total estimated cost (g + h) used by priority queue. */
+  f?: number | undefined;
   /** Predecessor node along the lowest-cost path. */
   parent?: GridNode | undefined;
+}
+
+/**
+ * Zero-dependency min-binary heap priority queue for A* routing.
+ * Replaces O(N log N) Array.prototype.sort and O(N) Array.prototype.shift thrashing in pathfinding loops.
+ */
+export class BinaryHeap<T> {
+  private readonly data: T[] = [];
+
+  constructor(private readonly scoreFn: (item: T) => number) {}
+
+  get size(): number {
+    return this.data.length;
+  }
+
+  push(item: T): void {
+    this.data.push(item);
+    this.bubbleUp(this.data.length - 1);
+  }
+
+  pop(): T | undefined {
+    if (this.data.length === 0) return undefined;
+    const top = this.data[0]!;
+    const bottom = this.data.pop()!;
+    if (this.data.length > 0) {
+      this.data[0] = bottom;
+      this.sinkDown(0);
+    }
+    return top;
+  }
+
+  peek(): T | undefined {
+    return this.data[0];
+  }
+
+  clear(): void {
+    this.data.length = 0;
+  }
+
+  private bubbleUp(n: number): void {
+    const item = this.data[n]!;
+    const score = this.scoreFn(item);
+    while (n > 0) {
+      const parentN = (n - 1) >> 1;
+      const parent = this.data[parentN]!;
+      if (score >= this.scoreFn(parent)) break;
+      this.data[n] = parent;
+      n = parentN;
+    }
+    this.data[n] = item;
+  }
+
+  private sinkDown(n: number): void {
+    const length = this.data.length;
+    const item = this.data[n]!;
+    const elemScore = this.scoreFn(item);
+
+    while (true) {
+      const child2N = (n + 1) << 1;
+      const child1N = child2N - 1;
+      let swap: number | null = null;
+      let swapScore = elemScore;
+
+      if (child1N < length) {
+        const child1 = this.data[child1N]!;
+        const child1Score = this.scoreFn(child1);
+        if (child1Score < elemScore) {
+          swap = child1N;
+          swapScore = child1Score;
+        }
+      }
+
+      if (child2N < length) {
+        const child2 = this.data[child2N]!;
+        const child2Score = this.scoreFn(child2);
+        if (child2Score < swapScore) {
+          swap = child2N;
+        }
+      }
+
+      if (swap === null) break;
+      this.data[n] = this.data[swap]!;
+      this.data[swap] = item;
+      n = swap;
+    }
+  }
 }
 
 /**
@@ -1027,9 +1115,19 @@ export function routeOrthogonalGridAStar(options: {
     return waypoints;
   }
 
-  // Fallback straight-line segment when WASM router is not loaded
+  // Deterministic orthogonal Manhattan fallback when WASM router is not loaded or fails
+  if (Math.abs(startX - endX) < 1e-3 || Math.abs(startY - endY) < 1e-3) {
+    return [
+      [startX, startY],
+      [endX, endY],
+    ];
+  }
+
+  const midX = Math.round(((startX + endX) / 2) * 10) / 10;
   return [
     [startX, startY],
+    [midX, startY],
+    [midX, endY],
     [endX, endY],
   ];
 }
@@ -1081,21 +1179,24 @@ export function findInternalChannelRoute(
   const sortedX = Array.from(xs).sort((a, b) => a - b);
   const sortedY = Array.from(ys).sort((a, b) => a - b);
 
-  const open: GridNode[] = [{ x: source.x, y: source.y, dir: "none", cost: 0, bends: 0 }];
+  const startH = Math.abs(target.x - source.x) + Math.abs(target.y - source.y);
+  const open = new BinaryHeap<GridNode>((n) => n.f ?? n.cost);
+  open.push({
+    x: source.x,
+    y: source.y,
+    dir: "none",
+    cost: 0,
+    bends: 0,
+    f: startH,
+  });
   const closed = new Set<string>();
 
   const isSegmentValid = (p1: PointLike, p2: PointLike): boolean => {
     return !obstacles.some((r) => segmentIntersectsRect(p1, p2, r, padding - 2));
   };
 
-  while (open.length > 0) {
-    open.sort((a, b) => {
-      const hA = Math.abs(target.x - a.x) + Math.abs(target.y - a.y) + a.bends * bendPenalty;
-      const hB = Math.abs(target.x - b.x) + Math.abs(target.y - b.y) + b.bends * bendPenalty;
-      return a.cost + hA - (b.cost + hB);
-    });
-
-    const curr = open.shift()!;
+  while (open.size > 0) {
+    const curr = open.pop()!;
     if (curr.x === target.x && curr.y === target.y) {
       const path: PointLike[] = [];
       let c: GridNode | undefined = curr;
@@ -1119,12 +1220,16 @@ export function findInternalChannelRoute(
       if (!isSegmentValid(curr, nextP)) continue;
       const dist = Math.abs(nx - curr.x);
       const isBend = curr.dir === "v";
+      const nextCost = curr.cost + dist;
+      const nextBends = curr.bends + (isBend ? 1 : 0);
+      const h = Math.abs(target.x - nx) + Math.abs(target.y - curr.y) + nextBends * bendPenalty;
       open.push({
         x: nx,
         y: curr.y,
         dir: "h",
-        cost: curr.cost + dist,
-        bends: curr.bends + (isBend ? 1 : 0),
+        cost: nextCost,
+        bends: nextBends,
+        f: nextCost + h,
         parent: curr,
       });
     }
@@ -1136,12 +1241,16 @@ export function findInternalChannelRoute(
       if (!isSegmentValid(curr, nextP)) continue;
       const dist = Math.abs(ny - curr.y);
       const isBend = curr.dir === "h";
+      const nextCost = curr.cost + dist;
+      const nextBends = curr.bends + (isBend ? 1 : 0);
+      const h = Math.abs(target.x - curr.x) + Math.abs(target.y - ny) + nextBends * bendPenalty;
       open.push({
         x: curr.x,
         y: ny,
         dir: "v",
-        cost: curr.cost + dist,
-        bends: curr.bends + (isBend ? 1 : 0),
+        cost: nextCost,
+        bends: nextBends,
+        f: nextCost + h,
         parent: curr,
       });
     }

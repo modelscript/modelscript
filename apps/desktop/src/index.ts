@@ -14,6 +14,9 @@ import {
   type BlackboxIntrospection,
   type UniversalRunnerVariable,
 } from "@modelscript/exchange";
+import { NativeFmuRunner } from "./native-runner.js";
+
+export * from "./native-runner.js";
 
 export interface DesktopSystemInfo {
   isDesktop: boolean;
@@ -37,11 +40,13 @@ export interface DesktopSimulationOptions {
   stepSize?: number | undefined;
   inputs?: Record<string, number> | ((time: number) => Record<string, number>) | undefined;
   onStepProgress?: ((time: number, outputs: Record<string, number>) => void) | undefined;
+  preferNative?: boolean | undefined;
 }
 
 export interface DesktopSimulationResult {
   modelName: string;
   format: string;
+  executionMode: "native" | "emulated";
   timeSteps: number;
   finalTime: number;
   trajectory: { time: number; values: Record<string, number> }[];
@@ -213,17 +218,42 @@ export async function saveModelFileDialog(
 }
 
 /**
+ * Evaluates whether the introspected binary can be executed natively
+ * by the current desktop host operating system without emulation overhead.
+ */
+export function canExecuteNatively(introspection: BlackboxIntrospection): boolean {
+  if (typeof process === "undefined") return false;
+  const hostPlatform = process.platform;
+  const hostArch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : process.arch;
+
+  return introspection.architectures.some((arch) => {
+    if (arch.os === "linux" && hostPlatform === "linux" && arch.arch === hostArch) {
+      return true;
+    }
+    if (arch.os === "windows" && hostPlatform === "win32" && arch.arch === hostArch) {
+      return true;
+    }
+    if (arch.os === "darwin" && hostPlatform === "darwin" && (arch.arch === "x86_64" || arch.arch === "aarch64")) {
+      return true;
+    }
+    return false;
+  });
+}
+
+/**
  * Loads a black-box model binary (.fmu, .dll, .so, .dylib) directly from disk,
- * introspects variables and architectures, and initializes the in-browser binary runner.
+ * introspects variables and architectures, and initializes the binary runner.
  */
 export async function loadDesktopBlackboxModel(
   filePathOrBuffer: string | Uint8Array,
   filenameHint?: string,
+  options: { preferNative?: boolean | undefined } = {},
 ): Promise<{
   modelName: string;
   buffer: Uint8Array;
   introspection: BlackboxIntrospection;
-  runner: UniversalBinaryRunner;
+  executionMode: "native" | "emulated";
+  runner: UniversalBinaryRunner | NativeFmuRunner;
 }> {
   let buffer: Uint8Array;
   let filename = filenameHint || "BlackboxModel";
@@ -246,17 +276,30 @@ export async function loadDesktopBlackboxModel(
     start: typeof v.start === "number" ? v.start : undefined,
   }));
 
-  // 3. Initialize UniversalBinaryRunner
-  const runner = new UniversalBinaryRunner(buffer, {
-    modelName: introspection.modelName,
-    variables: runnerVariables,
-    guid: introspection.guid,
-  });
+  // 3. Determine execution mode (native bypass vs browser-native emulation)
+  const isNativeFeasible = canExecuteNatively(introspection);
+  const executionMode: "native" | "emulated" = options.preferNative && isNativeFeasible ? "native" : "emulated";
+
+  // 4. Initialize Runner (Native dynamic runner or Universal emulation runner)
+  const runner =
+    executionMode === "native"
+      ? new NativeFmuRunner(buffer, {
+          modelName: introspection.modelName,
+          variables: runnerVariables,
+          guid: introspection.guid,
+          libraryPath: typeof filePathOrBuffer === "string" ? filePathOrBuffer : undefined,
+        })
+      : new UniversalBinaryRunner(buffer, {
+          modelName: introspection.modelName,
+          variables: runnerVariables,
+          guid: introspection.guid,
+        });
 
   return {
     modelName: introspection.modelName,
     buffer,
     introspection,
+    executionMode,
     runner,
   };
 }
@@ -274,7 +317,11 @@ export async function runDesktopBlackboxSimulation(
   const dt = options.stepSize ?? 0.01;
 
   const t0 = Date.now();
-  const { modelName, introspection, runner } = await loadDesktopBlackboxModel(modelSource, filenameHint);
+  const { modelName, introspection, executionMode, runner } = await loadDesktopBlackboxModel(
+    modelSource,
+    filenameHint,
+    { preferNative: options.preferNative },
+  );
 
   // Initialize model at startTime
   runner.init(startTime);
@@ -305,6 +352,7 @@ export async function runDesktopBlackboxSimulation(
   return {
     modelName,
     format: introspection.format,
+    executionMode,
     timeSteps: trajectory.length,
     finalTime: currentTime - dt,
     trajectory,

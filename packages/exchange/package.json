@@ -65,7 +65,7 @@
     "dist/**"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-wasm.js",
     "clean": "rimraf dist",
     "fetch:fmusim": "tsx validation/fmi/scripts/fetch-fmusim.ts",
     "lint": "eslint src validation --no-warn-ignored",

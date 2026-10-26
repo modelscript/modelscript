@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ModelScript Hardened Enterprise Intranet Appliance
+# Zero-Internet / Air-Gapped Deployment for Regulated Electric Utilities
+# Compliance: FERC CEII (18 CFR § 388.113), NERC CIP-005/007/010/011/013
+
+services:
+  modelscript-appliance:
+    image: ghcr.io/modelscript/appliance:latest
+    build:
+      context: ../..
+      target: appliance
+    container_name: modelscript-intranet-appliance
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Local encrypted volume for database and model files (stays inside utility firewall)
+      - appliance-data:/app/apps/api/data
+      - appliance-uploads:/app/apps/api/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - ENTERPRISE_APPLIANCE=true
+      - AIRGAP_ENFORCED=true
+      - TRUST_PROXY=true
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
+      - JWT_SECRET=${JWT_SECRET:-enterprise-hardened-jwt-secret-replace-with-vault-secret}
+
+      # Enterprise IAM: Reverse Proxy / SAML 2.0 Header Authentication
+      # Compatible with F5 BIG-IP APM, Keycloak Gatekeeper, OAuth2-Proxy, Envoy, NGINX
+      - ENTERPRISE_HEADER_AUTH=true
+      - TRUSTED_PROXY_IPS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - ENTERPRISE_ADMIN_GROUPS=AD-Transmission-Planning-Admins,Engineering-Admins,Admins
+
+      # Air-Gap Resource Limits (NERC CIP-007 Memory Budgeting)
+      - NODE_OPTIONS=--max-old-space-size=4096
+    networks:
+      - airgap-internal
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  # Internal network with no outbound internet gateway (Strict Air-Gap)
+  airgap-internal:
+    internal: true
+
+volumes:
+  appliance-data:
+    driver: local
+  appliance-uploads:
+    driver: local

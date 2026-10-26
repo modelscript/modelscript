@@ -10,4 +10,5 @@ export * from "./pe-loader.js";
 export * from "./pe-runner.js";
 export * from "./types.js";
 export * from "./universal-runner.js";
+export * from "./wasm-engine/index.js";
 export * from "./x86-cpu.js";

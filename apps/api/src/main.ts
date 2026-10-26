@@ -90,7 +90,14 @@ const app = createApp({ mqttClient, dbPool, storage: undefined });
 // ── Start HTTP server ──
 
 const server = app.listen(port, () => {
-  console.log(`ModelScript API server listening on port ${port}`);
+  if (process.env["ENTERPRISE_APPLIANCE"] === "true") {
+    console.log(`========================================================================`);
+    console.log(`ModelScript Hardened Enterprise Intranet Appliance running on port ${port}`);
+    console.log(`Air-Gap Security: ENFORCED | FERC CEII 18 CFR § 388.113 Active`);
+    console.log(`========================================================================`);
+  } else {
+    console.log(`ModelScript API server listening on port ${port}`);
+  }
 });
 
 // ── WebSocket streaming ──

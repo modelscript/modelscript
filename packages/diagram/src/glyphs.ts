@@ -1324,3 +1324,324 @@ export function wirelessNetLabelGlyph(
     },
   ];
 }
+
+/**
+ * IEEE Std 315 Resistor Glyph (Zig-Zag).
+ */
+export function resistorGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#38bdf8";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "path",
+      selector: "body",
+      attrs: {
+        d: "M 0,15 L 0,22 L -8,26 L 8,32 L -8,38 L 8,44 L -8,50 L 0,54 L 0,60",
+        fill: "none",
+        stroke,
+        strokeWidth,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+      },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 Capacitor Glyph (Parallel Plates).
+ */
+export function capacitorGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#818cf8";
+  const strokeWidth = options?.strokeWidth ?? 2;
+  return [
+    {
+      tagName: "line",
+      selector: "leadTop",
+      attrs: { x1: 0, y1: 15, x2: 0, y2: 33, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "plateTop",
+      attrs: { x1: -12, y1: 33, x2: 12, y2: 33, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "plateBottom",
+      attrs: { x1: -12, y1: 42, x2: 12, y2: 42, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "leadBottom",
+      attrs: { x1: 0, y1: 42, x2: 0, y2: 60, stroke, strokeWidth: 1.8 },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 Inductor Glyph (Coils).
+ */
+export function inductorGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#34d399";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "path",
+      selector: "body",
+      attrs: {
+        d: "M 0,15 L 0,22 A 6,6 0 0,1 0,34 A 6,6 0 0,1 0,46 A 6,6 0 0,1 0,56 L 0,60",
+        fill: "none",
+        stroke,
+        strokeWidth,
+        strokeLinecap: "round",
+      },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 Diode Glyph (Triangle & Cathode Bar).
+ */
+export function diodeGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#f43f5e";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "line",
+      selector: "leadAnode",
+      attrs: { x1: 0, y1: 15, x2: 0, y2: 26, stroke, strokeWidth },
+    },
+    {
+      tagName: "polygon",
+      selector: "triangle",
+      attrs: { points: "-10,26 10,26 0,44", fill: stroke, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "bar",
+      attrs: { x1: -10, y1: 44, x2: 10, y2: 44, stroke, strokeWidth: 2.2 },
+    },
+    {
+      tagName: "line",
+      selector: "leadCathode",
+      attrs: { x1: 0, y1: 44, x2: 0, y2: 60, stroke, strokeWidth },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 Electrical Ground Glyph.
+ */
+export function groundGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#10b981";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "line",
+      selector: "stem",
+      attrs: { x1: 0, y1: 0, x2: 0, y2: 12, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "line1",
+      attrs: { x1: -12, y1: 12, x2: 12, y2: 12, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "line2",
+      attrs: { x1: -8, y1: 17, x2: 8, y2: 17, stroke, strokeWidth: 1.8 },
+    },
+    {
+      tagName: "line",
+      selector: "line3",
+      attrs: { x1: -4, y1: 22, x2: 4, y2: 22, stroke, strokeWidth: 1.5 },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 Voltage Source Glyph (Circle with +/- polarities).
+ */
+export function voltageSourceGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#eab308";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "line",
+      selector: "leadTop",
+      attrs: { x1: 0, y1: 15, x2: 0, y2: 24, stroke, strokeWidth },
+    },
+    {
+      tagName: "circle",
+      selector: "body",
+      attrs: { cx: 0, cy: 37.5, r: 13.5, fill: "none", stroke, strokeWidth },
+    },
+    {
+      tagName: "path",
+      selector: "plus",
+      attrs: { d: "M -4,32 L 4,32 M 0,28 L 0,36", stroke, strokeWidth: 1.5 },
+    },
+    {
+      tagName: "line",
+      selector: "minus",
+      attrs: { x1: -4, y1: 43, x2: 4, y2: 43, stroke, strokeWidth: 1.5 },
+    },
+    {
+      tagName: "line",
+      selector: "leadBottom",
+      attrs: { x1: 0, y1: 51, x2: 0, y2: 60, stroke, strokeWidth },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 Current Source Glyph (Circle with directional arrow).
+ */
+export function currentSourceGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#facc15";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "line",
+      selector: "leadTop",
+      attrs: { x1: 0, y1: 15, x2: 0, y2: 24, stroke, strokeWidth },
+    },
+    {
+      tagName: "circle",
+      selector: "body",
+      attrs: { cx: 0, cy: 37.5, r: 13.5, fill: "none", stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "arrowShaft",
+      attrs: { x1: 0, y1: 45, x2: 0, y2: 30, stroke, strokeWidth },
+    },
+    {
+      tagName: "polygon",
+      selector: "arrowHead",
+      attrs: { points: "0,27 -3.5,33 3.5,33", fill: stroke, stroke, strokeWidth: 1 },
+    },
+    {
+      tagName: "line",
+      selector: "leadBottom",
+      attrs: { x1: 0, y1: 51, x2: 0, y2: 60, stroke, strokeWidth },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 BJT NPN Transistor Glyph.
+ */
+export function bjtGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#fb923c";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "line",
+      selector: "baseLead",
+      attrs: { x1: -16, y1: 37.5, x2: -6, y2: 37.5, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "baseBar",
+      attrs: { x1: -6, y1: 25, x2: -6, y2: 50, stroke, strokeWidth: 2.2 },
+    },
+    {
+      tagName: "line",
+      selector: "collector",
+      attrs: { x1: -6, y1: 31, x2: 10, y2: 20, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "collectorLead",
+      attrs: { x1: 10, y1: 20, x2: 10, y2: 15, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "emitter",
+      attrs: { x1: -6, y1: 44, x2: 10, y2: 55, stroke, strokeWidth },
+    },
+    {
+      tagName: "polygon",
+      selector: "emitterArrow",
+      attrs: { points: "10,55 3,50 6,45", fill: stroke, stroke, strokeWidth: 1 },
+    },
+    {
+      tagName: "line",
+      selector: "emitterLead",
+      attrs: { x1: 10, y1: 55, x2: 10, y2: 60, stroke, strokeWidth },
+    },
+  ];
+}
+
+/**
+ * IEEE Std 315 N-Channel MOSFET Glyph.
+ */
+export function mosfetGlyph(options?: GlyphOptions): X6Markup[] {
+  const stroke = options?.stroke ?? "#a855f7";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  return [
+    {
+      tagName: "line",
+      selector: "gateLead",
+      attrs: { x1: -16, y1: 37.5, x2: -8, y2: 37.5, stroke, strokeWidth },
+    },
+    {
+      tagName: "line",
+      selector: "gateBar",
+      attrs: { x1: -8, y1: 24, x2: -8, y2: 51, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "drainChannel",
+      attrs: { x1: -4, y1: 24, x2: -4, y2: 30, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "bulkChannel",
+      attrs: { x1: -4, y1: 34.5, x2: -4, y2: 40.5, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "sourceChannel",
+      attrs: { x1: -4, y1: 45, x2: -4, y2: 51, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "path",
+      selector: "drainLead",
+      attrs: { d: "M -4,27 L 10,27 L 10,15", fill: "none", stroke, strokeWidth },
+    },
+    {
+      tagName: "path",
+      selector: "sourceLead",
+      attrs: { d: "M -4,48 L 10,48 L 10,60", fill: "none", stroke, strokeWidth },
+    },
+  ];
+}
+
+/**
+ * Serializes X6 markup element(s) into standard SVG elements.
+ */
+export function markupToSvg(markup: X6Markup | X6Markup[]): string {
+  const list = Array.isArray(markup) ? markup : [markup];
+  let out = "";
+  for (const item of list) {
+    const tag = item.tagName;
+    let attrs = "";
+    if (item.attrs) {
+      for (const [k, v] of Object.entries(item.attrs)) {
+        if (v !== undefined) {
+          const attrName = k.replace(/([A-Z])/g, "-$1").toLowerCase();
+          attrs += ` ${attrName}="${String(v)}"`;
+        }
+      }
+    }
+    if (item.children && item.children.length > 0) {
+      out += `<${tag}${attrs}>${markupToSvg(item.children)}</${tag}>`;
+    } else if (item.textContent) {
+      out += `<${tag}${attrs}>${item.textContent}</${tag}>`;
+    } else {
+      out += `<${tag}${attrs} />`;
+    }
+  }
+  return out;
+}

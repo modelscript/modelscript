@@ -94,7 +94,147 @@ function extractTokenFromRequest(req: Request): string | undefined {
   return undefined;
 }
 
+export function isEnterpriseHeaderAuthEnabled(): boolean {
+  return process.env["ENTERPRISE_HEADER_AUTH"] === "true" || process.env["SAML_PROXY_AUTH"] === "true";
+}
+
+export function isIpTrustedProxy(ip: string): boolean {
+  const trustedList = process.env["TRUSTED_PROXY_IPS"];
+  if (trustedList) {
+    if (trustedList === "*") return true;
+    const ips = trustedList.split(",").map((s) => s.trim().toLowerCase());
+    const normalizedIp = ip.replace(/^::ffff:/, "").toLowerCase();
+    return ips.includes(normalizedIp) || ips.includes(ip.toLowerCase());
+  }
+
+  // If not explicitly configured, trust loopback and private container subnets in trust-proxy mode or tests
+  const normalized = ip.replace(/^::ffff:/, "").toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("172.16.") ||
+    normalized.startsWith("172.17.") ||
+    normalized.startsWith("172.18.") ||
+    normalized.startsWith("172.19.") ||
+    normalized.startsWith("172.20.") ||
+    normalized.startsWith("172.21.") ||
+    normalized.startsWith("172.22.") ||
+    normalized.startsWith("172.23.") ||
+    normalized.startsWith("172.24.") ||
+    normalized.startsWith("172.25.") ||
+    normalized.startsWith("172.26.") ||
+    normalized.startsWith("172.27.") ||
+    normalized.startsWith("172.28.") ||
+    normalized.startsWith("172.29.") ||
+    normalized.startsWith("172.30.") ||
+    normalized.startsWith("172.31.") ||
+    normalized.startsWith("192.168.")
+  );
+}
+
+export function tryEnterpriseProxyAuth(req: Request): boolean {
+  if (!isEnterpriseHeaderAuthEnabled() || !sharedAuthDatabase) {
+    return false;
+  }
+
+  const rawUserHeader =
+    (req.headers["x-forwarded-user"] as string | undefined) ||
+    (req.headers["x-remote-user"] as string | undefined) ||
+    (req.headers["x-webauth-user"] as string | undefined);
+
+  if (!rawUserHeader || typeof rawUserHeader !== "string") {
+    return false;
+  }
+
+  // Validate proxy source IP
+  const clientIp =
+    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    req.ip ||
+    req.socket.remoteAddress ||
+    "127.0.0.1";
+  if (!isIpTrustedProxy(clientIp)) {
+    console.warn(`[EnterpriseAuth] Rejected header auth from untrusted IP: ${clientIp}`);
+    return false;
+  }
+
+  const cleanUsername = rawUserHeader
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]/g, "_");
+  if (!cleanUsername) return false;
+
+  const rawEmailHeader = (req.headers["x-forwarded-email"] as string | undefined)?.trim();
+  const email = rawEmailHeader || `${cleanUsername}@enterprise.internal`;
+
+  const rawGroups =
+    (req.headers["x-forwarded-groups"] as string | undefined) ||
+    (req.headers["x-forwarded-roles"] as string | undefined) ||
+    "";
+  const groups = rawGroups
+    .split(/[,;]/)
+    .map((g) => g.trim().toLowerCase())
+    .filter(Boolean);
+
+  const configuredAdminGroups = (
+    process.env["ENTERPRISE_ADMIN_GROUPS"] ||
+    process.env["OIDC_ADMIN_GROUP"] ||
+    "Engineering-Admins,AD-Transmission-Planning-Admins,Admins"
+  )
+    .split(/[,;]/)
+    .map((g) => g.trim().toLowerCase())
+    .filter(Boolean);
+
+  const isAdmin = groups.some((g) => configuredAdminGroups.includes(g));
+
+  let user = sharedAuthDatabase.getUserByUsername(cleanUsername);
+  if (!user && rawEmailHeader) {
+    const userByEmail = sharedAuthDatabase.getUserByEmail(email);
+    if (userByEmail) user = userByEmail;
+  }
+
+  if (!user) {
+    // JIT auto-provisioning
+    const created = sharedAuthDatabase.createUser(cleanUsername, email, null, {
+      emailVerified: true,
+      accountType: isAdmin ? "admin" : "user",
+      status: "active",
+    });
+    user = {
+      id: created.id,
+      username: created.username,
+      email: created.email,
+      account_type: created.account_type || (isAdmin ? "admin" : "user"),
+      status: "active",
+    };
+  } else if (isAdmin && user.account_type !== "admin") {
+    sharedAuthDatabase.setUserAccountType(user.id, "admin");
+    user.account_type = "admin";
+  }
+
+  if (user.status === "suspended" || user.status === "frozen" || user.status === "deleted") {
+    return false;
+  }
+
+  req.user = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.account_type || (isAdmin ? "admin" : "user"),
+    accountType: user.account_type || (isAdmin ? "admin" : "user"),
+    account_type: user.account_type || (isAdmin ? "admin" : "user"),
+  };
+
+  return true;
+}
+
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  // 1. Try enterprise reverse proxy / SAML header authentication first
+  if (tryEnterpriseProxyAuth(req)) {
+    next();
+    return;
+  }
+
   const token = extractTokenFromRequest(req);
 
   if (!token) {
@@ -223,6 +363,12 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  // 1. Try enterprise reverse proxy / SAML header authentication first
+  if (tryEnterpriseProxyAuth(req)) {
+    next();
+    return;
+  }
+
   const token = extractTokenFromRequest(req);
 
   if (!token) {

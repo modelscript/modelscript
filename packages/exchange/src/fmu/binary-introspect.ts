@@ -9,7 +9,9 @@
  */
 
 import { parseModelDescription, type FmiModelDescription, type FmiScalarVariable } from "./model-description.js";
+import { ElfLoader } from "./pe-emulator/elf-loader.js";
 import { CPU_TYPE_ARM64, CPU_TYPE_X86_64, MachoLoader } from "./pe-emulator/macho-loader.js";
+import { PeLoader } from "./pe-emulator/pe-loader.js";
 import { extractFileFromZip } from "./storage.js";
 
 export type BinaryFormat = "fmu" | "pe_dll" | "elf_so" | "macho_dylib" | "unknown";
@@ -145,7 +147,21 @@ function introspectPeDll(view: DataView, buf: Uint8Array, filenameHint?: string)
   let arch: BinaryArchitecture["arch"] = "unknown";
   let bits: 32 | 64 = 64;
 
-  if (e_lfanew + 24 < buf.length) {
+  try {
+    const loader = new PeLoader(buf);
+    bits = loader.header.is64Bit ? 64 : 32;
+    if (loader.header.machine === 0x8664) arch = "x86_64";
+    else if (loader.header.machine === 0xaa64) arch = "aarch64";
+    else if (loader.header.machine === 0x014c) arch = "x86";
+
+    for (const [name] of loader.exports) {
+      if (!symbols.includes(name)) symbols.push(name);
+    }
+  } catch {
+    // Fall back to direct header parsing
+  }
+
+  if (symbols.length === 0 && e_lfanew + 24 < buf.length) {
     const peSig = view.getUint32(e_lfanew, true);
     if (peSig === 0x00004550) {
       // 'PE\0\0'
@@ -193,14 +209,14 @@ function introspectPeDll(view: DataView, buf: Uint8Array, filenameHint?: string)
                 const namesRva = view.getUint32(exportTableOffset + 32, true);
                 const namesOffset = namesRva + rvaDelta;
 
-                for (let i = 0; i < Math.min(numNames, 128); i++) {
+                for (let i = 0; i < Math.min(numNames, 4096); i++) {
                   const nameRva = view.getUint32(namesOffset + i * 4, true);
                   const strOffset = nameRva + rvaDelta;
                   if (strOffset < buf.length) {
                     let end = strOffset;
                     while (end < buf.length && buf[end] !== 0) end++;
                     const sym = new TextDecoder().decode(buf.subarray(strOffset, end));
-                    if (sym.length > 0) symbols.push(sym);
+                    if (sym.length > 0 && !symbols.includes(sym)) symbols.push(sym);
                   }
                 }
               }
@@ -240,15 +256,29 @@ function introspectElfSo(view: DataView, buf: Uint8Array, filenameHint?: string)
   const symbols: string[] = [];
   const modelName = filenameHint?.replace(/\.so$/i, "") ?? "LinuxSharedObject";
 
-  // Scan dynamic string tables for known FMI symbols
-  const text = new TextDecoder().decode(buf.subarray(0, Math.min(buf.length, 65536)));
-  const knownPrefixes = ["fmi2", "fmi3", "mex", "dsusr", "usrmdl"];
-  for (const prefix of knownPrefixes) {
-    const regex = new RegExp(`\\b(${prefix}[A-Za-z0-9_]+)\\b`, "g");
-    const matches = text.match(regex);
-    if (matches) {
-      for (const m of matches) {
-        if (!symbols.includes(m)) symbols.push(m);
+  // 1. Try parsing dynamic symbol table via ElfLoader
+  try {
+    const loader = new ElfLoader(buf);
+    for (const [name, sym] of loader.symbols) {
+      if (name && (sym.shndx !== 0 || sym.value !== 0n)) {
+        if (!symbols.includes(name)) symbols.push(name);
+      }
+    }
+  } catch {
+    // Fall back to regex scan for truncated/header-only slices
+  }
+
+  // 2. Scan dynamic string tables for known FMI symbols if none discovered
+  if (symbols.length === 0) {
+    const text = new TextDecoder().decode(buf.subarray(0, Math.min(buf.length, 65536)));
+    const knownPrefixes = ["fmi2", "fmi3", "mex", "dsusr", "usrmdl"];
+    for (const prefix of knownPrefixes) {
+      const regex = new RegExp(`\\b(${prefix}[A-Za-z0-9_]+)\\b`, "g");
+      const matches = text.match(regex);
+      if (matches) {
+        for (const m of matches) {
+          if (!symbols.includes(m)) symbols.push(m);
+        }
       }
     }
   }

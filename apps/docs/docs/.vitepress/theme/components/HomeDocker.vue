@@ -3,7 +3,7 @@ import { ref } from "vue";
 
 const dockerSnippet = `# Pull the pre-built multi-arch images
 docker pull ghcr.io/modelscript/api:latest
-docker pull ghcr.io/modelscript/morsel:latest
+docker pull ghcr.io/modelscript/web:latest
 
 # Launch backend simulation server & interactive web UI
 docker compose up -d`;
@@ -12,13 +12,32 @@ const copied = ref(false);
 
 async function copyDocker() {
   try {
-    await navigator.clipboard.writeText(dockerSnippet);
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(dockerSnippet);
+    } else {
+      throw new Error("Clipboard API unavailable");
+    }
     copied.value = true;
     setTimeout(() => {
       copied.value = false;
     }, 2000);
   } catch {
-    // fallback
+    const textArea = document.createElement("textarea");
+    textArea.value = dockerSnippet;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand("copy");
+      copied.value = true;
+      setTimeout(() => {
+        copied.value = false;
+      }, 2000);
+    } finally {
+      document.body.removeChild(textArea);
+    }
   }
 }
 </script>
@@ -30,7 +49,7 @@ async function copyDocker() {
         <span class="section-badge">Containerized Deployment</span>
         <h2 class="section-title">Run with Docker</h2>
         <p class="section-subtitle">
-          Spin up the complete simulation API and Morsel environment locally with zero dependencies.
+          Spin up the complete simulation API and Web Studio environment locally with zero dependencies.
         </p>
       </div>
 

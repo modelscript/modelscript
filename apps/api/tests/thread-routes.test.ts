@@ -132,4 +132,10 @@ test("Digital Thread Hypergraph Explorer REST Endpoints", async (t) => {
     assert.ok(res.body.kneePoint);
     assert.ok(typeof res.body.hypervolumeEstimate === "number");
   });
+
+  await t.test("POST /api/v1/threads/seed-demo populates sample threads", async () => {
+    const res = await request(app).post("/api/v1/threads/seed-demo").expect(200);
+    assert.strictEqual(res.body.success, true);
+    assert.ok(res.body.threadCount >= 3);
+  });
 });

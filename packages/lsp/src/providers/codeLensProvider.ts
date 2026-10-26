@@ -351,11 +351,34 @@ export function registerCodeLensProvider(context: LspContext) {
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
-            if (name === "DroneAssembly" || uri.includes("drone_specs") || uri.includes("drone-reachability")) {
+            const threadEntries = context.workspaceManager?.getThreadsForUri
+              ? context.workspaceManager.getThreadsForUri(uri)
+              : [];
+            const matchingThread =
+              threadEntries.find((e: any) => e.meta?.name?.includes(name)) ??
+              (name === "DroneAssembly" || uri.includes("drone_specs") || uri.includes("drone-reachability")
+                ? threadEntries[0]
+                : undefined);
+
+            if (matchingThread && context.workspaceManager?.findAlignedElementsBySlot) {
+              const aligned = context.workspaceManager.findAlignedElementsBySlot(matchingThread.slot);
+              const engAligned = aligned.filter((el: any) => el.domain.toLowerCase() !== "requirements");
+              const domainCount = engAligned.length > 0 ? engAligned.length : aligned.length;
+              const labelMap: Record<string, string> = {
+                sysml2: "SYSML",
+                modelica: "MO",
+                cad: "CAD",
+                fea: "FEA",
+                cfd: "CFD",
+              };
+              const activeDomainList = (engAligned.length > 0 ? engAligned : aligned).map(
+                (el: any) => labelMap[el.domain.toLowerCase()] ?? el.domain.toUpperCase(),
+              );
+              const title = `⚡ Digital Thread: ${domainCount} Domains Linked (${activeDomainList.join(" + ")})`;
               lenses.push({
                 range,
                 command: {
-                  title: "⚡ Digital Thread: 5 Domains Linked (CAD + FEA + CFD + MO + SYSML)",
+                  title,
                   command: "modelscript.openThreadExplorer",
                   arguments: [uri, name],
                 },

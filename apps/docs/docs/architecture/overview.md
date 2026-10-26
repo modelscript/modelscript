@@ -8,16 +8,21 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (11 Domains)"]
-        MO[".mo (Modelica)"]
+    subgraph Languages["Polyglot Source Languages (33 Engineering Domains)"]
+        direction TB
+        MO[".mo (Modelica 3.x)"]
         SYS[".sysml / .kerml (SysML v2)"]
         STEP[".step / .stp (ISO 10303)"]
         OWL[".owl / .ofn / .ttl (OWL2)"]
-        SCAD[".scad (OpenSCAD)"]
-        SSP[".ssp / .ssd / .ssv (SSP)"]
+        SCAD[".scad (OpenSCAD CSG)"]
+        SSP[".ssp / .ssd / .ssv (SSP 1.0/2.0)"]
         PSCAD[".pscx / .pslx / .cfg (PSCAD/EMT)"]
         CAE[".cfd / .su2 / .fea / .inp / .bdf"]
-        CSV[".csv (Tabular Data)"]
+        MBD[".spck / .calc / .adm (SIMPACK/GENSYS/Adams)"]
+        FLOW[".opi / .lps / .inp (OLGA/Pipeline/EPANET)"]
+        AUTO[".arxml / .xml / .st (AUTOSAR/PLCopen)"]
+        SPACE[".oem / .opm / .xtce (CCSDS/XTCE)"]
+        BLD[".idf / .epjson (EnergyPlus)"]
         MSX[".msx / .modelscript (ModelScript)"]
     end
 

@@ -906,7 +906,19 @@ function onPointerUp() {
   }, 3200);
 }
 
+function zoomIn() {
+  if (!camera) return;
+  camera.position.z = Math.max(4.5, camera.position.z - 0.7);
+}
+
+function zoomOut() {
+  if (!camera) return;
+  camera.position.z = Math.min(12.0, camera.position.z + 0.7);
+}
+
 function onWheel(e: WheelEvent) {
+  // Only intercept zoom if Ctrl or Meta is pressed to avoid hijacking normal page scroll
+  if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
   if (!camera) return;
 
@@ -1035,6 +1047,22 @@ onUnmounted(() => {
             </button>
             <button
               type="button"
+              class="telemetry-icon-btn zoom-btn"
+              title="Zoom In (+)"
+              @click="zoomIn"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              class="telemetry-icon-btn zoom-btn"
+              title="Zoom Out (−)"
+              @click="zoomOut"
+            >
+              −
+            </button>
+            <button
+              type="button"
               class="telemetry-icon-btn reset-btn"
               title="Reset 3D Perspective"
               @click="resetView"
@@ -1047,7 +1075,7 @@ onUnmounted(() => {
 
       <!-- Drag & Zoom Hint Overlay -->
       <div class="hud-hint">
-        <span>Drag to rotate • Scroll to zoom</span>
+        <span>Drag to rotate • Ctrl + Scroll or ± to zoom</span>
       </div>
     </div>
   </div>
@@ -1061,7 +1089,7 @@ onUnmounted(() => {
   min-height: 460px;
   margin: 0 auto;
   user-select: none;
-  touch-action: none;
+  touch-action: pan-y;
   cursor: grab;
   display: flex;
   align-items: center;

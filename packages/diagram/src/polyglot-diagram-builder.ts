@@ -3062,12 +3062,12 @@ export function buildDiagramFromDSL(
   for (const { rawNode, ruleName } of containerNodes) {
     const nodeConfig = diagramConfig?.nodes?.[ruleName] || diagramConfig?.entities?.[ruleName];
     const style = nodeConfig?.style || {};
-    const text = getNodeText(rawNode);
-
-    const match = text.match(/\b(?:model|package|block|subsystem|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)/i);
-    const containerName = match
-      ? match[1]
-      : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+    let containerName = rawNode.name || rawNode.label;
+    if (!containerName) {
+      const text = getNodeText(rawNode);
+      const match = text.match(/\b(?:model|package|block|subsystem|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)/i);
+      containerName = match ? match[1]! : `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+    }
 
     const fill = style.fill || "rgba(30, 41, 59, 0.7)";
     const stroke = style.stroke || "#38bdf8";
@@ -3142,21 +3142,24 @@ export function buildDiagramFromDSL(
           ? `«${ruleName.toLowerCase()}»`
           : "";
     const style = nodeConfig?.style || {};
-    const text = getNodeText(rawNode);
+    let compType = rawNode.compType || "";
+    let compName = rawNode.name || "";
 
-    let compType = "";
-    let compName: string;
-    // Clean leading modifiers (parameter, input, output, flow, discrete, constant)
-    const cleanedText = text.replace(/\b(?:parameter|constant|input|output|flow|discrete)\b/g, "").trim();
-    const declMatch = cleanedText.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-    if (declMatch) {
-      compType = declMatch[1]!;
-      compName = declMatch[2]!;
-    } else {
-      const singleMatch = cleanedText.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
-      compName = singleMatch
-        ? singleMatch[1]
-        : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+    if (!compName) {
+      const text = getNodeText(rawNode);
+      // Non-destructive declaration match: optional modifiers followed by type and identifier
+      const declMatch = text.match(
+        /(?:^|\s)(?:parameter|constant|input|output|flow|discrete|\s)*([a-zA-Z_][a-zA-Z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/,
+      );
+      if (declMatch) {
+        compType = compType || declMatch[1]!;
+        compName = declMatch[2]!;
+      } else {
+        const singleMatch = text.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
+        compName = singleMatch
+          ? singleMatch[1]!
+          : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+      }
     }
 
     componentNameToNodeId.set(compName, rawNode.id);
@@ -3320,15 +3323,57 @@ export function buildDiagramFromDSL(
     const strokeWidth = edgeStyle.strokeWidth || 2;
 
     const text = getNodeText(rawNode);
-    const eqParts = text.split("=");
-    if (eqParts.length >= 2) {
-      const lhsMatch = eqParts[0]!.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
-      const lhsText = lhsMatch ? lhsMatch[1]! : eqParts[0]!.trim();
-      const rhsText = eqParts.slice(1).join("=").replace(/;$/, "").trim();
+    let lhsText = rawNode.lhs;
+    let rhsText = rawNode.rhsText ?? "";
+    let rhsIdentifiers: string[] = Array.isArray(rawNode.rhs) ? rawNode.rhs : [];
 
+    if (!lhsText || rhsIdentifiers.length === 0) {
+      const eqParts = text.split("=");
+      if (eqParts.length >= 2) {
+        if (!lhsText) {
+          const lhsMatch = eqParts[0]!.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
+          lhsText = lhsMatch ? lhsMatch[1]! : eqParts[0]!.trim();
+        }
+        if (!rhsText) {
+          rhsText = eqParts.slice(1).join("=").replace(/;$/, "").trim();
+        }
+        if (rhsIdentifiers.length === 0) {
+          const rawIds = Array.from(new Set(rhsText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [])) as string[];
+          const keywords = new Set([
+            "if",
+            "then",
+            "else",
+            "elseif",
+            "time",
+            "der",
+            "true",
+            "false",
+            "and",
+            "or",
+            "not",
+            "initial",
+            "terminal",
+            "sample",
+            "pre",
+            "edge",
+            "sin",
+            "cos",
+            "tan",
+            "exp",
+            "log",
+            "sqrt",
+            "abs",
+            "min",
+            "max",
+          ]);
+          rhsIdentifiers = rawIds.filter((id) => !keywords.has(id));
+        }
+      }
+    }
+
+    if (lhsText) {
       const targetNodeId = componentNameToNodeId.get(lhsText);
       if (targetNodeId) {
-        const rhsIdentifiers = Array.from(new Set(rhsText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [])) as string[];
         for (const rhsId of rhsIdentifiers) {
           const sourceNodeId = componentNameToNodeId.get(rhsId);
           if (sourceNodeId && sourceNodeId !== targetNodeId) {

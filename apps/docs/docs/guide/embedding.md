@@ -87,7 +87,44 @@ embed.triggerSimulate({ stopTime: 10.0 });
 
 ---
 
-## 4. Accelerated Rehydration (`IndexedDB`)
+## 4. React Component SDK (`@modelscript/react`)
+
+For native React applications, `@modelscript/react` provides first-class components and hooks for engineering inspection:
+
+```bash
+npm install @modelscript/react
+```
+
+```tsx
+import { BlackboxInspector, StepResponseTestbench, useCWasmCompiler } from "@modelscript/react";
+
+export function SimulationDashboard({ fmuBuffer }: { fmuBuffer: ArrayBuffer }) {
+  const { compile, isCompiling } = useCWasmCompiler();
+
+  return (
+    <div className="dashboard-grid">
+      {/* Live inspection of FMU variables, inputs, and outputs */}
+      <BlackboxInspector
+        buffer={fmuBuffer}
+        onVariableChange={(name, val) => console.log(`Param ${name} updated to ${val}`)}
+      />
+
+      {/* Dynamic step response testbench with automatic settling time & overshoot metrics */}
+      <StepResponseTestbench
+        buffer={fmuBuffer}
+        inputVariable="voltage_in"
+        outputVariable="speed_out"
+        stepMagnitude={10.0}
+        stopTime={5.0}
+      />
+    </div>
+  );
+}
+```
+
+---
+
+## 5. Accelerated Rehydration (`IndexedDB`)
 
 When loading models that depend on standard libraries (such as the Modelica Standard Library or KerML), `@modelscript/embed` utilizes pre-baked binary symbol tables (`.sym.bin`):
 
@@ -102,7 +139,7 @@ This bypasses parsing thousands of library classes on every page load, deliverin
 
 ---
 
-## 5. Live Parameter Slider Ribbon
+## 6. Live Parameter Slider Ribbon
 
 Embeds can be made dynamically interactive without opening full code editors. Pass `controls="parameters"` or append `?controls=parameters` to any embed URL:
 
@@ -125,7 +162,7 @@ The viewer automatically extracts top-level parameters from the model code, rend
 
 ---
 
-## 6. Universal oEmbed API & Rich Social Cards
+## 7. Universal oEmbed API & Rich Social Cards
 
 ModelScript embeds implement the standard [oEmbed specification](https://oembed.com/) (`GET /api/v1/oembed`), enabling drop-in interactive previews in Notion, Discord, Slack, and WordPress.
 
@@ -167,7 +204,7 @@ Response:
 
 ---
 
-## 7. WebGL Context Management & Mobile Scroll Protection
+## 8. WebGL Context Management & Mobile Scroll Protection
 
 To guarantee rock-solid stability when multiple 3D CAD or WebGPU viewers exist on the same page:
 

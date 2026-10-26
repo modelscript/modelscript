@@ -61,6 +61,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/c": "*",
     "@modelscript/dsl": "*",
     "@modelscript/fortran": "*",
     "@modelscript/runtime": "*"

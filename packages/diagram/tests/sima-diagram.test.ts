@@ -17,6 +17,9 @@ test("SIMA Diagram Builder: renders 2D catenary sag profile SVG", () => {
     touchdownDistance: 450,
     groundedLength: 450,
     suspendedLength: 400,
+    vesselName: "Deepwater Semi-Submersible",
+    vesselDraft: 18,
+    vesselLength: 95,
   });
 
   assert.ok(svg.includes("<svg"), "Must output valid SVG root");
@@ -26,6 +29,7 @@ test("SIMA Diagram Builder: renders 2D catenary sag profile SVG", () => {
   assert.ok(svg.includes("Seabed (0m)"), "Must mark seabed level");
   assert.ok(svg.includes("Anchor (0° Uplift)"), "Must include anchor symbol");
   assert.ok(svg.includes("TDP (450.0m)"), "Must mark touchdown point");
+  assert.ok(svg.includes("Deepwater Semi-Submersible"), "Must include vessel name label");
   assert.ok(svg.includes("FAIRLEAD TENSION"), "Must include tension HUD card");
 });
 

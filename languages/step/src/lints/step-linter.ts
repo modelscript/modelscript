@@ -48,7 +48,10 @@ export function lintStepContent(content: string): StepDiagnostic[] {
   }
 
   // 2. Check HEADER section
-  const hasHeader = /HEADER;/i.test(content) && /ENDSEC;/i.test(content);
+  const upperContent = content.toUpperCase();
+  const headerIdx = upperContent.indexOf("HEADER;");
+  const headerEndIdx = headerIdx !== -1 ? upperContent.indexOf("ENDSEC;", headerIdx + 7) : -1;
+  const hasHeader = headerIdx !== -1 && headerEndIdx !== -1;
   if (!hasHeader) {
     diagnostics.push({
       code: `T${StepErrorCode.MISSING_HEADER_SECTION.code}`,
@@ -61,26 +64,25 @@ export function lintStepContent(content: string): StepDiagnostic[] {
     });
   } else {
     // Check FILE_SCHEMA inside HEADER
-    const headerMatch = content.match(/HEADER;([\s\S]*?)ENDSEC;/i);
-    if (headerMatch) {
-      const headerBody = headerMatch[1] ?? "";
-      if (!/FILE_SCHEMA/i.test(headerBody)) {
-        diagnostics.push({
-          code: `T${StepErrorCode.MISSING_SCHEMA_DECLARATION.code}`,
-          numericCode: StepErrorCode.MISSING_SCHEMA_DECLARATION.code,
-          rule: StepErrorCode.MISSING_SCHEMA_DECLARATION.rule,
-          severity: StepErrorCode.MISSING_SCHEMA_DECLARATION.severity,
-          message: StepErrorCode.MISSING_SCHEMA_DECLARATION.message(),
-          line: 2,
-          column: 1,
-        });
-      }
+    const headerBody = content.slice(headerIdx + 7, headerEndIdx);
+    if (!/FILE_SCHEMA/i.test(headerBody)) {
+      diagnostics.push({
+        code: `T${StepErrorCode.MISSING_SCHEMA_DECLARATION.code}`,
+        numericCode: StepErrorCode.MISSING_SCHEMA_DECLARATION.code,
+        rule: StepErrorCode.MISSING_SCHEMA_DECLARATION.rule,
+        severity: StepErrorCode.MISSING_SCHEMA_DECLARATION.severity,
+        message: StepErrorCode.MISSING_SCHEMA_DECLARATION.message(),
+        line: 2,
+        column: 1,
+      });
     }
   }
 
   // 3. Check DATA section & Entity References
-  const dataMatch = content.match(/DATA;([\s\S]*?)ENDSEC;/i);
-  if (!dataMatch) {
+  const dataIdx = upperContent.indexOf("DATA;");
+  const dataEndIdx = dataIdx !== -1 ? upperContent.indexOf("ENDSEC;", dataIdx + 5) : -1;
+  const hasData = dataIdx !== -1 && dataEndIdx !== -1;
+  if (!hasData) {
     diagnostics.push({
       code: `T${StepErrorCode.MISSING_DATA_SECTION.code}`,
       numericCode: StepErrorCode.MISSING_DATA_SECTION.code,

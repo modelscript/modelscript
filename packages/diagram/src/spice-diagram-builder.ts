@@ -8,6 +8,20 @@
  * 2. Standalone, IEEE/IEC-standard vector SVG schematics with electronic glyphs (R, C, L, D, BJT, MOSFET, Sources, Ground).
  */
 
+import {
+  bjtGlyph,
+  capacitorGlyph,
+  currentSourceGlyph,
+  diodeGlyph,
+  groundGlyph,
+  inductorGlyph,
+  markupToSvg,
+  mosfetGlyph,
+  resistorGlyph,
+  voltageSourceGlyph,
+} from "./glyphs.js";
+import { computeSolderDots, type EdgePath } from "./solder-dots.js";
+
 export interface SpiceComponentLike {
   name: string;
   kind: string; // "R" | "C" | "L" | "D" | "Q" | "M" | "V" | "I" | "X" | etc.
@@ -250,8 +264,21 @@ export function renderSpiceSvg(circuit: SpiceCircuitLike): string {
   // Title
   svg += `  <text x="${minX}" y="${minY - 20}" fill="#f9fafb" font-size="15" font-weight="700">${diag.title} — SPICE Circuit Schematic</text>\n\n`;
 
-  // Draw Net Wires Layer
-  svg += `  <g id="spice-wires-layer">\n`;
+  // Pre-calculate port points for solder dot avoidance (only internal multi-wire junctions get dots)
+  const portPoints: { x: number; y: number }[] = [];
+  for (const cell of diag.cells) {
+    if (cell.x !== undefined && cell.y !== undefined) {
+      const w = cell.width ?? 85;
+      const h = cell.height ?? 65;
+      const cx = cell.x + w / 2;
+      portPoints.push({ x: cx, y: cell.y });
+      portPoints.push({ x: cx, y: cell.y + h });
+    }
+  }
+
+  const edgePaths: EdgePath[] = [];
+  const edgeRenderData: { id: string; pathD: string; stroke: string }[] = [];
+
   for (const cell of diag.cells) {
     if (cell.shape === "edge" && cell.source && cell.target) {
       const srcId = typeof cell.source === "object" && "cell" in cell.source ? cell.source.cell : null;
@@ -271,11 +298,31 @@ export function renderSpiceSvg(circuit: SpiceCircuitLike): string {
       const midY = (y1 + y2) / 2;
       const pathD = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
 
-      svg += `    <path id="${cell.id}" d="${pathD}" fill="none" stroke="${stroke}" stroke-width="1.8" opacity="0.85" />\n`;
-      // Solder dot at intermediate junction
-      svg += `    <circle cx="${x1}" cy="${midY}" r="3" fill="${stroke}" />\n`;
-      svg += `    <circle cx="${x2}" cy="${midY}" r="3" fill="${stroke}" />\n`;
+      edgeRenderData.push({ id: cell.id, pathD, stroke });
+      edgePaths.push({
+        id: cell.id,
+        points: [
+          { x: x1, y: y1 },
+          { x: x1, y: midY },
+          { x: x2, y: midY },
+          { x: x2, y: y2 },
+        ],
+        color: stroke,
+        netId: (cell.data?.["net"] as string) ?? undefined,
+      });
     }
+  }
+
+  // Draw Net Wires Layer
+  svg += `  <g id="spice-wires-layer">\n`;
+  for (const edge of edgeRenderData) {
+    svg += `    <path id="${edge.id}" d="${edge.pathD}" fill="none" stroke="${edge.stroke}" stroke-width="1.8" opacity="0.85" />\n`;
+  }
+
+  // Topological solder dots: only placed where 3+ conductor segments meet (branches/junctions)
+  const solderDots = computeSolderDots(edgePaths, { portPoints, cellSize: 20, tolerance: 3 });
+  for (const dot of solderDots) {
+    svg += `    <circle cx="${dot.x}" cy="${dot.y}" r="3" fill="${dot.color}" />\n`;
   }
   svg += `  </g>\n\n`;
 
@@ -293,6 +340,39 @@ export function renderSpiceSvg(circuit: SpiceCircuitLike): string {
       const symbol = (cell.data?.["symbol"] as string) || kind;
       const { color } = getComponentGlyph(kind);
 
+      let glyphSvg = "";
+      switch (kind) {
+        case "R":
+          glyphSvg = markupToSvg(resistorGlyph({ stroke: color }));
+          break;
+        case "C":
+          glyphSvg = markupToSvg(capacitorGlyph({ stroke: color }));
+          break;
+        case "L":
+          glyphSvg = markupToSvg(inductorGlyph({ stroke: color }));
+          break;
+        case "D":
+          glyphSvg = markupToSvg(diodeGlyph({ stroke: color }));
+          break;
+        case "V":
+          glyphSvg = markupToSvg(voltageSourceGlyph({ stroke: color }));
+          break;
+        case "I":
+          glyphSvg = markupToSvg(currentSourceGlyph({ stroke: color }));
+          break;
+        case "Q":
+          glyphSvg = markupToSvg(bjtGlyph({ stroke: color }));
+          break;
+        case "M":
+          glyphSvg = markupToSvg(mosfetGlyph({ stroke: color }));
+          break;
+        case "GND":
+          glyphSvg = markupToSvg(groundGlyph({ stroke: color }));
+          break;
+        default:
+          break;
+      }
+
       svg += `    <g id="${cell.id}" filter="url(#spice-glow)">\n`;
       svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="5" fill="#111827" stroke="${color}" stroke-width="1.8" />\n`;
 
@@ -300,14 +380,20 @@ export function renderSpiceSvg(circuit: SpiceCircuitLike): string {
       svg += `      <rect x="${cell.x + 5}" y="${cell.y + 5}" width="28" height="12" rx="2" fill="${color}" fill-opacity="0.2" />\n`;
       svg += `      <text x="${cell.x + 19}" y="${cell.y + 14}" fill="${color}" font-size="7.5" font-weight="700" text-anchor="middle">${badge}</text>\n`;
 
-      // Name & Symbol
-      svg += `      <text x="${cx}" y="${cy - 2}" fill="#f9fafb" font-size="11" font-weight="700" text-anchor="middle">${name}</text>\n`;
-      svg += `      <text x="${cx}" y="${cy + 13}" fill="${color}" font-size="10" font-weight="600" text-anchor="middle">${symbol}</text>\n`;
+      // Name
+      svg += `      <text x="${cx}" y="${cell.y + 18}" fill="#f9fafb" font-size="10.5" font-weight="700" text-anchor="middle">${name}</text>\n`;
+
+      // Vector glyph or fallback symbol
+      if (glyphSvg) {
+        svg += `      <g transform="translate(${cx}, ${cy - 24}) scale(0.65)" transform-origin="0 37.5">\n        ${glyphSvg}\n      </g>\n`;
+      } else {
+        svg += `      <text x="${cx}" y="${cy + 6}" fill="${color}" font-size="10" font-weight="600" text-anchor="middle">${symbol}</text>\n`;
+      }
 
       // Value below
       const valStr = formatSpiceValue(cell.data?.["value"] as number | undefined, kind);
       if (valStr) {
-        svg += `      <text x="${cx}" y="${cell.y + h - 5}" fill="#9ca3af" font-size="8.5" text-anchor="middle">${valStr}</text>\n`;
+        svg += `      <text x="${cx}" y="${cell.y + h - 6}" fill="#9ca3af" font-size="8.5" text-anchor="middle">${valStr}</text>\n`;
       }
 
       // Terminal pin dots (top and bottom)

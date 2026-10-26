@@ -212,6 +212,12 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
           pSrc = resolvePortWorldPoint(srcNode, pt.args.x ?? sw / 2, pt.args.y ?? sh / 2, sw, sh);
         }
       }
+    } else if (
+      typeof edge.source === "object" &&
+      "x" in (edge.source as any) &&
+      typeof (edge.source as any).x === "number"
+    ) {
+      pSrc = { x: (edge.source as any).x, y: (edge.source as any).y };
     }
 
     // Calculate target point
@@ -226,6 +232,12 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
           pTgt = resolvePortWorldPoint(tgtNode, pt.args.x ?? tw / 2, pt.args.y ?? th / 2, tw, th);
         }
       }
+    } else if (
+      typeof edge.target === "object" &&
+      "x" in (edge.target as any) &&
+      typeof (edge.target as any).x === "number"
+    ) {
+      pTgt = { x: (edge.target as any).x, y: (edge.target as any).y };
     }
 
     const points: PointLike[] = [pSrc];
@@ -236,7 +248,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       points.push(pTgt);
     } else {
       const routerName = typeof edge.router === "string" ? edge.router : edge.router?.name;
-      if (routerName === "port-orthogonal-astar" || routerName === "manhattan") {
+      if (routerName === "port-orthogonal-astar" || routerName === "manhattan" || routerName === "orthogonal") {
         const obstacles = diagram.nodes
           .filter((n) => n.id !== srcId && n.id !== tgtId)
           .map((n) => ({ x: n.x ?? 0, y: n.y ?? 0, width: n.width ?? 120, height: n.height ?? 60 }));
@@ -532,3 +544,134 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
 }
 
 export const renderDiagramDataToSvg = renderPolyglotDiagramToSvg;
+
+/**
+ * Adapts an AntV X6 or domain visualizer cell graph ({ title?, cells: any[] }) into canonical DiagramData.
+ */
+export function cellsToDiagramData(graph: { title?: string; cells: any[] }): DiagramData {
+  const nodes: DiagramNode[] = [];
+  const edges: DiagramEdge[] = [];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const cell of graph.cells) {
+    if (cell.shape === "edge" || (cell.source && cell.target)) {
+      const src =
+        typeof cell.source === "object" && "cell" in cell.source
+          ? {
+              cell: cell.source.cell,
+              port: cell.source.port ?? "",
+              anchor: "center",
+              connectionPoint: { name: "boundary" },
+            }
+          : (cell.source as any);
+      const tgt =
+        typeof cell.target === "object" && "cell" in cell.target
+          ? {
+              cell: cell.target.cell,
+              port: cell.target.port ?? "",
+              anchor: "center",
+              connectionPoint: { name: "boundary" },
+            }
+          : (cell.target as any);
+
+      const edgeAttrs = cell.attrs ?? {};
+      const lineAttrs = edgeAttrs.line ?? {};
+
+      edges.push({
+        id: cell.id,
+        source: src,
+        target: tgt,
+        vertices: cell.vertices,
+        connector: cell.connector,
+        router: cell.router ?? "port-orthogonal-astar",
+        zIndex: cell.zIndex ?? 2,
+        attrs: {
+          line: {
+            stroke: lineAttrs.stroke ?? "#38bdf8",
+            strokeWidth: lineAttrs.strokeWidth ?? 1.8,
+            strokeDasharray: lineAttrs.strokeDasharray,
+            targetMarker: lineAttrs.targetMarker ?? { name: "classic", width: 8, height: 6 },
+            sourceMarker: lineAttrs.sourceMarker,
+            "vector-effect": "non-scaling-stroke",
+            "pointer-events": "stroke",
+          },
+        },
+        labels: cell.label ? [{ attrs: { text: { text: cell.label } } }] : cell.labels,
+        data: cell.data,
+      });
+    } else {
+      const nx = cell.x ?? 0;
+      const ny = cell.y ?? 0;
+      const nw = cell.width ?? 100;
+      const nh = cell.height ?? 60;
+
+      minX = Math.min(minX, nx);
+      minY = Math.min(minY, ny);
+      maxX = Math.max(maxX, nx + nw);
+      maxY = Math.max(maxY, ny + nh);
+
+      const cellAttrs = cell.attrs ?? {};
+      const bodyAttrs = cellAttrs.body ?? {};
+      const labelAttrs = cellAttrs.label ?? {};
+
+      nodes.push({
+        id: cell.id,
+        x: nx,
+        y: ny,
+        width: nw,
+        height: nh,
+        angle: cell.angle ?? 0,
+        opacity: cell.opacity ?? 1,
+        zIndex: cell.zIndex ?? 1,
+        markup: cell.markup ?? { tagName: cell.shape === "circle" ? "circle" : "rect", selector: "body" },
+        ports: cell.ports ?? { items: [], groups: {} },
+        attrs: {
+          body: {
+            fill: bodyAttrs.fill ?? "#1e293b",
+            stroke: bodyAttrs.stroke ?? "#38bdf8",
+            strokeWidth: bodyAttrs.strokeWidth ?? 1.8,
+            rx: bodyAttrs.rx ?? (cell.shape === "circle" ? nw / 2 : 6),
+            ry: bodyAttrs.ry ?? (cell.shape === "circle" ? nh / 2 : 6),
+          },
+          label: {
+            text: labelAttrs.text ?? cell.label ?? cell.id,
+            fill: labelAttrs.fill ?? "#f8fafc",
+            fontSize: labelAttrs.fontSize ?? 11,
+          },
+        },
+        data: cell.data,
+        properties: cell.properties,
+      });
+    }
+  }
+
+  if (!isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = 800;
+    maxY = 600;
+  }
+
+  return {
+    nodes,
+    edges,
+    coordinateSystem: {
+      x: minX,
+      y: minY,
+      width: Math.max(100, maxX - minX),
+      height: Math.max(100, maxY - minY),
+    },
+    diagramBackground: null,
+  };
+}
+
+/**
+ * Headless SVG Serializer for cell graphs ({ title?, cells: any[] }).
+ */
+export function renderCellsSvg(graph: { title?: string; cells: any[] }, options: SvgExportOptions = {}): string {
+  const diagram = cellsToDiagramData(graph);
+  return renderPolyglotDiagramToSvg(diagram, options);
+}

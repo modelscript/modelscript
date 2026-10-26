@@ -6,19 +6,25 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tauri build",
+    "build": "tsc",
     "build:appimage": "tauri build --bundles appimage",
     "build:deb": "tauri build --bundles deb",
     "build:debug": "tauri build --debug",
     "build:dmg": "tauri build --bundles dmg",
     "build:msi": "tauri build --bundles msi",
     "build:portable": "tauri build --bundles nsis",
+    "build:tauri": "tauri build",
+    "clean": "rimraf dist",
     "dev": "tauri dev",
+    "lint": "eslint src tests --no-warn-ignored",
     "test": "tsx tests/tauri-config.test.ts && tsx tests/desktop-blackbox-simulation.test.ts",
     "typecheck": "tsc --noEmit"
   },

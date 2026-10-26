@@ -28,6 +28,21 @@ npx msx import-fmu ./vendor/BatteryController.fmu -o BatteryControllerWrapper.mo
 | `binaries/<platform>/*.so\|.dll\|.dylib` | Native ABI    | Pre-compiled host shared libraries generated when `--compile` is passed.                                                                                                                                                                                             |
 | `binaries/wasm32-wasi/<model>.wasm`      | WebAssembly   | Portable, sandboxed WASM FMU binary generated when `--wasm` or `--target wasm` is passed, executable directly in browser workers and edge runtimes.                                                                                                                  |
 
+### Universal Binary FMUs & In-WASM CPU Emulation
+
+A major limitation of traditional FMI co-simulation is platform lock-in: an FMU containing a Windows x86 `.dll` cannot run on Linux or Apple Silicon without native source access.
+
+Through `@modelscript/exchange/pe-emulator`, ModelScript includes **user-space CPU emulators and binary loaders executing inside WebAssembly**:
+
+- **Cross-Architecture Execution**: Runs legacy Windows x86/x64 (`.dll`), Linux ELF (`.so`), and macOS Mach-O (`.dylib`) binary FMUs directly inside Node.js, browsers, or cloud runners without installing Wine or virtual machines.
+- **CPU Translation Engines**:
+  - **x86 / x86-64 Engine (`x86-cpu.ts`)**: Decodes instruction prefixes, registers, and floating-point/AVX2 vector instructions into typed array memory operations.
+  - **AArch64 Engine (`aarch64-cpu.ts`)**: Decodes 64-bit ARM instruction streams and executes floating-point NEON vectors.
+  - **C Runtime Shims (`c-runtime-shims.ts`)**: Traps standard C library calls (`malloc`, `free`, `sin`, `cos`, `printf`, `memcpy`) and routes them directly to host memory for native execution speed.
+- **In-Browser C Compilation Worker (`wasm-compiler-worker.ts`)**:
+  - Compiles FMI C99 source code into sandboxed WebAssembly modules on the fly directly inside browser WebWorkers.
+  - Eliminates the need for server-side GCC/Clang compilation infrastructure when simulating customer models in the browser.
+
 ---
 
 ## 2. System Structure and Parameterization (SSP 1.0 & SSV 1.0)

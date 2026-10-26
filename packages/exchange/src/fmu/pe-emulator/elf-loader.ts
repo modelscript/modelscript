@@ -45,6 +45,14 @@ export const R_X86_64_GLOB_DAT = 6;
 export const R_X86_64_JUMP_SLOT = 7;
 export const R_X86_64_RELATIVE = 8;
 
+// AArch64 Relocation Types
+export const R_AARCH64_NONE = 0;
+export const R_AARCH64_ABS64 = 257;
+export const R_AARCH64_COPY = 1024;
+export const R_AARCH64_GLOB_DAT = 1025;
+export const R_AARCH64_JUMP_SLOT = 1026;
+export const R_AARCH64_RELATIVE = 1027;
+
 export class ElfLoader {
   readonly rawBuffer: Uint8Array;
   readonly view: DataView;
@@ -374,6 +382,20 @@ export class ElfLoader {
           symIndex,
           addend,
         });
+      } else {
+        const offset = BigInt(this.view.getUint32(entryOff, true));
+        const info = this.view.getUint32(entryOff + 4, true);
+        const addend = entSize >= 12 ? BigInt(this.view.getInt32(entryOff + 8, true)) : 0n;
+
+        const type = info & 0xff;
+        const symIndex = info >> 8;
+
+        this.relocations.push({
+          offset,
+          type,
+          symIndex,
+          addend,
+        });
       }
     }
   }
@@ -382,7 +404,7 @@ export class ElfLoader {
    * Maps all loadable PT_LOAD segments into linear guest memory space
    * and applies base relocations.
    */
-  mapImageToMemory(customBase?: bigint): GuestMemorySpace {
+  mapImageToMemory(customBase?: bigint, symbolResolver?: (name: string) => bigint | null): GuestMemorySpace {
     const targetBase = customBase ?? (this.header.is64Bit ? 0x140000000n : 0x00400000n);
 
     // Compute virtual size required across all PT_LOAD segments
@@ -413,16 +435,34 @@ export class ElfLoader {
       }
     }
 
-    // 2. Apply Relocations (R_X86_64_RELATIVE, R_X86_64_64, R_X86_64_GLOB_DAT, etc.)
+    // 2. Apply Relocations (x86_64 and AArch64)
     for (const rel of this.relocations) {
       const targetOff = Number(rel.offset);
-      if (targetOff + 8 <= buffer.byteLength) {
-        if (rel.type === R_X86_64_RELATIVE) {
+      if (targetOff >= 0 && targetOff + 8 <= buffer.byteLength) {
+        if (rel.type === R_X86_64_RELATIVE || rel.type === R_AARCH64_RELATIVE) {
           // B + A (Base + Addend)
           dataView.setBigUint64(targetOff, targetBase + BigInt(rel.addend), true);
-        } else if (rel.type === R_X86_64_64) {
+        } else if (
+          rel.type === R_X86_64_64 ||
+          rel.type === R_X86_64_GLOB_DAT ||
+          rel.type === R_X86_64_JUMP_SLOT ||
+          rel.type === R_AARCH64_ABS64 ||
+          rel.type === R_AARCH64_GLOB_DAT ||
+          rel.type === R_AARCH64_JUMP_SLOT
+        ) {
           const sym = this.symbolList[rel.symIndex];
-          const symVal = sym ? targetBase + sym.value : 0n;
+          let symVal = 0n;
+          if (sym) {
+            if (symbolResolver && sym.name) {
+              const res = symbolResolver(sym.name);
+              if (res !== null && res !== undefined) {
+                symVal = res;
+              }
+            }
+            if (symVal === 0n && sym.value !== 0n) {
+              symVal = targetBase + sym.value;
+            }
+          }
           dataView.setBigUint64(targetOff, symVal + BigInt(rel.addend), true);
         }
       }
@@ -441,5 +481,33 @@ export class ElfLoader {
     };
 
     return this.memory;
+  }
+
+  /**
+   * Re-resolves external dynamic symbols in the GOT/PLT using a host symbol resolver.
+   */
+  applyDynamicRelocations(symbolResolver: (name: string) => bigint | null): void {
+    if (!this.memory) return;
+    for (const rel of this.relocations) {
+      if (
+        rel.type === R_X86_64_64 ||
+        rel.type === R_X86_64_GLOB_DAT ||
+        rel.type === R_X86_64_JUMP_SLOT ||
+        rel.type === R_AARCH64_ABS64 ||
+        rel.type === R_AARCH64_GLOB_DAT ||
+        rel.type === R_AARCH64_JUMP_SLOT
+      ) {
+        const sym = this.symbolList[rel.symIndex];
+        if (sym && sym.name) {
+          const hookAddr = symbolResolver(sym.name);
+          if (hookAddr !== null && hookAddr !== undefined) {
+            const targetOff = Number(rel.offset);
+            if (targetOff >= 0 && targetOff + 8 <= this.memory.size) {
+              this.memory.dataView.setBigUint64(targetOff, hookAddr + BigInt(rel.addend), true);
+            }
+          }
+        }
+      }
+    }
   }
 }

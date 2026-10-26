@@ -69,6 +69,14 @@ export interface ThreadElementMetadata {
 }
 
 /**
+ * Configuration options for WorkspaceManager initialization.
+ */
+export interface WorkspaceManagerOptions {
+  /** If true, seeds sample cross-domain digital threads for testing and demonstration. */
+  seedDemoThreads?: boolean;
+}
+
+/**
  * Central multi-language workspace manager coordinating per-language symbol indices,
  * Salsa query engines, cross-language `UnifiedWorkspace` resolution, digital thread
  * hypergraph bindings, and formal semantic theory oracles.
@@ -103,11 +111,11 @@ export class WorkspaceManager {
   }
 
   /**
-   * Seeds the digital thread hypergraph with default reference cross-domain threads
-   * (powertrain inverter, thermal cooling plate, and multi-domain drone assembly) when empty.
+   * Seeds the digital thread hypergraph with reference cross-domain threads
+   * (powertrain inverter, thermal cooling plate, and multi-domain drone assembly) for testing/demo.
    */
-  public initDefaultThreads(): void {
-    if (this.hypergraph.getThreadCount() > 0) return;
+  public seedDemoThreads(options?: { force?: boolean }): void {
+    if (!options?.force && this.hypergraph.getThreadCount() > 0) return;
     const s0 = this.hypergraph.createThread(101, 1);
     this.hypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
     this.hypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
@@ -257,6 +265,13 @@ export class WorkspaceManager {
       domain: "requirements",
       properties: { v_climb_max: 12.0, status: "Verified" },
     });
+  }
+
+  /**
+   * Backwards-compatible alias for `seedDemoThreads()`.
+   */
+  public initDefaultThreads(): void {
+    this.seedDemoThreads();
   }
 
   /**
@@ -628,16 +643,18 @@ export class WorkspaceManager {
 
   /**
    * Creates a new `WorkspaceManager`, registers all formal semantic theory oracles,
-   * initializes default digital threads, and wires CST/query providers into `unifiedWorkspace`.
+   * optionally seeds sample digital threads, and wires CST/query providers into `unifiedWorkspace`.
    */
-  constructor(documentManager?: DocumentManager) {
+  constructor(documentManager?: DocumentManager, options?: WorkspaceManagerOptions) {
     this.documentManager = documentManager;
     this.coordinator.registerOracle(new OntologyTheoryOracle());
     this.coordinator.registerOracle(new ConstraintTheoryOracle());
     this.coordinator.registerOracle(new AbstractDomainOracle());
     this.coordinator.registerOracle(new DimensionalTheoryOracle());
     this.coordinator.registerOracle(new FlowAlgebraOracle());
-    this.initDefaultThreads();
+    if (options?.seedDemoThreads) {
+      this.seedDemoThreads();
+    }
 
     // Seed default workspace indices from registered language plugins
     for (const plugin of globalLanguageRegistry.getAllPlugins()) {

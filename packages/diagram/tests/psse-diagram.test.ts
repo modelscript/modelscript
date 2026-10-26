@@ -38,6 +38,13 @@ test("PSS/E Diagram: Builds X6 graph model with buses, branches, generators, and
   assert.equal((bus101.data as any)?.busNumber, 101);
   assert.equal((bus101.data as any)?.baseKv, 500);
 
+  const bus102 = diag.cells.find((c) => c.id === "bus_102");
+  const bus103 = diag.cells.find((c) => c.id === "bus_103");
+  assert.ok(bus102 && bus103);
+  // Verify voltage-level tier vertical ordering (EHV above HV above Sub-transmission)
+  assert.ok((bus101.y ?? 0) < (bus102.y ?? 0), "500kV bus must be in higher tier than 230kV");
+  assert.ok((bus102.y ?? 0) < (bus103.y ?? 0), "230kV bus must be in higher tier than 138kV");
+
   const gen101 = diag.cells.find((c) => c.id === "gen_101_1");
   assert.ok(gen101);
   assert.equal(gen101.shape, "circle");

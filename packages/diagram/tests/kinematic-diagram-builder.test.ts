@@ -73,3 +73,21 @@ test("Kinematic SVG: Renders vector SVG schematic in dark and light modes", () =
   assert.ok(lightSvg.startsWith("<svg"));
   assert.ok(lightSvg.includes("#ffffff") || lightSvg.includes("#f8fafc"));
 });
+
+test("Kinematic Tree Layout: Positions bodies hierarchically by kinematic depth from ground", () => {
+  const diag = buildKinematicDiagram(sampleMechanism);
+  const ground = diag.cells.find((c) => c.id === "body_ground")!;
+  const crank = diag.cells.find((c) => c.id === "body_crank")!;
+  const rocker = diag.cells.find((c) => c.id === "body_rocker")!;
+  const coupler = diag.cells.find((c) => c.id === "body_coupler")!;
+
+  // Ground is at root level (y = 50)
+  assert.equal(ground.y, 50);
+
+  // Crank and Rocker are both directly connected to Ground (depth 1)
+  assert.ok(crank.y! > ground.y!);
+  assert.equal(crank.y, rocker.y);
+
+  // Coupler connects to Crank and Rocker (depth 2)
+  assert.ok(coupler.y! > crank.y!);
+});

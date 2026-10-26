@@ -177,7 +177,11 @@ export class SteadyNetworkSolver {
     let totalLinePackKg = 0;
     let totalLinePackSm3 = 0;
 
-    for (let iter = 0; iter < 10; iter++) {
+    const maxIter = 50;
+    const pTol = 50.0; // 50 Pa (~0.0005 bar) convergence tolerance
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      let maxDeltaP = 0.0;
       for (const pipe of model.pipes) {
         const pIn = nodeStates[pipe.fromNode]?.pressure ?? basePressure;
         const tempK = pipe.ambientTemperature ?? 288.15;
@@ -222,6 +226,11 @@ export class SteadyNetworkSolver {
         const stdDensity = comp.standardDensity ?? 0.78;
         const linePackSm3 = linePackKg / stdDensity;
 
+        const prevOutletP = pipeStates[pipe.name]?.outletPressure;
+        if (prevOutletP !== undefined) {
+          maxDeltaP = Math.max(maxDeltaP, Math.abs(pOut - prevOutletP));
+        }
+
         pipeStates[pipe.name] = {
           name: pipe.name,
           massFlow: flow,
@@ -232,6 +241,11 @@ export class SteadyNetworkSolver {
           linePackSm3,
           frictionLossPa: frictionLoss,
         };
+      }
+
+      // Check convergence across all pipes in network
+      if (iter > 0 && maxDeltaP < pTol) {
+        break;
       }
     }
 

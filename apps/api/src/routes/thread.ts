@@ -29,21 +29,41 @@ export interface ThreadMetadata {
   properties?: Record<string, any> | undefined;
 }
 
-export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: Database): Router {
+export interface ThreadRouterOptions {
+  seedDemoThreads?: boolean;
+}
+
+export function threadRouter(
+  arg1?: DigitalThreadHypergraph | Database,
+  arg2?: Database | ThreadRouterOptions,
+  arg3?: ThreadRouterOptions,
+): Router {
   const router = Router();
   let hypergraph: DigitalThreadHypergraph;
   let db: Database | undefined;
+  let options: ThreadRouterOptions | undefined;
 
   if (arg1 instanceof DigitalThreadHypergraph) {
     hypergraph = arg1;
-    db = arg2;
+    if (arg2 && typeof (arg2 as any).saveThreadSnapshot === "function") {
+      db = arg2 as Database;
+      options = arg3;
+    } else {
+      options = arg2 as ThreadRouterOptions | undefined;
+    }
   } else if (arg1 && typeof (arg1 as any).createThreadProposal === "function") {
     db = arg1 as Database;
     hypergraph = new DigitalThreadHypergraph();
+    options = arg2 as ThreadRouterOptions | undefined;
   } else {
     hypergraph = new DigitalThreadHypergraph();
-    db = arg2;
+    db = arg2 as Database | undefined;
+    options = arg3;
   }
+
+  const shouldSeed =
+    options?.seedDemoThreads ??
+    (process.env["NODE_ENV"] === "test" || process.env["MODELSCRIPT_SEED_DEMO_THREADS"] === "1");
 
   const memProposals: ThreadProposal[] = [];
   const memAuditLogs: ThreadAuditLogEntry[] = [];
@@ -167,100 +187,20 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
       }
     }
 
-    if (hypergraph.getThreadCount() === 0) {
-      // Thread 101: Powertrain Inverter (Synced across 6 domains)
-      const s0 = hypergraph.createThread(101, 1);
-      hypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
-      hypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
-      hypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
-      hypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
-      hypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
-      hypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
-
-      metadataMap.set("requirements:1001", {
-        name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
-        line: 12,
-        column: 1,
-        properties: { status: "Verified" },
-      });
-      metadataMap.set("sysml2:2001", { name: "part def PowertrainInverter", line: 45, column: 5 });
-      metadataMap.set("modelica:3001", { name: "model InverterDrive", line: 14, column: 1, properties: { mass: 1.0 } });
-      metadataMap.set("cad:4001", { name: "Inverter_Chassis.step", line: 1, column: 1, properties: { mass: 1.02 } });
-      metadataMap.set("fea:5001", { name: "InverterMount_CalculiX.inp", line: 1, column: 1 });
-      metadataMap.set("bom:6001", { name: "P/N 840-0219 (Inverter Assy)", line: 1, column: 1 });
-
-      // Thread 102: Cooling Plate (Stale)
-      const s1 = hypergraph.createThread(102, 2);
-      hypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
-      hypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
-      hypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
-      hypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
-      hypergraph.bindDomainNode(s1, ThreadDomain.CFD, 7002);
-      hypergraph.markStale(s1);
-
-      metadataMap.set("requirements:1002", { name: "REQ-THERMAL-02 (Junction Temp <= 85C)", line: 28, column: 1 });
-      metadataMap.set("sysml2:2002", { name: "part def CoolingPlate", line: 88, column: 5 });
-      metadataMap.set("modelica:3002", {
-        name: "model CoolingCircuit",
-        line: 32,
-        column: 1,
-        properties: { mass: 0.8 },
-      });
-      metadataMap.set("cad:4002", { name: "CoolingPlate.step", line: 1, column: 1, properties: { mass: 1.15 } });
-      metadataMap.set("cfd:7002", { name: "cooling_channel_su2.cfg", line: 10, column: 1 });
-
-      // Thread 103: Battery Bus Voltage (Conflicted: SysML 24V vs Modelica 12V)
-      const s2 = hypergraph.createThread(103, 3);
-      hypergraph.bindDomainNode(s2, ThreadDomain.Requirements, 1003);
-      hypergraph.bindDomainNode(s2, ThreadDomain.SysML2, 2003);
-      hypergraph.bindDomainNode(s2, ThreadDomain.Modelica, 3003);
-      hypergraph.markConflict(s2);
-
-      metadataMap.set("requirements:1003", { name: "REQ-VOLT-03 (Bus Voltage 10-48V)", line: 5, column: 1 });
-      metadataMap.set("sysml2:2003", {
-        name: "attribute def busVoltage = 24.0V",
-        line: 55,
-        column: 5,
-        properties: { voltage: 24.0 },
-      });
-      metadataMap.set("modelica:3003", {
-        name: "parameter Real V_bus = 12.0",
-        line: 20,
-        column: 1,
-        properties: { voltage: 12.0 },
-      });
-
-      conflictRegistry.set("conflict_bus_voltage", {
-        slot: s2,
-        threadId: 103,
-        sourceDomain: "sysml2",
-        sourceValue: 24.0,
-        sourceUnit: "V",
-        targetDomain: "modelica",
-        targetValue: 12.0,
-        targetUnit: "V",
-        min: 10.0,
-        max: 48.0,
-      });
-
-      if (db && typeof (db as any).saveThreadConflict === "function") {
-        db.saveThreadConflict({
-          conflictId: "conflict_bus_voltage",
-          slot: s2,
-          sourceDomain: "sysml2",
-          sourceValue: 24.0,
-          sourceUnit: "V",
-          targetDomain: "modelica",
-          targetValue: 12.0,
-          targetUnit: "V",
-          min: 10.0,
-          max: 48.0,
-          status: "conflicted",
-        });
-      }
-      persistSnapshot();
+    if (shouldSeed && hypergraph.getThreadCount() === 0) {
+      seedDemoThreads(hypergraph, metadataMap, conflictRegistry, db, persistSnapshot);
     }
   }
+
+  // ── POST /api/v1/threads/seed-demo ─────────────────────────────────────
+  router.post("/seed-demo", (_req, res) => {
+    seedDemoThreads(hypergraph, metadataMap, conflictRegistry, db, persistSnapshot);
+    res.json({
+      success: true,
+      message: "Sample digital threads seeded",
+      threadCount: hypergraph.getThreadCount(),
+    });
+  });
 
   hypergraph.addListener(() => {
     persistSnapshot();
@@ -876,4 +816,113 @@ export function threadRouter(arg1?: DigitalThreadHypergraph | Database, arg2?: D
   });
 
   return router;
+}
+
+/**
+ * Seeds sample reference digital threads (Powertrain Inverter, Cooling Plate, Battery Voltage Conflict)
+ * for testing, demonstration, and onboarding walkthroughs.
+ */
+export function seedDemoThreads(
+  hypergraph: DigitalThreadHypergraph,
+  metadataMap: Map<string, ThreadMetadata>,
+  conflictRegistry: Map<string, any>,
+  db?: Database,
+  persist?: () => void,
+): void {
+  if (hypergraph.getThreadCount() > 0) return;
+
+  // Thread 101: Powertrain Inverter (Synced across 6 domains)
+  const s0 = hypergraph.createThread(101, 1);
+  hypergraph.bindDomainNode(s0, ThreadDomain.Requirements, 1001);
+  hypergraph.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
+  hypergraph.bindDomainNode(s0, ThreadDomain.Modelica, 3001);
+  hypergraph.bindDomainNode(s0, ThreadDomain.CAD, 4001);
+  hypergraph.bindDomainNode(s0, ThreadDomain.FEA, 5001);
+  hypergraph.bindDomainNode(s0, ThreadDomain.BOM, 6001);
+
+  metadataMap.set("requirements:1001", {
+    name: "REQ-TORQUE-01 (Peak Torque >= 350Nm)",
+    line: 12,
+    column: 1,
+    properties: { status: "Verified" },
+  });
+  metadataMap.set("sysml2:2001", { name: "part def PowertrainInverter", line: 45, column: 5 });
+  metadataMap.set("modelica:3001", { name: "model InverterDrive", line: 14, column: 1, properties: { mass: 1.0 } });
+  metadataMap.set("cad:4001", { name: "Inverter_Chassis.step", line: 1, column: 1, properties: { mass: 1.02 } });
+  metadataMap.set("fea:5001", { name: "InverterMount_CalculiX.inp", line: 1, column: 1 });
+  metadataMap.set("bom:6001", { name: "P/N 840-0219 (Inverter Assy)", line: 1, column: 1 });
+
+  // Thread 102: Cooling Plate (Stale)
+  const s1 = hypergraph.createThread(102, 2);
+  hypergraph.bindDomainNode(s1, ThreadDomain.Requirements, 1002);
+  hypergraph.bindDomainNode(s1, ThreadDomain.SysML2, 2002);
+  hypergraph.bindDomainNode(s1, ThreadDomain.Modelica, 3002);
+  hypergraph.bindDomainNode(s1, ThreadDomain.CAD, 4002);
+  hypergraph.bindDomainNode(s1, ThreadDomain.CFD, 7002);
+  hypergraph.markStale(s1);
+
+  metadataMap.set("requirements:1002", { name: "REQ-THERMAL-02 (Junction Temp <= 85C)", line: 28, column: 1 });
+  metadataMap.set("sysml2:2002", { name: "part def CoolingPlate", line: 88, column: 5 });
+  metadataMap.set("modelica:3002", {
+    name: "model CoolingCircuit",
+    line: 32,
+    column: 1,
+    properties: { mass: 0.8 },
+  });
+  metadataMap.set("cad:4002", { name: "CoolingPlate.step", line: 1, column: 1, properties: { mass: 1.15 } });
+  metadataMap.set("cfd:7002", { name: "cooling_channel_su2.cfg", line: 10, column: 1 });
+
+  // Thread 103: Battery Bus Voltage (Conflicted: SysML 24V vs Modelica 12V)
+  const s2 = hypergraph.createThread(103, 3);
+  hypergraph.bindDomainNode(s2, ThreadDomain.Requirements, 1003);
+  hypergraph.bindDomainNode(s2, ThreadDomain.SysML2, 2003);
+  hypergraph.bindDomainNode(s2, ThreadDomain.Modelica, 3003);
+  hypergraph.markConflict(s2);
+
+  metadataMap.set("requirements:1003", { name: "REQ-VOLT-03 (Bus Voltage 10-48V)", line: 5, column: 1 });
+  metadataMap.set("sysml2:2003", {
+    name: "attribute def busVoltage = 24.0V",
+    line: 55,
+    column: 5,
+    properties: { voltage: 24.0 },
+  });
+  metadataMap.set("modelica:3003", {
+    name: "parameter Real V_bus = 12.0",
+    line: 20,
+    column: 1,
+    properties: { voltage: 12.0 },
+  });
+
+  conflictRegistry.set("conflict_bus_voltage", {
+    slot: s2,
+    threadId: 103,
+    sourceDomain: "sysml2",
+    sourceValue: 24.0,
+    sourceUnit: "V",
+    targetDomain: "modelica",
+    targetValue: 12.0,
+    targetUnit: "V",
+    min: 10.0,
+    max: 48.0,
+  });
+
+  if (db && typeof (db as any).saveThreadConflict === "function") {
+    db.saveThreadConflict({
+      conflictId: "conflict_bus_voltage",
+      slot: s2,
+      sourceDomain: "sysml2",
+      sourceValue: 24.0,
+      sourceUnit: "V",
+      targetDomain: "modelica",
+      targetValue: 12.0,
+      targetUnit: "V",
+      min: 10.0,
+      max: 48.0,
+      status: "conflicted",
+    });
+  }
+
+  if (persist) {
+    persist();
+  }
 }

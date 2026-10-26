@@ -12,13 +12,12 @@
 import { parseSpiceNumber } from "../parser/spice-parser.js";
 import type { SpiceCircuit, SpiceComponent, TransientOptions, TransientResult } from "../types.js";
 import {
+  DenseLU,
   DenseMatrix,
   buildMnaIndexing,
   flattenSpiceCircuit,
-  solveLinearSystem,
   stampConductance,
   stampCurrentSource,
-  stampVoltageSource,
 } from "./mna.js";
 import { solveOp } from "./op.js";
 
@@ -130,6 +129,87 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
 
   const matrix = new DenseMatrix(indexing.totalSize);
   const rhs = new Float64Array(indexing.totalSize);
+  const nextSol = new Float64Array(indexing.totalSize);
+  const luSolver = new DenseLU(indexing.totalSize);
+
+  // Pre-assemble constant linear system matrix:
+  // 1. Resistors
+  for (const comp of components) {
+    const n1 = comp.nodes[0] ?? "";
+    const n2 = comp.nodes[1] ?? "";
+    if (comp.kind === "R") {
+      const rVal = comp.value ?? 1e3;
+      const g = rVal > 0 ? 1.0 / rVal : 1e12;
+      stampConductance(matrix, indexing, n1, n2, g);
+    }
+  }
+
+  // 2. Capacitors companion conductances
+  for (const cs of capStates) {
+    const n1 = cs.comp.nodes[0] ?? "";
+    const n2 = cs.comp.nodes[1] ?? "";
+    const Gc = method === "trapezoidal" ? (2.0 * cs.C) / h : cs.C / h;
+    stampConductance(matrix, indexing, n1, n2, Gc);
+  }
+
+  // 3. Inductors companion conductances
+  for (const ls of indStates) {
+    const n1 = ls.comp.nodes[0] ?? "";
+    const n2 = ls.comp.nodes[1] ?? "";
+    const Gl = method === "trapezoidal" ? h / (2.0 * ls.L) : h / ls.L;
+    stampConductance(matrix, indexing, n1, n2, Gl);
+  }
+
+  // 4. Voltage Sources and VCVS branch equations
+  for (const comp of components) {
+    const n1 = comp.nodes[0] ?? "";
+    const n2 = comp.nodes[1] ?? "";
+
+    if (comp.kind === "V") {
+      const branchIdx = indexing.branchToIdx.get(comp.name);
+      if (branchIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        if (i1 >= 0) {
+          matrix.add(i1, branchIdx, 1.0);
+          matrix.add(branchIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          matrix.add(i2, branchIdx, -1.0);
+          matrix.add(branchIdx, i2, -1.0);
+        }
+      }
+    } else if (comp.kind === "E" && comp.controlNodes) {
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
+        const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+
+        if (i1 >= 0) {
+          matrix.add(i1, bIdx, 1.0);
+          matrix.add(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          matrix.add(i2, bIdx, -1.0);
+          matrix.add(bIdx, i2, -1.0);
+        }
+        if (c1 >= 0) matrix.add(bIdx, c1, -gain);
+        if (c2 >= 0) matrix.add(bIdx, c2, gain);
+      }
+    }
+  }
+
+  // Factorize once before time stepping
+  if (!luSolver.factorize(matrix)) {
+    return {
+      time: timePoints,
+      nodeVoltages: nodeTrajectories,
+      branchCurrents: branchTrajectories,
+    };
+  }
 
   let t = 0;
 
@@ -152,111 +232,55 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
 
     t += h;
 
-    // Assemble MNA matrix at next time step t
-    matrix.clear();
+    // Assemble RHS at next time step t (zero allocations)
     rhs.fill(0);
 
-    // 1. Stamp Resistors
-    for (const comp of components) {
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
-
-      if (comp.kind === "R") {
-        const rVal = comp.value ?? 1e3;
-        const g = rVal > 0 ? 1.0 / rVal : 1e12;
-        stampConductance(matrix, indexing, n1, n2, g);
-      }
-    }
-
-    // 2. Stamp Capacitors (Companion Model)
+    // 1. Capacitors companion history currents
     for (const cs of capStates) {
       const n1 = cs.comp.nodes[0] ?? "";
       const n2 = cs.comp.nodes[1] ?? "";
+      const Gc = method === "trapezoidal" ? (2.0 * cs.C) / h : cs.C / h;
+      const Ieq = method === "trapezoidal" ? Gc * cs.vPrev + cs.iPrev : Gc * cs.vPrev;
 
-      let Gc: number;
-      let Ieq: number;
-
-      if (method === "trapezoidal") {
-        Gc = (2.0 * cs.C) / h;
-        Ieq = Gc * cs.vPrev + cs.iPrev;
-      } else {
-        // Backward Euler
-        Gc = cs.C / h;
-        Ieq = Gc * cs.vPrev;
-      }
-
-      stampConductance(matrix, indexing, n1, n2, Gc);
-      // Ieq enters node 0 (positive), leaves node 1 (negative)
       const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
       const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
       if (i1 >= 0) rhs[i1] = (rhs[i1] ?? 0) + Ieq;
       if (i2 >= 0) rhs[i2] = (rhs[i2] ?? 0) - Ieq;
     }
 
-    // 3. Stamp Inductors (Companion Model)
+    // 2. Inductors companion history currents
     for (const ls of indStates) {
       const n1 = ls.comp.nodes[0] ?? "";
       const n2 = ls.comp.nodes[1] ?? "";
+      const Gl = method === "trapezoidal" ? h / (2.0 * ls.L) : h / ls.L;
+      const Ieq = method === "trapezoidal" ? ls.iPrev + Gl * ls.vPrev : ls.iPrev;
 
-      let Gl: number;
-      let Ieq: number;
-
-      if (method === "trapezoidal") {
-        Gl = h / (2.0 * ls.L);
-        Ieq = ls.iPrev + Gl * ls.vPrev;
-      } else {
-        // Backward Euler
-        Gl = h / ls.L;
-        Ieq = ls.iPrev;
-      }
-
-      stampConductance(matrix, indexing, n1, n2, Gl);
-      // Ieq leaves node 0, enters node 1
       const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
       const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
       if (i1 >= 0) rhs[i1] = (rhs[i1] ?? 0) - Ieq;
       if (i2 >= 0) rhs[i2] = (rhs[i2] ?? 0) + Ieq;
     }
 
-    // 4. Stamp Time-Varying Sources
+    // 3. Time-Varying Sources
     for (const comp of components) {
       const n1 = comp.nodes[0] ?? "";
       const n2 = comp.nodes[1] ?? "";
 
       if (comp.kind === "V") {
-        const vNow = evaluateSourceWaveform(comp, t);
-        stampVoltageSource(matrix, rhs, indexing, comp.name, n1, n2, vNow);
+        const branchIdx = indexing.branchToIdx.get(comp.name);
+        if (branchIdx !== undefined) {
+          rhs[branchIdx] = evaluateSourceWaveform(comp, t);
+        }
       } else if (comp.kind === "I") {
         const iNow = evaluateSourceWaveform(comp, t);
         stampCurrentSource(rhs, indexing, n1, n2, iNow);
-      } else if (comp.kind === "E" && comp.controlNodes) {
-        const bIdx = indexing.branchToIdx.get(comp.name);
-        if (bIdx !== undefined) {
-          const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-          const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-          const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
-          const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
-          const gain = comp.gain ?? comp.value ?? 1.0;
-
-          if (i1 >= 0) {
-            matrix.add(i1, bIdx, 1.0);
-            matrix.add(bIdx, i1, 1.0);
-          }
-          if (i2 >= 0) {
-            matrix.add(i2, bIdx, -1.0);
-            matrix.add(bIdx, i2, -1.0);
-          }
-          if (c1 >= 0) matrix.add(bIdx, c1, -gain);
-          if (c2 >= 0) matrix.add(bIdx, c2, gain);
-        }
       }
     }
 
-    // 5. Solve linear system for next time point
-    const nextSol = solveLinearSystem(matrix, rhs);
-    if (!nextSol) break; // Singular matrix
+    // 4. Solve linear system in-place in O(N^2) (zero allocations)
+    luSolver.solve(rhs, nextSol);
 
-    // 6. Update Capacitor and Inductor internal states for next step
+    // 5. Update Capacitor and Inductor internal states for next step
     for (const cs of capStates) {
       const v1 = getNodeVoltage(cs.comp.nodes[0], nextSol);
       const v2 = getNodeVoltage(cs.comp.nodes[1], nextSol);
@@ -289,7 +313,7 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
       ls.iPrev = iNew;
     }
 
-    currentSol = new Float64Array(nextSol);
+    currentSol.set(nextSol);
   }
 
   return {

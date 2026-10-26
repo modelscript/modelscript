@@ -1,6 +1,6 @@
 # Compiler Linter Rules Reference
 
-ModelScript includes a zero-allocation, multi-language static analysis engine that executes directly over linear WebAssembly Concrete Syntax Trees (`CompilerLint`) and memoized Salsa semantic queries (`lint__*` hooks). Across **7 languages**, the compiler enforces **over 200 diagnostic rules** before simulation or code generation begins.
+ModelScript includes a zero-allocation, multi-language static analysis engine that executes directly over linear WebAssembly Concrete Syntax Trees (`CompilerLint`) and memoized Salsa semantic queries (`lint__*` hooks). Across all **33 supported engineering languages**, the compiler enforces **over 250 diagnostic rules** before simulation or code generation begins.
 
 ## Running the Linter
 
@@ -405,3 +405,395 @@ CSV validation (`languages/csv/src/csv-parser.ts` — 6 rules) checks external s
 | `CSV_COLUMN_COUNT_MISMATCH` | `error`   | Data row has a different number of fields than the header row.                                                                                   |
 | `CSV_INVALID_NUMERIC_CELL`  | `error`   | Cell in a numeric signal column contains a non-numeric token (excluding `NaN`/`Inf` when explicitly allowed).                                    |
 | `CSV_NON_MONOTONIC_TIME`    | `warning` | The leading `time` column is not monotonically increasing ($t_k < t_{k-1}$), which invalidates time-series interpolation and trajectory diffing. |
+
+---
+
+## 8. STEP ISO 10303 CAD Exchange (`@modelscript/step`)
+
+The STEP linter (`languages/step/src/errors.ts` — 8 rules, `T1001`–`T1008`) validates Part 21 exchange structure syntax, entity referential integrity, and schema compliance across AP203, AP214, and AP242 definitions.
+
+| Code    | Rule Identifier               | Severity  | Diagnostic Condition / Message Template                                                             |
+| :------ | :---------------------------- | :-------- | :-------------------------------------------------------------------------------------------------- |
+| `T1001` | `step-syntax-error`           | `error`   | STEP file syntax error reported by the ISO 10303 Part 21 parser.                                    |
+| `T1002` | `missing-header-section`      | `error`   | STEP exchange file is missing the mandatory `HEADER;` section.                                      |
+| `T1003` | `missing-schema-declaration`  | `warning` | STEP header lacks a recognized `FILE_SCHEMA` declaration (e.g., AP203, AP214, AP242).               |
+| `T1004` | `missing-data-section`        | `error`   | STEP exchange file is missing the mandatory `DATA;` section.                                        |
+| `T1005` | `unresolved-entity-reference` | `error`   | Referenced STEP entity `#'<entityId>'` is not defined in the `DATA` section.                        |
+| `T1006` | `duplicate-entity-id`         | `error`   | Entity ID `#'<entityId>'` is declared more than once in the `DATA` section.                         |
+| `T1007` | `empty-data-section`          | `warning` | STEP `DATA` section contains no entity records.                                                     |
+| `T1008` | `unsupported-ap-schema`       | `warning` | Application Protocol schema `'<schema>'` may not support complete PMI or B-Rep geometry extraction. |
+
+---
+
+## 9. CFD Aerodynamics & Mesh Validation (`@modelscript/cfd`)
+
+CFD domain static analysis (`languages/cfd/src/errors.ts` — 8 rules, `C1001`–`C1008`) validates SU2 configuration decks, boundary condition coverage, and compressible fluid dynamics numerical stability bounds.
+
+| Code    | Rule Identifier              | Severity  | Diagnostic Condition / Message Template                                                                               |
+| :------ | :--------------------------- | :-------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `C1001` | `cfl-stability-violation`    | `warning` | Courant-Friedrichs-Lewy (CFL) number `'<cfl>'` exceeds recommended maximum limit for explicit time integration.       |
+| `C1002` | `unresolved-mesh-file`       | `error`   | Referenced computational grid mesh file `'<mesh>'` cannot be located or is invalid.                                   |
+| `C1003` | `missing-inlet-boundary`     | `warning` | CFD domain `'<name>'` lacks a declared inlet boundary condition or stagnation state.                                  |
+| `C1004` | `missing-outlet-boundary`    | `warning` | CFD domain `'<name>'` lacks a declared outlet boundary condition or static pressure exit.                             |
+| `C1005` | `unphysical-freestream-mach` | `error`   | Freestream Mach number `'<mach>'` is non-physical or outside valid subsonic/supersonic simulation bounds $[0, 25]$.   |
+| `C1006` | `unphysical-reynolds-number` | `error`   | Freestream Reynolds number `'<re>'` must be strictly positive ($Re > 0$).                                             |
+| `C1007` | `negative-surface-area`      | `error`   | Aerodynamic reference surface area `'<area>'` must be strictly positive ($A > 0$).                                    |
+| `C1008` | `turbulent-viscosity-ratio`  | `warning` | Turbulent eddy viscosity ratio $\mu_t / \mu$ `'<ratio>'` is non-physical or indicates numerical divergence in solver. |
+
+---
+
+## 10. FEA Structural Mechanics (`@modelscript/fea`)
+
+Finite Element static analysis (`languages/fea/src/errors.ts` — 8 rules, `F1001`–`F1008`) checks material properties, mesh topology degeneracy, boundary constraints, and continuum mechanics constitutive bounds.
+
+| Code    | Rule Identifier               | Severity  | Diagnostic Condition / Message Template                                                                                     |
+| :------ | :---------------------------- | :-------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| `F1001` | `zero-elastic-modulus`        | `error`   | Material `'<mat>'` has non-positive Young's modulus $E \le 0$.                                                              |
+| `F1002` | `poisson-ratio-limit`         | `error`   | Poisson's ratio $\nu$ for material `'<mat>'` violates continuum physical stability bounds ($-1.0 < \nu < 0.5$).             |
+| `F1003` | `unconstrained-rigid-body`    | `warning` | Structural mesh `'<name>'` has fewer than 6 constrained DOF boundary nodes; rigid-body motion may cause singular stiffness. |
+| `F1004` | `empty-mesh`                  | `error`   | FEA deck `'<name>'` does not contain any defined finite elements.                                                           |
+| `F1005` | `missing-material-definition` | `error`   | Element set `'<elset>'` lacks an assigned material specification or section property.                                       |
+| `F1006` | `degenerate-element-nodes`    | `error`   | Element `'<id>'` of type `'<type>'` contains duplicate or degenerate node references resulting in zero/negative volume.     |
+| `F1007` | `negative-yield-stress`       | `error`   | Plastic yield strength $\sigma_y$ for material `'<mat>'` must be strictly positive.                                         |
+| `F1008` | `negative-density`            | `warning` | Mass density $\rho$ for material `'<mat>'` must be strictly positive for dynamic/modal analysis.                            |
+
+---
+
+## 11. MSC Adams Multibody Dynamics (`@modelscript/adams`)
+
+MSC Adams pre-flight multibody kinematic linter (`languages/adams/src/lints/rules.ts` — 9 rules, `M7301`–`M7310`) validates spatial mechanisms, Grübler-Kutzbach degrees of freedom, inertia tensors, and marker connectivity.
+
+| Code    | Rule Identifier                | Severity  | Condition Checked / Message Template                                                                                                    |
+| :------ | :----------------------------- | :-------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| `M7301` | `overconstrained-mobility`     | `warning` | Overconstrained mechanism: Grübler-Kutzbach mobility $M < 0$ ($M = 6(N - 1) - \sum c_i$).                                               |
+| `M7302` | `gimbal-lock-orientation`      | `warning` | Euler orientation of marker `'<id>'` is near singularity (pitch angle near $\pm 90^\circ$).                                             |
+| `M7303` | `dangling-marker-reference`    | `error`   | Part, marker, joint, or force element references non-existent marker or part.                                                           |
+| `M7304` | `non-physical-inertia-tensor`  | `error`   | Non-positive principal inertia ($I_{xx}, I_{yy}, I_{zz} \le 0$) or violation of rigid-body triangle inequalities ($I_i + I_j \ge I_k$). |
+| `M7305` | `massless-moving-part`         | `error`   | Moving part `'<id>'` has zero or negative mass and is not kinematically grounded.                                                       |
+| `M7307` | `non-coincident-joint-markers` | `warning` | Joint connects non-coincident markers ($d > 0.05\,\text{m}$) for concentric revolute, spherical, or universal joints.                   |
+| `M7308` | `negative-force-parameter`     | `error`   | Force element `'<id>'` has negative stiffness ($K < 0$) or negative damping coefficient ($C < 0$).                                      |
+| `M7309` | `missing-ground-part`          | `error`   | Dataset does not define a ground reference body (`PART/... GROUND`).                                                                    |
+| `M7310` | `unconstrained-floating-part`  | `warning` | Moving part `'<id>'` is disconnected and has no kinematic joints or force elements attached.                                            |
+
+---
+
+## 12. Simulink Control Systems (`@modelscript/simulink`)
+
+Simulink pre-flight static analysis (`languages/simulink/src/lints/simulink-linters.ts` — 10 rules, `M7201`–`M7210`) validates block connectivity, direct-feedthrough algebraic loops using Tarjan's SCC algorithm, and sample times.
+
+| Code    | Rule Identifier             | Severity  | Condition Checked / Message Template                                                                                             |
+| :------ | :-------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------- |
+| `M7201` | `unconnected-input-port`    | `error`   | Input port on block `'<name>'` is unconnected. All inputs must be driven or terminated with a `Ground` block.                    |
+| `M7202` | `algebraic-loop`            | `error`   | Direct-feedthrough algebraic loop detected with no continuous integrator, memory state, or unit delay in feedback path.          |
+| `M7203` | `unresolved-subsystem`      | `error`   | SubSystem block `'<name>'` has no defined sub-diagram or unresolved library reference.                                           |
+| `M7204` | `invalid-port-index`        | `error`   | Block `'<name>'` has invalid port index (port numbers must be positive integers $1, 2, \dots$).                                  |
+| `M7205` | `invalid-sample-time`       | `error`   | Block `'<name>'` specifies invalid SampleTime (must be $\ge 0$ for discrete or $-1$ for inherited).                              |
+| `M7206` | `invalid-parameter`         | `error`   | Parameter contains non-finite value (`NaN`/`Inf`), unparseable numeric expression, or TransferFcn with zero leading denominator. |
+| `M7207` | `invalid-bus-selector`      | `error`   | `BusSelector` references signal absent from incoming bus schema or is connected to a non-composite block.                        |
+| `M7208` | `duplicate-block-name`      | `error`   | Duplicate block name `'<name>'` found within the same subsystem scope.                                                           |
+| `M7209` | `division-by-zero-risk`     | `warning` | `Product`/`Divide` block performs division with variable denominator; protect denominator signal against zero crossing.          |
+| `M7210` | `missing-initial-condition` | `info`    | Continuous `Integrator` block `'<name>'` does not specify an explicit `InitialCondition` parameter (defaulting to 0.0).          |
+
+---
+
+## 13. AUTOSAR Classic Architecture (`@modelscript/autosar`)
+
+AUTOSAR software architecture static verification (`languages/autosar/src/lints/rules.ts` — 10 rules, `M7401`–`M7410`) checks composition port bindings, RTE runnable event mappings, worst-case execution time (WCET), and CAN PDU signal packing.
+
+| Code    | Rule Identifier              | Severity  | Condition Checked / Message Template                                                                                      |
+| :------ | :--------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------ |
+| `M7401` | `unconnected-required-port`  | `error`   | Required port (R-Port) `'<port>'` on component prototype is unconnected in composition `'<swc>'`.                         |
+| `M7402` | `interface-mismatch`         | `error`   | Connector interface mismatch: Provider port provides `'<pIf>'` while Requester port requires `'<rIf>'`.                   |
+| `M7403` | `untyped-data-element`       | `warning` | Data element `'<elem>'` in sender-receiver interface `'<iface>'` has no data type reference.                              |
+| `M7404` | `duplicate-short-name`       | `error`   | Duplicate `SHORT-NAME` `'<name>'` detected within package scope `'<pkg>'`.                                                |
+| `M7405` | `wcet-exceeded`              | `error`   | Worst-Case Execution Time ($WCET$) of runnable `'<runnable>'` exceeds its periodic timing event period ($T_{\text{ev}}$). |
+| `M7406` | `signal-bit-overlap`         | `error`   | CAN signals `'<sig1>'` and `'<sig2>'` overlap bit positions in PDU `'<pdu>'`.                                             |
+| `M7407` | `pdu-payload-exceeded`       | `error`   | PDU `'<pdu>'` byte length exceeds CAN/LIN frame payload capacity.                                                         |
+| `M7408` | `cyclic-runnable-dependency` | `error`   | Cyclic inter-runnable data dependency detected across RTE synchronous reads/writes.                                       |
+| `M7409` | `missing-internal-behavior`  | `warning` | Atomic software component `'<swc>'` lacks an `INTERNAL-BEHAVIOR` definition.                                              |
+| `M7410` | `untriggered-runnable`       | `info`    | Runnable entity `'<name>'` in SWC has no associated RTE trigger event (`TimingEvent`, `DataReceivedEvent`).               |
+
+---
+
+## 14. URDF Robotics Kinematics (`@modelscript/urdf`)
+
+URDF robot description static verification (`languages/urdf/src/lints/rules.ts` — 7 rules, `M7501`–`M7508`) validates tree topologies, link mass/inertias, and joint movement limits.
+
+| Code    | Rule Identifier                   | Severity  | Condition Checked / Message Template                                                                                   |
+| :------ | :-------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `M7501` | `invalid-link-reference`          | `error`   | Joint `'<joint>'` references non-existent parent or child link, or link forms an unparented kinematic forest root.     |
+| `M7502` | `closed-kinematic-loop`           | `error`   | Closed kinematic loop or directed closed cycle detected (URDF requires a strictly acyclic tree with one base link).    |
+| `M7503` | `non-physical-link-inertia`       | `error`   | Link `'<link>'` has non-positive mass ($m \le 0$), non-positive inertia, or violates rigid-body triangle inequalities. |
+| `M7504` | `missing-or-invalid-joint-limits` | `error`   | Non-continuous joint `'<joint>'` is missing `<limit>` tag or has non-positive effort/velocity bounds.                  |
+| `M7505` | `missing-mesh-filename`           | `warning` | Visual or collision geometry `<mesh>` element in link `'<link>'` is missing a `filename` URI attribute.                |
+| `M7507` | `zero-length-joint-axis`          | `error`   | Joint `'<joint>'` has a zero-length rotation/translation `<axis>` vector ($\|\mathbf{u}\| = 0$).                       |
+| `M7508` | `inverted-joint-limits`           | `error`   | Joint `'<joint>'` has inverted angular/prismatic limits ($\text{lower} > \text{upper}$).                               |
+
+---
+
+## 15. SPICE Electronic Circuits (`@modelscript/spice`)
+
+SPICE netlist analysis (`languages/spice/src/lints/rules.ts` — 10 rules, `M7101`–`M7110`) validates DC operating points, source loops, and subcircuit pinout parity before numerical transient integration.
+
+| Code    | Rule Identifier               | Severity  | Condition Checked / Message Template                                                                                                |
+| :------ | :---------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| `M7101` | `spice-floating-node`         | `error`   | Floating node `'<node>'` has no DC reference path to ground (Node 0), causing singular conductance.                                 |
+| `M7102` | `spice-voltage-loop`          | `error`   | Voltage source `'<vName>'` forms a closed loop of ideal voltage sources without series resistance.                                  |
+| `M7103` | `spice-current-cutset`        | `error`   | Node `'<node>'` is connected strictly to ideal current sources (current cutset violating KCL).                                      |
+| `M7104` | `spice-unresolved-subcircuit` | `error`   | Subcircuit `'.subckt <name>'` is instantiated by `'<comp>'` but is not defined in the netlist scope.                                |
+| `M7105` | `spice-invalid-passive-value` | `error`   | Passive component ($R, L, C$) has invalid non-positive or non-finite value $\le 0$.                                                 |
+| `M7106` | `spice-timestep-violation`    | `error`   | Transient analysis directive `.tran` specifies invalid timestep ($t_{\text{step}} \le 0$) or $t_{\text{stop}} \le t_{\text{step}}$. |
+| `M7107` | `spice-duplicate-device`      | `error`   | Duplicate device instance name `'<comp>'` detected in circuit scope.                                                                |
+| `M7108` | `spice-missing-model`         | `error`   | Active semiconductor device (diode, BJT, MOSFET) references undefined `.model` card `'<model>'`.                                    |
+| `M7109` | `spice-pin-count-mismatch`    | `error`   | Subcircuit instance `'<comp>'` connects $N$ pins but definition `'.subckt'` expects $M$ ports.                                      |
+| `M7110` | `spice-malformed-directive`   | `warning` | Malformed or unsupported SPICE dot directive.                                                                                       |
+
+---
+
+## 16. ReqIF Requirements Interchange (`@modelscript/reqif`)
+
+Requirements engineering static validation (`languages/reqif/src/lints/rules.ts` — 10 rules, `M7001`–`M7010`) checks traceability graph completeness, formal contracts, and circularity.
+
+| Code    | Rule Identifier                  | Severity  | Condition Checked / Message Template                                                             |
+| :------ | :------------------------------- | :-------- | :----------------------------------------------------------------------------------------------- |
+| `M7001` | `dangling-requirement-relation`  | `error`   | Requirement relation `'<rel>'` references missing source or target requirement `'<id>'`.         |
+| `M7002` | `type-attribute-mismatch`        | `error`   | Attribute `'<attr>'` expected type `'<expected>'`, but received value `'<actual>'`.              |
+| `M7003` | `circular-requirement-hierarchy` | `error`   | Circular requirement hierarchy detected at `'<id>'` along cycle path.                            |
+| `M7004` | `unverified-leaf-requirement`    | `warning` | Leaf requirement `'<id>'` has no outgoing `verifies` or `satisfies` relationship.                |
+| `M7005` | `unbounded-formal-contract`      | `warning` | Requirement `'<id>'` is marked safety/functional but lacks a bounded mathematical contract.      |
+| `M7006` | `duplicate-spec-object-id`       | `error`   | Duplicate requirement identifier `'<id>'` declared in specification.                             |
+| `M7007` | `missing-mandatory-attribute`    | `error`   | Requirement `'<id>'` is missing mandatory schema attribute `'<attr>'`.                           |
+| `M7008` | `empty-specification`            | `warning` | Specification `'<id>'` contains no requirement hierarchies.                                      |
+| `M7009` | `unresolved-type-reference`      | `error`   | SpecObject element references undefined `SpecObjectType` `'<ref>'`.                              |
+| `M7010` | `invalid-contract-comparator`    | `error`   | Formal contract specifies invalid mathematical comparator (expected `<=`, `>=`, `<`, `>`, `==`). |
+
+---
+
+## 17. OLGA Multiphase Flow Assurance (`@modelscript/olga`)
+
+OLGA flow assurance static analysis (`languages/olga/src/lints/index.ts` — 13 rules, `M7001`–`M7013`) checks subsea flowline hydrodynamics, severe riser slugging, wax appearance, NACE sour corrosion, and PVT table validity.
+
+| Code    | Rule Identifier                     | Severity  | Condition Checked / Message Template                                                                                  |
+| :------ | :---------------------------------- | :-------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `M7001` | `cfl-condition-violation`           | `warning` | Pipe spatial discretization $\Delta x$ violates Courant-Friedrichs-Lewy (CFL) limit for configured maximum time step. |
+| `M7002` | `invalid-pipe-dimensions`           | `error`   | Pipe has non-positive diameter ($D \le 0$), length ($L \le 0$), or negative absolute wall roughness ($k_s < 0$).      |
+| `M7003` | `missing-boundary-condition`        | `error`   | Flowpath is missing an inlet mass/pressure source or terminal separator boundary condition.                           |
+| `M7004` | `steep-elevation-warning`           | `info`    | Pipe has steep vertical inclination ($\theta > 70^\circ$); monitor for severe riser slugging.                         |
+| `M7005` | `fully-closed-choke-hazard`         | `warning` | Production choke valve is fully closed ($\text{opening} = 0.0$); flowline shut-in overpressurization hazard.          |
+| `M7006` | `severe-slugging-hazard`            | `warning` | Deep seabed tieback followed by steep riser without active topside slug controller; high severe slugging risk.        |
+| `M7007` | `pig-stuck-hazard`                  | `error`   | Pipeline inspection pig friction force exceeds maximum upstream hydraulic drive capability; catastrophic stuck pig.   |
+| `M7008` | `pvt-table-missing-or-invalid`      | `warning` | Fluid PVT table file missing, invalid format (`.tab`/`.pvt`), or boundary conditions outside tabulated bounds.        |
+| `M7009` | `wax-deposition-risk`               | `warning` | Flowpath ambient temperature below Wax Appearance Temperature ($WAT$) without thermal insulation.                     |
+| `M7010` | `sand-erosion-or-dropout-hazard`    | `warning` | Flow velocity below sand transport threshold ($v < 0.7\,\text{m/s}$) or exceeds API RP 14E erosional velocity limit.  |
+| `M7011` | `sour-service-metallurgy-violation` | `error`   | Flowpath operates in NACE MR0175/ISO 15156 sour region ($p_{\text{H}_2\text{S}}$, pH) exceeding standard metallurgy.  |
+| `M7012` | `asphaltene-precipitation-hazard`   | `error`   | Operating inside Asphaltene Onset Pressure (AOP) precipitation envelope ($CII$ colloidal instability).                |
+| `M7013` | `heatexchanger-parameter-violation` | `error`   | Heat exchanger position outside flowpath length, non-finite duty ($Q$), or non-positive overall $UA \le 0$.           |
+
+---
+
+## 18. LPS Pipeline Networks (`@modelscript/lps`)
+
+Liquid and gas pipeline simulation static analysis (`languages/lps/src/lints/index.ts` — 12 rules, `M8001`–`M8012`) checks MAOP compliance, compressor surge, cavitation, line pack, and transient water hammer hazards.
+
+| Code    | Rule Identifier               | Severity  | Condition Checked / Message Template                                                                                     |
+| :------ | :---------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `M8001` | `maop-exceeded`               | `error`   | Pipe node pressure exceeds Maximum Allowable Operating Pressure ($MAOP$) defined by ASME B31.4 / B31.8.                  |
+| `M8002` | `compressor-surge-hazard`     | `warning` | Compressor operating pressure ratio exceeds limit or throughput setpoint is below aerodynamic surge limit.               |
+| `M8003` | `compressor-stonewall-limit`  | `warning` | Compressor throughput setpoint exceeds maximum stonewall (choke) limit.                                                  |
+| `M8004` | `unconnected-pipeline-node`   | `error`   | Node is isolated with no connecting pipe segments or hydraulic equipment links.                                          |
+| `M8005` | `delivery-pressure-deficit`   | `error`   | Delivery off-take node is hydraulically unreachable from any supply source or underground storage cavern.                |
+| `M8006` | `erosional-velocity-hazard`   | `warning` | Gas velocity exceeds API RP 14E erosional noise and pipe wear threshold ($v > 20\,\text{m/s}$).                          |
+| `M8007` | `liquid-column-separation`    | `error`   | Node pressure drops near vapor pressure ($p \approx p_{\text{vap}}$), risking water hammer column separation on closure. |
+| `M8008` | `hydrogen-embrittlement-risk` | `warning` | Gas mixture contains $>10\%$ $\text{H}_2$; verify steel fracture toughness and compressor power re-rating.               |
+| `M8009` | `batch-transmix-excess`       | `warning` | Liquid pipeline batch volume is below $1000\,\text{m}^3$; interface transmix contamination degrades refined product.     |
+| `M8010` | `joule-thomson-freezing`      | `warning` | Severe regulator throttling pressure drop without a preheater, creating severe Joule-Thomson hydrate/ice freezing risk.  |
+| `M8011` | `pump-npsh-deficit`           | `error`   | Centrifugal pump available $NPSH_a$ is below required $NPSH_r$, causing impeller cavitation damage.                      |
+| `M8012` | `line-pack-depletion-risk`    | `warning` | Total delivery customer demand exceeds continuous upstream supply; pipeline line pack inventory will deplete.            |
+
+---
+
+## 19. EASY5 Systems Modeling (`@modelscript/easy5`)
+
+EASY5 static analysis (`languages/easy5/src/lints/index.ts` — 12 rules, `M7001`–`M7012`) checks block connections, continuous states, improper transfer functions, parameter bounds, and user Fortran code.
+
+| Code    | Rule Identifier              | Severity  | Condition Checked / Message Template                                                                                 |
+| :------ | :--------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------- |
+| `M7001` | `unconnected-input-port`     | `warning` | Input port `'<comp>.<port>'` has no incoming connection.                                                             |
+| `M7002` | `csmf-algebraic-loop`        | `error`   | Direct-feedthrough algebraic loop detected with no continuous state or delay in loop cycle.                          |
+| `M7003` | `duplicate-component-id`     | `error`   | Duplicate component identifier `'<id>'` in EASY5 schematic model.                                                    |
+| `M7004` | `uninitialized-state`        | `info`    | Continuous state in component `'<comp>'` defaults to 0.0 with no explicit initial condition $S_0$.                   |
+| `M7005` | `improper-transfer-function` | `error`   | Transfer function in `'<comp>'` is improper: numerator degree ($\text{deg}_N$) exceeds denominator ($\text{deg}_D$). |
+| `M7006` | `parameter-out-of-bounds`    | `error`   | Component parameter is outside valid physical or numerical bounds.                                                   |
+| `M7007` | `port-dimension-mismatch`    | `error`   | Vector connection dimension mismatch from source (dim $N$) to target (dim $M$).                                      |
+| `M7008` | `state-index-out-of-bounds`  | `error`   | State index $S(k)$ in component `'<comp>'` exceeds allocated continuous states ($k > S_{\max}$).                     |
+| `M7009` | `sample-rate-mismatch`       | `warning` | Sample rate mismatch between blocks without an intermediate rate transition block.                                   |
+| `M7010` | `user-fortran-syntax-error`  | `error`   | Embedded user Fortran subroutine in component `'<comp>'` contains compilation or syntax defects.                     |
+| `M7011` | `unstable-linear-pole`       | `warning` | Component `'<comp>'` has open-loop pole in right-half plane ($\text{Re}(\lambda) > 0$), indicating instability.      |
+| `M7012` | `table-extrapolation-hazard` | `warning` | Component references function generation table without bounded extrapolation protection.                             |
+
+---
+
+## 20. ROCETS Rocket Engine Transients (`@modelscript/rocets`)
+
+ROCETS liquid rocket propulsion static analysis (`languages/rocets/src/lints/index.ts` — 14 rules, `M8001`–`M8014`) checks turbopump shaft power balances, cavitation, combustion temperature limits, and fluid tables.
+
+| Code    | Rule Identifier                | Severity  | Condition Checked / Message Template                                                                             |
+| :------ | :----------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------- |
+| `M8001` | `unconnected-fluid-port`       | `error`   | Unconnected fluid port on propellant component.                                                                  |
+| `M8002` | `fluid-type-mismatch`          | `error`   | Incompatible propellant fluid types connected across line junction (e.g., $\text{LH}_2$ to $\text{LOX}$).        |
+| `M8003` | `shaft-power-imbalance`        | `error`   | Turbopump mechanical shaft power imbalance between driving turbine and driven impellers ($\Delta P > \epsilon$). |
+| `M8004` | `unbalanced-flow-split`        | `error`   | Unbalanced mass flow rate conservation across propellant manifold junction.                                      |
+| `M8005` | `pump-cavitation-risk`         | `warning` | Turbopump net positive suction pressure margin is insufficient, risking inducer/impeller cavitation.             |
+| `M8006` | `negative-chamber-pressure`    | `error`   | Thrust chamber or gas generator stagnation pressure is negative ($p_c \le 0$).                                   |
+| `M8007` | `combustion-temperature-limit` | `warning` | Combustion chamber adiabatic flame temperature exceeds throat material structural limits ($T_c > T_{\max}$).     |
+| `M8008` | `invalid-valve-schedule`       | `error`   | Valve actuation profile specifies non-monotonic or negative time/area sequence.                                  |
+| `M8009` | `choked-flow-inconsistency`    | `warning` | Convergent-divergent nozzle pressure ratio does not satisfy isentropic choked flow conditions.                   |
+| `M8010` | `user-fortran-routine-error`   | `error`   | User Fortran routine compilation or runtime interface defect.                                                    |
+| `M8011` | `extreme-mixture-ratio`        | `warning` | Oxidizer-to-fuel mixture ratio ($OF$) is outside stable combustion limits.                                       |
+| `M8012` | `missing-fluid-table`          | `error`   | Thermodynamic propellant property table (e.g., hydrogen, methane, oxygen) is not loaded in session.              |
+| `M8013` | `turbine-overspeed-hazard`     | `warning` | Turbopump shaft rotational speed exceeds maximum allowable mechanical burst limit ($RPM > RPM_{\max}$).          |
+| `M8014` | `closed-flow-circuit`          | `error`   | Flowpath forms a completely isolated deadhead loop with no expansion tank or relief vent.                        |
+
+---
+
+## 21. CCSDS Spacecraft Telemetry & Ephemeris (`@modelscript/ccsds`)
+
+CCSDS mission operations analysis (`languages/ccsds/src/lints/rules.ts` — 8 rules, `M8201`–`M8208`) validates orbital mechanics bounds, frame validity, ephemeris monotonicity, and telemetry packet bit layouts.
+
+| Code    | Rule Identifier                  | Severity  | Condition Checked / Message Template                                                                               |
+| :------ | :------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------- |
+| `M8201` | `sub-orbital-impact-trajectory`  | `error`   | Sub-orbital pericenter radius $r_p < R_\oplus$ ($6378.1\,\text{km}$), resulting in atmospheric re-entry or impact. |
+| `M8202` | `telemetry-bit-packing-overlap`  | `error`   | Telemetry bit packing overlap in container: parameter entry starts at bit before previous entry finishes.          |
+| `M8203` | `hyperbolic-unbounded-orbit`     | `warning` | Orbit eccentricity $e \ge 1.0$ indicates an unbounded hyperbolic or parabolic escape trajectory.                   |
+| `M8204` | `unrecognized-reference-frame`   | `error`   | Unrecognized or non-inertial ephemeris reference frame (expected `EME2000`, `GCRF`, `ITRF`).                       |
+| `M8205` | `missing-epoch-timestamp`        | `error`   | Ephemeris trajectory point missing valid UTC ISO 8601 epoch timestamp.                                             |
+| `M8206` | `non-monotonic-ephemeris-epochs` | `error`   | Ephemeris timestamp $t_k$ is not strictly greater than previous timestamp $t_{k-1}$ ($t_k \le t_{k-1}$).           |
+| `M8207` | `duplicate-parameter-name`       | `error`   | Duplicate telemetry parameter declaration in XTCE telemetry schema.                                                |
+| `M8208` | `negative-spacecraft-mass`       | `error`   | Spacecraft wet or dry mass is non-positive ($m \le 0\,\text{kg}$).                                                 |
+
+---
+
+## 22. EnergyPlus Building Energy (`@modelscript/energyplus`)
+
+Building energy static analysis (`languages/energyplus/src/lints/rules.ts` — 8 rules, `M7901`–`M7908`) validates geometric thermal zones, surface planar convexity, HVAC zone associations, and materials.
+
+| Code    | Rule Identifier                | Severity  | Condition Checked / Message Template                                                                    |
+| :------ | :----------------------------- | :-------- | :------------------------------------------------------------------------------------------------------ |
+| `M7901` | `unmatched-interzone-surface`  | `error`   | Interzone surface specifies outside boundary object which does not exist or has mismatched reciprocal.  |
+| `M7902` | `non-convex-surface-polygon`   | `warning` | Surface polygon violates planar convexity, which impairs solar raytracing and view factor calculations. |
+| `M7903` | `missing-thermal-properties`   | `error`   | Material has non-positive thermal conductivity ($k \le 0$), density ($\rho \le 0$), or specific heat.   |
+| `M7904` | `unconnected-hvac-zone`        | `error`   | HVAC component references non-existent thermal zone.                                                    |
+| `M7905` | `excessive-surface-absorption` | `warning` | Material solar or thermal absorptance coefficient exceeds physical maximum of 1.0 ($\alpha > 1.0$).     |
+| `M7906` | `duplicate-zone-name`          | `error`   | Duplicate thermal zone identifier detected in building model.                                           |
+| `M7907` | `unreferenced-construction`    | `error`   | Building surface references undefined layered construction.                                             |
+| `M7908` | `zero-thickness-material`      | `error`   | Opaque construction material has invalid non-positive thickness ($d \le 0\,\text{m}$).                  |
+
+---
+
+## 23. EPANET Water Distribution Networks (`@modelscript/epanet`)
+
+EPANET static analysis (`languages/epanet/src/lints/rules.ts` — 8 rules, `M8101`–`M8108`) verifies water hydraulic network connectivity, pump head curves, pipe geometry, and junction pressures.
+
+| Code    | Rule Identifier             | Severity  | Condition Checked / Message Template                                                                                  |
+| :------ | :-------------------------- | :-------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `M8101` | `isolated-hydraulic-node`   | `error`   | Hydraulic node is isolated with no connecting pipes, valves, or pumps.                                                |
+| `M8102` | `negative-pressure-risk`    | `warning` | Junction elevation exceeds maximum network reservoir head ($z > H_{\max}$), risking negative pressure and cavitation. |
+| `M8103` | `non-monotonic-pump-curve`  | `error`   | Pump head curve violates decreasing monotonicity: head increases as flow rate increases ($dH/dQ > 0$).                |
+| `M8104` | `zero-length-pipe`          | `error`   | Pipe link has non-positive physical length ($L \le 0\,\text{m}$).                                                     |
+| `M8105` | `zero-diameter-pipe`        | `error`   | Pipe link has non-positive internal diameter ($D \le 0\,\text{mm}$).                                                  |
+| `M8106` | `duplicate-node-id`         | `error`   | Duplicate node identifier detected in water network topology.                                                         |
+| `M8107` | `duplicate-link-id`         | `error`   | Duplicate link identifier detected in water network topology.                                                         |
+| `M8108` | `unreferenced-node-in-link` | `error`   | Pipe, valve, or pump link references undefined endpoint node identifier.                                              |
+
+---
+
+## 24. OpenDRIVE Autonomous Vehicle Networks (`@modelscript/opendrive`)
+
+OpenDRIVE roadway network verification (`languages/opendrive/src/lints/rules.ts` — 8 rules, `M7801`–`M7808`) validates road geometry tangency, clothoid curvature, lane linkages, and road gradients.
+
+| Code    | Rule Identifier                 | Severity  | Condition Checked / Message Template                                                                           |
+| :------ | :------------------------------ | :-------- | :------------------------------------------------------------------------------------------------------------- |
+| `M7801` | `road-tangency-discontinuity`   | `error`   | Tangency discontinuity between road geometry segments (position gap $\Delta s$ or heading gap $\Delta\theta$). |
+| `M7802` | `unlinked-lane-boundary`        | `error`   | Unlinked lane connection: lane links to non-existent predecessor or successor lane ID.                         |
+| `M7803` | `clothoid-curvature-divergence` | `error`   | Clothoid curvature rate of change ($\dot{\kappa}$) diverges ($> 0.1\,\text{m}^{-2}$).                          |
+| `M7804` | `overlapping-junction-paths`    | `warning` | Connecting paths in junction conflict without assigned traffic signal or right-of-way priority.                |
+| `M7805` | `elevation-gradient-extreme`    | `warning` | Extreme vertical road elevation slope ($> 15\%$) exceeds highway safety limits.                                |
+| `M7806` | `negative-lane-width`           | `error`   | Negative or zero lane width ($w \le 0\,\text{m}$) in lane section polynomial profile.                          |
+| `M7807` | `duplicate-road-id`             | `error`   | Duplicate road ID detected in roadway network.                                                                 |
+| `M7808` | `missing-center-lane`           | `error`   | Road lane section is missing mandatory center reference lane (Lane ID 0).                                      |
+
+---
+
+## 25. PLCopen Industrial Automation (`@modelscript/plcopen`)
+
+PLCopen IEC 61131-3 static code analysis (`languages/plcopen/src/lints/rules.ts` — 10 rules, `M7701`–`M7710`) checks Structured Text POUs, task overruns, recursion, I/O collisions, and timers.
+
+| Code    | Rule Identifier            | Severity  | Condition Checked / Message Template                                                                             |
+| :------ | :------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------- |
+| `M7701` | `unassigned-variable-read` | `error`   | Variable is read before being assigned or initialized in POU body.                                               |
+| `M7702` | `cyclic-task-overrun`      | `warning` | Computational complexity in periodic task may exceed assigned cyclic interval ($T_{\text{task}}$).               |
+| `M7703` | `recursive-pou-call`       | `error`   | Recursive invocation of POU detected (recursion is strictly prohibited by IEC 61131-3 for deterministic timing). |
+| `M7704` | `io-mapping-collision`     | `error`   | Hardware I/O address collision: multiple output variables assigned to the same physical address (`%QX...`).      |
+| `M7705` | `type-mismatch-assignment` | `error`   | Type mismatch in assignment: expression type is incompatible with target variable type.                          |
+| `M7706` | `timer-preset-negative`    | `error`   | Timer preset duration ($PT$) for `TON`/`TOF`/`TP` function block cannot be negative ($PT < T\#0s$).              |
+| `M7707` | `unbounded-loop-detected`  | `warning` | `WHILE` or `REPEAT` loop in POU lacks a statically provable deterministic termination bound.                     |
+| `M7708` | `unknown-pou-type`         | `error`   | Instantiation of unknown or unresolvable function block or POU type.                                             |
+| `M7709` | `unreachable-code`         | `warning` | Unreachable statements detected following unconditional `RETURN`, `EXIT`, or jump.                               |
+| `M7710` | `invalid-task-interval`    | `error`   | Periodic task configuration specifies invalid or non-positive execution interval ($T \le 0$).                    |
+
+---
+
+## 26. Verilog-A Analog Behavioral Modeling (`@modelscript/verilog-a`)
+
+Verilog-A analog behavioral static verification (`languages/verilog-a/src/lints/rules.ts` — 10 rules, `M7601`–`M7610`) checks constitutive analog branch equations, `ddt()` continuity, and disciplined nodes.
+
+| Code    | Rule Identifier                       | Severity  | Condition Checked / Message Template                                                                |
+| :------ | :------------------------------------ | :-------- | :-------------------------------------------------------------------------------------------------- |
+| `M7601` | `unassigned-analog-branch`            | `error`   | Electrical port pair has no constitutive branch equation in `analog` block.                         |
+| `M7602` | `discontinuous-derivative-expression` | `warning` | Discontinuous time-derivative operator `ddt()` or `idt()` used inside conditional branch statement. |
+| `M7603` | `invalid-parameter-range`             | `error`   | Parameter default value violates declared `from [...]` range bounds.                                |
+| `M7604` | `unbounded-exponential-growth`        | `warning` | Unbounded standard exponential `exp()` used instead of safe limited analog exponential `limexp()`.  |
+| `M7605` | `port-discipline-mismatch`            | `error`   | Port has no declared discipline (`electrical`, `rotational`, etc.) or mismatches module domain.     |
+| `M7606` | `undefined-node-reference`            | `error`   | Analog branch access `V(p, n)` or `I(p, n)` references undeclared internal node.                    |
+| `M7607` | `duplicate-module-declaration`        | `error`   | Duplicate module identifier declaration in translation unit.                                        |
+| `M7608` | `zero-resistance-branch`              | `error`   | Potential contribution `V(p, n) <+ 0.0` forms an unconstrained ideal short-circuit branch.          |
+| `M7609` | `floating-internal-node`              | `warning` | Internal node is declared but never referenced in any constitutive analog branch equation.          |
+| `M7610` | `unsupported-analog-primitive`        | `warning` | Unsupported or deprecated analog primitive statement.                                               |
+
+---
+
+## 27. Fortran Numerical Subroutines (`@modelscript/fortran`)
+
+Fortran static analysis (`languages/fortran/src/lints/index.ts` — 10 rules, `M4070`–`M4079`) checks legacy simulation subroutines against strict typing, DO-loop mutation, storage bounds, and COMMON blocks.
+
+| Code    | Rule Identifier             | Severity  | Condition Checked / Message Template                                                                    |
+| :------ | :-------------------------- | :-------- | :------------------------------------------------------------------------------------------------------ |
+| `M4070` | `undeclared-variable`       | `error`   | Variable referenced without explicit declaration under strict typing (`IMPLICIT NONE`).                 |
+| `M4071` | `uninitialized-variable`    | `warning` | Local variable may be read before being assigned a value.                                               |
+| `M4072` | `constant-division-by-zero` | `error`   | Division by constant zero detected in arithmetic expression.                                            |
+| `M4073` | `storage-bounds-overflow`   | `error`   | Static array subscript index exceeds declared dimension bounds ($i > N_{\max}$).                        |
+| `M4074` | `dead-code-after-return`    | `warning` | Unreachable statements detected following unconditional `RETURN` or `STOP`.                             |
+| `M4075` | `do-loop-index-mutation`    | `error`   | `DO`-loop iteration index variable is modified within its loop body.                                    |
+| `M4076` | `procedural-algebraic-loop` | `warning` | Procedural algebraic loop / mutual cyclic variable assignment dependency detected in subroutine.        |
+| `M4077` | `common-block-mismatch`     | `error`   | `COMMON` block definition size or type sequence conflict across translation units.                      |
+| `M4078` | `array-dimension-underflow` | `error`   | Array dimension index underflows declared lower bound ($i < 1$).                                        |
+| `M4079` | `obsolete-arithmetic-if`    | `info`    | Three-way arithmetic `IF (expr) n1, n2, n3` is obsolescent; prefer structured `IF (...) THEN ... ELSE`. |
+
+---
+
+## 28. C Numerical & Control Blocks (`@modelscript/c`)
+
+C static analysis (`languages/c/src/lints/rules.ts` — 10 rules, `M8401`–`M8410`) checks procedural C blocks, S-functions, and control algorithms against memory safety, division by zero, uninitialized reads, prototype mismatches, and algebraic loops.
+
+| Code    | Rule Identifier               | Severity  | Condition Checked / Message Template                                                      |
+| :------ | :---------------------------- | :-------- | :---------------------------------------------------------------------------------------- |
+| `M8401` | `uninitialized-variable`      | `warning` | Local variable may be read before being assigned or initialized.                          |
+| `M8402` | `constant-division-by-zero`   | `error`   | Division or modulo by constant zero detected in arithmetic expression.                    |
+| `M8403` | `array-bounds-overflow`       | `error`   | Static array subscript index exceeds declared dimension bound ($i \ge N$).                |
+| `M8404` | `unreachable-code`            | `warning` | Unreachable statements detected following unconditional `return`, `break`, or `goto`.     |
+| `M8405` | `assignment-in-conditional`   | `warning` | Assignment operator `=` used inside conditional expression instead of comparison `==`.    |
+| `M8406` | `algebraic-dependency-cycle`  | `error`   | Procedural algebraic loop / mutual cyclic variable assignment detected without state lag. |
+| `M8407` | `null-pointer-dereference`    | `error`   | Dereference of statically known `NULL` pointer constant.                                  |
+| `M8408` | `function-prototype-mismatch` | `error`   | Function definition signature conflicts with previously declared prototype.               |
+| `M8409` | `missing-return-value`        | `error`   | Non-void function reaches end of body without returning a value.                          |
+| `M8410` | `implicit-lossy-conversion`   | `info`    | Floating-point value implicitly assigned to integer without explicit cast.                |

@@ -322,9 +322,9 @@ export class NativeShmCfdProvider extends BaseCfdProvider {
     }
   }
 
-  public async loadGeometry(_stepFileData: Uint8Array): Promise<void> {
-    // In shared memory mode, geometry is sent once via daemon
-    this.currentVtkBuffer = new Uint8Array([1, 2, 3, 4]); // mock slice
+  public async loadGeometry(stepFileData: Uint8Array): Promise<void> {
+    // In shared memory mode, geometry buffer is loaded directly or transmitted via daemon
+    this.currentVtkBuffer = stepFileData && stepFileData.length > 0 ? stepFileData : new Uint8Array(0);
   }
 
   public async getVtkBuffer(): Promise<Uint8Array | null> {

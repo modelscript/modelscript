@@ -2,7 +2,7 @@
 
 export {
   evaluateCombustion,
-  evaluateCombustion as evaluateCombustionCEA,
+  evaluateCombustionCEA,
   type CombustionProperties as CEACombustionResult,
   type CombustionProperties,
 } from "./combustion.js";

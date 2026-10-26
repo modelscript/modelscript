@@ -116,15 +116,21 @@ export function solveHydraulics(
   let iter = 0;
   let maxDeltaQ = 0.0;
 
+  // Pre-allocated flat buffers for zero-GC Newton iterations
+  const A11_inv = new Float64Array(numPipes);
+  const pipeHeadLoss = new Float64Array(numPipes);
+  const RHS = new Float64Array(numJunctions);
+  const H_new = new Float64Array(numJunctions);
+  const M_flat = new Float64Array(numJunctions * numJunctions);
+  const LScratch = new Float64Array(numJunctions * numJunctions);
+  const yScratch = new Float64Array(numJunctions);
+
   // Newton-Raphson / Global Gradient Method Iterations
   while (iter < maxIterations) {
     iter++;
 
     // 1. Build Diagonal matrix A11_inv and gradient flow elements
     // For pipe p: A11[p] = n * r_p * |Q_p|^(n-1)
-    const A11_inv = new Float64Array(numPipes);
-    const pipeHeadLoss = new Float64Array(numPipes);
-
     for (let p = 0; p < numPipes; p++) {
       const qVal = Q[p] ?? 0;
       const qAbs = Math.max(0.001, Math.abs(qVal));
@@ -133,10 +139,8 @@ export function solveHydraulics(
       pipeHeadLoss[p] = Math.sign(qVal) * rCoeff[p]! * Math.pow(qAbs, nExp);
     }
 
-    // 2. Build Junction Matrix M = A12^T * A11_inv * A12 (numJunctions x numJunctions)
-    // and RHS vector
-    const M: number[][] = Array.from({ length: numJunctions }, () => new Array(numJunctions).fill(0));
-    const RHS = new Float64Array(numJunctions);
+    // 2. Build Junction Matrix M = A12^T * A11_inv * A12 (flat numJunctions x numJunctions)
+    M_flat.fill(0);
 
     // Initial RHS = -qDemand
     for (let j = 0; j < numJunctions; j++) {
@@ -160,27 +164,33 @@ export function solveHydraulics(
       // Contribution to M and RHS
       if (j1 !== undefined && j2 !== undefined) {
         // Both are unknown junctions
-        M[j1]![j1]! += dVal;
-        M[j2]![j2]! += dVal;
-        M[j1]![j2]! -= dVal;
-        M[j2]![j1]! -= dVal;
+        const idx11 = j1 * numJunctions + j1;
+        const idx22 = j2 * numJunctions + j2;
+        const idx12 = j1 * numJunctions + j2;
+        const idx21 = j2 * numJunctions + j1;
+        M_flat[idx11] = (M_flat[idx11] ?? 0) + dVal;
+        M_flat[idx22] = (M_flat[idx22] ?? 0) + dVal;
+        M_flat[idx12] = (M_flat[idx12] ?? 0) - dVal;
+        M_flat[idx21] = (M_flat[idx21] ?? 0) - dVal;
 
         const term = qFlow - dVal * hLoss;
         RHS[j1] = (RHS[j1] ?? 0) - term;
         RHS[j2] = (RHS[j2] ?? 0) + term;
       } else if (j1 !== undefined && h2Fixed !== undefined) {
         // Node 1 is junction, Node 2 is fixed reservoir/tank
-        M[j1]![j1]! += dVal;
+        const idx11 = j1 * numJunctions + j1;
+        M_flat[idx11] = (M_flat[idx11] ?? 0) + dVal;
         RHS[j1] = (RHS[j1] ?? 0) - (qFlow - dVal * (hLoss + h2Fixed));
       } else if (j2 !== undefined && h1Fixed !== undefined) {
         // Node 2 is junction, Node 1 is fixed reservoir/tank
-        M[j2]![j2]! += dVal;
+        const idx22 = j2 * numJunctions + j2;
+        M_flat[idx22] = (M_flat[idx22] ?? 0) + dVal;
         RHS[j2] = (RHS[j2] ?? 0) + (qFlow - dVal * (hLoss - h1Fixed));
       }
     }
 
-    // 3. Solve linear system M * H_new = RHS via Gaussian elimination
-    const H_new = solveLinearSystem(M, RHS);
+    // 3. Solve SPD linear system M * H_new = RHS via Cholesky decomposition
+    solveCholeskyFlat(M_flat, RHS, H_new, numJunctions, LScratch, yScratch);
 
     // 4. Update pipe flows Q and check convergence
     maxDeltaQ = 0.0;
@@ -265,55 +275,58 @@ export function solveHydraulics(
 }
 
 /**
- * Standard Gaussian elimination with partial pivoting for small-to-medium SPD hydraulic matrices.
+ * In-place Cholesky decomposition LL^T = M and solve LL^T x = b
+ * for symmetric positive-definite hydraulic matrix M in flat row-major order.
+ * L and y are scratch buffers to eliminate heap allocations.
  */
-function solveLinearSystem(A: number[][], b: Float64Array): Float64Array {
-  const n = b.length;
-  // Copy A and b
-  const M: number[][] = A.map((row) => [...row]);
-  const x = new Float64Array(b);
-
-  for (let k = 0; k < n; k++) {
-    // Partial pivot
-    let maxRow = k;
-    let maxVal = Math.abs(M[k]![k]!);
-    for (let i = k + 1; i < n; i++) {
-      if (Math.abs(M[i]![k]!) > maxVal) {
-        maxVal = Math.abs(M[i]![k]!);
-        maxRow = i;
+function solveCholeskyFlat(
+  M: Float64Array,
+  b: Float64Array,
+  x: Float64Array,
+  n: number,
+  L: Float64Array,
+  y: Float64Array,
+): void {
+  L.fill(0);
+  // Factorization: compute L row by row
+  for (let i = 0; i < n; i++) {
+    const rowOffset = i * n;
+    for (let j = 0; j <= i; j++) {
+      let sum = 0.0;
+      const jRowOffset = j * n;
+      for (let k = 0; k < j; k++) {
+        sum += L[rowOffset + k]! * L[jRowOffset + k]!;
       }
-    }
 
-    if (maxRow !== k) {
-      const tempRow = M[k]!;
-      M[k] = M[maxRow]!;
-      M[maxRow] = tempRow;
-      const tempB = x[k]!;
-      x[k] = x[maxRow]!;
-      x[maxRow] = tempB;
-    }
-
-    const diag = M[k]![k]!;
-    if (Math.abs(diag) < 1e-12) continue; // Singular or decoupled node
-
-    for (let i = k + 1; i < n; i++) {
-      const factor = M[i]![k]! / diag;
-      for (let j = k; j < n; j++) {
-        M[i]![j]! -= factor * M[k]![j]!;
+      if (i === j) {
+        const val = M[rowOffset + i]! - sum;
+        // Protect against numerical zero / near singular isolated nodes
+        L[rowOffset + j] = Math.sqrt(Math.max(1e-12, val));
+      } else {
+        const diag = L[jRowOffset + j]!;
+        L[rowOffset + j] = diag > 1e-12 ? (M[rowOffset + j]! - sum) / diag : 0.0;
       }
-      x[i] = (x[i] ?? 0) - factor * (x[k] ?? 0);
     }
   }
 
-  // Back substitution
+  // Forward substitution: L * y = b
+  for (let i = 0; i < n; i++) {
+    let sum = b[i]!;
+    const rowOffset = i * n;
+    for (let j = 0; j < i; j++) {
+      sum -= L[rowOffset + j]! * y[j]!;
+    }
+    const diag = L[rowOffset + i]!;
+    y[i] = diag > 1e-12 ? sum / diag : 0.0;
+  }
+
+  // Back substitution: L^T * x = y
   for (let i = n - 1; i >= 0; i--) {
-    let sum = x[i]!;
+    let sum = y[i]!;
     for (let j = i + 1; j < n; j++) {
-      sum -= M[i]![j]! * x[j]!;
+      sum -= L[j * n + i]! * x[j]!;
     }
-    const diag = M[i]![i]!;
-    x[i] = Math.abs(diag) > 1e-12 ? sum / diag : 0.0;
+    const diag = L[i * n + i]!;
+    x[i] = diag > 1e-12 ? sum / diag : 0.0;
   }
-
-  return x;
 }

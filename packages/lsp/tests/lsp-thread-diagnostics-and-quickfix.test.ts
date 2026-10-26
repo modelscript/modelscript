@@ -20,7 +20,7 @@ const expect = (val: any) => ({
 
 describe("LSP Live Digital Thread Diagnostics & QuickFix Actions", () => {
   it("should have canonical hypergraph and default threads in WorkspaceManager", () => {
-    const wm = new WorkspaceManager();
+    const wm = new WorkspaceManager(undefined, { seedDemoThreads: true });
     expect(wm.hypergraph).toBeDefined();
     expect(wm.hypergraph.getThreadCount()).toBeGreaterThan(0);
 

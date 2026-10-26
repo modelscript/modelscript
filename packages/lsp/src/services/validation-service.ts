@@ -711,6 +711,13 @@ export class ValidationService {
       return;
     }
 
+    // Handle C files (.c, .h)
+    const isC = textDocument.languageId === "c" || /\.(c|h)($|\?|#)/i.test(uri);
+    if (isC) {
+      await this.validateCDocument(textDocument, plugin);
+      return;
+    }
+
     // Handle SSP SystemStructureDescription & ParameterSet files (.ssd, .ssp, .ssv)
     const isSsp =
       textDocument.languageId === "ssp" || textDocument.languageId === "ssv" || /\.(ssd|ssp|ssv)($|\?|#)/i.test(uri);
@@ -1376,23 +1383,42 @@ export class ValidationService {
           }
         }
 
-        // 2. SysML v2 DroneAssembly digital-thread diagnostics
-        if (uri.endsWith(".sysml") || uri.endsWith(".kerml") || langId === "sysml2") {
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]!;
-
-            if (/^\s*(?:abstract\s+)?part\s+def\s+DroneAssembly\b/.test(line)) {
-              const col = line.indexOf("DroneAssembly");
-              newSemanticDiagnostics.push({
-                severity: DiagnosticSeverity.Information,
-                range: {
-                  start: { line: i, character: col },
-                  end: { line: i, character: col + "DroneAssembly".length },
-                },
-                message:
-                  "[Multi-Domain Digital Thread] Architecture bound across 5 domains: CAD (drone.scad), FEA (drone_chassis.inp), CFD (drone_aero.cfg), Modelica (DroneSimulation.mo).",
-                source: "modelscript-digital-thread",
-              });
+        // 2. Multi-Domain Digital-Thread architecture binding diagnostics
+        if (this.workspaceManager) {
+          const threadEntries = this.workspaceManager.getThreadsForUri(uri);
+          if (threadEntries && threadEntries.length > 0) {
+            for (const entry of threadEntries) {
+              const { slot, meta } = entry;
+              const aligned = this.workspaceManager.findAlignedElementsBySlot(slot);
+              if (aligned.length > 1) {
+                const rawName = meta.name.replace(/^(?:part\s+def|model|package|def)\s+/, "").trim();
+                for (let i = 0; i < lines.length; i++) {
+                  const line = lines[i]!;
+                  const col = rawName ? line.indexOf(rawName) : -1;
+                  if (
+                    col >= 0 &&
+                    (line.includes("part def") ||
+                      line.includes("part ") ||
+                      line.includes("model ") ||
+                      line.includes("package "))
+                  ) {
+                    const peerList = aligned
+                      .filter((el) => el.domain.toLowerCase() !== entry.domain.toLowerCase())
+                      .map((el) => `${el.domain.toUpperCase()} (${el.name})`)
+                      .join(", ");
+                    newSemanticDiagnostics.push({
+                      severity: DiagnosticSeverity.Information,
+                      range: {
+                        start: { line: i, character: col },
+                        end: { line: i, character: col + rawName.length },
+                      },
+                      message: `[Multi-Domain Digital Thread] Architecture bound across ${aligned.length} domains: ${peerList}.`,
+                      source: "modelscript-digital-thread",
+                    });
+                    break;
+                  }
+                }
+              }
             }
           }
         }
@@ -1956,6 +1982,54 @@ export class ValidationService {
 
     this.lastSemanticDiagnostics.set(textDocument.uri, fortranDiagnostics);
     this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: fortranDiagnostics });
+  }
+
+  /**
+   * Parses and lints a C document (`.c`, `.h`).
+   */
+  private async validateCDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const text = textDocument.getText();
+    const cDiagnostics: Diagnostic[] = [];
+
+    try {
+      this.connection.console.info(`[c] Validating ${textDocument.uri} (${text.length} chars)`);
+      const { lintC, parseCScript } = await import("@modelscript/c");
+      const lints = lintC(text);
+
+      for (const lint of lints) {
+        const line = Math.max(0, (lint.line ?? 1) - 1);
+        const col = Math.max(0, (lint.col ?? 1) - 1);
+        const endLine = line;
+        const endCol = Math.max(col + 5, 10);
+        cDiagnostics.push({
+          severity:
+            lint.severity === "warning"
+              ? DiagnosticSeverity.Warning
+              : lint.severity === "info"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Error,
+          range: {
+            start: { line, character: col },
+            end: { line: endLine, character: endCol },
+          },
+          message: `[M${lint.code}] ${lint.message}`,
+          source: "c",
+          code: `M${lint.code}`,
+        });
+      }
+
+      const stmts = parseCScript(text);
+      this.documentManager.documentTrees.set(textDocument.uri, {
+        text,
+        tree: { rootNode: { text, data: stmts } } as any,
+        classCache: new Map(),
+      });
+    } catch (err: any) {
+      this.connection.console.error(`[c] Error validating C document ${textDocument.uri}: ${err.message}`);
+    }
+
+    this.lastSemanticDiagnostics.set(textDocument.uri, cDiagnostics);
+    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: cDiagnostics });
   }
 
   /**

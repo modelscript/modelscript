@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { introspectBlackboxBinary } from "@modelscript/exchange";
 import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  canExecuteNatively,
   checkAirgapCompliance,
   exportSimulationCsv,
   getDesktopSystemInfo,
@@ -338,9 +340,72 @@ assert.strictEqual(airgap.outboundTrafficBlocked, true);
 assert.strictEqual(airgap.localStorageOnly, true);
 console.log("✓ Test 6 passed: Air-gap compliance confirmed for regulated utility environments.");
 
+// ============================================================================
+// TEST 7: Native Host Dynamic Bypass Evaluation
+// ============================================================================
+console.log("7. Testing native execution bypass detection and mode dispatch...");
+const elfIntrospection = introspectBlackboxBinary(elfData, "InverterController.so");
+const canRunElfNatively = canExecuteNatively(elfIntrospection);
+if (process.platform === "linux" && (process.arch === "x64" || process.arch === "arm64")) {
+  assert.strictEqual(canRunElfNatively, true, "Linux ELF should report native capability on Linux host");
+}
+
+const peIntrospection = introspectBlackboxBinary(peData, "TurbineGovernor.dll");
+const canRunPeNatively = canExecuteNatively(peIntrospection);
+if (process.platform === "win32") {
+  assert.strictEqual(canRunPeNatively, true, "Windows PE should report native capability on Windows host");
+} else {
+  assert.strictEqual(canRunPeNatively, false, "Windows PE cannot run natively on non-Windows host");
+}
+
+const nativeSimulationResult = await runDesktopBlackboxSimulation(
+  elfFile,
+  {
+    startTime: 0.0,
+    stopTime: 0.05,
+    stepSize: 0.01,
+    preferNative: true,
+  },
+  "InverterController.so",
+);
+assert.strictEqual(
+  nativeSimulationResult.executionMode,
+  canRunElfNatively ? "native" : "emulated",
+  "Execution mode must correctly select native or emulated fallback",
+);
+console.log(`✓ Test 7 passed: Native dynamic bypass verified (mode: ${nativeSimulationResult.executionMode}).`);
+
+// ============================================================================
+// TEST 8: NativeFmuRunner Direct Batch Execution
+// ============================================================================
+console.log("8. Testing NativeFmuRunner direct batch simulation throughput...");
+const { NativeFmuRunner } = await import("../src/native-runner.js");
+const nativeRunner = new NativeFmuRunner(elfData, {
+  variables: [
+    { name: "torque", valueReference: 1, causality: "output", start: 120.0 },
+    { name: "speed", valueReference: 2, causality: "output", start: 1800.0 },
+  ],
+  libraryPath: elfFile,
+});
+nativeRunner.init(0.0);
+assert.strictEqual(nativeRunner.engineName, "NativeFmuRunner");
+assert.strictEqual(nativeRunner.isNative, true);
+assert.strictEqual(nativeRunner.getLibraryPath(), elfFile);
+
+const nativeBatch = nativeRunner.stepBatch({
+  startTime: 0.0,
+  stepsCount: 1000,
+  stepSize: 0.001,
+  includeInitial: true,
+});
+assert.strictEqual(nativeBatch.timeSteps, 1001);
+assert.strictEqual(nativeBatch.outputMap.get("torque")![0], 120.0);
+nativeRunner.terminate();
+console.log(`✓ Test 8 passed: NativeFmuRunner executed 1,000 steps in ${nativeBatch.executionTimeMs.toFixed(3)}ms.`);
+
 // Clean up temporary test files
 fs.rmSync(tmpDir, { recursive: true, force: true });
 
 console.log("\n=======================================================");
-console.log("ALL 6 END-TO-END DESKTOP SIMULATION TESTS PASSED!");
+console.log("ALL 8 END-TO-END DESKTOP SIMULATION TESTS PASSED!");
 console.log("=======================================================\n");

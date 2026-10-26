@@ -104,20 +104,52 @@ export function buildPsseDiagram(c: PsseCaseLike): PsseDiagramGraph {
     busMap.set(b.i, b);
   }
 
-  const n = busList.length;
-  const radius = Math.max(300, n * 45);
-  const centerX = radius + 100;
-  const centerY = radius + 100;
-
-  // 1. Position and create bus nodes in a circle or use specified coordinates
+  // 1. Position and create bus nodes in voltage-level tiers or use specified coordinates
+  const hasExplicitPositions = busList.some((b) => b.position?.x !== undefined);
   const busCoords = new Map<number, { x: number; y: number }>();
-  for (let idx = 0; idx < n; idx++) {
-    const b = busList[idx]!;
-    const angle = (2 * Math.PI * idx) / Math.max(1, n) - Math.PI / 2;
-    const x = b.position?.x ?? centerX + radius * Math.cos(angle);
-    const y = b.position?.y ?? centerY + radius * Math.sin(angle);
-    busCoords.set(b.i, { x, y });
 
+  if (hasExplicitPositions) {
+    for (const b of busList) {
+      const x = b.position?.x ?? 200;
+      const y = b.position?.y ?? 200;
+      busCoords.set(b.i, { x, y });
+    }
+  } else {
+    // Voltage-level tier bands (EHV 500kV -> HV 230kV -> Sub-tx 115kV/69kV -> Distribution)
+    const tier1: PsseBusLike[] = []; // >= 345 kV
+    const tier2: PsseBusLike[] = []; // 161 - 344 kV
+    const tier3: PsseBusLike[] = []; // 69 - 160 kV
+    const tier4: PsseBusLike[] = []; // < 69 kV
+
+    for (const b of busList) {
+      if (b.baseKv >= 345) tier1.push(b);
+      else if (b.baseKv >= 161) tier2.push(b);
+      else if (b.baseKv >= 69) tier3.push(b);
+      else tier4.push(b);
+    }
+
+    const tiers = [tier1, tier2, tier3, tier4].filter((t) => t.length > 0);
+    const startY = 120;
+    const tierSpacingY = 170;
+
+    for (let tIdx = 0; tIdx < tiers.length; tIdx++) {
+      const tierBuses = tiers[tIdx]!;
+      const y = startY + tIdx * tierSpacingY;
+      const busSpacingX = Math.max(160, 850 / Math.max(1, tierBuses.length));
+      const startX = Math.max(120, (900 - (tierBuses.length - 1) * busSpacingX) / 2);
+
+      for (let bIdx = 0; bIdx < tierBuses.length; bIdx++) {
+        const b = tierBuses[bIdx]!;
+        const x = startX + bIdx * busSpacingX;
+        busCoords.set(b.i, { x, y });
+      }
+    }
+  }
+
+  for (const b of busList) {
+    const pos = busCoords.get(b.i) ?? { x: 200, y: 200 };
+    const x = pos.x;
+    const y = pos.y;
     const color = getVoltageColor(b.baseKv);
     const typeLabel = b.ide === 3 ? "Swing" : b.ide === 2 ? "PV" : "PQ";
 

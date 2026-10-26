@@ -21,6 +21,10 @@ function clamp255(v: number): number {
  * has better dark-region perceptual uniformity than CIELAB.
  */
 const helmlabCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 1000;
+
+const RGB_RE = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/;
+const HEX_RE = /^#([0-9a-fA-F]{3,8})$/;
 
 export function invertColorHelmlab(color: string): string {
   const cached = helmlabCache.get(color);
@@ -29,7 +33,7 @@ export function invertColorHelmlab(color: string): string {
   let result = color;
 
   // Try rgb() or rgba() format
-  const rgbMatch = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/);
+  const rgbMatch = color.match(RGB_RE);
   if (rgbMatch) {
     const rs = rgbMatch[1] ?? "0";
     const gs = rgbMatch[2] ?? "0";
@@ -41,12 +45,13 @@ export function invertColorHelmlab(color: string): string {
     const gOut = clamp255(g2 * 255 * BRIGHTNESS_BOOST);
     const bOut = clamp255(b2 * 255 * BRIGHTNESS_BOOST);
     result = alpha !== undefined ? `rgba(${rOut}, ${gOut}, ${bOut}, ${alpha})` : `rgb(${rOut}, ${gOut}, ${bOut})`;
+    if (helmlabCache.size >= MAX_CACHE_SIZE) helmlabCache.clear();
     helmlabCache.set(color, result);
     return result;
   }
 
   // Try hex formats: #rgb, #rgba, #rrggbb, #rrggbbaa
-  const hexMatch = color.match(/^#([0-9a-fA-F]{3,8})$/);
+  const hexMatch = color.match(HEX_RE);
   if (hexMatch) {
     let hex = hexMatch[1] ?? "";
     let alpha: number | undefined;

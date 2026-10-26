@@ -8,6 +8,8 @@
  * and minimal unsatisfiable core (conflict set) extraction.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+
 export interface LinearTerm {
   varName: string;
   coeff: number;
@@ -287,6 +289,55 @@ export class RealSimplexSolver {
           violatedConstraint: k >= n ? this.constraints[k - n] : undefined,
         };
       }
+    }
+
+    // Try solving via WebAssembly Dutertre-de Moura Simplex solver first
+    try {
+      const wasm = getDefaultWasmExports();
+      if (wasm && typeof wasm.simplex_initDutertreDeMoura === "function") {
+        const sPtr = wasm.simplex_create(m + 2, n + 2);
+        wasm.simplex_initDutertreDeMoura(sPtr, m, n);
+
+        for (let i = 0; i < m; i++) {
+          for (let j = 0; j < n; j++) {
+            const val = A[i]![j];
+            if (val && Math.abs(val) > 1e-15) {
+              wasm.simplex_setEntry(sPtr, i, j, val);
+            }
+          }
+        }
+
+        for (let j = 0; j < n; j++) {
+          const lb = lowerBounds[j]!;
+          if (lb.r > -1e29) wasm.simplex_setBound(sPtr, j, true, lb.r, lb.k);
+          const ub = upperBounds[j]!;
+          if (ub.r < 1e29) wasm.simplex_setBound(sPtr, j, false, ub.r, ub.k);
+        }
+
+        for (let i = 0; i < m; i++) {
+          const sIdx = n + i;
+          const lb = lowerBounds[sIdx]!;
+          if (lb.r > -1e29) wasm.simplex_setBound(sPtr, sIdx, true, lb.r, lb.k);
+          const ub = upperBounds[sIdx]!;
+          if (ub.r < 1e29) wasm.simplex_setBound(sPtr, sIdx, false, ub.r, ub.k);
+        }
+
+        const wasmRes = wasm.simplex_solveDutertreDeMoura(sPtr, maxIterations);
+        if (wasmRes === 1 /* OPTIMAL */) {
+          const assignment: Record<string, number> = {};
+          for (let j = 0; j < n; j++) {
+            assignment[nonBasicVars[j]!] = wasm.simplex_getAssignment(sPtr, j);
+          }
+          wasm.simplex_destroy(sPtr);
+          return {
+            isFeasible: true,
+            assignment,
+          };
+        }
+        wasm.simplex_destroy(sPtr);
+      }
+    } catch {
+      // Fall through to JS implementation for conflict isolation
     }
 
     // Assignment vector: beta of size n + m with InfNumber

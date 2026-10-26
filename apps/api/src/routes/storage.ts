@@ -75,6 +75,17 @@ export function storageRouter(): Router {
     else if (checkExt([".ssp", ".ssd"])) viewType = "ssp";
     else if (checkExt([".gcode", ".nc"])) viewType = "gcode";
     else if (checkExt([".owl", ".owl2", ".ofn", ".ttl"])) viewType = "owl2";
+    else if (checkExt([".aspen", ".in"])) viewType = "aspen";
+    else if (checkExt([".swmm"])) viewType = "swmm";
+    else if (checkExt([".s1p", ".s2p", ".s3p", ".s4p", ".s5p", ".s6p", ".s8p", ".s12p", ".s16p", ".ts"]))
+      viewType = "touchstone";
+    else if (checkExt([".ibs", ".ibis"])) viewType = "ibis";
+    else if (checkExt([".dss", ".opendss"])) viewType = "opendss";
+    else if (checkExt([".xosc", ".osc"])) viewType = "openscenario";
+    else if (checkExt([".r5", ".relap5"])) viewType = "relap5";
+    else if (checkExt([".data", ".eclipse", ".inc"])) viewType = "eclipse";
+    else if (checkExt([".sbml"])) viewType = "sbml";
+    else if (checkExt([".jsbsim"])) viewType = "jsbsim";
 
     let preprocessed: {
       svg?: string;

@@ -59,24 +59,35 @@ interface IntervalRange {
   hi: number;
 }
 
-/** Multiplies two intervals safely handling 0 * infinity */
+function safeProd(t: number, p: number): number {
+  if (t === 0 || p === 0) return 0;
+  const prod = t * p;
+  return isNaN(prod) ? 0 : prod;
+}
+
+/** Multiplies two intervals safely handling 0 * infinity with zero intermediate array allocations */
 function mulInterval(tLo: number, tHi: number, pLo: number, pHi: number): IntervalRange {
   if (tLo === 0 && tHi === 0) return { lo: 0, hi: 0 };
   if (pLo === 0 && pHi === 0) return { lo: 0, hi: 0 };
 
-  const products: number[] = [];
-  for (const t of [tLo, tHi]) {
-    for (const p of [pLo, pHi]) {
-      if (t === 0 || p === 0) {
-        products.push(0);
-      } else {
-        const prod = t * p;
-        if (!isNaN(prod)) products.push(prod);
-      }
-    }
-  }
-  if (products.length === 0) return { lo: -Infinity, hi: Infinity };
-  return { lo: Math.min(...products), hi: Math.max(...products) };
+  const p1 = safeProd(tLo, pLo);
+  const p2 = safeProd(tLo, pHi);
+  const p3 = safeProd(tHi, pLo);
+  const p4 = safeProd(tHi, pHi);
+
+  let lo = p1;
+  let hi = p1;
+
+  if (p2 < lo) lo = p2;
+  if (p2 > hi) hi = p2;
+
+  if (p3 < lo) lo = p3;
+  if (p3 > hi) hi = p3;
+
+  if (p4 < lo) lo = p4;
+  if (p4 > hi) hi = p4;
+
+  return { lo, hi };
 }
 
 /** Evaluates a polynomial range over a domain box */

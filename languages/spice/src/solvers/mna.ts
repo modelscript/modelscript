@@ -121,64 +121,121 @@ export class DenseMatrix {
 }
 
 /**
- * Solves A * x = b in-place using Gaussian elimination with partial pivoting.
+ * Dense LU factorization with partial pivoting and zero-allocation solve.
+ * Can be reused across Newton-Raphson iterations or transient time steps.
  */
-export function solveLinearSystem(A: DenseMatrix, b: Float64Array): Float64Array | null {
-  const n = A.size;
-  const M = new Float64Array(A.data); // Clone
-  const rhs = new Float64Array(b); // Clone
+export class DenseLU {
+  public size: number;
+  public lu: Float64Array;
+  public piv: Int32Array;
 
-  for (let i = 0; i < n; i++) {
-    // Partial pivoting
-    let maxRow = i;
-    let maxVal = Math.abs(M[i * n + i] ?? 0);
-    for (let k = i + 1; k < n; k++) {
-      const val = Math.abs(M[k * n + i] ?? 0);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = k;
-      }
-    }
-
-    if (maxVal < 1e-15) {
-      return null; // Singular or ill-conditioned
-    }
-
-    if (maxRow !== i) {
-      // Swap rows in M
-      for (let c = i; c < n; c++) {
-        const tmp = M[i * n + c] ?? 0;
-        M[i * n + c] = M[maxRow * n + c] ?? 0;
-        M[maxRow * n + c] = tmp;
-      }
-      // Swap in rhs
-      const tmpRhs = rhs[i] ?? 0;
-      rhs[i] = rhs[maxRow] ?? 0;
-      rhs[maxRow] = tmpRhs;
-    }
-
-    // Eliminate below
-    const pivot = M[i * n + i] ?? 1.0;
-    for (let r = i + 1; r < n; r++) {
-      const factor = (M[r * n + i] ?? 0) / pivot;
-      for (let c = i; c < n; c++) {
-        M[r * n + c] = (M[r * n + c] ?? 0) - factor * (M[i * n + c] ?? 0);
-      }
-      rhs[r] = (rhs[r] ?? 0) - factor * (rhs[i] ?? 0);
-    }
+  constructor(size: number) {
+    this.size = size;
+    this.lu = new Float64Array(size * size);
+    this.piv = new Int32Array(size);
   }
 
-  // Back-substitution
-  const x = new Float64Array(n);
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = rhs[i] ?? 0;
-    for (let c = i + 1; c < n; c++) {
-      sum -= (M[i * n + c] ?? 0) * (x[c] ?? 0);
+  /**
+   * Factorizes A into P * L * U in-place.
+   * Returns true on success, false if matrix is singular.
+   */
+  public factorize(A: DenseMatrix): boolean {
+    const n = this.size;
+    this.lu.set(A.data);
+    const lu = this.lu;
+    const piv = this.piv;
+    for (let i = 0; i < n; i++) piv[i] = i;
+
+    for (let i = 0; i < n; i++) {
+      // Partial pivoting
+      let maxRow = i;
+      let maxVal = Math.abs(lu[i * n + i] ?? 0);
+      for (let k = i + 1; k < n; k++) {
+        const val = Math.abs(lu[k * n + i] ?? 0);
+        if (val > maxVal) {
+          maxVal = val;
+          maxRow = k;
+        }
+      }
+
+      if (maxVal < 1e-15) {
+        return false; // Singular
+      }
+
+      if (maxRow !== i) {
+        for (let c = 0; c < n; c++) {
+          const tmp = lu[i * n + c] ?? 0;
+          lu[i * n + c] = lu[maxRow * n + c] ?? 0;
+          lu[maxRow * n + c] = tmp;
+        }
+        const tmpP = piv[i]!;
+        piv[i] = piv[maxRow]!;
+        piv[maxRow] = tmpP;
+      }
+
+      const pivot = lu[i * n + i] ?? 1.0;
+      for (let r = i + 1; r < n; r++) {
+        const factor = (lu[r * n + i] ?? 0) / pivot;
+        lu[r * n + i] = factor;
+        for (let c = i + 1; c < n; c++) {
+          lu[r * n + c] = (lu[r * n + c] ?? 0) - factor * (lu[i * n + c] ?? 0);
+        }
+      }
     }
-    const diag = M[i * n + i] ?? 1.0;
-    x[i] = sum / diag;
+
+    return true;
   }
 
+  /**
+   * Solves P * L * U * x = b in-place into outX without any heap allocations.
+   */
+  public solve(b: Float64Array, outX: Float64Array): void {
+    const n = this.size;
+    const lu = this.lu;
+    const piv = this.piv;
+
+    // Apply permutation vector: outX[i] = b[piv[i]]
+    for (let i = 0; i < n; i++) {
+      outX[i] = b[piv[i]!] ?? 0;
+    }
+
+    // Forward substitution: L * y = P * b (unit lower triangular: diag(L) = 1)
+    for (let i = 0; i < n; i++) {
+      let sum = outX[i] ?? 0;
+      for (let j = 0; j < i; j++) {
+        sum -= (lu[i * n + j] ?? 0) * (outX[j] ?? 0);
+      }
+      outX[i] = sum;
+    }
+
+    // Back substitution: U * x = y
+    for (let i = n - 1; i >= 0; i--) {
+      let sum = outX[i] ?? 0;
+      for (let j = i + 1; j < n; j++) {
+        sum -= (lu[i * n + j] ?? 0) * (outX[j] ?? 0);
+      }
+      const diag = lu[i * n + i] ?? 1.0;
+      outX[i] = sum / diag;
+    }
+  }
+}
+
+/**
+ * Solves A * x = b. If outX is provided, writes solution into outX without allocations.
+ * Optionally reuses an existing DenseLU solver instance.
+ */
+export function solveLinearSystem(
+  A: DenseMatrix,
+  b: Float64Array,
+  outX?: Float64Array,
+  luSolver?: DenseLU,
+): Float64Array | null {
+  const solver = luSolver ?? new DenseLU(A.size);
+  if (!solver.factorize(A)) {
+    return null;
+  }
+  const x = outX ?? new Float64Array(A.size);
+  solver.solve(b, x);
   return x;
 }
 

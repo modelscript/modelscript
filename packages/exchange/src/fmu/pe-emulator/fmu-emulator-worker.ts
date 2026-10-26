@@ -27,6 +27,9 @@ export interface EmulatorStepMsg {
   dt: number;
   stepsCount?: number | undefined;
   inputs?: Record<string, number> | undefined;
+  decimation?: number | undefined;
+  outputValueReferences?: number[] | undefined;
+  includeInitial?: boolean | undefined;
 }
 
 export interface EmulatorSetVarMsg {
@@ -136,34 +139,38 @@ if (
 
           const stepsCount = msg.stepsCount ?? 1;
           if (stepsCount > 1) {
-            // Batch stepping: accumulate series in typed buffers and transfer
-            const times = new Float64Array(stepsCount);
+            // High-throughput batch stepping using UniversalBinaryRunner.stepBatch
+            const batchResult = workerRunner.stepBatch({
+              startTime: msg.currentTime,
+              stepSize: msg.dt,
+              stepsCount,
+              inputs: msg.inputs,
+              sampleDecimation: msg.decimation,
+              outputValueReferences: msg.outputValueReferences,
+              includeInitial: msg.includeInitial,
+            });
+
             const series: Record<string, Float64Array> = {};
-            const transferables: ArrayBuffer[] = [times.buffer];
+            const transferables: ArrayBuffer[] = [
+              batchResult.timeBuffer.buffer as ArrayBuffer,
+              batchResult.outputMatrix.buffer as ArrayBuffer,
+            ];
 
-            let t = msg.currentTime;
-            let lastOutputs: Record<string, number> = {};
-
-            for (let stepIdx = 0; stepIdx < stepsCount; stepIdx++) {
-              lastOutputs = workerRunner.step(t, msg.dt, msg.inputs);
-              t = workerRunner.getTime();
-              times[stepIdx] = t;
-
-              for (const [varName, val] of Object.entries(lastOutputs)) {
-                if (!series[varName]) {
-                  series[varName] = new Float64Array(stepsCount);
-                  transferables.push(series[varName]!.buffer as ArrayBuffer);
-                }
-                series[varName]![stepIdx] = val;
+            const lastOutputs: Record<string, number> = {};
+            for (const [name, col] of batchResult.outputMap.entries()) {
+              series[name] = col;
+              transferables.push(col.buffer as ArrayBuffer);
+              if (col.length > 0) {
+                lastOutputs[name] = col[col.length - 1]!;
               }
             }
 
             const res: EmulatorStepResponse = {
               type: "STEP_OK",
               id: msg.id,
-              time: t,
+              time: batchResult.finalTime,
               outputs: lastOutputs,
-              batch: { times, series },
+              batch: { times: batchResult.timeBuffer, series },
             };
             (self as any).postMessage(res, transferables);
           } else {
@@ -361,24 +368,25 @@ export class EmulatorWorkerClient implements WasmFmuRunner {
     dt: number,
     stepsCount: number,
     inputs?: Record<string, number>,
+    options?: { decimation?: number; outputValueReferences?: number[]; includeInitial?: boolean },
   ): Promise<{ times: Float64Array; series: Record<string, Float64Array> }> {
     if (this.inProcessRunner) {
-      const times = new Float64Array(stepsCount);
+      const batchResult = this.inProcessRunner.stepBatch({
+        startTime,
+        stepSize: dt,
+        stepsCount,
+        inputs,
+        sampleDecimation: options?.decimation,
+        outputValueReferences: options?.outputValueReferences,
+        includeInitial: options?.includeInitial,
+      });
+
       const series: Record<string, Float64Array> = {};
-      let t = startTime;
-
-      for (let i = 0; i < stepsCount; i++) {
-        const out = this.inProcessRunner.step(t, dt, inputs);
-        t = this.inProcessRunner.getTime();
-        times[i] = t;
-
-        for (const [k, v] of Object.entries(out)) {
-          if (!series[k]) series[k] = new Float64Array(stepsCount);
-          series[k]![i] = v;
-        }
+      for (const [name, col] of batchResult.outputMap.entries()) {
+        series[name] = col;
       }
-      this.currentTime = t;
-      return { times, series };
+      this.currentTime = batchResult.finalTime;
+      return { times: batchResult.timeBuffer, series };
     }
 
     const reqId = `batch_${this.nextRequestId++}`;
@@ -389,6 +397,9 @@ export class EmulatorWorkerClient implements WasmFmuRunner {
       dt,
       stepsCount,
       inputs,
+      decimation: options?.decimation,
+      outputValueReferences: options?.outputValueReferences,
+      includeInitial: options?.includeInitial,
     });
     this.currentTime = res.time;
     return res.batch ?? { times: new Float64Array(), series: {} };

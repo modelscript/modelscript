@@ -59,6 +59,12 @@ export class InterfaceJacobianSolver {
   private readonly variables: InterfaceVariable[] = [];
   readonly options: Required<InterfaceNewtonOptions>;
 
+  // Pre-allocated scratch buffers for zero-allocation Newton iterations
+  private readonly scratchA: Float64Array;
+  private readonly scratchB: Float64Array;
+  private readonly scratchP: Int32Array;
+  private readonly scratchV: Float64Array;
+
   constructor(couplings: readonly VariableCoupling[], options: InterfaceNewtonOptions = {}) {
     this.options = {
       tolerance: options.tolerance ?? 1e-5,
@@ -79,6 +85,12 @@ export class InterfaceJacobianSolver {
         toUnit: c.to.unit,
       });
     });
+
+    const n = this.variables.length;
+    this.scratchA = new Float64Array(n * n);
+    this.scratchB = new Float64Array(n);
+    this.scratchP = new Int32Array(n);
+    this.scratchV = new Float64Array(n);
   }
 
   get dimension(): number {
@@ -223,11 +235,12 @@ export class InterfaceJacobianSolver {
   solveLinearSystem(J: Float64Array, residual: Float64Array): Float64Array {
     const n = this.variables.length;
     const deltaU = new Float64Array(n);
-    const A = new Float64Array(J);
-    const b = new Float64Array(n);
+    const A = this.scratchA;
+    A.set(J);
+    const b = this.scratchB;
     for (let i = 0; i < n; i++) b[i] = -residual[i]!;
 
-    const p = new Int32Array(n);
+    const p = this.scratchP;
     for (let i = 0; i < n; i++) p[i] = i;
 
     for (let k = 0; k < n; k++) {
@@ -292,7 +305,7 @@ export class InterfaceJacobianSolver {
     for (let i = 0; i < n; i++) normSq += deltaU[i]! * deltaU[i]!;
     if (normSq < 1e-14) return;
 
-    const v = new Float64Array(n);
+    const v = this.scratchV;
     for (let i = 0; i < n; i++) {
       let jDu = 0;
       for (let j = 0; j < n; j++) {

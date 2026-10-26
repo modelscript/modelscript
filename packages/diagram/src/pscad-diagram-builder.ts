@@ -393,10 +393,13 @@ function parseSvgXmlToMarkup(
 
     const selector = `svgEl_${elemCounter++}`;
 
-    const getAttr = (name: string): string | undefined => {
-      const re = new RegExp(`\\b${name}=["']([^"']*)["']`, "i");
-      return re.exec(attrsStr)?.[1];
-    };
+    const attrMap = new Map<string, string>();
+    const attrRe = /([A-Za-z0-9_-]+)=["']([^"']*)["']/g;
+    let aMatch: RegExpExecArray | null;
+    while ((aMatch = attrRe.exec(attrsStr)) !== null) {
+      attrMap.set(aMatch[1]!.toLowerCase(), aMatch[2]!);
+    }
+    const getAttr = (name: string): string | undefined => attrMap.get(name.toLowerCase());
 
     if (tagName === "rect") {
       let rxVal = parseFloat(getAttr("x") || "0") + centerX;

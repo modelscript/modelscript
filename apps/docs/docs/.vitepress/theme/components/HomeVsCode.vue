@@ -8,7 +8,7 @@ const features = [
   {
     icon: "⚡",
     title: "Diagnostics & Linting",
-    description: "Sub-millisecond diagnostics with 15+ compiler lint rules and inline quick-fixes.",
+    description: "Sub-millisecond diagnostics with 200+ compiler lint rules and inline quick-fixes.",
   },
   {
     icon: "📊",

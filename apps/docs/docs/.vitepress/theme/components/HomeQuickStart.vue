@@ -19,19 +19,19 @@ const steps: QuickStep[] = [
     step: 2,
     title: "Flatten a Hierarchical Model",
     description: "Lower Modelica classes to Differential Algebraic Equations with arena-native speed.",
-    code: "msc flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL",
+    code: "msx flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL",
   },
   {
     step: 3,
     title: "Simulate ODE / DAE System",
     description: "Execute numerical simulations with automatic index reduction and BLT partitioning.",
-    code: "msc simulate BouncingBall model.mo --stop-time 5",
+    code: "msx simulate BouncingBall model.mo --stop-time 5",
   },
   {
     step: 4,
     title: "Render Interactive SVG Diagram",
     description: "Generate crisp vector diagrams from Modelica visual annotations.",
-    code: "msc render MyModel model.mo > diagram.svg",
+    code: "msx render MyModel model.mo > diagram.svg",
   },
 ];
 
@@ -39,13 +39,32 @@ const copiedIndex = ref<number | null>(null);
 
 async function copyCode(code: string, index: number) {
   try {
-    await navigator.clipboard.writeText(code);
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(code);
+    } else {
+      throw new Error("Clipboard API unavailable");
+    }
     copiedIndex.value = index;
     setTimeout(() => {
       if (copiedIndex.value === index) copiedIndex.value = null;
     }, 2000);
   } catch {
-    // fallback
+    const textArea = document.createElement("textarea");
+    textArea.value = code;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand("copy");
+      copiedIndex.value = index;
+      setTimeout(() => {
+        if (copiedIndex.value === index) copiedIndex.value = null;
+      }, 2000);
+    } finally {
+      document.body.removeChild(textArea);
+    }
   }
 }
 </script>
@@ -57,7 +76,7 @@ async function copyCode(code: string, index: number) {
         <span class="section-badge">Get Started Fast</span>
         <h2 class="section-title">Quick Start</h2>
         <p class="section-subtitle">
-          From installation to computable digital thread simulation and rendering in under two minutes with the unified <code>msc</code> CLI.
+          From installation to computable digital thread simulation and rendering in under two minutes with the unified <code>msx</code> CLI.
         </p>
       </div>
 

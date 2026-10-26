@@ -158,8 +158,103 @@ export class PeLoader {
     // 7. Parse Export Symbols
     this.parseExportTable();
 
-    // 8. Parse Relocations
+    // 8. Parse Import Symbols
+    this.parseImportTable();
+
+    // 9. Parse Relocations
     this.parseRelocations();
+  }
+
+  private parseImportTable(): void {
+    if (!this.header.importTableRva || !this.header.importTableSize) return;
+
+    let descriptorOffset = this.rvaToOffset(this.header.importTableRva);
+    if (descriptorOffset === null) return;
+
+    const entrySize = 20; // sizeof(IMAGE_IMPORT_DESCRIPTOR)
+    while (descriptorOffset + entrySize <= this.view.byteLength) {
+      const origFirstThunk = this.view.getUint32(descriptorOffset, true);
+      const nameRva = this.view.getUint32(descriptorOffset + 12, true);
+      const firstThunkRva = this.view.getUint32(descriptorOffset + 16, true);
+
+      // Terminating empty descriptor
+      if (nameRva === 0 && firstThunkRva === 0) break;
+
+      const nameOffset = this.rvaToOffset(nameRva);
+      let dllName = "";
+      if (nameOffset !== null) {
+        let end = nameOffset;
+        while (end < this.view.byteLength && this.view.getUint8(end) !== 0) {
+          end++;
+        }
+        dllName = new TextDecoder().decode(this.rawBuffer.subarray(nameOffset, end));
+      }
+
+      // Thunk list (ILT or IAT)
+      const thunkRva = origFirstThunk !== 0 ? origFirstThunk : firstThunkRva;
+      let thunkOffset = this.rvaToOffset(thunkRva);
+      const is64Bit = this.header.is64Bit;
+      const thunkEntrySize = is64Bit ? 8 : 4;
+
+      if (thunkOffset !== null && firstThunkRva !== 0) {
+        let iatSlotRva = firstThunkRva;
+        while (thunkOffset + thunkEntrySize <= this.view.byteLength) {
+          let rawEntry = 0n;
+          let isOrdinal = false;
+          let ordinal = 0;
+          let hintNameRva = 0;
+
+          if (is64Bit) {
+            rawEntry = this.view.getBigUint64(thunkOffset, true);
+            if (rawEntry === 0n) break;
+            isOrdinal = (rawEntry & 0x8000000000000000n) !== 0n;
+            if (isOrdinal) {
+              ordinal = Number(rawEntry & 0xffffn);
+            } else {
+              hintNameRva = Number(rawEntry & 0x7fffffffn);
+            }
+          } else {
+            const raw32 = this.view.getUint32(thunkOffset, true);
+            if (raw32 === 0) break;
+            isOrdinal = (raw32 & 0x80000000) !== 0;
+            if (isOrdinal) {
+              ordinal = raw32 & 0xffff;
+            } else {
+              hintNameRva = raw32 & 0x7fffffff;
+            }
+          }
+
+          let functionName = "";
+          if (isOrdinal) {
+            functionName = `ord_${ordinal}`;
+          } else if (hintNameRva !== 0) {
+            const hintNameOff = this.rvaToOffset(hintNameRva);
+            if (hintNameOff !== null && hintNameOff + 2 < this.view.byteLength) {
+              let nameStart = hintNameOff + 2;
+              let nameEnd = nameStart;
+              while (nameEnd < this.view.byteLength && this.view.getUint8(nameEnd) !== 0) {
+                nameEnd++;
+              }
+              functionName = new TextDecoder().decode(this.rawBuffer.subarray(nameStart, nameEnd));
+            }
+          }
+
+          if (functionName.length > 0) {
+            this.imports.push({
+              dllName,
+              functionName,
+              ordinal: isOrdinal ? ordinal : undefined,
+              iatRva: iatSlotRva,
+            });
+          }
+
+          thunkOffset += thunkEntrySize;
+          iatSlotRva += thunkEntrySize;
+        }
+      }
+
+      descriptorOffset += entrySize;
+    }
   }
 
   private readDataDirRva(base: number, index: number): number {
