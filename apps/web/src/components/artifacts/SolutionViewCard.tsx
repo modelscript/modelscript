@@ -18,7 +18,7 @@ import { Button, Spinner, Text } from "@primer/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { getSolution, Solution, SolutionRelease } from "../../api";
+import { getSolution, type Solution, type SolutionRelease } from "../../api";
 import Box from "../Box";
 
 interface SolutionViewCardProps {

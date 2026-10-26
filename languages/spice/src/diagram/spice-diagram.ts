@@ -310,3 +310,6 @@ export function renderSpiceSvg(circuit: SpiceCircuitLike): string {
   svg += `</svg>\n`;
   return svg;
 }
+
+export const renderSpiceSchematicSvg = renderSpiceSvg;
+export const buildSpiceDiagramGraph = buildSpiceDiagram;

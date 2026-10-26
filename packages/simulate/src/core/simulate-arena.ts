@@ -36,7 +36,12 @@ import {
   evaluateArenaDualFlat,
   evaluateArenaRuntime,
 } from "@modelscript/runtime/wasm_evaluator.js";
-import { type FmuSubsystem, type FmuSubsystemRegistry } from "@modelscript/runtime/wasm_fmu_subsystem.js";
+import {
+  DefaultFmuSubsystem,
+  FmuSubsystemRegistry,
+  type FmuInstanceMetadata,
+  type FmuSubsystem,
+} from "@modelscript/runtime/wasm_fmu_subsystem.js";
 import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveInitialEquationsArena } from "@modelscript/runtime/wasm_init.js";
 import { executeArenaStatements, executeArenaStatementsAsync } from "@modelscript/runtime/wasm_statement_executor.js";
@@ -129,6 +134,7 @@ export class ArenaSimulator {
    * prefixes to the corresponding FmuSubsystem during each integration step.
    */
   public fmuRegistry?: FmuSubsystemRegistry | undefined;
+  public fmuLoader?: ((fmuPath: string, instance: FmuInstanceMetadata) => FmuSubsystem) | undefined;
 
   /** Warm-start cache for algebraic loop variables (varNameId → value). */
   private algWarmStart = new Map<number, number>();
@@ -308,11 +314,28 @@ export class ArenaSimulator {
   /** Build the prefix→subsystem mappings from the FMU registry. */
   private prepareFmuMappings(): void {
     this.fmuMappings = [];
+
+    // Auto-register FMU subsystems from arena.extensionMetadata.fmuInstances if present
+    const fmuInstances = this.arena.extensionMetadata?.["fmuInstances"] as FmuInstanceMetadata[] | undefined;
+    if (Array.isArray(fmuInstances) && fmuInstances.length > 0) {
+      if (!this.fmuRegistry) {
+        this.fmuRegistry = new FmuSubsystemRegistry();
+      }
+      for (const inst of fmuInstances) {
+        if (!this.fmuRegistry.has(inst.instanceName)) {
+          const sub =
+            this.fmuLoader?.(inst.fmuPath, inst) ??
+            new DefaultFmuSubsystem(inst.instanceName || "fmu", inst.inputs, inst.outputs, inst.parameters);
+          this.fmuRegistry.register(inst.instanceName, sub);
+        }
+      }
+    }
+
     if (!this.fmuRegistry) return;
 
     for (const [prefix, subsystem] of this.fmuRegistry.entries()) {
-      const inputIds = subsystem.inputNames.map((n) => this.arena.interner.intern(`${prefix}.${n}`));
-      const outputIds = subsystem.outputNames.map((n) => this.arena.interner.intern(`${prefix}.${n}`));
+      const inputIds = subsystem.inputNames.map((n) => this.arena.interner.intern(prefix ? `${prefix}.${n}` : n));
+      const outputIds = subsystem.outputNames.map((n) => this.arena.interner.intern(prefix ? `${prefix}.${n}` : n));
       this.fmuMappings.push({ prefix, subsystem, inputIds, outputIds });
     }
   }
@@ -5086,6 +5109,8 @@ export interface ArenaSimulateOptions {
   signal?: AbortSignal | undefined;
   /** Optional FMU co-simulation subsystem registry for hybrid simulation. */
   fmuRegistry?: FmuSubsystemRegistry | undefined;
+  /** Optional custom FMU subsystem loader hook (resolves external binaries/participants). */
+  fmuLoader?: ((fmuPath: string, instance: FmuInstanceMetadata) => FmuSubsystem) | undefined;
   /** Optional debugger hook for step-by-step statement execution. */
   debuggerHook?: SimulationDebugger | undefined;
   /** When true, preserves internal variables tagged with HideResult. */
@@ -5138,6 +5163,9 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
     sim.fmuRegistry = options.fmuRegistry;
+  }
+  if (options?.fmuLoader) {
+    sim.fmuLoader = options.fmuLoader;
   }
   if (options?.debuggerHook) {
     sim.debuggerHook = options.debuggerHook;
@@ -5367,6 +5395,9 @@ export async function simulateArenaAsync(
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
     sim.fmuRegistry = options.fmuRegistry;
+  }
+  if (options?.fmuLoader) {
+    sim.fmuLoader = options.fmuLoader;
   }
   if (options?.debuggerHook) {
     sim.debuggerHook = options.debuggerHook;

@@ -34,6 +34,7 @@ interface BrowserParticipant {
 interface SessionInfo {
   id: string;
   state: string;
+  masterAlgorithm?: string | undefined;
   participants: number;
 }
 
@@ -54,6 +55,7 @@ interface LocalCoupling {
 interface LocalSession {
   id: string;
   state: "created" | "running" | "completed" | "error";
+  masterAlgorithm?: string | undefined;
   participants: LocalParticipant[];
   couplings: LocalCoupling[];
   startTime: number;
@@ -260,6 +262,9 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
             stopTime: (msg["stopTime"] as number) ?? 10,
             stepSize: (msg["stepSize"] as number) ?? 0.01,
             realtimeFactor: (msg["realtimeFactor"] as number) ?? 1,
+            masterAlgorithm: (msg["masterAlgorithm"] as string) ?? "gauss-seidel",
+            richardsonTolerance: (msg["richardsonTolerance"] as number) ?? 1e-4,
+            autoRemediateLoops: msg["autoRemediateLoops"],
           };
           const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions`, {
             method: "POST",
@@ -984,6 +989,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     const session: LocalSession = {
       id,
       state: "created",
+      masterAlgorithm: (msg["masterAlgorithm"] as string) ?? "gauss-seidel",
       participants: [],
       couplings: [],
       startTime: (msg["startTime"] as number) ?? 0,
@@ -992,7 +998,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       realtimeFactor: (msg["realtimeFactor"] as number) ?? 1,
     };
     this.localSessions.set(id, session);
-    this.postMessage({ type: "sessionCreated", session: { id, state: session.state } });
+    this.postMessage({
+      type: "sessionCreated",
+      session: { id, state: session.state, masterAlgorithm: session.masterAlgorithm },
+    });
     this.localFetchSessions();
   }
 
@@ -1000,6 +1009,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     const sessions = [...this.localSessions.values()].map((s) => ({
       id: s.id,
       state: s.state,
+      masterAlgorithm: s.masterAlgorithm,
       participants: s.participants.length,
     }));
     this.postMessage({ type: "sessionList", sessions });
@@ -1637,6 +1647,28 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       <div class="field">
         <label>Real-time Factor (0 = as fast as possible)</label>
         <input type="number" id="input-rt-factor" value="1" step="0.1">
+      </div>
+      <div class="field">
+        <label>Master Algorithm</label>
+        <select id="select-master-algorithm">
+          <option value="gauss-seidel" selected>Gauss-Seidel (Sequential)</option>
+          <option value="jacobi">Jacobi (Parallel)</option>
+          <option value="richardson">Richardson (Adaptive Step)</option>
+          <option value="newton">Newton-Raphson (Interface Jacobian)</option>
+        </select>
+      </div>
+      <div class="field" id="field-tolerance" style="display:none">
+        <label>Error Tolerance</label>
+        <input type="number" id="input-tolerance" value="0.0001" step="0.00001">
+      </div>
+      <div class="field">
+        <label>Algebraic Loop Remediation</label>
+        <select id="select-loop-remediation">
+          <option value="none">Manual / Default</option>
+          <option value="delay">Auto-Insert Extrapolated Delay</option>
+          <option value="aitken">Aitken Dynamic Relaxation</option>
+          <option value="newton">Interface Newton-Raphson</option>
+        </select>
       </div>
       <div class="btn-row">
         <button id="btn-submit-session">Create</button>

@@ -1,174 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  AlertIcon,
-  ArrowLeftIcon,
-  CodeIcon,
-  GitBranchIcon,
-  LinkExternalIcon,
-  ShareIcon,
-  SyncIcon,
-  XIcon,
-} from "@primer/octicons-react";
-import { Button, IconButton, Spinner, Text } from "@primer/react";
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import styled from "styled-components";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
 import { useAuth } from "../AuthContext";
-import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { useTheme } from "../theme";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
-
-const PageContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: calc(100vh - 54px - var(--dev-header-height, 0px));
-  background-color: var(--color-canvas-default, #0d1117);
-  overflow: hidden;
-  position: relative;
-`;
-
-const Toolbar = styled.div`
-  height: 42px;
-  min-height: 42px;
-  background-color: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  gap: 12px;
-  z-index: 10;
-  box-sizing: border-box;
-`;
-
-const ToolbarLeft = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-`;
-
-const ToolbarRight = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-`;
-
-const BreadcrumbText = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--color-fg-default);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  a {
-    color: var(--color-accent-cyan);
-    text-decoration: none;
-    &:hover {
-      text-decoration: underline;
-    }
-  }
-
-  .separator {
-    color: var(--color-fg-muted);
-  }
-`;
-
-const Badge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-family: var(--font-mono, monospace);
-  padding: 2px 6px;
-  border-radius: 4px;
-  background-color: rgba(6, 182, 212, 0.12);
-  color: var(--color-accent-cyan);
-  border: 1px solid rgba(6, 182, 212, 0.25);
-`;
-
-const DeprecationBanner = styled.div`
-  background: linear-gradient(90deg, rgba(210, 153, 34, 0.16) 0%, rgba(187, 128, 9, 0.08) 100%);
-  border-bottom: 1px solid rgba(210, 153, 34, 0.35);
-  color: var(--color-fg-default, #e6edf3);
-  padding: 6px 16px;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  z-index: 9;
-`;
-
-const IframeWrapper = styled.div`
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  position: relative;
-  overflow: hidden;
-
-  iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-    display: block;
-  }
-`;
-
-const LoadingOverlay = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--color-canvas-default, #0d1117);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  z-index: 5;
-  color: var(--color-fg-muted, #8b949e);
-  font-size: 14px;
-`;
-
-const TEMPLATE_NAMES: Record<string, string> = {
-  "bouncing-ball": "Bouncing Ball (Continuous Simulation)",
-  rlc: "RLC Circuit (Analogue Electronics)",
-  sysml2: "SysML v2 Vehicle Architecture",
-  "drone-chassis": "Drone Chassis Thread (Multi-Disciplinary CAD/FEA/CFD)",
-  "injection-molding-cosim": "Injection Molding Co-Simulation",
-  surrogate: "AI Surrogate ROMs (WASM Neural Models)",
-  "cfd-verification": "CFD-FMU Thermal Verification",
-  calibration: "Parameter Calibration & Fitting",
-  "optimica-polyglot": "SysML2 / Optimica Optimal Control",
-  uncertainty: "Monte Carlo Uncertainty Analysis",
-  "assembly-to-multibody": "STEP CAD to Multi-Body Dynamic Model",
-  "modelica-procedural-cad": "Modelica Procedural 3D CAD",
-  cosim: "Multi-FMU Co-Simulation Master",
-  "uns-mqtt": "UNS / MQTT Digital Twin Streaming",
-  "owl2-contradiction": "OWL2 Contradiction Detection",
-  "owl2-fmea": "OWL2 FMEA Fault Propagation",
-  "owl2-manufacturing": "Supply Chain & Manufacturing Ontologies",
-  "owl2-subsumption": "Component Subsumption Reasoning",
-  "owl2-units": "Semantic Unit Verification",
-  empty: "Blank Project",
-  notebook: "Interactive Engineering Notebook",
-  script: "ModelScript REPL & Automation Script",
-  cad: "3D CAD Polyglot Modeler",
-  "drone-meshing": "Drone Mesh Generation",
-  "drone-fea": "Drone Finite Element Analysis",
-  "drone-cfd": "Drone Computational Fluid Dynamics",
-};
+import {
+  IdeDeprecationBanner,
+  IdeToolbar,
+  IdeWorkbenchFrame,
+  PageContainer,
+  TEMPLATE_NAMES,
+  type IdeArtifactMetadata,
+  type LspStatusState,
+} from "./ide";
 
 export const IdeWorkspacePage: React.FC = () => {
   const { provider, namespace, project, templateId } = useParams<{
@@ -188,12 +36,7 @@ export const IdeWorkspacePage: React.FC = () => {
   const sourceParam = searchParams.get("source");
   const titleParam = searchParams.get("title");
 
-  const [artifactMetadata, setArtifactMetadata] = useState<{
-    id: string | number;
-    title: string;
-    viewType: string;
-    viewConfig: any;
-  } | null>(null);
+  const [artifactMetadata, setArtifactMetadata] = useState<IdeArtifactMetadata | null>(null);
 
   const artifactIdFromHash = useMemo(() => {
     if (location.hash && location.hash.startsWith("#memfs:artifact-")) {
@@ -233,7 +76,7 @@ export const IdeWorkspacePage: React.FC = () => {
       const decodedSource = decodeURIComponent(sourceParam);
       const title = titleParam ? decodeURIComponent(titleParam) : "ScratchModel.mo";
       const modelName = title.replace(/\.[^/.]+$/, "");
-      const meta = {
+      const meta: IdeArtifactMetadata = {
         id: "scratch",
         title,
         viewType: "modelica-code",
@@ -270,7 +113,7 @@ export const IdeWorkspacePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [showDeprecationNotice, setShowDeprecationNotice] = useState(true);
-  const [lspStatus, setLspStatus] = useState<{ status: string; message?: string | undefined } | null>(null);
+  const [lspStatus, setLspStatus] = useState<LspStatusState | null>(null);
 
   const handleRestartLsp = () => {
     setLspStatus({ status: "loading", message: "Restarting language server…" });
@@ -454,7 +297,7 @@ export const IdeWorkspacePage: React.FC = () => {
 
         case "MODELSCRIPT_SHARE_TO_FEED":
           if (data.payload) {
-            openCompose(data.payload);
+            openCompose(data.payload as any);
           } else {
             openCompose();
           }
@@ -502,237 +345,85 @@ export const IdeWorkspacePage: React.FC = () => {
 
   return (
     <PageContainer>
-      <Toolbar>
-        <ToolbarLeft>
-          {backUrl && (
-            <IconButton
-              aria-label="Back"
-              icon={ArrowLeftIcon}
-              size="small"
-              variant="invisible"
-              onClick={() => navigate(backUrl)}
-              sx={{ color: "var(--color-fg-muted)" }}
-            />
-          )}
+      <IdeToolbar
+        backUrl={backUrl}
+        onBack={() => navigate(backUrl)}
+        namespace={namespace}
+        project={project}
+        provider={provider}
+        branchName={branchName}
+        displayTitle={displayTitle}
+        artifactMetadata={artifactMetadata}
+        packageNameFromHash={packageNameFromHash}
+        isDeprecated={isDeprecated}
+        lspStatus={lspStatus}
+        onRestartLsp={handleRestartLsp}
+        onShare={() => {
+          const fromArtifactParam = searchParams.get("fromArtifact");
+          const forkedId = fromArtifactParam
+            ? Number(fromArtifactParam)
+            : artifactIdFromHash
+              ? Number(artifactIdFromHash)
+              : undefined;
 
-          <BreadcrumbText>
-            <CodeIcon />
-            {namespace && project ? (
-              <>
-                <Link to={`/repos/${provider || "github"}/${namespace}/${project}`}>{namespace}</Link>
-                <span className="separator">/</span>
-                <Link to={`/repos/${provider || "github"}/${namespace}/${project}`}>
-                  <strong>{project}</strong>
-                </Link>
-                {branchName && (
-                  <Badge>
-                    <GitBranchIcon size={12} />
-                    {branchName}
-                  </Badge>
-                )}
-              </>
-            ) : (
-              <>
-                <Text style={{ fontWeight: 600 }}>{displayTitle}</Text>
-                <Badge>memfs</Badge>
-                {artifactMetadata?.viewType && (
-                  <Badge sx={{ textTransform: "uppercase", background: "rgba(6, 182, 212, 0.15)", color: "#06b6d4" }}>
-                    {artifactMetadata.viewType}
-                  </Badge>
-                )}
-                {packageNameFromHash && (
-                  <Badge sx={{ background: "rgba(139, 92, 246, 0.15)", color: "#a78bfa" }}>package</Badge>
-                )}
-                {isDeprecated && (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      fontSize: "11px",
-                      fontFamily: "var(--font-mono, monospace)",
-                      padding: "1px 6px",
-                      borderRadius: "4px",
-                      backgroundColor: "rgba(210, 153, 34, 0.15)",
-                      color: "#d29922",
-                      border: "1px solid rgba(210, 153, 34, 0.3)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Deprecated
-                  </span>
-                )}
-              </>
-            )}
-          </BreadcrumbText>
-        </ToolbarLeft>
+          if (artifactIdFromHash) {
+            openCompose({
+              content: `Sharing an update on **${displayTitle}**:`,
+              artifactId: Number(artifactIdFromHash),
+              forkedFromArtifactId: forkedId,
+            });
+            return;
+          }
 
-        <ToolbarRight>
-          {lspStatus && (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                fontSize: "11px",
-                fontFamily: "var(--font-mono, monospace)",
-                padding: "2px 8px",
-                borderRadius: "999px",
-                background:
-                  lspStatus.status === "ready"
-                    ? "rgba(46, 160, 67, 0.15)"
-                    : lspStatus.status === "loading"
-                      ? "rgba(210, 153, 34, 0.15)"
-                      : "rgba(248, 81, 73, 0.15)",
-                color:
-                  lspStatus.status === "ready" ? "#3fb950" : lspStatus.status === "loading" ? "#d29922" : "#f85149",
-                border: `1px solid ${
-                  lspStatus.status === "ready"
-                    ? "rgba(46, 160, 67, 0.3)"
-                    : lspStatus.status === "loading"
-                      ? "rgba(210, 153, 34, 0.3)"
-                      : "rgba(248, 81, 73, 0.3)"
-                }`,
-                cursor: lspStatus.status === "error" || lspStatus.status === "offline" ? "pointer" : "default",
-                fontWeight: 600,
-              }}
-              title={lspStatus.message || "ModelScript Language Server"}
-              onClick={lspStatus.status === "error" || lspStatus.status === "offline" ? handleRestartLsp : undefined}
-            >
-              {lspStatus.status === "ready"
-                ? "● LSP Ready"
-                : lspStatus.status === "loading"
-                  ? "◐ Reconnecting…"
-                  : "⚠ LSP Offline (Restart)"}
-            </span>
-          )}
+          if (artifactMetadata?.viewConfig?.code && typeof artifactMetadata.viewConfig.code === "string") {
+            openCompose({
+              content: `Check out my model in the ModelScript IDE: **${displayTitle}**`,
+              morselPayload: {
+                code: artifactMetadata.viewConfig.code,
+                title: displayTitle.replace(/\.[^/.]+$/, ""),
+                dialect: "modelica",
+              },
+              forkedFromArtifactId: forkedId,
+            });
+            return;
+          }
 
-          <Button
-            size="small"
-            variant="default"
-            leadingVisual={ShareIcon}
-            onClick={() => {
-              const fromArtifactParam = searchParams.get("fromArtifact");
-              const forkedId = fromArtifactParam
-                ? Number(fromArtifactParam)
-                : artifactIdFromHash
-                  ? Number(artifactIdFromHash)
-                  : undefined;
+          try {
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: "MODELSCRIPT_REQUEST_ACTIVE_FILE" },
+              window.location.origin,
+            );
+          } catch {
+            // cross-origin fallback
+          }
 
-              if (artifactIdFromHash) {
-                openCompose({
-                  content: `Sharing an update on **${displayTitle}**:`,
-                  artifactId: Number(artifactIdFromHash),
-                  forkedFromArtifactId: forkedId,
-                });
-                return;
-              }
-
-              if (artifactMetadata?.viewConfig?.code) {
-                openCompose({
-                  content: `Check out my model in the ModelScript IDE: **${displayTitle}**`,
-                  morselPayload: {
-                    code: artifactMetadata.viewConfig.code,
-                    title: displayTitle.replace(/\.[^/.]+$/, ""),
-                    dialect: "modelica",
-                  },
-                  forkedFromArtifactId: forkedId,
-                });
-                return;
-              }
-
-              // Ask active editor inside iframe for latest content
-              try {
-                iframeRef.current?.contentWindow?.postMessage(
-                  { type: "MODELSCRIPT_REQUEST_ACTIVE_FILE" },
-                  window.location.origin,
-                );
-              } catch {
-                // cross-origin fallback
-              }
-
-              openCompose({
-                content: `Check out my workspace in the ModelScript IDE: **${displayTitle}**`,
-                forkedFromArtifactId: forkedId,
-              });
-            }}
-          >
-            Share to Feed
-          </Button>
-
-          <IconButton
-            aria-label="Reload Workbench"
-            icon={SyncIcon}
-            size="small"
-            variant="invisible"
-            onClick={() => {
-              setIsLoading(true);
-              setReloadKey((k) => k + 1);
-            }}
-            sx={{ color: "var(--color-fg-muted)" }}
-          />
-
-          <IconButton
-            aria-label="Open in Dedicated Tab"
-            icon={LinkExternalIcon}
-            size="small"
-            variant="invisible"
-            onClick={() => window.open(workbenchUrl, "_blank")}
-            sx={{ color: "var(--color-fg-muted)" }}
-          />
-        </ToolbarRight>
-      </Toolbar>
+          openCompose({
+            content: `Check out my workspace in the ModelScript IDE: **${displayTitle}**`,
+            forkedFromArtifactId: forkedId,
+          });
+        }}
+        onReload={() => {
+          setIsLoading(true);
+          setReloadKey((k) => k + 1);
+        }}
+        onOpenDedicatedTab={() => window.open(workbenchUrl, "_blank")}
+      />
 
       {isDeprecated && showDeprecationNotice && (
-        <DeprecationBanner>
-          <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0 }}>
-            <AlertIcon size={14} style={{ color: "#d29922", flexShrink: 0 }} />
-            <Text style={{ fontSize: "12px", color: "var(--color-fg-default)" }}>
-              <strong>Notice:</strong> Example workspace &ldquo;{displayTitle}&rdquo; is deprecated. For new modeling
-              projects, we recommend starting in the Blank Workspace.
-            </Text>
-          </Box>
-          <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-            <Button
-              size="small"
-              variant="primary"
-              onClick={() => navigate("/ide")}
-              style={{
-                fontSize: "11px",
-                height: "24px",
-                padding: "0 8px",
-              }}
-            >
-              Switch to Blank Workspace
-            </Button>
-            <IconButton
-              aria-label="Dismiss banner"
-              icon={XIcon}
-              size="small"
-              variant="invisible"
-              onClick={() => setShowDeprecationNotice(false)}
-              sx={{ color: "var(--color-fg-muted)", height: "24px", width: "24px" }}
-            />
-          </Box>
-        </DeprecationBanner>
+        <IdeDeprecationBanner
+          displayTitle={displayTitle}
+          onSwitchToBlank={() => navigate("/ide")}
+          onDismiss={() => setShowDeprecationNotice(false)}
+        />
       )}
 
-      <IframeWrapper>
-        {isLoading && (
-          <LoadingOverlay>
-            <Spinner size="large" />
-            <Text>Initializing ModelScript IDE & WebAssembly Solvers...</Text>
-          </LoadingOverlay>
-        )}
-        <iframe
-          key={reloadKey}
-          ref={iframeRef}
-          src={workbenchUrl}
-          title="ModelScript IDE Workbench"
-          allow="clipboard-read; clipboard-write"
-          onLoad={handleIframeLoad}
-        />
-      </IframeWrapper>
+      <IdeWorkbenchFrame
+        isLoading={isLoading}
+        reloadKey={reloadKey}
+        workbenchUrl={workbenchUrl}
+        iframeRef={iframeRef}
+        onIframeLoad={handleIframeLoad}
+      />
     </PageContainer>
   );
 };

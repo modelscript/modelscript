@@ -23,6 +23,13 @@ export interface FmiDefaultExperiment {
   stepSize: number | undefined;
 }
 
+/** FMI ModelStructure output dependency descriptor. */
+export interface FmiModelStructureOutputDependency {
+  outputIndexOrVr: number;
+  dependencies?: number[] | undefined;
+  dependenciesKind?: string[] | undefined;
+}
+
 /** Parsed FMU model description. */
 export interface FmiModelDescription {
   /** FMI version string (e.g. "2.0" or "3.0"). */
@@ -57,12 +64,13 @@ export interface FmiModelDescription {
   variables: FmiScalarVariable[];
   /** Number of event indicators. */
   numberOfEventIndicators: number | undefined;
-  /** Parsed ModelStructure section (outputs, derivatives, initialUnknowns). */
+  /** Parsed ModelStructure section (outputs, derivatives, initialUnknowns, outputDependencies). */
   modelStructure?:
     | {
         outputs: number[];
         derivatives: number[];
         initialUnknowns: number[];
+        outputDependencies?: FmiModelStructureOutputDependency[] | undefined;
       }
     | undefined;
   /** FMI 3.0 Terminals and Icons (if present in modelDescription or archive). */
@@ -257,6 +265,7 @@ export function parseModelDescription(xml: string): FmiModelDescription {
         displayUnit,
         initial,
         derivative,
+        index: variables.length + 1,
       };
       if (body) {
         const dimElems = extractTagElements(body, "Dimension");
@@ -300,13 +309,32 @@ export function parseModelDescription(xml: string): FmiModelDescription {
   const outputs: number[] = [];
   const derivatives: number[] = [];
   const initialUnknowns: number[] = [];
+  const outputDependencies: FmiModelStructureOutputDependency[] = [];
   const msBlock = extractTagBlock(xml, "ModelStructure");
   if (msBlock) {
     const outputsBlock = extractTagBlock(msBlock.body, "Outputs");
     if (outputsBlock) {
       for (const u of extractTagElements(outputsBlock.body, "Unknown")) {
         const idx = extractAttrFromStr(u.attrs, "index");
-        if (idx !== undefined) outputs.push(parseInt(idx, 10));
+        if (idx !== undefined) {
+          const parsedIdx = parseInt(idx, 10);
+          outputs.push(parsedIdx);
+          const depStr = extractAttrFromStr(u.attrs, "dependencies");
+          const depKindStr = extractAttrFromStr(u.attrs, "dependenciesKind");
+          outputDependencies.push({
+            outputIndexOrVr: parsedIdx,
+            dependencies:
+              depStr !== undefined
+                ? depStr.trim() === ""
+                  ? []
+                  : depStr
+                      .trim()
+                      .split(/\s+/)
+                      .map((s) => parseInt(s, 10))
+                : undefined,
+            dependenciesKind: depKindStr !== undefined ? depKindStr.trim().split(/\s+/) : undefined,
+          });
+        }
       }
     }
     const derivsBlock = extractTagBlock(msBlock.body, "Derivatives");
@@ -326,7 +354,25 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     // FMI 3.0 tags
     for (const o of extractTagElements(msBlock.body, "Output")) {
       const vr = extractAttrFromStr(o.attrs, "valueReference");
-      if (vr !== undefined) outputs.push(parseInt(vr, 10));
+      if (vr !== undefined) {
+        const parsedVr = parseInt(vr, 10);
+        outputs.push(parsedVr);
+        const depStr = extractAttrFromStr(o.attrs, "dependencies");
+        const depKindStr = extractAttrFromStr(o.attrs, "dependenciesKind");
+        outputDependencies.push({
+          outputIndexOrVr: parsedVr,
+          dependencies:
+            depStr !== undefined
+              ? depStr.trim() === ""
+                ? []
+                : depStr
+                    .trim()
+                    .split(/\s+/)
+                    .map((s) => parseInt(s, 10))
+              : undefined,
+          dependenciesKind: depKindStr !== undefined ? depKindStr.trim().split(/\s+/) : undefined,
+        });
+      }
     }
     for (const d of extractTagElements(msBlock.body, "ContinuousStateDerivative")) {
       const vr = extractAttrFromStr(d.attrs, "valueReference");
@@ -367,7 +413,7 @@ export function parseModelDescription(xml: string): FmiModelDescription {
     defaultExperiment,
     variables,
     numberOfEventIndicators: numberOfEventIndicatorsStr ? parseInt(numberOfEventIndicatorsStr, 10) : undefined,
-    modelStructure: { outputs, derivatives, initialUnknowns },
+    modelStructure: { outputs, derivatives, initialUnknowns, outputDependencies },
     terminals,
   };
 }
@@ -608,4 +654,68 @@ function parsePositionAttrs(attrs: string): FmiTerminalGraphicalRepresentation |
   }
 
   return hasData ? rep : undefined;
+}
+
+/**
+ * Extracts a map of direct feedthrough dependencies from a parsed FMU model description:
+ * output variable name -> Set of input variable names it directly depends on.
+ *
+ * In FMI co-simulation:
+ * - If dependencies attribute is not present for an output (FMI 2.0 default), it depends on ALL inputs.
+ * - If dependencies attribute is present but empty (""), it has NO direct feedthrough.
+ * - If dependencies attribute lists indices/VRs, it depends only on those specific inputs.
+ */
+export function extractDirectFeedthroughFromModelDescription(desc: FmiModelDescription): Map<string, Set<string>> {
+  const feedthrough = new Map<string, Set<string>>();
+  if (!desc.modelStructure) return feedthrough;
+
+  const inputs = desc.variables.filter((v) => v.causality === "input");
+  const allInputNames = new Set(inputs.map((v) => v.name));
+
+  const inputByIndex = new Map<number, string>();
+  const inputByVr = new Map<number, string>();
+  for (const inv of inputs) {
+    if (inv.index !== undefined) inputByIndex.set(inv.index, inv.name);
+    inputByVr.set(inv.valueReference, inv.name);
+  }
+
+  const varByIndex = new Map<number, FmiScalarVariable>();
+  const varByVr = new Map<number, FmiScalarVariable>();
+  for (const v of desc.variables) {
+    if (v.index !== undefined) varByIndex.set(v.index, v);
+    varByVr.set(v.valueReference, v);
+  }
+
+  const depsList = desc.modelStructure.outputDependencies;
+  if (!depsList || depsList.length === 0) {
+    for (const outRef of desc.modelStructure.outputs) {
+      const outVar = varByIndex.get(outRef) ?? varByVr.get(outRef);
+      if (outVar && outVar.causality === "output") {
+        feedthrough.set(outVar.name, new Set(allInputNames));
+      }
+    }
+    return feedthrough;
+  }
+
+  for (const entry of depsList) {
+    const outVar = varByIndex.get(entry.outputIndexOrVr) ?? varByVr.get(entry.outputIndexOrVr);
+    if (!outVar) continue;
+
+    if (entry.dependencies === undefined) {
+      feedthrough.set(outVar.name, new Set(allInputNames));
+    } else if (entry.dependencies.length === 0) {
+      feedthrough.set(outVar.name, new Set<string>());
+    } else {
+      const depInputs = new Set<string>();
+      for (const depId of entry.dependencies) {
+        const inName = inputByIndex.get(depId) ?? inputByVr.get(depId);
+        if (inName) {
+          depInputs.add(inName);
+        }
+      }
+      feedthrough.set(outVar.name, depInputs);
+    }
+  }
+
+  return feedthrough;
 }

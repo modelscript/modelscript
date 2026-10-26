@@ -219,6 +219,23 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
     }
   }
   eqCount += boundStateEqCount;
+
+  // Account for FMU black-box outputs as equations provided by external subsystems
+  let fmuEqCount = 0;
+  const fmuInstances = dae.extensionMetadata?.fmuInstances as any[];
+  if (Array.isArray(fmuInstances)) {
+    for (const fmu of fmuInstances) {
+      for (const outVar of fmu.outputs || []) {
+        const fullVarName = fmu.instanceName ? `${fmu.instanceName}.${outVar}` : outVar;
+        const vId = dae.getVarIdxByName(fullVarName);
+        if (vId >= 0 && !dae.isVarRemoved(vId)) {
+          fmuEqCount += dae.getVarShapeElementCount(vId);
+        }
+      }
+    }
+  }
+  eqCount += fmuEqCount;
+
   if (
     !dae.diagnostics.some((d: any) => d.severity === "error") &&
     stateCount > 0 &&

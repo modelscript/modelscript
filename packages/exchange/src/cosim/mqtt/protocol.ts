@@ -141,6 +141,30 @@ export interface VariableBatch {
   values: Record<string, number | string | boolean>;
 }
 
+// ── Time Synchronization messages ──
+
+/** Time sync ping from master/synchronizer. */
+export interface TimeSyncPing {
+  type: "ping";
+  sessionId: string;
+  participantId: string;
+  seq: number;
+  t1: number;
+}
+
+/** Time sync pong from participant. */
+export interface TimeSyncPong {
+  type: "pong";
+  sessionId: string;
+  participantId: string;
+  seq: number;
+  t1: number;
+  t2: number;
+  t3: number;
+}
+
+export type TimeSyncMessage = TimeSyncPing | TimeSyncPong;
+
 // ── Serialization helpers ──
 
 /** Encode a message to a Buffer for MQTT publishing. */

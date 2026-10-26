@@ -15,11 +15,12 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "test": "npx tsx tests/worker-runner.test.ts",
+    "test": "npx tsx tests/worker-runner.test.ts && npx tsx tests/c-wasm-compiler.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelscript/embed": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/runtime": "*"
   },
   "devDependencies": {

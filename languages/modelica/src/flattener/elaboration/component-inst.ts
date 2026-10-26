@@ -3881,6 +3881,9 @@ export function instantiateElements(
         // Phase 4: Recursive Composite Class Elaboration & Modifier Merging
         // ============================================================================
         if (isUserClass) {
+          if (classTargetId && flattener["isFmuClass"]?.(classTargetId)) {
+            flattener["fmuComponents"]?.set(name, classTargetId);
+          }
           // Check for dot lookup in partial classes/packages (e.g. P.A a; where P is partial)
           const typeSpecParts = (compInst.typeSpecifier ?? "").split(".");
           if (typeSpecParts.length > 1) {
@@ -5586,6 +5589,9 @@ export function instantiateElements(
               if (classTargetId && flattener["isExpandableConnectorClass"](classTargetId)) {
                 flattener.expandableBuses.set(name, classTargetId);
               }
+              if (classTargetId && flattener["isFmuClass"]?.(classTargetId)) {
+                flattener["fmuComponents"]?.set(name, classTargetId);
+              }
               if (subElements && subElements.length > 0) {
                 const prevImports = flattener.currentImports;
                 if (classTargetId) {
@@ -5648,6 +5654,9 @@ export function instantiateElements(
               const arrVarName = `${name}${indexStr}`;
               if (classTargetId && flattener["isExpandableConnectorClass"](classTargetId)) {
                 flattener.expandableBuses.set(arrVarName, classTargetId);
+              }
+              if (classTargetId && flattener["isFmuClass"]?.(classTargetId)) {
+                flattener["fmuComponents"]?.set(arrVarName, classTargetId);
               }
               let elemSubMod = effectiveSubMod;
               // When `each` is NOT specified on a modifier targeting an array of composite components,
@@ -5851,6 +5860,9 @@ export function instantiateElements(
                   const compClassImports = flattener["collectClassImports"](classTargetId);
                   flattener.currentImports = new Map([...flattener.currentImports, ...compClassImports]);
                 }
+                if (classTargetId && flattener["isFmuClass"]?.(classTargetId)) {
+                  flattener["fmuComponents"]?.set(arrVarName, classTargetId);
+                }
                 instantiateElements(flattener, subElements, arrVarName, dae, elemSubMod);
                 flattener.currentImports = prevImports;
                 if (dae.diagnostics.some((d) => d.code === 2012 || d.code === 2013)) break;
@@ -5860,6 +5872,9 @@ export function instantiateElements(
           } else {
             if (classTargetId && flattener["isExpandableConnectorClass"](classTargetId)) {
               flattener.expandableBuses.set(name, classTargetId);
+            }
+            if (classTargetId && flattener["isFmuClass"]?.(classTargetId)) {
+              flattener["fmuComponents"]?.set(name, classTargetId);
             }
             if (subElements && subElements.length > 0) {
               const prevImports = flattener.currentImports;

@@ -302,24 +302,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
         // Fallback below
       }
 
-      // 3. Clean fallback geometry with parametric difference (for testing or offline CAD models)
-      if (isHead) {
-        // Head model: updated mechanical mount with extended flange and enlarged bore
-        const baseBox = new THREE.BoxGeometry(32, 14, 38);
-        const bore = new THREE.CylinderGeometry(9, 9, 32, 32);
-        bore.rotateX(Math.PI / 2);
-        baseBox.computeVertexNormals();
-        bore.computeVertexNormals();
-        return [baseBox, bore];
-      } else {
-        // Base model: original baseline mount
-        const baseBox = new THREE.BoxGeometry(28, 12, 34);
-        const bore = new THREE.CylinderGeometry(7.5, 7.5, 30, 32);
-        bore.rotateX(Math.PI / 2);
-        baseBox.computeVertexNormals();
-        bore.computeVertexNormals();
-        return [baseBox, bore];
-      }
+      throw new Error(`Failed to load CAD geometry meshes for ${isHead ? "head revision" : "base revision"}`);
     }
 
     Promise.all([loadMesh(baseMeshUrl, false), loadMesh(headMeshUrl, true)])

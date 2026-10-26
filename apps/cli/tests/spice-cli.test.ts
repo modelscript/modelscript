@@ -146,6 +146,78 @@ end RcFilter;`;
       assert.ok(syncedContent.includes("4700"), "Must update R1 to 4700");
       assert.ok(syncedContent.includes("12"), "Must update V1 to 12");
       assert.ok(syncedContent.includes(".TRAN 10u 5m"), "Must preserve directives");
+
+      // 7. Inspect / Summary
+      const inspectCmd = capturedCommands.find(
+        (c) =>
+          (typeof c.command === "string" && (c.command.startsWith("inspect") || c.command.startsWith("summary"))) ||
+          (Array.isArray(c.command) && c.command.some((cmdStr: string) => cmdStr.startsWith("inspect"))),
+      );
+      assert.ok(inspectCmd, "Must find inspect command");
+
+      logs = [];
+      await inspectCmd.handler({
+        file: validFile,
+        format: "pretty",
+      });
+      assert.ok(logs.some((l) => l.includes("SPICE Netlist Summary:")));
+      assert.ok(logs.some((l) => l.includes("Components:")));
+
+      const summaryOut = path.join(tmpDir, "summary.json");
+      await inspectCmd.handler({
+        file: validFile,
+        format: "json",
+        out: summaryOut,
+      });
+      assert.ok(fs.existsSync(summaryOut));
+      const summaryData = JSON.parse(fs.readFileSync(summaryOut, "utf-8"));
+      assert.equal(summaryData.componentsCount, 3);
+      assert.ok(summaryData.componentsByKind["R"] === 1);
+      assert.ok(summaryData.nodeCount >= 3);
+
+      // 8. Lower to DAE arena
+      const toDaeCmd = capturedCommands.find((c) => c.command.startsWith("to-dae"));
+      assert.ok(toDaeCmd, "Must find to-dae command");
+
+      logs = [];
+      const daeOut = path.join(tmpDir, "dae_meta.json");
+      await toDaeCmd.handler({
+        file: validFile,
+        format: "json",
+        out: daeOut,
+      });
+      assert.ok(fs.existsSync(daeOut));
+      const daeMeta = JSON.parse(fs.readFileSync(daeOut, "utf-8"));
+      assert.ok(daeMeta.varCount >= 3);
+      assert.ok(daeMeta.eqCount >= 3);
+
+      // 9. Generate Schematic Diagram (SVG)
+      const diagramCmd = capturedCommands.find((c) => c.command.startsWith("diagram"));
+      assert.ok(diagramCmd, "Must find diagram command");
+
+      const svgOut = path.join(tmpDir, "schematic.svg");
+      await diagramCmd.handler({
+        file: validFile,
+        format: "svg",
+        out: svgOut,
+      });
+      assert.ok(fs.existsSync(svgOut));
+      const svgContent = fs.readFileSync(svgOut, "utf-8");
+      assert.ok(svgContent.includes("<svg"));
+      assert.ok(svgContent.includes("R1"));
+      assert.ok(svgContent.includes("C1"));
+
+      // 10. Generate Schematic Diagram (JSON graph)
+      const graphOut = path.join(tmpDir, "diagram.json");
+      await diagramCmd.handler({
+        file: validFile,
+        format: "json",
+        out: graphOut,
+      });
+      assert.ok(fs.existsSync(graphOut));
+      const graphData = JSON.parse(fs.readFileSync(graphOut, "utf-8"));
+      assert.ok(Array.isArray(graphData.cells));
+      assert.ok(graphData.cells.length > 0);
     } finally {
       console.log = origLog;
       fs.rmSync(tmpDir, { recursive: true, force: true });

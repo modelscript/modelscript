@@ -109,4 +109,17 @@ COMPONENTS:
     assert.ok(stdout.includes("<svg"));
     assert.ok(stdout.includes("LA01"));
   });
+
+  it("msx easy5 trim computes equilibrium operating point (dx/dt = 0)", async () => {
+    const { stdout } = await runEasy5Command("trim", modelFile);
+    assert.ok(stdout.includes("Operating Point Equilibrium (Trim) for LagFilter:"));
+    assert.ok(stdout.includes("Converged:     YES"));
+    assert.ok(stdout.includes("Residual Norm:"));
+
+    const jsonRes = await runEasy5Command("trim", modelFile, { format: "json" });
+    const parsed = JSON.parse(jsonRes.stdout);
+    assert.equal(parsed.converged, true);
+    assert.ok(parsed.trimmedStates !== undefined);
+    assert.ok(parsed.trimmedOutputs !== undefined);
+  });
 });

@@ -964,6 +964,51 @@ export function authRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * POST /api/v1/auth/link/:provider
+   * Authenticated endpoint to securely initiate OAuth account linking.
+   * Expects Authorization: Bearer <token> or modelscript_token cookie.
+   * Returns { redirectUrl: string } without leaking tokens into query parameters or referrer headers.
+   */
+  router.post("/link/:provider", (req: Request, res: Response) => {
+    const provider =
+      typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
+    const cookieHeader = req.headers.cookie || "";
+    const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
+    const cookieToken = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : "";
+    const authHeader = req.headers.authorization || "";
+    const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    const token = bearerToken || cookieToken || (req.body && req.body.token);
+
+    if (!token) {
+      res.status(401).json({ error: "Authentication required to link account" });
+      return;
+    }
+
+    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
+    if (process.env["NODE_ENV"] === "production" && !clientId) {
+      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+      return;
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
+      const signedState = jwt.sign({ action: "link", userId: decoded.id, provider }, JWT_SECRET, { expiresIn: "10m" });
+      if (clientId) {
+        const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
+        if (authorizeUrl) {
+          res.json({ redirectUrl: authorizeUrl });
+          return;
+        }
+      }
+      res.json({
+        redirectUrl: `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
+      });
+    } catch {
+      res.status(401).json({ error: "Invalid or expired authentication token" });
+    }
+  });
+
+  /**
    * GET /api/v1/auth/callback/:provider
    */
   router.get("/callback/:provider", async (req: Request, res: Response) => {

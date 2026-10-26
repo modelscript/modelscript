@@ -35,6 +35,7 @@ interface AuthContextType {
     acceptTerms?: boolean,
     captchaToken?: string,
   ) => Promise<{ verificationRequired?: boolean | undefined; message?: string | undefined }>;
+  updateToken: (newToken: string | null) => void;
   logout: () => void;
   unreadCount: number;
   setUnreadCount: (c: number) => void;
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(!!token);
 
   const [unreadCount, setUnreadCount] = useState(0);
-  const [creditBalance, setCreditBalance] = useState<number>(100);
+  const [creditBalance, setCreditBalance] = useState<number>(0);
 
   // Set/clear the axios default header whenever token changes
   useEffect(() => {
@@ -184,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: string,
       password: string,
       acceptTerms: boolean = true,
-      captchaToken: string = "mock-token",
+      captchaToken: string = import.meta.env.VITE_TURNSTILE_SITE_KEY ? "" : "mock-token",
     ) => {
       const { data } = await api.post("/auth/register", {
         username,
@@ -202,6 +203,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [],
   );
+
+  const updateToken = useCallback((newToken: string | null) => {
+    setToken(newToken);
+  }, []);
 
   const logout = useCallback(() => {
     api.post("/auth/logout").catch(() => {});
@@ -223,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         complete2FALogin,
         register,
+        updateToken,
         logout,
         unreadCount,
         setUnreadCount,

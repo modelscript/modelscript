@@ -194,8 +194,11 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
     `);
   }, [viewConfig.svg]);
 
+  const [simError, setSimError] = useState<string | null>(null);
+
   const handleRunSimulationLocally = async () => {
     setRunningSim(true);
+    setSimError(null);
     try {
       const geoHash =
         (viewConfig.geometryHash as string) || "0000000000000000000000000000000000000000000000000000000000000000";
@@ -210,18 +213,17 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
       if (result?.jobId) {
         setSimCompleted(true);
         setCompletedResultConfig({
+          url: `/api/v1/physics/${result.jobId}/result`,
           resultVtuUrl: `/api/v1/physics/${result.jobId}/result`,
           title: `Solved: ${title}`,
           scalarField: "Pressure",
         });
+      } else {
+        throw new Error("No job ID returned from CFD solver service");
       }
-    } catch (err) {
-      console.warn("[CfdConfigViewer] Local simulation failed or fallback mock:", err);
-      setSimCompleted(true);
-      setCompletedResultConfig({
-        title: `Solved: ${title} (Pressure Field)`,
-        scalarField: "Pressure",
-      });
+    } catch (err: any) {
+      console.warn("[CfdConfigViewer] Local simulation failed:", err);
+      setSimError(err?.response?.data?.error || err.message || "CFD simulation failed");
     } finally {
       setRunningSim(false);
     }
@@ -262,6 +264,14 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           </Button>
         </Box>
       </Toolbar>
+
+      {simError && (
+        <Box px={3} py={2} bg="rgba(248, 81, 73, 0.15)" borderBottom="1px solid var(--color-danger-border)">
+          <Text fontSize="12px" color="var(--color-danger-fg)">
+            Simulation Error: {simError}
+          </Text>
+        </Box>
+      )}
 
       <ContentArea>
         {loading ? (

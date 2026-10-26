@@ -414,6 +414,216 @@ const SpiceSyncCommand: CommandModule<{}, SpiceSyncArgs> = {
   },
 };
 
+interface SpiceInspectArgs {
+  file: string;
+  format: "pretty" | "json";
+  out?: string | undefined;
+}
+
+const SpiceInspectCommand: CommandModule<{}, SpiceInspectArgs> = {
+  command: "inspect <file>",
+  aliases: ["summary <file>", "summary"],
+  describe: "Inspect circuit topology, component breakdown by kind, nodes, models, subcircuits, and directives",
+  builder: (yargs) =>
+    yargs
+      .positional("file", {
+        demandOption: true,
+        description: "Path to SPICE netlist (.cir, .sp, .net, .lib)",
+        type: "string",
+      })
+      .option("format", {
+        alias: "f",
+        description: "Output format",
+        choices: ["pretty", "json"],
+        default: "pretty",
+      })
+      .option("out", {
+        alias: "o",
+        description: "Write summary to output JSON file",
+        type: "string",
+      }) as any,
+  handler: async (args) => {
+    const { parseSpice } = await import("@modelscript/spice");
+
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    const content = fs.readFileSync(filePath, "utf-8");
+    const circuit = parseSpice(content);
+
+    const kindCounts: Record<string, number> = {};
+    for (const c of circuit.components) {
+      kindCounts[c.kind] = (kindCounts[c.kind] ?? 0) + 1;
+    }
+    const nodes = new Set<string>();
+    for (const c of circuit.components) {
+      for (const n of c.nodes) nodes.add(n);
+    }
+
+    const payload = {
+      title: circuit.title,
+      componentsCount: circuit.components.length,
+      componentsByKind: kindCounts,
+      nodes: Array.from(nodes),
+      nodeCount: nodes.size,
+      models: Array.from(circuit.models.keys()),
+      subcircuits: Array.from(circuit.subcircuits.keys()),
+      directives: circuit.directives.map((d) => d.kind),
+    };
+
+    if (args.format === "json") {
+      const jsonStr = JSON.stringify(payload, null, 2);
+      if (args.out) {
+        fs.writeFileSync(path.resolve(process.cwd(), args.out), jsonStr, "utf-8");
+        console.log(`Saved SPICE netlist summary to ${args.out}`);
+      } else {
+        console.log(jsonStr);
+      }
+    } else {
+      console.log(`\n\x1b[1mSPICE Netlist Summary:\x1b[0m ${circuit.title || path.basename(filePath)}`);
+      const breakdown = Object.entries(kindCounts)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(", ");
+      console.log(`  Components:  ${circuit.components.length}${breakdown ? ` (${breakdown})` : ""}`);
+      const nodeList = Array.from(nodes).slice(0, 10).join(", ");
+      console.log(`  Nodes:       ${nodes.size}${nodeList ? ` (${nodeList}${nodes.size > 10 ? "..." : ""})` : ""}`);
+      console.log(`  Models:      ${circuit.models.size}`);
+      console.log(`  Subcircuits: ${circuit.subcircuits.size}`);
+      const dirList = circuit.directives.map((d) => d.kind).join(", ");
+      console.log(`  Directives:  ${circuit.directives.length}${dirList ? ` (${dirList})` : ""}\n`);
+      if (args.out) {
+        fs.writeFileSync(path.resolve(process.cwd(), args.out), JSON.stringify(payload, null, 2), "utf-8");
+        console.log(`Saved SPICE netlist summary to ${args.out}`);
+      }
+    }
+  },
+};
+
+interface SpiceToDaeArgs {
+  file: string;
+  format: "pretty" | "json";
+  out?: string | undefined;
+}
+
+const SpiceToDaeCommand: CommandModule<{}, SpiceToDaeArgs> = {
+  command: "to-dae <file>",
+  describe: "Lower SPICE netlist directly into zero-GC linear-memory DAE arena",
+  builder: (yargs) =>
+    yargs
+      .positional("file", {
+        demandOption: true,
+        description: "Path to SPICE netlist (.cir, .sp, .net, .lib)",
+        type: "string",
+      })
+      .option("format", {
+        alias: "f",
+        description: "Output format",
+        choices: ["pretty", "json"],
+        default: "pretty",
+      })
+      .option("out", {
+        alias: "o",
+        description: "Output JSON file for DAE metadata",
+        type: "string",
+      }) as any,
+  handler: async (args) => {
+    const { parseSpice, lowerSpiceToDae } = await import("@modelscript/spice");
+
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    const content = fs.readFileSync(filePath, "utf-8");
+    const circuit = parseSpice(content);
+    const arena = lowerSpiceToDae(circuit);
+
+    const payload = {
+      title: circuit.title,
+      varCount: arena.getVarCount(),
+      eqCount: arena.getEqCount(),
+    };
+
+    if (args.format === "json") {
+      const jsonStr = JSON.stringify(payload, null, 2);
+      if (args.out) {
+        fs.writeFileSync(path.resolve(process.cwd(), args.out), jsonStr, "utf-8");
+        console.log(`Saved DAE metadata to ${args.out}`);
+      } else {
+        console.log(jsonStr);
+      }
+    } else {
+      console.log(`\n\x1b[1mLowered SPICE netlist into linear DAE arena:\x1b[0m ${circuit.title}`);
+      console.log(`  Variables: ${payload.varCount}`);
+      console.log(`  Equations: ${payload.eqCount}`);
+      if (args.out) {
+        fs.writeFileSync(path.resolve(process.cwd(), args.out), JSON.stringify(payload, null, 2), "utf-8");
+        console.log(`Saved DAE metadata to ${args.out}`);
+      }
+    }
+  },
+};
+
+interface SpiceDiagramArgs {
+  file: string;
+  format: "svg" | "json";
+  out?: string | undefined;
+}
+
+const SpiceDiagramCommand: CommandModule<{}, SpiceDiagramArgs> = {
+  command: "diagram <file>",
+  describe: "Render SPICE circuit schematic diagram to standalone vector SVG or JSON graph",
+  builder: (yargs) =>
+    yargs
+      .positional("file", {
+        demandOption: true,
+        description: "Path to SPICE netlist (.cir, .sp, .net, .lib)",
+        type: "string",
+      })
+      .option("format", {
+        alias: "f",
+        description: "Output format (svg or json)",
+        choices: ["svg", "json"],
+        default: "svg",
+      })
+      .option("out", {
+        alias: "o",
+        description: "Output file path (e.g., schematic.svg or graph.json)",
+        type: "string",
+      }) as any,
+  handler: async (args) => {
+    const { parseSpice, renderSpiceSvg, buildSpiceDiagram } = await import("@modelscript/spice");
+
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    const content = fs.readFileSync(filePath, "utf-8");
+    const circuit = parseSpice(content);
+
+    let outputStr: string;
+    if (args.format === "json") {
+      const graph = buildSpiceDiagram(circuit);
+      outputStr = JSON.stringify(graph, null, 2);
+    } else {
+      outputStr = renderSpiceSvg(circuit);
+    }
+
+    if (args.out) {
+      fs.writeFileSync(path.resolve(process.cwd(), args.out), outputStr, "utf-8");
+      console.log(`Saved schematic diagram to ${args.out}`);
+    } else {
+      console.log(outputStr);
+    }
+  },
+};
+
 export const Spice: CommandModule = {
   command: "spice <action>",
   describe: "SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation",
@@ -421,10 +631,16 @@ export const Spice: CommandModule = {
     return yargs
       .command(SpiceSimulateCommand)
       .command(SpiceLintCommand)
+      .command(SpiceInspectCommand)
       .command(SpiceToModelicaCommand)
       .command(SpiceToEcadCommand)
+      .command(SpiceToDaeCommand)
+      .command(SpiceDiagramCommand)
       .command(SpiceSyncCommand)
-      .demandCommand(1, "Please specify an action (simulate, lint, to-modelica, to-ecad, or sync)") as any;
+      .demandCommand(
+        1,
+        "Please specify an action (simulate, lint, inspect, summary, to-modelica, to-ecad, to-dae, diagram, or sync)",
+      ) as any;
   },
   handler: () => {},
 };

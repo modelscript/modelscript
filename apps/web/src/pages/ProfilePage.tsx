@@ -1,92 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-import {
-  ArrowLeftIcon,
-  CalendarIcon,
-  GlobeIcon,
-  HubotIcon,
-  InfoIcon,
-  KebabHorizontalIcon,
-  LinkExternalIcon,
-  LinkIcon,
-  ListUnorderedIcon,
-  LocationIcon,
-  MuteIcon,
-  NoEntryIcon,
-  ReportIcon,
-  RssIcon,
-} from "@primer/octicons-react";
-import { Button, Dialog, Flash, FormControl, Heading, Select, Spinner, Text, Textarea } from "@primer/react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { Flash, Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import styled from "styled-components";
+import { useNavigate, useParams } from "react-router-dom";
 import { blockUser, followUser, getUserProfile, muteUser, reportUser, unblockUser, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import FederatedDomainPill from "../components/FederatedDomainPill";
-import FollowButton from "../components/FollowButton";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
 import ProfileSolutions from "../components/ProfileSolutions";
-import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
-import { safeCssImageUrl, sanitizeHttpUrl } from "../util/url";
-
-const XIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-  </svg>
-);
-
-const TabBar = styled.div`
-  display: flex;
-  border-bottom: 1px solid var(--color-border-default);
-  margin-top: 24px;
-`;
-
-const Tab = styled.button<{ $active?: boolean | undefined }>`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: none;
-  border: none;
-  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? "bold" : "normal")};
-  cursor: pointer;
-  transition: background-color 0.2s;
-  position: relative;
-
-  &:hover {
-    background-color: var(--color-canvas-subtle);
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    height: 3px;
-    width: 56px;
-    background: var(--gradient-cta);
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
-    border-radius: 9999px;
-    display: ${(props) => (props.$active ? "block" : "none")};
-  }
-`;
+import { ProfileHeader, ReportModal, Tab, TabBar, UnblockModal, type LinkedAccount, type ProfileData } from "./profile";
 
 const ProfilePage: React.FC = () => {
   const { username } = useParams();
   const navigate = useNavigate();
   const { user, token } = useAuth();
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   usePageTitle(
     profile?.display_name ? `${profile.display_name} (@${username})` : username ? `@${username}` : "Profile",
   );
   const [isFollowing, setIsFollowing] = useState(false);
-  const [linkedAccounts, setLinkedAccounts] = useState<any[]>([]);
+  const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Posts");
 
@@ -171,19 +107,23 @@ const ProfilePage: React.FC = () => {
     fetchProfile();
   }, [username, token]);
 
-  const toggleFollow = async () => {
+  const handleFollowToggle = async (following: boolean) => {
     if (!token || !username) return;
     try {
-      if (isFollowing) {
+      if (!following) {
         await unfollowUser(username);
       } else {
         await followUser(username);
       }
-      setIsFollowing(!isFollowing);
-      setProfile((prev) => ({
-        ...prev,
-        follower_count: prev.follower_count + (isFollowing ? -1 : 1),
-      }));
+      setIsFollowing(following);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              follower_count: prev.follower_count + (following ? 1 : -1),
+            }
+          : prev,
+      );
     } catch (err) {
       console.error(err);
     }
@@ -207,422 +147,22 @@ const ProfilePage: React.FC = () => {
 
   return (
     <Box>
-      <StickyHeader style={{ padding: "8px 16px", gap: "12px" }}>
-        <CircleIconButton onClick={() => window.history.back()}>
-          <ArrowLeftIcon size={20} />
-        </CircleIconButton>
-        <Box display="flex" flexDirection="column">
-          <Heading
-            as="h2"
-            style={{ fontSize: "20px", margin: 0, lineHeight: 1.2, display: "flex", alignItems: "center", gap: "6px" }}
-          >
-            {profile.display_name || profile.username}
-            {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
-            {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
-            {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
-          </Heading>
-          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
-            {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
-              profile.post_count || 0,
-            )}{" "}
-            posts
-          </Text>
-        </Box>
-      </StickyHeader>
-
-      <Box
-        style={{
-          height: "200px",
-          backgroundColor: "var(--color-canvas-subtle)",
-          backgroundImage: safeCssImageUrl(profile.banner_url) || "none",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
+      <ProfileHeader
+        profile={profile}
+        isOwnProfile={isOwnProfile}
+        isFollowing={isFollowing}
+        isBlocked={isBlocked}
+        isMuted={isMuted}
+        linkedAccounts={linkedAccounts}
+        showBlockMenu={showBlockMenu}
+        setShowBlockMenu={setShowBlockMenu}
+        onFollowToggle={handleFollowToggle}
+        onMuteToggle={handleMuteToggle}
+        onBlock={handleBlock}
+        onOpenUnblockModal={() => setShowUnblockModal(true)}
+        onOpenReportModal={() => setShowReportModal(true)}
+        onEditProfile={() => navigate("/settings")}
       />
-      <Box px={4} style={{ marginTop: "-65px" }}>
-        <Box display="flex" justifyContent="space-between" alignItems="flex-end">
-          <Box
-            style={{
-              width: "134px",
-              height: "134px",
-              borderRadius: "50%",
-              backgroundColor: "var(--color-accent-purple)",
-              border: "4px solid var(--color-bg-primary)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontSize: "48px",
-              fontWeight: "bold",
-              backgroundImage: safeCssImageUrl(profile.avatar_url) || "none",
-              backgroundSize: "cover",
-            }}
-          >
-            {!safeCssImageUrl(profile.avatar_url) && profile.username.charAt(0).toUpperCase()}
-          </Box>
-          <Box mb={2} display="flex" gap={2} alignItems="center">
-            {isOwnProfile ? (
-              <Button onClick={() => navigate("/settings")} style={{ borderRadius: "9999px", fontWeight: "bold" }}>
-                Edit profile
-              </Button>
-            ) : (
-              <>
-                <Box position="relative">
-                  <button
-                    onClick={() => setShowBlockMenu(!showBlockMenu)}
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "50%",
-                      border: "1px solid var(--color-border-default)",
-                      background: "none",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "var(--color-fg-default)",
-                      padding: 0,
-                    }}
-                  >
-                    <KebabHorizontalIcon size={16} />
-                  </button>
-                  {showBlockMenu && (
-                    <>
-                      <div
-                        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
-                        onClick={() => setShowBlockMenu(false)}
-                      />
-                      <Box
-                        position="absolute"
-                        top="100%"
-                        right="0"
-                        mt={1}
-                        style={{
-                          backgroundColor: "var(--surface-overlay, rgba(14, 20, 36, 0.95))",
-                          backdropFilter: "blur(16px)",
-                          WebkitBackdropFilter: "blur(16px)",
-                          border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
-                          borderRadius: "12px",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
-                          padding: "8px 0",
-                          zIndex: 100,
-                          minWidth: "280px",
-                        }}
-                      >
-                        <button
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <InfoIcon size={20} /> About this account
-                        </button>
-                        <button
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <ListUnorderedIcon size={20} /> Add/remove from Lists
-                        </button>
-                        <button
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <ListUnorderedIcon size={20} /> View Lists
-                        </button>
-                        <button
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <LinkIcon size={20} /> Copy link to profile
-                        </button>
-                        <button
-                          onClick={handleMuteToggle}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <MuteIcon size={20} /> {isMuted ? "Unmute" : "Mute"} @{profile.username}
-                        </button>
-                        <button
-                          onClick={handleBlock}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <NoEntryIcon size={20} /> Block @{profile.username}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowBlockMenu(false);
-                            setShowReportModal(true);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <ReportIcon size={20} /> Report @{profile.username}
-                        </button>
-                      </Box>
-                    </>
-                  )}
-                </Box>
-                {isBlocked ? (
-                  <Button
-                    variant="danger"
-                    onClick={() => setShowUnblockModal(true)}
-                    style={{ borderRadius: "9999px", fontWeight: "bold" }}
-                  >
-                    Blocked
-                  </Button>
-                ) : (
-                  <FollowButton
-                    username={profile.username}
-                    initialIsFollowing={isFollowing}
-                    isRssFeed={profile.account_type === "rss"}
-                    onToggle={(following) => {
-                      setIsFollowing(following);
-                      setProfile((prev) => ({
-                        ...prev,
-                        follower_count: prev.follower_count + (following ? 1 : -1),
-                      }));
-                    }}
-                  />
-                )}
-              </>
-            )}
-          </Box>
-        </Box>
-
-        <Heading
-          as="h1"
-          style={{
-            marginTop: "16px",
-            fontSize: "24px",
-            fontWeight: 800,
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          {profile.display_name || profile.username}
-          {profile.account_type === "rss" && <RssIcon size={24} color="var(--color-fg-muted)" />}
-          {profile.account_type === "bot" && <HubotIcon size={24} color="var(--color-fg-muted)" />}
-          {profile.account_type === "remote" && <GlobeIcon size={24} color="var(--color-accent-cyan)" />}
-          {linkedAccounts.some((acc: any) => acc.provider === "twitter") && (
-            <span
-              style={{
-                fontSize: "12px",
-                padding: "2px 8px",
-                backgroundColor: "var(--color-neutral-muted, rgba(128, 128, 128, 0.2))",
-                color: "var(--color-fg-default)",
-                borderRadius: "12px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: "normal",
-              }}
-            >
-              <XIcon /> Verified
-            </span>
-          )}
-        </Heading>
-        {(() => {
-          const parsed = parseFederatedHandle(profile.username);
-          return (
-            <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
-              <Text color="var(--color-fg-muted)">@{parsed.localUsername}</Text>
-              {parsed.isFederated && parsed.remoteDomain && <FederatedDomainPill domain={parsed.remoteDomain} />}
-            </Box>
-          );
-        })()}
-
-        {profile.account_type === "remote" && (
-          <Box mt={2} mb={1} display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <span
-              style={{
-                fontSize: "12px",
-                padding: "2px 8px",
-                backgroundColor: "rgba(6, 182, 212, 0.1)",
-                color: "var(--color-accent-cyan)",
-                border: "1px solid rgba(6, 182, 212, 0.3)",
-                borderRadius: "12px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 600,
-              }}
-            >
-              <GlobeIcon size={13} /> ActivityPub Federated Actor
-            </span>
-            {sanitizeHttpUrl(profile.actor_url, { allowRelative: false }) && (
-              <a
-                href={sanitizeHttpUrl(profile.actor_url, { allowRelative: false })}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontSize: "12px",
-                  color: "var(--color-text-muted)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  textDecoration: "none",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
-              >
-                <LinkExternalIcon size={12} /> Canonical Actor URL
-              </a>
-            )}
-          </Box>
-        )}
-
-        {profile.account_type === "bot" && profile.owner_username && (
-          <Box mt={1} mb={2}>
-            <Text color="var(--color-fg-muted)" fontSize="14px">
-              <HubotIcon size={14} style={{ marginRight: "4px" }} />
-              Managed by <Link to={`/${profile.owner_username}`}>@{profile.owner_username}</Link>
-            </Text>
-          </Box>
-        )}
-
-        {profile.bio && (
-          <Box mt={3}>
-            <Text>{profile.bio}</Text>
-          </Box>
-        )}
-
-        <Box mt={3} display="flex" gap={3} flexWrap="wrap">
-          {profile.location && (
-            <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
-              <LocationIcon size={16} /> <Text style={{ fontSize: "14px" }}>{profile.location}</Text>
-            </Box>
-          )}
-          {sanitizeHttpUrl(profile.website, { allowRelative: false, prependHttpsIfMissingScheme: true }) && (
-            <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
-              <LinkIcon size={16} />{" "}
-              <a
-                href={sanitizeHttpUrl(profile.website, { allowRelative: false, prependHttpsIfMissingScheme: true })}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}
-              >
-                {profile.website}
-              </a>
-            </Box>
-          )}
-          {profile.account_type !== "rss" && (
-            <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
-              <CalendarIcon size={16} />{" "}
-              <Text style={{ fontSize: "14px" }}>Joined {new Date(profile.created_at).toLocaleDateString()}</Text>
-            </Box>
-          )}
-        </Box>
-
-        {profile.account_type !== "rss" && (
-          <Box mt={3} display="flex" gap={4}>
-            <Link
-              to={`/${profile.username}/following`}
-              style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
-            >
-              <Text style={{ fontWeight: "bold" }}>{profile.following_count}</Text>{" "}
-              <Text color="var(--color-fg-muted)">Following</Text>
-            </Link>
-            <Link
-              to={`/${profile.username}/followers`}
-              style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
-            >
-              <Text style={{ fontWeight: "bold" }}>{profile.follower_count}</Text>{" "}
-              <Text color="var(--color-fg-muted)">Followers</Text>
-            </Link>
-          </Box>
-        )}
-      </Box>
 
       <TabBar role="tablist" aria-label="Profile tabs">
         {["Posts", "Solutions", ...(profile.account_type === "rss" ? [] : ["Replies", "Artifacts", "Repos"])].map(
@@ -673,105 +213,23 @@ const ProfilePage: React.FC = () => {
       )}
 
       {showUnblockModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(0,0,0,0.5)",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          <Box
-            style={{
-              backgroundColor: "var(--surface-overlay, rgba(14, 20, 36, 0.95))",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
-              borderRadius: "16px",
-              padding: "24px",
-              minWidth: "300px",
-              maxWidth: "340px",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
-            }}
-          >
-            <Heading as="h3" style={{ fontSize: "20px", marginBottom: "8px" }}>
-              Unblock @{profile.username}?
-            </Heading>
-            <Text color="var(--color-fg-muted)" style={{ display: "block", marginBottom: "24px", lineHeight: "1.4" }}>
-              They will be able to follow you and engage with your public posts.
-            </Text>
-            <Button
-              style={{
-                width: "100%",
-                marginBottom: "12px",
-                borderRadius: "9999px",
-                padding: "10px",
-                fontWeight: "bold",
-                background: "var(--gradient-cta)",
-                color: "white",
-                border: "none",
-                boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)",
-              }}
-              onClick={handleUnblock}
-            >
-              Unblock
-            </Button>
-            <Button
-              style={{
-                width: "100%",
-                borderRadius: "9999px",
-                padding: "10px",
-                fontWeight: "bold",
-                border: "1px solid var(--color-border-default)",
-                background: "rgba(255, 255, 255, 0.04)",
-                color: "var(--color-fg-default)",
-              }}
-              onClick={() => setShowUnblockModal(false)}
-            >
-              Cancel
-            </Button>
-          </Box>
-        </div>
+        <UnblockModal
+          username={profile.username}
+          onUnblock={handleUnblock}
+          onClose={() => setShowUnblockModal(false)}
+        />
       )}
 
       {showReportModal && (
-        <Dialog title={`Report @${profile.username}`} onClose={() => setShowReportModal(false)}>
-          <Box p={3} display="flex" flexDirection="column" gap={3}>
-            <FormControl>
-              <FormControl.Label>Reason</FormControl.Label>
-              <Select value={reportReason} onChange={(e) => setReportReason(e.target.value)}>
-                <Select.Option value="Spam or automated bot">Spam or automated bot</Select.Option>
-                <Select.Option value="Harassment or abuse">Harassment or abuse</Select.Option>
-                <Select.Option value="Copyright or license violation">Copyright or license violation</Select.Option>
-                <Select.Option value="Malicious or harmful code">Malicious or harmful code</Select.Option>
-                <Select.Option value="Other">Other</Select.Option>
-              </Select>
-            </FormControl>
-            <FormControl>
-              <FormControl.Label>Additional Details (Optional)</FormControl.Label>
-              <Textarea
-                value={reportDetails}
-                onChange={(e) => setReportDetails(e.target.value)}
-                placeholder="Describe why you are reporting this account..."
-                rows={4}
-                block
-              />
-            </FormControl>
-            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <Button onClick={() => setShowReportModal(false)}>Cancel</Button>
-              <Button variant="danger" onClick={handleReportSubmit}>
-                Submit Report
-              </Button>
-            </Box>
-          </Box>
-        </Dialog>
+        <ReportModal
+          username={profile.username}
+          reportReason={reportReason}
+          setReportReason={setReportReason}
+          reportDetails={reportDetails}
+          setReportDetails={setReportDetails}
+          onSubmit={handleReportSubmit}
+          onClose={() => setShowReportModal(false)}
+        />
       )}
     </Box>
   );

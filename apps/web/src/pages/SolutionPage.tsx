@@ -15,7 +15,7 @@ import { Button, Heading, Spinner, Text } from "@primer/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
-import { getSolution, Solution, SolutionRelease } from "../api";
+import { getSolution, type Solution, type SolutionRelease } from "../api";
 import Box from "../components/Box";
 import { usePageTitle } from "../util/title";
 

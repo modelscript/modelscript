@@ -8,6 +8,7 @@
  */
 
 import crypto from "node:crypto";
+import type { DirectFeedthroughInput } from "./algebraic-loop-advisor.js";
 import type { CosimValue } from "./coupling.js";
 import { CouplingGraph, type VariableCoupling } from "./coupling.js";
 import type { CoSimParticipant } from "./participant.js";
@@ -32,9 +33,13 @@ export class CoSimSession {
   readonly coupling: CouplingGraph;
   readonly realtimeFactor: number;
   /** Master algorithm for the step loop. */
-  readonly masterAlgorithm: MasterAlgorithm;
+  masterAlgorithm: MasterAlgorithm;
   /** Richardson extrapolation error tolerance (used when masterAlgorithm is 'richardson'). */
   readonly richardsonTolerance: number;
+  /** Direct feedthrough dependency configuration. */
+  directFeedthrough?: DirectFeedthroughInput | undefined;
+  /** Whether to automatically detect and remediate algebraic loops during initialization. */
+  autoRemediateLoops?: boolean | "delay" | "newton" | "aitken" | undefined;
 
   private _state: SessionState = "created";
   private readonly _participants = new Map<string, CoSimParticipant>();
@@ -162,6 +167,9 @@ export class CoSimSession {
       error: this._error,
       experiment: this.experiment,
       realtimeFactor: this.realtimeFactor,
+      masterAlgorithm: this.masterAlgorithm,
+      richardsonTolerance: this.richardsonTolerance,
+      autoRemediateLoops: this.autoRemediateLoops,
       participants: Array.from(this._participants.values()).map((p) => ({
         id: p.id,
         modelName: p.modelName,
@@ -206,9 +214,22 @@ export class SessionManager {
   }
 
   /** Create a new session. */
-  createSession(experiment: SessionExperiment, realtimeFactor = 0): CoSimSession {
+  createSession(
+    experiment: SessionExperiment,
+    realtimeFactor = 0,
+    masterAlgorithm: MasterAlgorithm = "gauss-seidel",
+    richardsonTolerance = 1e-4,
+    autoRemediateLoops?: boolean | "delay" | "newton" | "aitken" | undefined,
+    directFeedthrough?: DirectFeedthroughInput | undefined,
+  ): CoSimSession {
     const sessionId = `cosim-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-    const session = new CoSimSession(sessionId, experiment, realtimeFactor);
+    const session = new CoSimSession(sessionId, experiment, realtimeFactor, masterAlgorithm, richardsonTolerance);
+    if (autoRemediateLoops !== undefined) {
+      session.autoRemediateLoops = autoRemediateLoops;
+    }
+    if (directFeedthrough !== undefined) {
+      session.directFeedthrough = directFeedthrough;
+    }
     this.sessions.set(sessionId, session);
     this.sessionTimestamps.set(sessionId, Date.now());
     return session;

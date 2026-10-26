@@ -268,34 +268,14 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
             (window as any).__ARTIFACT_READY = true;
           }, 1500);
         } else if (active) {
-          // 3. Fallback: clean parametric mechanical bracket & cylinder assembly
-          const bracket = new THREE.BoxGeometry(28, 12, 36);
-          const bore = new THREE.CylinderGeometry(8, 8, 30, 32);
-          bore.rotateX(Math.PI / 2);
-          bracket.computeVertexNormals();
-          bore.computeVertexNormals();
-
-          setGeometries([bracket, bore]);
-          setAssemblyCenter(new THREE.Vector3(0, 0, 0));
-          setAssemblyScale(0.85);
-
+          setError("No CAD geometry meshes available for this STEP model.");
           setTimeout(() => {
             (window as any).__ARTIFACT_READY = true;
-          }, 1000);
+          }, 500);
         }
       } catch (err: unknown) {
         if (active) {
-          try {
-            // Fallback to parametric geometry instead of showing broken screen
-            const bracket = new THREE.BoxGeometry(28, 12, 36);
-            const bore = new THREE.CylinderGeometry(8, 8, 30, 32);
-            bore.rotateX(Math.PI / 2);
-            setGeometries([bracket, bore]);
-            setAssemblyCenter(new THREE.Vector3(0, 0, 0));
-            setAssemblyScale(0.85);
-          } catch {
-            setError(err instanceof Error ? err.message : "Error parsing STEP file");
-          }
+          setError(err instanceof Error ? err.message : "Error parsing STEP file");
         }
         (window as any).__ARTIFACT_READY = true;
       }

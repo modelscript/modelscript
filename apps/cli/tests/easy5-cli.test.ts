@@ -126,4 +126,29 @@ end PitchControl;`;
     assert.ok(content.includes("K=7.5"));
     assert.ok(content.includes("GAIN=10"));
   });
+
+  await t.test("msx easy5 trim", async () => {
+    const outputs: string[] = [];
+    const origWrite = process.stdout.write;
+    process.stdout.write = (chunk: any) => {
+      outputs.push(String(chunk));
+      return true;
+    };
+
+    try {
+      const outTrim = path.join(tmpDir, "pitch_trim.json");
+      await (Easy5Command.handler as any)({
+        action: "trim",
+        files: [ez5File],
+        format: "json",
+        out: outTrim,
+      });
+
+      assert.ok(fs.existsSync(outTrim));
+      const res = JSON.parse(fs.readFileSync(outTrim, "utf-8"));
+      assert.equal(res.converged, true);
+    } finally {
+      process.stdout.write = origWrite;
+    }
+  });
 });

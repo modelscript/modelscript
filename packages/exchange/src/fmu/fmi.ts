@@ -64,6 +64,8 @@ export interface FmiScalarVariable {
   declaredType?: string | undefined;
   /** Optional array dimensions (FMI 3.0 <Dimension> sizes). */
   dimensions?: number[] | undefined;
+  /** 1-based index in ModelVariables declaration order (FMI 2.0). */
+  index?: number | undefined;
 }
 
 /** FMU type support flags. */

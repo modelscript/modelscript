@@ -23,6 +23,7 @@ import {
   parseEasy5,
   renderEasy5SchematicSvg,
   synchronizeModelicaToEasy5,
+  trimEasy5,
 } from "@modelscript/easy5";
 import fs from "node:fs";
 import path from "node:path";
@@ -35,7 +36,7 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
     return yargs
       .positional("action", {
         description:
-          "Action to perform (lint, summary, inspect, linearize, bode, to-modelica, to-ssp, to-dae, diagram)",
+          "Action to perform (lint, summary, inspect, linearize, bode, trim, to-modelica, to-ssp, to-dae, diagram, sync)",
         type: "string",
         choices: [
           "lint",
@@ -43,6 +44,7 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
           "inspect",
           "linearize",
           "bode",
+          "trim",
           "to-modelica",
           "to-ssp",
           "to-dae",
@@ -86,6 +88,16 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
         type: "number",
         default: 60,
       })
+      .option("max-iter", {
+        description: "Maximum Newton-Raphson iterations for trim equilibrium",
+        type: "number",
+        default: 50,
+      })
+      .option("tol", {
+        description: "Convergence tolerance for trim equilibrium",
+        type: "number",
+        default: 1e-6,
+      })
       .option("format", {
         alias: "f",
         description: "Output format: 'terminal' or 'json'",
@@ -102,6 +114,8 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
     const minFreq = (argv["min-freq"] as number) ?? 0.01;
     const maxFreq = (argv["max-freq"] as number) ?? 1000.0;
     const numPoints = (argv["num-points"] as number) ?? 60;
+    const maxIter = (argv["max-iter"] as number) ?? 50;
+    const tol = (argv["tol"] as number) ?? 1e-6;
 
     if (files.length === 0) {
       process.stderr.write("Error: No EASY5 file provided.\n");
@@ -245,6 +259,47 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
                 );
               }
             }
+          }
+          break;
+        }
+
+        case "trim": {
+          const trimRes = trimEasy5(model, { maxIterations: maxIter, tolerance: tol });
+          if (format === "json") {
+            const jsonStr = JSON.stringify(trimRes, null, 2);
+            if (outPath) {
+              fs.writeFileSync(path.resolve(outPath), jsonStr, "utf-8");
+              process.stdout.write(`✔ Exported trim results to ${outPath}\n`);
+            } else {
+              process.stdout.write(jsonStr + "\n");
+            }
+          } else {
+            process.stdout.write(`Operating Point Equilibrium (Trim) for ${model.name}:\n`);
+            process.stdout.write(
+              `  Converged:     ${trimRes.converged ? "YES" : "NO"} (${trimRes.iterations} iterations)\n`,
+            );
+            process.stdout.write(`  Residual Norm: ${trimRes.residualNorm.toExponential(4)}\n`);
+            const stateKeys = Object.keys(trimRes.trimmedStates);
+            if (stateKeys.length > 0) {
+              process.stdout.write("  Trimmed States:\n");
+              for (const k of stateKeys) {
+                process.stdout.write(`    ${k.padEnd(16)} = ${trimRes.trimmedStates[k]!.toFixed(6)}\n`);
+              }
+            }
+            const outKeys = Object.keys(trimRes.trimmedOutputs);
+            if (outKeys.length > 0) {
+              process.stdout.write("  Trimmed Outputs:\n");
+              for (const k of outKeys) {
+                process.stdout.write(`    ${k.padEnd(16)} = ${trimRes.trimmedOutputs[k]!.toFixed(6)}\n`);
+              }
+            }
+            if (outPath) {
+              fs.writeFileSync(path.resolve(outPath), JSON.stringify(trimRes, null, 2), "utf-8");
+              process.stdout.write(`✔ Exported trim results to ${outPath}\n`);
+            }
+          }
+          if (!trimRes.converged) {
+            process.exitCode = 1;
           }
           break;
         }

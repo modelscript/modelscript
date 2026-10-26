@@ -78,6 +78,7 @@ import {
   stripCommentsAndStrings,
 } from "./expressions/index.js";
 import { extractCompilerOptions } from "./support/compiler-options.js";
+import { extractAndRegisterFmuMetadata, findDirectAnnotationClause } from "./support/fmu-lowering.js";
 import { getElementDiagRange } from "./support/range-utils.js";
 import { type FlatteningState, getFlatteningState } from "./support/state.js";
 import {
@@ -110,6 +111,7 @@ export class ModelicaFlattener {
   public usedExternalObjects = new Set<SymbolId>();
   public usedRecordSymIds = new Set<SymbolId>();
   public usedRecordNames = new Set<string>();
+  public fmuComponents = new Map<string, SymbolId>();
   public failedFunctionIds = new Set<SymbolId>();
   public invalidInterfaceFunctionIds = new Set<SymbolId>();
   public calledFunctionSymIds = new Set<SymbolId>();
@@ -1581,6 +1583,7 @@ export class ModelicaFlattener {
     this.state.isRealNameCache?.clear();
     this.state.varPrefixSet?.clear();
     this.state.varPrefixCount = 0;
+    this.fmuComponents.clear();
     const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
     let specKind: string | null = null;
     if (typeof rawKind === "string") {
@@ -4249,7 +4252,17 @@ export class ModelicaFlattener {
    * Should be called after all equation lowering is complete.
    */
   checkBalance(dae: DAEBuilder, rootClassId?: SymbolId): void {
+    extractAndRegisterFmuMetadata(this, dae, rootClassId ?? this.currentRootClassId);
     checkBalance(dae, this.db, rootClassId ?? this.currentRootClassId);
+  }
+
+  public isFmuClass(classId: SymbolId): boolean {
+    const cst = this.db.cstNode(classId) as any;
+    if (!cst) return false;
+    const ann = findDirectAnnotationClause(cst);
+    if (!ann) return false;
+    const text = typeof ann.text === "string" ? ann.text : "";
+    return text.includes("__ModelScript_fmuPath") || text.includes("__modelscript_fmupath");
   }
 
   private isClassType(classId: SymbolId, visited = new Set<SymbolId>()): boolean {

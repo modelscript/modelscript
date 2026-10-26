@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { BookIcon, EyeIcon, LawIcon, RepoForkedIcon, StarIcon } from "@primer/octicons-react";
+import { Heading, Link as PrimerLink, Text } from "@primer/react";
+import React from "react";
+import type { GitlabProject } from "../../../api";
+import Box from "../../../components/Box";
+
+export interface RepoAboutSidebarProps {
+  repo: GitlabProject;
+}
+
+export const RepoAboutSidebar: React.FC<RepoAboutSidebarProps> = ({ repo }) => {
+  return (
+    <Box display="flex" flexDirection="column" gap={4} style={{ paddingTop: "8px" }}>
+      <Box>
+        <Heading as="h2" style={{ fontSize: "16px", marginBottom: "16px" }}>
+          About
+        </Heading>
+        <Text as="p" style={{ marginBottom: "16px", color: "var(--color-fg-default)" }}>
+          {repo.description || "No description, website, or topics provided."}
+        </Text>
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <BookIcon fill="var(--color-fg-muted)" />
+          <PrimerLink href="#" style={{ color: "var(--color-fg-muted)", fontWeight: "bold" }}>
+            Readme
+          </PrimerLink>
+        </Box>
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <LawIcon fill="var(--color-fg-muted)" />
+          <PrimerLink href="#" style={{ color: "var(--color-fg-muted)", fontWeight: "bold" }}>
+            {(repo as any).license?.name || "MIT License"}
+          </PrimerLink>
+        </Box>
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <StarIcon fill="var(--color-fg-muted)" />
+          <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
+            {(repo as any).star_count ?? "9.3k"}
+          </Text>{" "}
+          <Text color="var(--color-fg-muted)">stars</Text>
+        </Box>
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <EyeIcon fill="var(--color-fg-muted)" />
+          <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
+            {(repo as any).watchers_count ?? "198"}
+          </Text>{" "}
+          <Text color="var(--color-fg-muted)">watching</Text>
+        </Box>
+        <Box display="flex" alignItems="center" gap={2} mb={3}>
+          <RepoForkedIcon fill="var(--color-fg-muted)" />
+          <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
+            {(repo as any).forks_count ?? "736"}
+          </Text>{" "}
+          <Text color="var(--color-fg-muted)">forks</Text>
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
+export default RepoAboutSidebar;

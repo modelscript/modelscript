@@ -11,6 +11,7 @@ import {
 } from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { movePlacementGhost } from "./placement";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
@@ -201,8 +202,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const g = getGraph();
           if (g && containerRef.current) {
             const p = g.clientToLocal(e.clientX, e.clientY);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (window as any).__movePlacementGhost?.(p.x, p.y);
+            movePlacementGhost(p.x, p.y);
           }
         }}
         onDrop={(e) => {

@@ -441,6 +441,11 @@ app.get("/favicon.ico", (_req, res) => {
   }
 });
 
+// Health check endpoint for Docker container and reverse proxy orchestration
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", service: "ide" });
+});
+
 // CORS preflight handler for the proxy
 app.options("/api/github/*subpath", (_req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");

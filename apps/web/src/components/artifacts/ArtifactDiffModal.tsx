@@ -83,25 +83,7 @@ interface ParameterDelta {
   status: "modified" | "added" | "removed";
 }
 
-export function parseModelicaParameters(code: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  if (!code) return result;
-  const regex = /parameter\s+(?:Real|Integer|Boolean|String)\s+([a-zA-Z0-9_]+)\s*=\s*([^;]+);/g;
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(code)) !== null) {
-    const [, name, rawVal] = match;
-    let val = rawVal!.trim();
-    const commentMatch = val.match(/^(.*?)\s*("[^"]*")\s*$/);
-    if (commentMatch) {
-      const exprPart = commentMatch[1]!.trim();
-      if (exprPart.length > 0) {
-        val = exprPart;
-      }
-    }
-    result[name!.trim()] = val.trim();
-  }
-  return result;
-}
+import { parseModelicaParameters } from "../../util/modelica-params";
 
 export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   isOpen,

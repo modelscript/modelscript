@@ -1,52 +1,54 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BaseStyles, ThemeProvider } from "@primer/react";
-import { useEffect, useState } from "react";
+import { BaseStyles, Spinner, ThemeProvider } from "@primer/react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getArtifactView } from "../api";
-import AasPackageViewer from "../components/artifacts/AasPackageViewer";
-import AudioViewer from "../components/artifacts/AudioViewer";
-import CadStepViewer from "../components/artifacts/CadStepViewer";
-import CfdAnimationViewer from "../components/artifacts/CfdAnimationViewer";
-import CfdConfigViewer from "../components/artifacts/CfdConfigViewer";
-import CsvViewer from "../components/artifacts/CsvViewer";
-import DigitalThreadExplorerViewer from "../components/artifacts/DigitalThreadExplorerViewer";
-import DigitalTwinDashboardViewer from "../components/artifacts/DigitalTwinDashboardViewer";
-import Easy5Viewer from "../components/artifacts/Easy5Viewer";
-import FeaDeckViewer from "../components/artifacts/FeaDeckViewer";
-import FmuViewer from "../components/artifacts/FmuViewer";
-import GCodeViewer from "../components/artifacts/GCodeViewer";
-import GtSuiteViewer from "../components/artifacts/GtSuiteViewer";
-import LinkPreviewViewer from "../components/artifacts/LinkPreviewViewer";
-import MermaidViewer from "../components/artifacts/MermaidViewer";
-import ModelicaCodeViewer from "../components/artifacts/ModelicaCodeViewer";
-import ModelicaDiagramViewer from "../components/artifacts/ModelicaDiagramViewer";
-import OlgaFlowViewer from "../components/artifacts/OlgaFlowViewer";
-import Owl2Viewer from "../components/artifacts/Owl2Viewer";
-import PackageViewCard from "../components/artifacts/PackageViewCard";
-import PdfViewer from "../components/artifacts/PdfViewer";
-import PictureViewer from "../components/artifacts/PictureViewer";
-import PipelineLpsViewer from "../components/artifacts/PipelineLpsViewer";
-import PscadViewer from "../components/artifacts/PscadViewer";
-import PsoutViewer from "../components/artifacts/PsoutViewer";
-import PsseSldViewer from "../components/artifacts/PsseSldViewer";
-import RepositoryViewCard from "../components/artifacts/RepositoryViewCard";
-import RocetsViewer from "../components/artifacts/RocetsViewer";
-import SimaViewer from "../components/artifacts/SimaViewer";
-import SimulationPlotViewer from "../components/artifacts/SimulationPlotViewer";
-import SimulationResultViewer from "../components/artifacts/SimulationResultViewer";
-import SspViewer from "../components/artifacts/SspViewer";
-import SysmlViewer from "../components/artifacts/SysmlViewer";
-import TeiViewer from "../components/artifacts/TeiViewer";
-import UsdViewer from "../components/artifacts/UsdViewer";
-import VegaViewer from "../components/artifacts/VegaViewer";
-import VideoViewer from "../components/artifacts/VideoViewer";
-import YoutubeVideoViewer from "../components/artifacts/YoutubeVideoViewer";
-import ZeroCopyWebGPUViewer from "../components/artifacts/ZeroCopyWebGPUViewer";
 import Box from "../components/Box";
 import type { ArtifactViewDTO } from "../types/api";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
+
+// Lazy-loaded artifact viewers
+const AasPackageViewer = React.lazy(() => import("../components/artifacts/AasPackageViewer"));
+const AudioViewer = React.lazy(() => import("../components/artifacts/AudioViewer"));
+const CadStepViewer = React.lazy(() => import("../components/artifacts/CadStepViewer"));
+const CfdAnimationViewer = React.lazy(() => import("../components/artifacts/CfdAnimationViewer"));
+const CfdConfigViewer = React.lazy(() => import("../components/artifacts/CfdConfigViewer"));
+const CsvViewer = React.lazy(() => import("../components/artifacts/CsvViewer"));
+const DigitalThreadExplorerViewer = React.lazy(() => import("../components/artifacts/DigitalThreadExplorerViewer"));
+const DigitalTwinDashboardViewer = React.lazy(() => import("../components/artifacts/DigitalTwinDashboardViewer"));
+const Easy5Viewer = React.lazy(() => import("../components/artifacts/Easy5Viewer"));
+const FeaDeckViewer = React.lazy(() => import("../components/artifacts/FeaDeckViewer"));
+const FmuViewer = React.lazy(() => import("../components/artifacts/FmuViewer"));
+const GCodeViewer = React.lazy(() => import("../components/artifacts/GCodeViewer"));
+const GtSuiteViewer = React.lazy(() => import("../components/artifacts/GtSuiteViewer"));
+const LinkPreviewViewer = React.lazy(() => import("../components/artifacts/LinkPreviewViewer"));
+const MermaidViewer = React.lazy(() => import("../components/artifacts/MermaidViewer"));
+const ModelicaCodeViewer = React.lazy(() => import("../components/artifacts/ModelicaCodeViewer"));
+const ModelicaDiagramViewer = React.lazy(() => import("../components/artifacts/ModelicaDiagramViewer"));
+const OlgaFlowViewer = React.lazy(() => import("../components/artifacts/OlgaFlowViewer"));
+const Owl2Viewer = React.lazy(() => import("../components/artifacts/Owl2Viewer"));
+const PackageViewCard = React.lazy(() => import("../components/artifacts/PackageViewCard"));
+const PdfViewer = React.lazy(() => import("../components/artifacts/PdfViewer"));
+const PictureViewer = React.lazy(() => import("../components/artifacts/PictureViewer"));
+const PipelineLpsViewer = React.lazy(() => import("../components/artifacts/PipelineLpsViewer"));
+const PscadViewer = React.lazy(() => import("../components/artifacts/PscadViewer"));
+const PsoutViewer = React.lazy(() => import("../components/artifacts/PsoutViewer"));
+const PsseSldViewer = React.lazy(() => import("../components/artifacts/PsseSldViewer"));
+const RepositoryViewCard = React.lazy(() => import("../components/artifacts/RepositoryViewCard"));
+const RocetsViewer = React.lazy(() => import("../components/artifacts/RocetsViewer"));
+const SimaViewer = React.lazy(() => import("../components/artifacts/SimaViewer"));
+const SimulationPlotViewer = React.lazy(() => import("../components/artifacts/SimulationPlotViewer"));
+const SimulationResultViewer = React.lazy(() => import("../components/artifacts/SimulationResultViewer"));
+const SspViewer = React.lazy(() => import("../components/artifacts/SspViewer"));
+const SysmlViewer = React.lazy(() => import("../components/artifacts/SysmlViewer"));
+const TeiViewer = React.lazy(() => import("../components/artifacts/TeiViewer"));
+const UsdViewer = React.lazy(() => import("../components/artifacts/UsdViewer"));
+const VegaViewer = React.lazy(() => import("../components/artifacts/VegaViewer"));
+const VideoViewer = React.lazy(() => import("../components/artifacts/VideoViewer"));
+const YoutubeVideoViewer = React.lazy(() => import("../components/artifacts/YoutubeVideoViewer"));
+const ZeroCopyWebGPUViewer = React.lazy(() => import("../components/artifacts/ZeroCopyWebGPUViewer"));
 
 export default function RenderArtifactPage() {
   const { id } = useParams<{ id: string }>();
@@ -251,7 +253,15 @@ export default function RenderArtifactPage() {
     <ThemeProvider colorMode="auto">
       <BaseStyles style={{ width: "100vw", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
         <Box width="100%" height="100%" bg="var(--color-canvas-default)">
-          {renderViewer()}
+          <Suspense
+            fallback={
+              <Box display="flex" alignItems="center" justifyContent="center" width="100%" height="100%">
+                <Spinner size="large" />
+              </Box>
+            }
+          >
+            {renderViewer()}
+          </Suspense>
         </Box>
       </BaseStyles>
     </ThemeProvider>

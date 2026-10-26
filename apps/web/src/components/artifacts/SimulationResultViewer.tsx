@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/immutability */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * SimulationResultViewer
  *
@@ -12,43 +12,26 @@
 
 import { Spinner, Text } from "@primer/react";
 import { Html, useProgress } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import {
-  COLORMAP_FRAGMENT_SHADER,
-  COLORMAP_NAMES,
-  COLORMAP_VERTEX_SHADER,
-  type ColormapPreset,
-  createColormapTexture,
-  sampleColormapCss,
-} from "../../util/colormap";
+import { type ColormapPreset, createColormapTexture } from "../../util/colormap";
 import { type VtuField, type VtuParseResult, parseVtu } from "../../util/vtu-parser";
 import Box from "../Box";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
-import type { SpatialPin } from "./spatial-pin";
-import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";
-
-// ── Types ───────────────────────────────────────────────────────
-
-interface SimulationResultViewerProps {
-  artifactId?: number | undefined;
-  viewConfig: any;
-  isFullScreen?: boolean | undefined;
-  onPinCreated?: ((pin: SpatialPin) => void) | undefined;
-  onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
-}
-
-interface FieldMeta {
-  name: string;
-  association: "point" | "cell";
-  numComponents: number;
-  range: [number, number];
-  unit?: string | undefined;
-}
-
-// ── Loader ──────────────────────────────────────────────────────
+import {
+  CameraController,
+  type CameraPreset,
+  ColorLegend,
+  type FieldMeta,
+  FlowStreaks,
+  ScalarMesh,
+  type SimulationResultViewerProps,
+  ViewerControlsBar,
+  ViewerHeaderBar,
+} from "./simulation-result";
+import ViewportCameraControls from "./ViewportCameraControls";
 
 function Loader() {
   const { progress } = useProgress();
@@ -70,555 +53,7 @@ function Loader() {
   );
 }
 
-// ── Scalar Mesh ─────────────────────────────────────────────────
-
-const ScalarMesh: React.FC<{
-  geometry: THREE.BufferGeometry;
-  scalarData: Float32Array;
-  scalarMin: number;
-  scalarMax: number;
-  colormapTexture: THREE.DataTexture;
-  displacementData: Float32Array | null;
-  displacementScale: number;
-  loadFactor: number;
-  onPinCreated?: ((pin: SpatialPin) => void) | undefined;
-  activeField: string;
-  isWireframe?: boolean | undefined;
-  onProbePoint?: ((data: { point: [number, number, number]; value: number } | null) => void) | undefined;
-}> = ({
-  geometry,
-  scalarData,
-  scalarMin,
-  scalarMax,
-  colormapTexture,
-  displacementData,
-  displacementScale,
-  loadFactor,
-  onPinCreated,
-  activeField,
-  isWireframe = false,
-  onProbePoint,
-}) => {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      vertexShader: COLORMAP_VERTEX_SHADER,
-      fragmentShader: COLORMAP_FRAGMENT_SHADER,
-      uniforms: {
-        colormap: { value: colormapTexture },
-        scalarMin: { value: scalarMin },
-        scalarMax: { value: scalarMax },
-        opacity: { value: 1.0 },
-        loadFactor: { value: loadFactor / 100.0 },
-      },
-      side: THREE.DoubleSide,
-      transparent: false,
-      wireframe: Boolean(isWireframe),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colormapTexture, scalarMin, scalarMax, isWireframe]);
-
-  // Update the scalar attribute on the geometry
-  const displayGeometry = useMemo(() => {
-    const geo = geometry.clone();
-
-    // Set scalar attribute
-    geo.setAttribute("scalar", new THREE.Float32BufferAttribute(scalarData, 1));
-
-    // Apply displacement if available
-    if (displacementData && displacementScale > 0) {
-      const positions = geo.getAttribute("position");
-      const posArray = (positions as THREE.BufferAttribute).array as Float32Array;
-      const newPositions = new Float32Array(posArray.length);
-
-      for (let i = 0; i < posArray.length / 3; i++) {
-        if (displacementData.length === posArray.length) {
-          // 3D vector displacement
-          newPositions[i * 3] = posArray[i * 3]! + displacementData[i * 3]! * displacementScale;
-          newPositions[i * 3 + 1] = posArray[i * 3 + 1]! + displacementData[i * 3 + 1]! * displacementScale;
-          newPositions[i * 3 + 2] = posArray[i * 3 + 2]! + displacementData[i * 3 + 2]! * displacementScale;
-        } else if (displacementData.length > i) {
-          // Scalar displacement: apply along the normal (approximated as Z)
-          newPositions[i * 3] = posArray[i * 3]!;
-          newPositions[i * 3 + 1] = posArray[i * 3 + 1]!;
-          newPositions[i * 3 + 2] = posArray[i * 3 + 2]! + displacementData[i]! * displacementScale;
-        } else {
-          newPositions[i * 3] = posArray[i * 3]!;
-          newPositions[i * 3 + 1] = posArray[i * 3 + 1]!;
-          newPositions[i * 3 + 2] = posArray[i * 3 + 2]!;
-        }
-      }
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(newPositions, 3));
-      geo.computeVertexNormals();
-    }
-
-    return geo;
-  }, [geometry, scalarData, displacementData, displacementScale]);
-
-  // Clean up WebGL resources when displayGeometry or material changes or unmounts
-  useEffect(() => {
-    return () => {
-      displayGeometry.dispose();
-    };
-  }, [displayGeometry]);
-
-  useEffect(() => {
-    return () => {
-      material.dispose();
-    };
-  }, [material]);
-
-  // Update uniforms when they change
-  useEffect(() => {
-    material.uniforms.scalarMin!.value = scalarMin;
-    material.uniforms.scalarMax!.value = scalarMax;
-    material.uniforms.colormap!.value = colormapTexture;
-    material.uniforms.loadFactor!.value = loadFactor / 100.0;
-    material.needsUpdate = true;
-  }, [material, scalarMin, scalarMax, colormapTexture, loadFactor]);
-
-  // Handle double click for spatial pinning
-  const handleDoubleClick = (e: any) => {
-    e.stopPropagation();
-
-    // Find scalar value at this face (approximate by taking the first vertex of the face)
-    let scalarValue = 0;
-    if (e.face && e.face.a !== undefined && scalarData) {
-      scalarValue = scalarData[e.face.a]!;
-    }
-
-    // Determine camera target (simplified: look directly along the ray from camera to point)
-    const cameraTarget = [e.point.x, e.point.y, e.point.z] as [number, number, number];
-
-    const pin: SpatialPin = {
-      worldPosition: [e.point.x, e.point.y, e.point.z],
-      cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
-      cameraTarget,
-      fieldName: activeField,
-      scalarValue,
-    };
-
-    if (onPinCreated) {
-      onPinCreated(pin);
-    }
-  };
-
-  const handlePointerMove = (e: any) => {
-    e.stopPropagation();
-    let scalarValue = 0;
-    if (e.face && e.face.a !== undefined && scalarData) {
-      scalarValue = scalarData[e.face.a]!;
-    }
-    onProbePoint?.({
-      point: [e.point.x, e.point.y, e.point.z],
-      value: scalarValue,
-    });
-  };
-
-  const handlePointerOut = () => {
-    onProbePoint?.(null);
-  };
-
-  return (
-    <mesh
-      ref={meshRef}
-      geometry={displayGeometry}
-      material={material}
-      onDoubleClick={handleDoubleClick}
-      onPointerMove={handlePointerMove}
-      onPointerOut={handlePointerOut}
-    />
-  );
-};
-
-// ── Flow Streaks ───────────────────────────────────────────────
-
-const FlowStreaks: React.FC<{
-  geometry: THREE.BufferGeometry;
-  velocityData: Float32Array;
-  association: "point" | "cell";
-  vMin: number;
-  vMax: number;
-  colormapTexture: THREE.DataTexture;
-  scale?: number | undefined;
-  animate?: boolean | undefined;
-  downsampleFactor?: number | undefined;
-}> = ({
-  geometry,
-  velocityData,
-  association,
-  vMin,
-  vMax,
-  colormapTexture,
-  scale = 1.0,
-  animate = true,
-  downsampleFactor = 1,
-}) => {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-
-  // Compute model scale to size the streaks relative to the model
-  const modelScale = useMemo(() => {
-    geometry.computeBoundingSphere();
-    return geometry.boundingSphere?.radius || 1.0;
-  }, [geometry]);
-
-  const { instancedGeo, numInstances } = useMemo(() => {
-    const posOriginal = geometry.getAttribute("position").array;
-    const indices = geometry.getIndex()?.array;
-
-    const isCellData = association === "cell";
-    const totalCount = isCellData ? velocityData.length / 3 : posOriginal.length / 3;
-    const count = Math.ceil(totalCount / downsampleFactor);
-
-    // Use a small thin cylinder
-    const baseCylinder = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 5);
-    baseCylinder.rotateX(Math.PI / 2); // Align cylinder along Z axis locally so we can orient it easily if needed, or keep Y axis
-
-    const instancedGeo = new THREE.InstancedBufferGeometry().copy(baseCylinder);
-    baseCylinder.dispose();
-
-    const randoms = new Float32Array(count);
-    const velocityMags = new Float32Array(count);
-
-    const dummy = new THREE.Object3D();
-    const up = new THREE.Vector3(0, 1, 0); // Cylinder default length is along Y axis
-    const matrices = new Float32Array(count * 16);
-
-    // Streak thickness relative to the overall model scale
-    const thickness = modelScale * 0.003;
-
-    for (let i = 0; i < count; i++) {
-      const idx = Math.min(i * downsampleFactor, totalCount - 1);
-
-      // eslint-disable-next-line react-hooks/purity
-      randoms[i] = Math.random();
-
-      let px: number, py: number, pz: number;
-      if (isCellData && indices && idx * 3 + 2 < indices.length) {
-        const a = indices[idx * 3]!;
-        const b = indices[idx * 3 + 1]!;
-        const c = indices[idx * 3 + 2]!;
-        px = (posOriginal[a * 3]! + posOriginal[b * 3]! + posOriginal[c * 3]!) / 3.0;
-        py = (posOriginal[a * 3 + 1]! + posOriginal[b * 3 + 1]! + posOriginal[c * 3 + 1]!) / 3.0;
-        pz = (posOriginal[a * 3 + 2]! + posOriginal[b * 3 + 2]! + posOriginal[c * 3 + 2]!) / 3.0;
-      } else {
-        px = posOriginal[idx * 3]!;
-        py = posOriginal[idx * 3 + 1]!;
-        pz = posOriginal[idx * 3 + 2]!;
-      }
-
-      const vx = velocityData[idx * 3];
-      const vy = velocityData[idx * 3 + 1];
-      const vz = velocityData[idx * 3 + 2];
-
-      const vel = new THREE.Vector3(vx, vy, vz);
-      const mag = vel.length();
-      velocityMags[i] = mag;
-
-      dummy.position.set(px, py, pz);
-      if (mag > 0.0001) {
-        // Orient cylinder length (Y axis) along the velocity vector
-        dummy.quaternion.setFromUnitVectors(up, vel.clone().normalize());
-      }
-      // Set the thickness. The length (Y) is 1.0 here, we'll stretch it in the shader based on velocity
-      dummy.scale.set(thickness, 1.0, thickness);
-
-      dummy.updateMatrix();
-      dummy.matrix.toArray(matrices, i * 16);
-    }
-
-    instancedGeo.setAttribute("instanceMatrix", new THREE.InstancedBufferAttribute(matrices, 16));
-    instancedGeo.setAttribute("randoms", new THREE.InstancedBufferAttribute(randoms, 1));
-    instancedGeo.setAttribute("velocityMag", new THREE.InstancedBufferAttribute(velocityMags, 1));
-
-    return { instancedGeo, numInstances: count };
-  }, [geometry, velocityData, association, modelScale, downsampleFactor]);
-
-  const material = useMemo(() => {
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0 },
-        maxTime: { value: 2.0 },
-        scale: { value: scale }, // global multiplier for streak speed/length
-        colormap: { value: colormapTexture },
-        vMin: { value: vMin },
-        vMax: { value: vMax },
-      },
-      vertexShader: `
-        attribute float randoms;
-        attribute float velocityMag;
-        
-        uniform float time;
-        uniform float maxTime;
-        uniform float scale;
-        uniform float vMin;
-        uniform float vMax;
-        
-        varying float vAlpha;
-        varying float vColorT;
-
-        void main() {
-          float t = mod(time + randoms * maxTime, maxTime);
-          
-          vec3 localPos = position;
-          
-          // Make the streaks much longer relative to the local velocity magnitude
-          float streakLen = velocityMag * scale * 25.0; 
-          localPos.y *= streakLen; 
-          
-          // Move the streak forward along its local Y axis (which is aligned with velocity)
-          localPos.y += velocityMag * t * scale * 5.0;
-          
-          // Fade the tail (local Y goes from -0.5 to 0.5 before scaling)
-          float tailFade = smoothstep(-0.5, 0.5, position.y);
-          float timeFade = 1.0 - (t / maxTime);
-          
-          vAlpha = timeFade * tailFade;
-          
-          vColorT = (vMax > vMin) ? clamp((velocityMag - vMin) / (vMax - vMin), 0.0, 1.0) : 0.5;
-          
-          vec4 mvPosition = viewMatrix * modelMatrix * instanceMatrix * vec4(localPos, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D colormap;
-        varying float vAlpha;
-        varying float vColorT;
-        void main() {
-          vec4 color = texture2D(colormap, vec2(vColorT, 0.5));
-          gl_FragColor = vec4(color.rgb, vAlpha);
-        }
-      `,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-  }, [scale, colormapTexture, vMin, vMax]);
-
-  useEffect(() => {
-    return () => {
-      instancedGeo.dispose();
-    };
-  }, [instancedGeo]);
-
-  useEffect(() => {
-    return () => {
-      material.dispose();
-    };
-  }, [material]);
-
-  useFrame((state) => {
-    if (material.uniforms) {
-      material.uniforms.time!.value = state.clock.elapsedTime * 0.5;
-    }
-  });
-
-  return <instancedMesh ref={meshRef} args={[instancedGeo, material, numInstances]} visible={animate} />;
-};
-
-// ── Color Legend ─────────────────────────────────────────────────
-
-const ColorLegend: React.FC<{
-  preset: ColormapPreset;
-  min: number;
-  max: number;
-  fieldName: string;
-  unit?: string | undefined;
-}> = ({ preset, min, max, fieldName, unit }) => {
-  const steps = 8;
-  const formatValue = (v: number) => {
-    if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + "M";
-    if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + "K";
-    if (Math.abs(v) < 0.01 && v !== 0) return v.toExponential(1);
-    return v.toFixed(2);
-  };
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        right: 16,
-        top: 16,
-        bottom: 16,
-        width: 48,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        pointerEvents: "none",
-        zIndex: 5,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 9,
-          fontWeight: 600,
-          color: "var(--color-fg-default)",
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          marginBottom: 4,
-          textAlign: "center",
-          lineHeight: 1.2,
-        }}
-      >
-        {fieldName}
-        {unit && <span style={{ display: "block", fontWeight: 400, fontSize: 8 }}>({unit})</span>}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          width: 16,
-          borderRadius: 4,
-          border: "1px solid var(--color-border)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {Array.from({ length: steps }).map((_, i) => {
-          const t = 1 - i / (steps - 1); // Top = max
-          return (
-            <div
-              key={i}
-              style={{
-                flex: 1,
-                background: sampleColormapCss(preset, t),
-              }}
-            />
-          );
-        })}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          height: "100%",
-          position: "absolute",
-          right: 52,
-          top: 20,
-          bottom: 8,
-        }}
-      >
-        <span style={{ fontSize: 9, color: "var(--color-fg-muted)", whiteSpace: "nowrap" }}>{formatValue(max)}</span>
-        <span style={{ fontSize: 9, color: "var(--color-fg-muted)", whiteSpace: "nowrap" }}>
-          {formatValue((max + min) / 2)}
-        </span>
-        <span style={{ fontSize: 9, color: "var(--color-fg-muted)", whiteSpace: "nowrap" }}>{formatValue(min)}</span>
-      </div>
-    </div>
-  );
-};
-
-// ── Control Panel ───────────────────────────────────────────────
-
-const controlStyle: React.CSSProperties = {
-  position: "absolute",
-  left: 12,
-  bottom: 12,
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  background: "var(--color-canvas-default)",
-  border: "1px solid var(--color-border-default)",
-  borderRadius: 8,
-  padding: "6px 12px",
-  zIndex: 5,
-};
-
-const selectStyle: React.CSSProperties = {
-  background: "var(--color-canvas-overlay)",
-  color: "var(--color-fg-default)",
-  border: "1px solid var(--color-border-default)",
-  borderRadius: 4,
-  padding: "3px 6px",
-  fontSize: 11,
-  cursor: "pointer",
-  outline: "none",
-};
-
-const sliderLabelStyle: React.CSSProperties = {
-  fontSize: 10,
-  color: "var(--color-fg-default)",
-  whiteSpace: "nowrap",
-};
-
-// ── Camera Controller ───────────────────────────────────────────
-
-const CameraController: React.FC<{
-  orbitControlsRef: any;
-  presetTrigger?: { preset: CameraPreset; timestamp: number } | null | undefined;
-}> = ({ orbitControlsRef, presetTrigger }) => {
-  const { camera } = useThree();
-  const [targetPin, setTargetPin] = useState<SpatialPin | null>(null);
-
-  useEffect(() => {
-    if (!presetTrigger || !orbitControlsRef.current) return;
-    const controls = orbitControlsRef.current;
-    const target = controls.target || new THREE.Vector3(0, 0, 0);
-    const dist = 50;
-
-    switch (presetTrigger.preset) {
-      case "iso": {
-        const d = dist / Math.sqrt(3);
-        camera.position.set(target.x + d, target.y + d, target.z + d);
-        break;
-      }
-      case "top": {
-        camera.position.set(target.x, target.y + dist, target.z + 0.001);
-        break;
-      }
-      case "front": {
-        camera.position.set(target.x, target.y, target.z + dist);
-        break;
-      }
-      case "right": {
-        camera.position.set(target.x + dist, target.y, target.z);
-        break;
-      }
-      case "reset": {
-        camera.position.set(0, 0, 50);
-        target.set(0, 0, 0);
-        break;
-      }
-    }
-    camera.lookAt(target);
-    controls.update();
-  }, [presetTrigger, camera, orbitControlsRef]);
-
-  useEffect(() => {
-    const handleFocus = (e: Event) => {
-      const pin = (e as CustomEvent<SpatialPin>).detail;
-      if (!pin || !orbitControlsRef.current) return;
-      setTargetPin(pin);
-    };
-
-    window.addEventListener("focus-spatial-pin", handleFocus);
-    return () => window.removeEventListener("focus-spatial-pin", handleFocus);
-  }, [orbitControlsRef]);
-
-  useFrame(() => {
-    if (targetPin && orbitControlsRef.current) {
-      // Lerp camera position
-      camera.position.lerp(new THREE.Vector3(...targetPin.cameraPosition), 0.05);
-      // Lerp camera target
-      orbitControlsRef.current.target.lerp(new THREE.Vector3(...targetPin.cameraTarget), 0.05);
-      orbitControlsRef.current.update();
-
-      // Check if arrived (approx)
-      if (camera.position.distanceTo(new THREE.Vector3(...targetPin.cameraPosition)) < 0.1) {
-        setTargetPin(null);
-      }
-    }
-  });
-
-  return null;
-};
-
-// ── Main Component ──────────────────────────────────────────────
-
-const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
+export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   artifactId,
   viewConfig,
   isFullScreen,
@@ -650,15 +85,17 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
       try {
         let vtuXml: string;
 
+        const targetUrl = viewConfig.url || viewConfig.resultVtuUrl || viewConfig.resultUrl || viewConfig.fileUrl;
+
         if (viewConfig.vtuInline) {
           // Inline VTU XML in the view config (for demo/seed data)
           vtuXml = viewConfig.vtuInline;
-        } else if (viewConfig.url) {
-          const res = await fetch(viewConfig.url);
-          if (!res.ok) throw new Error("Failed to fetch VTU file");
+        } else if (targetUrl) {
+          const res = await fetch(targetUrl);
+          if (!res.ok) throw new Error(`Failed to fetch VTU file (${res.status} ${res.statusText})`);
           vtuXml = await res.text();
         } else {
-          throw new Error("No VTU data source provided");
+          throw new Error("No VTU data source provided for simulation results");
         }
 
         const parsed = parseVtu(vtuXml);
@@ -716,7 +153,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
     return () => {
       active = false;
     };
-  }, [viewConfig.url, viewConfig.vtuInline]);
+  }, [viewConfig.url, viewConfig.resultVtuUrl, viewConfig.resultUrl, viewConfig.fileUrl, viewConfig.vtuInline]);
 
   // Compute the colormap texture
   const colormapTexture = useMemo(() => createColormapTexture(colormapPreset), [colormapPreset]);
@@ -800,112 +237,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
     >
       {/* Header info bar */}
       {!isThumbnail && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            padding: "8px 16px",
-            zIndex: 5,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--color-fg-muted)",
-              fontFamily: "monospace",
-            }}
-          >
-            {vtuData.numPoints.toLocaleString()} nodes · {vtuData.numCells.toLocaleString()} cells
-          </span>
-          {viewConfig.solverInfo && (
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--color-accent-fg)",
-                background: "var(--color-accent-subtle)",
-                padding: "1px 8px",
-                borderRadius: 10,
-                border: "1px solid var(--color-accent-emphasis)",
-                fontWeight: 600,
-              }}
-            >
-              {viewConfig.solverInfo.name}
-            </span>
-          )}
-          {(viewConfig.profile || viewConfig.hpc?.profile) && (
-            <span
-              style={{
-                fontSize: 10,
-                color: "var(--color-success-fg, #3fb950)",
-                background: "var(--color-success-subtle, rgba(46,160,67,0.15))",
-                padding: "1px 8px",
-                borderRadius: 10,
-                border: "1px solid var(--color-success-emphasis, #2ea043)",
-                fontWeight: 600,
-              }}
-              title={
-                viewConfig.usage?.costCredits !== undefined || viewConfig.hpc?.costCredits !== undefined
-                  ? `Cost: ${viewConfig.usage?.costCredits ?? viewConfig.hpc?.costCredits} credits | CPU: ${
-                      viewConfig.usage?.cpuSeconds ?? viewConfig.hpc?.cpuCoreSeconds ?? 0
-                    }s`
-                  : undefined
-              }
-            >
-              ⚡ {viewConfig.profile || viewConfig.hpc?.profile}{" "}
-              {viewConfig.usage?.costCredits !== undefined || viewConfig.hpc?.costCredits !== undefined
-                ? `· ${(viewConfig.usage?.costCredits ?? viewConfig.hpc?.costCredits ?? 0).toFixed(2)} cr`
-                : ""}
-            </span>
-          )}
-          {(viewConfig.threadNodeId !== undefined || viewConfig.threadId !== undefined || onThreadNodeSelected) && (
-            <button
-              type="button"
-              onClick={() => {
-                const targetId = viewConfig.threadNodeId ?? viewConfig.threadId ?? 1;
-                onThreadNodeSelected?.(targetId);
-                window.dispatchEvent(
-                  new CustomEvent("open-digital-thread", {
-                    detail: { threadId: targetId, artifactId: viewConfig.artifactId },
-                  }),
-                );
-              }}
-              title="Inspect linked cross-domain Digital Thread (FEA/CFD ↔ Modelica ↔ SysML v2)"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                background: "rgba(139, 92, 246, 0.15)",
-                color: "#a78bfa",
-                border: "1px solid rgba(139, 92, 246, 0.4)",
-                borderRadius: 12,
-                padding: "2px 9px",
-                fontSize: 10,
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
-              <span>🧵 Digital Thread</span>
-              {(viewConfig.threadNodeId !== undefined || viewConfig.threadId !== undefined) && (
-                <span
-                  style={{
-                    background: "rgba(139, 92, 246, 0.3)",
-                    padding: "0 5px",
-                    borderRadius: 8,
-                    fontSize: 9,
-                  }}
-                >
-                  #{viewConfig.threadNodeId ?? viewConfig.threadId}
-                </span>
-              )}
-            </button>
-          )}
-        </div>
+        <ViewerHeaderBar vtuData={vtuData} viewConfig={viewConfig} onThreadNodeSelected={onThreadNodeSelected} />
       )}
 
       {/* Color legend */}
@@ -918,6 +250,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
           unit={fieldUnit}
         />
       )}
+
       {/* Viewport Camera & Render Controls */}
       <ViewportCameraControls
         onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
@@ -983,7 +316,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
                   vMin={velocityField.range[0]}
                   vMax={velocityField.range[1]}
                   colormapTexture={colormapTexture}
-                  scale={0.02} // Adjust this based on your velocity magnitude vs mesh scale
+                  scale={0.02}
                   animate={animateFlow}
                   downsampleFactor={isThumbnail ? 100 : 1}
                 />
@@ -997,70 +330,19 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
 
       {/* Bottom control bar */}
       {!isThumbnail && (
-        <div style={controlStyle}>
-          {/* Field selector */}
-          {scalarFields.length > 1 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={sliderLabelStyle}>Field</span>
-              <select value={activeField} onChange={(e) => setActiveField(e.target.value)} style={selectStyle}>
-                {scalarFields.map((f) => (
-                  <option key={f.name} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Animated Flow toggle */}
-          {velocityField && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-              <input
-                id="animate-flow-cb"
-                type="checkbox"
-                checked={animateFlow}
-                onChange={(e) => setAnimateFlow(e.target.checked)}
-                style={{ accentColor: "#8b5cf6", cursor: "pointer", width: 14, height: 14 }}
-              />
-              <label htmlFor="animate-flow-cb" style={{ ...sliderLabelStyle, cursor: "pointer", margin: 0 }}>
-                Animate Flow
-              </label>
-            </div>
-          )}
-
-          {/* Colormap selector */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={sliderLabelStyle}>Color</span>
-            <select
-              value={colormapPreset}
-              onChange={(e) => setColormapPreset(e.target.value as ColormapPreset)}
-              style={selectStyle}
-            >
-              {COLORMAP_NAMES.map((name) => (
-                <option key={name} value={name}>
-                  {name.charAt(0).toUpperCase() + name.slice(1)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Load factor slider */}
-          {displacementField && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={sliderLabelStyle}>Load %</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={loadFactor}
-                onChange={(e) => setLoadFactor(parseFloat(e.target.value))}
-                style={{ width: 60, accentColor: "#8b5cf6" }}
-              />
-              <span style={{ ...sliderLabelStyle, width: 28, textAlign: "right" }}>{loadFactor}%</span>
-            </div>
-          )}
-        </div>
+        <ViewerControlsBar
+          scalarFields={scalarFields}
+          activeField={activeField}
+          setActiveField={setActiveField}
+          velocityField={velocityField}
+          animateFlow={animateFlow}
+          setAnimateFlow={setAnimateFlow}
+          colormapPreset={colormapPreset}
+          setColormapPreset={setColormapPreset}
+          displacementField={displacementField}
+          loadFactor={loadFactor}
+          setLoadFactor={setLoadFactor}
+        />
       )}
     </Box>
   );

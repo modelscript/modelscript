@@ -1,181 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ZapIcon } from "@primer/octicons-react";
 import { Spinner } from "@primer/react";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { getSimulationJobResult } from "../../api";
 import { useTheme } from "../../theme";
 import { downloadParquetFile } from "../../util/binary-export";
 import { SIMULATION_COLORS } from "./constants";
+import {
+  InteractiveLegend,
+  MeasurementHud,
+  type SimulationResultsProps,
+  SimulationToolbar,
+  StatisticsDrawer,
+  TrajectoryChart,
+  type VariableStatEntry,
+} from "./simulation-results";
 
-interface CustomInspectionTooltipProps {
-  active?: boolean | undefined;
-  payload?: any[] | undefined;
-  label?: any;
-  xAxisVar: string;
-  minMaxMap: Record<string, { min: number; max: number }>;
-  isNormalized: boolean;
-  isComparingBaseline: boolean;
-  colorMode: "light" | "dark";
-}
-
-function CustomInspectionTooltip({
-  active,
-  payload,
-  label,
-  xAxisVar,
-  minMaxMap,
-  isNormalized,
-  isComparingBaseline,
-}: CustomInspectionTooltipProps) {
-  if (!active || !payload || !payload.length) return null;
-
-  const numLabel = typeof label === "number" ? label : Number(label);
-  const formattedLabel = `${xAxisVar}: ${isNaN(numLabel) ? label : numLabel.toFixed(4)}${xAxisVar === "time" ? "s" : ""}`;
-
-  // Group items by base variable name to pair current value with baseline
-  const grouped = new Map<string, { current?: any; baseline?: any; color: string }>();
-
-  for (const item of payload) {
-    const rawName = String(item.name || item.dataKey || "");
-    const isBaseline = rawName.endsWith(" [Baseline]");
-    const baseName = isBaseline ? rawName.replace(" [Baseline]", "") : rawName;
-
-    if (!grouped.has(baseName)) {
-      grouped.set(baseName, { color: item.color || item.stroke || "#58a6ff" });
-    }
-    const entry = grouped.get(baseName)!;
-    if (isBaseline) {
-      entry.baseline = item.value;
-    } else {
-      entry.current = item.value;
-      if (item.color || item.stroke) entry.color = item.color || item.stroke;
-    }
-  }
-
-  return (
-    <div
-      style={{
-        backgroundColor: "var(--color-canvas-subtle, #161b22)",
-        border: "1px solid var(--color-border-default, #30363d)",
-        borderRadius: "8px",
-        padding: "8px 12px",
-        boxShadow: "0 6px 18px rgba(0, 0, 0, 0.4)",
-        fontSize: "12px",
-        color: "var(--color-fg-default, #e6edf3)",
-        minWidth: "190px",
-        backdropFilter: "blur(8px)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          borderBottom: "1px solid var(--color-border-muted, #21262d)",
-          paddingBottom: "4px",
-          marginBottom: "6px",
-          fontWeight: 600,
-          fontFamily: "var(--font-mono, monospace)",
-          color: "var(--color-accent-fg, #58a6ff)",
-        }}
-      >
-        <span>{formattedLabel}</span>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {Array.from(grouped.entries()).map(([name, entry]) => {
-          const curVal = entry.current !== undefined ? Number(entry.current) : null;
-          const baseVal = entry.baseline !== undefined ? Number(entry.baseline) : null;
-
-          let displayVal = curVal !== null ? (isNormalized ? `${curVal.toFixed(1)}%` : curVal.toFixed(4)) : "—";
-          if (isNormalized && curVal !== null && minMaxMap[name]) {
-            const raw = (curVal / 100) * (minMaxMap[name].max - minMaxMap[name].min) + minMaxMap[name].min;
-            displayVal = `${raw.toFixed(4)} (${curVal.toFixed(1)}%)`;
-          }
-
-          let deltaStr: string | null = null;
-          let deltaPercentStr: string | null = null;
-          let isPositiveDelta = false;
-
-          if (curVal !== null && baseVal !== null) {
-            const delta = curVal - baseVal;
-            isPositiveDelta = delta >= 0;
-            deltaStr = `${isPositiveDelta ? "+" : ""}${delta.toFixed(4)}`;
-            if (Math.abs(baseVal) > 1e-6) {
-              const pct = (delta / Math.abs(baseVal)) * 100;
-              deltaPercentStr = `${isPositiveDelta ? "+" : ""}${pct.toFixed(1)}%`;
-            }
-          }
-
-          return (
-            <div
-              key={name}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "2px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span
-                    style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      backgroundColor: entry.color,
-                      display: "inline-block",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 500 }}>{name}</span>
-                </div>
-                <span style={{ fontFamily: "var(--font-mono, monospace)", fontWeight: 600 }}>{displayVal}</span>
-              </div>
-
-              {isComparingBaseline && baseVal !== null && deltaStr && (
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    paddingLeft: "14px",
-                    fontSize: "11px",
-                    color: "var(--color-fg-muted, #8b949e)",
-                    fontFamily: "var(--font-mono, monospace)",
-                  }}
-                >
-                  <span>Base: {baseVal.toFixed(4)}</span>
-                  <span
-                    style={{
-                      color: isPositiveDelta ? "var(--color-accent-fg, #58a6ff)" : "var(--color-success-fg, #3fb950)",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Δ {deltaStr} {deltaPercentStr ? `(${deltaPercentStr})` : ""}
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-interface SimulationResultsProps {
-  jobId?: string | null | undefined;
-  localData?: Record<string, number | string>[] | null | undefined;
-  sweepResults?: { value: number; y: number[][] }[] | null | undefined;
-  simulationVariables?: string[] | undefined;
-  error?: string | null | undefined;
-  selectedVariables: string[];
-  onVariablesLoaded: (variables: string[]) => void;
-  colorMode?: "light" | "dark" | undefined;
-}
+export type { SimulationResultsProps };
 
 export function SimulationResults({
   jobId,
@@ -235,7 +77,7 @@ export function SimulationResults({
         if (localData) {
           if (localData.length > 0) {
             const headers = Object.keys(localData[0]!);
-            const timeCol = headers[0]!; // Assuming first column is time
+            const timeCol = headers[0]!;
             const vars = simulationVariables ?? headers.filter((h) => h !== timeCol);
 
             onVariablesLoaded(vars);
@@ -412,7 +254,7 @@ export function SimulationResults({
   // Statistical metrics per selected variable
   const statsMap = useMemo(() => {
     if (!data.length || !selectedVariables.length) return {};
-    const res: Record<string, { min: number; max: number; peakToPeak: number; mean: number; finalVal: number }> = {};
+    const res: Record<string, VariableStatEntry> = {};
 
     for (const v of selectedVariables) {
       let min = Infinity;
@@ -610,632 +452,86 @@ export function SimulationResults({
   return (
     <div style={{ padding: "20px 24px", height: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
       {/* Top Header & Toolbar */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "12px",
-          borderBottom: "1px solid var(--color-border-muted)",
-          paddingBottom: "12px",
+      <SimulationToolbar
+        xAxisVar={xAxisVar}
+        onXAxisVarChange={setXAxisVar}
+        allVars={allVars}
+        isNormalized={isNormalized}
+        onToggleNormalized={setIsNormalized}
+        isLogScale={isLogScale}
+        onToggleLogScale={setIsLogScale}
+        isComparingBaseline={isComparingBaseline}
+        onPinBaseline={handlePinBaseline}
+        onClearBaseline={handleClearBaseline}
+        cursorMode={cursorMode}
+        onToggleCursorMode={() => {
+          const nextMode = !cursorMode;
+          setCursorMode(nextMode);
+          if (nextMode && cursor1Time === null && data.length > 1) {
+            const tStart = Number(data[0]!.time) || 0;
+            const tEnd = Number(data[data.length - 1]!.time) || 1;
+            setCursor1Time(tStart + (tEnd - tStart) * 0.25);
+            setCursor2Time(tStart + (tEnd - tStart) * 0.75);
+          }
         }}
-      >
-        <h2 style={{ margin: 0, fontSize: "16px", fontWeight: "bold" }}>Simulation Results</h2>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap", fontSize: "12px" }}>
-          {/* X-Axis Selector for Phase Portrait */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontWeight: 500, color: "var(--color-fg-muted)" }}>X-Axis:</span>
-            <select
-              value={xAxisVar}
-              onChange={(e) => setXAxisVar(e.target.value)}
-              style={{
-                fontSize: "12px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: "1px solid var(--color-border-default)",
-                background: "var(--color-canvas-default)",
-                color: "inherit",
-              }}
-              title="Select X-Axis variable for time-series or state-space phase portrait"
-            >
-              <option value="time">Time (s)</option>
-              {allVars.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Normalize Mode Checkbox */}
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-            title="Normalize all variable curves to 0-100% to compare different units and magnitudes"
-          >
-            <input
-              type="checkbox"
-              checked={isNormalized}
-              onChange={(e) => setIsNormalized(e.target.checked)}
-              style={{ accentColor: "var(--color-accent-fg, #0969da)" }}
-            />
-            <span>Normalize (0-100%)</span>
-          </label>
-
-          {/* Logarithmic Scale Checkbox */}
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={isLogScale}
-              onChange={(e) => setIsLogScale(e.target.checked)}
-              style={{ accentColor: "var(--color-accent-fg, #0969da)" }}
-            />
-            <span>Log Scale</span>
-          </label>
-
-          {/* Action Buttons */}
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-            {/* Baseline Comparison (Run A vs Run B) */}
-            {!isComparingBaseline ? (
-              <button
-                onClick={handlePinBaseline}
-                style={{
-                  fontSize: "11px",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
-                  border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                  background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                  color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  fontWeight: 500,
-                  transition: "all 0.15s ease",
-                }}
-                title="Pin current simulation trajectory as Run A baseline"
-              >
-                📌 Pin Baseline
-              </button>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    padding: "2px 6px",
-                    borderRadius: "4px",
-                    background: "rgba(6, 182, 212, 0.15)",
-                    border: "1px solid var(--color-accent-cyan, #06b6d4)",
-                    color: "var(--color-accent-cyan, #06b6d4)",
-                    fontWeight: 600,
-                  }}
-                  title="Comparing against pinned baseline (dashed lines)"
-                >
-                  Comparing Run A
-                </span>
-                <button
-                  onClick={handleClearBaseline}
-                  style={{
-                    fontSize: "11px",
-                    padding: "2px 5px",
-                    borderRadius: "4px",
-                    border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                    background: "transparent",
-                    color: "var(--color-fg-muted)",
-                    cursor: "pointer",
-                  }}
-                  title="Clear pinned baseline comparison"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            <button
-              onClick={() => {
-                const nextMode = !cursorMode;
-                setCursorMode(nextMode);
-                if (nextMode && cursor1Time === null && data.length > 1) {
-                  const tStart = Number(data[0]!.time) || 0;
-                  const tEnd = Number(data[data.length - 1]!.time) || 1;
-                  setCursor1Time(tStart + (tEnd - tStart) * 0.25);
-                  setCursor2Time(tStart + (tEnd - tStart) * 0.75);
-                }
-              }}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: cursorMode
-                  ? "1px solid var(--color-accent-cyan, #06b6d4)"
-                  : "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: cursorMode
-                  ? "rgba(6, 182, 212, 0.15)"
-                  : "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: cursorMode
-                  ? "var(--color-accent-cyan, #06b6d4)"
-                  : "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                fontWeight: cursorMode ? 600 : 500,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                transition: "all 0.15s ease",
-              }}
-              title="Toggle interactive dual-cursor measurement (click plot to place C1 / C2)"
-            >
-              📏 Cursors
-            </button>
-            <button
-              onClick={() => setShowStats(!showStats)}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: showStats
-                  ? "1px solid var(--color-accent-emphasis, #0969da)"
-                  : "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: showStats
-                  ? "rgba(9, 105, 218, 0.15)"
-                  : "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: showStats
-                  ? "var(--color-accent-fg, #0969da)"
-                  : "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                fontWeight: showStats ? 600 : 500,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                transition: "all 0.15s ease",
-              }}
-              title="Toggle numerical statistical summary (Min, Max, Pk-Pk, Mean, Final)"
-            >
-              📊 Stats
-            </button>
-            <button
-              onClick={handleExportCsv}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 500,
-                transition: "all 0.15s ease",
-              }}
-              title="Download simulated data as CSV"
-            >
-              📥 CSV
-            </button>
-            <button
-              onClick={handleExportJson}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 500,
-                transition: "all 0.15s ease",
-              }}
-              title="Download simulated data as JSON"
-            >
-              📥 JSON
-            </button>
-            <button
-              onClick={handleExportParquet}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 500,
-                transition: "all 0.15s ease",
-              }}
-              title="Download simulated data as Apache Parquet (binary columnar format)"
-            >
-              <ZapIcon size={12} /> Parquet
-            </button>
-            <button
-              onClick={handleCopyClipboard}
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "4px",
-                border: "1px solid var(--color-btn-secondary-border, var(--color-border-default))",
-                background: "var(--color-btn-secondary-bg, var(--color-canvas-subtle, #f6f8fa))",
-                color: "var(--color-btn-secondary-text, var(--color-fg-default, #24292f))",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 500,
-                transition: "all 0.15s ease",
-              }}
-              title="Copy tab-delimited simulation data to clipboard"
-            >
-              {copied ? "✓ Copied!" : "📋 Copy"}
-            </button>
-          </div>
-        </div>
-      </div>
+        showStats={showStats}
+        onToggleShowStats={() => setShowStats(!showStats)}
+        onExportCsv={handleExportCsv}
+        onExportJson={handleExportJson}
+        onExportParquet={handleExportParquet}
+        onCopyClipboard={handleCopyClipboard}
+        copied={copied}
+      />
 
       {/* Floating Measurement HUD Banner */}
-      {cursorMode && (cursor1Time !== null || cursor2Time !== null) && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "8px",
-            padding: "6px 12px",
-            background: "var(--color-canvas-subtle, #161b22)",
-            border: "1px solid var(--color-accent-cyan, #06b6d4)",
-            borderRadius: "6px",
-            fontSize: "11px",
-            fontFamily: "var(--font-mono, monospace)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 600, color: "var(--color-accent-cyan, #06b6d4)" }}>
-              📏 Measurement (Click plot to place C{activeCursorPlacement}):
-            </span>
-            {cursor1Time !== null && (
-              <span style={{ color: "#06b6d4" }}>
-                C1: <strong>{cursor1Time.toFixed(4)}s</strong>
-              </span>
-            )}
-            {cursor2Time !== null && (
-              <span style={{ color: "#ec4899" }}>
-                C2: <strong>{cursor2Time.toFixed(4)}s</strong>
-              </span>
-            )}
-            {cursorMetrics && (
-              <>
-                <span>
-                  Δt: <strong>{cursorMetrics.dt.toFixed(4)}s</strong>
-                </span>
-                <span>
-                  f: <strong>{cursorMetrics.freq.toFixed(2)} Hz</strong>
-                </span>
-                {activeVariables.slice(0, 3).map((v) => {
-                  const d = cursorMetrics.deltas[v];
-                  if (!d) return null;
-                  return (
-                    <span key={v} style={{ color: "var(--color-fg-muted)" }}>
-                      Δ{v}: <strong style={{ color: "var(--color-fg-default)" }}>{d.dy.toFixed(3)}</strong> (m:{" "}
-                      {d.slope.toFixed(2)})
-                    </span>
-                  );
-                })}
-              </>
-            )}
-          </div>
-          <button
-            onClick={handleClearCursors}
-            style={{
-              padding: "2px 6px",
-              fontSize: "11px",
-              borderRadius: "4px",
-              border: "1px solid var(--color-border-default)",
-              background: "transparent",
-              color: "var(--color-fg-muted)",
-              cursor: "pointer",
-            }}
-          >
-            Clear Cursors
-          </button>
-        </div>
-      )}
+      <MeasurementHud
+        cursorMode={cursorMode}
+        cursor1Time={cursor1Time}
+        cursor2Time={cursor2Time}
+        activeCursorPlacement={activeCursorPlacement}
+        cursorMetrics={cursorMetrics}
+        activeVariables={activeVariables}
+        onClearCursors={handleClearCursors}
+      />
 
       {/* Interactive Legend Bar */}
-      {selectedVariables.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "6px",
-            alignItems: "center",
-            padding: "4px 0",
-          }}
-        >
-          {selectedVariables.map((v, i) => {
-            const isHidden = hiddenVars.has(v);
-            const color = SIMULATION_COLORS[i % SIMULATION_COLORS.length];
-            return (
-              <button
-                key={v}
-                onClick={() => toggleVariable(v)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "2px 8px",
-                  borderRadius: "12px",
-                  fontSize: "11px",
-                  fontFamily: "monospace",
-                  cursor: "pointer",
-                  border: `1px solid ${isHidden ? "var(--color-border-muted)" : color}`,
-                  background: isHidden ? "transparent" : `${color}15`,
-                  color: isHidden ? "var(--color-fg-muted)" : "inherit",
-                  opacity: isHidden ? 0.6 : 1,
-                  textDecoration: isHidden ? "line-through" : "none",
-                }}
-                title={`Click to ${isHidden ? "show" : "hide"} ${v}`}
-              >
-                <span
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    backgroundColor: isHidden ? "var(--color-fg-muted)" : color,
-                  }}
-                />
-                {v}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <InteractiveLegend
+        selectedVariables={selectedVariables}
+        hiddenVars={hiddenVars}
+        onToggleVariable={toggleVariable}
+        colors={SIMULATION_COLORS}
+      />
 
       {/* Main Plot Area */}
-      <div style={{ flex: 1, minHeight: 0, minWidth: 0, position: "relative" }}>
-        <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={mergedChartData}
-              onClick={handleChartClick}
-              margin={{
-                top: 10,
-                right: 30,
-                left: 20,
-                bottom: 35,
-              }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke={
-                  colorMode === "dark" ? "var(--color-border-muted, #30363d)" : "var(--color-border-default, #e1e4e8)"
-                }
-                opacity={0.6}
-              />
-              <XAxis
-                dataKey={xAxisVar}
-                type="number"
-                domain={["dataMin", "dataMax"]}
-                stroke="var(--color-fg-muted, #8b949e)"
-                tick={{ fill: "var(--color-fg-muted, #8b949e)", fontSize: 11 }}
-                tickFormatter={(val) => (typeof val === "number" ? val.toFixed(2) : String(val))}
-                label={{
-                  value: xAxisVar === "time" ? "time (s)" : xAxisVar,
-                  position: "insideBottom",
-                  offset: -20,
-                  fill: "var(--color-fg-muted, #8b949e)",
-                }}
-              />
-              <YAxis
-                scale={isLogScale ? "log" : "auto"}
-                domain={isNormalized ? [0, 100] : isLogScale ? ["auto", "auto"] : ["auto", "auto"]}
-                stroke="var(--color-fg-muted, #8b949e)"
-                tick={{ fill: "var(--color-fg-muted, #8b949e)", fontSize: 11 }}
-                tickFormatter={(val) => (isNormalized ? `${val}%` : Number(val).toFixed(2))}
-                label={
-                  isNormalized
-                    ? {
-                        value: "Normalized (0–100%)",
-                        angle: -90,
-                        position: "insideLeft",
-                        offset: -5,
-                        fill: "var(--color-fg-muted, #8b949e)",
-                      }
-                    : isLogScale
-                      ? {
-                          value: "Logarithmic Scale",
-                          angle: -90,
-                          position: "insideLeft",
-                          offset: -5,
-                          fill: "var(--color-fg-muted, #8b949e)",
-                        }
-                      : undefined
-                }
-              />
-              <Tooltip
-                cursor={{
-                  stroke: "var(--color-accent-fg, #58a6ff)",
-                  strokeWidth: 1.5,
-                  strokeDasharray: "3 3",
-                }}
-                content={
-                  <CustomInspectionTooltip
-                    xAxisVar={xAxisVar}
-                    minMaxMap={minMaxMap}
-                    isNormalized={isNormalized}
-                    isComparingBaseline={isComparingBaseline}
-                    colorMode={colorMode}
-                  />
-                }
-              />
-
-              {/* Interactive Dual Cursors */}
-              {cursorMode && cursor1Time !== null && (
-                <ReferenceLine
-                  x={cursor1Time}
-                  stroke="#06b6d4"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                  label={{ value: "C1", fill: "#06b6d4", fontSize: 11, position: "top", fontWeight: 700 }}
-                />
-              )}
-              {cursorMode && cursor2Time !== null && (
-                <ReferenceLine
-                  x={cursor2Time}
-                  stroke="#ec4899"
-                  strokeWidth={2}
-                  strokeDasharray="4 4"
-                  label={{ value: "C2", fill: "#ec4899", fontSize: 11, position: "top", fontWeight: 700 }}
-                />
-              )}
-
-              {activeVariables.flatMap((v) => {
-                if (sweepResults && sweepResults.length > 0) {
-                  return sweepResults.map((sweep, j) => {
-                    const key = `${v} (${sweep.value})`;
-                    const colorIdx =
-                      (selectedVariables.indexOf(v) * sweepResults.length + j) % SIMULATION_COLORS.length;
-                    return (
-                      <Line
-                        key={key}
-                        type="linear"
-                        dataKey={key}
-                        name={key}
-                        stroke={SIMULATION_COLORS[colorIdx]}
-                        strokeWidth={1.5}
-                        dot={false}
-                        activeDot={{ r: 4 }}
-                        isAnimationActive={false}
-                      />
-                    );
-                  });
-                }
-                const lines = [
-                  <Line
-                    key={v}
-                    type="linear"
-                    dataKey={v}
-                    name={v}
-                    stroke={SIMULATION_COLORS[selectedVariables.indexOf(v) % SIMULATION_COLORS.length]}
-                    strokeWidth={1.5}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                    isAnimationActive={false}
-                  />,
-                ];
-                if (baselineData && isComparingBaseline) {
-                  const bKey = `${v} [Baseline]`;
-                  lines.push(
-                    <Line
-                      key={bKey}
-                      type="linear"
-                      dataKey={bKey}
-                      name={bKey}
-                      stroke={SIMULATION_COLORS[selectedVariables.indexOf(v) % SIMULATION_COLORS.length]}
-                      strokeWidth={1.5}
-                      strokeDasharray="4 4"
-                      strokeOpacity={0.55}
-                      dot={false}
-                      activeDot={{ r: 3 }}
-                      isAnimationActive={false}
-                    />,
-                  );
-                }
-                return lines;
-              })}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      <TrajectoryChart
+        mergedChartData={mergedChartData}
+        xAxisVar={xAxisVar}
+        isNormalized={isNormalized}
+        isLogScale={isLogScale}
+        colorMode={colorMode}
+        minMaxMap={minMaxMap}
+        isComparingBaseline={isComparingBaseline}
+        cursorMode={cursorMode}
+        cursor1Time={cursor1Time}
+        cursor2Time={cursor2Time}
+        activeVariables={activeVariables}
+        selectedVariables={selectedVariables}
+        sweepResults={sweepResults}
+        baselineData={baselineData}
+        colors={SIMULATION_COLORS}
+        onChartClick={handleChartClick}
+      />
 
       {/* Collapsible Statistical Summary Drawer */}
-      {showStats && Object.keys(statsMap).length > 0 && (
-        <div
-          style={{
-            maxHeight: "140px",
-            overflowY: "auto",
-            border: "1px solid var(--color-border-muted, #21262d)",
-            borderRadius: "6px",
-            padding: "8px 12px",
-            background: "var(--color-canvas-subtle, #161b22)",
-            fontSize: "11px",
-            fontFamily: "var(--font-mono, monospace)",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.5fr repeat(5, 1fr)",
-              gap: "8px",
-              fontWeight: 600,
-              borderBottom: "1px solid var(--color-border-muted, #21262d)",
-              paddingBottom: "4px",
-              marginBottom: "4px",
-              color: "var(--color-fg-muted, #8b949e)",
-            }}
-          >
-            <span>Variable</span>
-            <span>Min</span>
-            <span>Max</span>
-            <span>Pk-Pk</span>
-            <span>Mean</span>
-            <span>Final</span>
-          </div>
-          {activeVariables.map((v) => {
-            const s = statsMap[v];
-            if (!s) return null;
-            const color = SIMULATION_COLORS[selectedVariables.indexOf(v) % SIMULATION_COLORS.length];
-            return (
-              <div
-                key={v}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.5fr repeat(5, 1fr)",
-                  gap: "8px",
-                  padding: "2px 0",
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
-                  <span
-                    style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      backgroundColor: color,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>{v}</span>
-                </div>
-                <span>{s.min.toFixed(4)}</span>
-                <span>{s.max.toFixed(4)}</span>
-                <span>{s.peakToPeak.toFixed(4)}</span>
-                <span>{s.mean.toFixed(4)}</span>
-                <span>{s.finalVal.toFixed(4)}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <StatisticsDrawer
+        showStats={showStats}
+        statsMap={statsMap}
+        activeVariables={activeVariables}
+        selectedVariables={selectedVariables}
+        colors={SIMULATION_COLORS}
+      />
     </div>
   );
 }
+
+export default SimulationResults;

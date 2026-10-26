@@ -117,7 +117,19 @@ export default defineConfig({
           src: "../../scripts/SysML-v2-Release-2026-03.zip",
           dest: "lsp/server/dist",
         },
-      ].filter((t) => fs.existsSync(path.resolve(import.meta.dirname, t.src))),
+      ].filter((t) => {
+        const resolved = path.resolve(import.meta.dirname, t.src);
+        const exists = fs.existsSync(resolved);
+        if (!exists && process.env.VITE_REQUIRE_STDLIBS === "true") {
+          throw new Error(
+            `[vite.config.ts] Required standard library asset is missing: ${resolved}. Run scripts/fetch-stdlibs.sh first.`,
+          );
+        }
+        if (!exists && process.env.NODE_ENV === "production" && !process.env.VITEST) {
+          console.warn(`[vite.config.ts] Optional standard library asset not found: ${t.src}`);
+        }
+        return exists;
+      }),
     ),
   ],
   build: {
@@ -126,6 +138,17 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("packages/cad") || id.includes("@modelscript/cad") || id.includes("occt-import-js")) {
+            return "vendor-cad";
+          }
+          if (
+            id.includes("packages/dsl") ||
+            id.includes("@modelscript/dsl") ||
+            id.includes("languages/modelica") ||
+            id.includes("@modelscript/modelica")
+          ) {
+            return "vendor-compiler";
+          }
           if (id.includes("node_modules")) {
             if (id.includes("monaco-editor") || id.includes("@monaco-editor")) {
               return "vendor-monaco";

@@ -66,7 +66,7 @@ test("EnergyPlus CLI Commands (msx energyplus inspect, lint, to-modelica, to-dae
   const idfFile = path.join(tmpDir, "office.idf");
   fs.writeFileSync(idfFile, SAMPLE_IDF, "utf-8");
 
-  await t.test("msx energyplus inspect", async () => {
+  await t.test("msx energyplus inspect & summary", async () => {
     const logs: string[] = [];
     const origLog = console.log;
     console.log = (...args: any[]) => logs.push(args.join(" "));
@@ -79,6 +79,20 @@ test("EnergyPlus CLI Commands (msx energyplus inspect, lint, to-modelica, to-dae
       assert.ok(logs.some((l) => l.includes("TwoZoneOffice")));
       assert.ok(logs.some((l) => l.includes("ZoneNorth")));
       assert.ok(logs.some((l) => l.includes("Thermal Zones: 1")));
+
+      // Test summary alias with json format and out
+      const summaryOut = path.join(tmpDir, "summary.json");
+      await (EnergyPlusCommand.handler as any)({
+        action: "summary",
+        files: [idfFile],
+        format: "json",
+        out: summaryOut,
+      });
+      assert.ok(fs.existsSync(summaryOut));
+      const summaryData = JSON.parse(fs.readFileSync(summaryOut, "utf-8"));
+      assert.equal(summaryData.zonesCount, 1);
+      assert.equal(summaryData.zones[0].name, "ZoneNorth");
+      assert.equal(summaryData.surfacesCount, 1);
     } finally {
       console.log = origLog;
     }
@@ -95,6 +109,15 @@ test("EnergyPlus CLI Commands (msx energyplus inspect, lint, to-modelica, to-dae
         files: [idfFile],
       });
       assert.ok(logs.some((l) => l.includes("0 diagnostics reported")));
+
+      logs.length = 0;
+      await (EnergyPlusCommand.handler as any)({
+        action: "lint",
+        files: [idfFile],
+        format: "json",
+      });
+      const parsed = JSON.parse(logs.join(""));
+      assert.ok(Array.isArray(parsed));
     } finally {
       console.log = origLog;
     }
@@ -121,12 +144,18 @@ test("EnergyPlus CLI Commands (msx energyplus inspect, lint, to-modelica, to-dae
     console.log = (...args: any[]) => logs.push(args.join(" "));
 
     try {
+      const daeOut = path.join(tmpDir, "dae_meta.json");
       await (EnergyPlusCommand.handler as any)({
         action: "to-dae",
         files: [idfFile],
+        out: daeOut,
       });
       assert.ok(logs.some((l) => l.includes("Lowered EnergyPlus building model into linear DAE arena:")));
       assert.ok(logs.some((l) => l.includes("Variables:")));
+      assert.ok(fs.existsSync(daeOut));
+      const meta = JSON.parse(fs.readFileSync(daeOut, "utf-8"));
+      assert.ok(meta.varCount > 0);
+      assert.ok(meta.eqCount > 0);
     } finally {
       console.log = origLog;
     }
@@ -138,16 +167,44 @@ test("EnergyPlus CLI Commands (msx energyplus inspect, lint, to-modelica, to-dae
     console.log = (...args: any[]) => logs.push(args.join(" "));
 
     try {
+      const tbOut = path.join(tmpDir, "tb_result.json");
       await (EnergyPlusCommand.handler as any)({
         action: "thermal-balance",
         files: [idfFile],
         tamb: 15.0,
+        format: "json",
+        out: tbOut,
       });
-      assert.ok(logs.some((l) => l.includes("Steady-State Thermal Balance")));
-      assert.ok(logs.some((l) => l.includes("Zone ZoneNorth")));
+      assert.ok(fs.existsSync(tbOut));
+      const tbData = JSON.parse(fs.readFileSync(tbOut, "utf-8"));
+      assert.equal(tbData.ambientTemp, 15.0);
+      assert.ok(tbData.zones.length === 1);
+      assert.equal(tbData.zones[0].zone, "ZoneNorth");
+      assert.ok(tbData.zones[0].totalUA > 0);
     } finally {
       console.log = origLog;
     }
+  });
+
+  await t.test("msx energyplus sync", async () => {
+    const modifiedMo = `model TwoZoneOffice
+  Modelica.Thermal.HeatTransfer.Sources.FixedHeatFlow q_int_ZoneNorth(Q_flow = 2500.0);
+  Modelica.Thermal.HeatTransfer.Components.ThermalConductor wall_WallNorthExt(G = 45.0);
+end TwoZoneOffice;`;
+    const moFile = path.join(tmpDir, "office_mod.mo");
+    fs.writeFileSync(moFile, modifiedMo, "utf-8");
+
+    const syncedIdf = path.join(tmpDir, "office_synced.idf");
+    await (EnergyPlusCommand.handler as any)({
+      action: "sync",
+      files: [idfFile],
+      "from-modelica": moFile,
+      out: syncedIdf,
+    });
+
+    assert.ok(fs.existsSync(syncedIdf));
+    const syncedContent = fs.readFileSync(syncedIdf, "utf-8");
+    assert.ok(syncedContent.includes("TwoZoneOffice"));
   });
 
   // Cleanup

@@ -91,6 +91,18 @@ export function sessionDataWildcard(ctx: UnsContext, sessionId: string): string 
   return `${basePrefix(ctx)}/line/${sessionId}/cell/+/data/#`;
 }
 
+// ── Time Synchronization topics ──
+
+/** Time sync ping/pong topic for distributed clock alignment. */
+export function sessionTimeSyncTopic(ctx: UnsContext, sessionId: string, participantId: string): string {
+  return `${basePrefix(ctx)}/line/${sessionId}/cell/${participantId}/timesync`;
+}
+
+/** Wildcard subscription for all timesync traffic in a session. */
+export function sessionTimeSyncWildcard(ctx: UnsContext, sessionId: string): string {
+  return `${basePrefix(ctx)}/line/${sessionId}/cell/+/timesync`;
+}
+
 // ── Historian topics ──
 
 /** Historian query request topic. */
@@ -129,6 +141,23 @@ export function parseDataTopic(topic: string): {
         participantId,
         variableName,
       };
+    }
+  }
+  return null;
+}
+
+/** Extract session and participant from a timesync topic. */
+export function parseTimeSyncTopic(topic: string): {
+  sessionId: string;
+  participantId: string;
+} | null {
+  const parts = topic.split("/");
+  const lineIdx = parts.lastIndexOf("line");
+  if (lineIdx >= 0 && parts[lineIdx + 2] === "cell" && parts[lineIdx + 4] === "timesync") {
+    const sessionId = parts[lineIdx + 1];
+    const participantId = parts[lineIdx + 3];
+    if (sessionId && participantId) {
+      return { sessionId, participantId };
     }
   }
   return null;

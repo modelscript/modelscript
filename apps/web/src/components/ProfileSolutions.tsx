@@ -17,7 +17,7 @@ import { Button, Heading, Spinner, Text } from "@primer/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { getUserSolutions, Solution } from "../api";
+import { getUserSolutions, type Solution } from "../api";
 import Box from "./Box";
 
 const SolutionCard = styled(Box)`

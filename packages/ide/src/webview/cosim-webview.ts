@@ -36,6 +36,10 @@ const inputStartTime = document.getElementById("input-start-time") as HTMLInputE
 const inputStopTime = document.getElementById("input-stop-time") as HTMLInputElement;
 const inputStepSize = document.getElementById("input-step-size") as HTMLInputElement;
 const inputRtFactor = document.getElementById("input-rt-factor") as HTMLInputElement;
+const selectMasterAlgorithm = document.getElementById("select-master-algorithm") as HTMLSelectElement | null;
+const fieldTolerance = document.getElementById("field-tolerance");
+const inputTolerance = document.getElementById("input-tolerance") as HTMLInputElement | null;
+const selectLoopRemediation = document.getElementById("select-loop-remediation") as HTMLSelectElement | null;
 const btnSubmitSession = document.getElementById("btn-submit-session")!;
 const btnCancelSession = document.getElementById("btn-cancel-session")!;
 
@@ -149,13 +153,26 @@ btnCreateSession.addEventListener("click", () => {
   newSessionSection.style.display = newSessionSection.style.display === "none" ? "" : "none";
 });
 
+selectMasterAlgorithm?.addEventListener("change", () => {
+  if (fieldTolerance) {
+    const val = selectMasterAlgorithm.value;
+    fieldTolerance.style.display = val === "richardson" || val === "newton" ? "" : "none";
+  }
+});
+
 btnSubmitSession.addEventListener("click", () => {
+  const masterAlgorithm = selectMasterAlgorithm?.value ?? "gauss-seidel";
+  const tolerance = inputTolerance ? parseFloat(inputTolerance.value) : 1e-4;
+  const loopRemediation = selectLoopRemediation?.value;
   vscode.postMessage({
     type: "createSession",
     startTime: parseFloat(inputStartTime.value),
     stopTime: parseFloat(inputStopTime.value),
     stepSize: parseFloat(inputStepSize.value),
     realtimeFactor: parseFloat(inputRtFactor.value),
+    masterAlgorithm,
+    richardsonTolerance: isNaN(tolerance) ? 1e-4 : tolerance,
+    autoRemediateLoops: loopRemediation && loopRemediation !== "none" ? loopRemediation : undefined,
   });
   newSessionSection.style.display = "none";
 });
@@ -178,6 +195,8 @@ interface SessionInfo {
   id: string;
   sessionId?: string;
   state: string;
+  masterAlgorithm?: string;
+  autoRemediateLoops?: boolean | string;
   participants?: number;
 }
 
@@ -295,17 +314,15 @@ function renderSessions(sessions: SessionInfo[]): void {
       const id = escapeHtmlCosim(s.sessionId ?? s.id);
       const safeState = escapeHtmlCosim(s.state);
       const stateClass =
-        s.state === "running"
-          ? "running"
-          : s.state === "completed"
-            ? "completed"
-            : s.state === "error"
-              ? "error"
-              : "created";
+        s.state === "running" ? "running" : s.state === "completed" ? "completed" : s.state === "error";
+      const algoBadge = s.masterAlgorithm
+        ? `<span class="badge" style="font-size:9px;opacity:0.85;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground)" title="Algorithm">${escapeHtmlCosim(s.masterAlgorithm)}</span>`
+        : "";
       return `
       <div class="session-card" data-session-id="${id}">
         <div class="session-header">
           <span class="badge ${stateClass}">${safeState}</span>
+          ${algoBadge}
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${id}">${id.slice(0, 12)}…</span>
           <button data-action="delete" data-id="${id}" class="secondary" style="padding:1px 4px;font-size:10px" title="Delete session">✕</button>
         </div>

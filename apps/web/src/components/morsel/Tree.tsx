@@ -11,6 +11,7 @@ import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons
 import { NavList, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import React from "react";
+import { startPlacement } from "./placement";
 import { getClassIcon, getLibraryTree, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
 
@@ -233,8 +234,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           setDragPreview(e, iconSvg, compositeName);
 
           // Tell diagram editor that placement/drag mode started
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).__startPlacement?.({
+          startPlacement({
             className: compositeName,
             classKind: node.classKind ?? "class",
             iconSvg: iconSvg ?? undefined,

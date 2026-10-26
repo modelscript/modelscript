@@ -9,6 +9,7 @@ export * from "./lsp.js";
 export * from "./netlist/powerflow-netlist.js";
 export * from "./parser/raw-parser.js";
 export * from "./parser/wasm-loader.js";
+export * from "./projections/fmu-to-psse.js";
 export * from "./projections/psse-to-modelica.js";
 export * from "./projections/psse-to-pscad.js";
 export * from "./solver/ac-powerflow.js";

@@ -688,3 +688,91 @@ export class FmuSubsystemRegistry {
     }
   }
 }
+
+/**
+ * Metadata describing an instantiated FMU black-box component inside a flattened DAE.
+ */
+export interface FmuInstanceMetadata {
+  /** Instance name/prefix in the model, e.g. "fmu1" or "" for root wrapper. */
+  instanceName: string;
+  /** Path to the FMU archive or black-box binary (.fmu, .dll, .so). */
+  fmuPath: string;
+  /** FMI specification version (e.g. "2.0", "3.0"). */
+  fmiVersion?: string | undefined;
+  /** GUID / Model UID. */
+  guid?: string | undefined;
+  /** Preferred kind: "cs" (Co-Simulation) or "me" (Model Exchange). */
+  preferredKind?: "cs" | "me" | "auto" | undefined;
+  /** Co-Simulation model identifier. */
+  csModelIdentifier?: string | undefined;
+  /** Model Exchange model identifier. */
+  meModelIdentifier?: string | undefined;
+  /** Terminal port to FMU variable mappings. */
+  terminalMapping?: { portMember: string; fmuVar: string; terminalName?: string }[] | undefined;
+  /** Local names of inputs (e.g. ["u"]). */
+  inputs: string[];
+  /** Local names of outputs (e.g. ["y"]). */
+  outputs: string[];
+  /** Local names of parameters (e.g. ["gain"]). */
+  parameters: string[];
+}
+
+/**
+ * Default in-memory FMU subsystem that provides zero-order hold / state retention.
+ * Used as a fallback when an external FMU native binary or participant is not supplied.
+ */
+export class DefaultFmuSubsystem implements FmuSubsystem {
+  readonly modelName: string;
+  readonly inputNames: string[];
+  readonly outputNames: string[];
+  readonly parameterNames: string[];
+
+  private currentInputs = new Map<string, number>();
+  private currentOutputs = new Map<string, number>();
+  private parameters = new Map<string, number>();
+
+  constructor(modelName: string, inputNames: string[], outputNames: string[], parameterNames: string[] = []) {
+    this.modelName = modelName;
+    this.inputNames = inputNames;
+    this.outputNames = outputNames;
+    this.parameterNames = parameterNames;
+  }
+
+  initialize(_startTime: number, _stopTime: number, _stepSize: number): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+    for (const name of this.inputNames) this.currentInputs.set(name, 0);
+    for (const name of this.outputNames) this.currentOutputs.set(name, 0);
+  }
+
+  setInputs(inputs: Map<string, number>): void {
+    for (const [k, v] of inputs) {
+      this.currentInputs.set(k, v);
+    }
+  }
+
+  doStep(_currentTime: number, _stepSize: number): void {
+    // Default passthrough / holding behavior
+  }
+
+  getOutputs(): Map<string, number> {
+    return new Map(this.currentOutputs);
+  }
+
+  setOutput(name: string, value: number): void {
+    this.currentOutputs.set(name, value);
+  }
+
+  setParameter(name: string, value: number): void {
+    this.parameters.set(name, value);
+  }
+
+  getParameter(name: string): number | undefined {
+    return this.parameters.get(name);
+  }
+
+  terminate(): void {
+    this.currentInputs.clear();
+    this.currentOutputs.clear();
+  }
+}

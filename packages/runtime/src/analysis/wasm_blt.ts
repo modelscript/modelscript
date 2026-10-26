@@ -273,8 +273,22 @@ export function performBltTransformationArena(
   const activeVarIndices: number[] = [];
   const varToActiveMap = new Map<number, number>();
 
+  // Identify variables produced by FMU subsystems (known at each step, solved outside Modelica algebraic loops)
+  const fmuOutputVarIndices = new Set<number>();
+  const fmuInstances = arena.extensionMetadata?.fmuInstances as any[] | undefined;
+  if (Array.isArray(fmuInstances)) {
+    for (const fmu of fmuInstances) {
+      for (const outName of fmu.outputs || []) {
+        const fullName = fmu.instanceName ? `${fmu.instanceName}.${outName}` : outName;
+        const vId = arena.getVarIdxByName(fullName);
+        if (vId >= 0) fmuOutputVarIndices.add(vId);
+      }
+    }
+  }
+
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
+    if (fmuOutputVarIndices.has(i)) continue;
     const variability = arena.getVarVariability(i);
     // Ignore parameter/constant variables during dynamic equation BLT
     if (

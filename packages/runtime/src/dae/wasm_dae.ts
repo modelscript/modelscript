@@ -10,6 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SourceLocation } from "../runtime.js";
+import type { FmuInstanceMetadata } from "../simulation/wasm_fmu_subsystem.js";
 import type { StringId } from "../workspace/wasm_string_pool.js";
 import { StringInterner, WasmStringPool } from "../workspace/wasm_string_pool.js";
 import { ArenaEquation, ArenaExpr, ArenaVariable } from "./fluent/index.js";
@@ -650,6 +651,7 @@ export class WasmDaeBridge implements IDaeBuilder {
     expandableBuses?: string[] | undefined;
     outputVars?: Set<string> | undefined;
     isOperatorRecord?: boolean | undefined;
+    fmuInstances?: FmuInstanceMetadata[] | undefined;
     [key: string]: any;
   } = {};
 
@@ -3463,6 +3465,15 @@ export class WasmDaeBridge implements IDaeBuilder {
         cfdFlow: this.extensionMetadata.cfdFlow.map((x) => ({ ...x, grid: x.grid ? [...x.grid] : undefined })),
       }),
       ...(this.extensionMetadata.mbse && { mbse: { ...this.extensionMetadata.mbse } }),
+      ...(this.extensionMetadata.fmuInstances && {
+        fmuInstances: this.extensionMetadata.fmuInstances.map((x) => ({
+          ...x,
+          inputs: [...x.inputs],
+          outputs: [...x.outputs],
+          parameters: [...x.parameters],
+          terminalMapping: x.terminalMapping ? x.terminalMapping.map((m) => ({ ...m })) : undefined,
+        })),
+      }),
     };
     for (const [k, v] of this.functions) copy.functions.set(k, v);
     for (const s of this._algorithmSections) copy._algorithmSections.push({ ...s });

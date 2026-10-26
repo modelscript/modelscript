@@ -17,6 +17,7 @@ export * from "./model/workspace-registry.js";
 export * from "./netlist/coverage.js";
 export * from "./netlist/emt-netlist.js";
 export * from "./parser/pscx-parser.js";
+export * from "./projections/fmu-to-pscad.js";
 export * from "./projections/modelica.js";
 export * from "./projections/ssp.js";
 export * from "./psout/index.js";

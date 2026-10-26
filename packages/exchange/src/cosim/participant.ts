@@ -112,4 +112,20 @@ export interface CoSimParticipant {
    * @returns The resulting directional derivative vector (one entry per unknown).
    */
   getDirectionalDerivative?(unknownRefs: number[], knownRefs: number[], dvKnown: number[]): Promise<number[]>;
+
+  // ── Optional: Direct Feedthrough & Model Structure ──
+
+  /**
+   * Optional direct feedthrough map for this participant:
+   * Maps output variable name -> array/set of input variable names it directly depends on.
+   */
+  readonly directFeedthrough?:
+    | ReadonlyMap<string, readonly string[] | ReadonlySet<string>>
+    | Record<string, readonly string[]>
+    | undefined;
+
+  /**
+   * Optional parsed model description if this participant wraps an FMU.
+   */
+  readonly modelDescription?: unknown | undefined;
 }

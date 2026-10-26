@@ -12,16 +12,28 @@
 
 import type { IClientOptions, MqttClient as MqttJsClient } from "mqtt";
 import mqtt from "mqtt";
-import type { ControlMessage, ParticipantMetadata, StatusMessage, StepResult, VariableBatch } from "./protocol.js";
+import type {
+  ControlMessage,
+  ParticipantMetadata,
+  StatusMessage,
+  StepResult,
+  TimeSyncMessage,
+  TimeSyncPing,
+  TimeSyncPong,
+  VariableBatch,
+} from "./protocol.js";
 import { decodeMessage, encodeMessage } from "./protocol.js";
 import type { UnsContext } from "./topics.js";
 import {
   parseParticipantIdFromMetaTopic,
+  parseTimeSyncTopic,
   participantMetaTopic,
   participantMetaWildcard,
   sessionControlTopic,
   sessionResultsTopic,
   sessionStatusTopic,
+  sessionTimeSyncTopic,
+  sessionTimeSyncWildcard,
   variableBatchTopic,
   variableDataTopic,
   variableDataWildcard,
@@ -61,6 +73,7 @@ export class CosimMqttClient {
   private variableHandlers: ((participantId: string, variableName: string, value: number) => void)[] = [];
   private resultHandlers: MessageHandler<StepResult>[] = [];
   private participantHandlers: ((participantId: string, meta: ParticipantMetadata | null) => void)[] = [];
+  private timeSyncHandlers: MessageHandler<TimeSyncMessage>[] = [];
 
   constructor(options: MqttClientOptions) {
     this.brokerUrl = options.brokerUrl;
@@ -235,6 +248,49 @@ export class CosimMqttClient {
     });
   }
 
+  /** Subscribe to time synchronization messages in a session. */
+  async subscribeTimeSync(sessionId: string): Promise<void> {
+    const topic = sessionTimeSyncWildcard(this.unsContext, sessionId);
+    return new Promise<void>((resolve, reject) => {
+      this.client?.subscribe(topic, { qos: 0 }, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  /** Publish a time sync ping (master -> participant). */
+  publishTimeSyncPing(sessionId: string, participantId: string, ping: { seq: number; t1: number }): void {
+    const topic = sessionTimeSyncTopic(this.unsContext, sessionId, participantId);
+    const msg: TimeSyncPing = {
+      type: "ping",
+      sessionId,
+      participantId,
+      seq: ping.seq,
+      t1: ping.t1,
+    };
+    this.client?.publish(topic, encodeMessage(msg), { qos: 0 });
+  }
+
+  /** Publish a time sync pong (participant -> master). */
+  publishTimeSyncPong(
+    sessionId: string,
+    participantId: string,
+    pong: { seq: number; t1: number; t2: number; t3: number },
+  ): void {
+    const topic = sessionTimeSyncTopic(this.unsContext, sessionId, participantId);
+    const msg: TimeSyncPong = {
+      type: "pong",
+      sessionId,
+      participantId,
+      seq: pong.seq,
+      t1: pong.t1,
+      t2: pong.t2,
+      t3: pong.t3,
+    };
+    this.client?.publish(topic, encodeMessage(msg), { qos: 0 });
+  }
+
   /** Subscribe to an arbitrary MQTT topic pattern. */
   async subscribeTopic(topic: string, qos: 0 | 1 = 0): Promise<void> {
     if (!this.client) return;
@@ -268,6 +324,10 @@ export class CosimMqttClient {
     this.participantHandlers.push(handler);
   }
 
+  onTimeSync(handler: MessageHandler<TimeSyncMessage>): void {
+    this.timeSyncHandlers.push(handler);
+  }
+
   // ── Internal message dispatch ──
 
   private handleMessage(topic: string, payload: Buffer): void {
@@ -283,6 +343,13 @@ export class CosimMqttClient {
         this.participants.set(metaPid, meta);
         for (const h of this.participantHandlers) h(metaPid, meta);
       }
+      return;
+    }
+
+    // Time synchronization
+    if (parseTimeSyncTopic(topic) !== null) {
+      const msg = decodeMessage<TimeSyncMessage>(payload);
+      for (const h of this.timeSyncHandlers) h(msg, topic);
       return;
     }
 

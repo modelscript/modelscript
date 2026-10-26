@@ -100,6 +100,8 @@ interface FmuArgs {
   timing: boolean;
   /** Flattener backend (`"ts"`, `"wasm"`, `"hybrid"`, or `"diff"`). */
   flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
+  /** Path to golden CSV trajectory for verification. */
+  golden?: string | undefined;
 }
 
 /**
@@ -261,6 +263,10 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
         type: "string",
       })
+      .option("golden", {
+        description: "path to golden CSV trajectory for 'verify' subcommand",
+        type: "string",
+      })
       .option("timing", {
         description: "report timing information for each stage as JSON to stderr",
         type: "boolean",
@@ -269,7 +275,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
   }) as any,
 
   handler: async (args) => {
-    const fmuSubcommands = new Set(["import", "validate", "info", "list", "build", "simulate"]);
+    const fmuSubcommands = new Set(["import", "validate", "info", "list", "build", "simulate", "record", "verify"]);
     if (fmuSubcommands.has(args.name)) {
       const fmuTarget = args.paths?.[0];
       if (!fmuTarget) {
@@ -396,6 +402,98 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           }
         } catch (err) {
           console.error(`FMU simulation failed: ${err instanceof Error ? err.message : String(err)}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (args.name === "record") {
+        try {
+          const simRes = await simulateFmuArchive(absPath, {
+            startTime: args.startTime ?? args["start-time"],
+            stopTime: args.stopTime ?? args["stop-time"],
+            stepSize: args.stepSize ?? args["step-size"] ?? args.outputInterval ?? args["output-interval"],
+            inputFile: args.inputFile ?? args["input-file"],
+            outputVariables: args.outputVariable ?? args["output-variable"],
+          });
+          const formatted = formatFmuSimulateResult(simRes, "csv");
+          const defaultOut = `${path.basename(absPath, ".fmu")}_golden.csv`;
+          const targetOut = args.output ? path.resolve(args.output) : path.resolve(path.dirname(absPath), defaultOut);
+          fs.writeFileSync(targetOut, formatted, "utf-8");
+          console.log(`Recorded golden trajectory (${simRes.t.length} steps) -> ${targetOut}`);
+        } catch (err) {
+          console.error(`FMU golden recording failed: ${err instanceof Error ? err.message : String(err)}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
+
+      if (args.name === "verify") {
+        try {
+          const goldenPath = args.golden ?? args.inputFile ?? args["input-file"];
+          if (!goldenPath || !fs.existsSync(path.resolve(goldenPath))) {
+            console.error(`Error: Golden CSV file not found. Provide --golden <path.csv>`);
+            process.exitCode = 1;
+            return;
+          }
+          const goldenRaw = fs.readFileSync(path.resolve(goldenPath), "utf-8");
+          const goldenLines = goldenRaw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+          if (goldenLines.length < 2) {
+            console.error(`Error: Golden CSV file is empty or missing headers`);
+            process.exitCode = 1;
+            return;
+          }
+
+          const simRes = await simulateFmuArchive(absPath, {
+            startTime: args.startTime ?? args["start-time"],
+            stopTime: args.stopTime ?? args["stop-time"],
+            stepSize: args.stepSize ?? args["step-size"] ?? args.outputInterval ?? args["output-interval"],
+          });
+
+          // Build variable column index map
+          const varIdxMap = new Map<string, number>();
+          simRes.varNames.forEach((name, idx) => varIdxMap.set(name, idx));
+
+          // Verify RMSE against golden lines
+          const tol = args.tolerance ?? 1e-3;
+          let maxError = 0.0;
+          let sumSqErr = 0.0;
+          let count = 0;
+
+          const headers = (goldenLines[0] ?? "").split(",").map((h) => h.trim());
+          const numSteps = Math.min(goldenLines.length - 1, simRes.t.length);
+
+          for (let i = 1; i <= numSteps; i++) {
+            const vals = (goldenLines[i] ?? "").split(",").map((v) => parseFloat(v.trim()));
+            const simIdx = i - 1;
+            const simRow = simRes.values[simIdx];
+            for (let c = 1; c < headers.length; c++) {
+              const colName = headers[c];
+              if (!colName) continue;
+              const goldenVal = vals[c] ?? 0.0;
+              const colIdx = varIdxMap.get(colName);
+              const simVal = colIdx !== undefined && simRow ? Number(simRow[colIdx] ?? 0.0) : 0.0;
+              const diff = Math.abs(simVal - goldenVal);
+              sumSqErr += diff * diff;
+              if (diff > maxError) maxError = diff;
+              count++;
+            }
+          }
+
+          const rmse = count > 0 ? Math.sqrt(sumSqErr / count) : 0.0;
+          if (rmse <= tol) {
+            console.log(`Golden Parity Verification PASSED:`);
+            console.log(`  RMSE: ${rmse.toExponential(4)} (tolerance: ${tol})`);
+            console.log(`  Max Absolute Error: ${maxError.toExponential(4)}`);
+            console.log(`  Steps Verified: ${numSteps}`);
+          } else {
+            console.error(`Golden Parity Verification FAILED:`);
+            console.error(`  RMSE: ${rmse.toExponential(4)} exceeds tolerance: ${tol}`);
+            console.error(`  Max Absolute Error: ${maxError.toExponential(4)}`);
+            process.exitCode = 1;
+          }
+        } catch (err) {
+          console.error(`FMU verification failed: ${err instanceof Error ? err.message : String(err)}`);
           process.exitCode = 1;
         }
         return;

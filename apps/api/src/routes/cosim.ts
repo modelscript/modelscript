@@ -7,7 +7,7 @@
  * MQTT participant discovery, variable couplings, and orchestrator control.
  */
 
-import type { CosimMqttClient } from "@modelscript/exchange/cosim";
+import type { CosimMqttClient, DirectFeedthroughInput, MasterAlgorithm } from "@modelscript/exchange/cosim";
 import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/exchange/cosim";
 import { applySspParameters, importSsp, wireSspCouplings } from "@modelscript/exchange/ssp";
 import express from "express";
@@ -107,9 +107,34 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
 
   // POST /api/v1/cosim/sessions — Create a new co-simulation session
   router.post("/sessions", (req, res) => {
-    const { startTime = 0, stopTime = 10, stepSize = 0.01, realtimeFactor = 0 } = req.body as Record<string, number>;
+    const {
+      startTime = 0,
+      stopTime = 10,
+      stepSize = 0.01,
+      realtimeFactor = 0,
+      masterAlgorithm = "gauss-seidel",
+      richardsonTolerance = 1e-4,
+      autoRemediateLoops,
+      directFeedthrough,
+    } = req.body as {
+      startTime?: number | undefined;
+      stopTime?: number | undefined;
+      stepSize?: number | undefined;
+      realtimeFactor?: number | undefined;
+      masterAlgorithm?: MasterAlgorithm | undefined;
+      richardsonTolerance?: number | undefined;
+      autoRemediateLoops?: boolean | "delay" | "newton" | "aitken" | undefined;
+      directFeedthrough?: DirectFeedthroughInput | undefined;
+    };
 
-    const session = sessionManager.createSession({ startTime, stopTime, stepSize }, realtimeFactor);
+    const session = sessionManager.createSession(
+      { startTime, stopTime, stepSize },
+      realtimeFactor,
+      masterAlgorithm,
+      richardsonTolerance,
+      autoRemediateLoops,
+      directFeedthrough,
+    );
 
     res.status(201).json(session.toJSON());
   });
@@ -249,6 +274,19 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
       onError: (err: Error) => {
         console.error(`[cosim] Session ${session.sessionId} error:`, err.message);
         orchestrators.delete(session.sessionId);
+      },
+      onJacobianConvergence: (stats) => {
+        console.log(
+          `[cosim] Session ${session.sessionId} Jacobian convergence: method=${stats.method}, iter=${stats.iterations}, residual=${stats.residual.toExponential(3)}`,
+        );
+      },
+      onDeadReckoning: (event) => {
+        console.warn(
+          `[cosim] Session ${session.sessionId} DeadReckoning: participant=${event.participantId}, var=${event.variableName}, val=${event.extrapolatedValue}, steps=${event.consecutiveSteps}`,
+        );
+      },
+      onAlgebraicLoop: (report) => {
+        console.log(`[cosim] Session ${session.sessionId} AlgebraicLoops: detected ${report.loops.length} loop(s)`);
       },
     });
 

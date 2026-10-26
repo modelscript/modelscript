@@ -13,7 +13,7 @@
  */
 export type CosimValue = number | string | boolean | Uint8Array;
 
-export type CouplingInterpolationMode = "ZERO_ORDER_HOLD" | "LINEAR" | "HERMITE";
+export type CouplingInterpolationMode = "ZERO_ORDER_HOLD" | "LINEAR" | "HERMITE" | "ADAMS_BASHFORTH";
 
 export interface ConjugatePowerPair {
   effortVariable: string;
@@ -38,6 +38,19 @@ export interface VariableCoupling {
   interpolation?: CouplingInterpolationMode | undefined;
   /** Optional conjugate power pair (e.g. effort * flow) for interface energy tracking. */
   conjugatePair?: ConjugatePowerPair | undefined;
+  /**
+   * Whether this coupling has an intentional time delay (e.g. unit delay z^-1)
+   * inserted to decouple an algebraic direct-feedthrough loop.
+   */
+  isDelayed?: boolean | undefined;
+  /**
+   * Number of communication steps to delay (default: 1 if isDelayed is true).
+   */
+  delaySteps?: number | undefined;
+  /**
+   * Initial value to inject before the first delayed sample is available.
+   */
+  initialValue?: CosimValue | undefined;
 }
 
 /** Result from unit compatibility validation. */
@@ -220,6 +233,8 @@ export class CouplingGraph {
   private readonly couplings: VariableCoupling[] = [];
   private readonly interpolators = new Map<string, HermiteInterpolator>();
   private readonly passivityObservers = new Map<string, PassivityObserver>();
+  private readonly delayedValues = new Map<string, CosimValue>();
+  private readonly delayHistory = new Map<string, HistoryPoint[]>();
 
   /** Add a coupling from an output variable to an input variable. */
   addCoupling(coupling: VariableCoupling): void {
@@ -331,6 +346,63 @@ export class CouplingGraph {
       if (value === undefined) continue;
 
       const key = `${coupling.from.participantId}.${coupling.from.variableName}`;
+      const connKey = `${coupling.from.participantId}.${coupling.from.variableName}->${coupling.to.participantId}.${coupling.to.variableName}`;
+
+      // ── Delayed coupling handling (Algebraic Loop Decoupling) ──
+      if (coupling.isDelayed || (coupling.delaySteps !== undefined && coupling.delaySteps > 0)) {
+        let valToInject = this.delayedValues.get(connKey) ?? coupling.initialValue ?? 0.0;
+
+        // Perform polynomial extrapolation if history exists and time is given
+        if (typeof valToInject === "number" && currentTime !== undefined) {
+          const hist = this.delayHistory.get(connKey);
+          if (hist && hist.length >= 2) {
+            const pLast = hist[hist.length - 1]!;
+            const pPrev = hist[hist.length - 2]!;
+            const dt = Math.max(1e-9, pLast.time - pPrev.time);
+            if (coupling.interpolation === "LINEAR") {
+              const slope = (pLast.value - pPrev.value) / dt;
+              valToInject = pLast.value + slope * Math.max(0, currentTime - pLast.time);
+            } else if (coupling.interpolation === "ADAMS_BASHFORTH" && hist.length >= 3) {
+              const pPrev2 = hist[hist.length - 3]!;
+              const dy1 = pLast.value - pPrev.value;
+              const dy2 = pPrev.value - pPrev2.value;
+              valToInject = pLast.value + 1.5 * dy1 - 0.5 * dy2;
+            } else if (coupling.interpolation === "HERMITE") {
+              let interp = this.interpolators.get(key);
+              if (interp && interp.lastTime !== undefined) {
+                valToInject = interp.evaluate(currentTime);
+              }
+            }
+          }
+        }
+
+        // Store the newly computed source output for NEXT step's delay buffer
+        this.delayedValues.set(connKey, value);
+        if (typeof value === "number" && currentTime !== undefined) {
+          let hist = this.delayHistory.get(connKey);
+          if (!hist) {
+            hist = [];
+            this.delayHistory.set(connKey, hist);
+          }
+          hist.push({ time: currentTime, value });
+          if (hist.length > 8) hist.shift();
+        }
+
+        // Auto-convert units if both sides have unit metadata and they differ
+        const fromUnit = coupling.from.unit;
+        const toUnit = coupling.to.unit;
+        if (fromUnit && toUnit && fromUnit !== toUnit && typeof valToInject === "number") {
+          valToInject = convertUnit(valToInject, fromUnit, toUnit);
+        }
+
+        let targetInputs = inputs.get(coupling.to.participantId);
+        if (!targetInputs) {
+          targetInputs = new Map<string, CosimValue>();
+          inputs.set(coupling.to.participantId, targetInputs);
+        }
+        targetInputs.set(coupling.to.variableName, valToInject);
+        continue;
+      }
 
       // If numeric and time is provided, update multi-rate Hermite interpolator
       if (typeof value === "number" && currentTime !== undefined) {
@@ -381,11 +453,19 @@ export class CouplingGraph {
     return inputs;
   }
 
+  /** Reset delayed coupling state buffers. */
+  resetDelayBuffers(): void {
+    this.delayedValues.clear();
+    this.delayHistory.clear();
+  }
+
   /** Clear all couplings. */
   clear(): void {
     this.couplings.length = 0;
     this.interpolators.clear();
     this.passivityObservers.clear();
+    this.delayedValues.clear();
+    this.delayHistory.clear();
   }
 }
 

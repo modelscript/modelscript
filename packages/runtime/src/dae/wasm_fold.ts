@@ -3688,6 +3688,15 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
       cfdFlow: dae.extensionMetadata.cfdFlow.map((x) => ({ ...x, grid: x.grid ? [...x.grid] : undefined })),
     }),
     ...(dae.extensionMetadata.mbse && { mbse: { ...dae.extensionMetadata.mbse } }),
+    ...(dae.extensionMetadata.fmuInstances && {
+      fmuInstances: dae.extensionMetadata.fmuInstances.map((x: any) => ({
+        ...x,
+        inputs: [...x.inputs],
+        outputs: [...x.outputs],
+        parameters: [...x.parameters],
+        terminalMapping: x.terminalMapping ? x.terminalMapping.map((m: any) => ({ ...m })) : undefined,
+      })),
+    }),
   };
   const arrayShapes = new Map<string, number[]>();
   const loopVarMap = new Map<string, number>();

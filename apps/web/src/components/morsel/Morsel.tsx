@@ -1,109 +1,41 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { decodeDataUrl } from "@modelscript/dsl/utils";
-import {
-  ColumnsIcon,
-  DownloadIcon,
-  FileIcon,
-  FlowchartIcon,
-  GlobeIcon,
-  MoonIcon,
-  PauseIcon,
-  PlayIcon,
-  PlusIcon,
-  PulseIcon,
-  RowsIcon,
-  SearchIcon,
-  ServerIcon,
-  ShareAndroidIcon,
-  SidebarCollapseIcon,
-  SidebarExpandIcon,
-  SponsorTiersIcon,
-  StackIcon,
-  SunIcon,
-  UnwrapIcon,
-  UploadIcon,
-  WorkflowIcon,
-  XIcon,
-} from "@primer/octicons-react";
-import {
-  ActionList,
-  ActionMenu,
-  Button,
-  Dialog,
-  IconButton,
-  SegmentedControl,
-  Spinner,
-  TextInput,
-} from "@primer/react";
 import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme as useSiteTheme } from "../../theme";
-import { CloudDispatchModal } from "./CloudDispatchModal";
 import type { CodeEditorHandle } from "./Code";
-import ComponentList from "./ComponentList";
 import type { DiagramEditorHandle } from "./Diagram";
 import "./morsel.css";
-import OpenFileDropzone from "./OpenFileDropzone";
-import PropertiesWidget from "./Properties";
-import {
-  SimulationExperimentSettings,
-  SimulationParameters,
-  type ExperimentOverrides,
-  type ParameterInfo,
-} from "./SimulationParameters";
-import { Splash, type ModelData } from "./Splash";
-import TreeWidget from "./Tree";
 import { getTranslations, uiLanguages } from "./util/i18n";
 import {
   applyDiagramEdits,
   applyLspEdits,
   didOpen,
-  getCadComponents,
   getComponentProperties,
   getDiagramData,
-  installDependency,
   parseCode,
-  simulate,
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
-import { useMqttSimulation } from "./util/use-mqtt-simulation";
-import { VariablesTree } from "./VariablesTree";
 
-import { patchModelicaCadAnnotation, type DynamicBindingConfig } from "@modelscript/cad";
 import { useToast } from "../ToastContext";
-import AddLibraryModal from "./AddLibraryModal";
-import { type CadComponent } from "./cad-viewer";
-import { AnimationController } from "./cad-viewer/animation-controller";
-import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
-import { CosimPanel, type HistorianSession } from "./CosimPanel";
-import ParameterSliderRibbon, { extractParametersFromCode } from "./ParameterSliderRibbon";
-import { type SweepState } from "./SimulationParameters";
-import { getMorselMqttClient } from "./util/mqtt-client";
+import { useMorselEngine } from "./hooks";
+import {
+  MorselFloatingDock,
+  MorselLeftSidebar,
+  MorselMobileTabBar,
+  MorselModals,
+  MorselVisualizerPane,
+  MorselView as View,
+  type MobileTab,
+} from "./panels";
+import ParameterSliderRibbon from "./ParameterSliderRibbon";
+
 const CodeEditor = React.lazy(() => import("./Code"));
-const DiagramEditor = React.lazy(() => import("./Diagram"));
-const SimulationResults = React.lazy(() =>
-  import("./SimulationResults").then((m) => ({ default: m.SimulationResults })),
-);
-const CadViewerPanel = React.lazy(() => import("./cad-viewer").then((m) => ({ default: m.CadViewer })));
 
 /** URI used for the open document — must match the URI in CodeEditor and TreeWidget. */
 const DOCUMENT_URI = "file:///document.mo";
-
-const LANGUAGE_NAMES: Record<string, string> = {
-  ar: "العربية (Arabic)",
-  de: "Deutsch (German)",
-  en: "English",
-  fr: "Français (French)",
-  it: "Italiano (Italian)",
-  ja: "日本語 (Japanese)",
-  ko: "한국어 (Korean)",
-  pt: "Português (Portuguese)",
-  ru: "Русский (Russian)",
-  tr: "Türkçe (Turkish)",
-  zh: "中文 (Chinese)",
-};
 
 export interface MorselEditorProps {
   dataUrl?: DataUrl | null | undefined;
@@ -115,13 +47,6 @@ export interface MorselEditorProps {
   showParameterRibbon?: boolean | undefined;
   onCodeChange?: ((code: string) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
-}
-
-enum View {
-  CODE,
-  DIAGRAM,
-  SPLIT_COLUMNS,
-  SPLIT_ROWS,
 }
 
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
@@ -137,10 +62,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
   const [flattenedCode, setFlattenedCode] = useState("");
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
-  const [simulationStatus, setSimulationStatus] = useState<any>(null);
-  const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
-  const mqtt = useMqttSimulation({ source: cosimDataSource });
-  const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = props.initialCode ?? decodedContent ?? "model Example\n\nend Example;";
@@ -167,20 +88,11 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [view, setView] = useState<View>(initialViewMode);
   const [showResultsView, setShowResultsView] = useState(initialIsPlot);
   const [showCadView, setShowCadView] = useState(initialIsCad);
-  type MobileTab = "code" | "params" | "results" | "diagram" | "cad";
   const [mobileTab, setMobileTab] = useState<MobileTab>(
     initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
   );
-  const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
-  const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
-  const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
-  const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
-  const [sweepState, setSweepState] = useState<SweepState | null>(null);
-  const [sweepResults, setSweepResults] = useState<{ value: number; y: number[][] }[] | null>(null);
   const cachedSimulatorRef = useRef<any | null>(null);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
-
-  const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>({});
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string | null>(props.initialAnchor?.elementId ?? null);
   const [selectedComponent, setSelectedComponent] = useState<string | null>(props.initialAnchor?.elementId ?? null);
@@ -230,158 +142,55 @@ export default function MorselEditor(props: MorselEditorProps) {
     [diagramData, selectedTreeClassName],
   );
 
-  const ribbonParams = useMemo(() => {
-    if (simulationParameters.length > 0) return simulationParameters;
-    return extractParametersFromCode(content);
-  }, [simulationParameters, content]);
-
-  const handleRibbonParamChange = useCallback((name: string, value: number) => {
-    setParameterOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(name, value);
-      return next;
-    });
-  }, []);
-
-  const handleRibbonParamReset = useCallback((name: string) => {
-    setParameterOverrides((prev) => {
-      const next = new Map(prev);
-      next.delete(name);
-      return next;
-    });
-  }, []);
-
-  const [cadComponents, setCadComponents] = useState<CadComponent[]>([]);
-  const animationControllerRef = useRef<AnimationController | null>(null);
-  const [animationMode, setAnimationMode] = useState<"stopped" | "playing" | "paused" | "live">("stopped");
-
-  // Live MQTT telemetry streaming synchronization with AnimationController
-  useEffect(() => {
-    if (cosimDataSource !== "mqtt-live") return;
-    const client = getMorselMqttClient();
-    const ctrl = animationControllerRef.current;
-    if (ctrl) {
-      ctrl.goLive();
-    }
-    const unsub = client.onVariableUpdate((participantId, variable, value) => {
-      const controller = animationControllerRef.current;
-      if (controller) {
-        if (controller.mode !== "live") controller.goLive();
-        const now = Date.now() / 1000;
-        controller.pushLiveValue(variable, value, now);
-        controller.pushLiveValue(`${participantId}.${variable}`, value, now);
-      }
-    });
-    return () => unsub();
-  }, [cosimDataSource]);
-
-  // Historian session replay handler
-  const handleReplaySession = useCallback(
-    (session: HistorianSession, speed: number) => {
-      let controller = animationControllerRef.current;
-      if (!controller) {
-        controller = new AnimationController();
-        controller.onStateChange((s) => setAnimationMode(s.mode));
-        animationControllerRef.current = controller;
-      }
-
-      const duration = session.durationSeconds || 60;
-      const steps = Math.min(200, duration * 10);
-      const t = Array.from({ length: steps }, (_, i) => (i * duration) / (steps - 1));
-
-      const stateNames = Array.from(
-        new Set([
-          ...cadComponents.flatMap((c) => c.dynamicBindings?.map((b) => b.variable) || []),
-          ...simulationVariables,
-        ]),
-      );
-      if (stateNames.length === 0) {
-        stateNames.push("phi", "theta", "r_0[1]", "r_0[2]", "r_0[3]");
-      }
-
-      const y: number[][] = t.map((timeVal) => {
-        return stateNames.map((name, idx) => {
-          return Math.sin(timeVal * (1 + idx * 0.5)) * 0.5;
-        });
-      });
-
-      controller.loadTimeseries(t, y, stateNames);
-      controller.setSpeed(speed);
-      controller.play();
-
-      const chartData = t.map((timeVal, i) => {
-        const row: Record<string, number | string> = { time: timeVal };
-        stateNames.forEach((state, vIdx) => {
-          row[state] = y[i]?.[vIdx] ?? 0;
-        });
-        return row;
-      });
-      setLocalSimulationData(chartData);
-      setSimulationStatus({ status: "completed" });
-    },
-    [cadComponents, simulationVariables],
-  );
-
-  // Dynamic CAD geometry binding save & code writeback handler
-  const handleSaveCadBindings = useCallback(
-    (componentName: string, bindings: DynamicBindingConfig[]) => {
-      if (!editor) return;
-      const currentCode = editor.getValue();
-      const patch = patchModelicaCadAnnotation(currentCode, componentName, { bindings });
-
-      if (patch.updatedSource !== currentCode) {
-        editor.setValue(patch.updatedSource);
-      }
-
-      // Update local CAD components
-      setCadComponents((prev) =>
-        prev.map((c) =>
-          c.name === componentName
-            ? {
-                ...c,
-                dynamicBindings: bindings.map((b) => ({
-                  property: b.property as "position" | "rotation" | "scale",
-                  index: b.index ?? 0,
-                  variable: b.variable,
-                  unit: b.unit,
-                  scale: b.scale,
-                  offset: b.offset,
-                  format: b.format,
-                })),
-              }
-            : c,
-        ),
-      );
-
-      // Update animation controller bindings
-      if (animationControllerRef.current) {
-        animationControllerRef.current.setBindings([
-          {
-            componentName,
-            bindings: bindings.map((b) => ({
-              property: b.property as "position" | "rotation" | "scale",
-              index: b.index ?? 0,
-              variable: b.variable,
-              unit: b.unit,
-              scale: b.scale,
-              offset: b.offset,
-              format: b.format,
-            })),
-          },
-        ]);
-        if (animationControllerRef.current.hasData) {
-          animationControllerRef.current.play();
-        }
-      }
-    },
-    [editor],
-  );
+  const {
+    simulationVariables,
+    selectedSimulationVariables,
+    handleToggleSimulationVariable,
+    handleVariablesLoaded,
+    simulationParameters,
+    parameterOverrides,
+    handleParameterChange,
+    handleParameterReset,
+    sweepState,
+    setSweepState,
+    sweepResults,
+    experimentOverrides,
+    handleExperimentOverrideChange,
+    handleExperimentOverrideReset,
+    cachedSimulator,
+    simulationStatus,
+    setSimulationStatus,
+    localSimulationData,
+    setLocalSimulationData,
+    cadComponents,
+    animationControllerRef,
+    animationMode,
+    cosimDataSource,
+    setCosimDataSource,
+    ribbonParams,
+    handleRibbonParamChange,
+    handleRibbonParamReset,
+    handleReplaySession,
+    handleSaveCadBindings,
+    handleSimulate,
+  } = useMorselEngine({
+    documentUri: DOCUMENT_URI,
+    selectedTreeClassName,
+    contextVersion,
+    content,
+    editor,
+    showResultsView,
+    setShowResultsView,
+    isNarrow,
+    setMobileTab,
+    setTreeVisible,
+    setView,
+    viewDiagramEnum: View.DIAGRAM,
+  });
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
-  const isDraggingTree = useRef(false);
   const [propertiesWidth, setPropertiesWidth] = useState(300);
-  const isDraggingProperties = useRef(false);
   const { theme, toggleTheme } = useSiteTheme();
   const isDark = theme === "dark";
   const colorMode = isDark ? "dark" : "light";
@@ -396,8 +205,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   const pendingModelNameRef = useRef<string | null>(null);
   const [isSplashVisible, setSplashVisible] = useState(!props.dataUrl && !props.initialCode && !props.embed);
   const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
-  const [recentModels, setRecentModels] = useState<ModelData[]>([]);
-  const [exampleModels, setExampleModels] = useState<ModelData[]>([]);
   const isInitialized = useRef(false);
   const [language, setLanguage] = useState<string | null>(null);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
@@ -441,79 +248,6 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
     }, delay);
   }, []);
-
-  // Fetch CAD components from the LSP when the selected class changes
-  useEffect(() => {
-    if (!selectedTreeClassName) {
-      setCadComponents([]);
-      return;
-    }
-    let cancelled = false;
-    getCadComponents(DOCUMENT_URI)
-      .then((raw) => {
-        if (cancelled) return;
-        const parsed = extractCadComponents(raw);
-        setCadComponents(parsed);
-
-        // Eagerly initialize AnimationController if we have CAD components
-        let ctrl = animationControllerRef.current;
-        if (!ctrl && parsed.length > 0) {
-          ctrl = new AnimationController();
-          ctrl.onStateChange((s) => setAnimationMode(s.mode));
-          animationControllerRef.current = ctrl;
-        }
-
-        // If we have an animation controller, update its bindings
-        if (ctrl && parsed.length > 0) {
-          ctrl.setBindings(
-            parsed
-              .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
-              .map((c) => ({
-                componentName: c.name,
-                bindings: c.dynamicBindings!.map((b) => ({
-                  property: b.property as "position" | "rotation" | "scale",
-                  index: b.index,
-                  variable: b.variable,
-                })),
-              })),
-          );
-          // Set defaults from static annotations
-          for (const comp of parsed) {
-            ctrl.setDefault(comp.name, {
-              position: comp.cad.position ?? [0, 0, 0],
-              rotation: comp.cad.rotation ?? [0, 0, 0],
-              scale: comp.cad.scale ?? [1, 1, 1],
-            });
-          }
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) console.error("Failed to fetch CAD components:", e);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedTreeClassName, contextVersion]);
-
-  // Live MQTT data bridge
-  useEffect(() => {
-    const ctrl = animationControllerRef.current;
-    if (!ctrl || cosimDataSource !== "mqtt-live") {
-      // Revert from live mode if we switch away
-      if (ctrl && ctrl.mode === "live") {
-        ctrl.stop();
-      }
-      return;
-    }
-
-    if (ctrl.mode !== "live") {
-      ctrl.goLive();
-    }
-
-    if (mqtt.latestValues.size > 0) {
-      ctrl.pushLiveBatch(mqtt.latestValues, Date.now() / 1000);
-    }
-  }, [mqtt.latestValues, cosimDataSource]);
 
   // Collect all displayable models/blocks defined in current document
   const nestedModels = documentModels;
@@ -564,111 +298,6 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
     }
   }, [treeVisible, props.embed]);
-
-  // Lightweight re-simulate when parameter overrides change
-  useEffect(() => {
-    if (!showResultsView || parameterOverrides.size === 0 || !selectedTreeClassName) return;
-
-    const timer = setTimeout(async () => {
-      try {
-        const overrideObj = Object.fromEntries(parameterOverrides);
-        const result = await simulate(DOCUMENT_URI, {
-          className: selectedTreeClassName,
-          parameterOverrides: overrideObj,
-          sweepConfig: sweepState ?? undefined,
-          startTime: experimentOverrides.startTime,
-          stopTime: experimentOverrides.stopTime,
-          interval: experimentOverrides.interval,
-          solver: experimentOverrides.solver,
-          numberOfIntervals: experimentOverrides.numberOfIntervals,
-          rtol: experimentOverrides.tolerance,
-          atol: experimentOverrides.atol,
-          equidistant: experimentOverrides.equidistant,
-          steadyStateOnly: experimentOverrides.steadyStateOnly,
-        });
-
-        if (result.error) throw new Error(result.error);
-
-        const states = result.states ?? [];
-        if (result.sweepResults) {
-          setSweepResults(result.sweepResults);
-          setLocalSimulationData(
-            result.t.map((t: number, i: number) => {
-              const rowObj: Record<string, number | string> = { time: t };
-              result.sweepResults!.forEach((sweep) => {
-                states.forEach((state: string, vIndex: number) => {
-                  rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
-                });
-              });
-              return rowObj;
-            }),
-          );
-        } else {
-          setSweepResults(null);
-          const chartData = result.t.map((t: number, i: number) => {
-            const row: Record<string, number | string> = { time: t };
-            states.forEach((state: string, vIndex: number) => {
-              row[state] = result.y[i]?.[vIndex] ?? 0;
-            });
-            return row;
-          });
-          setLocalSimulationData(chartData);
-        }
-      } catch (e) {
-        if ((e as Error).name === "AbortError" || (e as Error).message === "Simulation aborted") return;
-        console.error("Re-simulation failed:", e);
-      }
-    }, 300);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [parameterOverrides, sweepState, showResultsView, experimentOverrides, selectedTreeClassName]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("recentModels");
-    if (saved) {
-      try {
-        setRecentModels(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse recent models", e);
-      }
-    }
-  }, []);
-
-  const _saveRecentModel = useCallback((name: string, content: string) => {
-    if (!name || name === "NewModel" || name === "Example") return;
-    setRecentModels((prev: ModelData[]) => {
-      const id = name.toLowerCase().replace(/\s+/g, "-");
-      const model: ModelData = { id, name, content, lastModified: Date.now() };
-      const next = [model, ...prev.filter((m: ModelData) => m.name !== name)].slice(0, 10);
-      localStorage.setItem("recentModels", JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const handleModelSelect = (model: ModelData) => {
-    setSplashVisible(false);
-    setLastLoadedContent(model.content);
-    if (editor) {
-      editor.setValue(model.content);
-    }
-  };
-
-  const handleClearRecent = useCallback(() => {
-    setRecentModels([]);
-    localStorage.removeItem("recentModels");
-  }, []);
-
-  const handleVariablesLoaded = useCallback(
-    (vars: string[]) => {
-      setSimulationVariables(vars);
-
-      if (selectedSimulationVariables.length === 0 && vars.length > 0) {
-        // Don't auto-select any variables — let the user pick
-      }
-    },
-    [selectedSimulationVariables.length],
-  );
 
   useEffect(() => {
     const init = async () => {
@@ -933,20 +562,6 @@ end Manufacturing;`,
     };
   }, [selectedTreeClassName, contextVersion]);
 
-  // ── Diagram edit helpers (delegated to LSP server via lsp-bridge) ──
-
-  const handleEdgeDelete = async (source: string, target: string) => {
-    enqueueDiagramAction({ type: "disconnect", source, target });
-  };
-
-  const handleComponentDelete = async (name: string) => {
-    enqueueDiagramAction({ type: "deleteComponents", names: [name] });
-  };
-
-  const handleComponentsDelete = async (names: string[]) => {
-    enqueueDiagramAction({ type: "deleteComponents", names });
-  };
-
   const handleFlatten = async () => {
     try {
       const result = await (await import("./util/lsp-bridge")).flatten(selectedTreeClassName ?? "", DOCUMENT_URI);
@@ -959,125 +574,6 @@ end Manufacturing;`,
     } catch (e) {
       console.error("Flattening failed:", e);
       toast.error("Failed to flatten model: " + (e instanceof Error ? e.message : String(e)));
-    }
-  };
-
-  const handleSimulate = async () => {
-    setSimulationStatus({ status: "pending", error: null });
-    setLocalSimulationData(null);
-
-    try {
-      // Prepare parameters mapping
-      const overrideObj = Object.fromEntries(parameterOverrides);
-
-      // Call the LSP — if no class is selected in the tree, the LSP
-      // will use the first class instance from the document.
-      const result = await simulate(DOCUMENT_URI, {
-        className: selectedTreeClassName ?? undefined,
-        parameterOverrides: overrideObj,
-        sweepConfig: sweepState ?? undefined,
-        startTime: experimentOverrides.startTime,
-        stopTime: experimentOverrides.stopTime,
-        interval: experimentOverrides.interval,
-        solver: experimentOverrides.solver,
-        numberOfIntervals: experimentOverrides.numberOfIntervals,
-        rtol: experimentOverrides.tolerance,
-        atol: experimentOverrides.atol,
-        equidistant: experimentOverrides.equidistant,
-        steadyStateOnly: experimentOverrides.steadyStateOnly,
-      });
-
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      setSimulationParameters((result.parameters as any) ?? []);
-
-      const states = result.states ?? [];
-      setSimulationVariables(states);
-
-      if (result.sweepResults) {
-        setSweepResults(result.sweepResults);
-        setLocalSimulationData(
-          result.t.map((t: number, i: number) => {
-            const rowObj: Record<string, number | string> = { time: t };
-            result.sweepResults!.forEach((sweep) => {
-              states.forEach((state: string, vIndex: number) => {
-                rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
-              });
-            });
-            return rowObj;
-          }),
-        );
-      } else {
-        setSweepResults(null);
-        const chartData = result.t.map((t: number, i: number) => {
-          const row: Record<string, number | string> = { time: t };
-          states.forEach((state: string, vIndex: number) => {
-            row[state] = result.y[i]?.[vIndex] ?? 0;
-          });
-          return row;
-        });
-        setLocalSimulationData(chartData);
-      }
-      setSimulationStatus({ status: "completed" });
-      setShowResultsView(true);
-      if (isNarrow) {
-        setMobileTab("results");
-        setTreeVisible(false);
-        setView(View.DIAGRAM);
-      }
-
-      // ── Animation setup ──
-      // Create/update the animation controller with new simulation data
-      if (cadComponents.length > 0) {
-        let controller = animationControllerRef.current;
-        if (!controller) {
-          controller = new AnimationController();
-          controller.onStateChange((s) => setAnimationMode(s.mode));
-          animationControllerRef.current = controller;
-        }
-        controller.setBindings(
-          cadComponents
-            .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
-            .map((c) => ({
-              componentName: c.name,
-              bindings: c.dynamicBindings!.map((b) => ({
-                property: b.property as "position" | "rotation" | "scale",
-                index: b.index,
-                variable: b.variable,
-                unit: (b as any).unit,
-                scale: (b as any).scale,
-                offset: (b as any).offset,
-                format: (b as any).format,
-              })),
-            })),
-        );
-        // Set defaults from static annotations
-        for (const comp of cadComponents) {
-          controller.setDefault(comp.name, {
-            position: comp.cad.position ?? [0, 0, 0],
-            rotation: comp.cad.rotation ?? [0, 0, 0],
-            scale: comp.cad.scale ?? [1, 1, 1],
-          });
-        }
-        controller.loadTimeseries(result.t, result.y, result.states);
-        const hasDynamic = cadComponents.some((c) => c.dynamicBindings && c.dynamicBindings.length > 0);
-        if (hasDynamic) {
-          controller.play();
-        }
-      }
-    } catch (e: any) {
-      if (e.message === "Simulation aborted") {
-        return;
-      }
-      setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
-      setShowResultsView(true);
-      if (isNarrow) {
-        setMobileTab("results");
-        setTreeVisible(false);
-        setView(View.DIAGRAM);
-      }
     }
   };
 
@@ -1095,189 +591,18 @@ end Manufacturing;`,
           position: "relative",
         }}
       >
-        {isNarrow && (
-          <div
-            role="tablist"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "var(--color-canvas-subtle)",
-              borderBottom: "1px solid var(--color-border-default)",
-              padding: "4px 8px",
-              overflowX: "auto",
-              flexShrink: 0,
-              gap: "4px",
-              zIndex: 10,
-            }}
-          >
-            <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === "code"}
-                onClick={() => {
-                  setMobileTab("code");
-                  setTreeVisible(false);
-                  setView(View.CODE);
-                }}
-                style={{
-                  padding: "6px 10px",
-                  fontSize: "12px",
-                  fontWeight: mobileTab === "code" ? 600 : 400,
-                  borderRadius: "6px",
-                  border: "none",
-                  background: mobileTab === "code" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
-                  color: mobileTab === "code" ? "white" : "inherit",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                💻 Code
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === "params"}
-                onClick={() => {
-                  setMobileTab("params");
-                  setTreeVisible(true);
-                }}
-                style={{
-                  padding: "6px 10px",
-                  fontSize: "12px",
-                  fontWeight: mobileTab === "params" ? 600 : 400,
-                  borderRadius: "6px",
-                  border: "none",
-                  background: mobileTab === "params" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
-                  color: mobileTab === "params" ? "white" : "inherit",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                ⚙️ Params
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === "results"}
-                onClick={() => {
-                  setMobileTab("results");
-                  setTreeVisible(false);
-                  setView(View.DIAGRAM);
-                  setShowResultsView(true);
-                  setShowCadView(false);
-                }}
-                style={{
-                  padding: "6px 10px",
-                  fontSize: "12px",
-                  fontWeight: mobileTab === "results" ? 600 : 400,
-                  borderRadius: "6px",
-                  border: "none",
-                  background: mobileTab === "results" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
-                  color: mobileTab === "results" ? "white" : "inherit",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                📊 Results
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === "diagram"}
-                onClick={() => {
-                  setMobileTab("diagram");
-                  setTreeVisible(false);
-                  setView(View.DIAGRAM);
-                  setShowResultsView(false);
-                  setShowCadView(false);
-                }}
-                style={{
-                  padding: "6px 10px",
-                  fontSize: "12px",
-                  fontWeight: mobileTab === "diagram" ? 600 : 400,
-                  borderRadius: "6px",
-                  border: "none",
-                  background: mobileTab === "diagram" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
-                  color: mobileTab === "diagram" ? "white" : "inherit",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                📐 Diagram
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === "cad"}
-                onClick={() => {
-                  setMobileTab("cad");
-                  setTreeVisible(false);
-                  setView(View.DIAGRAM);
-                  setShowResultsView(false);
-                  setShowCadView(true);
-                }}
-                style={{
-                  padding: "6px 10px",
-                  fontSize: "12px",
-                  fontWeight: mobileTab === "cad" ? 600 : 400,
-                  borderRadius: "6px",
-                  border: "none",
-                  background: mobileTab === "cad" ? "var(--color-accent-emphasis, #0969da)" : "transparent",
-                  color: mobileTab === "cad" ? "white" : "inherit",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                🧊 3D
-              </button>
-            </div>
+        <MorselMobileTabBar
+          isNarrow={isNarrow}
+          mobileTab={mobileTab}
+          setMobileTab={setMobileTab}
+          setTreeVisible={setTreeVisible}
+          setView={setView}
+          setShowResultsView={setShowResultsView}
+          setShowCadView={setShowCadView}
+          onSimulate={handleSimulate}
+          simulationStatus={simulationStatus}
+        />
 
-            {/* Quick mobile Simulate button */}
-            <button
-              type="button"
-              onClick={() => simulateModel(editor?.getValue() ?? content)}
-              disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
-              style={{
-                padding: "5px 12px",
-                fontSize: "12px",
-                fontWeight: 600,
-                borderRadius: "6px",
-                border: "none",
-                background: "var(--gradient-cta, linear-gradient(135deg, #10b981 0%, #059669 100%))",
-                color: "white",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
-                <>⏳ Simulating…</>
-              ) : (
-                <>▶ Run</>
-              )}
-            </button>
-          </div>
-        )}
         <div
           className="d-flex flex-1"
           style={{
@@ -1291,263 +616,49 @@ end Manufacturing;`,
             overflow: "hidden",
           }}
         >
-          {treeVisible && (
-            <>
-              <div
-                style={{
-                  width: isNarrow ? "100%" : treeWidth,
-                  display: "flex",
-                  flexDirection: "column",
-                  minHeight: 0,
-                  height: "100%",
-                  minWidth: isNarrow ? 0 : 200,
-                  maxWidth: isNarrow ? "100%" : 600,
-                  flexShrink: 0,
-                  overflow: "hidden",
-                }}
-              >
-                {!showResultsView && (
-                  <>
-                    <div
-                      className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
-                      style={{ gap: 8 }}
-                    >
-                      <div
-                        className="d-flex flex-items-center"
-                        style={{ display: isSearchExpanded || libraryFilter ? "none" : "flex" }}
-                      >
-                        {translations.libraries}
-                      </div>
-                      <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0 }}>
-                        <TextInput
-                          ref={inputRef}
-                          aria-label={translations.filterClasses}
-                          placeholder={translations.filterClasses}
-                          value={libraryFilter}
-                          onChange={(e) => setLibraryFilter(e.target.value)}
-                          onBlur={() => {
-                            if (!libraryFilter) setIsSearchExpanded(false);
-                          }}
-                          trailingAction={
-                            !isSearching && (isSearchExpanded || libraryFilter) ? (
-                              <TextInput.Action
-                                onClick={() => {
-                                  if (libraryFilter) {
-                                    setLibraryFilter("");
-                                    inputRef.current?.focus();
-                                  } else {
-                                    setIsSearchExpanded(false);
-                                  }
-                                }}
-                                icon={libraryFilter ? XIcon : SearchIcon}
-                                aria-label={libraryFilter ? "Clear search" : "Close search"}
-                              />
-                            ) : undefined
-                          }
-                          trailingVisual={
-                            isSearching && (isSearchExpanded || libraryFilter) ? (
-                              <Spinner size="small" style={{ marginTop: "6px", marginInlineStart: "8px" }} />
-                            ) : undefined
-                          }
-                          className={isSearchExpanded || libraryFilter ? "input-sm" : "input-sm border-0"}
-                          style={{
-                            width: isSearchExpanded || libraryFilter ? "100%" : "0px",
-                            opacity: isSearchExpanded || libraryFilter ? 1 : 0,
-                            padding: isSearchExpanded || libraryFilter ? undefined : "0px",
-                            borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
-                            height: "28px",
-                            transition: "all 0.2s ease-in-out",
-                            overflow: "hidden",
-                          }}
-                        />
-                        <IconButton
-                          icon={SearchIcon}
-                          aria-label={translations.filterClasses}
-                          size="small"
-                          variant="invisible"
-                          onClick={() => {
-                            setIsSearchExpanded(true);
-                            setTimeout(() => inputRef.current?.focus(), 50);
-                          }}
-                          style={{
-                            width: isSearchExpanded || libraryFilter ? "0px" : "28px",
-                            opacity: isSearchExpanded || libraryFilter ? 0 : 1,
-                            padding: isSearchExpanded || libraryFilter ? "0px" : undefined,
-                            overflow: "hidden",
-                            transition: "all 0.2s ease-in-out",
-                          }}
-                        />
-                        <IconButton
-                          icon={PlusIcon}
-                          aria-label={translations.addLibrary}
-                          size="small"
-                          variant="invisible"
-                          ref={addLibraryButtonRef}
-                          onClick={() => setIsAddLibraryOpen(true)}
-                        />
-                      </div>
-                    </div>
-                    <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-                      <TreeWidget
-                        uri={DOCUMENT_URI}
-                        key={debouncedFilter ? "filtered" : "unfiltered"}
-                        onSelect={handleTreeSelect}
-                        onHighlight={setSelectedTreeClassName}
-                        width="100%"
-                        filter={debouncedFilter}
-                        version={contextVersion}
-                        language={language}
-                      />
-                    </div>
-                  </>
-                )}
-                <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
-                  {showResultsView ? "Simulation Variables" : translations.components}
-                </div>
-                <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-                  {!showResultsView ? (
-                    <ComponentList
-                      components={diagramData?.nodes ?? null}
-                      onSelect={(name) => {
-                        setSelectedComponent(name || null);
-                        if (name) {
-                          codeEditorRef.current?.revealComponent(name);
-                        }
-                      }}
-                      selectedName={selectedComponent}
-                      language={language}
-                      translations={translations}
-                    />
-                  ) : (
-                    <VariablesTree
-                      variables={simulationVariables}
-                      selectedVariables={selectedSimulationVariables}
-                      onToggleVariable={(v) => {
-                        setSelectedSimulationVariables((current) =>
-                          current.includes(v) ? current.filter((x) => x !== v) : [...current, v],
-                        );
-                      }}
-                    />
-                  )}
-                </div>
-                {showResultsView && simulationParameters.length > 0 && (
-                  <>
-                    <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
-                      Simulation Parameters
-                    </div>
-                    <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-                      <SimulationParameters
-                        parameters={simulationParameters}
-                        overrides={parameterOverrides}
-                        sweepState={sweepState}
-                        onChange={(name, value) => {
-                          setParameterOverrides((prev) => {
-                            const next = new Map(prev);
-                            next.set(name, value);
-                            return next;
-                          });
-                        }}
-                        onReset={(name) => {
-                          setParameterOverrides((prev) => {
-                            const next = new Map(prev);
-                            next.delete(name);
-                            return next;
-                          });
-                        }}
-                        onSweepChange={setSweepState}
-                      />
-                    </div>
-                  </>
-                )}
-                {showResultsView && (
-                  <>
-                    <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
-                      Simulation Settings
-                    </div>
-                    <div style={{ padding: "0" }}>
-                      <SimulationExperimentSettings
-                        experiment={cachedSimulatorRef.current?.dae?.experiment}
-                        overrides={experimentOverrides}
-                        onChange={(name, value) => setExperimentOverrides((prev) => ({ ...prev, [name]: value }))}
-                        onReset={(name) => {
-                          setExperimentOverrides((prev) => {
-                            const next = { ...prev };
-                            Reflect.deleteProperty(next, name);
-                            return next;
-                          });
-                        }}
-                      />
-                      <div className="p-3" style={{ display: "flex", gap: 8 }}>
-                        <Button
-                          variant="primary"
-                          block
-                          onClick={() => handleSimulate()}
-                          disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
-                        >
-                          Simulate
-                        </Button>
-                        <Button
-                          variant="default"
-                          onClick={() => setIsCloudModalOpen(true)}
-                          leadingVisual={ServerIcon}
-                          title="Run on ModelScript Cloud HPC"
-                        >
-                          Cloud
-                        </Button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              {!isNarrow && (
-                <div
-                  style={{
-                    width: 6,
-                    cursor: "col-resize",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                    backgroundColor: "transparent",
-                    display: "flex",
-                  }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    isDraggingTree.current = true;
-                    const startX = e.clientX;
-                    const startWidth = treeWidth;
+          <MorselLeftSidebar
+            treeVisible={treeVisible}
+            isNarrow={isNarrow}
+            treeWidth={treeWidth}
+            setTreeWidth={setTreeWidth}
+            colorMode={colorMode}
+            showResultsView={showResultsView}
+            translations={translations}
+            libraryFilter={libraryFilter}
+            setLibraryFilter={setLibraryFilter}
+            isSearchExpanded={isSearchExpanded}
+            setIsSearchExpanded={setIsSearchExpanded}
+            isSearching={isSearching}
+            inputRef={inputRef}
+            addLibraryButtonRef={addLibraryButtonRef}
+            onOpenAddLibrary={() => setIsAddLibraryOpen(true)}
+            documentUri={DOCUMENT_URI}
+            debouncedFilter={debouncedFilter}
+            onTreeSelect={handleTreeSelect}
+            onTreeHighlight={handleTreeHighlight}
+            contextVersion={contextVersion}
+            language={language}
+            diagramData={diagramData}
+            selectedComponent={selectedComponent}
+            onSelectComponent={handleSelectComponent}
+            simulationVariables={simulationVariables}
+            selectedSimulationVariables={selectedSimulationVariables}
+            onToggleSimulationVariable={handleToggleSimulationVariable}
+            simulationParameters={simulationParameters}
+            parameterOverrides={parameterOverrides}
+            onParameterChange={handleParameterChange}
+            onParameterReset={handleParameterReset}
+            sweepState={sweepState}
+            onSweepChange={setSweepState}
+            experimentOverrides={experimentOverrides}
+            onExperimentOverrideChange={handleExperimentOverrideChange}
+            onExperimentOverrideReset={handleExperimentOverrideReset}
+            cachedSimulator={cachedSimulator}
+            onSimulate={handleSimulate}
+            onOpenCloud={() => setIsCloudModalOpen(true)}
+            isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+          />
 
-                    const onMouseMove = (e: MouseEvent) => {
-                      if (!isDraggingTree.current) return;
-                      const deltaX = e.clientX - startX;
-                      const newWidth = Math.max(200, Math.min(600, startWidth + deltaX));
-                      setTreeWidth(newWidth);
-                    };
-
-                    const onMouseUp = () => {
-                      isDraggingTree.current = false;
-                      document.removeEventListener("mousemove", onMouseMove);
-                      document.removeEventListener("mouseup", onMouseUp);
-                      document.body.style.cursor = "auto";
-                      document.body.style.userSelect = "auto";
-                    };
-
-                    document.addEventListener("mousemove", onMouseMove);
-                    document.addEventListener("mouseup", onMouseUp);
-                    document.body.style.cursor = "col-resize";
-                    document.body.style.userSelect = "none";
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.backgroundColor =
-                      colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                  }}
-                />
-              )}
-              <div className="border-left" />
-            </>
-          )}
           <div
             className={`d-flex flex-1 ${view === View.SPLIT_ROWS ? "flex-column" : ""}`}
             ref={splitContainerRef}
@@ -1562,533 +673,110 @@ end Manufacturing;`,
               position: "relative",
             }}
           >
-            {(view === View.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code") && (
+            <MorselVisualizerPane
+              view={view}
+              isNarrow={isNarrow}
+              mobileTab={mobileTab}
+              splitRatio={splitRatio}
+              nestedModels={nestedModels}
+              selectedModelIndex={selectedModelIndex}
+              setSelectedModelIndex={setSelectedModelIndex}
+              setSelectedTreeClassName={setSelectedTreeClassName}
+              colorMode={colorMode}
+              translations={translations}
+              showResultsView={showResultsView}
+              setShowResultsView={setShowResultsView}
+              showCadView={showCadView}
+              setShowCadView={setShowCadView}
+              cadComponents={cadComponents}
+              animationMode={animationMode}
+              animationControllerRef={animationControllerRef}
+              diagramEditorRef={diagramEditorRef}
+              diagramData={diagramData}
+              selectedTreeClassName={selectedTreeClassName}
+              selectedComponent={selectedComponent}
+              setSelectedComponent={setSelectedComponent}
+              isDiagramLoading={isDiagramLoading}
+              setIsDiagramLoading={setIsDiagramLoading}
+              handleSelectComponent={handleSelectComponent}
+              enqueueDiagramAction={enqueueDiagramAction}
+              editor={editor}
+              editorRef={editorRef}
+              isSpatialEditPending={isSpatialEditPending}
+              propertiesWidth={propertiesWidth}
+              setPropertiesWidth={setPropertiesWidth}
+              selectedComponentProperties={selectedComponentProperties}
+              isPropertiesLoading={isPropertiesLoading}
+              expectedComponentNameRef={expectedComponentNameRef}
+              handleSaveCadBindings={handleSaveCadBindings}
+              simulationVariables={simulationVariables || []}
+              selectedSimulationVariables={selectedSimulationVariables}
+              cosimDataSource={cosimDataSource}
+              setCosimDataSource={setCosimDataSource}
+              handleReplaySession={handleReplaySession}
+              localSimulationData={localSimulationData}
+              sweepResults={sweepResults}
+              simulationStatus={simulationStatus}
+              handleVariablesLoaded={handleVariablesLoaded}
+            />
+
+            {/* Split Resizer */}
+            {isSplit(view) && !isNarrow && (
               <div
                 style={{
+                  width: view === View.SPLIT_COLUMNS ? 6 : "100%",
+                  height: view === View.SPLIT_ROWS ? 6 : "100%",
+                  cursor: view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  backgroundColor: "transparent",
                   display: "flex",
-                  flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
-                  width: isNarrow
-                    ? "100%"
-                    : isSplit(view) && view === View.SPLIT_COLUMNS
-                      ? `${splitRatio * 100}%`
-                      : isSplit(view)
-                        ? undefined
-                        : "100%",
-                  height: isNarrow
-                    ? "100%"
-                    : isSplit(view) && view === View.SPLIT_ROWS
-                      ? `${splitRatio * 100}%`
-                      : "100%",
-                  flexDirection: "column",
-                  minWidth: 0,
-                  minHeight: 0,
-                  position: "relative",
-                  backgroundColor: "var(--color-canvas-default)",
+                  borderLeft:
+                    view === View.SPLIT_COLUMNS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
+                  borderTop:
+                    view === View.SPLIT_ROWS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
+                  transition: "background-color 0.15s",
                 }}
-              >
-                {nestedModels.length > 1 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      width: "100%",
-                      gap: 0,
-                      padding: "0 0",
-                      overflowX: "auto",
-                      flexShrink: 0,
-                      borderBottom:
-                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.08)",
-                      backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)",
-                    }}
-                  >
-                    {nestedModels.map((model, index) => (
-                      <button
-                        key={(model as any).name ?? index}
-                        onClick={() => {
-                          setSelectedModelIndex(index);
-                          setSelectedTreeClassName(model.name);
-                        }}
-                        style={{
-                          padding: "6px 16px",
-                          fontSize: 13,
-                          fontWeight: selectedModelIndex === index ? 600 : 400,
-                          border: "none",
-                          borderBottom:
-                            selectedModelIndex === index
-                              ? colorMode === "dark"
-                                ? "2px solid #58a6ff"
-                                : "2px solid #0969da"
-                              : "2px solid transparent",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                          backgroundColor: "transparent",
-                          color:
-                            selectedModelIndex === index
-                              ? colorMode === "dark"
-                                ? "#e6edf3"
-                                : "#1f2328"
-                              : colorMode === "dark"
-                                ? "#8b949e"
-                                : "#656d76",
-                          transition: "all 0.15s ease",
-                          display: "inline-grid",
-                          justifyItems: "center",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (selectedModelIndex !== index) {
-                            (e.currentTarget as HTMLElement).style.backgroundColor =
-                              colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (selectedModelIndex !== index) {
-                            (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                          }
-                        }}
-                      >
-                        {/* Hidden bold text to reserve the bold width and prevent layout shift */}
-                        <span style={{ gridArea: "1 / 1", visibility: "hidden", fontWeight: 600 }} aria-hidden="true">
-                          {(model as any).name ?? `Model ${index + 1}`}
-                        </span>
-                        <span style={{ gridArea: "1 / 1" }}>{(model as any).name ?? `Model ${index + 1}`}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: nestedModels.length > 1 ? "48px" : "16px",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 16px",
-                    borderRadius: 12,
-                    backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.9)",
-                    backdropFilter: "blur(12px)",
-                    boxShadow:
-                      colorMode === "dark"
-                        ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)"
-                        : "0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)",
-                    zIndex: 100,
-                  }}
-                >
-                  <SegmentedControl
-                    aria-label="Center Pane View"
-                    onChange={(i) => {
-                      if (i === 0) {
-                        setShowResultsView(false);
-                        setShowCadView(false);
-                      } else if (i === 1) {
-                        setShowResultsView(true);
-                        setShowCadView(false);
-                      } else if (i === 2) {
-                        setShowResultsView(false);
-                        setShowCadView(true);
-                      }
-                    }}
-                  >
-                    <SegmentedControl.Button selected={!showResultsView && !showCadView} leadingVisual={WorkflowIcon}>
-                      {translations.diagram}
-                    </SegmentedControl.Button>
-                    <SegmentedControl.Button selected={showResultsView} leadingVisual={PulseIcon}>
-                      {translations.simulation}
-                    </SegmentedControl.Button>
-                    <SegmentedControl.Button selected={showCadView} leadingVisual={StackIcon}>
-                      {cadComponents.length > 0 ? `3D (${cadComponents.length})` : "3D"}
-                    </SegmentedControl.Button>
-                  </SegmentedControl>
-
-                  {/* Digital Thread Twin Quick Pill */}
-                  {cadComponents.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowResultsView(false);
-                        setShowCadView(true);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "3px 10px",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        borderRadius: 20,
-                        border: "1px solid rgba(6, 182, 212, 0.4)",
-                        background: showCadView ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.08)",
-                        color: "#06b6d4",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                      title="Digital Thread CAD binding active. Click to view 3D assembly"
-                    >
-                      <span style={{ fontSize: 13 }}>🧵</span>
-                      <span>{cadComponents.length} CAD Twins</span>
-                    </button>
-                  )}
-
-                  {/* Animate button — only visible after simulation completes with CAD components */}
-                  {showCadView && animationControllerRef.current?.hasData && (
-                    <Button
-                      variant="primary"
-                      size="small"
-                      leadingVisual={animationMode === "playing" ? PauseIcon : PlayIcon}
-                      onClick={() => {
-                        const ctrl = animationControllerRef.current;
-                        if (!ctrl) return;
-                        if (ctrl.mode === "playing") {
-                          ctrl.pause();
-                        } else {
-                          ctrl.play();
-                        }
-                      }}
-                      style={{
-                        marginLeft: 8,
-                        borderRadius: 8,
-                        fontWeight: 600,
-                        fontSize: 12,
-                      }}
-                    >
-                      {animationMode === "playing" ? "Pause" : "Animate"}
-                    </Button>
-                  )}
-                </div>
-                <div style={{ position: "relative", flex: 1, flexDirection: "row", overflow: "hidden" }}>
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: "flex",
-                      flexDirection: "row",
-                      visibility: !showResultsView && !showCadView ? "visible" : "hidden",
-                      opacity: !showResultsView && !showCadView ? 1 : 0,
-                      pointerEvents: !showResultsView && !showCadView ? "auto" : "none",
-                      zIndex: !showResultsView && !showCadView ? 1 : 0,
-                    }}
-                  >
-                    <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
-                      <Suspense fallback={null}>
-                        <DiagramEditor
-                          ref={diagramEditorRef}
-                          diagramData={diagramData}
-                          diagramClassName={selectedTreeClassName}
-                          selectedName={selectedComponent}
-                          theme={colorMode === "dark" ? "vs-dark" : "light"}
-                          isLoading={isDiagramLoading}
-                          onRenderComplete={(data) => {
-                            if (!data?.isLoading) {
-                              setIsDiagramLoading(false);
-                            }
-                          }}
-                          onSelect={(name) => {
-                            handleSelectComponent(name);
-                          }}
-                          onShowProperties={(id) => {
-                            handleSelectComponent(id);
-                          }}
-                          onDrop={async (className, x, y) => {
-                            if (!editor) return;
-                            enqueueDiagramAction({ type: "addComponent", className, x, y });
-                          }}
-                          onConnect={async (source, target, points) => {
-                            if (!editor) return;
-                            enqueueDiagramAction({ type: "connect", source, target, points });
-                          }}
-                          onMove={async (items) => {
-                            if (!editor) return;
-                            enqueueDiagramAction({ type: "move", items });
-                          }}
-                          onResize={async (name, x, y, width, height, rotation, edges) => {
-                            if (!editor) return;
-                            enqueueDiagramAction({
-                              type: "resize",
-                              item: { name, x, y, width, height, rotation, edges },
-                            });
-                          }}
-                          onEdgeMove={async (edges) => {
-                            if (!editor) return;
-                            enqueueDiagramAction({ type: "moveEdge", edges });
-                          }}
-                          onEdgeDelete={handleEdgeDelete}
-                          onComponentDelete={handleComponentDelete}
-                          onComponentsDelete={handleComponentsDelete}
-                          onUndo={() => {
-                            isSpatialEditPending.current = false;
-                            editorRef.current?.focus();
-                            const prev = editorRef.current?.getValue();
-                            editorRef.current?.trigger("diagram", "undo", null);
-                            if (prev !== editorRef.current?.getValue()) {
-                              setIsDiagramLoading(true);
-                            }
-                          }}
-                          onRedo={() => {
-                            isSpatialEditPending.current = false;
-                            editorRef.current?.focus();
-                            const prev = editorRef.current?.getValue();
-                            editorRef.current?.trigger("diagram", "redo", null);
-                            if (prev !== editorRef.current?.getValue()) {
-                              setIsDiagramLoading(true);
-                            }
-                          }}
-                        />
-                      </Suspense>
-                    </div>
-                    {selectedComponent && (
-                      <>
-                        <div
-                          style={{
-                            width: 6,
-                            cursor: "col-resize",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                            backgroundColor: "transparent",
-                            borderLeft: `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`,
-                            transition: "background-color 0.15s",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            isDraggingProperties.current = true;
-                            const startX = e.clientX;
-                            const startWidth = propertiesWidth;
-                            const onMouseMove = (ev: MouseEvent) => {
-                              if (!isDraggingProperties.current) return;
-                              const deltaX = startX - ev.clientX;
-                              const newWidth = Math.max(200, Math.min(800, startWidth + deltaX));
-                              setPropertiesWidth(newWidth);
-                            };
-                            const onMouseUp = () => {
-                              isDraggingProperties.current = false;
-                              document.removeEventListener("mousemove", onMouseMove);
-                              document.removeEventListener("mouseup", onMouseUp);
-                              document.body.style.cursor = "auto";
-                              document.body.style.userSelect = "auto";
-                            };
-                            document.addEventListener("mousemove", onMouseMove);
-                            document.addEventListener("mouseup", onMouseUp);
-                            document.body.style.cursor = "col-resize";
-                            document.body.style.userSelect = "none";
-                          }}
-                          onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLElement).style.backgroundColor =
-                              colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-                          }}
-                          onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                          }}
-                        />
-                        <PropertiesWidget
-                          key={selectedComponent || "none"}
-                          properties={selectedComponentProperties}
-                          isLoading={isPropertiesLoading}
-                          width={propertiesWidth}
-                          translations={translations}
-                          onNameChange={async (newName) => {
-                            if (!selectedComponent || !editor) return;
-                            expectedComponentNameRef.current = newName;
-                            enqueueDiagramAction({ type: "updateName", oldName: selectedComponent, newName });
-                          }}
-                          onDescriptionChange={async (newDescription) => {
-                            if (!selectedComponent || !editor) return;
-                            enqueueDiagramAction({
-                              type: "updateDescription",
-                              name: selectedComponent,
-                              description: newDescription,
-                            });
-                          }}
-                          onParameterChange={async (name, value) => {
-                            if (!selectedComponent || !editor) return;
-                            let effectiveValue = value;
-                            const declaredType = (selectedComponent as any)?.declaredType;
-                            if (declaredType) {
-                              for (const el of declaredType.elements) {
-                                if (el && (el as any).name === name) {
-                                  const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
-                                  if (defaultExpr !== undefined && defaultExpr === value) {
-                                    effectiveValue = "";
-                                  }
-                                  break;
-                                }
-                              }
-                            }
-                            enqueueDiagramAction({
-                              type: "updateParameter",
-                              name: selectedComponent,
-                              parameter: name,
-                              value: effectiveValue,
-                            });
-                          }}
-                        />
-                      </>
-                    )}
-                  </div>
-
-                  {/* 3D CAD Viewer pane */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: showCadView ? "flex" : "none",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                      minHeight: 0,
-                      zIndex: showCadView ? 2 : 0,
-                      backgroundColor: "var(--color-canvas-default)",
-                    }}
-                  >
-                    {/* Floating Digital Thread CAD Status Badge */}
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 12,
-                        left: 12,
-                        zIndex: 10,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "6px 12px",
-                        borderRadius: 20,
-                        background: colorMode === "dark" ? "rgba(22, 27, 34, 0.85)" : "rgba(255, 255, 255, 0.9)",
-                        backdropFilter: "blur(12px)",
-                        border: "1px solid rgba(6, 182, 212, 0.4)",
-                        boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
-                        fontSize: 12,
-                        color: "var(--color-fg-default)",
-                        pointerEvents: "none",
-                      }}
-                    >
-                      <span style={{ fontSize: 14 }}>🧵</span>
-                      <span style={{ fontWeight: 600 }}>Digital Thread CAD Twin</span>
-                      <span style={{ color: "#3fb950", fontSize: 11, fontWeight: 600 }}>✔ Unit Parity Active</span>
-                    </div>
-
-                    <Suspense fallback={null}>
-                      <CadViewerPanel
-                        components={cadComponents}
-                        selectedName={selectedComponent}
-                        onSelect={(name) => {
-                          setSelectedComponent(name || null);
-                        }}
-                        dark={colorMode === "dark"}
-                        animationController={animationControllerRef.current}
-                        availableVariables={simulationVariables}
-                        onSaveBindings={handleSaveCadBindings}
-                      />
-                    </Suspense>
-                  </div>
-
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      display: showResultsView ? "flex" : "none",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                      minHeight: 0,
-                      zIndex: showResultsView ? 2 : 0,
-                      backgroundColor: "var(--color-canvas-default)",
-                    }}
-                  >
-                    <CosimPanel
-                      dataSource={cosimDataSource}
-                      onDataSourceChange={setCosimDataSource}
-                      colorMode={colorMode}
-                      onReplaySession={handleReplaySession}
-                    />
-                    {localSimulationData || simulationStatus?.status === "failed" ? (
-                      <Suspense fallback={null}>
-                        <SimulationResults
-                          localData={localSimulationData}
-                          sweepResults={sweepResults}
-                          simulationVariables={simulationVariables}
-                          selectedVariables={selectedSimulationVariables}
-                          onVariablesLoaded={handleVariablesLoaded}
-                          error={simulationStatus?.status === "failed" ? simulationStatus.error : null}
-                          colorMode={colorMode === "dark" ? "dark" : "light"}
-                        />
-                      </Suspense>
-                    ) : (
-                      <div
-                        style={{
-                          padding: "32px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          height: "100%",
-                          color: "var(--color-fg-muted)",
-                        }}
-                      >
-                        {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-                            <Spinner size="large" />
-                            <div>Simulation in progress... please wait.</div>
-                          </div>
-                        ) : (
-                          "No simulation results available. Click 'Simulate' to generate results."
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  isDraggingSplit.current = true;
+                  const onMouseMove = (ev: MouseEvent) => {
+                    if (!isDraggingSplit.current || !splitContainerRef.current) return;
+                    const rect = splitContainerRef.current.getBoundingClientRect();
+                    if (view === View.SPLIT_COLUMNS) {
+                      const x = ev.clientX - rect.left;
+                      const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
+                      setSplitRatio(ratio);
+                    } else {
+                      const y = ev.clientY - rect.top;
+                      const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
+                      setSplitRatio(ratio);
+                    }
+                  };
+                  const onMouseUp = () => {
+                    isDraggingSplit.current = false;
+                    document.removeEventListener("mousemove", onMouseMove);
+                    document.removeEventListener("mouseup", onMouseUp);
+                    document.body.style.cursor = "";
+                    document.body.style.userSelect = "";
+                  };
+                  document.addEventListener("mousemove", onMouseMove);
+                  document.addEventListener("mouseup", onMouseUp);
+                  document.body.style.cursor = view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize";
+                  document.body.style.userSelect = "none";
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              />
             )}
-            {/* Draggable split divider */}
-            <div
-              style={{
-                display: !isNarrow && isSplit(view) ? "flex" : "none",
-                width: view === View.SPLIT_COLUMNS ? 6 : "100%",
-                height: view === View.SPLIT_ROWS ? 6 : "100%",
-                cursor: view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                backgroundColor: "transparent",
-                borderLeft:
-                  view === View.SPLIT_COLUMNS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
-                borderTop:
-                  view === View.SPLIT_ROWS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
-                transition: "background-color 0.15s",
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                isDraggingSplit.current = true;
-                const onMouseMove = (ev: MouseEvent) => {
-                  if (!isDraggingSplit.current || !splitContainerRef.current) return;
-                  const rect = splitContainerRef.current.getBoundingClientRect();
-                  if (view === View.SPLIT_COLUMNS) {
-                    const x = ev.clientX - rect.left;
-                    const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
-                    setSplitRatio(ratio);
-                  } else {
-                    const y = ev.clientY - rect.top;
-                    const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
-                    setSplitRatio(ratio);
-                  }
-                };
-                const onMouseUp = () => {
-                  isDraggingSplit.current = false;
-                  document.removeEventListener("mousemove", onMouseMove);
-                  document.removeEventListener("mouseup", onMouseUp);
-                  document.body.style.cursor = "";
-                  document.body.style.userSelect = "";
-                };
-                document.addEventListener("mousemove", onMouseMove);
-                document.addEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize";
-                document.body.style.userSelect = "none";
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.backgroundColor =
-                  colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-              }}
-            />
+
+            {/* Code Editor */}
             <div
               style={{
                 display: (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
@@ -2127,659 +815,108 @@ end Manufacturing;`,
             </div>
           </div>
         </div>
+
         {/* Floating dock */}
-        <div
-          style={{
-            position: "fixed",
-            bottom: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 16px",
-            borderRadius: 12,
-            backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.9)",
-            backdropFilter: "blur(12px)",
-            boxShadow:
-              colorMode === "dark"
-                ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)"
-                : "0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)",
-            zIndex: 1000,
-          }}
-        >
-          <a
-            href="https://github.com/modelscript/modelscript"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center" }}
-          >
-            <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
-          </a>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <IconButton
-            icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.toggleTree}
-            title={translations.toggleTree}
-            onClick={() => setTreeVisible((prev) => !prev)}
-            style={
-              treeVisible
-                ? {
-                    backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
-                    borderRadius: 6,
-                  }
-                : {}
+        <MorselFloatingDock
+          colorMode={colorMode}
+          treeVisible={treeVisible}
+          setTreeVisible={setTreeVisible}
+          translations={translations}
+          onNewModel={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
+              setPendingSplashVisible(true);
+              setDirtyDialogOpen(true);
+            } else {
+              setSplashVisible(true);
             }
-          />
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <IconButton
-            icon={FileIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.newModel}
-            title={translations.newModel}
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
-                setPendingSplashVisible(true);
-                setDirtyDialogOpen(true);
-              } else {
-                setSplashVisible(true);
-              }
-            }}
-          />
-          <IconButton
-            icon={UploadIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.openModel}
-            title={translations.openModel}
-            ref={openFileButtonRef}
-            onClick={() => setIsOpenFileDialogOpen(true)}
-          />
-          <IconButton
-            icon={DownloadIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.saveModel}
-            title={translations.saveModel}
-            onClick={async () => {
-              const content = editor?.getValue() || "";
-              let filename = "model.mo";
-              if (codeEditorRef.current) {
-                const synced = await codeEditorRef.current.sync();
-                if ((synced as any)?.[0]?.name) {
-                  filename = `${(synced as any)[0].name}.mo`;
-                }
-              }
-              const blob = new Blob([content], { type: "text/plain" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }}
-          />
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <IconButton
-            icon={FlowchartIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.autoLayout}
-            title={translations.autoLayout}
-            onClick={() => {
-              if (confirm(translations.autoLayoutConfirm)) {
-                diagramEditorRef.current?.layout();
-              }
-            }}
-          />
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 2,
-              padding: 2,
-              borderRadius: 8,
-              backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
-            }}
-          >
-            <IconButton
-              icon={WorkflowIcon}
-              size="small"
-              variant="invisible"
-              aria-label={translations.diagramView}
-              title={translations.diagramView}
-              onClick={() => setView(View.DIAGRAM)}
-              style={
-                view === View.DIAGRAM
-                  ? {
-                      backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
-                      borderRadius: 6,
-                    }
-                  : {}
-              }
-            />
-            {!isNarrow && (
-              <>
-                <IconButton
-                  icon={ColumnsIcon}
-                  size="small"
-                  variant="invisible"
-                  aria-label={translations.splitViewColumns}
-                  title={translations.splitViewColumns}
-                  onClick={() => setView(View.SPLIT_COLUMNS)}
-                  style={
-                    view === View.SPLIT_COLUMNS
-                      ? {
-                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
-                          borderRadius: 6,
-                        }
-                      : {}
-                  }
-                />
-                <IconButton
-                  icon={RowsIcon}
-                  size="small"
-                  variant="invisible"
-                  aria-label={translations.splitViewRows}
-                  title={translations.splitViewRows}
-                  onClick={() => setView(View.SPLIT_ROWS)}
-                  style={
-                    view === View.SPLIT_ROWS
-                      ? {
-                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
-                          borderRadius: 6,
-                        }
-                      : {}
-                  }
-                />
-              </>
-            )}
-            <IconButton
-              icon={UnwrapIcon}
-              size="small"
-              variant="invisible"
-              aria-label={translations.codeView}
-              title={translations.codeView}
-              onClick={() => setView(View.CODE)}
-              style={
-                view === View.CODE
-                  ? {
-                      backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.8)",
-                      borderRadius: 6,
-                    }
-                  : {}
-              }
-            />
-          </div>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <IconButton
-            icon={PlayIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.simulateModel}
-            title={translations.simulateModel}
-            onClick={() => handleSimulate()}
-          />
-          <IconButton
-            icon={ServerIcon}
-            size="small"
-            variant="invisible"
-            aria-label="Run on ModelScript Cloud HPC"
-            title="Run on ModelScript Cloud HPC"
-            onClick={() => setIsCloudModalOpen(true)}
-          />
-          <IconButton
-            icon={StackIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.flattenModel}
-            title={translations.flattenModel}
-            onClick={handleFlatten}
-          />
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          <IconButton
-            icon={ShareAndroidIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.shareModel}
-            ref={shareButtonRef}
-            onClick={() => setShareDialogOpen(!isShareDialogOpen)}
-          />
-          <IconButton
-            icon={SponsorTiersIcon}
-            size="small"
-            variant="invisible"
-            aria-label={translations.sponsorMe}
-            title={translations.sponsorMe}
-            onClick={() => window.open("https://github.com/sponsors/nachawati", "_blank")}
-          />
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-          {availableLanguages.length > 0 && (
-            <>
-              <ActionMenu>
-                <ActionMenu.Anchor>
-                  <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                    <IconButton
-                      icon={GlobeIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.language}
-                      title={
-                        language
-                          ? `${translations.language}: ${LANGUAGE_NAMES[language] || language}`
-                          : `${translations.language}: ${translations.default}`
-                      }
-                    />
-                    {language && (
-                      <span style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, letterSpacing: 0.5 }}>
-                        {language.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                </ActionMenu.Anchor>
-                <ActionMenu.Overlay>
-                  <ActionList selectionVariant="single">
-                    <ActionList.Item
-                      selected={language === null}
-                      onSelect={() => {
-                        (null as any) /* context */
-                          ?.setLanguage(null);
-                        setLanguage(null);
-                        setContextVersion((v) => v + 1);
-                      }}
-                    >
-                      {translations.default}
-                    </ActionList.Item>
-                    {availableLanguages.map((lang) => (
-                      <ActionList.Item
-                        key={lang}
-                        selected={language === lang}
-                        onSelect={() => {
-                          (null as any) /* context */
-                            ?.setLanguage(lang);
-                          setLanguage(lang);
-                          setContextVersion((v) => v + 1);
-                        }}
-                      >
-                        {LANGUAGE_NAMES[lang] || lang}
-                      </ActionList.Item>
-                    ))}
-                  </ActionList>
-                </ActionMenu.Overlay>
-              </ActionMenu>
-              <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-            </>
-          )}
-          <IconButton
-            icon={isDark ? SunIcon : MoonIcon}
-            size="small"
-            variant="invisible"
-            aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
-            onClick={toggleTheme}
-          />
-        </div>
-        {isShareDialogOpen && (
-          <Dialog
-            title={translations.shareModelTitle}
-            onClose={() => setShareDialogOpen(false)}
-            returnFocusRef={shareButtonRef}
-            footerButtons={[
-              {
-                buttonType: "primary",
-                content: "Publish to Feed",
-                onClick: () => {
-                  const code = editor?.getValue() ?? "";
-                  const title = documentModels[selectedModelIndex]?.name || selectedTreeClassName || "ModelicaModel";
-                  window.dispatchEvent(
-                    new CustomEvent("modelscript:open-compose", {
-                      detail: {
-                        content: `Interactive physical schematic: **${title}** ⚡`,
-                        morselPayload: {
-                          code,
-                          title,
-                          dialect: "modelica",
-                        },
-                      },
-                    }),
-                  );
-                  if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-                    window.parent.postMessage(
-                      {
-                        type: "MODELSCRIPT_SHARE_TO_FEED",
-                        payload: {
-                          title,
-                          content: `Interactive physical schematic: **${title}** ⚡`,
-                          morselPayload: { code, title, dialect: "modelica" },
-                        },
-                      },
-                      window.location.origin,
-                    );
-                  }
-                  setShareDialogOpen(false);
-                },
-              },
-              {
-                buttonType: "normal",
-                content: translations.copyToClipboard,
-                onClick: async () => {
-                  await navigator.clipboard.writeText(
-                    `${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`,
-                  );
-                  toast.success(translations.copiedToClipboard);
-                  setShareDialogOpen(false);
-                },
-              },
-            ]}
-          >
-            <div
-              style={{ wordBreak: "break-all" }}
-            >{`${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`}</div>
-          </Dialog>
-        )}
-        {isDirtyDialogOpen && (
-          <Dialog
-            title={translations.unsavedChanges}
-            onClose={() => setDirtyDialogOpen(false)}
-            footerButtons={[
-              {
-                buttonType: "normal",
-                content: translations.cancel,
-                onClick: () => {
-                  setDirtyDialogOpen(false);
-                  setPendingSelection(null);
-                  setPendingSplashVisible(false);
-                },
-              },
-              {
-                buttonType: "danger",
-                content: translations.discardChanges,
-                onClick: () => {
-                  setDirtyDialogOpen(false);
-                  if (pendingSelection) {
-                    loadClass(pendingSelection);
-                    setPendingSelection(null);
-                  }
-                  if (pendingSplashVisible) {
-                    setSplashVisible(true);
-                    setPendingSplashVisible(false);
-                  }
-                },
-              },
-            ]}
-          >
-            {translations.unsavedChangesMessage}
-          </Dialog>
-        )}
-        {isOpenFileDialogOpen && (
-          <Dialog
-            title={translations.openFile}
-            onClose={() => setIsOpenFileDialogOpen(false)}
-            returnFocusRef={openFileButtonRef}
-          >
-            <OpenFileDropzone
-              translations={translations}
-              onFileContent={(content) => {
-                editor?.setValue(content);
-                setIsOpenFileDialogOpen(false);
-              }}
-              colorMode={colorMode || "light"}
-            />
-          </Dialog>
-        )}
-        {loadingProgress < 100 && (
-          <div
-            id="morsel-app-loader"
-            style={{
-              position: "fixed",
-              inset: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: colorMode === "dark" ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.85)",
-              zIndex: 9999,
-              gap: 12,
-            }}
-          >
-            <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">
-              <img
-                src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-                alt="Morsel"
-                style={{ marginBottom: 8 }}
-              />
-            </a>
-            <div
-              style={{
-                width: 300,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  width: `${loadingProgress}%`,
-                  height: "100%",
-                  borderRadius: 3,
-                  backgroundColor: "#1f6feb",
-                  transition: "width 0.3s ease",
-                }}
-              />
-            </div>
-            <span style={{ fontSize: 13, color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>{loadingMessage}</span>
-          </div>
-        )}
-        {isAddLibraryOpen && (
-          <AddLibraryModal
-            isOpen={isAddLibraryOpen}
-            onDismiss={() => setIsAddLibraryOpen(false)}
-            translations={translations}
-            onInstallPackage={async (packageName, version) => {
-              try {
-                await installDependency(packageName, version);
-                setContextVersion((v) => v + 1);
-              } catch (e) {
-                console.error("Failed to install package:", e);
-                toast.error("Failed to install package: " + (e instanceof Error ? e.message : String(e)));
-              }
-            }}
-            onAddLibrary={async (item, type) => {
-              try {
-                if (type === "file" && item instanceof File) {
-                  // Custom file zip handling
-                  setContextVersion((v) => v + 1);
-                }
-              } catch (error) {
-                console.error(error);
-                toast.error("Failed to add library: " + ((error as any)?.message ?? String(error)));
-              }
-            }}
-          />
-        )}
-        {isFlattenDialogOpen && (
-          <Dialog
-            title="Flattened Model"
-            onClose={() => setFlattenDialogOpen(false)}
-            width="xlarge"
-            footerButtons={[
-              {
-                buttonType: "normal",
-                content: "Copy to clipboard",
-                onClick: async () => {
-                  await navigator.clipboard.writeText(flattenedCode);
-                  toast.success("Copied to clipboard.");
-                },
-              },
-              {
-                buttonType: "normal",
-                content: "Close",
-                onClick: () => setFlattenDialogOpen(false),
-              },
-            ]}
-          >
-            <div style={{ height: "60vh", border: "1px solid " + (colorMode === "dark" ? "#30363d" : "#d0d7de") }}>
-              <Suspense fallback={null}>
-                <CodeEditor
-                  uri={"flattened.mo"}
-                  content={flattenedCode}
-                  setEditor={() => {}}
-                  theme={colorMode === "dark" ? "vs-dark" : "light"}
-                  embed={false}
-                  readOnly={true}
-                />
-              </Suspense>
-            </div>
-          </Dialog>
-        )}
-        {isSplashVisible && (
-          <Splash
-            context={null}
-            onClose={() => setSplashVisible(false)}
-            onSelect={handleModelSelect}
-            recentModels={recentModels}
-            exampleModels={exampleModels}
-            colorMode={resolvedColorMode}
-            onClearRecent={handleClearRecent}
-            translations={translations}
-          />
-        )}
-        <CloudDispatchModal
-          isOpen={isCloudModalOpen}
-          onClose={() => setIsCloudModalOpen(false)}
-          modelName={selectedTreeClassName || "Model"}
-          sourceCode={editor?.getValue() || content}
-          experimentConfig={{
-            startTime: experimentOverrides.startTime,
-            stopTime: experimentOverrides.stopTime,
-            interval: experimentOverrides.interval,
-            solver: experimentOverrides.solver!,
-            numberOfIntervals: experimentOverrides.numberOfIntervals,
-            tolerance: experimentOverrides.tolerance,
           }}
-          onResultLoaded={(data) => {
-            const chartData = data.t.map((t: number, i: number) => {
-              const rowObj: Record<string, number | string> = { time: t };
-              data.states.forEach((state: string, vIndex: number) => {
-                rowObj[state] = data.y[vIndex]?.[i] ?? data.y[i]?.[vIndex] ?? 0;
-              });
-              return rowObj;
-            });
-            setSimulationVariables(data.states);
-            setSelectedSimulationVariables(data.states.slice(0, 5));
-            setLocalSimulationData(chartData);
+          openFileButtonRef={openFileButtonRef}
+          onOpenFile={() => setIsOpenFileDialogOpen(true)}
+          onSaveModel={async () => {
+            const content = editor?.getValue() || "";
+            let filename = "model.mo";
+            if (codeEditorRef.current) {
+              const synced = await codeEditorRef.current.sync();
+              if ((synced as any)?.[0]?.name) {
+                filename = `${(synced as any)[0].name}.mo`;
+              }
+            }
+            const blob = new Blob([content], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }}
+          onAutoLayout={() => {
+            if (confirm(translations.autoLayoutConfirm)) {
+              diagramEditorRef.current?.layout();
+            }
+          }}
+          view={view}
+          setView={setView}
+          isNarrow={isNarrow}
+          onSimulate={handleSimulate}
+          onOpenCloudModal={() => setIsCloudModalOpen(true)}
+          onFlatten={handleFlatten}
+          shareButtonRef={shareButtonRef}
+          isShareDialogOpen={isShareDialogOpen}
+          setShareDialogOpen={setShareDialogOpen}
+          availableLanguages={availableLanguages}
+          language={language}
+          setLanguage={setLanguage}
+          setContextVersion={setContextVersion}
+          isDark={isDark}
+          toggleTheme={toggleTheme}
+        />
+
+        {/* Modals & Dialogs */}
+        <MorselModals
+          isShareDialogOpen={isShareDialogOpen}
+          setShareDialogOpen={setShareDialogOpen}
+          shareButtonRef={shareButtonRef}
+          documentModels={documentModels}
+          selectedModelIndex={selectedModelIndex}
+          selectedTreeClassName={selectedTreeClassName}
+          editor={editor}
+          translations={translations}
+          toast={toast}
+          colorMode={colorMode}
+          isDirtyDialogOpen={isDirtyDialogOpen}
+          setDirtyDialogOpen={setDirtyDialogOpen}
+          pendingSelection={pendingSelection}
+          setPendingSelection={setPendingSelection}
+          pendingSplashVisible={pendingSplashVisible}
+          setPendingSplashVisible={setPendingSplashVisible}
+          loadClass={loadClass}
+          setSplashVisible={setSplashVisible}
+          isOpenFileDialogOpen={isOpenFileDialogOpen}
+          setIsOpenFileDialogOpen={setIsOpenFileDialogOpen}
+          openFileButtonRef={openFileButtonRef}
+          loadingProgress={loadingProgress}
+          loadingMessage={loadingMessage}
+          isAddLibraryOpen={isAddLibraryOpen}
+          setIsAddLibraryOpen={setIsAddLibraryOpen}
+          setContextVersion={setContextVersion}
+          isFlattenDialogOpen={isFlattenDialogOpen}
+          setFlattenDialogOpen={setFlattenDialogOpen}
+          flattenedCode={flattenedCode}
+          isCloudModalOpen={isCloudModalOpen}
+          setIsCloudModalOpen={setIsCloudModalOpen}
+          experimentOverrides={experimentOverrides}
+          content={content}
+          onCloudResultLoaded={(data) => {
+            setLocalSimulationData(data.series);
             setShowResultsView(true);
             setSimulationStatus({ status: "success", error: null });
             setIsCloudModalOpen(false);
           }}
         />
-
-        {/* Floating Mobile Action Pill (< 768px viewports) */}
-        {isNarrow && (
-          <div
-            style={{
-              position: "fixed",
-              bottom: "16px",
-              right: "16px",
-              zIndex: 9999,
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              background: "var(--surface-overlay, rgba(22, 27, 34, 0.92))",
-              backdropFilter: "blur(16px)",
-              WebkitBackdropFilter: "blur(16px)",
-              padding: "6px 8px",
-              borderRadius: "9999px",
-              border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15))",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.2)",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => simulateModel(editor?.getValue() ?? content)}
-              disabled={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 16px",
-                borderRadius: "9999px",
-                border: "none",
-                background: "var(--gradient-cta, linear-gradient(135deg, #10b981 0%, #059669 100%))",
-                color: "#ffffff",
-                fontWeight: 600,
-                fontSize: "13px",
-                cursor: "pointer",
-                boxShadow: "0 2px 10px rgba(16, 185, 129, 0.4)",
-                transition: "all 0.2s ease",
-              }}
-            >
-              {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
-                <>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "12px",
-                      height: "12px",
-                      border: "2px solid white",
-                      borderTopColor: "transparent",
-                      borderRadius: "50%",
-                      animation: "spin 0.8s linear infinite",
-                    }}
-                  />
-                  <span>Simulating…</span>
-                </>
-              ) : (
-                <>
-                  <span>▶</span>
-                  <span>Simulate</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.share) {
-                  navigator
-                    .share({
-                      title: "ModelScript Simulation",
-                      url: window.location.href,
-                    })
-                    .catch(() => {});
-                } else {
-                  window.dispatchEvent(new CustomEvent("modelscript:open-share-modal"));
-                  navigator.clipboard?.writeText(window.location.href);
-                }
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: "34px",
-                height: "34px",
-                borderRadius: "50%",
-                border: "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
-                background: "var(--color-canvas-subtle, rgba(255, 255, 255, 0.08))",
-                color: "var(--color-text-primary, #ffffff)",
-                cursor: "pointer",
-                fontSize: "14px",
-                transition: "all 0.2s ease",
-              }}
-              title="Share interactive model"
-            >
-              🔗
-            </button>
-          </div>
-        )}
 
         {(props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && (
           <ParameterSliderRibbon

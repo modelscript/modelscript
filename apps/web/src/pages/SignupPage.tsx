@@ -324,7 +324,15 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const captchaToken =
-        (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "mock-token";
+        (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) ||
+        (import.meta.env.VITE_TURNSTILE_SITE_KEY ? "" : "mock-token");
+
+      if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !captchaToken) {
+        setError("Please complete the security verification challenge before registering.");
+        setLoading(false);
+        return;
+      }
+
       const res = await register(username, email, password, acceptTerms, captchaToken);
       if (res?.verificationRequired) {
         setVerificationSent(true);

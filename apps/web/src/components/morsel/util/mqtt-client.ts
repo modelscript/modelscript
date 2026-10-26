@@ -64,8 +64,17 @@ export class MorselMqttClient {
   private participantCallbacks: ((id: string, meta: MqttParticipantMeta | null) => void)[] = [];
 
   /** Connect to the MQTT broker via WebSocket. */
-  connect(brokerWsUrl = `ws://${window.location.hostname}:9001`): void {
+  connect(brokerWsUrl?: string): void {
     if (this.client) return;
+
+    if (!brokerWsUrl) {
+      const isHttps = typeof window !== "undefined" && window.location.protocol === "https:";
+      const protocol = isHttps ? "wss:" : "ws:";
+      const host = typeof window !== "undefined" ? window.location.host : "localhost";
+      brokerWsUrl = isHttps
+        ? `${protocol}//${host}/mqtt`
+        : `ws://${typeof window !== "undefined" ? window.location.hostname : "localhost"}:9001`;
+    }
 
     this.setState("connecting");
 

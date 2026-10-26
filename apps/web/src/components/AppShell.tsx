@@ -11,15 +11,16 @@ import styled from "styled-components";
 import { getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
-import ComposeModal from "./ComposeModal";
 import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
 import { useFeatureFlags } from "../FeatureFlagContext";
 import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
-import { DevFlagsModal } from "./DevFlagsModal";
 import { OfflineBanner } from "./OfflineBanner";
+
+const ComposeModal = React.lazy(() => import("./ComposeModal"));
+const DevFlagsModal = React.lazy(() => import("./DevFlagsModal").then((m) => ({ default: m.DevFlagsModal })));
 
 const ShellContainer = styled.div`
   display: flex;
@@ -604,16 +605,18 @@ const AppShell: React.FC = () => {
         </BottomBarContainer>
 
         {isComposeOpen && (
-          <ComposeModal
-            initialState={composeInitialState}
-            onClose={() => {
-              setIsComposeOpen(false);
-              setComposeInitialState(undefined);
-            }}
-            onPostCreated={(post) => {
-              window.dispatchEvent(new CustomEvent("modelscript:post-created", { detail: post }));
-            }}
-          />
+          <React.Suspense fallback={null}>
+            <ComposeModal
+              initialState={composeInitialState}
+              onClose={() => {
+                setIsComposeOpen(false);
+                setComposeInitialState(undefined);
+              }}
+              onPostCreated={(post) => {
+                window.dispatchEvent(new CustomEvent("modelscript:post-created", { detail: post }));
+              }}
+            />
+          </React.Suspense>
         )}
 
         {isResetDbDialogOpen && (
@@ -779,7 +782,11 @@ const AppShell: React.FC = () => {
           </Dialog>
         )}
 
-        <DevFlagsModal isOpen={isDevFlagsModalOpen} onClose={() => setIsDevFlagsModalOpen(false)} />
+        {isDevFlagsModalOpen && (
+          <React.Suspense fallback={null}>
+            <DevFlagsModal isOpen={isDevFlagsModalOpen} onClose={() => setIsDevFlagsModalOpen(false)} />
+          </React.Suspense>
+        )}
       </div>
     </ComposeContext.Provider>
   );

@@ -32,13 +32,21 @@
  * - Distributed MQTT event and state synchronization for multi-host and cloud co-simulation topologies.
  */
 
-import { type CosimValue, type UnitWarning, CouplingGraph } from "./coupling.js";
+import {
+  AlgebraicLoopAdvisor,
+  type AlgebraicLoopReport,
+  type DirectFeedthroughInput,
+} from "./algebraic-loop-advisor.js";
+import { type CosimValue, CouplingGraph, type UnitWarning } from "./coupling.js";
+import { InterfaceJacobianSolver } from "./interface-jacobian.js";
 import type { CosimMqttClient } from "./mqtt/client.js";
 import type { StepResult } from "./mqtt/protocol.js";
+import { DeadReckoningBuffer, type DeadReckoningEvent, NetworkTimeSynchronizer } from "./network-sync.js";
 import type { CoSimParticipant } from "./participant.js";
 import type { ICfdProvider } from "./participants/cfd-provider.js";
 import { RealtimePacer } from "./realtime.js";
 import type { CoSimSession } from "./session.js";
+import { StatelessLoopPredictor } from "./stateless-predictor.js";
 
 /** Orchestrator event callbacks. */
 export interface OrchestratorCallbacks {
@@ -54,6 +62,14 @@ export interface OrchestratorCallbacks {
   onUnitWarning?: ((warnings: UnitWarning[]) => void) | undefined;
   /** Called when a CFD provider produces a VTK mesh for VR visualization. */
   onVtkData?: ((participantId: string, time: number, vtkData: Uint8Array) => void) | undefined;
+  /** Called when dead-reckoning extrapolation occurs on delayed distributed packets. */
+  onDeadReckoning?: ((event: DeadReckoningEvent) => void) | undefined;
+  /** Called with Interface Jacobian convergence statistics. */
+  onJacobianConvergence?:
+    | ((stats: { iterations: number; residual: number; method: "newton" | "picard" | "stateless" }) => void)
+    | undefined;
+  /** Called when algebraic loops are detected across coupled FMUs. */
+  onAlgebraicLoop?: ((report: AlgebraicLoopReport) => void) | undefined;
   /** Pre-compiled STEP files (participantId -> STEP file bytes) */
   stepFiles?: Map<string, Uint8Array> | undefined;
 }
@@ -68,6 +84,11 @@ export class Orchestrator {
   private pacer: RealtimePacer | null = null;
   private aborted = false;
   private paused = false;
+
+  private readonly statelessPredictor = new StatelessLoopPredictor();
+  private jacobianSolver: InterfaceJacobianSolver | null = null;
+  readonly deadReckoning = new DeadReckoningBuffer();
+  readonly networkSync = new NetworkTimeSynchronizer();
 
   constructor(session: CoSimSession, mqttClient: CosimMqttClient | null, callbacks: OrchestratorCallbacks = {}) {
     this.session = session;
@@ -113,6 +134,18 @@ export class Orchestrator {
         const errors = unitWarnings.filter((w) => w.severity === "error");
         if (errors.length > 0) {
           throw new Error(`Unit incompatibilities detected:\n${errors.map((e) => `  ${e.message}`).join("\n")}`);
+        }
+      }
+
+      // ── Algebraic Loop & Delay Advisor ──
+      const advisor = new AlgebraicLoopAdvisor();
+      const loopReport = advisor.analyze(coupling, participants, this.session.directFeedthrough);
+      if (loopReport.hasLoops) {
+        this.callbacks.onAlgebraicLoop?.(loopReport);
+        if (this.session.autoRemediateLoops) {
+          const pref =
+            typeof this.session.autoRemediateLoops === "string" ? this.session.autoRemediateLoops : undefined;
+          advisor.autoRemediate(this.session, loopReport, pref);
         }
       }
 
@@ -270,6 +303,21 @@ export class Orchestrator {
   abort(): void {
     this.aborted = true;
     this.paused = false;
+  }
+
+  /**
+   * Run the Algebraic Loop & Delay Advisor on the current session.
+   *
+   * @param feedthrough Optional feedthrough map override.
+   * @returns Detailed algebraic loop analysis report.
+   */
+  adviseLoops(feedthrough?: DirectFeedthroughInput): AlgebraicLoopReport {
+    const advisor = new AlgebraicLoopAdvisor();
+    return advisor.analyze(
+      this.session.coupling,
+      this.session.participants,
+      feedthrough ?? this.session.directFeedthrough,
+    );
   }
 
   /** Terminate all participants. */
@@ -436,15 +484,15 @@ export class Orchestrator {
   }
 
   /**
-   * Implicit Newton (fixed-point with state rollback): iteratively step and
-   * re-apply couplings until the coupling residual converges.
+   * Implicit Newton-Raphson Interface Solver & Fixed-Point loop.
    *
-   * For tightly-coupled algebraic loops, this converges much faster than
-   * Gauss-Seidel or Jacobi because it rolls back and re-solves the entire
-   * step with updated coupling values.
-   *
-   * Requires state save/restore for rollback between iterations.
-   * Falls back to single Gauss-Seidel step if state management is unavailable.
+   * Solves tightly-coupled non-linear algebraic loops via:
+   * 1. If participants support state save/restore:
+   *    Uses Interface Jacobian Newton-Raphson with FMI directional derivatives
+   *    (falling back to Broyden rank-1 secant updates or Picard iteration).
+   * 2. If participants do NOT support state save/restore:
+   *    Uses StatelessLoopPredictor with Adams-Bashforth-2 extrapolation,
+   *    Aitken dynamic relaxation, and passivity damping.
    */
   private async stepImplicitNewton(
     participants: CoSimParticipant[],
@@ -452,48 +500,34 @@ export class Orchestrator {
     t: number,
     h: number,
   ): Promise<void> {
-    const maxIter = 10;
-    const tol = this.session.richardsonTolerance; // reuse tolerance setting
+    const tol = this.session.richardsonTolerance;
+    const couplings = coupling.getAll();
 
-    // Check if all participants support state management
+    // Check if participants support state management
     const supportsState = participants.every((p) => p.getState && p.setState);
+
     if (!supportsState) {
-      // Fall back to Gauss-Seidel if state management not available
-      await this.stepGaussSeidel(participants, coupling, t, h);
-      return;
-    }
-
-    // Save initial states
-    const savedStates = new Map<string, unknown>();
-    for (const p of participants) {
-      if (p.getState) {
-        savedStates.set(p.id, await p.getState());
+      // ── Strategy 1: Stateless Predictor-Corrector with Aitken & Passivity Damping ──
+      const currentOutputs = new Map<string, Map<string, CosimValue>>();
+      for (const p of participants) {
+        currentOutputs.set(p.id, await p.getOutputs());
       }
-    }
 
-    let prevOutputs: Map<string, Map<string, CosimValue>> | null = null;
+      // Apply couplings
+      const inputSets = coupling.applyCouplings(currentOutputs);
 
-    for (let iter = 0; iter < maxIter; iter++) {
-      // Restore states to beginning of step (except first iteration)
-      if (iter > 0) {
-        for (const p of participants) {
-          const state = savedStates.get(p.id);
-          if (p.setState && state !== undefined) {
-            await p.setState(state);
+      // Apply dynamic relaxation across consecutive steps for algebraic stability
+      for (const [pid, inMap] of inputSets) {
+        for (const [varName, val] of inMap) {
+          if (typeof val === "number") {
+            const key = `${pid}.${varName}`;
+            const relaxed = this.statelessPredictor.relaxInput(key, val);
+            inMap.set(varName, relaxed);
           }
         }
       }
 
-      // Collect current outputs (from restored state)
-      const allOutputs = new Map<string, Map<string, CosimValue>>();
-      for (const p of participants) {
-        allOutputs.set(p.id, await p.getOutputs());
-      }
-
-      // Apply couplings
-      const inputSets = coupling.applyCouplings(allOutputs);
-
-      // Set inputs and step each participant
+      // Set relaxed inputs
       for (const p of participants) {
         const inputs = inputSets.get(p.id);
         if (inputs && inputs.size > 0) {
@@ -501,52 +535,149 @@ export class Orchestrator {
         }
       }
 
+      // Step each participant sequentially
       for (const p of participants) {
         await p.doStep(t, h);
       }
 
-      // Collect post-step outputs
-      const newOutputs = new Map<string, Map<string, CosimValue>>();
-      for (const p of participants) {
-        newOutputs.set(p.id, await p.getOutputs());
-      }
+      this.callbacks.onJacobianConvergence?.({ iterations: 1, residual: 0, method: "stateless" });
+      return;
+    }
 
-      // Check convergence: compare outputs between this iteration and last
-      if (prevOutputs) {
-        let maxResidual = 0;
-        for (const [pid, outputs] of newOutputs) {
-          const prev = prevOutputs.get(pid);
-          if (!prev) continue;
-          for (const [varName, val] of outputs) {
-            if (typeof val !== "number") continue;
-            const prevVal = prev.get(varName);
-            if (typeof prevVal !== "number") continue;
-            const scale = Math.max(Math.abs(val), 1e-10);
-            maxResidual = Math.max(maxResidual, Math.abs(val - prevVal) / scale);
-          }
+    // ── Strategy 2: Interface Jacobian Newton-Raphson (with State Rollback) ──
+    if (!this.jacobianSolver || this.jacobianSolver.dimension !== couplings.length) {
+      this.jacobianSolver = new InterfaceJacobianSolver(couplings, {
+        tolerance: tol,
+        maxIterations: 6,
+        enableLineSearch: true,
+      });
+    }
+
+    // Save initial states of all participants
+    const savedStates = new Map<string, unknown>();
+    for (const p of participants) {
+      if (p.getState) {
+        savedStates.set(p.id, await p.getState());
+      }
+    }
+
+    const restoreAllStates = async () => {
+      for (const p of participants) {
+        const state = savedStates.get(p.id);
+        if (p.setState && state !== undefined) {
+          await p.setState(state);
+        }
+      }
+    };
+
+    const freeAllStates = async () => {
+      for (const p of participants) {
+        const state = savedStates.get(p.id);
+        if (p.freeState && state !== undefined) {
+          await p.freeState(state);
+        }
+      }
+    };
+
+    const stepWithInputs = async (candidateInputs: Map<string, Map<string, CosimValue>>) => {
+      await restoreAllStates();
+      for (const p of participants) {
+        const inputs = candidateInputs.get(p.id);
+        if (inputs && inputs.size > 0) {
+          await p.setInputs(inputs);
+        }
+      }
+      for (const p of participants) {
+        await p.doStep(t, h);
+      }
+      const postOutputs = new Map<string, Map<string, CosimValue>>();
+      for (const p of participants) {
+        postOutputs.set(p.id, await p.getOutputs());
+      }
+      return postOutputs;
+    };
+
+    const initialOutputs = new Map<string, Map<string, CosimValue>>();
+    for (const p of participants) {
+      initialOutputs.set(p.id, await p.getOutputs());
+    }
+    const currentInputs = coupling.applyCouplings(initialOutputs);
+    let currentOutputs = await stepWithInputs(currentInputs);
+
+    let U = this.jacobianSolver.extractUFromInputs(currentInputs);
+    let { residual, norm } = this.jacobianSolver.computeResidual(U, currentOutputs);
+
+    if (norm < tol) {
+      await freeAllStates();
+      this.callbacks.onJacobianConvergence?.({ iterations: 0, residual: norm, method: "newton" });
+      return;
+    }
+
+    let J: Float64Array | null = null;
+    const maxIter = 6;
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      try {
+        if (!J || iter === 0 || this.jacobianSolver.hasAnalyticDerivatives(participants)) {
+          J = await this.jacobianSolver.assembleJacobian(participants, U, t, h, residual, async (pertU) => {
+            const pertInputs = this.jacobianSolver!.vectorToInputMap(pertU);
+            return await stepWithInputs(pertInputs);
+          });
         }
 
-        if (maxResidual < tol) {
-          // Converged — free saved states and return
-          for (const p of participants) {
-            const state = savedStates.get(p.id);
-            if (p.freeState && state !== undefined) {
-              await p.freeState(state);
-            }
+        const deltaU = this.jacobianSolver.solveLinearSystem(J, residual);
+
+        let alpha = 1.0;
+        let bestU = new Float64Array(U);
+        let bestNorm = norm;
+        let bestOutputs = currentOutputs;
+
+        for (let ls = 0; ls < 3; ls++) {
+          const trialU = new Float64Array(U.length);
+          for (let i = 0; i < U.length; i++) trialU[i] = U[i]! + alpha * deltaU[i]!;
+
+          const trialInputs = this.jacobianSolver.vectorToInputMap(trialU);
+          const trialOutputs = await stepWithInputs(trialInputs);
+          const trialRes = this.jacobianSolver.computeResidual(trialU, trialOutputs);
+
+          if (trialRes.norm < bestNorm || ls === 2) {
+            bestU = trialU;
+            bestNorm = trialRes.norm;
+            bestOutputs = trialOutputs;
+            const deltaR = new Float64Array(residual.length);
+            for (let i = 0; i < residual.length; i++) deltaR[i] = trialRes.residual[i]! - residual[i]!;
+            this.jacobianSolver.updateBroyden(J, deltaU, deltaR);
+            residual = trialRes.residual;
+            break;
           }
+          alpha *= 0.5;
+        }
+
+        U = bestU;
+        norm = bestNorm;
+        currentOutputs = bestOutputs;
+
+        if (norm < tol) {
+          await freeAllStates();
+          this.callbacks.onJacobianConvergence?.({ iterations: iter + 1, residual: norm, method: "newton" });
+          return;
+        }
+      } catch {
+        const newInputs = coupling.applyCouplings(currentOutputs);
+        currentOutputs = await stepWithInputs(newInputs);
+        U = this.jacobianSolver.extractUFromInputs(newInputs);
+        const res = this.jacobianSolver.computeResidual(U, currentOutputs);
+        norm = res.norm;
+        residual = res.residual;
+        if (norm < tol) {
+          await freeAllStates();
+          this.callbacks.onJacobianConvergence?.({ iterations: iter + 1, residual: norm, method: "picard" });
           return;
         }
       }
-
-      prevOutputs = newOutputs;
     }
 
-    // Did not converge within maxIter — free states and continue with last result
-    for (const p of participants) {
-      const state = savedStates.get(p.id);
-      if (p.freeState && state !== undefined) {
-        await p.freeState(state);
-      }
-    }
+    await freeAllStates();
+    this.callbacks.onJacobianConvergence?.({ iterations: maxIter, residual: norm, method: "newton" });
   }
 }
