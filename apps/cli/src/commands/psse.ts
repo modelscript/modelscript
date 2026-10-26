@@ -11,7 +11,14 @@
  */
 
 import { renderPsseSvg } from "@modelscript/diagram/psse-diagram-builder";
-import { extractPowerFlowNetlist, lintPsse, parseRaw, solvePowerFlow } from "@modelscript/psse";
+import {
+  extractPowerFlowNetlist,
+  lintPsse,
+  lowerPsseToDae,
+  parseRaw,
+  psseToModelica,
+  solvePowerFlow,
+} from "@modelscript/psse";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -24,7 +31,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       .positional("action", {
         description: "Action to perform (lint, summary, diagram, netlist, solve)",
         type: "string",
-        choices: ["lint", "summary", "diagram", "netlist", "solve"],
+        choices: ["inspect", "to-dae", "to-modelica", "lint", "summary", "diagram", "netlist", "solve"],
         demandOption: true,
       })
       .positional("files", {
@@ -97,6 +104,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           break;
         }
 
+        case "inspect":
         case "summary": {
           console.log(`=== PSS/E Base Case: ${parsed.title1 || path.basename(file)} ===`);
           console.log(`  Revision:      v${parsed.header.rev}`);
@@ -116,6 +124,36 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           console.log(
             `  Total Load:    ${netlist.metrics.totalLoadMw.toFixed(1)} MW / ${netlist.metrics.totalLoadMvar.toFixed(1)} MVAR`,
           );
+          break;
+        }
+
+        case "to-dae": {
+          console.log(`[psse] Lowering ${path.basename(file)} to linear-memory DAE arena...`);
+          const dae = lowerPsseToDae(parsed);
+          console.log(`✔ DAE arena lowered successfully:`);
+          console.log(`  Variables : ${dae.varCount}`);
+          console.log(`  Equations : ${dae.eqCount}`);
+          if (out) {
+            const outPath = path.resolve(process.cwd(), out);
+            fs.writeFileSync(
+              outPath,
+              JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2),
+              "utf-8",
+            );
+            console.log(`✔ DAE metadata written to: ${outPath}`);
+          }
+          break;
+        }
+
+        case "to-modelica": {
+          const mo = psseToModelica(parsed);
+          if (out) {
+            const outPath = path.resolve(process.cwd(), out);
+            fs.writeFileSync(outPath, mo, "utf-8");
+            console.log(`✔ Modelica projection written to: ${outPath}`);
+          } else {
+            console.log(mo);
+          }
           break;
         }
 

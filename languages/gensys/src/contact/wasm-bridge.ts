@@ -21,6 +21,17 @@ export interface ContactWasmExports {
   contact_polach(inputPtr: number, outPtr: number): void;
   contact_batch_fastsim(count: number, inputsPtr: number, strips: number, outputsPtr: number): void;
   contact_batch_polach(count: number, inputsPtr: number, outputsPtr: number): void;
+  contact_fastsim_simd(inputPtr: number, strips: number, outPtr: number): void;
+  contact_batch_fastsim_simd(count: number, inputsPtr: number, strips: number, outputsPtr: number): void;
+  contact_batch_polach_simd(count: number, inputsPtr: number, outputsPtr: number): void;
+  contact_lut_interp_simd(
+    yFrac: number,
+    val0L: number,
+    val0R: number,
+    val1L: number,
+    val1R: number,
+    outPtr: number,
+  ): void;
 }
 
 export class WasmContactBridge {
@@ -32,6 +43,7 @@ export class WasmContactBridge {
   private readonly scratchFastsimOut: number;
   private readonly scratchPolachIn: number;
   private readonly scratchPolachOut: number;
+  private readonly scratchLutOut: number;
 
   private f64View: Float64Array;
 
@@ -44,6 +56,7 @@ export class WasmContactBridge {
     this.scratchFastsimOut = this.scratchBase + 128;
     this.scratchPolachIn = this.scratchBase + 256;
     this.scratchPolachOut = this.scratchBase + 384;
+    this.scratchLutOut = this.scratchBase + 448;
 
     this.f64View = new Float64Array(this.exports.memory.buffer);
   }
@@ -246,6 +259,164 @@ export class WasmContactBridge {
 
     return results;
   }
+
+  /**
+   * Whether the loaded WebAssembly instance exports SIMD128 functions.
+   */
+  get supportsSimd(): boolean {
+    return typeof this.exports.contact_fastsim_simd === "function";
+  }
+
+  /**
+   * Solves Kalker's FASTSIM tangential contact algorithm using WASM SIMD128 instructions.
+   */
+  solveFastsimSimd(input: FastsimContactInput, strips: number = 20): FastsimContactOutput {
+    this.refreshViews();
+    const f64 = this.f64View;
+    const inOff = this.scratchFastsimIn >> 3;
+
+    f64[inOff + 0] = input.normalForce;
+    f64[inOff + 1] = input.longitudinalCreep;
+    f64[inOff + 2] = input.lateralCreep;
+    f64[inOff + 3] = input.spin;
+    f64[inOff + 4] = input.ellipseSemiMajor;
+    f64[inOff + 5] = input.ellipseSemiMinor;
+    f64[inOff + 6] = input.shearModulus;
+    f64[inOff + 7] = input.poissonRatio;
+    f64[inOff + 8] = input.frictionCoeff;
+
+    this.exports.contact_fastsim_simd(this.scratchFastsimIn, strips, this.scratchFastsimOut);
+
+    const outOff = this.scratchFastsimOut >> 3;
+    return {
+      fx: f64[outOff + 0]!,
+      fy: f64[outOff + 1]!,
+      mz: f64[outOff + 2]!,
+      adhesionRatio: f64[outOff + 3]!,
+    };
+  }
+
+  /**
+   * Batched SIMD128 FASTSIM evaluation for multi-axle trains.
+   */
+  batchFastsimSimd(inputs: FastsimContactInput[], strips: number = 20): FastsimContactOutput[] {
+    const count = inputs.length;
+    if (count === 0) return [];
+
+    this.refreshViews();
+
+    const inBytes = count * 72;
+    const outBytes = count * 32;
+
+    const inPtr = this.alloc(inBytes);
+    const outPtr = this.alloc(outBytes);
+    const f64 = this.f64View;
+
+    let inOff = inPtr >> 3;
+    for (let i = 0; i < count; i++) {
+      const inp = inputs[i]!;
+      f64[inOff + 0] = inp.normalForce;
+      f64[inOff + 1] = inp.longitudinalCreep;
+      f64[inOff + 2] = inp.lateralCreep;
+      f64[inOff + 3] = inp.spin;
+      f64[inOff + 4] = inp.ellipseSemiMajor;
+      f64[inOff + 5] = inp.ellipseSemiMinor;
+      f64[inOff + 6] = inp.shearModulus;
+      f64[inOff + 7] = inp.poissonRatio;
+      f64[inOff + 8] = inp.frictionCoeff;
+      inOff += 9;
+    }
+
+    this.exports.contact_batch_fastsim_simd(count, inPtr, strips, outPtr);
+
+    const results: FastsimContactOutput[] = new Array(count);
+    let outOff = outPtr >> 3;
+    for (let i = 0; i < count; i++) {
+      results[i] = {
+        fx: f64[outOff + 0]!,
+        fy: f64[outOff + 1]!,
+        mz: f64[outOff + 2]!,
+        adhesionRatio: f64[outOff + 3]!,
+      };
+      outOff += 4;
+    }
+
+    this.free(inPtr);
+    this.free(outPtr);
+
+    return results;
+  }
+
+  /**
+   * Batched 2-Wide SIMD128 Polach evaluation for multi-axle trains.
+   */
+  batchPolachSimd(inputs: PolachContactInput[]): PolachContactOutput[] {
+    const count = inputs.length;
+    if (count === 0) return [];
+
+    this.refreshViews();
+
+    const inBytes = count * 88;
+    const outBytes = count * 40;
+
+    const inPtr = this.alloc(inBytes);
+    const outPtr = this.alloc(outBytes);
+    const f64 = this.f64View;
+
+    let inOff = inPtr >> 3;
+    for (let i = 0; i < count; i++) {
+      const inp = inputs[i]!;
+      f64[inOff + 0] = inp.normalForce;
+      f64[inOff + 1] = inp.longitudinalCreep;
+      f64[inOff + 2] = inp.lateralCreep;
+      f64[inOff + 3] = inp.wheelVelocity;
+      f64[inOff + 4] = inp.ellipseSemiMajor;
+      f64[inOff + 5] = inp.ellipseSemiMinor;
+      f64[inOff + 6] = inp.shearModulus ?? 8.2e10;
+      f64[inOff + 7] = inp.poissonRatio ?? 0.28;
+      f64[inOff + 8] = inp.staticFriction ?? 0.4;
+      f64[inOff + 9] = inp.kineticFrictionRatio ?? 0.75;
+      f64[inOff + 10] = inp.frictionDecayRate ?? 0.4;
+      inOff += 11;
+    }
+
+    this.exports.contact_batch_polach_simd(count, inPtr, outPtr);
+
+    const results: PolachContactOutput[] = new Array(count);
+    let outOff = outPtr >> 3;
+    for (let i = 0; i < count; i++) {
+      results[i] = {
+        fx: f64[outOff + 0]!,
+        fy: f64[outOff + 1]!,
+        resultantForce: f64[outOff + 2]!,
+        effectiveFrictionCoeff: f64[outOff + 3]!,
+        adhesionRatio: f64[outOff + 4]!,
+      };
+      outOff += 5;
+    }
+
+    this.free(inPtr);
+    this.free(outPtr);
+
+    return results;
+  }
+
+  /**
+   * Vectorized SIMD128 2-point linear interpolation for wheel-rail profile LUTs.
+   * Simultaneously interpolates left and right values across a grid fraction.
+   */
+  interpolateProfileLutSimd(
+    yFrac: number,
+    val0L: number,
+    val0R: number,
+    val1L: number,
+    val1R: number,
+  ): [number, number] {
+    this.refreshViews();
+    this.exports.contact_lut_interp_simd(yFrac, val0L, val0R, val1L, val1R, this.scratchLutOut);
+    const outOff = this.scratchLutOut >> 3;
+    return [this.f64View[outOff + 0]!, this.f64View[outOff + 1]!];
+  }
 }
 
 // Global cached instance
@@ -256,4 +427,13 @@ export function getWasmContactBridge(): WasmContactBridge {
     cachedBridge = WasmContactBridge.create();
   }
   return cachedBridge;
+}
+
+export function supportsWasmSimd(): boolean {
+  try {
+    const bridge = getWasmContactBridge();
+    return bridge.supportsSimd;
+  } catch {
+    return false;
+  }
 }

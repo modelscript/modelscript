@@ -235,7 +235,7 @@ export function parseSimaXml(xmlText: string, filePath?: string): SimaModel {
 
 function parseAttributes(attrString: string): Record<string, string> {
   const result: Record<string, string> = {};
-  const regex = /([A-Za-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+  const regex = /\b([A-Za-z_:][\w.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(attrString)) !== null) {
     const key = match[1]!.toLowerCase();

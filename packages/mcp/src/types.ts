@@ -116,4 +116,6 @@ export interface ServerContext {
         }) => Promise<{ id: number }>;
       }
     | undefined;
+  /** Optional sandbox execution resource constraints (timeouts, memory limits) for AI agent tools. */
+  sandboxLimits?: import("./sandbox.js").McpExecutionLimits | undefined;
 }

@@ -7,7 +7,8 @@
       "optimizeLevel": 3,
       "shrinkLevel": 0,
       "converge": false,
-      "noAssert": true
+      "noAssert": true,
+      "enable": ["simd"]
     }
   },
   "options": {

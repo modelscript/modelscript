@@ -15,6 +15,7 @@
 
 import {
   computeBodePlot,
+  easy5ToDae,
   easy5ToModelica,
   easy5ToSsp,
   linearizeEasy5,
@@ -32,9 +33,10 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, summary, linearize, bode, to-modelica, to-ssp, diagram)",
+        description:
+          "Action to perform (lint, summary, inspect, linearize, bode, to-modelica, to-ssp, to-dae, diagram)",
         type: "string",
-        choices: ["lint", "summary", "linearize", "bode", "to-modelica", "to-ssp", "diagram"],
+        choices: ["lint", "summary", "inspect", "linearize", "bode", "to-modelica", "to-ssp", "to-dae", "diagram"],
         demandOption: true,
       })
       .positional("files", {
@@ -119,6 +121,7 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
           break;
         }
 
+        case "inspect":
         case "summary": {
           const components = Array.from(model.components.values());
           const numComp = model.components.size;
@@ -242,6 +245,23 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
             process.stdout.write(`✔ Exported SSP XML to ${outPath}\n`);
           } else {
             process.stdout.write(ssdXml + "\n");
+          }
+          break;
+        }
+
+        case "to-dae": {
+          process.stdout.write(`[easy5] Lowering ${path.basename(filePath)} to linear-memory DAE arena...\n`);
+          const dae = easy5ToDae(model);
+          process.stdout.write(`✔ DAE arena lowered successfully:\n`);
+          process.stdout.write(`  Variables : ${dae.varCount}\n`);
+          process.stdout.write(`  Equations : ${dae.eqCount}\n`);
+          if (outPath) {
+            fs.writeFileSync(
+              path.resolve(outPath),
+              JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2),
+              "utf-8",
+            );
+            process.stdout.write(`✔ DAE metadata written to: ${outPath}\n`);
           }
           break;
         }

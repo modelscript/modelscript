@@ -155,6 +155,135 @@ const ReqIfExportCommand: CommandModule<{}, ReqIfExportArgs> = {
   },
 };
 
+const ReqIfLintCommand: CommandModule<{}, { file: string }> = {
+  command: "lint <file>",
+  describe: "Lint OMG ReqIF document for missing attributes, dangling relations, and unbounded contracts",
+  builder: (yargs) =>
+    yargs.positional("file", {
+      demandOption: true,
+      description: "Path to .reqif file",
+      type: "string",
+    }) as any,
+  handler: async (args) => {
+    const { parseReqIf, lintReqIf } = await import("@modelscript/reqif");
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+    const xml = fs.readFileSync(filePath, "utf-8");
+    const doc = parseReqIf(xml);
+    const diags = lintReqIf(doc);
+    if (diags.length === 0) {
+      console.log(
+        `[PASS] ${args.file}: 0 issues found (${doc.specObjects.size} requirements, ${doc.specRelations.length} relations).`,
+      );
+    } else {
+      console.log(`[DIAGNOSTICS] ${args.file}: ${diags.length} issue(s) found:`);
+      for (const d of diags) {
+        console.log(`  - [M${d.code}] ${d.severity.toUpperCase()}: ${d.message}`);
+      }
+    }
+  },
+};
+
+const ReqIfVerifyCommand: CommandModule<{}, { file: string }> = {
+  command: "verify <file>",
+  describe: "Formally verify requirements decomposition completeness using Nelson-Oppen SMT entailment",
+  builder: (yargs) =>
+    yargs.positional("file", {
+      demandOption: true,
+      description: "Path to .reqif file",
+      type: "string",
+    }) as any,
+  handler: async (args) => {
+    const { parseReqIf, verifyReqIfEntailment } = await import("@modelscript/reqif");
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+    const xml = fs.readFileSync(filePath, "utf-8");
+    const doc = parseReqIf(xml);
+    const report = verifyReqIfEntailment(doc);
+    console.log(`--- Nelson-Oppen Requirements Entailment Report ---`);
+    console.log(`Total Queries Evaluated: ${report.totalQueries}`);
+    console.log(`Certified Entailments:   ${report.certifiedCount}`);
+    console.log(`Decomposition Gaps:      ${report.gapCount}`);
+    for (const r of report.results) {
+      const badge = r.isEntailed ? "CERTIFIED" : "GAP";
+      const diag = r.diagnosticMessage ? ` (${r.diagnosticMessage})` : "";
+      console.log(`[${badge}] ${r.childReqIds.join(" ∧ ")} ⊨ ${r.parentReqId}${diag}`);
+    }
+  },
+};
+
+const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string }> = {
+  command: "to-sysml <file>",
+  describe: "Translate ReqIF requirements and satisfaction relations into SysML v2 definitions",
+  builder: (yargs) =>
+    yargs
+      .positional("file", {
+        demandOption: true,
+        description: "Path to .reqif file",
+        type: "string",
+      })
+      .option("out", {
+        description: "Output .sysml file path",
+        type: "string",
+      }) as any,
+  handler: async (args) => {
+    const { parseReqIf, reqifToSysml2 } = await import("@modelscript/reqif");
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+    const xml = fs.readFileSync(filePath, "utf-8");
+    const doc = parseReqIf(xml);
+    const sysml = reqifToSysml2(doc);
+    if (args.out) {
+      fs.writeFileSync(path.resolve(process.cwd(), args.out), sysml, "utf-8");
+      console.log(`Saved SysML v2 requirements to ${args.out}`);
+    } else {
+      console.log(sysml);
+    }
+  },
+};
+
+const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: string }> = {
+  command: "to-modelica <file>",
+  describe: "Translate ReqIF requirements contracts into a Modelica plant monitor verification block",
+  builder: (yargs) =>
+    yargs
+      .positional("file", {
+        demandOption: true,
+        description: "Path to .reqif file",
+        type: "string",
+      })
+      .option("out", {
+        description: "Output .mo file path",
+        type: "string",
+      }) as any,
+  handler: async (args) => {
+    const { parseReqIf, reqifToModelicaVerifier } = await import("@modelscript/reqif");
+    const filePath = path.resolve(process.cwd(), args.file);
+    if (!fs.existsSync(filePath)) {
+      console.error(`Error: file not found: ${filePath}`);
+      process.exit(1);
+    }
+    const xml = fs.readFileSync(filePath, "utf-8");
+    const doc = parseReqIf(xml);
+    const mo = reqifToModelicaVerifier(doc);
+    if (args.out) {
+      fs.writeFileSync(path.resolve(process.cwd(), args.out), mo, "utf-8");
+      console.log(`Saved Modelica verifier to ${args.out}`);
+    } else {
+      console.log(mo);
+    }
+  },
+};
+
 export const ReqIf: CommandModule = {
   command: "reqif <action>",
   describe: "Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter",
@@ -162,7 +291,11 @@ export const ReqIf: CommandModule = {
     return yargs
       .command(ReqIfImportCommand)
       .command(ReqIfExportCommand)
-      .demandCommand(1, "Please specify an action (import or export)") as any;
+      .command(ReqIfLintCommand)
+      .command(ReqIfVerifyCommand)
+      .command(ReqIfToSysmlCommand)
+      .command(ReqIfToModelicaCommand)
+      .demandCommand(1, "Please specify an action (import, export, lint, verify, to-sysml, or to-modelica)") as any;
   },
   handler: () => {},
 };

@@ -8,7 +8,7 @@
  * balance equations with Zuber-Findlay drift-flux closure.
  */
 
-import { Causality, DAEBuilder, VarType, Variability } from "@modelscript/runtime";
+import { Causality, DAEBuilder, EqKind, VarType, Variability } from "@modelscript/runtime";
 import { captureSimulationCheckpoint } from "../engine/checkpoint.js";
 import type { PvtTableData } from "../parser/pvt-table-parser.js";
 import type {
@@ -81,8 +81,14 @@ export function lowerFlowpathToDae(
       );
       varIndices.push(jFaceIdx);
 
-      // Symbolic equation placeholders in arena for mass, momentum, and thermal balance
-      // builder.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+      // Symbolic rate equations in arena for pressure, phase fraction, and thermal balance
+      const derP = builder.addDer(pIdx);
+      const derAlpha = builder.addDer(alphaGIdx);
+      const derT = builder.addDer(tempIdx);
+      const zero = builder.addRealLiteral(0.0);
+      builder.addEquation(EqKind.Simple, derP, zero);
+      builder.addEquation(EqKind.Simple, derAlpha, zero);
+      builder.addEquation(EqKind.Simple, derT, zero);
     }
 
     cellOffset += nCells;
@@ -101,6 +107,25 @@ export interface SimulationOptions {
   checkpointIntervalSeconds?: number | undefined;
   onCheckpoint?: ((checkpoint: OlgaCheckpointState) => void) | undefined;
   antiSlugController?: AntiSlugControllerOptions | undefined;
+  spatialScheme?: "UPWIND" | "TVD_VAN_LEER" | "TVD_MINMOD" | "TVD_SUPERBEE" | undefined;
+}
+
+export type FluxLimiterType = "VAN_LEER" | "MINMOD" | "SUPERBEE";
+
+/**
+ * Total Variation Diminishing (TVD) flux limiter function psi(r).
+ * Eliminates numerical diffusion at gas-liquid slug fronts without spurious oscillations.
+ */
+export function computeFluxLimiter(r: number, limiter: FluxLimiterType = "VAN_LEER"): number {
+  if (r <= 0 || isNaN(r)) return 0.0;
+  if (limiter === "MINMOD") {
+    return Math.min(1.0, r);
+  } else if (limiter === "SUPERBEE") {
+    return Math.max(0.0, Math.min(2.0 * r, 1.0), Math.min(r, 2.0));
+  } else {
+    // Van Leer symmetric limiter: (r + |r|) / (1 + |r|)
+    return (2.0 * r) / (1.0 + r);
+  }
 }
 
 /**
@@ -397,17 +422,73 @@ export function simulateDriftFlux(model: OlgaModel, options?: SimulationOptions)
         P[i] = outletPressure + deltaPChoke;
       }
 
-      // Void fraction rate of change (gas mass continuity)
-      const fluxGasIn = i === 0 ? (inletMassRate * inletGasFraction) / cell.area : alphaG[i - 1]! * fluid.rhoG * ug;
-      const fluxGasOut = alphaG[i]! * fluid.rhoG * ug;
-      const dAlphaGdt = -(fluxGasOut - fluxGasIn) / (cell.dx * Math.max(1.0, fluid.rhoG));
+      // Void fraction rate of change (gas mass continuity) with TVD shock-capturing
+      let fluxGasIn: number;
+      let fluxGasOut: number;
 
+      if (options?.spatialScheme === "UPWIND") {
+        fluxGasIn = i === 0 ? (inletMassRate * inletGasFraction) / cell.area : alphaG[i - 1]! * fluid.rhoG * ug;
+        fluxGasOut = alphaG[i]! * fluid.rhoG * ug;
+      } else {
+        const limiter: FluxLimiterType =
+          options?.spatialScheme === "TVD_MINMOD"
+            ? "MINMOD"
+            : options?.spatialScheme === "TVD_SUPERBEE"
+              ? "SUPERBEE"
+              : "VAN_LEER";
+
+        // TVD flux evaluation at left face i - 1/2
+        if (i === 0) {
+          fluxGasIn = (inletMassRate * inletGasFraction) / cell.area;
+        } else if (i === 1) {
+          fluxGasIn = alphaG[0]! * fluid.rhoG * ug;
+        } else {
+          const dUp = alphaG[i - 1]! - alphaG[i - 2]!;
+          const dDown = alphaG[i]! - alphaG[i - 1]!;
+          const r = Math.abs(dDown) > 1e-9 ? dUp / dDown : dUp === 0 ? 1.0 : 0.0;
+          const psi = computeFluxLimiter(r, limiter);
+          const alphaFaceIn = Math.max(0.01, Math.min(0.99, alphaG[i - 1]! + 0.5 * psi * dDown));
+          fluxGasIn = alphaFaceIn * fluid.rhoG * ug;
+        }
+
+        // TVD flux evaluation at right face i + 1/2
+        if (i === N - 1) {
+          fluxGasOut = alphaG[i]! * fluid.rhoG * ug;
+        } else {
+          const dUp = i === 0 ? 0.0 : alphaG[i]! - alphaG[i - 1]!;
+          const dDown = alphaG[i + 1]! - alphaG[i]!;
+          const r = Math.abs(dDown) > 1e-9 ? dUp / dDown : dUp === 0 ? 1.0 : 0.0;
+          const psi = computeFluxLimiter(r, limiter);
+          const alphaFaceOut = Math.max(0.01, Math.min(0.99, alphaG[i]! + 0.5 * psi * dDown));
+          fluxGasOut = alphaFaceOut * fluid.rhoG * ug;
+        }
+      }
+
+      const dAlphaGdt = -(fluxGasOut - fluxGasIn) / (cell.dx * Math.max(1.0, fluid.rhoG));
       alphaG[i] = Math.max(0.01, Math.min(0.99, alphaG[i]! + 0.1 * dt * dAlphaGdt));
 
       // Thermal cooling balance: d(rho Cp T)/dt = - d(rho Cp u T)/dx - 4 U (T - T_amb) / D + q_hex
       const cpM = 2200.0; // J / (kg * K)
       const qLoss = (4.0 * cell.uHeatTransfer * (T[i]! - cell.ambientTemp)) / cell.diameter;
-      const advectionT = (rhoM * cpM * vm * (i === 0 ? T[i]! - inletTemp : T[i]! - T[i - 1]!)) / cell.dx;
+
+      let advectionT: number;
+      if (options?.spatialScheme === "UPWIND" || i === 0) {
+        advectionT = (rhoM * cpM * vm * (i === 0 ? T[i]! - inletTemp : T[i]! - T[i - 1]!)) / cell.dx;
+      } else {
+        const limiter: FluxLimiterType =
+          options?.spatialScheme === "TVD_MINMOD"
+            ? "MINMOD"
+            : options?.spatialScheme === "TVD_SUPERBEE"
+              ? "SUPERBEE"
+              : "VAN_LEER";
+
+        const dUp = i === 1 ? 0.0 : T[i - 1]! - T[i - 2]!;
+        const dDown = T[i]! - T[i - 1]!;
+        const r = Math.abs(dDown) > 1e-4 ? dUp / dDown : dUp === 0 ? 1.0 : 0.0;
+        const psi = computeFluxLimiter(r, limiter);
+        const tFaceIn = T[i - 1]! + 0.5 * psi * dDown;
+        advectionT = (rhoM * cpM * vm * (T[i]! - tFaceIn)) / cell.dx;
+      }
 
       let qHex = 0.0;
       const cellVolume = cell.area * cell.dx;

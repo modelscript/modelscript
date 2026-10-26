@@ -35,6 +35,18 @@
     "./verification": {
       "types": "./dist/src/verification/flow-assurance-verifier.d.ts",
       "default": "./dist/src/verification/flow-assurance-verifier.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
     }
   },
   "files": [

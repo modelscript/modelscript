@@ -15,6 +15,7 @@
  */
 
 import {
+  gtsuiteToDae,
   gtsuiteToModelica,
   gtsuiteToSsp,
   gtsuiteToSysml2,
@@ -35,9 +36,21 @@ export const GtSuiteCommand: CommandModule<Record<string, unknown>, Record<strin
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, summary, simulate, to-modelica, to-sysml2, to-ssp, diagram, verify)",
+        description:
+          "Action to perform (lint, summary, inspect, simulate, to-modelica, to-sysml2, to-ssp, to-dae, diagram, verify)",
         type: "string",
-        choices: ["lint", "summary", "simulate", "to-modelica", "to-sysml2", "to-ssp", "diagram", "verify"],
+        choices: [
+          "lint",
+          "summary",
+          "inspect",
+          "simulate",
+          "to-modelica",
+          "to-sysml2",
+          "to-ssp",
+          "to-dae",
+          "diagram",
+          "verify",
+        ],
         demandOption: true,
       })
       .positional("files", {
@@ -143,6 +156,7 @@ export const GtSuiteCommand: CommandModule<Record<string, unknown>, Record<strin
         break;
       }
 
+      case "inspect":
       case "summary": {
         const cylinders = model.components.filter((c) => c.kind === "cylinder") as GtCylinderComponent[];
         let totalDisp = 0;
@@ -233,6 +247,19 @@ export const GtSuiteCommand: CommandModule<Record<string, unknown>, Record<strin
           process.stdout.write(`✓ Exported FMI SSP XML to ${outPath}\n`);
         } else {
           process.stdout.write(code + "\n");
+        }
+        break;
+      }
+
+      case "to-dae": {
+        process.stdout.write(`[gtsuite] Lowering ${path.basename(filePath)} to linear-memory DAE arena...\n`);
+        const dae = gtsuiteToDae(model);
+        process.stdout.write(`✔ DAE arena lowered successfully:\n`);
+        process.stdout.write(`  Variables : ${dae.varCount}\n`);
+        process.stdout.write(`  Equations : ${dae.eqCount}\n`);
+        if (outPath) {
+          fs.writeFileSync(outPath, JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2), "utf-8");
+          process.stdout.write(`✔ DAE metadata written to: ${outPath}\n`);
         }
         break;
       }

@@ -24,15 +24,23 @@ export async function pregenerateServerSvgThumbnail(
 ): Promise<PreprocessResult> {
   const result: PreprocessResult = {};
 
-  if (!fs.existsSync(filePath)) {
+  const resolvedDir = uploadDir ? path.resolve(uploadDir) : path.dirname(path.resolve(filePath));
+  const safeFilename = path.basename(filePath);
+  const safeFilePath = path.resolve(resolvedDir, safeFilename);
+
+  if (!safeFilePath.startsWith(resolvedDir + path.sep) && safeFilePath !== resolvedDir) {
+    return result;
+  }
+
+  if (!fs.existsSync(safeFilePath)) {
     return result;
   }
 
   let content: string;
   try {
-    content = fs.readFileSync(filePath, "utf-8");
+    content = fs.readFileSync(safeFilePath, "utf-8");
   } catch (err) {
-    console.warn(`[ArtifactPreprocessor] Failed to read ${filePath}:`, err);
+    console.warn("[ArtifactPreprocessor] Failed to read file:", safeFilePath, err);
     return result;
   }
 
@@ -295,21 +303,24 @@ export async function pregenerateServerSvgThumbnail(
         break;
     }
   } catch (err) {
-    console.warn(`[ArtifactPreprocessor] Pre-processing failed for ${viewType} (${originalFilename}):`, err);
+    console.warn("[ArtifactPreprocessor] Pre-processing failed:", viewType, originalFilename, err);
   }
 
   // If vector SVG was generated and an upload directory is available, save the thumbnail
   if (result.svg && uploadDir) {
     try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
+      const resolvedUploadDir = path.resolve(uploadDir);
+      if (!fs.existsSync(resolvedUploadDir)) {
+        fs.mkdirSync(resolvedUploadDir, { recursive: true });
       }
-      const thumbFilename = `${path.basename(filePath)}.thumb.svg`;
-      const thumbPath = path.join(uploadDir, thumbFilename);
-      fs.writeFileSync(thumbPath, result.svg, "utf-8");
-      result.thumbnailUrl = `/api/v1/storage/uploads/${thumbFilename}`;
+      const thumbFilename = `${path.basename(safeFilePath)}.thumb.svg`;
+      const thumbPath = path.resolve(resolvedUploadDir, path.basename(thumbFilename));
+      if (thumbPath.startsWith(resolvedUploadDir + path.sep) || thumbPath === resolvedUploadDir) {
+        fs.writeFileSync(thumbPath, result.svg, "utf-8");
+        result.thumbnailUrl = `/api/v1/storage/uploads/${thumbFilename}`;
+      }
     } catch (saveErr) {
-      console.warn(`[ArtifactPreprocessor] Failed to save SVG thumbnail for ${originalFilename}:`, saveErr);
+      console.warn("[ArtifactPreprocessor] Failed to save SVG thumbnail:", originalFilename, saveErr);
     }
   }
 

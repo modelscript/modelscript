@@ -5,6 +5,7 @@ import type { McpManifest, McpManifestTool } from "@modelscript/dsl/codegen/comp
 import type { McpPropertySchema } from "@modelscript/dsl/dsl/language.js";
 import { DigitalThreadHypergraph, ThreadDomain } from "@modelscript/runtime";
 import { z } from "zod";
+import { withSandbox } from "./sandbox.js";
 import type { ServerContext } from "./types.js";
 
 /**
@@ -148,100 +149,111 @@ export class PolyglotMcpHost {
         zodShape[propName] = mcpPropertySchemaToZod(propSchema);
       }
 
-      this.server.tool(tool.name, tool.description, zodShape, async (args: Record<string, unknown>) => {
-        // 1. Try zero-copy in-WASM fast-path if pure and facade available
-        const facade = wasmFacadeProvider ? wasmFacadeProvider(tool) : null;
-        if (facade && tool.pure && typeof facade.mcpDispatchTool === "function") {
-          const toolIndex = manifest.tools.findIndex((t) => t.name === tool.name);
-          if (toolIndex >= 0) {
-            const status = facade.mcpDispatchTool(toolIndex);
-            if (status === 1) {
-              const output = facade.mcpGetOutputText ? facade.mcpGetOutputText() : "";
-              return {
-                content: [{ type: "text" as const, text: output || "Execution succeeded (in-WASM)." }],
-              };
+      this.server.tool(
+        tool.name,
+        tool.description,
+        zodShape,
+        withSandbox(
+          tool.name,
+          async (args: Record<string, unknown>) => {
+            // 1. Try zero-copy in-WASM fast-path if pure and facade available
+            const facade = wasmFacadeProvider ? wasmFacadeProvider(tool) : null;
+            if (facade && tool.pure && typeof facade.mcpDispatchTool === "function") {
+              const toolIndex = manifest.tools.findIndex((t) => t.name === tool.name);
+              if (toolIndex >= 0) {
+                const status = facade.mcpDispatchTool(toolIndex);
+                if (status === 1) {
+                  const output = facade.mcpGetOutputText ? facade.mcpGetOutputText() : "";
+                  return {
+                    content: [{ type: "text" as const, text: output || "Execution succeeded (in-WASM)." }],
+                  };
+                }
+              }
             }
-          }
-        }
 
-        // 2. Query workspace symbol index or active compilation context if available
-        const matchedSymbols: string[] = [];
-        const queryTarget =
-          typeof args["element"] === "string"
-            ? args["element"]
-            : typeof args["name"] === "string"
-              ? args["name"]
-              : undefined;
-        const symbolMap = (this.context.current?.queryEngine?.index as any)?.symbols as Map<number, any> | undefined;
-        if (symbolMap) {
-          for (const sym of symbolMap.values()) {
-            if (!queryTarget || sym?.name === queryTarget || String(sym?.name ?? "").includes(queryTarget)) {
-              matchedSymbols.push(String(sym.name));
+            // 2. Query workspace symbol index or active compilation context if available
+            const matchedSymbols: string[] = [];
+            const queryTarget =
+              typeof args["element"] === "string"
+                ? args["element"]
+                : typeof args["name"] === "string"
+                  ? args["name"]
+                  : undefined;
+            const symbolMap = (this.context.current?.queryEngine?.index as any)?.symbols as
+              | Map<number, any>
+              | undefined;
+            if (symbolMap) {
+              for (const sym of symbolMap.values()) {
+                if (!queryTarget || sym?.name === queryTarget || String(sym?.name ?? "").includes(queryTarget)) {
+                  matchedSymbols.push(String(sym.name));
+                }
+              }
             }
-          }
-        }
 
-        // 3. Domain-specific execution for FEA (.inp) and CFD (.cfg / .su2) manifest tools
-        let domainAnalysis: Record<string, unknown> | undefined;
-        const rawSource =
-          typeof args["source"] === "string"
-            ? args["source"]
-            : typeof args["content"] === "string"
-              ? args["content"]
-              : typeof args["deckContent"] === "string"
-                ? args["deckContent"]
-                : (this.context.current as any)?.sourceText;
-        if (typeof rawSource === "string" && rawSource.length > 0) {
-          if (tool.name.startsWith("fea_")) {
-            try {
-              const feaMod = await import("@modelscript/fea");
-              const props = feaMod.extractFeaSlicingProperties?.(rawSource);
-              const deck = feaMod.parseInpDeck?.(rawSource);
-              domainAnalysis = {
-                domain: "fea",
-                ...(props ? { slicingProperties: props } : {}),
-                ...(deck ? { sectionCount: (deck as any).sections?.length ?? deck.elementSets?.size ?? 0 } : {}),
-              };
-            } catch {
-              // Optional FEA package not loaded
+            // 3. Domain-specific execution for FEA (.inp) and CFD (.cfg / .su2) manifest tools
+            let domainAnalysis: Record<string, unknown> | undefined;
+            const rawSource =
+              typeof args["source"] === "string"
+                ? args["source"]
+                : typeof args["content"] === "string"
+                  ? args["content"]
+                  : typeof args["deckContent"] === "string"
+                    ? args["deckContent"]
+                    : (this.context.current as any)?.sourceText;
+            if (typeof rawSource === "string" && rawSource.length > 0) {
+              if (tool.name.startsWith("fea_")) {
+                try {
+                  const feaMod = await import("@modelscript/fea");
+                  const props = feaMod.extractFeaSlicingProperties?.(rawSource);
+                  const deck = feaMod.parseInpDeck?.(rawSource);
+                  domainAnalysis = {
+                    domain: "fea",
+                    ...(props ? { slicingProperties: props } : {}),
+                    ...(deck ? { sectionCount: (deck as any).sections?.length ?? deck.elementSets?.size ?? 0 } : {}),
+                  };
+                } catch {
+                  // Optional FEA package not loaded
+                }
+              } else if (tool.name.startsWith("cfd_")) {
+                try {
+                  const cfdMod = await import("@modelscript/cfd");
+                  const props = cfdMod.extractCfdSlicingProperties?.(rawSource);
+                  const cfg = cfdMod.parseSu2Config?.(rawSource);
+                  domainAnalysis = {
+                    domain: "cfd",
+                    ...(props ? { slicingProperties: props } : {}),
+                    ...(cfg
+                      ? { optionCount: cfg.directives?.size ?? (cfg as any).options?.size ?? Object.keys(cfg).length }
+                      : {}),
+                  };
+                } catch {
+                  // Optional CFD package not loaded
+                }
+              }
             }
-          } else if (tool.name.startsWith("cfd_")) {
-            try {
-              const cfdMod = await import("@modelscript/cfd");
-              const props = cfdMod.extractCfdSlicingProperties?.(rawSource);
-              const cfg = cfdMod.parseSu2Config?.(rawSource);
-              domainAnalysis = {
-                domain: "cfd",
-                ...(props ? { slicingProperties: props } : {}),
-                ...(cfg
-                  ? { optionCount: cfg.directives?.size ?? (cfg as any).options?.size ?? Object.keys(cfg).length }
-                  : {}),
-              };
-            } catch {
-              // Optional CFD package not loaded
-            }
-          }
-        }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
+            return {
+              content: [
                 {
-                  status: "success",
-                  tool: tool.name,
-                  args,
-                  ...(matchedSymbols.length > 0 ? { matchedSymbols: matchedSymbols.slice(0, 20) } : {}),
-                  ...(domainAnalysis ? { analysis: domainAnalysis } : {}),
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      status: "success",
+                      tool: tool.name,
+                      args,
+                      ...(matchedSymbols.length > 0 ? { matchedSymbols: matchedSymbols.slice(0, 20) } : {}),
+                      ...(domainAnalysis ? { analysis: domainAnalysis } : {}),
+                    },
+                    null,
+                    2,
+                  ),
                 },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      });
+              ],
+            };
+          },
+          () => this.context.sandboxLimits,
+        ),
+      );
     }
 
     // Register declarative resources

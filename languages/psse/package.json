@@ -32,7 +32,15 @@
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"
     },
-    "./parser.wasm": "./dist/parser.wasm"
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dae": {
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
+    }
   },
   "files": [
     "src/**",
@@ -41,8 +49,9 @@
     "assets/**"
   ],
   "scripts": {
-    "build": "tsc",
-    "clean": "rimraf dist",
+    "build": "node build.js && tsc",
+    "build:parser": "node build.js --force",
+    "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"

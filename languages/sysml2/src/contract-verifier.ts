@@ -1969,7 +1969,7 @@ export function extractSysML2ContractHierarchy(
       if (!states.includes(stm[1]!)) states.push(stm[1]!);
     }
 
-    const trRegex = /\btransition\s+([^;]+);/g;
+    const trRegex = /\btransition\s+([^\s;][^;]*);/g;
     let trm: RegExpExecArray | null;
     while ((trm = trRegex.exec(bodyClean)) !== null) {
       const trBody = trm[1]!.replace(/\s+/g, " ").trim();

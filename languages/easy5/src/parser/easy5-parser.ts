@@ -66,7 +66,7 @@ export function parseEasy5(sourceText: string): Easy5Model {
       continue;
     }
 
-    const titleMatch = /^TITLE\s*:\s*(.+)$/i.exec(trimmed);
+    const titleMatch = /^TITLE\s*:\s*(\S.*)$/i.exec(trimmed);
     if (titleMatch) {
       modelTitle = titleMatch[1]!.replace(/^["']|["']$/g, "").trim();
       continue;
@@ -85,7 +85,7 @@ export function parseEasy5(sourceText: string): Easy5Model {
       // Component definition line, e.g.:
       // LA01 TYPE=GP/LA TITLE="Lead Lag" X=100 Y=200
       // or COMPONENT LA01 GP/LA
-      const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*)?([A-Za-z0-9_/]+)(.*)$/i.exec(trimmed);
+      const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(.*))?$/i.exec(trimmed);
       if (cmpMatch && !trimmed.startsWith("XP:") && !trimmed.startsWith("S0:") && !trimmed.startsWith("PORTS:")) {
         const id = cmpMatch[1]!.toUpperCase();
         const type = cmpMatch[2]!;
@@ -137,21 +137,21 @@ export function parseEasy5(sourceText: string): Easy5Model {
       }
 
       // Parameter declarations XP: K=10.0, NUM=[1.0, 2.0]
-      if (currentComponent && /^\s*XP\s*:\s*(.+)$/i.test(trimmed)) {
+      if (currentComponent && /^\s*XP\s*:\s*(\S.*)$/i.test(trimmed)) {
         const paramsStr = trimmed.replace(/^\s*XP\s*:\s*/i, "");
         parseParameterList(paramsStr, currentComponent.parameters);
         continue;
       }
 
       // Initial state declarations S0: S1=1.0, S2=0.0
-      if (currentComponent && /^\s*S0\s*:\s*(.+)$/i.test(trimmed)) {
+      if (currentComponent && /^\s*S0\s*:\s*(\S.*)$/i.test(trimmed)) {
         const statesStr = trimmed.replace(/^\s*S0\s*:\s*/i, "");
         parseInitialStates(statesStr, currentComponent.initialStates);
         continue;
       }
 
       // Custom ports declaration PORTS: IN1=input, OUT1=output
-      if (currentComponent && /^\s*PORTS\s*:\s*(.+)$/i.test(trimmed)) {
+      if (currentComponent && /^\s*PORTS\s*:\s*(\S.*)$/i.test(trimmed)) {
         const portsStr = trimmed.replace(/^\s*PORTS\s*:\s*/i, "");
         parseCustomPorts(portsStr, currentComponent.ports);
         continue;

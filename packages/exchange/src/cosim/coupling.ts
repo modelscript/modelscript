@@ -13,6 +13,13 @@
  */
 export type CosimValue = number | string | boolean | Uint8Array;
 
+export type CouplingInterpolationMode = "ZERO_ORDER_HOLD" | "LINEAR" | "HERMITE";
+
+export interface ConjugatePowerPair {
+  effortVariable: string;
+  flowVariable: string;
+}
+
 /** A single variable coupling: one output feeds one input. */
 export interface VariableCoupling {
   from: {
@@ -27,6 +34,10 @@ export interface VariableCoupling {
     /** SI unit string from the target variable (optional). */
     unit?: string | undefined;
   };
+  /** Multi-rate interpolation / extrapolation method across communication steps. */
+  interpolation?: CouplingInterpolationMode | undefined;
+  /** Optional conjugate power pair (e.g. effort * flow) for interface energy tracking. */
+  conjugatePair?: ConjugatePowerPair | undefined;
 }
 
 /** Result from unit compatibility validation. */
@@ -45,11 +56,170 @@ export interface UnitWarning {
   message: string;
 }
 
+/** Point in continuous time history for Hermite polynomial interpolation. */
+export interface HistoryPoint {
+  time: number;
+  value: number;
+  derivative?: number | undefined;
+}
+
+/**
+ * Cubic Hermite polynomial interpolator / extrapolator for multi-rate co-simulation.
+ * Eliminates discontinuous stair-step shocks of Zero-Order Hold (ZOH) across communication intervals.
+ */
+export class HermiteInterpolator {
+  private readonly history: HistoryPoint[] = [];
+
+  get lastTime(): number | undefined {
+    return this.history.length > 0 ? this.history[this.history.length - 1]!.time : undefined;
+  }
+
+  addPoint(time: number, value: number, derivative?: number): void {
+    if (this.history.length > 0) {
+      const last = this.history[this.history.length - 1]!;
+      if (Math.abs(last.time - time) < 1e-12) {
+        last.value = value;
+        if (derivative !== undefined) last.derivative = derivative;
+        return;
+      }
+    }
+    this.history.push({ time, value, derivative });
+    if (this.history.length > 16) {
+      this.history.shift();
+    }
+  }
+
+  evaluate(t: number): number {
+    const n = this.history.length;
+    if (n === 0) return 0.0;
+    if (n === 1) return this.history[0]!.value;
+
+    const pLast = this.history[n - 1]!;
+    const pPrev = this.history[n - 2]!;
+
+    if (t >= pLast.time) {
+      const dt = t - pLast.time;
+      const d = pLast.derivative ?? (pLast.value - pPrev.value) / Math.max(1e-9, pLast.time - pPrev.time);
+      return pLast.value + d * dt;
+    }
+
+    if (t <= this.history[0]!.time) {
+      return this.history[0]!.value;
+    }
+
+    let idx = 0;
+    for (let i = 0; i < n - 1; i++) {
+      if (t >= this.history[i]!.time && t <= this.history[i + 1]!.time) {
+        idx = i;
+        break;
+      }
+    }
+
+    const p0 = this.history[idx]!;
+    const p1 = this.history[idx + 1]!;
+    const h = p1.time - p0.time;
+    if (h < 1e-12) return p0.value;
+
+    const s = (t - p0.time) / h;
+    const s2 = s * s;
+    const s3 = s2 * s;
+
+    const d0 = p0.derivative ?? (p1.value - p0.value) / h;
+    const d1 = p1.derivative ?? (p1.value - p0.value) / h;
+
+    const h00 = 2 * s3 - 3 * s2 + 1;
+    const h10 = s3 - 2 * s2 + s;
+    const h01 = -2 * s3 + 3 * s2;
+    const h11 = s3 - s2;
+
+    return h00 * p0.value + h10 * h * d0 + h01 * p1.value + h11 * h * d1;
+  }
+
+  clear(): void {
+    this.history.length = 0;
+  }
+}
+
+/** Metrics evaluating energy flow and passivity across a coupled interface. */
+export interface PassivityMetrics {
+  effort: number;
+  flow: number;
+  instantaneousPowerWatts: number;
+  accumulatedEnergyJoules: number;
+  energyInjectedJoules: number;
+  isPassive: boolean;
+  passivityIndex: number;
+}
+
+/**
+ * Energy-preserving Passivity Observer (PO) for cyber-physical co-simulation.
+ * Monitors effort-flow conjugate pairs to detect non-physical active energy generation.
+ */
+export class PassivityObserver {
+  private totalEnergyJoules = 0.0;
+  private energyInjectedJoules = 0.0;
+  private peakPowerWatts = 0.0;
+  private prevTime = 0.0;
+  private prevPower = 0.0;
+  private initialized = false;
+
+  step(time: number, effort: number, flow: number): PassivityMetrics {
+    const power = effort * flow;
+    if (Math.abs(power) > this.peakPowerWatts) {
+      this.peakPowerWatts = Math.abs(power);
+    }
+
+    if (!this.initialized) {
+      this.prevTime = time;
+      this.prevPower = power;
+      this.initialized = true;
+    } else {
+      const dt = Math.max(0.0, time - this.prevTime);
+      const dE = 0.5 * (power + this.prevPower) * dt;
+      this.totalEnergyJoules += dE;
+
+      if (this.totalEnergyJoules < 0) {
+        this.energyInjectedJoules = Math.abs(this.totalEnergyJoules);
+      }
+
+      this.prevTime = time;
+      this.prevPower = power;
+    }
+
+    const isPassive = this.totalEnergyJoules >= -1e-6;
+    const passivityIndex =
+      this.peakPowerWatts > 0
+        ? Math.max(0.0, this.totalEnergyJoules / (this.peakPowerWatts * Math.max(1e-3, time)))
+        : 1.0;
+
+    return {
+      effort,
+      flow,
+      instantaneousPowerWatts: power,
+      accumulatedEnergyJoules: this.totalEnergyJoules,
+      energyInjectedJoules: this.energyInjectedJoules,
+      isPassive,
+      passivityIndex,
+    };
+  }
+
+  reset(): void {
+    this.totalEnergyJoules = 0.0;
+    this.energyInjectedJoules = 0.0;
+    this.peakPowerWatts = 0.0;
+    this.prevTime = 0.0;
+    this.prevPower = 0.0;
+    this.initialized = false;
+  }
+}
+
 /**
  * Coupling graph that manages variable interconnections between participants.
  */
 export class CouplingGraph {
   private readonly couplings: VariableCoupling[] = [];
+  private readonly interpolators = new Map<string, HermiteInterpolator>();
+  private readonly passivityObservers = new Map<string, PassivityObserver>();
 
   /** Add a coupling from an output variable to an input variable. */
   addCoupling(coupling: VariableCoupling): void {
@@ -86,6 +256,16 @@ export class CouplingGraph {
   /** Get all couplings where the given participant is the target (input). */
   getInputCouplings(participantId: string): VariableCoupling[] {
     return this.couplings.filter((c) => c.to.participantId === participantId);
+  }
+
+  /** Gets an interpolator for a source variable if one exists. */
+  getInterpolator(participantId: string, variableName: string): HermiteInterpolator | undefined {
+    return this.interpolators.get(`${participantId}.${variableName}`);
+  }
+
+  /** Gets a passivity observer by connection key. */
+  getPassivityObserver(key: string): PassivityObserver | undefined {
+    return this.passivityObservers.get(key);
   }
 
   /**
@@ -137,7 +317,10 @@ export class CouplingGraph {
    * Apply coupling values: given a map of all participant outputs,
    * produce a map of participant ID → input values to inject.
    */
-  applyCouplings(allOutputs: Map<string, Map<string, CosimValue>>): Map<string, Map<string, CosimValue>> {
+  applyCouplings(
+    allOutputs: Map<string, Map<string, CosimValue>>,
+    currentTime?: number,
+  ): Map<string, Map<string, CosimValue>> {
     const inputs = new Map<string, Map<string, CosimValue>>();
 
     for (const coupling of this.couplings) {
@@ -146,6 +329,39 @@ export class CouplingGraph {
 
       let value = sourceOutputs.get(coupling.from.variableName);
       if (value === undefined) continue;
+
+      const key = `${coupling.from.participantId}.${coupling.from.variableName}`;
+
+      // If numeric and time is provided, update multi-rate Hermite interpolator
+      if (typeof value === "number" && currentTime !== undefined) {
+        let interp = this.interpolators.get(key);
+        if (!interp) {
+          interp = new HermiteInterpolator();
+          this.interpolators.set(key, interp);
+        }
+        if (interp.lastTime === undefined || currentTime >= interp.lastTime) {
+          interp.addPoint(currentTime, value);
+        }
+
+        if (coupling.interpolation === "HERMITE") {
+          value = interp.evaluate(currentTime);
+        }
+
+        // Energy-preserving passivity observation
+        if (coupling.conjugatePair) {
+          const effortVal = sourceOutputs.get(coupling.conjugatePair.effortVariable);
+          const flowVal = sourceOutputs.get(coupling.conjugatePair.flowVariable);
+          if (typeof effortVal === "number" && typeof flowVal === "number") {
+            const passKey = `${coupling.from.participantId}->${coupling.to.participantId}`;
+            let passObs = this.passivityObservers.get(passKey);
+            if (!passObs) {
+              passObs = new PassivityObserver();
+              this.passivityObservers.set(passKey, passObs);
+            }
+            passObs.step(currentTime, effortVal, flowVal);
+          }
+        }
+      }
 
       // Auto-convert units if both sides have unit metadata and they differ
       const fromUnit = coupling.from.unit;
@@ -168,6 +384,8 @@ export class CouplingGraph {
   /** Clear all couplings. */
   clear(): void {
     this.couplings.length = 0;
+    this.interpolators.clear();
+    this.passivityObservers.clear();
   }
 }
 

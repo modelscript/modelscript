@@ -43,6 +43,10 @@
     "./engine": {
       "types": "./dist/src/engine/index.d.ts",
       "default": "./dist/src/engine/index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
     }
   },
   "files": [

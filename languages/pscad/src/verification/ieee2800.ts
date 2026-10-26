@@ -52,6 +52,14 @@ export interface Ieee2800FaultSpec {
   evaluatePhaseJump?: boolean | undefined;
   /** Maximum allowable transient overcurrent in per-unit during ride-through (default: `1.30` pu). */
   maxTransientCurrentPu?: number | undefined;
+  /** Whether to evaluate Clause 7.2.2.4 Voltage Harmonic Distortion Limits (THD <= 5.0%, Individual <= 3.0%). */
+  evaluateHarmonics?: boolean | undefined;
+  /** Maximum allowable voltage THD in percent (default: 5.0%). */
+  maxThdPercent?: number | undefined;
+  /** Maximum allowable individual harmonic in percent (default: 3.0%). */
+  maxIndividualHarmonicPercent?: number | undefined;
+  /** Whether to evaluate Clause 7.2.2.3.4 Negative-Sequence Reactive Current Droop k2. */
+  evaluateNegativeSequenceDroop?: boolean | undefined;
 }
 
 /**
@@ -354,6 +362,98 @@ export function getMandatoryVrtDurationSec(vPu: number): number {
   if (vPu >= 0.25) return 1.2;
   if (vPu >= 0.1) return 0.32;
   return 0.16; // Zero-voltage ride-through (ZVRT) >= 160 ms
+}
+
+/**
+ * Result of evaluating harmonic distortion against IEEE 2800-2022 Clause 7.2.2.4 / IEEE 519.
+ */
+export interface HarmonicDistortionResult {
+  thdPercent: number;
+  maxIndividualHarmonicPercent: number;
+  maxHarmonicOrder: number;
+  harmonics: Float64Array;
+  thdPass: boolean;
+  individualPass: boolean;
+  passed: boolean;
+}
+
+/**
+ * Evaluates harmonic distortion up to the 50th harmonic on a steady-state window of a waveform
+ * per IEEE 2800-2022 Clause 7.2.2.4 & IEEE 519.
+ */
+export function evaluateHarmonicDistortion(
+  time: Float64Array,
+  waveform: Float64Array,
+  nominalFreqHz: number = 60.0,
+  maxHarmonic: number = 50,
+): HarmonicDistortionResult {
+  const n = time.length;
+  if (n < 16) {
+    return {
+      thdPercent: 0,
+      maxIndividualHarmonicPercent: 0,
+      maxHarmonicOrder: 1,
+      harmonics: new Float64Array(maxHarmonic),
+      thdPass: true,
+      individualPass: true,
+      passed: true,
+    };
+  }
+
+  const dt = (time[n - 1]! - time[0]!) / (n - 1);
+  const cycleSteps = Math.max(16, Math.round(1.0 / (nominalFreqHz * dt)));
+
+  // Select last 1 to 2 fundamental cycles for steady-state harmonic analysis
+  const windowCycles = Math.min(2, Math.floor(n / cycleSteps));
+  const windowSteps = windowCycles * cycleSteps;
+  const startIdx = Math.max(0, n - windowSteps);
+
+  const harmonics = new Float64Array(maxHarmonic);
+  const N = n - startIdx;
+  const omega = 2 * Math.PI * nominalFreqHz;
+
+  for (let h = 1; h <= maxHarmonic; h++) {
+    let re = 0.0;
+    let im = 0.0;
+    for (let k = startIdx; k < n; k++) {
+      const t = (k - startIdx) * dt;
+      const angle = h * omega * t;
+      re += waveform[k]! * Math.cos(angle);
+      im += waveform[k]! * Math.sin(angle);
+    }
+    const mag = (2.0 / N) * Math.hypot(re, im);
+    harmonics[h - 1] = mag;
+  }
+
+  const h1 = Math.max(1e-6, harmonics[0]!);
+  let sumSqHarmonics = 0.0;
+  let maxIndivPercent = 0.0;
+  let maxOrder = 2;
+
+  for (let h = 2; h <= maxHarmonic; h++) {
+    const mag = harmonics[h - 1]!;
+    sumSqHarmonics += mag * mag;
+    const indivPercent = (mag / h1) * 100.0;
+    if (indivPercent > maxIndivPercent) {
+      maxIndivPercent = indivPercent;
+      maxOrder = h;
+    }
+  }
+
+  const thdPercent = (Math.sqrt(sumSqHarmonics) / h1) * 100.0;
+  const thdPass = thdPercent <= 5.0;
+  const individualPass = maxIndivPercent <= 3.0;
+  const passed = thdPass && individualPass;
+
+  return {
+    thdPercent,
+    maxIndividualHarmonicPercent: maxIndivPercent,
+    maxHarmonicOrder: maxOrder,
+    harmonics,
+    thdPass,
+    individualPass,
+    passed,
+  };
 }
 
 /**
@@ -746,6 +846,56 @@ export function verifyIeee2800Compliance(
       details: pajPass
         ? `Converter maintained continuous synchronism and stable current regulation across a ${evalJumpDeg.toFixed(1)} deg phase-angle jump with peak current limited to ${maxPajIpu.toFixed(2)} pu <= ${maxLimitPu.toFixed(2)} pu.`
         : `Converter failed phase-angle jump ride-through: ${pajFailReasons.join("; ")}.`,
+    });
+  }
+
+  // Check 10: Clause 7.2.2.3.4 Negative-Sequence Reactive Droop (k2)
+  if (faultSpec.evaluateNegativeSequenceDroop && sequencePhasors) {
+    let i2qFaultMax = 0;
+    let v2FaultMax = 0;
+    for (let i = 0; i < n; i++) {
+      const t = time[i]!;
+      if (t >= faultStart && t <= faultEnd) {
+        if (sequencePhasors.i2q[i]! > i2qFaultMax) i2qFaultMax = sequencePhasors.i2q[i]!;
+        if (sequencePhasors.v2[i]! > v2FaultMax) v2FaultMax = sequencePhasors.v2[i]!;
+      }
+    }
+    const dV2Pu = v2FaultMax / Math.max(1, vBase);
+    const dI2qPu = i2qFaultMax / iBase;
+    const minK2 = faultSpec.minK2Gain ?? 1.5;
+    const isUnbalanced = dV2Pu >= 0.05;
+    const measuredK2 = isUnbalanced ? dI2qPu / dV2Pu : minK2;
+    const k2Pass = !isUnbalanced || measuredK2 >= minK2 || iPeakFault >= 0.95 * iBase;
+
+    checks.push({
+      clause: "7.2.2.3.4-NegSeq",
+      title: "Negative-Sequence Reactive Current Injection Droop (k2)",
+      status: k2Pass ? "PASS" : "FAIL",
+      measuredValue: isUnbalanced
+        ? `k2 = ${measuredK2.toFixed(2)} pu/pu (V2 = ${(dV2Pu * 100).toFixed(1)}%, dI_2q = ${(dI2qPu * 100).toFixed(1)}%)`
+        : "V2 < 5% (Balanced fault; k2 not stressed)",
+      requiredLimit: `k2 >= ${minK2.toFixed(1)} pu/pu during unbalanced faults (or current limit reached)`,
+      details: k2Pass
+        ? "Negative-sequence reactive current injected proportionally to suppress unbalanced voltage rise."
+        : "Insufficient negative-sequence reactive current injection during unbalanced fault.",
+    });
+  }
+
+  // Check 11: Clause 7.2.2.4 Voltage Harmonic Distortion Limits (THD <= 5.0%, Individual <= 3.0%)
+  if (faultSpec.evaluateHarmonics) {
+    const maxThd = faultSpec.maxThdPercent ?? 5.0;
+    const maxIndiv = faultSpec.maxIndividualHarmonicPercent ?? 3.0;
+    const thdResult = evaluateHarmonicDistortion(time, vPoi, freqHz, 50);
+    const thdPassed = thdResult.thdPercent <= maxThd && thdResult.maxIndividualHarmonicPercent <= maxIndiv;
+    checks.push({
+      clause: "7.2.2.4",
+      title: "Voltage Total Harmonic Distortion (THD) Ceiling",
+      status: thdPassed ? "PASS" : "FAIL",
+      measuredValue: `THD = ${thdResult.thdPercent.toFixed(2)}%, Max H${thdResult.maxHarmonicOrder} = ${thdResult.maxIndividualHarmonicPercent.toFixed(2)}%`,
+      requiredLimit: `THD <= ${maxThd.toFixed(2)}%, Individual Harmonic <= ${maxIndiv.toFixed(2)}%`,
+      details: thdPassed
+        ? "Waveform harmonic distortion satisfies IEEE 2800 Clause 7.2.2.4 and IEEE 519 ceilings."
+        : `Excessive harmonic distortion: THD ${thdResult.thdPercent.toFixed(2)}% (limit ${maxThd.toFixed(2)}%) or H${thdResult.maxHarmonicOrder} ${thdResult.maxIndividualHarmonicPercent.toFixed(2)}% (limit ${maxIndiv.toFixed(2)}%).`,
     });
   }
 

@@ -22,12 +22,15 @@ export {
   type StateListener,
 };
 
-/** Dynamic deformation configuration for compliant soft-tissue and organ structures. */
+/** Dynamic deformation configuration for compliant soft-tissue structures or modal elastodynamics. */
 export interface DynamicDeformationConfig {
   mode?: "volume_radial" | "anisotropic" | "modal";
   referenceVolume?: number;
   volumeVariable?: string;
   anchorOrigin?: [number, number, number];
+  modalVariables?: string[];
+  modeShapes?: Float32Array[];
+  nodeMap?: Uint32Array;
 }
 
 /** Dynamic spatial clearance segment between two interacting CAD bodies. */

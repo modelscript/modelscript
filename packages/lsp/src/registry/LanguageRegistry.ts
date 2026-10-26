@@ -171,6 +171,13 @@ export class LanguageRegistry {
   /**
    * Alias for getPluginById.
    */
+  get(id: string): LanguagePlugin | undefined {
+    return this.getPluginById(id);
+  }
+
+  /**
+   * Alias for getPluginById.
+   */
   getPluginByLanguageId(id: string): LanguagePlugin | undefined {
     return this.getPluginById(id);
   }

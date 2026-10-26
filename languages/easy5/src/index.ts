@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export { GP_BLOCK_DESCRIPTORS, getBlockDescriptor, type BlockDescriptor } from "./catalog/gp-library.js";
-export { lowerEasy5ToDae, type Easy5DaeLoweringResult } from "./dae/lowering.js";
+export { easy5ToDae, lowerEasy5ToDae, type Easy5DaeLoweringResult, type Easy5ToDaeOptions } from "./dae/index.js";
 export {
   buildEasy5DiagramData,
   renderEasy5SchematicSvg,
@@ -22,6 +22,17 @@ export {
   type TrimResult,
 } from "./linear/index.js";
 export { Easy5ErrorCode, lintEasy5, type Easy5Diagnostic } from "./lints/index.js";
+export {
+  executeEasy5Action,
+  getEasy5DocumentSymbols,
+  getEasy5Hover,
+  validateEasy5,
+  type LspDiagnostic,
+  type LspDocumentSymbol,
+  type LspHover,
+  type LspPosition,
+  type LspRange,
+} from "./lsp.js";
 export { parseEasy5 } from "./parser/easy5-parser.js";
 export { parseEasy5Table } from "./parser/table-parser.js";
 export { easy5ToModelica, easy5ToSsp } from "./projections/index.js";

@@ -87,16 +87,24 @@ export function generateRecordConstructorFor(
       ? effParentId === flattener.currentRootClassId
       : rootClassId && effParentId === rootClassId,
   );
-  const isDirectOrRedeclaredInRoot = Boolean(
+  const isRedeclaredInRoot = Boolean(
     rootClassId &&
-    (isDirectInCurrentRoot ||
-      (qualName &&
-        collectExtendsMods(flattener, rootClassId).some((a: any) => a.isRedeclaration && a.name === sym.name))),
+    sym.parentId !== rootClassId &&
+    qualName &&
+    collectExtendsMods(flattener, rootClassId).some(
+      (a: any) =>
+        a.isRedeclaration &&
+        a.name === sym.name &&
+        (a.redeclaredTypeSpecifier === qualName || a.redeclaredTypeSpecifier === `.${qualName}`),
+    ),
   );
   const fnName =
     overrideFnName ??
-    (isDirectOrRedeclaredInRoot && dae.name && dae.classKind !== "function"
-      ? dae.name.includes(".") || !qualName.includes(".") || isDirectInCurrentRoot
+    (rootClassId &&
+    (sym.parentId === rootClassId || isDirectInCurrentRoot || isRedeclaredInRoot) &&
+    dae.name &&
+    dae.classKind !== "function"
+      ? dae.name.includes(".") || !qualName.includes(".") || isDirectInCurrentRoot || isRedeclaredInRoot
         ? `${dae.name}.${sym.name}`
         : qualName
       : qualName || sym.name);
@@ -521,23 +529,6 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       if (!compTarget) {
         compTarget = db.byName(cleanType).find((t) => isRecordSym(t)) ?? null;
       }
-      if (compTarget && (compTarget.kind === "Model" || compTarget.kind === "Block" || compTarget.kind === "Class")) {
-        const subComps = db.childrenOf(compTarget.id).filter((c) => c.kind === "Component");
-        for (const sc of subComps) {
-          const scInst = db.query<ComponentInstanceData>("componentInstance", sc.id);
-          const scMeta = (sc.metadata as any) || {};
-          const scType = scInst?.typeSpecifier ?? scMeta.typeSpecifier;
-          if (scType) {
-            const scClean = scType.includes(".") ? scType.split(".").pop()! : scType;
-            const scTarget = db.byName(scClean).find((t) => isRecordSym(t));
-            if (scTarget && isRecordSym(scTarget)) {
-              usedRecordNames.add(scTarget.name);
-              const qSc = getSymbolQualifiedName(db, scTarget.id);
-              if (qSc) usedRecordNames.add(qSc);
-            }
-          }
-        }
-      }
       if (
         compTarget &&
         isRecordSym(compTarget) &&
@@ -591,10 +582,11 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       if (isRecordSym(sym)) {
         const name = sym.name;
         const qName = getSymbolQualifiedName(db, sym.id);
-        const pat = new RegExp(`\\b(${escapeRegExp(name)}|${escapeRegExp(qName)})\\s*\\(`, "m");
-        if (pat.test(rootCst.text)) {
+        if (qName && new RegExp(`\\b${escapeRegExp(qName)}\\s*\\(`, "m").test(rootCst.text)) {
           usedRecordNames.add(name);
-          if (qName) usedRecordNames.add(qName);
+          usedRecordNames.add(qName);
+        } else if (new RegExp(`\\b${escapeRegExp(name)}\\s*\\(`, "m").test(rootCst.text)) {
+          usedRecordNames.add(name);
         }
       }
     }
@@ -676,24 +668,6 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
               if (!usedRecordNames.has(cleanType)) {
                 usedRecordNames.add(cleanType);
                 usedRecordNames.add(typeSpec);
-                changed = true;
-              }
-            }
-          }
-          const extendsChildren = db.childrenOf(sym.id).filter((c) => c.kind === "Extends");
-          for (const ext of extendsChildren) {
-            const baseRes =
-              db.query<any>("resolveSimpleName", sym.id)?.(ext.name) ?? db.query<any>("classInstance", ext.id);
-            const baseClassId = typeof baseRes === "number" ? baseRes : (baseRes?.id ?? null);
-            const baseSym = baseClassId
-              ? db.symbol(baseClassId)
-              : (db.byName(ext.name.split(".").pop()!).find((t) => isRecordSym(t)) ?? null);
-            if (baseSym && isRecordSym(baseSym)) {
-              const bName = baseSym.name;
-              const qBName = getSymbolQualifiedName(db, baseSym.id);
-              if (!usedRecordNames.has(bName)) {
-                usedRecordNames.add(bName);
-                if (qBName) usedRecordNames.add(qBName);
                 changed = true;
               }
             }

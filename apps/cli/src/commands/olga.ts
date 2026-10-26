@@ -29,6 +29,8 @@ import {
   importBathymetrySurvey,
   lintOlgaModel,
   loadCheckpoint,
+  lowerOlgaToDae,
+  olgaToModelica,
   parseGateMetric,
   parseObservationCsv,
   parseOlga,
@@ -63,6 +65,9 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
           "Action to perform (simulate, lint, verify, diagram, convert, survey, gate, fmu, trend, profile, cosim, tune, flash, network)",
         type: "string",
         choices: [
+          "inspect",
+          "to-dae",
+          "to-modelica",
           "simulate",
           "lint",
           "verify",
@@ -550,6 +555,52 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
     const model = parseOlga(content);
 
     switch (action) {
+      case "inspect": {
+        console.log(`[OLGA Multiphase Model] File: ${path.basename(filePath)}`);
+        console.log(`  Title: ${model.title}`);
+        console.log(`  Flowpaths: ${model.flowpaths.length}`);
+        for (const fp of model.flowpaths) {
+          console.log(
+            `    - Flowpath '${fp.name}': ${fp.pipes.length} pipes, ${fp.valves.length} valves, ${fp.sources.length} sources`,
+          );
+        }
+        console.log(`  Boundary Nodes: ${model.nodes.length}`);
+        for (const node of model.nodes) {
+          console.log(
+            `    - Node '${node.name}' [${node.type}]: P=${((node.pressure ?? 0) / 1e5).toFixed(1)} bar, T=${((node.temperature ?? 273.15) - 273.15).toFixed(1)} °C`,
+          );
+        }
+        break;
+      }
+
+      case "to-dae": {
+        console.log(`Lowering OLGA model '${model.title}' to ModelScript linear-memory DAE arena...`);
+        const dae = lowerOlgaToDae(model);
+        console.log(`✔ DAE arena lowered successfully:`);
+        console.log(`  Variables : ${dae.varCount}`);
+        console.log(`  Equations : ${dae.eqCount}`);
+        const out = argv["out"] as string | undefined;
+        if (out) {
+          const outPath = path.resolve(process.cwd(), out);
+          fs.writeFileSync(outPath, JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2), "utf-8");
+          console.log(`✔ DAE metadata written to ${out}`);
+        }
+        break;
+      }
+
+      case "to-modelica": {
+        const mo = olgaToModelica(model);
+        const out = argv["out"] as string | undefined;
+        if (out) {
+          const outPath = path.resolve(process.cwd(), out);
+          fs.writeFileSync(outPath, mo, "utf-8");
+          console.log(`✔ Modelica projection written to ${out}`);
+        } else {
+          console.log(mo);
+        }
+        break;
+      }
+
       case "simulate": {
         const durationSeconds = (argv["duration"] as number | undefined) ?? model.endTime - model.startTime;
         const timeStepSeconds = (argv["dt"] as number | undefined) ?? model.maxDt;

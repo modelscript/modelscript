@@ -179,6 +179,7 @@ export interface OlgaFlowpath {
 
 export interface OlgaModel {
   title: string;
+  caseName?: string | undefined;
   author?: string | undefined;
   tableFile?: string | undefined;
   startTime: number; // seconds [s]

@@ -11,11 +11,14 @@
  * - Pre-flight multiphase linting (M7001–M7005)
  */
 
+export * from "./dae/index.js";
 export * from "./engine/index.js";
 export * from "./language.js";
 export { default as olgaLanguage } from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp.js";
 export * from "./parser/index.js";
+export * from "./projections/olga-to-modelica.js";
 export * from "./projections/olga-to-sysml2.js";
 export * from "./solver/anti-slug-controller.js";
 export * from "./solver/asphaltene.js";

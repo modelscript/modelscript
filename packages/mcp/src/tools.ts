@@ -55,6 +55,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";
+import { withSandbox } from "./sandbox.js";
 import type { ServerContext, TopologyGraph } from "./types.js";
 
 /**
@@ -287,94 +288,98 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       solver: z.enum(["rk4", "dopri5", "bdf", "auto"]).optional().describe("ODE solver (default: dopri5)"),
       format: z.enum(["csv", "json"]).optional().describe("Output format (default: json)"),
     },
-    async ({ name, startTime, stopTime, interval, solver, format }) => {
-      if (!ctx.current) {
-        return {
-          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
-          isError: true,
-        };
-      }
+    withSandbox(
+      "modelica_simulate",
+      async ({ name, startTime, stopTime, interval, solver, format }) => {
+        if (!ctx.current) {
+          return {
+            content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+            isError: true,
+          };
+        }
 
-      // Pre-flight quota check for hosted/metered execution
-      if (ctx.checkQuota) {
-        const quota = await ctx.checkQuota({ toolName: "modelica_simulate", profile: "standard" });
-        if (!quota.allowed) {
+        // Pre-flight quota check for hosted/metered execution
+        if (ctx.checkQuota) {
+          const quota = await ctx.checkQuota({ toolName: "modelica_simulate", profile: "standard" });
+          if (!quota.allowed) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Payment Required (402) - Insufficient Compute Credits: ${quota.reason || "Credit balance insufficient"}. Required: ${quota.required ?? "?"}, Balance: ${quota.balance ?? "?"}. Top up at /settings.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+        }
+
+        // Try arena path first (query-based flattening)
+        try {
+          const queryDB = ctx.current.queryEngine.toQueryDB();
+          const flattener = new ArenaQueryFlattener(queryDB);
+
+          const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+          const firstId = entries[0];
+          if (firstId === undefined) {
+            return {
+              content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+              isError: true,
+            };
+          }
+
+          const arena = flattener.flatten(firstId);
+          const simOpts: ArenaSimulateOptions = {
+            solver: (solver ?? "dopri5") as "euler" | "rk4" | "dopri5" | "bdf" | "auto",
+          };
+          if (startTime !== undefined) simOpts.startTime = startTime;
+          if (stopTime !== undefined) simOpts.stopTime = stopTime;
+          if (interval !== undefined) simOpts.step = interval;
+          const result = await simulateArenaAsync(arena as any, simOpts);
+          const states = result.states;
+
+          let costNotice = "";
+          if (ctx.deductCredits) {
+            const costCredits = 0.1;
+            await ctx.deductCredits({
+              toolName: "modelica_simulate",
+              costCredits,
+              details: { name, states: states.length, steps: result.t.length },
+            });
+            costNotice = `\n\n[Compute Metered: ${costCredits.toFixed(2)} credits debited]`;
+          }
+
+          if ((format ?? "json") === "csv") {
+            const lines = [`time,${states.join(",")}`];
+            for (let i = 0; i < result.t.length; i++) {
+              const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+              lines.push(values.join(","));
+            }
+            return { content: [{ type: "text" as const, text: lines.join("\n") + costNotice }] };
+          } else {
+            const rows = result.t.map((t: number, i: number) => {
+              const row: Record<string, number> = { time: t };
+              states.forEach((state: string, vi: number) => {
+                row[state] = result.y[i]?.[vi] ?? 0;
+              });
+              return row;
+            });
+            return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) + costNotice }] };
+          }
+        } catch (e) {
           return {
             content: [
               {
                 type: "text" as const,
-                text: `Payment Required (402) - Insufficient Compute Credits: ${quota.reason || "Credit balance insufficient"}. Required: ${quota.required ?? "?"}, Balance: ${quota.balance ?? "?"}. Top up at /settings.`,
+                text: `Simulation failed: ${e instanceof Error ? e.message : String(e)}`,
               },
             ],
             isError: true,
           };
         }
-      }
-
-      // Try arena path first (query-based flattening)
-      try {
-        const queryDB = ctx.current.queryEngine.toQueryDB();
-        const flattener = new ArenaQueryFlattener(queryDB);
-
-        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
-        const firstId = entries[0];
-        if (firstId === undefined) {
-          return {
-            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
-            isError: true,
-          };
-        }
-
-        const arena = flattener.flatten(firstId);
-        const simOpts: ArenaSimulateOptions = {
-          solver: (solver ?? "dopri5") as "euler" | "rk4" | "dopri5" | "bdf" | "auto",
-        };
-        if (startTime !== undefined) simOpts.startTime = startTime;
-        if (stopTime !== undefined) simOpts.stopTime = stopTime;
-        if (interval !== undefined) simOpts.step = interval;
-        const result = await simulateArenaAsync(arena as any, simOpts);
-        const states = result.states;
-
-        let costNotice = "";
-        if (ctx.deductCredits) {
-          const costCredits = 0.1;
-          await ctx.deductCredits({
-            toolName: "modelica_simulate",
-            costCredits,
-            details: { name, states: states.length, steps: result.t.length },
-          });
-          costNotice = `\n\n[Compute Metered: ${costCredits.toFixed(2)} credits debited]`;
-        }
-
-        if ((format ?? "json") === "csv") {
-          const lines = [`time,${states.join(",")}`];
-          for (let i = 0; i < result.t.length; i++) {
-            const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
-            lines.push(values.join(","));
-          }
-          return { content: [{ type: "text" as const, text: lines.join("\n") + costNotice }] };
-        } else {
-          const rows = result.t.map((t: number, i: number) => {
-            const row: Record<string, number> = { time: t };
-            states.forEach((state: string, vi: number) => {
-              row[state] = result.y[i]?.[vi] ?? 0;
-            });
-            return row;
-          });
-          return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) + costNotice }] };
-        }
-      } catch (e) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Simulation failed: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    },
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── hybrid_simulate ────────────────────────────────────────────────────
@@ -388,77 +393,81 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       startTime: z.number().optional(),
       stopTime: z.number().optional(),
     },
-    async ({ name, paths, startTime, stopTime }) => {
-      const context = ctx.current ?? new Context(new NodeFileSystem());
-      ctx.current = context;
-      const sIdx = createSysML2WorkspaceIndex();
+    withSandbox(
+      "hybrid_simulate",
+      async ({ name, paths, startTime, stopTime }) => {
+        const context = ctx.current ?? new Context(new NodeFileSystem());
+        ctx.current = context;
+        const sIdx = createSysML2WorkspaceIndex();
 
-      for (const p of paths) {
-        const resolved = path.resolve(p);
-        if (resolved.endsWith(".sysml")) {
-          try {
-            const text = fs.readFileSync(resolved, "utf-8");
-            const sysmlParser = UnifiedWorkspace.getGlobalParser(".sysml");
-            if (sysmlParser) {
-              sIdx.register(resolved, () => sysmlParser.parse(text)?.rootNode as any);
+        for (const p of paths) {
+          const resolved = path.resolve(p);
+          if (resolved.endsWith(".sysml")) {
+            try {
+              const text = fs.readFileSync(resolved, "utf-8");
+              const sysmlParser = UnifiedWorkspace.getGlobalParser(".sysml");
+              if (sysmlParser) {
+                sIdx.register(resolved, () => sysmlParser.parse(text)?.rootNode as any);
+              }
+            } catch {
+              // ignore unreadable sysml path
             }
-          } catch {
-            // ignore unreadable sysml path
+          } else {
+            await context.addLibrary(resolved);
           }
-        } else {
-          await context.addLibrary(resolved);
         }
-      }
 
-      const u = new UnifiedWorkspace();
-      u.registerWorkspace("modelica", context.workspaceIndex as any, {} as any);
-      u.registerWorkspace("sysml2", sIdx as any, sysml2LangFallback);
+        const u = new UnifiedWorkspace();
+        u.registerWorkspace("modelica", context.workspaceIndex as any, {} as any);
+        u.registerWorkspace("sysml2", sIdx as any, sysml2LangFallback);
 
-      const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+        const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
-      // Ensure the ontology store has a full projection
-      u.owl2Store.fullProjection();
+        // Ensure the ontology store has a full projection
+        u.owl2Store.fullProjection();
 
-      // Create a reasoner instance
-      const reasoner = new TableauReasoner();
-      const builder = new OntologyBuilder(reasoner, u.owl2Store);
-      await builder.initialize();
+        // Create a reasoner instance
+        const reasoner = new TableauReasoner();
+        const builder = new OntologyBuilder(reasoner, u.owl2Store);
+        await builder.initialize();
 
-      // Store in context for subsequent calls
-      ctx.workspace = u;
-      ctx.ontologyBuilder = builder;
+        // Store in context for subsequent calls
+        ctx.workspace = u;
+        ctx.ontologyBuilder = builder;
 
-      const entries = db.byName.get(name) || [];
-      const firstId = entries[0];
-      if (firstId === undefined) {
-        return { content: [{ type: "text" as const, text: `Class '${name}' not found.` }], isError: true };
-      }
+        const entries = db.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return { content: [{ type: "text" as const, text: `Class '${name}' not found.` }], isError: true };
+        }
 
-      const entry = db.symbols.get(firstId);
-      let daeObj;
+        const entry = db.symbols.get(firstId);
+        let daeObj;
 
-      if (entry?.language === "sysml2") {
-        const engine = createSysML2QueryEngine(db);
-        const queryDB = engine.toQueryDB();
-        const flattener = new ArenaQueryFlattener(queryDB);
-        const topology = queryDB.query("extractTopology", firstId) as TopologyGraph;
-        daeObj = flattener.flattenFromTopology(topology);
-      } else {
-        const engine = createModelicaQueryEngine(db);
-        const queryDB = engine.toQueryDB();
-        const flattener = new ArenaQueryFlattener(queryDB);
-        daeObj = flattener.flatten(firstId);
-      }
+        if (entry?.language === "sysml2") {
+          const engine = createSysML2QueryEngine(db);
+          const queryDB = engine.toQueryDB();
+          const flattener = new ArenaQueryFlattener(queryDB);
+          const topology = queryDB.query("extractTopology", firstId) as TopologyGraph;
+          daeObj = flattener.flattenFromTopology(topology);
+        } else {
+          const engine = createModelicaQueryEngine(db);
+          const queryDB = engine.toQueryDB();
+          const flattener = new ArenaQueryFlattener(queryDB);
+          daeObj = flattener.flatten(firstId);
+        }
 
-      // `daeObj` is now an DAEBuilder instance — use the arena simulation path directly.
-      const result = await simulateArenaAsync(daeObj, {
-        startTime: startTime ?? 0,
-        stopTime: stopTime ?? 10,
-        solver: "dopri5",
-      });
+        // `daeObj` is now an DAEBuilder instance — use the arena simulation path directly.
+        const result = await simulateArenaAsync(daeObj, {
+          startTime: startTime ?? 0,
+          stopTime: stopTime ?? 10,
+          solver: "dopri5",
+        });
 
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-    },
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── modelica_doe ───────────────────────────────────────────────────────
@@ -1715,99 +1724,143 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       faultDuration: z.number().optional().describe("Fault duration in seconds (default: 0.05)"),
       format: z.enum(["summary", "comtrade", "json", "psout"]).optional().describe("Output format (default: summary)"),
     },
-    async ({ path: filePath, dt, tstop, faultBus, faultStart, faultDuration, format }) => {
-      try {
-        const resolved = path.resolve(filePath);
-        const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, emtResultToComtrade, writeComtrade } =
-          await import("@modelscript/pscad");
-        const { EmtSolver } = await import("@modelscript/simulate");
-        const fsMod = await import("node:fs");
+    withSandbox(
+      "pscad_simulate",
+      async ({ path: filePath, dt, tstop, faultBus, faultStart, faultDuration, format }) => {
+        try {
+          const resolved = path.resolve(filePath);
+          const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, emtResultToComtrade, writeComtrade } =
+            await import("@modelscript/pscad");
+          const { EmtSolver } = await import("@modelscript/simulate");
+          const fsMod = await import("node:fs");
 
-        if (!fsMod.existsSync(resolved)) {
-          return {
-            content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
-            isError: true,
+          if (!fsMod.existsSync(resolved)) {
+            return {
+              content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+              isError: true,
+            };
+          }
+
+          const text = fsMod.readFileSync(resolved, "utf-8");
+          const project = parsePscx(text);
+          const netlist = extractEmtNetlist(project);
+          const baseCircuit = netlistToEmtCircuit(netlist);
+
+          const circuit = {
+            ...baseCircuit,
+            faults: faultBus
+              ? [
+                  ...(baseCircuit.faults ?? []),
+                  {
+                    bus: faultBus,
+                    startSec: faultStart ?? 0.05,
+                    durationSec: faultDuration ?? 0.05,
+                    faultResistanceOhm: 0.01,
+                    faultType: "SLG" as const,
+                  },
+                ]
+              : baseCircuit.faults,
           };
-        }
 
-        const text = fsMod.readFileSync(resolved, "utf-8");
-        const project = parsePscx(text);
-        const netlist = extractEmtNetlist(project);
-        const baseCircuit = netlistToEmtCircuit(netlist);
+          const solver = new EmtSolver(circuit as any, {
+            timeStepSec: dt ?? 20e-6,
+            durationSec: tstop ?? 0.1,
+            nominalFrequencyHz: netlist.nominalFrequencyHz,
+            threePhase: true,
+            steadyStateInit: true,
+            maxNonlinearIterations: 6,
+          });
 
-        const circuit = {
-          ...baseCircuit,
-          faults: faultBus
-            ? [
-                ...(baseCircuit.faults ?? []),
+          const result = solver.solve();
+
+          if (format === "psout") {
+            const { writePscadPsout } = await import("@modelscript/pscad");
+            const psoutBytes = writePscadPsout(result, { projectName: project.name });
+            const base64 = Buffer.from(psoutBytes).toString("base64");
+            return {
+              content: [
                 {
-                  bus: faultBus,
-                  startSec: faultStart ?? 0.05,
-                  durationSec: faultDuration ?? 0.05,
-                  faultResistanceOhm: 0.01,
-                  faultType: "SLG" as const,
+                  type: "text" as const,
+                  text: `=== PSCAD V5 Binary Waveform Container (.psout) ===\nSize: ${psoutBytes.byteLength} bytes\nChannels: ${result.busVoltages.size + result.branchCurrents.size}\nSamples: ${result.time.length}\nBase64 Payload (${base64.length} chars):\n${base64.slice(0, 1000)}... [truncated]`,
                 },
-              ]
-            : baseCircuit.faults,
-        };
+              ],
+            };
+          }
 
-        const solver = new EmtSolver(circuit as any, {
-          timeStepSec: dt ?? 20e-6,
-          durationSec: tstop ?? 0.1,
-          nominalFrequencyHz: netlist.nominalFrequencyHz,
-          threePhase: true,
-          steadyStateInit: true,
-          maxNonlinearIterations: 6,
-        });
+          if (format === "comtrade") {
+            const namedVoltages = new Map<string, Float64Array>();
+            for (const [busId, series] of result.busVoltages.entries()) {
+              const busName = netlist.buses.get(busId)?.name ?? busId;
+              namedVoltages.set(busName, series);
+            }
+            const comtradeResult = { ...result, busVoltages: namedVoltages };
+            const comtrade = emtResultToComtrade(comtradeResult, project.name);
+            const { cfg, dat } = writeComtrade(comtrade);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `=== IEEE C37.111 COMTRADE Configuration (.cfg) ===\n${cfg}\n=== IEEE C37.111 COMTRADE Data Snippet (.dat) ===\n${dat.slice(0, 2000)}...`,
+                },
+              ],
+            };
+          }
 
-        const result = solver.solve();
+          if (format === "json") {
+            const busObj: Record<string, number[]> = {};
+            for (const [k, v] of result.busVoltages.entries()) {
+              busObj[k] = Array.from(v);
+            }
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      time: Array.from(result.time),
+                      busVoltages: busObj,
+                      metrics: result.metrics,
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            };
+          }
 
-        if (format === "psout") {
-          const { writePscadPsout } = await import("@modelscript/pscad");
-          const psoutBytes = writePscadPsout(result, { projectName: project.name });
-          const base64 = Buffer.from(psoutBytes).toString("base64");
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `=== PSCAD V5 Binary Waveform Container (.psout) ===\nSize: ${psoutBytes.byteLength} bytes\nChannels: ${result.busVoltages.size + result.branchCurrents.size}\nSamples: ${result.time.length}\nBase64 Payload (${base64.length} chars):\n${base64.slice(0, 1000)}... [truncated]`,
-              },
-            ],
-          };
-        }
-
-        if (format === "comtrade") {
-          const namedVoltages = new Map<string, Float64Array>();
+          // Summary format:
+          const busSummary: Record<string, { id: string; minKv: number; maxKv: number; finalKv: number }> = {};
           for (const [busId, series] of result.busVoltages.entries()) {
             const busName = netlist.buses.get(busId)?.name ?? busId;
-            namedVoltages.set(busName, series);
+            let min = Infinity;
+            let max = -Infinity;
+            for (let i = 0; i < series.length; i++) {
+              if (series[i]! < min) min = series[i]!;
+              if (series[i]! > max) max = series[i]!;
+            }
+            const finalVal = series[series.length - 1] ?? 0;
+            const entry = {
+              id: busId,
+              minKv: +(min / 1000).toFixed(3),
+              maxKv: +(max / 1000).toFixed(3),
+              finalKv: +(finalVal / 1000).toFixed(3),
+            };
+            busSummary[busId] = entry;
+            busSummary[busName] = entry;
           }
-          const comtradeResult = { ...result, busVoltages: namedVoltages };
-          const comtrade = emtResultToComtrade(comtradeResult, project.name);
-          const { cfg, dat } = writeComtrade(comtrade);
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `=== IEEE C37.111 COMTRADE Configuration (.cfg) ===\n${cfg}\n=== IEEE C37.111 COMTRADE Data Snippet (.dat) ===\n${dat.slice(0, 2000)}...`,
-              },
-            ],
-          };
-        }
 
-        if (format === "json") {
-          const busObj: Record<string, number[]> = {};
-          for (const [k, v] of result.busVoltages.entries()) {
-            busObj[k] = Array.from(v);
-          }
           return {
             content: [
               {
                 type: "text" as const,
                 text: JSON.stringify(
                   {
-                    time: Array.from(result.time),
-                    busVoltages: busObj,
+                    project: project.name,
+                    totalSteps: result.time.length,
+                    timeSpan: `${result.time[0]}s to ${result.time[result.time.length - 1]}s (dt = ${(dt ?? 20e-6) * 1e6} µs)`,
+                    buses: Array.from(result.busVoltages.keys()),
+                    busVoltagesKv: busSummary,
                     metrics: result.metrics,
                   },
                   null,
@@ -1816,55 +1869,15 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               },
             ],
           };
-        }
-
-        // Summary format:
-        const busSummary: Record<string, { id: string; minKv: number; maxKv: number; finalKv: number }> = {};
-        for (const [busId, series] of result.busVoltages.entries()) {
-          const busName = netlist.buses.get(busId)?.name ?? busId;
-          let min = Infinity;
-          let max = -Infinity;
-          for (let i = 0; i < series.length; i++) {
-            if (series[i]! < min) min = series[i]!;
-            if (series[i]! > max) max = series[i]!;
-          }
-          const finalVal = series[series.length - 1] ?? 0;
-          const entry = {
-            id: busId,
-            minKv: +(min / 1000).toFixed(3),
-            maxKv: +(max / 1000).toFixed(3),
-            finalKv: +(finalVal / 1000).toFixed(3),
+        } catch (err: any) {
+          return {
+            content: [{ type: "text" as const, text: `PSCAD Simulation error: ${err.message}` }],
+            isError: true,
           };
-          busSummary[busId] = entry;
-          busSummary[busName] = entry;
         }
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  project: project.name,
-                  totalSteps: result.time.length,
-                  timeSpan: `${result.time[0]}s to ${result.time[result.time.length - 1]}s (dt = ${(dt ?? 20e-6) * 1e6} µs)`,
-                  buses: Array.from(result.busVoltages.keys()),
-                  busVoltagesKv: busSummary,
-                  metrics: result.metrics,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text" as const, text: `PSCAD Simulation error: ${err.message}` }],
-          isError: true,
-        };
-      }
-    },
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── pscad_verify_ieee2800 ───────────────────────────────────────────────
@@ -1878,124 +1891,129 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       faultDurationMs: z.number().optional().describe("Fault duration in milliseconds (default: 150)"),
       vSagPu: z.number().optional().describe("Voltage sag level in pu during fault (default: 0.05)"),
     },
-    async ({ path: filePath, poiBus, faultDurationMs, vSagPu }) => {
-      try {
-        const resolved = path.resolve(filePath);
-        const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, verifyIeee2800Compliance } =
-          await import("@modelscript/pscad");
-        const { EmtSolver } = await import("@modelscript/simulate");
-        const fsMod = await import("node:fs");
+    withSandbox(
+      "pscad_verify_ieee2800",
+      async ({ path: filePath, poiBus, faultDurationMs, vSagPu }) => {
+        try {
+          const resolved = path.resolve(filePath);
+          const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, verifyIeee2800Compliance } =
+            await import("@modelscript/pscad");
+          const { EmtSolver } = await import("@modelscript/simulate");
+          const fsMod = await import("node:fs");
 
-        if (!fsMod.existsSync(resolved)) {
+          if (!fsMod.existsSync(resolved)) {
+            return {
+              content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+              isError: true,
+            };
+          }
+
+          const text = fsMod.readFileSync(resolved, "utf-8");
+          const project = parsePscx(text);
+          const netlist = extractEmtNetlist(project);
+          const baseCircuit = netlistToEmtCircuit(netlist);
+
+          // Resolve POI bus by ID or human-readable name
+          let targetBus = poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0]!;
+          if (poiBus && !netlist.buses.has(poiBus)) {
+            for (const [id, bus] of netlist.buses.entries()) {
+              if (bus.name === poiBus) {
+                targetBus = id;
+                break;
+              }
+            }
+          }
+
+          const fDurationSec = (faultDurationMs ?? 150) / 1000;
+          const vNominalKv = netlist.buses.get(targetBus)?.baseKv ?? 230;
+          const sources =
+            baseCircuit.sources && baseCircuit.sources.length > 0
+              ? baseCircuit.sources
+              : [{ bus: targetBus, vPeakKv: vNominalKv, freqHz: netlist.nominalFrequencyHz }];
+
+          const circuit = {
+            ...baseCircuit,
+            sources,
+            faults:
+              baseCircuit.faults && baseCircuit.faults.length > 0
+                ? baseCircuit.faults
+                : [
+                    {
+                      bus: targetBus,
+                      startSec: 0.05,
+                      durationSec: fDurationSec,
+                      faultResistanceOhm: 0.05,
+                      faultType: "SLG" as const,
+                    },
+                  ],
+          };
+
+          const solver = new EmtSolver(circuit as any, {
+            timeStepSec: 20e-6,
+            durationSec: 0.25,
+            nominalFrequencyHz: netlist.nominalFrequencyHz,
+            threePhase: true,
+            steadyStateInit: true,
+          });
+
+          const result = solver.solve();
+          const vPoi = result.busVoltages.get(targetBus) ?? new Float64Array(result.time.length);
+          const fmuId = netlist.fmuInstances[0]?.id;
+          let iIbr = fmuId ? result.branchCurrents.get(fmuId) : undefined;
+          if (!iIbr) {
+            for (const branchArr of result.branchCurrents.values()) {
+              if (branchArr.length === result.time.length) {
+                iIbr = branchArr;
+                break;
+              }
+            }
+          }
+          if (!iIbr) {
+            iIbr = new Float64Array(result.time.length);
+            const baseImpedance = Math.max(0.1, vNominalKv / 1.2);
+            for (let i = 0; i < iIbr.length; i++) {
+              const vInst =
+                vPoi[i] ?? vNominalKv * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+              iIbr[i] = vInst / baseImpedance;
+            }
+          }
+
+          const compliance = verifyIeee2800Compliance(
+            project.name,
+            netlist,
+            {
+              time: result.time,
+              vPoi,
+              iIbr,
+              vPoiAbc: result.busPhaseVoltages?.get(targetBus),
+              iIbrAbc: fmuId ? result.branchPhaseCurrents?.get(fmuId) : undefined,
+            },
+            {
+              faultStartSec: 0.05,
+              faultDurationSec: fDurationSec,
+              vPreFaultKv: vNominalKv,
+              vFaultKv: vNominalKv * (vSagPu ?? 0.05),
+              evaluateExtendedClauses: true,
+            },
+          );
+
           return {
-            content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(compliance, null, 2),
+              },
+            ],
+          };
+        } catch (err: any) {
+          return {
+            content: [{ type: "text" as const, text: `IEEE 2800 verification failed: ${err.message}` }],
             isError: true,
           };
         }
-
-        const text = fsMod.readFileSync(resolved, "utf-8");
-        const project = parsePscx(text);
-        const netlist = extractEmtNetlist(project);
-        const baseCircuit = netlistToEmtCircuit(netlist);
-
-        // Resolve POI bus by ID or human-readable name
-        let targetBus = poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0]!;
-        if (poiBus && !netlist.buses.has(poiBus)) {
-          for (const [id, bus] of netlist.buses.entries()) {
-            if (bus.name === poiBus) {
-              targetBus = id;
-              break;
-            }
-          }
-        }
-
-        const fDurationSec = (faultDurationMs ?? 150) / 1000;
-        const vNominalKv = netlist.buses.get(targetBus)?.baseKv ?? 230;
-        const sources =
-          baseCircuit.sources && baseCircuit.sources.length > 0
-            ? baseCircuit.sources
-            : [{ bus: targetBus, vPeakKv: vNominalKv, freqHz: netlist.nominalFrequencyHz }];
-
-        const circuit = {
-          ...baseCircuit,
-          sources,
-          faults:
-            baseCircuit.faults && baseCircuit.faults.length > 0
-              ? baseCircuit.faults
-              : [
-                  {
-                    bus: targetBus,
-                    startSec: 0.05,
-                    durationSec: fDurationSec,
-                    faultResistanceOhm: 0.05,
-                    faultType: "SLG" as const,
-                  },
-                ],
-        };
-
-        const solver = new EmtSolver(circuit as any, {
-          timeStepSec: 20e-6,
-          durationSec: 0.25,
-          nominalFrequencyHz: netlist.nominalFrequencyHz,
-          threePhase: true,
-          steadyStateInit: true,
-        });
-
-        const result = solver.solve();
-        const vPoi = result.busVoltages.get(targetBus) ?? new Float64Array(result.time.length);
-        const fmuId = netlist.fmuInstances[0]?.id;
-        let iIbr = fmuId ? result.branchCurrents.get(fmuId) : undefined;
-        if (!iIbr) {
-          for (const branchArr of result.branchCurrents.values()) {
-            if (branchArr.length === result.time.length) {
-              iIbr = branchArr;
-              break;
-            }
-          }
-        }
-        if (!iIbr) {
-          iIbr = new Float64Array(result.time.length);
-          const baseImpedance = Math.max(0.1, vNominalKv / 1.2);
-          for (let i = 0; i < iIbr.length; i++) {
-            const vInst = vPoi[i] ?? vNominalKv * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
-            iIbr[i] = vInst / baseImpedance;
-          }
-        }
-
-        const compliance = verifyIeee2800Compliance(
-          project.name,
-          netlist,
-          {
-            time: result.time,
-            vPoi,
-            iIbr,
-            vPoiAbc: result.busPhaseVoltages?.get(targetBus),
-            iIbrAbc: fmuId ? result.branchPhaseCurrents?.get(fmuId) : undefined,
-          },
-          {
-            faultStartSec: 0.05,
-            faultDurationSec: fDurationSec,
-            vPreFaultKv: vNominalKv,
-            vFaultKv: vNominalKv * (vSagPu ?? 0.05),
-            evaluateExtendedClauses: true,
-          },
-        );
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(compliance, null, 2),
-            },
-          ],
-        };
-      } catch (err: any) {
-        return {
-          content: [{ type: "text" as const, text: `IEEE 2800 verification failed: ${err.message}` }],
-          isError: true,
-        };
-      }
-    },
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── pscad_export ────────────────────────────────────────────────────────
@@ -2195,80 +2213,84 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       checkpointOut: z.string().optional().describe("Path to save final simulation state snapshot (.rst)"),
       checkpointInterval: z.number().optional().describe("Periodic checkpoint snapshot interval in seconds [s]"),
     },
-    async ({ source, durationSeconds, timeStepSeconds, format, restart, checkpointOut, checkpointInterval }) => {
-      try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
-        const model = parseOlga(content);
-
-        let initialCheckpoint: OlgaCheckpointState | undefined;
-        if (restart && fs.existsSync(restart)) {
-          initialCheckpoint = loadCheckpoint(restart);
-        }
-
-        let lastCheckpoint: OlgaCheckpointState | undefined;
-        const result = simulateDriftFlux(model, {
-          durationSeconds: durationSeconds ?? Math.min(model.endTime - model.startTime, 3600),
-          timeStepSeconds: timeStepSeconds ?? model.maxDt,
-          initialCheckpoint,
-          checkpointIntervalSeconds: checkpointInterval,
-          onCheckpoint: (cp) => {
-            lastCheckpoint = cp;
-            if (checkpointOut && checkpointInterval) {
-              saveCheckpoint(cp, checkpointOut);
-            }
-          },
-        });
-
-        if (checkpointOut && lastCheckpoint) {
-          saveCheckpoint(lastCheckpoint, checkpointOut);
-        }
-
-        if (format === "csv") {
-          const lines = [
-            "time,inlet_pressure_bar,arrival_pressure_bar,arrival_temperature_c,arrival_holdup,peak_surge_m3,mean_slug_length_m",
-          ];
-          for (let i = 0; i < result.times.length; i++) {
-            lines.push(
-              [
-                result.times[i]!.toFixed(1),
-                ((result.trends.inletPressure[i] ?? 0) / 1e5).toFixed(2),
-                ((result.trends.arrivalPressure[i] ?? 0) / 1e5).toFixed(2),
-                ((result.trends.arrivalTemperature[i] ?? 273.15) - 273.15).toFixed(2),
-                (result.trends.arrivalLiquidHoldup[i] ?? 0).toFixed(4),
-                result.trends.peakLiquidSurgeVolume.toFixed(2),
-                (result.trends.meanSlugLength?.[i] ?? 0).toFixed(2),
-              ].join(","),
-            );
+    withSandbox(
+      "olga_simulate",
+      async ({ source, durationSeconds, timeStepSeconds, format, restart, checkpointOut, checkpointInterval }) => {
+        try {
+          let content = source;
+          if (fs.existsSync(source)) {
+            content = fs.readFileSync(source, "utf-8");
           }
-          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+          const model = parseOlga(content);
+
+          let initialCheckpoint: OlgaCheckpointState | undefined;
+          if (restart && fs.existsSync(restart)) {
+            initialCheckpoint = loadCheckpoint(restart);
+          }
+
+          let lastCheckpoint: OlgaCheckpointState | undefined;
+          const result = simulateDriftFlux(model, {
+            durationSeconds: durationSeconds ?? Math.min(model.endTime - model.startTime, 3600),
+            timeStepSeconds: timeStepSeconds ?? model.maxDt,
+            initialCheckpoint,
+            checkpointIntervalSeconds: checkpointInterval,
+            onCheckpoint: (cp) => {
+              lastCheckpoint = cp;
+              if (checkpointOut && checkpointInterval) {
+                saveCheckpoint(cp, checkpointOut);
+              }
+            },
+          });
+
+          if (checkpointOut && lastCheckpoint) {
+            saveCheckpoint(lastCheckpoint, checkpointOut);
+          }
+
+          if (format === "csv") {
+            const lines = [
+              "time,inlet_pressure_bar,arrival_pressure_bar,arrival_temperature_c,arrival_holdup,peak_surge_m3,mean_slug_length_m",
+            ];
+            for (let i = 0; i < result.times.length; i++) {
+              lines.push(
+                [
+                  result.times[i]!.toFixed(1),
+                  ((result.trends.inletPressure[i] ?? 0) / 1e5).toFixed(2),
+                  ((result.trends.arrivalPressure[i] ?? 0) / 1e5).toFixed(2),
+                  ((result.trends.arrivalTemperature[i] ?? 273.15) - 273.15).toFixed(2),
+                  (result.trends.arrivalLiquidHoldup[i] ?? 0).toFixed(4),
+                  result.trends.peakLiquidSurgeVolume.toFixed(2),
+                  (result.trends.meanSlugLength?.[i] ?? 0).toFixed(2),
+                ].join(","),
+              );
+            }
+            return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+          }
+
+          const lastProfile = result.profiles[result.profiles.length - 1];
+          const summary = {
+            title: model.title,
+            stepsSimulated: result.times.length,
+            peakLiquidSurgeVolumeM3: result.trends.peakLiquidSurgeVolume,
+            arrivalPressureBar: (result.trends.arrivalPressure[result.trends.arrivalPressure.length - 1] ?? 0) / 1e5,
+            arrivalTemperatureC:
+              (result.trends.arrivalTemperature[result.trends.arrivalTemperature.length - 1] ?? 273.15) - 273.15,
+            meanSlugLengthM: result.trends.meanSlugLength?.[result.trends.meanSlugLength.length - 1] ?? 0,
+            slugFrequencyHz: result.trends.slugFrequency?.[result.trends.slugFrequency.length - 1] ?? 0,
+            activePigs: lastProfile?.pigs ?? [],
+            activeSlugs: lastProfile?.activeSlugs ?? [],
+            checkpointSaved: checkpointOut ?? null,
+            restartedFrom: restart
+              ? { time: initialCheckpoint?.simulatedTime, cells: initialCheckpoint?.gridCells.length }
+              : null,
+          };
+
+          return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
+        } catch (err: any) {
+          return { content: [{ type: "text" as const, text: `OLGA simulation error: ${err.message}` }], isError: true };
         }
-
-        const lastProfile = result.profiles[result.profiles.length - 1];
-        const summary = {
-          title: model.title,
-          stepsSimulated: result.times.length,
-          peakLiquidSurgeVolumeM3: result.trends.peakLiquidSurgeVolume,
-          arrivalPressureBar: (result.trends.arrivalPressure[result.trends.arrivalPressure.length - 1] ?? 0) / 1e5,
-          arrivalTemperatureC:
-            (result.trends.arrivalTemperature[result.trends.arrivalTemperature.length - 1] ?? 273.15) - 273.15,
-          meanSlugLengthM: result.trends.meanSlugLength?.[result.trends.meanSlugLength.length - 1] ?? 0,
-          slugFrequencyHz: result.trends.slugFrequency?.[result.trends.slugFrequency.length - 1] ?? 0,
-          activePigs: lastProfile?.pigs ?? [],
-          activeSlugs: lastProfile?.activeSlugs ?? [],
-          checkpointSaved: checkpointOut ?? null,
-          restartedFrom: restart
-            ? { time: initialCheckpoint?.simulatedTime, cells: initialCheckpoint?.gridCells.length }
-            : null,
-        };
-
-        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `OLGA simulation error: ${err.message}` }], isError: true };
-      }
-    },
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── olga_lint ───────────────────────────────────────────────────────────
@@ -2309,25 +2331,32 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         .describe("Slug catcher maximum liquid surge capacity in m³ (default: 150)"),
       minGasVelocityMs: z.number().optional().describe("Minimum gas turndown velocity in m/s (default: 0.5)"),
     },
-    async ({ source, maopBar, hydrateMarginK, slugCatcherCapacityM3, minGasVelocityMs }) => {
-      try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
+    withSandbox(
+      "olga_verify",
+      async ({ source, maopBar, hydrateMarginK, slugCatcherCapacityM3, minGasVelocityMs }) => {
+        try {
+          let content = source;
+          if (fs.existsSync(source)) {
+            content = fs.readFileSync(source, "utf-8");
+          }
+          const model = parseOlga(content);
+          const limits: FlowAssuranceLimits = {
+            maop: (maopBar ?? 250) * 1e5,
+            hydrateMarginKelvin: hydrateMarginK ?? 3.0,
+            slugCatcherLiquidCapacity: slugCatcherCapacityM3 ?? 150.0,
+            minGasVelocity: minGasVelocityMs ?? 0.5,
+          };
+          const result = verifyFlowAssuranceLimits(model, limits);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err: any) {
+          return {
+            content: [{ type: "text" as const, text: `OLGA verification error: ${err.message}` }],
+            isError: true,
+          };
         }
-        const model = parseOlga(content);
-        const limits: FlowAssuranceLimits = {
-          maop: (maopBar ?? 250) * 1e5,
-          hydrateMarginKelvin: hydrateMarginK ?? 3.0,
-          slugCatcherLiquidCapacity: slugCatcherCapacityM3 ?? 150.0,
-          minGasVelocity: minGasVelocityMs ?? 0.5,
-        };
-        const result = verifyFlowAssuranceLimits(model, limits);
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `OLGA verification error: ${err.message}` }], isError: true };
-      }
-    },
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── olga_diagram ────────────────────────────────────────────────────────
@@ -2723,10 +2752,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       verticalForceQ: z.number().describe("Vertical wheel force Q [kN]"),
       nominalAxleLoadQ0: z.number().default(160.0).describe("Nominal axle load 2*Q0 in kN"),
     },
-    async (params) => {
-      const result = evaluateEn14363(params);
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    withSandbox(
+      "gensys_verify_en14363",
+      async (params) => {
+        const result = evaluateEn14363(params);
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── gensys_fastsim ───────────────────────────────────────────────────────
@@ -2742,20 +2775,24 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       ellipseSemiMinor: z.number().default(0.005).describe("Contact ellipse semi-minor axis b [m]"),
       frictionCoeff: z.number().default(0.35).describe("Friction coefficient mu [-]"),
     },
-    async (params) => {
-      const result = solveFastsim({
-        normalForce: params.normalForce,
-        longitudinalCreep: params.longitudinalCreep,
-        lateralCreep: params.lateralCreep,
-        spin: params.spin,
-        ellipseSemiMajor: params.ellipseSemiMajor,
-        ellipseSemiMinor: params.ellipseSemiMinor,
-        shearModulus: 8.2e10,
-        poissonRatio: 0.28,
-        frictionCoeff: params.frictionCoeff,
-      });
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-    },
+    withSandbox(
+      "gensys_fastsim",
+      async (params) => {
+        const result = solveFastsim({
+          normalForce: params.normalForce,
+          longitudinalCreep: params.longitudinalCreep,
+          lateralCreep: params.lateralCreep,
+          spin: params.spin,
+          ellipseSemiMajor: params.ellipseSemiMajor,
+          ellipseSemiMinor: params.ellipseSemiMinor,
+          shearModulus: 8.2e10,
+          poissonRatio: 0.28,
+          frictionCoeff: params.frictionCoeff,
+        });
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── simpack_lint ─────────────────────────────────────────────────────────
@@ -2786,18 +2823,25 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     {
       source: z.string().describe("SIMPACK XML or ASCII deck content or file path"),
     },
-    async ({ source }) => {
-      try {
-        let content = source;
-        if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
-        const isXml = content.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
-        const mobility = analyzeMobility(model);
-        return { content: [{ type: "text" as const, text: JSON.stringify(mobility, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `SIMPACK mobility error: ${err.message}` }], isError: true };
-      }
-    },
+    withSandbox(
+      "simpack_mobility",
+      async ({ source }) => {
+        try {
+          let content = source;
+          if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+          const isXml = content.trimStart().startsWith("<");
+          const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
+          const mobility = analyzeMobility(model);
+          return { content: [{ type: "text" as const, text: JSON.stringify(mobility, null, 2) }] };
+        } catch (err: any) {
+          return {
+            content: [{ type: "text" as const, text: `SIMPACK mobility error: ${err.message}` }],
+            isError: true,
+          };
+        }
+      },
+      () => ctx.sandboxLimits,
+    ),
   );
 
   // ── social_read_thread ───────────────────────────────────────────────────

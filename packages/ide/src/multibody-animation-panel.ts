@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { extractFbiModalDeformation, parseFbiFile } from "@modelscript/simpack";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
@@ -21,6 +22,14 @@ export interface MultibodyCadComponent {
     | {
         position?: [string, string, string] | undefined;
         rotation?: string[] | undefined;
+      }
+    | undefined;
+  deformation?:
+    | {
+        mode?: "volume_radial" | "anisotropic" | "modal" | undefined;
+        modalVariables?: string[] | undefined;
+        modeShapes?: Float32Array[] | undefined;
+        nodeMap?: Uint32Array | undefined;
       }
     | undefined;
 }
@@ -290,11 +299,39 @@ export function generateProceduralMultibodyGeometry(
   const components: MultibodyCadComponent[] = [];
   let nextId = 1;
 
+  const isFbi =
+    /\.fbi$/i.test(sourceUri) ||
+    content.includes("$FBI") ||
+    content.includes("FBI_VERSION") ||
+    content.includes("<fbi");
   const isSimpack = /\.s(?:pck|im)$/i.test(sourceUri) || content.includes("$body") || content.includes("<body");
   const isGensys =
     /\.c(?:alc|ins|run|sub)$/i.test(sourceUri) || content.includes("rigid_body") || content.includes("wheelset");
 
-  if (isSimpack) {
+  if (isFbi) {
+    try {
+      const fbi = parseFbiFile(content);
+      const modal = extractFbiModalDeformation(fbi);
+      const name = fbi.name || "FlexBody";
+
+      const mesh = createBoxMesh(nextId++, name, 2.0, 0.4, 0.4, [0.35, 0.85, 0.65]);
+      meshes.push(mesh);
+
+      components.push({
+        name,
+        cad: { feature: name },
+        bindings: {
+          position: [`${name}.x`, `${name}.y`, `${name}.z`],
+        },
+        deformation: {
+          mode: "modal",
+          modalVariables: modal.modalVariables,
+          modeShapes: modal.modeShapes,
+        },
+      });
+      return { meshes, components };
+    } catch {}
+  } else if (isSimpack) {
     // Extract SIMPACK bodies
     const bodyRegex = /(?:<body\s+[^>]*id="([^"]+)"|^\s*(?:\$body|body)\s+([a-zA-Z0-9_]+))/gim;
     let match;

@@ -17,6 +17,7 @@ import {
   lintRocets,
   parseRocetsDeck,
   renderRocetsPidSvg,
+  rocetsToDae,
   rocetsToModelica,
   rocetsToSsp,
   simulateRocetsTransient,
@@ -32,9 +33,10 @@ export const RocetsCommand: CommandModule<Record<string, unknown>, Record<string
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, summary, balance, simulate, to-modelica, to-ssp, diagram)",
+        description:
+          "Action to perform (lint, summary, inspect, balance, simulate, to-modelica, to-ssp, to-dae, diagram)",
         type: "string",
-        choices: ["lint", "summary", "balance", "simulate", "to-modelica", "to-ssp", "diagram"],
+        choices: ["lint", "summary", "inspect", "balance", "simulate", "to-modelica", "to-ssp", "to-dae", "diagram"],
         demandOption: true,
       })
       .positional("files", {
@@ -115,6 +117,7 @@ export const RocetsCommand: CommandModule<Record<string, unknown>, Record<string
         break;
       }
 
+      case "inspect":
       case "summary": {
         if (format === "json") {
           process.stdout.write(
@@ -224,6 +227,23 @@ export const RocetsCommand: CommandModule<Record<string, unknown>, Record<string
           process.stdout.write(`Wrote FMI SSP SystemStructure.ssd to: ${outPath}\n`);
         } else {
           process.stdout.write(xml + "\n");
+        }
+        break;
+      }
+
+      case "to-dae": {
+        process.stdout.write(`[rocets] Lowering ${path.basename(filePath)} to linear-memory DAE arena...\n`);
+        const dae = rocetsToDae(model);
+        process.stdout.write(`✔ DAE arena lowered successfully:\n`);
+        process.stdout.write(`  Variables : ${dae.varCount}\n`);
+        process.stdout.write(`  Equations : ${dae.eqCount}\n`);
+        if (outPath) {
+          fs.writeFileSync(
+            path.resolve(process.cwd(), outPath),
+            JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2),
+            "utf-8",
+          );
+          process.stdout.write(`✔ DAE metadata written to: ${outPath}\n`);
         }
         break;
       }

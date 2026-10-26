@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export {
+  gtsuiteToDae,
   lowerGtSuiteToDae,
   simulateGtSuiteTransient,
   type GtDaeLoweringResult,
   type GtSimulateOptions,
+  type GtSuiteToDaeOptions,
 } from "./dae/index.js";
 export {
   buildGtSuiteDiagramData,
@@ -24,6 +26,17 @@ export {
 } from "./engine/index.js";
 export { gtsuiteLanguage } from "./language.js";
 export { GtSuiteErrorCode, lintGtModel } from "./lints/index.js";
+export {
+  executeGtsuiteAction,
+  getGtsuiteDocumentSymbols,
+  getGtsuiteHover,
+  validateGtsuite,
+  type LspDiagnostic,
+  type LspDocumentSymbol,
+  type LspHover,
+  type LspPosition,
+  type LspRange,
+} from "./lsp.js";
 export { interpolateMap1D, parseGdxTrajectory, parseGtTableMap, parseGtmModel } from "./parser/index.js";
 export { gtsuiteToModelica, gtsuiteToSsp, gtsuiteToSysml2 } from "./projections/index.js";
 export {

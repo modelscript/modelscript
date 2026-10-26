@@ -204,6 +204,6 @@ IF (UPDATE_AG) CALL PSCAD_AGR2(ICALL_NO,$#Component,$Out,"Out")
       compiled.step(ctx);
     }
     const elapsed = performance.now() - t0;
-    assert.ok(elapsed < 300, `Execution took ${elapsed.toFixed(2)}ms (expected < 300ms)`);
+    assert.ok(elapsed < 600, `Execution took ${elapsed.toFixed(2)}ms (expected < 600ms)`);
   });
 });

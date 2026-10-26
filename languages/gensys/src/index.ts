@@ -4,6 +4,7 @@
  * @modelscript/gensys — GENSYS Railway Vehicle Dynamics & Track CAE for ModelScript.
  */
 
+export * from "./aerodynamics/index.js";
 export * from "./contact/index.js";
 export * from "./dae/index.js";
 export * from "./language.js";

@@ -7,7 +7,7 @@ export {
   type MapPoint,
 } from "./catalog/default-maps.js";
 export { ROCETS_MODULE_DESCRIPTORS, getModuleDescriptor, type ModuleDescriptor } from "./catalog/modules.js";
-export { lowerRocetsToDae, type RocetsDaeLoweringResult } from "./dae/lowering.js";
+export { lowerRocetsToDae, rocetsToDae, type RocetsDaeLoweringResult, type RocetsToDaeOptions } from "./dae/index.js";
 export {
   buildRocetsDiagramData,
   renderRocetsPidSvg,
@@ -17,6 +17,17 @@ export {
 } from "./diagram/index.js";
 export { rocetsLanguage } from "./language.js";
 export { RocetsErrorCode, lintRocets, type RocetsDiagnostic } from "./lints/index.js";
+export {
+  executeRocetsAction,
+  getRocetsDocumentSymbols,
+  getRocetsHover,
+  validateRocets,
+  type LspDiagnostic,
+  type LspDocumentSymbol,
+  type LspHover,
+  type LspPosition,
+  type LspRange,
+} from "./lsp.js";
 export { parseRocetsDeck } from "./parser/deck-parser.js";
 export { parseRocetsMap } from "./parser/map-parser.js";
 export { rocetsToModelica, rocetsToSsp } from "./projections/index.js";

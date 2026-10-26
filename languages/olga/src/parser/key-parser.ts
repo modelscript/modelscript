@@ -190,6 +190,21 @@ function tokenizeDirectives(text: string): DirectiveToken[] {
     while (pIdx < pLen) {
       while (pIdx < pLen && (rest[pIdx] === " " || rest[pIdx] === "\t" || rest[pIdx] === ",")) pIdx++;
       if (pIdx >= pLen) break;
+
+      // Handle leading quoted positional label/name (e.g. CASE "SubseaTieback", FLOWPATH "TiebackLine", PIPE "P-101")
+      if (rest[pIdx] === '"' || rest[pIdx] === "'") {
+        const quote = rest[pIdx++];
+        const valStart = pIdx;
+        while (pIdx < pLen && rest[pIdx] !== quote) pIdx++;
+        const strVal = rest.slice(valStart, pIdx);
+        if (pIdx < pLen) pIdx++; // skip quote
+        params["LABEL"] = strVal;
+        params["NAME"] = strVal;
+        params["TITLE"] = strVal;
+        if (pIdx < pLen && rest[pIdx] === ",") pIdx++;
+        continue;
+      }
+
       const keyStart = pIdx;
       while (pIdx < pLen && rest[pIdx] !== "=" && rest[pIdx] !== "," && rest[pIdx] !== " " && rest[pIdx] !== "\t")
         pIdx++;
@@ -683,6 +698,7 @@ export function parseKeyDeck(keyText: string): OlgaModel {
 
   return {
     title,
+    caseName: title,
     author,
     tableFile,
     startTime,

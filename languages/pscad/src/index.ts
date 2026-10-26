@@ -24,6 +24,7 @@ export * from "./script/fortran-ast.js";
 export * from "./script/fortran-codegen.js";
 export * from "./script/fortran-preprocessor.js";
 export * from "./script/script-parser.js";
+export * from "./solver/index.js";
 export * from "./types.js";
 export * from "./verification/ieee2800.js";
 export * from "./workspace-index.js";

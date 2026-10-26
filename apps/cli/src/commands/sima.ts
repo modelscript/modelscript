@@ -15,6 +15,7 @@ import {
   evaluateOffsetLimits,
   lintSimaProject,
   parseSimaFile,
+  simaToDae,
   simaToModelica,
   simaToSsp,
   simaToSysml2,
@@ -32,9 +33,10 @@ export const SimaCommand: CommandModule<Record<string, unknown>, Record<string, 
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, verify, summary, offset, to-modelica, to-ssp, to-sysml2)",
+        description:
+          "Action to perform (lint, verify, summary, inspect, offset, to-modelica, to-ssp, to-sysml2, to-dae)",
         type: "string",
-        choices: ["lint", "verify", "summary", "offset", "to-modelica", "to-ssp", "to-sysml2"],
+        choices: ["lint", "verify", "summary", "inspect", "offset", "to-modelica", "to-ssp", "to-sysml2", "to-dae"],
         demandOption: true,
       })
       .positional("files", {
@@ -126,6 +128,7 @@ export const SimaCommand: CommandModule<Record<string, unknown>, Record<string, 
           break;
         }
 
+        case "inspect":
         case "summary": {
           console.log(`\nSINTEF Ocean SIMO/RIFLEX Model: ${model.title}`);
           console.log(
@@ -160,12 +163,31 @@ export const SimaCommand: CommandModule<Record<string, unknown>, Record<string, 
           break;
         }
 
+        case "to-dae": {
+          console.log(`[sima] Lowering ${path.basename(file)} to linear-memory DAE arena...`);
+          const dae = simaToDae(model);
+          console.log(`✔ DAE arena lowered successfully:`);
+          console.log(`  Variables : ${dae.varCount}`);
+          console.log(`  Equations : ${dae.eqCount}`);
+          if (out) {
+            const outPath = path.resolve(process.cwd(), out);
+            fs.writeFileSync(
+              outPath,
+              JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2),
+              "utf-8",
+            );
+            console.log(`✔ DAE metadata written to: ${outPath}`);
+          }
+          break;
+        }
+
         case "to-modelica": {
           const className = path.basename(file, path.extname(file)).replace(/[^A-Za-z0-9_]/g, "_");
           const code = simaToModelica(model, className);
           if (out) {
-            fs.writeFileSync(path.resolve(process.cwd(), out), code, "utf-8");
-            console.log(`Wrote Modelica model to ${out}`);
+            const outPath = path.resolve(process.cwd(), out);
+            fs.writeFileSync(outPath, code, "utf-8");
+            console.log(`✔ Modelica projection written to: ${outPath}`);
           } else {
             console.log(code);
           }

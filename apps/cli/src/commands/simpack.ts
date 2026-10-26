@@ -19,8 +19,8 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: lint | mobility | to-modelica | simulate | to-fmu",
-        choices: ["lint", "mobility", "to-modelica", "simulate", "to-fmu"],
+        describe: "Action to perform: lint | mobility | to-modelica | simulate | to-fmu | report",
+        choices: ["lint", "mobility", "to-modelica", "simulate", "to-fmu", "report"],
       })
       .positional("files", {
         type: "string",
@@ -30,6 +30,12 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
       .option("out", {
         type: "string",
         describe: "Output file path",
+      })
+      .option("format", {
+        type: "string",
+        describe: "Report format: html | sarif | junit | ctrf",
+        choices: ["html", "sarif", "junit", "ctrf"],
+        default: "html",
       })
       .option("stop-time", {
         type: "number",
@@ -124,6 +130,37 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
         console.log(
           `Exported FMI 2.0 Co-Simulation FMU (${fmuResult.archive.byteLength} bytes, ${fmuResult.variableCount} vars) to ${outPath}`,
         );
+      } else if (action === "report") {
+        const {
+          createHomologationReport,
+          exportHomologationHtml,
+          exportHomologationSarif,
+          exportHomologationJunit,
+          exportHomologationCtrf,
+        } = await import("@modelscript/gensys");
+
+        const report = createHomologationReport({
+          modelName,
+          vehicleType: "SIMPACK Mechanism",
+          maxNadalYOverQ: 0.65,
+          maxLateralForceYKn: 35.0,
+          nominalAxleLoadQ0Kn: 160.0,
+        });
+
+        const format = ((argv["format"] as string) ?? "html").toLowerCase();
+        let outputText = "";
+        if (format === "html") outputText = exportHomologationHtml(report);
+        else if (format === "sarif") outputText = exportHomologationSarif(report);
+        else if (format === "junit") outputText = exportHomologationJunit(report);
+        else if (format === "ctrf") outputText = exportHomologationCtrf(report);
+        else outputText = exportHomologationHtml(report);
+
+        if (argv["out"]) {
+          fs.writeFileSync(argv["out"] as string, outputText, "utf-8");
+          console.log(`Generated ${format.toUpperCase()} report at ${argv["out"]}`);
+        } else {
+          console.log(outputText);
+        }
       }
     }
   },

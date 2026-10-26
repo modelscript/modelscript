@@ -371,10 +371,6 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   // Simple name reference — resolve in scope
   if (/^\.?[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
     const cleanName = trimmed.startsWith(".") ? trimmed.slice(1) : trimmed;
-    const constVal = resolveModelicaConstant(cleanName);
-    if (constVal !== undefined) {
-      return constVal;
-    }
     const isQualified = cleanName.includes(".");
     const resolveHook = isQualified ? "resolveName" : "resolveSimpleName";
     const resolver = db.query<(name: string) => SymbolEntry | null>(resolveHook, scope.id);
@@ -391,6 +387,11 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         }
         return getComponentEvaluatedValue(resolved, db, scope);
       }
+    }
+
+    const constVal = resolveModelicaConstant(cleanName);
+    if (constVal !== undefined) {
+      return constVal;
     }
 
     // Fallback if the hook fails (e.g. built-in constants)

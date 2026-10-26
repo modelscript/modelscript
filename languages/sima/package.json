@@ -35,6 +35,14 @@
     "./projections": {
       "types": "./dist/src/projections/index.d.ts",
       "default": "./dist/src/projections/index.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
     }
   },
   "files": [

@@ -28,9 +28,13 @@ function AnimatedBody({
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
+  const initialVertices = useMemo(() => {
+    return new Float32Array(mesh.vertices);
+  }, [mesh.vertices]);
+
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(mesh.vertices, 3));
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
     if (mesh.normals && mesh.normals.length > 0) {
       geo.setAttribute("normal", new THREE.BufferAttribute(mesh.normals, 3));
     }
@@ -45,6 +49,21 @@ function AnimatedBody({
   useFrame(() => {
     if (!groupRef.current || !bindingName) return;
     if (animationController.mode === "stopped") return;
+
+    // Apply Dynamic Modal Mesh Morphing
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const modalDisp = (animationController as any).getModalDisplacements?.(
+      bindingName,
+      Math.floor(initialVertices.length / 3),
+    );
+    if (modalDisp && geometry.attributes["position"]) {
+      const posAttr = geometry.attributes["position"] as THREE.BufferAttribute;
+      const arr = posAttr.array as Float32Array;
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = initialVertices[i]! + (modalDisp[i] || 0);
+      }
+      posAttr.needsUpdate = true;
+    }
 
     // Get the transform components (position is easy, rotation needs special handling)
     const tf = animationController.getTransform(bindingName);
@@ -386,8 +405,8 @@ function App() {
           }
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let deformationConfig: any = undefined;
-          if (c.cad.dynamicDeformation) {
+          let deformationConfig: any = c.deformation;
+          if (!deformationConfig && c.cad?.dynamicDeformation) {
             const volMatch = c.cad.dynamicDeformation.match(/V=([a-zA-Z0-9_.]+)/);
             const v0Match = c.cad.dynamicDeformation.match(/V0=([0-9.eE+-]+)/);
             deformationConfig = {
@@ -399,7 +418,7 @@ function App() {
 
           return {
             // We use the feature name if available, otherwise the component name
-            componentName: c.cad.feature || c.name,
+            componentName: c.cad?.feature || c.name,
             bindings: compBindings,
             deformation: deformationConfig,
           };

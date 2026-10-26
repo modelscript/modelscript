@@ -38,7 +38,7 @@ export function parseGtmModel(rawText: string, defaultName = "EngineModel"): GtM
  */
 function parseXmlGtm(xmlText: string, defaultName: string): GtModel {
   // Simple robust regex-based XML extraction without heavy dependencies
-  const modelNameMatch = xmlText.match(/<(?:\w+:)?(?:GTModel|Model|GTSUITE)[^>]*\sname=["']([^"']+)["']/i);
+  const modelNameMatch = xmlText.match(/<(?:\w+:)?(?:GTModel|Model|GTSUITE)\b[^<>]*?\bname=["']([^"']+)["']/i);
   const name = modelNameMatch?.[1] ?? defaultName;
 
   const simSettings: GtSimulationSettings = {
@@ -55,7 +55,7 @@ function parseXmlGtm(xmlText: string, defaultName: string): GtModel {
   const maps: Record<string, GtTableMap> = {};
 
   // Extract <Component ...> blocks
-  const compRegex = /<Component\s+([^>]+)(?:\/>|>([\s\S]*?)<\/Component>)/gi;
+  const compRegex = /<Component\s+([^\s<>][^<>]*?)(?:\/>|>([\s\S]*?)<\/Component>)/gi;
   let compMatch: RegExpExecArray | null;
 
   while ((compMatch = compRegex.exec(xmlText)) !== null) {
@@ -166,7 +166,7 @@ function parseXmlGtm(xmlText: string, defaultName: string): GtModel {
   }
 
   // Extract <Connection from="..." to="..." />
-  const connRegex = /<Connection\s+([^>]+)\/>/gi;
+  const connRegex = /<Connection\s+([^\s<>][^<>]*?)\/>/gi;
   let connMatch: RegExpExecArray | null;
   while ((connMatch = connRegex.exec(xmlText)) !== null) {
     const attrs = connMatch[1] ?? "";

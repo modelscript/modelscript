@@ -60,7 +60,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
 
     // Section headers
     const secMatch =
-      /^(DECK|MODEL|TITLE|ENGINE|COMPONENTS|MODULES|CONNECTIONS|STREAMS|PROPELLANTS|PROPS|BALANCE|DESIGN):?\s*(.*)$/i.exec(
+      /^(DECK|MODEL|TITLE|ENGINE|COMPONENTS|MODULES|CONNECTIONS|STREAMS|PROPELLANTS|PROPS|BALANCE|DESIGN):?(?:\s+(\S.*))?$/i.exec(
         trimmed,
       );
     if (secMatch) {
@@ -83,7 +83,9 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
 
     // Handle COMPONENTS / MODULES section
     if (currentSection === "COMPONENTS" || currentSection === "MODULES" || currentSection === "") {
-      const cmpMatch = /^([A-Za-z0-9_]{2,12})\s+(?:TYPE\s*=\s*|MODULE\s*=\s*)?([A-Za-z0-9_/]+)(.*)$/i.exec(trimmed);
+      const cmpMatch = /^([A-Za-z0-9_]{2,12})\s+(?:TYPE\s*=\s*|MODULE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(.*))?$/i.exec(
+        trimmed,
+      );
       if (
         cmpMatch &&
         !trimmed.startsWith("PARAMS:") &&
@@ -202,7 +204,9 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
       trimmed.includes("=>")
     ) {
       const connMatch =
-        /^([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s*(?:->|TO|=>)\s*([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(.*)$/i.exec(trimmed);
+        /^([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s*(?:->|=>)\s*|\s+TO\s+)([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(?:\s+(.*))?$/i.exec(
+          trimmed,
+        );
       if (connMatch) {
         const fromComp = connMatch[1]!.toUpperCase();
         const fromPort = connMatch[2]!.toUpperCase();
@@ -250,7 +254,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
 }
 
 function parseKeyValuePairs(text: string, target: Record<string, number | string | number[]>): void {
-  const regex = /([A-Za-z0-9_]+)\s*=\s*("[^"]*"|'[^']*'|\[[^\]]*\]|[^\s,;]+)/g;
+  const regex = /\b([A-Za-z_]\w*)\s*=\s*("[^"]*"|'[^']*'|\[[^\]]*\]|[^\s,;]+)/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     const key = match[1]!.toUpperCase();

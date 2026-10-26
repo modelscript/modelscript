@@ -151,7 +151,13 @@ assert.strictEqual(mbTable.temperatures.length, 2);
 const interpMb = interpolatePvt(mbTable, 50.0e5, 293.15); // 50 bar, 20 C
 assert.ok(Math.abs(interpMb.rhoG - 43.5) < 0.5);
 assert.ok(Math.abs(interpMb.rhoL - 835.0) < 0.5);
-console.log("✔ Multi-block matrix layout parsed cleanly!");
+
+// Test 2D Bicubic Hermite Spline interpolation with C1 continuity
+const interpBicubic = interpolatePvt(mbTable, 50.0e5, 313.15, { method: "bicubic" }); // 50 bar, 40 C
+assert.ok(interpBicubic.rhoG > 38.0 && interpBicubic.rhoG < 44.0);
+assert.ok(interpBicubic.dRhoGdP > 0);
+assert.ok(interpBicubic.soundSpeedGas > 200.0);
+console.log("✔ Multi-block matrix layout & 2D Bicubic Hermite spline parsed and verified cleanly!");
 
 // ---------------------------------------------------------------------------
 // 4. Thermodynamic Derivatives & Sound Speed

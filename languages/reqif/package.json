@@ -1,0 +1,60 @@
+{
+  "name": "@modelscript/reqif",
+  "version": "0.0.0",
+  "description": "OMG ReqIF 1.2 (Requirements Interchange Format) engineering language package for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/reqif-parser.d.ts",
+      "default": "./dist/src/parser/reqif-parser.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./verification": {
+      "types": "./dist/src/verification/entailment.d.ts",
+      "default": "./dist/src/verification/entailment.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/index.d.ts",
+      "default": "./dist/src/projections/index.js"
+    },
+    "./workspace-index": {
+      "types": "./dist/src/workspace-index.d.ts",
+      "default": "./dist/src/workspace-index.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

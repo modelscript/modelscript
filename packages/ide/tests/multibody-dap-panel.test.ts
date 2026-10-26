@@ -83,6 +83,40 @@ describe("VS Code DAP Debugger & 3D Multibody Animation Panel", () => {
       assert.deepEqual(wsComp.bindings?.position, ["ws_11.x", "ws_11.y", "ws_11.z"]);
       assert.deepEqual(wsComp.bindings?.rotation, ["ws_11.fi", "ws_11.th", "ws_11.ps"]);
     });
+
+    it("should extract SIMPACK .fbi flexible body into mesh with modal deformation configuration", () => {
+      const fbiContent = `
+        $FBI_VERSION 2024
+        $HEADER
+        NAME 'FlexCantilever'
+        NUM_NODES 2
+        NUM_MODES 2
+        $NODES
+        1  0.0  0.0  0.0
+        2  1.5  0.0  0.0
+        $MODES
+        MODE 1  FREQ 12.5  MASS 1.0  STIFF 616.85
+        MODE 2  FREQ 45.0  MASS 1.0  STIFF 8000.0
+        $MODE_SHAPES
+        MODE 1
+        1  0.0  0.0  0.0
+        2  0.0  0.0  0.15
+        MODE 2
+        1  0.0  0.0  0.0
+        2  0.0  0.08 0.0
+      `;
+
+      const res = generateProceduralMultibodyGeometry("file:///models/cantilever.fbi", fbiContent);
+      assert.equal(res.meshes.length, 1);
+      assert.equal(res.components.length, 1);
+
+      const comp = res.components[0]!;
+      assert.equal(comp.name, "FlexCantilever");
+      assert.ok(comp.deformation);
+      assert.equal(comp.deformation.mode, "modal");
+      assert.deepEqual(comp.deformation.modalVariables, ["FlexCantilever.q1", "FlexCantilever.q2"]);
+      assert.equal(comp.deformation.modeShapes?.length, 2);
+    });
   });
 
   describe("MultiBodyAnimationPanel Webview & Debugger Sync", () => {

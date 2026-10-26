@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  createHomologationReport,
   evaluateEn14363,
+  exportHomologationCtrf,
+  exportHomologationHtml,
+  exportHomologationJunit,
+  exportHomologationSarif,
   gensysToModelica,
   lintGensysModel,
   lowerGensysToDae,
@@ -18,8 +23,8 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: lint | to-modelica | verify | simulate | to-fmu",
-        choices: ["lint", "to-modelica", "verify", "simulate", "to-fmu"],
+        describe: "Action to perform: lint | to-modelica | verify | simulate | to-fmu | report",
+        choices: ["lint", "to-modelica", "verify", "simulate", "to-fmu", "report"],
       })
       .positional("files", {
         type: "string",
@@ -29,6 +34,12 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
       .option("out", {
         type: "string",
         describe: "Output file path",
+      })
+      .option("format", {
+        type: "string",
+        describe: "Report format: html | sarif | junit | ctrf",
+        choices: ["html", "sarif", "junit", "ctrf"],
+        default: "html",
       })
       .option("stop-time", {
         type: "number",
@@ -54,6 +65,22 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
         type: "number",
         default: 160.0,
         describe: "Nominal axle load 2*Q0 [kN] for Prud'homme limit",
+      })
+      .option("wz-vert", {
+        type: "number",
+        describe: "Sperling vertical ride comfort index Wz",
+      })
+      .option("wz-horiz", {
+        type: "number",
+        describe: "Sperling horizontal ride comfort index Wz",
+      })
+      .option("unloading", {
+        type: "number",
+        describe: "EN 14067-6 crosswind wheel unloading ratio Delta Q / Q0",
+      })
+      .option("conicity", {
+        type: "number",
+        describe: "Wheel-rail equivalent conicity lambda_eq",
       });
   },
   handler: async (argv) => {
@@ -74,6 +101,41 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
       console.log(
         `Prud'homme Lateral Shift:  ${(argv["y-force"] as number).toFixed(2)} kN [Limit <= ${res.prudhommeLimit.toFixed(2)} kN] -> ${res.prudhommeLimitPassed ? "PASS" : "FAIL"}`,
       );
+      return;
+    }
+
+    if (action === "report") {
+      const modelName = files[0] ? path.basename(files[0], path.extname(files[0])) : "RailwayVehicle";
+      const yForce = (argv["y-force"] as number) ?? 25.0;
+      const qForce = (argv["q-force"] as number) ?? 80.0;
+      const axleLoad = (argv["axle-load"] as number) ?? 160.0;
+
+      const report = createHomologationReport({
+        modelName,
+        maxNadalYOverQ: qForce > 0 ? yForce / qForce : 0.65,
+        maxLateralForceYKn: yForce,
+        nominalAxleLoadQ0Kn: axleLoad,
+        sperlingVerticalWz: argv["wz-vert"] as number | undefined,
+        sperlingHorizontalWz: argv["wz-horiz"] as number | undefined,
+        crossWindUnloadingRatio: argv["unloading"] as number | undefined,
+        equivalentConicity: argv["conicity"] as number | undefined,
+      });
+
+      const format = ((argv["format"] as string) ?? "html").toLowerCase();
+      let outputText = "";
+      if (format === "html") outputText = exportHomologationHtml(report);
+      else if (format === "sarif") outputText = exportHomologationSarif(report);
+      else if (format === "junit") outputText = exportHomologationJunit(report);
+      else if (format === "ctrf") outputText = exportHomologationCtrf(report);
+      else outputText = exportHomologationHtml(report);
+
+      if (argv["out"]) {
+        const outPath = argv["out"] as string;
+        fs.writeFileSync(outPath, outputText, "utf-8");
+        console.log(`Generated ${format.toUpperCase()} homologation report at ${outPath}`);
+      } else {
+        console.log(outputText);
+      }
       return;
     }
 

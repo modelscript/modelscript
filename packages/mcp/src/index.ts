@@ -21,3 +21,5 @@ export * from "./resources.js";
 export * from "./tools.js";
 // Shared topology, quota accounting, and server context interfaces
 export * from "./types.js";
+// Deterministic execution sandbox for AI agents
+export * from "./sandbox.js";

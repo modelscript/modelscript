@@ -31,7 +31,7 @@ export function parseEasy5Table(tableText: string): Easy5Table {
       continue;
     }
 
-    const xMatch = /^X\s*:\s*(.+)$/i.exec(trimmed);
+    const xMatch = /^X\s*:\s*(\S.*)$/i.exec(trimmed);
     if (xMatch) {
       xValues = xMatch[1]!
         .split(/[\s,]+/)
@@ -40,7 +40,7 @@ export function parseEasy5Table(tableText: string): Easy5Table {
       continue;
     }
 
-    const yMatch = /^Y\s*:\s*(.+)$/i.exec(trimmed);
+    const yMatch = /^Y\s*:\s*(\S.*)$/i.exec(trimmed);
     if (yMatch) {
       yValues = yMatch[1]!
         .split(/[\s,]+/)

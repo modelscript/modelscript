@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export { simaToDae, type SimaToDaeOptions } from "./dae/index.js";
 export { simaLanguage } from "./language.js";
 export { SimaErrorCode, lintSimaProject, type SimaDiagnostic } from "./lints/index.js";
+export {
+  executeSimaAction,
+  getSimaDocumentSymbols,
+  getSimaHover,
+  validateSima,
+  type LspDiagnostic,
+  type LspDocumentSymbol,
+  type LspHover,
+  type LspPosition,
+  type LspRange,
+} from "./lsp.js";
 export { parseCardDeck, parseHydFile, parseSimaFile, parseSimaXml } from "./parser/index.js";
 export { simaToModelica, simaToSsp, simaToSysml2 } from "./projections/index.js";
 export {

@@ -169,24 +169,34 @@ export class B2BEquivalenceVerifier {
     try {
       let exchangeModule: any = null;
       try {
-        const modName = "@modelscript/exchange/fmu";
+        const modName = "@modelscript/exchange/fmu/standalone-codegen";
         exchangeModule = await import(modName);
       } catch (err1: any) {
         try {
-          const relPath = "../../../exchange/src/fmu/index.js";
+          const relPath = "../../../exchange/src/fmu/standalone-codegen.js";
           exchangeModule = await import(relPath);
         } catch (err2: any) {
-          return {
-            passed: false,
-            certified: false,
-            maxError: Infinity,
-            maxErrorTime: 0,
-            maxErrorVariable: "none",
-            testedVariables: [],
-            totalSamples: 0,
-            discrepancies: [],
-            summary: `Standalone C code generator (@modelscript/exchange/fmu) is unavailable. err1: ${err1.message}; err2: ${err2.message}`,
-          };
+          try {
+            const modIndex = "@modelscript/exchange/fmu";
+            exchangeModule = await import(modIndex);
+          } catch (err3: any) {
+            try {
+              const relPathIndex = "../../../exchange/src/fmu/index.js";
+              exchangeModule = await import(relPathIndex);
+            } catch (err4: any) {
+              return {
+                passed: false,
+                certified: false,
+                maxError: Infinity,
+                maxErrorTime: 0,
+                maxErrorVariable: "none",
+                testedVariables: [],
+                totalSamples: 0,
+                discrepancies: [],
+                summary: `Standalone C code generator (@modelscript/exchange/fmu) is unavailable. err1: ${err1.message}; err2: ${err2.message}; err3: ${err3.message}; err4: ${err4.message}`,
+              };
+            }
+          }
         }
       }
 

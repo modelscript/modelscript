@@ -24,7 +24,7 @@ export async function isGtSuiteEngineAvailable(executablePath?: string): Promise
   return new Promise<boolean>((resolve) => {
     try {
       const child = spawn(binary, ["-version"], {
-        shell: true,
+        shell: false,
         stdio: "ignore",
       });
       child.on("error", () => resolve(false));
@@ -57,7 +57,8 @@ export async function runGtSuiteSimulation(
 
   // Native GT-SUITE execution
   const tempDir = options.workingDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "gtsuite-run-")));
-  const modelPath = path.join(tempDir, `${model.name}.gtm`);
+  const safeModelName = path.basename(model.name).replace(/[^a-zA-Z0-9_-]/g, "_") || "model";
+  const modelPath = path.join(tempDir, `${safeModelName}.gtm`);
   await fs.writeFile(modelPath, modelSourceText, "utf-8");
 
   const binary =
@@ -66,7 +67,7 @@ export async function runGtSuiteSimulation(
   return new Promise<GtSimulationResult>((resolve, reject) => {
     const child = spawn(binary, ["-run", modelPath], {
       cwd: tempDir,
-      shell: true,
+      shell: false,
       stdio: "pipe",
     });
 
@@ -89,9 +90,9 @@ export async function runGtSuiteSimulation(
 
       // Check for results .gdx or .csv
       try {
-        const resultCsv = path.join(tempDir, `${model.name}.csv`);
+        const resultCsv = path.join(tempDir, `${safeModelName}.csv`);
         const content = await fs.readFile(resultCsv, "utf-8");
-        const parsed = parseGdxTrajectory(content, model.name);
+        const parsed = parseGdxTrajectory(content, safeModelName);
         resolve(parsed);
       } catch {
         resolve(

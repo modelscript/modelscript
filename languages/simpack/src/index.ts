@@ -4,6 +4,7 @@
  * @modelscript/simpack — SIMPACK Multibody Dynamics (MBS) for ModelScript.
  */
 
+export * from "./bushing/index.js";
 export * from "./dae/index.js";
 export * from "./kinematics/index.js";
 export * from "./language.js";

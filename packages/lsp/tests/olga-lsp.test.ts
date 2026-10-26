@@ -1,102 +1,108 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import assert from "node:assert";
-import test from "node:test";
-import { CodeActionKind } from "vscode-languageserver";
-import { TextDocument } from "vscode-languageserver-textdocument";
-import { registerCodeLensProvider } from "../src/providers/codeLensProvider.js";
-import { registerWorkspaceFeaturesProvider } from "../src/providers/workspaceFeaturesProvider.js";
+import {
+  getOlgaDocumentSymbols,
+  getOlgaHover,
+  lowerOlgaToDae,
+  olgaLanguage,
+  OlgaWorkspaceIndex,
+  parseOlga,
+  simulateDriftFlux,
+  validateOlga,
+} from "@modelscript/olga";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
 
-test("LSP OLGA Multiphase: CodeLens & QuickFix Integration", async (t) => {
-  const olgaUri = "file:///workspace/TiebackSystem.opi";
-  const olgaContent = `<OlgaCase name="TiebackSystem" tableFile="fluids/black_oil.csv" maxDt="1.0">
-  <Flowpath name="FlowlineA">
-    <Pipe label="SeabedPipe" length="5000" diameter="0.3048" discretization="50" elevation="-300" roughness="0.000045" />
-    <Valve name="SubseaChoke" position="4800" opening="0.0" cv="150" />
-    <Source name="WellHead" boundaryPosition="0" totalMassRate="35" />
-    <Node name="PlatformSeparator" boundaryPosition="1" type="PRESSURE" pressure="25bar" />
-  </Flowpath>
-</OlgaCase>`;
+const SAMPLE_OLGA = `CASE TITLE = "SubseaTieback"
+FILES TABLE = "fluids.tab"
+FLOWPATH NAME = TiebackLine
+  PIPE LABEL = P-101, LENGTH = 1500.0 m, DIAMETER = 0.3 m, ROUGHNESS = 0.000045 m, NSEGMENT = 5
+  VALVE NAME = Choke-1, POSITION = 1500.0 m, OPENING = 0.8
+NODE NAME = InletWell, TYPE = MASS_SOURCE, FLOWPATH = TiebackLine, FRACTION = 0.0, PRESSURE = 120.0 bar, TEMPERATURE = 85.0 C, TOTALMASSRATE = 25.0 kg/s
+NODE NAME = HostSeparator, TYPE = TERMINAL, FLOWPATH = TiebackLine, FRACTION = 1.0, PRESSURE = 35.0 bar, TEMPERATURE = 25.0 C
+`;
 
-  const doc = TextDocument.create(olgaUri, "xml", 1, olgaContent);
-  const mockDocuments: any = {
-    get: (uri: string) => (uri === olgaUri ? doc : undefined),
-  };
-
-  await t.test("should register and generate rich OLGA CodeLenses for pipeline, valves, and flowpaths", () => {
-    let codeLensHandler: any = null;
-    const mockConnection: any = {
-      onRequest: (method: string, handler: any) => {
-        if (method === "textDocument/codeLens") {
-          codeLensHandler = handler;
-        }
+describe("OLGA LSP Integration Suite (@modelscript/lsp)", () => {
+  it("resolves OLGA language plugin for multiphase pipeline decks", () => {
+    globalLanguageRegistry.register({
+      id: "olga",
+      name: "OLGA",
+      extensions: [".genkey", ".key", ".opi", ".olga", ".pvt", ".tab"],
+      languageDef: olgaLanguage,
+      workspaceIndex: new OlgaWorkspaceIndex(),
+      customHandlers: {
+        symbols: (text: string) => getOlgaDocumentSymbols(text),
+        hover: (offset: number, text: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getOlgaHover(text, { line, character });
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateOlga(text);
+        },
       },
-    };
-
-    const mockContext: any = {
-      connection: mockConnection,
-      documents: mockDocuments,
-    };
-
-    registerCodeLensProvider(mockContext);
-    assert.ok(codeLensHandler, "CodeLens handler must be registered");
-
-    const lenses = codeLensHandler({ textDocument: { uri: olgaUri } });
-    assert.ok(lenses.length >= 4, `Expected at least 4 lenses, got ${lenses.length}`);
-
-    // Verify simulation & dashboard header lenses
-    const simLens = lenses.find((l: any) => l.command.title.includes("Simulate Multiphase Flow"));
-    assert.ok(simLens, "Must have Simulate Multiphase Flow lens");
-
-    const dashLens = lenses.find((l: any) => l.command.title.includes("Flow Assurance Dashboard"));
-    assert.ok(dashLens, "Must have Flow Assurance Dashboard lens");
-
-    const bathyLens = lenses.find((l: any) => l.command.title.includes("3D Seabed Bathymetry"));
-    assert.ok(bathyLens, "Must have 3D Seabed Bathymetry lens");
-
-    // Verify entity-level inline lenses
-    const pipeLens = lenses.find((l: any) => l.command.title.includes("SeabedPipe"));
-    assert.ok(pipeLens, "Must have Pipe SeabedPipe profile lens");
-
-    const chokeLens = lenses.find((l: any) => l.command.title.includes("SubseaChoke"));
-    assert.ok(chokeLens, "Must have Valve SubseaChoke lens");
-  });
-
-  await t.test("should provide automated QuickFixes for OLGA diagnostics in onCodeAction", () => {
-    let codeActionHandler: any = null;
-    const mockConnection: any = {
-      onReferences: () => {},
-      onDefinition: () => {},
-      onRenameRequest: () => {},
-      onWorkspaceSymbol: () => {},
-      onCodeAction: (handler: any) => {
-        codeActionHandler = handler;
+      actionHandlers: {
+        lint_olga_case: async (_ctx: any, params: any) => {
+          const text = params?.documentText ?? "";
+          const model = parseOlga(text);
+          return validateOlga(text);
+        },
+        export_olga_dae: async (_ctx: any, params: any) => {
+          const text = params?.documentText ?? "";
+          const model = parseOlga(text);
+          const dae = lowerOlgaToDae(model);
+          return { varCount: dae.varCount, eqCount: dae.eqCount };
+        },
+        simulate_drift_flux: async (_ctx: any, params: any) => {
+          const text = params?.documentText ?? "";
+          const model = parseOlga(text);
+          return simulateDriftFlux(model, { durationSeconds: params?.durationSeconds ?? 5.0 });
+        },
       },
-    };
-
-    registerWorkspaceFeaturesProvider(
-      mockConnection,
-      mockDocuments,
-      new Map(),
-      async () => {},
-      async () => ({ symbols: new Map() }),
-    );
-
-    assert.ok(codeActionHandler, "onCodeAction handler should be registered");
-
-    const actions = codeActionHandler({
-      textDocument: { uri: olgaUri },
-      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-      context: { diagnostics: [] },
+      disposables: [],
     });
 
-    assert.ok(actions.length > 0, "Should generate quick-fixes for OLGA model");
-    const m7008Action = actions.find((a: any) => a.title.includes("Change fluid table extension"));
-    assert.ok(m7008Action, "Should include M7008 .csv to .tab QuickFix");
-    assert.equal(m7008Action.kind, CodeActionKind.QuickFix);
+    const pluginKey = globalLanguageRegistry.getPluginForUri("file:///workspace/pipeline.genkey");
+    assert.ok(pluginKey);
+    assert.equal(pluginKey.id, "olga");
 
-    const m7005Action = actions.find((a: any) => a.title.includes("Crack valve 'SubseaChoke'"));
-    assert.ok(m7005Action, "Should include M7005 closed choke QuickFix");
-    assert.equal(m7005Action.kind, CodeActionKind.QuickFix);
+    const pluginTab = globalLanguageRegistry.getPluginForUri("file:///workspace/fluids.tab");
+    assert.ok(pluginTab);
+    assert.equal(pluginTab.id, "olga");
+  });
+
+  it("extracts document symbols and handles hover via registered handlers", () => {
+    const plugin = globalLanguageRegistry.get("olga");
+    assert.ok(plugin);
+    assert.ok(plugin.customHandlers?.symbols);
+
+    const symbols = plugin.customHandlers.symbols(SAMPLE_OLGA) as any[];
+    assert.ok(symbols.length > 0);
+    assert.equal(symbols[0].name, "SubseaTieback");
+
+    assert.ok(plugin.customHandlers?.hover);
+    const offset = SAMPLE_OLGA.indexOf("TiebackLine");
+    const hover = plugin.customHandlers.hover(offset, SAMPLE_OLGA);
+    assert.ok(hover);
+  });
+
+  it("executes export_olga_dae and simulate_drift_flux actions through registry", async () => {
+    const plugin = globalLanguageRegistry.get("olga");
+    assert.ok(plugin);
+    assert.ok(plugin.actionHandlers?.export_olga_dae);
+
+    const daeRes = await plugin.actionHandlers.export_olga_dae({}, { documentText: SAMPLE_OLGA });
+    assert.ok(daeRes.varCount > 0);
+    assert.ok(daeRes.eqCount > 0);
+
+    assert.ok(plugin.actionHandlers?.simulate_drift_flux);
+    const simRes = await plugin.actionHandlers.simulate_drift_flux(
+      {},
+      { documentText: SAMPLE_OLGA, durationSeconds: 2.0 },
+    );
+    assert.ok(simRes);
   });
 });

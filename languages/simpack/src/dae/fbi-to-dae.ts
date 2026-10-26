@@ -104,3 +104,75 @@ export function lowerFbiToDae(fbi: FbiModel, options?: FbiLoweringOptions): DAEB
 
   return dae;
 }
+
+export interface FbiModalDeformationData {
+  componentName: string;
+  modalVariables: string[];
+  modeShapes: Float32Array[];
+  nodeIds: (string | number)[];
+  nodePositions: Float32Array;
+}
+
+/**
+ * Extracts normalized Craig-Bampton modal shapes and state variable coordinates
+ * suitable for real-time 3D finite element mesh morphing in WebGL / Three.js viewports.
+ */
+export function extractFbiModalDeformation(fbi: FbiModel, prefix?: string): FbiModalDeformationData {
+  const name = prefix ?? fbi.name ?? "FlexBody";
+  const modalVariables = fbi.modes.map((m) => `${name}.q${m.modeIndex}`);
+
+  // Collect all unique nodes
+  const nodeMap = new Map<string | number, { x: number; y: number; z: number }>();
+  if (fbi.nodes) {
+    for (const n of fbi.nodes) {
+      nodeMap.set(n.id, { x: n.position.x, y: n.position.y, z: n.position.z });
+    }
+  }
+
+  // Also collect nodes from mode shapes if not in fbi.nodes
+  for (const mode of fbi.modes) {
+    if (!mode.shapes) continue;
+    for (const s of mode.shapes) {
+      if (!nodeMap.has(s.nodeId)) {
+        nodeMap.set(s.nodeId, { x: 0, y: 0, z: 0 });
+      }
+    }
+  }
+
+  const nodeIds = Array.from(nodeMap.keys());
+  const nodeCount = nodeIds.length;
+  const nodePositions = new Float32Array(nodeCount * 3);
+
+  for (let i = 0; i < nodeCount; i++) {
+    const pos = nodeMap.get(nodeIds[i]!)!;
+    nodePositions[i * 3] = pos.x;
+    nodePositions[i * 3 + 1] = pos.y;
+    nodePositions[i * 3 + 2] = pos.z;
+  }
+
+  // Build mode shape matrices (nodeCount * 3 per mode)
+  const modeShapes: Float32Array[] = [];
+
+  for (const mode of fbi.modes) {
+    const shapeArr = new Float32Array(nodeCount * 3);
+    if (mode.shapes) {
+      for (const s of mode.shapes) {
+        const nIdx = nodeIds.indexOf(s.nodeId);
+        if (nIdx >= 0) {
+          shapeArr[nIdx * 3] = s.phi.x;
+          shapeArr[nIdx * 3 + 1] = s.phi.y;
+          shapeArr[nIdx * 3 + 2] = s.phi.z;
+        }
+      }
+    }
+    modeShapes.push(shapeArr);
+  }
+
+  return {
+    componentName: name,
+    modalVariables,
+    modeShapes,
+    nodeIds,
+    nodePositions,
+  };
+}

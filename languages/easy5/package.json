@@ -29,8 +29,8 @@
       "default": "./dist/src/lints/index.js"
     },
     "./dae": {
-      "types": "./dist/src/dae/lowering.d.ts",
-      "default": "./dist/src/dae/lowering.js"
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
     },
     "./linear": {
       "types": "./dist/src/linear/index.d.ts",
@@ -43,6 +43,10 @@
     "./diagram": {
       "types": "./dist/src/diagram/easy5-diagram.d.ts",
       "default": "./dist/src/diagram/easy5-diagram.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
     }
   },
   "files": [

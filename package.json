@@ -73,6 +73,7 @@
     "release:dry-run": "nx release --dry-run",
     "test": "node scripts/test-coordinator.js affected",
     "test:all": "node scripts/test-coordinator.js run-many",
+    "test:benchmarks": "npx tsx testsuite/benchmarks/cae-parity.test.ts",
     "test:consolidate": "npx tsx scripts/consolidate-test-reports.ts",
     "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
     "test:modelica:both": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both",

@@ -716,10 +716,351 @@ msx dhf <export|status|audit> [path] [options]
 | `status [path]` | Report requirement verification coverage, unverified hazards, and suspect links across the workspace.                                               |
 | `audit [file]`  | Verify the cryptographic SHA-256 hash chain and Ed25519 signatures of an exported DHF bundle.                                                       |
 
-| Option                | Type                           | Default            | Description            |
-| :-------------------- | :----------------------------- | :----------------- | :--------------------- |
-| `-f, --format <fmt>`  | `markdown \| json \| pdf-html` | `"markdown"`       | Output dossier format. |
-| `-o, --output <path>` | `string`                       | `"DHF_Dossier.md"` | Output file path.      |
+---
+
+### `simulink`
+
+Inspects, lints, compiles into linear DAEs, and projects MATLAB Simulink control block diagrams (`.slx` zip packages and `.mdl` structured text).
+
+```bash
+msx simulink <action> [files...] [options]
+```
+
+| Action        | Description                                                                                                        |
+| :------------ | :----------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Dump subsystem block tree, parameters, solver settings, and line routing.                                          |
+| `lint`        | Run pre-flight static analysis (algebraic loops `M7202`, unconnected ports `M7201`, divide-by-zero risks `M7209`). |
+| `to-modelica` | Translate block diagram into standard acausal `Modelica.Blocks` models.                                            |
+| `to-dae`      | Lower continuous states and transfer functions directly into the WebAssembly DAE arena.                            |
+
+| Option         | Type     | Default  | Description                                   |
+| :------------- | :------- | :------- | :-------------------------------------------- |
+| `--out <path>` | `string` | `stdout` | Target file path for generated Modelica code. |
+
+```bash
+msx simulink inspect CruiseControl.slx
+msx simulink lint EngineGovernor.mdl
+msx simulink to-modelica Suspension.slx --out=Suspension.mo
+```
+
+---
+
+### `autosar`
+
+Inspects, lints, projects, and simulates AUTOSAR Classic and Adaptive (`.arxml`) software component architectures and Virtual Run-Time Environment (RTE) runnables.
+
+```bash
+msx autosar <action> [files...] [options]
+```
+
+| Action         | Description                                                                                                                           |
+| :------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
+| `inspect`      | Inspect software component types, port prototypes, runnables, timing events, and network PDUs.                                        |
+| `lint`         | Detect unconnected R-ports (`M7401`), interface mismatches (`M7402`), WCET budget overflows (`M7405`), and PDU bit overlap (`M7406`). |
+| `to-modelica`  | Generate Modelica standard interface blocks for SIL plant co-simulation.                                                              |
+| `to-sysml`     | Project software architecture into OMG SysML v2 `part def` hierarchies.                                                               |
+| `to-dae`       | Lower software states and calibrated parameters into ModelScript linear-memory DAE arena.                                             |
+| `simulate-rte` | Execute the discrete event Virtual RTE scheduler and route signals across assembly connectors.                                        |
+
+| Option             | Type     | Default  | Description                                                |
+| :----------------- | :------- | :------- | :--------------------------------------------------------- |
+| `--duration <sec>` | `number` | `0.05`   | Simulation time window for Virtual RTE execution.          |
+| `--step <sec>`     | `number` | `0.01`   | Communication macro-step size for RTE runnable scheduling. |
+| `--out <path>`     | `string` | `stdout` | Target file path for generated code or execution logs.     |
+
+```bash
+msx autosar inspect Powertrain.arxml
+msx autosar lint BrakeController.arxml
+msx autosar to-sysml Steering.arxml --out=Steering.sysml
+msx autosar simulate-rte PowertrainSystem.arxml --duration=0.5 --step=0.01 --out=rte_trace.json
+```
+
+---
+
+### `olga`
+
+Provides complete command-line tooling for Schlumberger **OLGA** transient multiphase flow models (`.opi`, `.key`, `.genkey`, `.tab`, `.tpl`, `.ppl`), including drift-flux hydrodynamic simulation, severe slugging analysis, PVT flash, autonomous history matching, and flow assurance verification.
+
+```bash
+msx olga <action> [files...] [options]
+```
+
+| Action        | Description                                                                                                                               |
+| :------------ | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Dump flowpath pipe discretization, valve configurations, sources, and boundary conditions.                                                |
+| `lint`        | Run pre-flight flow assurance checks (`M7001`–`M7013`: CFL violations, severe slugging, pig stuck hazards, wax/asphaltene precipitation). |
+| `simulate`    | Execute transient 1D drift-flux simulation with Lagrangian slug tracking and scraper pig dynamics.                                        |
+| `verify`      | Check formal regulatory limits (MAOP, hydrate subcooling margin, slug surge volume, erosion limits).                                      |
+| `diagram`     | Render SVG schematics, seabed bathymetry elevation profiles, PVT envelopes, or slug statistics.                                           |
+| `tune`        | Run automated history matching against field measurement CSV telemetry.                                                                   |
+| `flash`       | Compute Peng-Robinson (PR) or Soave-Redlich-Kwong (SRK) thermodynamic vapor-liquid equilibrium (VLE) flash.                               |
+| `network`     | Solve coupled gathering network transients across multiple branches and subsea manifolds.                                                 |
+| `cosim`       | Run multi-rate SSP co-simulation coupling flowlines with topside process facilities.                                                      |
+| `to-dae`      | Lower flowline equations into ModelScript DAE arena.                                                                                      |
+| `to-modelica` | Translate pipe and boundary networks into `Modelica.Fluid` models.                                                                        |
+
+| Option                    | Type      | Default  | Description                                                          |
+| :------------------------ | :-------- | :------- | :------------------------------------------------------------------- |
+| `--duration <sec>`        | `number`  | `60.0`   | Transient simulation duration.                                       |
+| `--dt <sec>`              | `number`  | `1.0`    | Numerical integration time step.                                     |
+| `--out <path>`            | `string`  | `stdout` | Output file for trajectory CSV, diagrams, reports, or models.        |
+| `--checkpoint-out <path>` | `string`  | —        | Save simulation state snapshot for zero-discontinuity warm restart.  |
+| `--restart <path>`        | `string`  | —        | Resume transient simulation from checkpoint file.                    |
+| `--anti-slug`             | `boolean` | `false`  | Enable active topside choke feedback controller for slug mitigation. |
+
+```bash
+msx olga simulate subsea_tieback.opi --duration=3600 --out=traj.csv
+msx olga lint deepwater_riser.genkey
+msx olga diagram tieback.opi --view=profile --out=profile.svg
+msx olga flash --comp="C1:0.75,C2:0.10,C3:0.08,nC4:0.04,C7:0.03" --p=50 --t=295.15 --envelope
+```
+
+---
+
+### `simpack`
+
+Tooling for Dassault Systèmes **SIMPACK** multibody dynamics (`.spck` XML and `.sim` ASCII decks), including Grübler mobility analysis, 3D kinematic joint evaluation, Berg elastomeric bushings, and Craig-Bampton flexible body lowering.
+
+```bash
+msx simpack <action> [files...] [options]
+```
+
+| Action        | Description                                                                                      |
+| :------------ | :----------------------------------------------------------------------------------------------- |
+| `inspect`     | Dump rigid bodies, joint markers, degrees of freedom, and force elements.                        |
+| `lint`        | Check for dangling marker references, kinematic loops, and parameter inconsistencies.            |
+| `mobility`    | Calculate mechanism spatial degrees of freedom ($M = 6n - \sum c_i$) and detect overconstraints. |
+| `to-modelica` | Project mechanism into standard `Modelica.Mechanics.MultiBody` components.                       |
+| `to-fmu`      | Package complete multibody assembly as an FMI 2.0/3.0 Co-Simulation FMU.                         |
+| `to-dae`      | Lower 3D kinematics with Baumgarte / GGL index reduction into `DAEBuilder` arena.                |
+
+```bash
+msx simpack inspect DoubleWishbone.spck
+msx simpack mobility Suspension.spck
+msx simpack to-modelica Mechanism.sim --out=Mechanism.mo
+```
+
+---
+
+### `gensys`
+
+Tooling for **GENSYS** railway vehicle dynamics (`.calc`, `.geom`, `.track`), including FASTSIM wheel-rail contact mechanics, Polach non-linear creep, ERRI B176 track irregularities, Sperling ride comfort, and **EN 14363 / UIC 518** running safety homologation.
+
+```bash
+msx gensys <action> [files...] [options]
+```
+
+| Action           | Description                                                                                           |
+| :--------------- | :---------------------------------------------------------------------------------------------------- |
+| `inspect`        | Inspect vehicle masses, suspension spring-dampers, and wheelset configurations.                       |
+| `lint`           | Validate vehicle inertial and geometric parameters against railway engineering rules.                 |
+| `fastsim`        | Evaluate high-throughput Hertzian/FASTSIM wheel-rail tangential contact creep forces.                 |
+| `verify-en14363` | Run 2.0 m sliding window wheel climb derailment ($Y/Q \le 0.80$) and Prud'homme lateral limit checks. |
+| `comfort`        | Compute ISO 2631-1 frequency-weighted comfort ($W_k, W_d$) and Sperling index ($W_z$).                |
+| `to-dae`         | Lower vehicle multibody suspension and contact dynamics into `DAEBuilder` arena.                      |
+
+```bash
+msx gensys inspect ManchesterBenchmark.calc
+msx gensys verify-en14363 ManchesterBenchmark.calc --out=homologation.html
+msx gensys comfort HighSpeedTrain.calc --speed=250 --track=ERRI_HighQuality
+```
+
+---
+
+### `spice`
+
+Analog circuit simulation and netlist analysis for **SPICE** (`.cir`, `.sp`, `.net`, `.lib`), including DC operating point (`.OP`), transient analysis (`.TRAN`), AC frequency sweeps (`.AC`), and ECAD graph generation.
+
+```bash
+msx spice <action> [files...] [options]
+```
+
+| Action        | Description                                                                                                      |
+| :------------ | :--------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | List circuit components, nodes, subcircuits, and simulation directives.                                          |
+| `lint`        | Check for floating electrical nodes (`M7101`), ideal voltage source loops (`M7102`), and current source cutsets. |
+| `op`          | Calculate DC operating point node voltages and branch currents.                                                  |
+| `tran`        | Execute time-domain transient simulation with numerical companion circuits.                                      |
+| `ac`          | Run small-signal frequency domain analysis and compute bode plots.                                               |
+| `to-modelica` | Project netlist into standard `Modelica.Electrical.Analog` components.                                           |
+| `to-dae`      | Lower circuit equations into ModelScript linear-memory DAE arena.                                                |
+
+| Option           | Type     | Default  | Description                                               |
+| :--------------- | :------- | :------- | :-------------------------------------------------------- |
+| `--stop <sec>`   | `number` | `0.01`   | Transient simulation duration.                            |
+| `--step <sec>`   | `number` | `1e-5`   | Transient simulation time step.                           |
+| `--fstart <hz>`  | `number` | `10.0`   | AC sweep start frequency.                                 |
+| `--fstop <hz>`   | `number` | `1e6`    | AC sweep stop frequency.                                  |
+| `--points <num>` | `number` | `50`     | AC sweep evaluation points per decade/interval.           |
+| `--out <path>`   | `string` | `stdout` | Output file path for CSV trajectories or exported models. |
+
+```bash
+msx spice op LowPassFilter.cir
+msx spice tran PowerSupply.cir --stop=0.02 --step=1e-6 --out=transient.csv
+msx spice ac AudioAmplifier.sp --fstart=10 --fstop=1e5 --points=100 --out=bode.csv
+```
+
+---
+
+### `adams`
+
+Tooling for **MSC Adams** mechanism datasets (`.adm`) and command files (`.cmd`), including 3D Euler/Cardan kinematics, Grübler spatial mobility analysis, and cross-domain SIMPACK / Modelica projections.
+
+```bash
+msx adams <action> [files...] [options]
+```
+
+| Action        | Description                                                                                             |
+| :------------ | :------------------------------------------------------------------------------------------------------ |
+| `inspect`     | Inspect parts, markers, joints, forces, and initial conditions.                                         |
+| `lint`        | Validate inertia tensors (`M7303`), check for dangling markers (`M7302`), and verify ground references. |
+| `mobility`    | Calculate mechanism spatial degrees of freedom and overconstrained loops.                               |
+| `to-simpack`  | Convert Adams mechanism dataset into SIMPACK `.spck` XML.                                               |
+| `to-modelica` | Project mechanism into `Modelica.Mechanics.MultiBody` components.                                       |
+| `to-dae`      | Lower kinematic momentum equations directly into `DAEBuilder` arena.                                    |
+
+```bash
+msx adams mobility FourBarLinkage.adm
+msx adams lint LandingGear.adm
+msx adams to-simpack RobotArm.adm --out=RobotArm.spck
+```
+
+---
+
+### `urdf`
+
+Robotics compiler tooling for **ROS URDF** (`.urdf`) and **Xacro** (`.xacro`) descriptions, featuring Featherstone recursive dynamics (ABA forward dynamics, RNEA inverse dynamics), joint limit verification, and 3D CAD projections.
+
+```bash
+msx urdf <action> [files...] [options]
+```
+
+| Action        | Description                                                                                          |
+| :------------ | :--------------------------------------------------------------------------------------------------- |
+| `inspect`     | Dump robot kinematic link tree, joint limits, total mass budget, and degrees of freedom.             |
+| `lint`        | Validate kinematic tree acyclicity (`M7504`), joint limits (`M7508`), and inertia tensors (`M7506`). |
+| `dynamics`    | Evaluate forward (ABA) or inverse (RNEA) dynamics at test joint coordinates.                         |
+| `to-modelica` | Generate `Modelica.Mechanics.MultiBody` robotic system.                                              |
+| `to-adams`    | Project robot description into MSC Adams `.adm` solver dataset.                                      |
+| `to-simpack`  | Project robot description into SIMPACK `.spck` XML.                                                  |
+| `to-dae`      | Lower kinematic state equations directly into `DAEBuilder` arena.                                    |
+
+```bash
+msx urdf inspect KukaIiwa14.urdf
+msx urdf lint Manipulator.xacro
+msx urdf to-modelica PandaArm.urdf --out=PandaArm.mo
+```
+
+---
+
+### `easy5`
+
+Tooling for Boeing / MSC **EASY5** dynamic models (`.ez5`, `.ezm`, `.ezd`), including linear state-space analysis, User General (UG) Fortran routines, tabular map interpolation, and Modelica/SSP projections.
+
+```bash
+msx easy5 <action> [files...] [options]
+```
+
+| Action        | Description                                                           |
+| :------------ | :-------------------------------------------------------------------- |
+| `inspect`     | Dump component blocks, connection topology, and parameter tables.     |
+| `lint`        | Check for dangling connections, missing table files, and rate limits. |
+| `to-modelica` | Project continuous block diagram to Modelica 3.x.                     |
+| `to-ssp`      | Package model as an FMI SystemStructure.ssd container.                |
+| `to-dae`      | Lower continuous and discrete equations into `DAEBuilder` arena.      |
+
+---
+
+### `gtsuite`
+
+Tooling for Gamma Technologies **GT-SUITE** powertrain and engine models (`.gtm`, `.gtd`), including crank-slider kinematics, Wiebe combustion, Woschni heat transfer, Zeldovich NOx emissions, and DAE lowering.
+
+```bash
+msx gtsuite <action> [files...] [options]
+```
+
+| Action        | Description                                                                                      |
+| :------------ | :----------------------------------------------------------------------------------------------- |
+| `inspect`     | Inspect engine cylinders, intake/exhaust manifolds, valves, and turbochargers.                   |
+| `lint`        | Detect compressor surge (`M9002`), invalid compression ratio (`M9005`), and acoustic CFL limits. |
+| `simulate`    | Execute in-WASM Mean-Value Engine Model (MVEM) transient simulation.                             |
+| `to-modelica` | Project 1D powertrain architecture to Modelica standard blocks.                                  |
+| `to-dae`      | Lower engine thermodynamics and flow dynamics into `DAEBuilder` arena.                           |
+
+---
+
+### `sima`
+
+Tooling for DNV / SINTEF **SIMA** marine systems (`.inp`, `.sima`, `.sys`, `.hyd`), including Cummins equation 6-DOF floater dynamics, catenary mooring solvers, and DNV-OS-E301 station-keeping verification.
+
+```bash
+msx sima <action> [files...] [options]
+```
+
+| Action        | Description                                                                                  |
+| :------------ | :------------------------------------------------------------------------------------------- |
+| `inspect`     | Inspect marine vessels, mooring lines, catenary segments, and environmental loads.           |
+| `lint`        | Check negative metacentric height (`M7001`), line underflow (`M7002`), and attachment nodes. |
+| `simulate`    | Execute 6-DOF time-domain Cummins floater motion with retardation impulse response.          |
+| `verify-dnv`  | Verify DNV-OS-E301 line tension safety factors and watch-circle offset limits.               |
+| `to-modelica` | Project marine system into acausal Modelica physical components.                             |
+| `to-dae`      | Lower hydrodynamics and mooring tension equations into `DAEBuilder` arena.                   |
+
+---
+
+### `rocets`
+
+Tooling for NASA **ROCETS** liquid rocket engine transient decks (`.roc`, `.deck`, `.map`), including turbopump flow balance, CEA equilibrium combustion, supersonic nozzle expansion, and Bartz throat heat transfer.
+
+```bash
+msx rocets <action> [files...] [options]
+```
+
+| Action        | Description                                                                                          |
+| :------------ | :--------------------------------------------------------------------------------------------------- |
+| `inspect`     | Inspect turbopumps, combustion chambers, regenerative cooling channels, and valves.                  |
+| `lint`        | Detect extreme mixture ratios (`M8011`), turbine overspeed (`M8013`), and negative chamber pressure. |
+| `simulate`    | Solve steady-state flow balance or transient rocket engine ignition start sequence.                  |
+| `to-modelica` | Project cryogenic fluid networks and turbomachinery into Modelica 3.x.                               |
+| `to-dae`      | Lower propulsion governing equations into `DAEBuilder` arena.                                        |
+
+---
+
+### `psse`
+
+Tooling for Siemens **PSS/E** power transmission cases (`.raw`, `.dyr`, `.sav`), including bus/branch netlist extraction, Full-Newton AC power flow solving, and Modelica / PSCAD EMT projections.
+
+```bash
+msx psse <action> [files...] [options]
+```
+
+| Action        | Description                                                                                                            |
+| :------------ | :--------------------------------------------------------------------------------------------------------------------- |
+| `inspect`     | Dump bus count, generators, transmission lines, transformers, and load summary.                                        |
+| `lint`        | Validate bus voltage bounds, check for isolated buses, and verify generator $P/Q$ limits.                              |
+| `powerflow`   | Solve steady-state AC power flow using Full-Newton iteration on the nodal admittance matrix $\mathbf{Y}_{\text{bus}}$. |
+| `to-modelica` | Project power grid into acausal Modelica transmission lines and generators.                                            |
+| `to-pscad`    | Project PSS/E power network into PSCAD / EMT companion-circuit netlists.                                               |
+| `to-dae`      | Lower bus injection equations and generator swing dynamics into `DAEBuilder` arena.                                    |
+
+---
+
+### `lps`
+
+Tooling for Energy Solutions **PipelineStudio** gas and liquid pipeline networks (`.lps`, `.tgx`, `.tlx`, `.psg`), including AGA-8 / GERG-2008 natural gas compressibility, hydrogen blending ($H_2 \le 20\%$), open-channel slack line flow, water hammer liquid surge, and transient line pack accounting.
+
+```bash
+msx lps <action> [files...] [options]
+```
+
+| Action        | Description                                                                                        |
+| :------------ | :------------------------------------------------------------------------------------------------- |
+| `inspect`     | Dump pipeline pipes, compressors, pumps, delivery regulators, and receipt nodes.                   |
+| `lint`        | Check for MAOP overpressure (`M8001`), compressor surge (`M8002`), and high hydrogen blend ratios. |
+| `simulate`    | Run transient fluid network pressure propagation and inventory line pack calculations.             |
+| `to-sysml`    | Project pipeline topology and control station hierarchies into OMG SysML v2.                       |
+| `to-modelica` | Project pipe network into `Modelica.Fluid` gas/liquid transmission models.                         |
+| `to-dae`      | Lower Euler gas/liquid equations directly into `DAEBuilder` arena.                                 |
 
 ---
 

@@ -33,8 +33,8 @@
       "default": "./dist/src/lints/index.js"
     },
     "./dae": {
-      "types": "./dist/src/dae/lowering.d.ts",
-      "default": "./dist/src/dae/lowering.js"
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
     },
     "./solver": {
       "types": "./dist/src/solver/index.d.ts",
@@ -47,6 +47,10 @@
     "./diagram": {
       "types": "./dist/src/diagram/pid-diagram.d.ts",
       "default": "./dist/src/diagram/pid-diagram.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
     }
   },
   "files": [

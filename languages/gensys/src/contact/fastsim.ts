@@ -101,3 +101,14 @@ export function solveFastsim(input: FastsimContactInput, strips: number = 20): F
     return pureTsSolveFastsim(input, strips);
   }
 }
+
+/**
+ * SIMD128-accelerated Kalker FASTSIM solver utilizing 2-lane 64-bit float vectors (f64x2).
+ */
+export function solveFastsimSimd(input: FastsimContactInput, strips: number = 20): FastsimContactOutput {
+  try {
+    return getWasmContactBridge().solveFastsimSimd(input, strips);
+  } catch {
+    return pureTsSolveFastsim(input, strips);
+  }
+}

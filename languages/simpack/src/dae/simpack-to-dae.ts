@@ -3,6 +3,13 @@
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
 import type { SimpackModel, Vector3D } from "../types.js";
 
+export interface SimpackDaeOptions {
+  /** Constraint stabilization method: "baumgarte" | "algebraic". Default: "algebraic". */
+  stabilization?: "baumgarte" | "algebraic" | undefined;
+  /** Baumgarte natural frequency omega_n in rad/s. Default: 50.0. */
+  baumgarteOmega?: number | undefined;
+}
+
 /**
  * Lowers a SIMPACK multibody model directly into ModelScript's DAE linear memory arena.
  * Formulates:
@@ -13,10 +20,12 @@ import type { SimpackModel, Vector3D } from "../types.js";
  * 3. Exact Newton-Euler momentum balance with applied force and moment arms:
  *      m * der(v) = sum(F_forces) + F_gravity
  *      I * der(omega) = sum(r_arm x F_forces) + sum(Tau)
- * 4. Algebraic kinematic joint constraint equations.
+ * 4. Algebraic kinematic joint constraint equations with optional Baumgarte stabilization.
  */
-export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder): DAEBuilder {
+export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder, options?: SimpackDaeOptions): DAEBuilder {
   const dae = builder ?? new DAEBuilder(undefined, model.name);
+  const isBaumgarte = options?.stabilization === "baumgarte";
+  const omegaN = options?.baumgarteOmega ?? 50.0;
 
   // 1. Emit 6-DOF coordinates and velocities for each body
   for (const [id, _body] of model.bodies.entries()) {
@@ -67,7 +76,7 @@ export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder): DA
   }
 
   // 3. Lower constitutive force elements (spring-damper, bushing)
-  for (const [id, f] of model.forces.entries()) {
+  for (const [id, f] of (model.forces ?? new Map()).entries()) {
     const markerA = model.markers.get(f.markerA);
     const markerB = model.markers.get(f.markerB);
     if (!markerA || !markerB) continue;
@@ -215,6 +224,100 @@ export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder): DA
     }
   }
 
+  // 3b. If Baumgarte stabilization is active, inject stabilizing penalty forces across joints
+  if (isBaumgarte) {
+    for (const [_jointId, joint] of model.joints.entries()) {
+      const markerA = model.markers.get(joint.fromMarker);
+      const markerB = model.markers.get(joint.toMarker);
+      if (!markerA || !markerB) continue;
+
+      const bA = markerA.bodyId;
+      const bB = markerB.bodyId;
+
+      const mA = model.bodies.get(bA)?.mass ?? 10.0;
+      const mB = model.bodies.get(bB)?.mass ?? 10.0;
+      const mEff = bA === "$inertial" ? mB : bB === "$inertial" ? mA : (mA * mB) / (mA + mB);
+      const kp = mEff * omegaN * omegaN;
+      const kd = 2.0 * mEff * omegaN;
+
+      if (joint.type === "spherical" || joint.type === "revolute" || joint.type === "fixed") {
+        const sA = markerA.position;
+        const sB = markerB.position;
+
+        const posA_x =
+          bA === "$inertial"
+            ? dae.addRealLiteral(sA.x)
+            : dae.addBinaryExpr(BinOp.Add, dae.addNameExpr(`${bA}.x`), dae.addRealLiteral(sA.x));
+        const posB_x =
+          bB === "$inertial"
+            ? dae.addRealLiteral(sB.x)
+            : dae.addBinaryExpr(BinOp.Add, dae.addNameExpr(`${bB}.x`), dae.addRealLiteral(sB.x));
+        const posA_y =
+          bA === "$inertial"
+            ? dae.addRealLiteral(sA.y)
+            : dae.addBinaryExpr(BinOp.Add, dae.addNameExpr(`${bA}.y`), dae.addRealLiteral(sA.y));
+        const posB_y =
+          bB === "$inertial"
+            ? dae.addRealLiteral(sB.y)
+            : dae.addBinaryExpr(BinOp.Add, dae.addNameExpr(`${bB}.y`), dae.addRealLiteral(sB.y));
+        const posA_z =
+          bA === "$inertial"
+            ? dae.addRealLiteral(sA.z)
+            : dae.addBinaryExpr(BinOp.Add, dae.addNameExpr(`${bA}.z`), dae.addRealLiteral(sA.z));
+        const posB_z =
+          bB === "$inertial"
+            ? dae.addRealLiteral(sB.z)
+            : dae.addBinaryExpr(BinOp.Add, dae.addNameExpr(`${bB}.z`), dae.addRealLiteral(sB.z));
+
+        const velA_x = bA === "$inertial" ? dae.addRealLiteral(0.0) : dae.addNameExpr(`${bA}.vx`);
+        const velB_x = bB === "$inertial" ? dae.addRealLiteral(0.0) : dae.addNameExpr(`${bB}.vx`);
+        const velA_y = bA === "$inertial" ? dae.addRealLiteral(0.0) : dae.addNameExpr(`${bA}.vy`);
+        const velB_y = bB === "$inertial" ? dae.addRealLiteral(0.0) : dae.addNameExpr(`${bB}.vy`);
+        const velA_z = bA === "$inertial" ? dae.addRealLiteral(0.0) : dae.addNameExpr(`${bA}.vz`);
+        const velB_z = bB === "$inertial" ? dae.addRealLiteral(0.0) : dae.addNameExpr(`${bB}.vz`);
+
+        const deltaX = dae.addBinaryExpr(BinOp.Sub, posB_x, posA_x);
+        const deltaY = dae.addBinaryExpr(BinOp.Sub, posB_y, posA_y);
+        const deltaZ = dae.addBinaryExpr(BinOp.Sub, posB_z, posA_z);
+
+        const deltaVx = dae.addBinaryExpr(BinOp.Sub, velB_x, velA_x);
+        const deltaVy = dae.addBinaryExpr(BinOp.Sub, velB_y, velA_y);
+        const deltaVz = dae.addBinaryExpr(BinOp.Sub, velB_z, velA_z);
+
+        const fStabX = dae.addBinaryExpr(
+          BinOp.Add,
+          dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kp), deltaX),
+          dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kd), deltaVx),
+        );
+        const fStabY = dae.addBinaryExpr(
+          BinOp.Add,
+          dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kp), deltaY),
+          dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kd), deltaVy),
+        );
+        const fStabZ = dae.addBinaryExpr(
+          BinOp.Add,
+          dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kp), deltaZ),
+          dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kd), deltaVz),
+        );
+
+        if (bA !== "$inertial" && bodyForcesX.has(bA)) {
+          bodyForcesX.get(bA)!.push(fStabX);
+          bodyForcesY.get(bA)!.push(fStabY);
+          bodyForcesZ.get(bA)!.push(fStabZ);
+        }
+
+        if (bB !== "$inertial" && bodyForcesX.has(bB)) {
+          const negFX = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fStabX);
+          const negFY = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fStabY);
+          const negFZ = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fStabZ);
+          bodyForcesX.get(bB)!.push(negFX);
+          bodyForcesY.get(bB)!.push(negFY);
+          bodyForcesZ.get(bB)!.push(negFZ);
+        }
+      }
+    }
+  }
+
   // 4. Formulate Newton-Euler momentum balance equations
   for (const [id, body] of model.bodies.entries()) {
     const massExpr = dae.addRealLiteral(body.mass);
@@ -295,7 +398,7 @@ export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder): DA
   }
 
   // 5. Emit algebraic kinematic constraint variables and equations for joints
-  for (const [_id, joint] of model.joints.entries()) {
+  for (const [id, joint] of model.joints.entries()) {
     const markerA = model.markers.get(joint.fromMarker);
     const markerB = model.markers.get(joint.toMarker);
     if (!markerA || !markerB) continue;
@@ -307,15 +410,36 @@ export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder): DA
     if (joint.type === "spherical" || joint.type === "revolute" || joint.type === "fixed") {
       const posA_x = bA === "$inertial" ? dae.addRealLiteral(markerA.position.x) : dae.addNameExpr(`${bA}.x`);
       const posB_x = bB === "$inertial" ? dae.addRealLiteral(markerB.position.x) : dae.addNameExpr(`${bB}.x`);
-      dae.addEquation(EqKind.Simple, posA_x, posB_x);
-
       const posA_y = bA === "$inertial" ? dae.addRealLiteral(markerA.position.y) : dae.addNameExpr(`${bA}.y`);
       const posB_y = bB === "$inertial" ? dae.addRealLiteral(markerB.position.y) : dae.addNameExpr(`${bB}.y`);
-      dae.addEquation(EqKind.Simple, posA_y, posB_y);
-
       const posA_z = bA === "$inertial" ? dae.addRealLiteral(markerA.position.z) : dae.addNameExpr(`${bA}.z`);
       const posB_z = bB === "$inertial" ? dae.addRealLiteral(markerB.position.z) : dae.addNameExpr(`${bB}.z`);
-      dae.addEquation(EqKind.Simple, posA_z, posB_z);
+
+      if (isBaumgarte) {
+        // Track constraint residuals without freezing ODE integrators
+        dae.addVariable(`${id}.residual_x`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        dae.addVariable(`${id}.residual_y`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        dae.addVariable(`${id}.residual_z`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        dae.addEquation(
+          EqKind.Simple,
+          dae.addNameExpr(`${id}.residual_x`),
+          dae.addBinaryExpr(BinOp.Sub, posB_x, posA_x),
+        );
+        dae.addEquation(
+          EqKind.Simple,
+          dae.addNameExpr(`${id}.residual_y`),
+          dae.addBinaryExpr(BinOp.Sub, posB_y, posA_y),
+        );
+        dae.addEquation(
+          EqKind.Simple,
+          dae.addNameExpr(`${id}.residual_z`),
+          dae.addBinaryExpr(BinOp.Sub, posB_z, posA_z),
+        );
+      } else {
+        dae.addEquation(EqKind.Simple, posA_x, posB_x);
+        dae.addEquation(EqKind.Simple, posA_y, posB_y);
+        dae.addEquation(EqKind.Simple, posA_z, posB_z);
+      }
     }
   }
 

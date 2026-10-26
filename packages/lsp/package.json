@@ -105,6 +105,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/adams": "*",
+    "@modelscript/autosar": "*",
     "@modelscript/cad": "*",
     "@modelscript/cfd": "*",
     "@modelscript/csv": "*",
@@ -123,15 +125,19 @@
     "@modelscript/owl2": "*",
     "@modelscript/pscad": "*",
     "@modelscript/psse": "*",
+    "@modelscript/reqif": "*",
     "@modelscript/rocets": "*",
     "@modelscript/runtime": "*",
     "@modelscript/scad": "*",
     "@modelscript/sima": "*",
     "@modelscript/simpack": "*",
     "@modelscript/simulate": "*",
+    "@modelscript/simulink": "*",
+    "@modelscript/spice": "*",
     "@modelscript/ssp": "*",
     "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
+    "@modelscript/urdf": "*",
     "sql.js": "^1.14.2",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"

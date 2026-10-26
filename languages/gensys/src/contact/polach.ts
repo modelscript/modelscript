@@ -87,3 +87,14 @@ export function solvePolach(input: PolachContactInput): PolachContactOutput {
     return pureTsSolvePolach(input);
   }
 }
+
+/**
+ * 2-Wide SIMD128-accelerated batched Polach creep force solver.
+ */
+export function solvePolachBatchSimd(inputs: PolachContactInput[]): PolachContactOutput[] {
+  try {
+    return getWasmContactBridge().batchPolachSimd(inputs);
+  } catch {
+    return inputs.map(pureTsSolvePolach);
+  }
+}

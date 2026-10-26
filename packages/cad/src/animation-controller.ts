@@ -40,12 +40,16 @@ export interface CadDynamicBinding {
   scaleFactor?: number | undefined;
 }
 
-/** Dynamic deformation configuration for compliant soft-tissue and organ structures. */
+/** Dynamic deformation configuration for compliant soft-tissue structures or modal elastodynamics. */
 export interface DynamicDeformationConfig {
   mode?: "volume_radial" | "anisotropic" | "modal" | undefined;
   referenceVolume?: number | undefined;
   volumeVariable?: string | undefined;
   anchorOrigin?: [number, number, number] | undefined;
+  /** Modal deformation parameters */
+  modalVariables?: string[] | undefined;
+  modeShapes?: Float32Array[] | undefined;
+  nodeMap?: Uint32Array | undefined;
 }
 
 /** Dynamic spatial clearance segment between two interacting CAD bodies. */
@@ -427,6 +431,50 @@ export class AnimationController {
       scale: scl,
       matrix: composeTransformMatrix(pos, quat, scl),
     };
+  }
+
+  /**
+   * Computes the real-time displacement offsets (dx, dy, dz) for mesh vertices
+   * of a component configured with modal elastodynamics:
+   *   u_j(t) = sum_i(Phi_{j,i} * q_i(t))
+   */
+  public getModalDisplacements(componentName: string, numVertices?: number): Float32Array | null {
+    const defConfig = this.deformationConfigs.get(componentName);
+    if (!defConfig || defConfig.mode !== "modal" || !defConfig.modalVariables || !defConfig.modeShapes) {
+      return null;
+    }
+
+    const { modalVariables, modeShapes, nodeMap } = defConfig;
+    const numModes = Math.min(modalVariables.length, modeShapes.length);
+    if (numModes === 0) return null;
+
+    const firstShape = modeShapes[0]!;
+    const nodeCount = Math.floor(firstShape.length / 3);
+    const vertCount = numVertices ?? (nodeMap ? nodeMap.length : nodeCount);
+    if (vertCount === 0) return null;
+
+    const displacements = new Float32Array(vertCount * 3);
+
+    for (let m = 0; m < numModes; m++) {
+      const qName = modalVariables[m]!;
+      const qVal = this.getVariableValue(qName);
+      if (qVal === null || qVal === 0) continue;
+
+      const shape = modeShapes[m]!;
+
+      for (let v = 0; v < vertCount; v++) {
+        const nodeIdx = nodeMap ? nodeMap[v]! : v;
+        if (nodeIdx < nodeCount) {
+          const sIdx = nodeIdx * 3;
+          const vIdx = v * 3;
+          displacements[vIdx] = (displacements[vIdx] ?? 0) + (shape[sIdx] ?? 0) * qVal;
+          displacements[vIdx + 1] = (displacements[vIdx + 1] ?? 0) + (shape[sIdx + 1] ?? 0) * qVal;
+          displacements[vIdx + 2] = (displacements[vIdx + 2] ?? 0) + (shape[sIdx + 2] ?? 0) * qVal;
+        }
+      }
+    }
+
+    return displacements;
   }
 
   // ── Dynamic Clearance Methods ──────────────────────────────────────────────

@@ -5,7 +5,7 @@ import assert from "node:assert";
 import test from "node:test";
 import { extractEmtNetlist, netlistToEmtCircuit } from "../src/netlist/emt-netlist.js";
 import { parsePscx } from "../src/parser/pscx-parser.js";
-import { verifyIeee2800Compliance } from "../src/verification/ieee2800.js";
+import { evaluateHarmonicDistortion, verifyIeee2800Compliance } from "../src/verification/ieee2800.js";
 
 test("IEEE 2800 Clause 7.2.2.7: Consecutive Fault Ride-Through (CFRT) compliance verification", () => {
   const fNominal = 60.0;
@@ -323,4 +323,197 @@ test("PSCAD Netlist extraction with Jiles-Atherton saturable transformer and EMT
 
   assert.ok(res.metrics.totalSteps > 100, "Simulation must produce timesteps");
   assert.strictEqual(res.metrics.totalSteps, Math.ceil(0.02 / 20e-6));
+});
+
+test("IEEE 2800 Clause 7.2.2.4: Voltage Harmonic Distortion Limits (THD and Individual harmonics)", () => {
+  const fNominal = 60.0;
+  const omega = 2 * Math.PI * fNominal;
+  const dt = 20e-6;
+  const tEnd = 0.05; // 50 ms (> 2 fundamental cycles)
+  const n = Math.round(tEnd / dt);
+  const time = new Float64Array(n);
+  const vPure = new Float64Array(n);
+  const vDistorted = new Float64Array(n);
+  const vMarginal = new Float64Array(n);
+
+  const vNominal = 230e3 * Math.sqrt(2 / 3);
+
+  for (let k = 0; k < n; k++) {
+    const t = k * dt;
+    time[k] = t;
+    // Pure 60 Hz fundamental
+    vPure[k] = vNominal * Math.sin(omega * t);
+
+    // Distorted waveform: fundamental + 6% 5th harmonic (fails 5.0% THD and 3.0% individual)
+    vDistorted[k] = vNominal * (Math.sin(omega * t) + 0.06 * Math.sin(5 * omega * t));
+
+    // Marginal compliant waveform: fundamental + 2% 5th + 2% 7th harmonic
+    // THD = sqrt(2^2 + 2^2) = 2.83% <= 5%, Max individual = 2.0% <= 3.0%
+    vMarginal[k] = vNominal * (Math.sin(omega * t) + 0.02 * Math.sin(5 * omega * t) + 0.02 * Math.sin(7 * omega * t));
+  }
+
+  // Unit function tests for evaluateHarmonicDistortion
+  const pureRes = evaluateHarmonicDistortion(time, vPure, fNominal, 50);
+  assert.ok(pureRes.passed);
+  assert.ok(pureRes.thdPercent < 0.5, `Pure sinusoid THD must be near 0, got ${pureRes.thdPercent}`);
+
+  const distortedRes = evaluateHarmonicDistortion(time, vDistorted, fNominal, 50);
+  assert.strictEqual(distortedRes.passed, false, "Distorted waveform with 6% 5th harmonic must fail");
+  assert.ok(distortedRes.thdPercent > 5.5, `THD must be > 5.5%, got ${distortedRes.thdPercent}`);
+  assert.strictEqual(distortedRes.maxHarmonicOrder, 5);
+  assert.ok(distortedRes.maxIndividualHarmonicPercent > 5.5);
+
+  const marginalRes = evaluateHarmonicDistortion(time, vMarginal, fNominal, 50);
+  assert.strictEqual(marginalRes.passed, true, "Marginal waveform with 2% 5th and 2% 7th must pass");
+  assert.ok(marginalRes.thdPercent < 3.0);
+  assert.ok(marginalRes.maxIndividualHarmonicPercent < 2.5);
+
+  // Full verifyIeee2800Compliance integration tests
+  const dummyNetlist = extractEmtNetlist(
+    parsePscx(`<?xml version="1.0" encoding="UTF-8"?>
+<project name="Harmonic_Test" version="5.0.0">
+  <Bus name="POI" id="B1" vbase="230.0" />
+</project>`),
+  );
+
+  const passReport = verifyIeee2800Compliance(
+    "Harmonic_Pass_IBR",
+    dummyNetlist,
+    { time, vPoi: vMarginal, iIbr: vMarginal },
+    {
+      faultStartSec: 0.01,
+      faultDurationSec: 0.02,
+      vPreFaultKv: 230.0,
+      vFaultKv: 230.0,
+      evaluateHarmonics: true,
+    },
+  );
+  const harmCheck = passReport.checks.find((c) => c.clause === "7.2.2.4");
+  assert.ok(harmCheck, "Report must include Clause 7.2.2.4 check");
+  assert.strictEqual(harmCheck.status, "PASS");
+  assert.ok(harmCheck.measuredValue.includes("THD = "));
+
+  const failReport = verifyIeee2800Compliance(
+    "Harmonic_Fail_IBR",
+    dummyNetlist,
+    { time, vPoi: vDistorted, iIbr: vDistorted },
+    {
+      faultStartSec: 0.01,
+      faultDurationSec: 0.02,
+      vPreFaultKv: 230.0,
+      vFaultKv: 230.0,
+      evaluateHarmonics: true,
+    },
+  );
+  const failHarmCheck = failReport.checks.find((c) => c.clause === "7.2.2.4");
+  assert.ok(failHarmCheck);
+  assert.strictEqual(failHarmCheck.status, "FAIL");
+  assert.strictEqual(failReport.overallStatus, "FAIL");
+});
+
+test("IEEE 2800 Clause 7.2.2.3.4: Negative-Sequence Reactive Current Injection Droop (k2)", () => {
+  const fNominal = 60.0;
+  const omega = 2 * Math.PI * fNominal;
+  const dt = 20e-6;
+  const tEnd = 0.06; // 60 ms
+  const n = Math.round(tEnd / dt);
+  const time = new Float64Array(n);
+  const va = new Float64Array(n),
+    vb = new Float64Array(n),
+    vc = new Float64Array(n);
+  const ia = new Float64Array(n),
+    ib = new Float64Array(n),
+    ic = new Float64Array(n);
+  const iaWeak = new Float64Array(n),
+    ibWeak = new Float64Array(n),
+    icWeak = new Float64Array(n);
+
+  const vNominal = 230e3 * Math.sqrt(2 / 3);
+  const iRated = 1000.0;
+
+  // Unbalanced phase sag: Phase A sags to 0.40 pu between 20ms and 40ms, B and C stay at 1.0 pu
+  // This induces significant negative sequence voltage V2
+  for (let k = 0; k < n; k++) {
+    const t = k * dt;
+    time[k] = t;
+    const inFault = t >= 0.02 && t <= 0.04;
+    const vScaleA = inFault ? 0.4 : 1.0;
+    const vScaleBC = 1.0;
+
+    va[k] = vNominal * vScaleA * Math.sin(omega * t);
+    vb[k] = vNominal * vScaleBC * Math.sin(omega * t - (2 * Math.PI) / 3);
+    vc[k] = vNominal * vScaleBC * Math.sin(omega * t + (2 * Math.PI) / 3);
+
+    // Case A (Compliant): Inverter senses negative sequence and injects proportional negative-sequence current
+    // I_2q boost with k2 >= 2.0
+    const iScaleA = inFault ? 1.2 : 1.0;
+    const iScaleBC = inFault ? 0.8 : 1.0;
+    ia[k] = iRated * iScaleA * Math.sin(omega * t + 0.3);
+    ib[k] = iRated * iScaleBC * Math.sin(omega * t - (2 * Math.PI) / 3);
+    ic[k] = iRated * iScaleBC * Math.sin(omega * t + (2 * Math.PI) / 3);
+
+    // Case B (Non-compliant): Inverter provides zero negative sequence support (symmetric current despite asymmetric voltage sag)
+    iaWeak[k] = iRated * 0.5 * Math.sin(omega * t);
+    ibWeak[k] = iRated * 0.5 * Math.sin(omega * t - (2 * Math.PI) / 3);
+    icWeak[k] = iRated * 0.5 * Math.sin(omega * t + (2 * Math.PI) / 3);
+  }
+
+  const dummyNetlist = extractEmtNetlist(
+    parsePscx(`<?xml version="1.0" encoding="UTF-8"?>
+<project name="NegSeq_Test" version="5.0.0">
+  <Bus name="POI" id="B1" vbase="230.0" />
+</project>`),
+  );
+
+  const passReport = verifyIeee2800Compliance(
+    "NegSeq_Compliant_IBR",
+    dummyNetlist,
+    {
+      time,
+      vPoi: va,
+      iIbr: ia,
+      vPoiAbc: { a: va, b: vb, c: vc },
+      iIbrAbc: { a: ia, b: ib, c: ic },
+    },
+    {
+      faultStartSec: 0.02,
+      faultDurationSec: 0.02,
+      vPreFaultKv: 230.0,
+      vFaultKv: 160.0,
+      ratedCurrentAmp: iRated,
+      minK2Gain: 1.5,
+      evaluateNegativeSequenceDroop: true,
+    },
+  );
+
+  const k2Check = passReport.checks.find((c) => c.clause === "7.2.2.3.4-NegSeq");
+  assert.ok(k2Check, "Report must include Clause 7.2.2.3.4-NegSeq check");
+  assert.strictEqual(k2Check.status, "PASS");
+  assert.ok(k2Check.measuredValue.includes("k2 = "));
+
+  const failReport = verifyIeee2800Compliance(
+    "NegSeq_Deficient_IBR",
+    dummyNetlist,
+    {
+      time,
+      vPoi: va,
+      iIbr: iaWeak,
+      vPoiAbc: { a: va, b: vb, c: vc },
+      iIbrAbc: { a: iaWeak, b: ibWeak, c: icWeak },
+    },
+    {
+      faultStartSec: 0.02,
+      faultDurationSec: 0.02,
+      vPreFaultKv: 230.0,
+      vFaultKv: 160.0,
+      ratedCurrentAmp: iRated,
+      minK2Gain: 2.0,
+      evaluateNegativeSequenceDroop: true,
+    },
+  );
+
+  const failK2Check = failReport.checks.find((c) => c.clause === "7.2.2.3.4-NegSeq");
+  assert.ok(failK2Check);
+  assert.strictEqual(failK2Check.status, "FAIL");
+  assert.strictEqual(failReport.overallStatus, "FAIL");
 });

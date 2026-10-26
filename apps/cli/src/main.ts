@@ -340,6 +340,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "spice <action>",
+      "SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation",
+      () => import("./commands/spice.js"),
+      "Spice",
+    ),
+  )
+  .command(
+    lazy(
       "ddp <action>",
       "Digital Data Package (prostep ivip PSI 21 / OMG CASCaRA) packaging, inspection, and AASX bridging",
       () => import("./commands/ddp.js"),
@@ -532,10 +540,50 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "adams <action> [files..]",
+      "Inspect, analyze, solve, and project MSC Adams multibody models (.adm, .cmd, .acf)",
+      () => import("./commands/adams.js"),
+      "AdamsCommand",
+    ),
+  )
+  .command(
+    lazy(
       "simpack <action> [files..]",
       "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
       () => import("./commands/simpack.js"),
       "SimpackCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "spice <action> [files..]",
+      "Inspect, lint, solve, and project SPICE analog circuit netlists (.cir, .sp, .net, .lib)",
+      () => import("./commands/spice.js"),
+      "Spice",
+    ),
+  )
+  .command(
+    lazy(
+      "urdf <action> [files..]",
+      "Inspect, validate, solve kinematics, and project ROS URDF & SDFormat robot models (.urdf, .sdf, .xacro)",
+      () => import("./commands/urdf.js"),
+      "UrdfCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "simulink <action> [files..]",
+      "Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)",
+      () => import("./commands/simulink.js"),
+      "SimulinkCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "autosar <action> [files..]",
+      "Inspect, lint, simulate Virtual RTE, lower to DAE, and project AUTOSAR Classic and Adaptive architectures (.arxml)",
+      () => import("./commands/autosar.js"),
+      "AutosarCommand",
     ),
   )
   .command(

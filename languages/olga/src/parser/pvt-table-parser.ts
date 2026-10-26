@@ -778,9 +778,98 @@ export function interpolatePvt(
   const v = j1 === j0 ? 0 : (tClamped - T[j0]!) / deltaT;
 
   /**
-   * Bilinear interpolation with exact derivatives.
+   * Bilinear and Bicubic interpolation with exact derivatives.
    */
   function evaluateGrid(grid: number[][]): { val: number; dqdP: number; dqdT: number } {
+    if (_options?.method === "bicubic") {
+      // 1D cubic Hermite basis functions
+      const u2 = u * u;
+      const u3 = u2 * u;
+      const hu00 = 2 * u3 - 3 * u2 + 1;
+      const hu10 = u3 - 2 * u2 + u;
+      const hu01 = -2 * u3 + 3 * u2;
+      const hu11 = u3 - u2;
+
+      const dhu00 = 6 * u2 - 6 * u;
+      const dhu10 = 3 * u2 - 4 * u + 1;
+      const dhu01 = -6 * u2 + 6 * u;
+      const dhu11 = 3 * u2 - 2 * u;
+
+      const v2 = v * v;
+      const v3 = v2 * v;
+      const hv00 = 2 * v3 - 3 * v2 + 1;
+      const hv10 = v3 - 2 * v2 + v;
+      const hv01 = -2 * v3 + 3 * v2;
+      const hv11 = v3 - v2;
+
+      const dhv00 = 6 * v2 - 6 * v;
+      const dhv10 = 3 * v2 - 4 * v + 1;
+      const dhv01 = -6 * v2 + 6 * v;
+      const dhv11 = 3 * v2 - 2 * v;
+
+      // Safe access helper
+      const at = (i: number, j: number) => grid[Math.max(0, Math.min(nP - 1, i))]![Math.max(0, Math.min(nT - 1, j))]!;
+
+      const f00 = at(i0, j0);
+      const f10 = at(i1, j0);
+      const f01 = at(i0, j1);
+      const f11 = at(i1, j1);
+
+      // Slopes in u (scaled by deltaP) using central differences
+      const fu00 = 0.5 * (at(i0 + 1, j0) - at(i0 - 1, j0));
+      const fu10 = 0.5 * (at(i1 + 1, j0) - at(i1 - 1, j0));
+      const fu01 = 0.5 * (at(i0 + 1, j1) - at(i0 - 1, j1));
+      const fu11 = 0.5 * (at(i1 + 1, j1) - at(i1 - 1, j1));
+
+      // Slopes in v (scaled by deltaT) using central differences
+      const fv00 = 0.5 * (at(i0, j0 + 1) - at(i0, j0 - 1));
+      const fv10 = 0.5 * (at(i1, j0 + 1) - at(i1, j0 - 1));
+      const fv01 = 0.5 * (at(i0, j1 + 1) - at(i0, j1 - 1));
+      const fv11 = 0.5 * (at(i1, j1 + 1) - at(i1, j1 - 1));
+
+      // Cross derivatives (d2f / du dv)
+      const fuv00 = 0.25 * (at(i0 + 1, j0 + 1) - at(i0 - 1, j0 + 1) - at(i0 + 1, j0 - 1) + at(i0 - 1, j0 - 1));
+      const fuv10 = 0.25 * (at(i1 + 1, j0 + 1) - at(i1 - 1, j0 + 1) - at(i1 + 1, j0 - 1) + at(i1 - 1, j0 - 1));
+      const fuv01 = 0.25 * (at(i0 + 1, j1 + 1) - at(i0 - 1, j1 + 1) - at(i0 + 1, j1 - 1) + at(i0 - 1, j1 - 1));
+      const fuv11 = 0.25 * (at(i1 + 1, j1 + 1) - at(i1 - 1, j1 + 1) - at(i1 + 1, j1 - 1) + at(i1 - 1, j1 - 1));
+
+      const uCoeffs = [hu00, hu10, hu01, hu11];
+      const duCoeffs = [dhu00, dhu10, dhu01, dhu11];
+      const vCoeffs = [hv00, hv10, hv01, hv11];
+      const dvCoeffs = [dhv00, dhv10, dhv01, dhv11];
+
+      const M = [
+        [f00, fv00, f01, fv01],
+        [fu00, fuv00, fu01, fuv01],
+        [f10, fv10, f11, fv11],
+        [fu10, fuv10, fu11, fuv11],
+      ];
+
+      let val = 0;
+      let df_du = 0;
+      let df_dv = 0;
+
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const m = M[r]![c]!;
+          val += uCoeffs[r]! * m * vCoeffs[c]!;
+          df_du += duCoeffs[r]! * m * vCoeffs[c]!;
+          df_dv += uCoeffs[r]! * m * dvCoeffs[c]!;
+        }
+      }
+
+      const dqdP = df_du / deltaP;
+      const dqdT = df_dv / deltaT;
+
+      if (isExtrapolated) {
+        const dP_extrap = pressurePa - pClamped;
+        const dT_extrap = tempK - tClamped;
+        val = val + dqdP * dP_extrap + dqdT * dT_extrap;
+      }
+
+      return { val, dqdP, dqdT };
+    }
+
     const q00 = grid[i0]![j0]!;
     const q10 = grid[i1]![j0]!;
     const q01 = grid[i0]![j1]!;

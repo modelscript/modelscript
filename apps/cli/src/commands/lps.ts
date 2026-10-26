@@ -17,6 +17,8 @@ import {
   GasEulerDaeSolver,
   LinePackEngine,
   lintLpsModel,
+  lowerLpsToDae,
+  lpsToModelica,
   lpsToSysml2,
   parseLps,
   PipelineVerifier,
@@ -37,7 +39,7 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
       .positional("action", {
         description: "Action to perform (lint, solve, linepack, simulate, sysml, verify)",
         type: "string",
-        choices: ["lint", "solve", "linepack", "simulate", "sysml", "verify"],
+        choices: ["inspect", "to-dae", "to-modelica", "lint", "solve", "linepack", "simulate", "sysml", "verify"],
         demandOption: true,
       })
       .positional("files", {
@@ -107,7 +109,51 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
         model.simulationControls.equationOfState = argv["eos"] as EquationOfState;
       }
 
-      if (action === "lint") {
+      if (action === "inspect") {
+        console.log(`[PipelineStudio Network] File: ${path.basename(filePath)}`);
+        console.log(`  Title: ${model.title || model.id}`);
+        console.log(`  Simulation Type: ${model.type}`);
+        console.log(`  Nodes: ${model.nodes.length}`);
+        for (const n of model.nodes) {
+          console.log(
+            `    - Node '${n.name}' [${n.type}]: Elev=${n.elevation}m, P=${((n.pressure ?? 0) / 1e5).toFixed(1)} bar`,
+          );
+        }
+        console.log(`  Pipes: ${model.pipes.length}`);
+        for (const p of model.pipes) {
+          console.log(
+            `    - Pipe '${p.name}': ${p.fromNode} -> ${p.toNode} (L=${(p.length / 1000).toFixed(1)}km, D=${(p.diameter * 1000).toFixed(0)}mm)`,
+          );
+        }
+        console.log(`  Compressors: ${model.compressors.length}`);
+        for (const c of model.compressors) {
+          console.log(
+            `    - Compressor '${c.name}': ${c.fromNode} -> ${c.toNode} (${(c.maxPower / 1e6).toFixed(1)} MW, PR=${c.maxPressureRatio})`,
+          );
+        }
+      } else if (action === "to-dae") {
+        console.log(
+          `Lowering PipelineStudio network '${model.title || model.id}' to ModelScript linear-memory DAE arena...`,
+        );
+        const dae = lowerLpsToDae(model);
+        console.log(`✔ DAE arena lowered successfully:`);
+        console.log(`  Variables : ${dae.varCount}`);
+        console.log(`  Equations : ${dae.eqCount}`);
+        if (argv["out"]) {
+          const outPath = path.resolve(argv["out"] as string);
+          fs.writeFileSync(outPath, JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2), "utf-8");
+          console.log(`✔ DAE metadata written to ${outPath}`);
+        }
+      } else if (action === "to-modelica") {
+        const mo = lpsToModelica(model);
+        if (argv["out"]) {
+          const outPath = path.resolve(argv["out"] as string);
+          fs.writeFileSync(outPath, mo, "utf-8");
+          console.log(`✔ Modelica projection written to ${outPath}`);
+        } else {
+          console.log(mo);
+        }
+      } else if (action === "lint") {
         const diagnostics = lintLpsModel(model);
         if (diagnostics.length === 0) {
           console.log(`[LPS] ${filePath}: Clean! No diagnostics found.`);

@@ -20,6 +20,28 @@ export interface WheelRailContactPoint {
   rollingRadius: number; // Instantaneous rolling radius [m]
 }
 
+export interface MultiPointContactPatch {
+  patchIndex: number; // 1 = tread, 2 = flange
+  patchType: "tread" | "flange";
+  lateralContactY: number; // Contact lateral coordinate on rail [m]
+  verticalContactZ: number; // Contact height on rail [m]
+  contactAngleRad: number; // Local contact angle delta [rad]
+  rollingRadius: number; // Instantaneous rolling radius [m]
+  penetrationDepth: number; // Local elastic penetration depth [m]
+  normalForceShare: number; // Fraction of vertical load [0..1]
+  normalForceN: number; // Resulting normal force [N]
+}
+
+export interface MultiPointWheelRailContactResult {
+  wheelShiftY: number;
+  isTwoPointContact: boolean;
+  treadPatch: MultiPointContactPatch;
+  flangePatch?: MultiPointContactPatch | undefined;
+  patches: MultiPointContactPatch[];
+  effectiveRollingRadius: number;
+  totalLateralNormalForce: number; // Resulting lateral guidance force: sum(N_i * sin(delta_i))
+}
+
 export interface WheelsetContactGeometryResult {
   wheelsetLateralY: number; // Wheelset lateral shift y_w [m]
   rollAngleRad: number; // Wheelset kinematic roll angle phi_w [rad]
@@ -143,6 +165,171 @@ export function findWheelRailContact(
     verticalContactZ: zRail,
     contactAngleRad: Math.abs(contactAngleRad),
     rollingRadius,
+  };
+}
+
+/**
+ * Detects single- or two-point contact between wheel and rail across the tread and flange.
+ * Discretizes rail head into tread region (y <= 0.012 m) and flange region (y > 0.012 m).
+ * When wheel lateral shift causes flange proximity, Hertzian compliance load sharing
+ * divides the vertical load Q between tread and flange contact patches:
+ *   N1 * cos(delta1) + N2 * cos(delta2) = Q
+ */
+export function findMultiPointWheelRailContact(
+  wheelShiftY: number, // Wheel lateral shift [m] (+ is towards flange)
+  nominalRadius: number = 0.46, // r0 [m]
+  railCant: number = 1 / 40,
+  totalWheelLoadN: number = 100000, // Total wheel vertical load [N]
+): MultiPointWheelRailContactResult {
+  const yMin = -0.025;
+  const yMax = 0.028;
+  const steps = 300;
+  const dy = (yMax - yMin) / steps;
+
+  // Scan tread region: yRail <= 0.012
+  let maxPenTread = -Infinity;
+  let bestYTread = 0;
+
+  // Scan flange region: yRail > 0.012
+  let maxPenFlange = -Infinity;
+  let bestYFlange = 0.02;
+
+  for (let i = 0; i <= steps; i++) {
+    const yRail = yMin + i * dy;
+    const yWheel = yRail + wheelShiftY;
+    const zWheel = evaluateS1002WheelProfile(yWheel);
+    const zRail = evaluateUic60RailProfile(yRail, railCant);
+    const penetration = zRail + zWheel;
+
+    if (yRail <= 0.012) {
+      if (penetration > maxPenTread) {
+        maxPenTread = penetration;
+        bestYTread = yRail;
+      }
+    } else {
+      if (penetration > maxPenFlange) {
+        maxPenFlange = penetration;
+        bestYFlange = yRail;
+      }
+    }
+  }
+
+  const helper = (yRail: number) => {
+    const yW = yRail + wheelShiftY;
+    const zW = evaluateS1002WheelProfile(yW);
+    const zR = evaluateUic60RailProfile(yRail, railCant);
+    const eps = 0.0001;
+    const dzW = (evaluateS1002WheelProfile(yW + eps) - evaluateS1002WheelProfile(yW - eps)) / (2 * eps);
+    const contactAngleRad = Math.abs(Math.atan(dzW));
+    const rollingRadius = nominalRadius + zW;
+    return {
+      lateralContactY: yRail,
+      verticalContactZ: zR,
+      contactAngleRad,
+      rollingRadius,
+    };
+  };
+
+  const treadGeo = helper(bestYTread);
+  const flangeGeo = helper(bestYFlange);
+
+  // Transition zone threshold: contact occurs on both tread and flange
+  // when wheel is displaced laterally (wheelShiftY >= 0.005 m) and penetration difference
+  // is within the wheel-rail compliance gap window (3 mm).
+  const maxGap = 0.003;
+  const maxPen = Math.max(maxPenTread, maxPenFlange);
+  const penDiff = Math.abs(maxPenTread - maxPenFlange);
+
+  const isTwoPoint = wheelShiftY >= 0.005 && penDiff < maxGap;
+
+  if (!isTwoPoint) {
+    if (maxPenFlange > maxPenTread && wheelShiftY > 0.008) {
+      // Pure flange contact
+      const cosDelta = Math.cos(flangeGeo.contactAngleRad);
+      const normalForceN = totalWheelLoadN / (cosDelta > 0.1 ? cosDelta : 1.0);
+      const flangePatch: MultiPointContactPatch = {
+        patchIndex: 1,
+        patchType: "flange",
+        ...flangeGeo,
+        penetrationDepth: 50e-6,
+        normalForceShare: 1.0,
+        normalForceN,
+      };
+      return {
+        wheelShiftY,
+        isTwoPointContact: false,
+        treadPatch: flangePatch,
+        patches: [flangePatch],
+        effectiveRollingRadius: flangeGeo.rollingRadius,
+        totalLateralNormalForce: normalForceN * Math.sin(flangeGeo.contactAngleRad),
+      };
+    } else {
+      // Pure tread contact
+      const cosDelta = Math.cos(treadGeo.contactAngleRad);
+      const normalForceN = totalWheelLoadN / (cosDelta > 0.1 ? cosDelta : 1.0);
+      const treadPatch: MultiPointContactPatch = {
+        patchIndex: 1,
+        patchType: "tread",
+        ...treadGeo,
+        penetrationDepth: 50e-6,
+        normalForceShare: 1.0,
+        normalForceN,
+      };
+      return {
+        wheelShiftY,
+        isTwoPointContact: false,
+        treadPatch,
+        patches: [treadPatch],
+        effectiveRollingRadius: treadGeo.rollingRadius,
+        totalLateralNormalForce: normalForceN * Math.sin(treadGeo.contactAngleRad),
+      };
+    }
+  }
+
+  // Hertzian compliance load sharing based on penetration proximity to maximum
+  const w1 = Math.max(0.01, 1 - Math.max(0, maxPen - maxPenTread) / maxGap);
+  const w2 = Math.max(0.01, 1 - Math.max(0, maxPen - maxPenFlange) / maxGap);
+
+  const p1 = Math.pow(w1, 1.5);
+  const p2 = Math.pow(w2, 1.5);
+  const cos1 = Math.cos(treadGeo.contactAngleRad);
+  const cos2 = Math.cos(flangeGeo.contactAngleRad);
+  const denom = p1 * cos1 + p2 * cos2;
+
+  const N1 = denom > 1e-12 ? (p1 / denom) * totalWheelLoadN : totalWheelLoadN / 2;
+  const N2 = denom > 1e-12 ? (p2 / denom) * totalWheelLoadN : totalWheelLoadN / 2;
+
+  const treadPatch: MultiPointContactPatch = {
+    patchIndex: 1,
+    patchType: "tread",
+    ...treadGeo,
+    penetrationDepth: w1 * 50e-6,
+    normalForceShare: (N1 * cos1) / totalWheelLoadN,
+    normalForceN: N1,
+  };
+
+  const flangePatch: MultiPointContactPatch = {
+    patchIndex: 2,
+    patchType: "flange",
+    ...flangeGeo,
+    penetrationDepth: w2 * 50e-6,
+    normalForceShare: (N2 * cos2) / totalWheelLoadN,
+    normalForceN: N2,
+  };
+
+  const totalN = N1 + N2;
+  const effectiveRollingRadius =
+    totalN > 0 ? (N1 * treadGeo.rollingRadius + N2 * flangeGeo.rollingRadius) / totalN : treadGeo.rollingRadius;
+  const totalLateralNormalForce = N1 * Math.sin(treadGeo.contactAngleRad) + N2 * Math.sin(flangeGeo.contactAngleRad);
+
+  return {
+    wheelShiftY,
+    isTwoPointContact: true,
+    treadPatch,
+    flangePatch,
+    patches: [treadPatch, flangePatch],
+    effectiveRollingRadius,
+    totalLateralNormalForce,
   };
 }
 

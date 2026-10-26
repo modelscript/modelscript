@@ -45,10 +45,17 @@ export function parseFbiFile(content: string, defaultName: string = "FlexBody"):
   const nodes: FbiNode[] = [];
   let numNodes = 0;
   let numModes = 0;
+  let modelName = defaultName;
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#") || line.startsWith("$") || line.startsWith("!")) {
+      continue;
+    }
+
+    const nameMatch = line.match(/^NAME\s+['"]?([^'"]+)['"]?/i);
+    if (nameMatch) {
+      modelName = nameMatch[1]!;
       continue;
     }
 
@@ -102,7 +109,7 @@ export function parseFbiFile(content: string, defaultName: string = "FlexBody"):
   }
 
   return {
-    name: defaultName,
+    name: modelName,
     numNodes: numNodes > 0 ? numNodes : nodes.length,
     numModes: numModes > 0 ? numModes : modes.length,
     nodes: nodes.length > 0 ? nodes : undefined,

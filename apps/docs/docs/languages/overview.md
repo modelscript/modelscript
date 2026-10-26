@@ -6,26 +6,34 @@ ModelScript is not a single-language compiler—it is a **polyglot systems engin
 
 ## Supported Engineering Languages
 
-| Language                           | Package                    | Extensions                               | Engineering Domain                                                             |
-| :--------------------------------- | :------------------------- | :--------------------------------------- | :----------------------------------------------------------------------------- |
-| **[Modelica 3.x](./modelica)**     | `@modelscript/modelica`    | `.mo`                                    | Multi-domain acausal physical modeling & DAE simulation                        |
-| **[SysML v2 & KerML](./sysml2)**   | `@modelscript/sysml2`      | `.sysml, .sysml2, .kerml`                | Systems architecture, requirements, state machines & verification              |
-| **[STEP (ISO 10303)](./step)**     | `@modelscript/step`        | `.step, .stp, .p21`                      | Mechanical CAD B-Rep geometry, assemblies & kinematic joints                   |
-| **[OWL2 Ontology](./owl2)**        | `@modelscript/owl2`        | `.owl, .owl2, .ofn, .ttl`                | Formal knowledge graphs, DL reasoning & SPARQL querying                        |
-| **[OpenSCAD](./scad)**             | `@modelscript/scad`        | `.scad`                                  | Parametric Constructive Solid Geometry (CSG)                                   |
-| **[SSP 1.0 / 2.0](./ssp)**         | `@modelscript/ssp`         | `.ssp, .ssd, .ssv`                       | Co-Simulation System Structure & Parameterization                              |
-| **[PSCAD / EMT](./pscad)**         | `@modelscript/pscad`       | `.pscx, .pslx, .pswx, .psmx, .cfg, .dat` | Electromagnetic transients, power networks & COMTRADE waveforms                |
-| **[CFD (SU2 & OpenFOAM)](./cfd)**  | `@modelscript/cfd`         | `.cfd, .cfg, .cfgt, .su2`                | Computational Fluid Dynamics solver configuration & boundary markers           |
-| **[FEA](./fea)**                   | `@modelscript/fea`         | `.fea, .inp, .inpt, .bdf`                | CalculiX / Abaqus (`.inp`, `.inpt`) & NASTRAN (`.bdf`) structural mechanics    |
-| **[CSV](./csv)**                   | `@modelscript/csv`         | `.csv`                                   | Tabular empirical measurement series & lookup tables                           |
-| **[OLGA](./olga)**                 | `@modelscript/olga`        | `.opi, .key, .genkey, .tab`              | High-fidelity transient multiphase dynamic flow assurance                      |
-| **[PipelineStudio](./lps)**        | `@modelscript/lps`         | `.lps, .tgx, .tlx, .tgn, .tln`           | Gas & liquid pipeline transmission, line pack, batch tracking & surge          |
-| **[PSS/E](./psse)**                | `@modelscript/psse`        | `.raw, .dyr, .con`                       | Power transmission grid power flow & dynamic stability                         |
-| **[EASY5](./easy5)**               | `@modelscript/easy5`       | `.ez5, .ezm, .ezd, .eas, .tab`           | Classical & modern dynamic simulation, linear state space analysis & trim      |
-| **[ROCETS](./rocets)**             | `@modelscript/rocets`      | `.roc, .deck, .map`                      | Liquid rocket engine transient simulation, turbomachinery & combustion balance |
-| **[SIMA (SIMO / RIFLEX)](./sima)** | `@modelscript/sima`        | `.inp, .sima, .sys, .hyd`                | Marine hydrodynamics, station keeping, catenary mooring & slender dynamics     |
-| **[GT-SUITE](./gtsuite)**          | `@modelscript/gtsuite`     | `.gtm, .gtd, .gtx, .gt`                  | 1D powertrain, engine combustion, turbocharging & thermo-fluids                |
-| **[ModelScript](./modelscript)**   | `@modelscript/modelscript` | `.msx, .modelscript`                     | Native systems scripting, `@unmanaged struct` WASM/C++ kernels & FLWOR queries |
+| Language                           | Package                    | Extensions                               | Engineering Domain                                                               |
+| :--------------------------------- | :------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------- |
+| **[Modelica 3.x](./modelica)**     | `@modelscript/modelica`    | `.mo`                                    | Multi-domain acausal physical modeling & DAE simulation                          |
+| **[SysML v2 & KerML](./sysml2)**   | `@modelscript/sysml2`      | `.sysml, .sysml2, .kerml`                | Systems architecture, requirements, state machines & verification                |
+| **[MATLAB Simulink](./simulink)**  | `@modelscript/simulink`    | `.slx, .mdl`                             | Continuous/discrete control block diagrams & state-space transfer functions      |
+| **[AUTOSAR](./autosar)**           | `@modelscript/autosar`     | `.arxml`                                 | Automotive Classic & Adaptive ECU architectures & Virtual RTE scheduling         |
+| **[ReqIF Requirements](./reqif)**  | `@modelscript/reqif`       | `.reqif, .reqifz`                        | Computable digital contracts & Nelson-Oppen formal entailment verification       |
+| **[SPICE Electronics](./spice)**   | `@modelscript/spice`       | `.cir, .sp, .net, .lib`                  | Analog circuit netlists, OP, TRAN, AC frequency sweeps & ECAD graph generation   |
+| **[SIMPACK MBD](./simpack)**       | `@modelscript/simpack`     | `.spck, .sim, .mbs`                      | High-frequency multibody dynamics, spatial joints & flexible body synthesis      |
+| **[GENSYS Railway](./gensys)**     | `@modelscript/gensys`      | `.calc, .geom, .track`                   | Railway vehicle dynamics, FASTSIM wheel-rail contact & EN 14363 homologation     |
+| **[MSC Adams](./adams)**           | `@modelscript/adams`       | `.adm, .cmd`                             | Mechanical system dynamics, 3D kinematic joints & Grübler mobility analysis      |
+| **[URDF Robotics](./urdf)**        | `@modelscript/urdf`        | `.urdf, .xacro`                          | Robot kinematic trees, joint limits & Featherstone recursive dynamics (ABA/RNEA) |
+| **[PSCAD / EMT](./pscad)**         | `@modelscript/pscad`       | `.pscx, .pslx, .pswx, .psmx, .cfg, .dat` | Electromagnetic transients, power networks & IEEE 2800 ride-through compliance   |
+| **[PSS/E Power Flow](./psse)**     | `@modelscript/psse`        | `.raw, .dyr, .con`                       | Large-scale power transmission grid power flow & dynamic stability               |
+| **[OLGA Multiphase](./olga)**      | `@modelscript/olga`        | `.opi, .key, .genkey, .tab`              | High-fidelity transient multiphase dynamic flow assurance & slug tracking        |
+| **[PipelineStudio](./lps)**        | `@modelscript/lps`         | `.lps, .tgx, .tlx, .tgn, .tln`           | Gas & liquid pipeline transmission, line pack, batch tracking & surge            |
+| **[EASY5](./easy5)**               | `@modelscript/easy5`       | `.ez5, .ezm, .ezd, .eas, .tab`           | Classical & modern dynamic simulation, linear state space analysis & trim        |
+| **[GT-SUITE](./gtsuite)**          | `@modelscript/gtsuite`     | `.gtm, .gtd, .gtx, .gt`                  | 1D powertrain, engine combustion, turbocharging & thermo-fluids                  |
+| **[SIMA (SIMO / RIFLEX)](./sima)** | `@modelscript/sima`        | `.inp, .sima, .sys, .hyd`                | Marine hydrodynamics, station keeping, catenary mooring & slender dynamics       |
+| **[ROCETS](./rocets)**             | `@modelscript/rocets`      | `.roc, .deck, .map`                      | Liquid rocket engine transient simulation, turbomachinery & combustion balance   |
+| **[STEP (ISO 10303)](./step)**     | `@modelscript/step`        | `.step, .stp, .p21`                      | Mechanical CAD B-Rep geometry, assemblies & kinematic joints                     |
+| **[OWL2 Ontology](./owl2)**        | `@modelscript/owl2`        | `.owl, .owl2, .ofn, .ttl`                | Formal knowledge graphs, DL reasoning & SPARQL querying                          |
+| **[OpenSCAD](./scad)**             | `@modelscript/scad`        | `.scad`                                  | Parametric Constructive Solid Geometry (CSG)                                     |
+| **[SSP 1.0 / 2.0](./ssp)**         | `@modelscript/ssp`         | `.ssp, .ssd, .ssv`                       | Co-Simulation System Structure & Parameterization                                |
+| **[CFD (SU2 & OpenFOAM)](./cfd)**  | `@modelscript/cfd`         | `.cfd, .cfg, .cfgt, .su2`                | Computational Fluid Dynamics solver configuration & boundary markers             |
+| **[FEA Structural](./fea)**        | `@modelscript/fea`         | `.fea, .inp, .inpt, .bdf`                | CalculiX / Abaqus (`.inp`, `.inpt`) & NASTRAN (`.bdf`) structural mechanics      |
+| **[CSV Telemetry](./csv)**         | `@modelscript/csv`         | `.csv`                                   | Tabular empirical measurement series & lookup tables                             |
+| **[ModelScript](./modelscript)**   | `@modelscript/modelscript` | `.msx, .modelscript`                     | Native systems scripting, `@unmanaged struct` WASM/C++ kernels & FLWOR queries   |
 
 ---
 

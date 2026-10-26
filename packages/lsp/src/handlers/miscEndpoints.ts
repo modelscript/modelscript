@@ -5,6 +5,7 @@ import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { DOMAIN_INDEX_TO_NAME } from "@modelscript/runtime";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
+import path from "node:path";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LspContext } from "../lsp-context.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
@@ -584,6 +585,54 @@ export function registerMiscEndpoints(context: LspContext) {
         slot,
         reconciledValue: consensusVal,
         strategy,
+      };
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/generateMultibodyReport",
+    async (params: {
+      uri: string;
+      format?: "html" | "sarif" | "junit" | "ctrf";
+      maxNadalYOverQ?: number;
+      maxLateralForceYKn?: number;
+      nominalAxleLoadQ0Kn?: number;
+      sperlingVerticalWz?: number;
+      sperlingHorizontalWz?: number;
+      crossWindUnloadingRatio?: number;
+      equivalentConicity?: number;
+    }) => {
+      const {
+        createHomologationReport,
+        exportHomologationHtml,
+        exportHomologationSarif,
+        exportHomologationJunit,
+        exportHomologationCtrf,
+      } = await import("@modelscript/gensys");
+
+      const modelName = params.uri ? path.basename(params.uri, path.extname(params.uri)) : "MultibodyModel";
+      const report = createHomologationReport({
+        modelName,
+        maxNadalYOverQ: params.maxNadalYOverQ ?? 0.65,
+        maxLateralForceYKn: params.maxLateralForceYKn ?? 35.0,
+        nominalAxleLoadQ0Kn: params.nominalAxleLoadQ0Kn ?? 160.0,
+        sperlingVerticalWz: params.sperlingVerticalWz ?? 2.2,
+        sperlingHorizontalWz: params.sperlingHorizontalWz ?? 2.3,
+        crossWindUnloadingRatio: params.crossWindUnloadingRatio ?? 0.68,
+        equivalentConicity: params.equivalentConicity ?? 0.18,
+      });
+
+      const fmt = params.format ?? "html";
+      let content = "";
+      if (fmt === "sarif") content = exportHomologationSarif(report);
+      else if (fmt === "junit") content = exportHomologationJunit(report);
+      else if (fmt === "ctrf") content = exportHomologationCtrf(report);
+      else content = exportHomologationHtml(report);
+
+      return {
+        format: fmt,
+        report,
+        content,
       };
     },
   );
