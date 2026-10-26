@@ -41,6 +41,17 @@ export function hasDirectFeedthrough(block: SimulinkBlock): boolean {
     case "Demux":
     case "BusCreator":
     case "BusSelector":
+    case "Saturation":
+    case "DeadZone":
+    case "RateLimiter":
+    case "Lookup_nD":
+    case "Abs":
+    case "Signum":
+    case "MinMax":
+    case "Trigonometry":
+    case "Rounding":
+    case "Selector":
+    case "DataTypeConversion":
       return true;
     case "TransferFcn": {
       // Direct feedthrough if degree(num) >= degree(den)
@@ -229,9 +240,86 @@ function lintSystem(system: SimulinkSystem, diagnostics: SimulinkDiagnostic[]): 
         lintSystem(block.subsystem, diagnostics);
       }
     }
+
+    // Check 8: Invalid BusSelector element reference (M7207)
+    if (block.type === "BusSelector") {
+      const busIncoming = incomingConnections.get(`${block.name}#1`);
+      if (busIncoming && busIncoming.length > 0) {
+        const srcKey = busIncoming[0]!;
+        const [srcBlockName] = srcKey.split("#");
+        const srcBlock = blockMap.get(srcBlockName!);
+
+        const rawSelected = block.parameters.get("OutputSignals") ?? block.parameters.get("OutputSignalNames");
+        if (rawSelected) {
+          const selectedList = String(rawSelected)
+            .split(/[\s,;]+/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+
+          if (srcBlock && srcBlock.type === "BusCreator") {
+            const availableSignals = new Set<string>();
+
+            const explicitInputs = srcBlock.parameters.get("InputSignalNames");
+            if (explicitInputs) {
+              const names = String(explicitInputs)
+                .split(/[\s,;]+/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+              for (const n of names) availableSignals.add(n);
+            }
+
+            for (const line of system.lines) {
+              const isDirectDst = line.dstBlock === srcBlock.name;
+              const isBranchDst = line.branches.some((b) => b.dstBlock === srcBlock.name);
+              if (isDirectDst || isBranchDst) {
+                if (line.name && line.name.trim().length > 0) {
+                  availableSignals.add(line.name.trim());
+                } else if (line.srcBlock) {
+                  availableSignals.add(line.srcBlock);
+                }
+              }
+            }
+
+            const numInputs = getExpectedInputCount(srcBlock);
+            for (let i = 1; i <= numInputs; i++) {
+              availableSignals.add(`signal${i}`);
+            }
+
+            for (const sel of selectedList) {
+              if (!availableSignals.has(sel)) {
+                const availArray = Array.from(availableSignals);
+                const availMsg = availArray.length > 0 ? ` (available signals: [${availArray.join(", ")}])` : "";
+                diagnostics.push({
+                  code: "M7207",
+                  severity: "error",
+                  message: `BusSelector block '${block.name}' references signal '${sel}' absent from the incoming bus schema from '${srcBlock.name}'${availMsg}.`,
+                  range,
+                  blockName: block.name,
+                  quickFix: {
+                    title: `Rename or add signal '${sel}' to upstream BusCreator '${srcBlock.name}'`,
+                    edit: {
+                      text: `${sel}`,
+                      range,
+                    },
+                  },
+                });
+              }
+            }
+          } else if (srcBlock && srcBlock.type !== "SubSystem" && srcBlock.type !== "Inport") {
+            diagnostics.push({
+              code: "M7207",
+              severity: "error",
+              message: `BusSelector block '${block.name}' is connected to non-bus block '${srcBlock.name}' (${srcBlock.type}). BusSelector input must be driven by a composite bus signal (e.g. BusCreator).`,
+              range,
+              blockName: block.name,
+            });
+          }
+        }
+      }
+    }
   }
 
-  // Check 8: Direct-feedthrough algebraic loops (M7202) using Tarjan's SCC
+  // Check 9: Direct-feedthrough algebraic loops (M7202) using Tarjan's SCC
   detectAlgebraicLoops(system, outgoingConnections, diagnostics);
 }
 
@@ -255,6 +343,15 @@ function getExpectedInputCount(block: SimulinkBlock): number {
     case "Scope":
     case "Terminator":
     case "TransferFcn":
+    case "Saturation":
+    case "DeadZone":
+    case "RateLimiter":
+    case "Abs":
+    case "Signum":
+    case "Rounding":
+    case "DataTypeConversion":
+    case "BusSelector":
+    case "Demux":
       return 1;
     case "Sum": {
       const inputs = String(block.parameters.get("Inputs") ?? "++");
@@ -268,9 +365,16 @@ function getExpectedInputCount(block: SimulinkBlock): number {
     }
     case "RelationalOperator":
     case "LogicalOperator":
+    case "MinMax":
       return 2;
     case "Switch":
       return 3;
+    case "BusCreator":
+    case "Mux": {
+      const inputs = String(block.parameters.get("Inputs") ?? "2");
+      if (/^\d+$/.test(inputs)) return Number.parseInt(inputs, 10);
+      return inputs.split(/[,;]+/).length;
+    }
     default:
       return 0;
   }

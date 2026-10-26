@@ -9,6 +9,7 @@
  * narrow byte and 1-indexed line/column ranges for each offending XML attribute value.
  */
 
+import { SspErrorCode } from "./errors.js";
 import type { SspConnectorKind, SspConnectorType } from "./types.js";
 
 /**
@@ -17,6 +18,10 @@ import type { SspConnectorKind, SspConnectorType } from "./types.js";
 export interface SspDiagnostic {
   /** Machine-readable diagnostic code (e.g., `"SSP_CONNECTOR_TYPE_MISMATCH"`). */
   code: string;
+  /** Standard ModelScript alphanumeric diagnostic code (e.g., `"S7009"`). */
+  standardCode?: string | undefined;
+  /** Numeric error code (e.g., `7009`). */
+  numericCode?: number | undefined;
   /** Diagnostic severity level. */
   severity: "error" | "warning" | "info";
   /** Human-readable diagnostic description. */
@@ -255,8 +260,11 @@ export function lintSsd(xml: string): SspDiagnostic[] {
     const safeEnd = Math.max(safeStart + 1, endOffset);
     const startPos = locator.offsetToPos(safeStart);
     const endPos = locator.offsetToPos(safeEnd);
+    const stdMatch = Object.values(SspErrorCode).find((e) => e.rule === code);
     diagnostics.push({
       code,
+      standardCode: stdMatch?.stdCode,
+      numericCode: stdMatch?.code,
       severity,
       message,
       startOffset: safeStart,

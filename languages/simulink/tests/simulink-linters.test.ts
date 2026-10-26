@@ -192,4 +192,90 @@ describe("Simulink Pre-Flight Control Linters (M7201–M7210)", () => {
     assert.ok(m7210, "Must emit M7210 info for missing InitialCondition");
     assert.equal(m7210.severity, "info");
   });
+
+  it("M7207: should detect invalid BusSelector signal references absent from upstream BusCreator", () => {
+    const busMdl = `Model {
+  Name "BusMismatch"
+  System {
+    Name "BusMismatch"
+    Block {
+      BlockType Constant
+      Name "SpeedSensor"
+      Value 100.0
+    }
+    Block {
+      BlockType Constant
+      Name "TorqueSensor"
+      Value 350.0
+    }
+    Block {
+      BlockType BusCreator
+      Name "PowertrainBus"
+      Inputs 2
+      InputSignalNames "speed,torque"
+    }
+    Block {
+      BlockType BusSelector
+      Name "CockpitDisplay"
+      OutputSignals "speed,battery_soc"
+    }
+    Line {
+      SrcBlock "SpeedSensor"
+      SrcPort 1
+      DstBlock "PowertrainBus"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "TorqueSensor"
+      SrcPort 1
+      DstBlock "PowertrainBus"
+      DstPort 2
+    }
+    Line {
+      SrcBlock "PowertrainBus"
+      SrcPort 1
+      DstBlock "CockpitDisplay"
+      DstPort 1
+    }
+  }
+}`;
+    const model = parseMdl(busMdl);
+    const diags = lintSimulinkModel(model);
+    const m7207 = diags.find((d) => d.code === "M7207");
+    assert.ok(m7207, "Must emit M7207 for missing signal 'battery_soc' in BusSelector");
+    assert.equal(m7207.severity, "error");
+    assert.ok(m7207.message.includes("battery_soc"));
+    assert.ok(m7207.message.includes("speed, torque"));
+  });
+
+  it("M7207: should emit error when BusSelector is connected to a non-bus block", () => {
+    const nonBusMdl = `Model {
+  Name "NonBusConnection"
+  System {
+    Name "NonBusConnection"
+    Block {
+      BlockType Constant
+      Name "ScalarConst"
+      Value 42.0
+    }
+    Block {
+      BlockType BusSelector
+      Name "InvalidSelector"
+      OutputSignals "fieldA"
+    }
+    Line {
+      SrcBlock "ScalarConst"
+      SrcPort 1
+      DstBlock "InvalidSelector"
+      DstPort 1
+    }
+  }
+}`;
+    const model = parseMdl(nonBusMdl);
+    const diags = lintSimulinkModel(model);
+    const m7207 = diags.find((d) => d.code === "M7207");
+    assert.ok(m7207, "Must emit M7207 when BusSelector is connected to scalar Constant");
+    assert.equal(m7207.severity, "error");
+    assert.ok(m7207.message.includes("non-bus block"));
+  });
 });

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { CfdErrorCode } from "../errors.js";
 import type { CfdModelData } from "../types.js";
+
+export { CfdErrorCode };
 
 export interface CfdDiagnostic {
   code: number;
+  standardCode?: string | undefined;
   rule: string;
   severity: "error" | "warning" | "info";
   message: string;
@@ -17,58 +21,6 @@ export interface CfdDiagnostic {
     replacement?: string;
   };
 }
-
-export const CfdErrorCode = {
-  CFL_STABILITY_VIOLATION: {
-    code: 7301,
-    rule: "cfl-stability-violation",
-    severity: "warning" as const,
-    message: (cfl: number) =>
-      `Courant-Friedrichs-Lewy stability number '${cfl}' exceeds recommended maximum limit for explicit scheme.`,
-  },
-  UNRESOLVED_MESH_FILE: {
-    code: 7302,
-    rule: "unresolved-mesh-file",
-    severity: "error" as const,
-    message: (mesh: string) => `Referenced grid mesh file '${mesh}' cannot be located or is invalid.`,
-  },
-  MISSING_INLET_BOUNDARY: {
-    code: 7303,
-    rule: "missing-inlet-boundary",
-    severity: "warning" as const,
-    message: (name: string) => `CFD domain '${name}' lacks a declared inlet boundary condition or stagnation state.`,
-  },
-  MISSING_OUTLET_BOUNDARY: {
-    code: 7304,
-    rule: "missing-outlet-boundary",
-    severity: "warning" as const,
-    message: (name: string) => `CFD domain '${name}' lacks a declared outlet boundary condition or pressure exit.`,
-  },
-  UNPHYSICAL_FREESTREAM_MACH: {
-    code: 7305,
-    rule: "unphysical-freestream-mach",
-    severity: "error" as const,
-    message: (mach: number) => `Freestream Mach number '${mach}' is non-physical or outside valid range [0, 25].`,
-  },
-  UNPHYSICAL_REYNOLDS_NUMBER: {
-    code: 7306,
-    rule: "unphysical-reynolds-number",
-    severity: "error" as const,
-    message: (re: number) => `Freestream Reynolds number '${re}' must be strictly positive.`,
-  },
-  NEGATIVE_SURFACE_AREA: {
-    code: 7307,
-    rule: "negative-surface-area",
-    severity: "error" as const,
-    message: (area: number) => `Aerodynamic reference area '${area}' must be strictly positive.`,
-  },
-  TURBULENT_VISCOSITY_RATIO: {
-    code: 7308,
-    rule: "turbulent-viscosity-ratio",
-    severity: "warning" as const,
-    message: (ratio: number) => `Turbulent eddy viscosity ratio '${ratio}' is non-physical.`,
-  },
-};
 
 /**
  * Pre-flight static linter for CFD decks.

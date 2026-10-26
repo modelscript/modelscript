@@ -600,5 +600,18 @@ export function usersRouter(
     res.json({ success: true });
   });
 
+  /**
+   * GET /api/v1/users/:username/solutions
+   */
+  router.get("/:username/solutions", optionalAuth, (req: Request, res: Response) => {
+    const username = req.params["username"] as string;
+    try {
+      const solutions = database.getUserSolutions(username);
+      res.json({ solutions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }

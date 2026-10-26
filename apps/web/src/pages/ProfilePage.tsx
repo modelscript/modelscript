@@ -28,6 +28,7 @@ import FederatedDomainPill from "../components/FederatedDomainPill";
 import FollowButton from "../components/FollowButton";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
+import ProfileSolutions from "../components/ProfileSolutions";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
@@ -624,17 +625,19 @@ const ProfilePage: React.FC = () => {
       </Box>
 
       <TabBar role="tablist" aria-label="Profile tabs">
-        {["Posts", ...(profile.account_type === "rss" ? [] : ["Replies", "Artifacts", "Repos"])].map((tab) => (
-          <Tab
-            key={tab}
-            role="tab"
-            aria-selected={activeTab === tab}
-            $active={activeTab === tab}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </Tab>
-        ))}
+        {["Posts", "Solutions", ...(profile.account_type === "rss" ? [] : ["Replies", "Artifacts", "Repos"])].map(
+          (tab) => (
+            <Tab
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              $active={activeTab === tab}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab}
+            </Tab>
+          ),
+        )}
       </TabBar>
 
       {reportSuccess && (
@@ -650,6 +653,8 @@ const ProfilePage: React.FC = () => {
 
       {activeTab === "Repos" ? (
         <ProfileRepos username={profile.username} isOwnProfile={isOwnProfile} />
+      ) : activeTab === "Solutions" ? (
+        <ProfileSolutions username={profile.username} isOwnProfile={isOwnProfile} />
       ) : activeTab === "Posts" ? (
         <ProfilePosts username={profile.username} type="posts" />
       ) : activeTab === "Replies" ? (

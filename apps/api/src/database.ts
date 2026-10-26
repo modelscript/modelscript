@@ -1698,9 +1698,7 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM users WHERE id = ? AND owner_id = ? AND account_type = 'bot'`).run(botId, ownerId);
   }
 
-  getUserByBotTokenHash(
-    tokenHash: string,
-  ): {
+  getUserByBotTokenHash(tokenHash: string): {
     id: number;
     owner_id: number;
     username: string;
@@ -7457,6 +7455,233 @@ export class LibraryDatabase {
         .run(ip ?? null, tokenId);
     } catch {
       // non-critical
+    }
+  }
+
+  getUserSolutions(username: string): any[] {
+    const user = this.getUserByUsername(username);
+    if (!user) return [];
+    try {
+      const rows = this.#db
+        .prepare(
+          `SELECT s.*, u.username as author_username, u.display_name as author_display_name, u.avatar_url as author_avatar_url,
+            (SELECT version FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as latest_version,
+            (SELECT bundle_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as bundle_url,
+            (SELECT tauri_windows_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as tauri_windows_url,
+            (SELECT tauri_linux_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as tauri_linux_url,
+            (SELECT tauri_darwin_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as tauri_darwin_url
+          FROM solutions s
+          JOIN users u ON s.user_id = u.id
+          WHERE s.user_id = ? AND s.is_public = 1
+          ORDER BY s.updated_at DESC`,
+        )
+        .all(user.id) as any[];
+
+      return rows.map((r) => ({
+        ...r,
+        supported_formats: JSON.parse(r.supported_formats || "[]"),
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  getAllPublicSolutions(): any[] {
+    try {
+      const rows = this.#db
+        .prepare(
+          `SELECT s.*, u.username as author_username, u.display_name as author_display_name, u.avatar_url as author_avatar_url,
+            (SELECT version FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as latest_version,
+            (SELECT bundle_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as bundle_url,
+            (SELECT tauri_windows_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as tauri_windows_url,
+            (SELECT tauri_linux_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as tauri_linux_url,
+            (SELECT tauri_darwin_url FROM solution_releases WHERE solution_id = s.id ORDER BY id DESC LIMIT 1) as tauri_darwin_url
+          FROM solutions s
+          JOIN users u ON s.user_id = u.id
+          WHERE s.is_public = 1
+          ORDER BY s.updated_at DESC
+          LIMIT 50`,
+        )
+        .all() as any[];
+
+      return rows.map((r) => ({
+        ...r,
+        supported_formats: JSON.parse(r.supported_formats || "[]"),
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  getSolution(authorUsername: string, slug: string): any {
+    const user = this.getUserByUsername(authorUsername);
+    if (!user) return null;
+    try {
+      const solution = this.#db
+        .prepare(
+          `SELECT s.*, u.username as author_username, u.display_name as author_display_name, u.avatar_url as author_avatar_url
+          FROM solutions s
+          JOIN users u ON s.user_id = u.id
+          WHERE s.user_id = ? AND s.slug = ?`,
+        )
+        .get(user.id, slug) as any;
+
+      if (!solution) return null;
+
+      const latestRelease = this.#db
+        .prepare(`SELECT * FROM solution_releases WHERE solution_id = ? ORDER BY id DESC LIMIT 1`)
+        .get(solution.id) as any;
+
+      return {
+        solution: {
+          ...solution,
+          supported_formats: JSON.parse(solution.supported_formats || "[]"),
+        },
+        release: latestRelease
+          ? {
+              ...latestRelease,
+              manifest: latestRelease.manifest_json ? JSON.parse(latestRelease.manifest_json) : null,
+            }
+          : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  getSolutionReleases(authorUsername: string, slug: string): any[] {
+    const user = this.getUserByUsername(authorUsername);
+    if (!user) return [];
+    try {
+      const solution = this.#db
+        .prepare(`SELECT id FROM solutions WHERE user_id = ? AND slug = ?`)
+        .get(user.id, slug) as any;
+      if (!solution) return [];
+
+      return this.#db
+        .prepare(`SELECT * FROM solution_releases WHERE solution_id = ? ORDER BY id DESC`)
+        .all(solution.id) as any[];
+    } catch {
+      return [];
+    }
+  }
+
+  createOrUpdateSolution(
+    userId: number,
+    data: {
+      slug: string;
+      name: string;
+      description?: string | undefined;
+      category?: string | undefined;
+      icon?: string | undefined;
+      supported_formats?: string[] | undefined;
+      repo_id?: number | undefined;
+    },
+  ): number {
+    const existing = this.#db
+      .prepare(`SELECT id FROM solutions WHERE user_id = ? AND slug = ?`)
+      .get(userId, data.slug) as { id: number } | undefined;
+
+    const formatsJson = JSON.stringify(data.supported_formats || []);
+
+    if (existing) {
+      this.#db
+        .prepare(
+          `UPDATE solutions SET
+            name = ?,
+            description = ?,
+            category = ?,
+            icon = ?,
+            supported_formats = ?,
+            repo_id = COALESCE(?, repo_id),
+            updated_at = datetime('now')
+          WHERE id = ?`,
+        )
+        .run(
+          data.name,
+          data.description ?? null,
+          data.category ?? "Engineering Application",
+          data.icon ?? "cpu",
+          formatsJson,
+          data.repo_id ?? null,
+          existing.id,
+        );
+      return existing.id;
+    } else {
+      const res = this.#db
+        .prepare(
+          `INSERT INTO solutions (user_id, repo_id, slug, name, description, category, icon, supported_formats)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          userId,
+          data.repo_id ?? null,
+          data.slug,
+          data.name,
+          data.description ?? null,
+          data.category ?? "Engineering Application",
+          data.icon ?? "cpu",
+          formatsJson,
+        );
+      return res.lastInsertRowid as number;
+    }
+  }
+
+  createSolutionRelease(
+    solutionId: number,
+    data: {
+      version: string;
+      changelog?: string | undefined;
+      bundle_url: string;
+      tauri_windows_url?: string | undefined;
+      tauri_linux_url?: string | undefined;
+      tauri_darwin_url?: string | undefined;
+      manifest_json?: string | undefined;
+    },
+  ): number {
+    const existing = this.#db
+      .prepare(`SELECT id FROM solution_releases WHERE solution_id = ? AND version = ?`)
+      .get(solutionId, data.version) as { id: number } | undefined;
+
+    if (existing) {
+      this.#db
+        .prepare(
+          `UPDATE solution_releases SET
+            changelog = ?,
+            bundle_url = ?,
+            tauri_windows_url = ?,
+            tauri_linux_url = ?,
+            tauri_darwin_url = ?,
+            manifest_json = ?
+          WHERE id = ?`,
+        )
+        .run(
+          data.changelog ?? null,
+          data.bundle_url,
+          data.tauri_windows_url ?? null,
+          data.tauri_linux_url ?? null,
+          data.tauri_darwin_url ?? null,
+          data.manifest_json ?? null,
+          existing.id,
+        );
+      return existing.id;
+    } else {
+      const res = this.#db
+        .prepare(
+          `INSERT INTO solution_releases (solution_id, version, changelog, bundle_url, tauri_windows_url, tauri_linux_url, tauri_darwin_url, manifest_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          solutionId,
+          data.version,
+          data.changelog ?? null,
+          data.bundle_url,
+          data.tauri_windows_url ?? null,
+          data.tauri_linux_url ?? null,
+          data.tauri_darwin_url ?? null,
+          data.manifest_json ?? null,
+        );
+      return res.lastInsertRowid as number;
     }
   }
 

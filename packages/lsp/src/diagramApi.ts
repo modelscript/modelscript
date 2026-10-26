@@ -1661,6 +1661,13 @@ export interface DiagramDispatchDeps {
   sysml2?: DiagramBackend | undefined;
   generic?: DiagramBackend | undefined;
   owl2?: DiagramBackend | undefined;
+  simulink?: DiagramBackend | undefined;
+  spice?: DiagramBackend | undefined;
+  opendrive?: DiagramBackend | undefined;
+  simpack?: DiagramBackend | undefined;
+  gensys?: DiagramBackend | undefined;
+  adams?: DiagramBackend | undefined;
+  urdf?: DiagramBackend | undefined;
   customBackends?: Map<string | RegExp, DiagramBackend> | undefined;
 }
 
@@ -2840,6 +2847,833 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         },
       };
     }
+    if (uri.endsWith(".slx") || uri.endsWith(".mdl")) {
+      if (backends.simulink) return backends.simulink;
+
+      const readSimulinkSource = async (targetUri: string): Promise<string | Buffer | null> => {
+        const memText =
+          (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
+          (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+        if (typeof memText === "string") return memText;
+        try {
+          const fs = await import("node:fs");
+          const { fileURLToPath } = await import("node:url");
+          const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+          if (fs.existsSync(filePath)) {
+            if (filePath.endsWith(".slx")) {
+              return fs.readFileSync(filePath);
+            }
+            return fs.readFileSync(filePath, "utf-8");
+          }
+        } catch {
+          // ignore fs errors
+        }
+        return null;
+      };
+
+      const getSystemBlocks = (sys: any): any[] => {
+        if (!sys || !sys.blocks) return [];
+        if (Array.isArray(sys.blocks)) return sys.blocks;
+        if (sys.blocks instanceof Map) return Array.from(sys.blocks.values());
+        if (typeof sys.blocks === "object") return Object.values(sys.blocks);
+        return [];
+      };
+
+      const formatSimulinkDiagramData = (rawDiagram: any, meta?: Record<string, any>): DiagramData => {
+        const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
+        const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+        return {
+          nodes,
+          edges,
+          coordinateSystem: null,
+          diagramBackground: null,
+          cells: rawDiagram.cells,
+          metadata: { title: rawDiagram.title, ...(meta ?? {}) },
+        } as any;
+      };
+
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const raw = await readSimulinkSource(params.uri);
+            if (!raw) return null;
+            const { parseSimulink, buildSimulinkDiagram } = await import("@modelscript/simulink");
+            const model = parseSimulink(raw, params.uri);
+            let targetSystem: any = model.rootSystem;
+            if (params.className && model.rootSystem) {
+              const findSubsystem = (sys: any, name: string): any => {
+                const blks = getSystemBlocks(sys);
+                for (const b of blks) {
+                  if (b.name === name && b.subsystem) return b.subsystem;
+                  if (b.subsystem) {
+                    const sub = findSubsystem(b.subsystem, name);
+                    if (sub) return sub;
+                  }
+                }
+                return null;
+              };
+              const found = findSubsystem(model.rootSystem, params.className);
+              if (found) targetSystem = found;
+            }
+            const rawDiagram = buildSimulinkDiagram(targetSystem);
+            return formatSimulinkDiagramData(rawDiagram, { solver: model.solver, version: model.version });
+          } catch {
+            return null;
+          }
+        },
+
+        async getComponentProperties(
+          params: DiagramGetComponentPropertiesParams,
+        ): Promise<ComponentPropertyData | null> {
+          try {
+            const raw = await readSimulinkSource(params.uri);
+            if (!raw) return null;
+            const { parseSimulink } = await import("@modelscript/simulink");
+            const model = parseSimulink(raw, params.uri);
+
+            const findBlock = (sys: any, name: string): any => {
+              const blks = getSystemBlocks(sys);
+              for (const b of blks) {
+                const bId = b.name || b.id;
+                if (bId === name || `block_${bId}` === name) return b;
+                if (b.subsystem) {
+                  const sub = findBlock(b.subsystem, name);
+                  if (sub) return sub;
+                }
+              }
+              return null;
+            };
+
+            const blk = findBlock(model.rootSystem, params.componentName);
+            if (!blk) return null;
+
+            const parameters: ComponentPropertyData["parameters"] = [
+              { name: "BlockType", value: blk.type, group: "Configuration" },
+            ];
+            const fields: PropertyFieldConfig[] = [
+              { key: "BlockType", label: "Block Type", kind: "string", defaultValue: blk.type },
+            ];
+            const values: Record<string, any> = {
+              BlockType: blk.type,
+            };
+
+            if (blk.parameters) {
+              const pEntries: [string, any][] =
+                blk.parameters instanceof Map ? Array.from(blk.parameters.entries()) : Object.entries(blk.parameters);
+              for (const [k, v] of pEntries) {
+                const strVal = String(v);
+                parameters.push({
+                  name: k,
+                  value: strVal,
+                  description: `Simulink parameter '${k}'`,
+                  group: "Parameters",
+                });
+                fields.push({
+                  key: k,
+                  label: k,
+                  kind: typeof v === "number" ? "number" : "string",
+                  defaultValue: v,
+                });
+                values[k] = v;
+              }
+            }
+
+            return {
+              classKind: blk.subsystem ? "subsystem" : "block",
+              className: blk.type,
+              name: blk.name || blk.id || "Block",
+              description: `Simulink ${blk.type} Block (${blk.name || blk.id})`,
+              parameters,
+              schema: {
+                title: `Block: ${blk.name || blk.id}`,
+                tabs: [
+                  {
+                    id: "general",
+                    label: "Parameters",
+                    groups: [{ id: "main", label: "Block Configuration", fields }],
+                  },
+                ],
+              },
+              values,
+            };
+          } catch {
+            return null;
+          }
+        },
+
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+
+        async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
+          try {
+            const raw = await readSimulinkSource(params.uri);
+            if (!raw) return null;
+            const { parseSimulink, buildSimulinkDiagram } = await import("@modelscript/simulink");
+            const model = parseSimulink(raw, params.uri);
+            const targetName = params.className || params.componentName || params.nodeId || "";
+            const cleanName = targetName.startsWith("block_") ? targetName.slice(6) : targetName;
+
+            const findSubsystem = (sys: any, name: string): { sys: any; path: string[] } | null => {
+              const blks = getSystemBlocks(sys);
+              for (const b of blks) {
+                const bId = b.name || b.id;
+                if ((bId === name || b.name === name) && b.subsystem) {
+                  return { sys: b.subsystem, path: [model.rootSystem.name || "Root", b.name] };
+                }
+                if (b.subsystem) {
+                  const res = findSubsystem(b.subsystem, name);
+                  if (res)
+                    return { sys: res.sys, path: [model.rootSystem.name || "Root", b.name, ...res.path.slice(1)] };
+                }
+              }
+              return null;
+            };
+
+            const found = findSubsystem(model.rootSystem, cleanName);
+            if (!found) return null;
+            const rawDiagram = buildSimulinkDiagram(found.sys);
+            return {
+              data: formatSimulinkDiagramData(rawDiagram),
+              breadcrumbs: found.path.map((p) => ({ id: p, label: p, uri: params.uri })),
+              targetUri: params.uri,
+              targetClassName: cleanName,
+            };
+          } catch {
+            return null;
+          }
+        },
+
+        async getPalette(): Promise<DiagramPalette> {
+          return {
+            categories: [
+              {
+                name: "Math Operations",
+                items: [
+                  { className: "Gain", label: "Gain", description: "Multiply input by constant factor" },
+                  { className: "Sum", label: "Sum", description: "Add or subtract signals" },
+                  { className: "Product", label: "Product", description: "Multiply or divide signals" },
+                  { className: "Abs", label: "Abs", description: "Absolute value" },
+                  {
+                    className: "MathFunction",
+                    label: "Math Function",
+                    description: "Mathematical functions (exp, log, sqrt)",
+                  },
+                ],
+              },
+              {
+                name: "Continuous",
+                items: [
+                  { className: "Integrator", label: "Integrator", description: "Continuous-time integration 1/s" },
+                  { className: "Derivative", label: "Derivative", description: "Continuous-time derivative du/dt" },
+                  {
+                    className: "TransferFcn",
+                    label: "Transfer Fcn",
+                    description: "Linear continuous transfer function num(s)/den(s)",
+                  },
+                  {
+                    className: "StateSpace",
+                    label: "State-Space",
+                    description: "Linear state-space system dx/dt = Ax + Bu",
+                  },
+                ],
+              },
+              {
+                name: "Discrete",
+                items: [
+                  { className: "UnitDelay", label: "Unit Delay", description: "Delay signal by 1 sample z^-1" },
+                  {
+                    className: "DiscreteIntegrator",
+                    label: "Discrete-Time Integrator",
+                    description: "Discrete integration",
+                  },
+                ],
+              },
+              {
+                name: "Sources",
+                items: [
+                  { className: "Constant", label: "Constant", description: "Generate constant value" },
+                  { className: "Step", label: "Step", description: "Step signal output" },
+                  { className: "Sine", label: "Sine Wave", description: "Sinusoidal signal generator" },
+                  { className: "Inport", label: "Inport", description: "Subsystem signal input port" },
+                ],
+              },
+              {
+                name: "Sinks",
+                items: [
+                  { className: "Scope", label: "Scope", description: "Display signal in time domain" },
+                  { className: "Outport", label: "Outport", description: "Subsystem signal output port" },
+                  { className: "Terminator", label: "Terminator", description: "Terminate unconnected signal" },
+                ],
+              },
+            ],
+          };
+        },
+      };
+    }
+
+    if (uri.endsWith(".cir") || uri.endsWith(".sp") || uri.endsWith(".spice")) {
+      if (backends.spice) return backends.spice;
+
+      const readSpiceSource = async (targetUri: string): Promise<string | null> => {
+        const memText =
+          (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
+          (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+        if (typeof memText === "string") return memText;
+        try {
+          const fs = await import("node:fs");
+          const { fileURLToPath } = await import("node:url");
+          const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+          if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, "utf-8");
+          }
+        } catch {
+          // ignore fs errors
+        }
+        return null;
+      };
+
+      const formatSpiceDiagramData = (rawDiagram: any, meta?: Record<string, any>): DiagramData => {
+        const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
+        const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+        return {
+          nodes,
+          edges,
+          coordinateSystem: null,
+          diagramBackground: null,
+          cells: rawDiagram.cells,
+          metadata: { title: rawDiagram.title, ...(meta ?? {}) },
+        } as any;
+      };
+
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const text = await readSpiceSource(params.uri);
+            if (!text) return null;
+            const { parseSpice, buildSpiceDiagram } = await import("@modelscript/spice");
+            const circuit = parseSpice(text);
+            const rawDiagram = buildSpiceDiagram(circuit);
+            return formatSpiceDiagramData(rawDiagram, {
+              componentCount: circuit.components.length,
+              directiveCount: circuit.directives.length,
+            });
+          } catch {
+            return null;
+          }
+        },
+
+        async getComponentProperties(
+          params: DiagramGetComponentPropertiesParams,
+        ): Promise<ComponentPropertyData | null> {
+          try {
+            const text = await readSpiceSource(params.uri);
+            if (!text) return null;
+            const { parseSpice, formatSpiceValue } = await import("@modelscript/spice");
+            const circuit = parseSpice(text);
+            const rawName = params.componentName;
+            const cleanName = rawName.startsWith("cmp_") ? rawName.slice(4) : rawName;
+            const cmp = circuit.components.find(
+              (c) => c.name.toLowerCase() === cleanName.toLowerCase() || c.name.toLowerCase() === rawName.toLowerCase(),
+            );
+            if (!cmp) return null;
+
+            const parameters: ComponentPropertyData["parameters"] = [
+              { name: "Kind", value: cmp.kind, group: "Component Info" },
+              { name: "Nodes", value: cmp.nodes.join(", "), group: "Connectivity" },
+            ];
+            const fields: PropertyFieldConfig[] = [
+              { key: "Kind", label: "Kind", kind: "string", defaultValue: cmp.kind },
+              { key: "Nodes", label: "Nodes", kind: "string", defaultValue: cmp.nodes.join(", ") },
+            ];
+            const values: Record<string, any> = {
+              Kind: cmp.kind,
+              Nodes: cmp.nodes.join(", "),
+            };
+
+            if (cmp.value !== undefined) {
+              const formatted = formatSpiceValue(cmp.value, cmp.kind);
+              parameters.push({
+                name: "Value",
+                value: formatted,
+                description: `Numerical value (${cmp.value})`,
+                group: "Electrical",
+              });
+              fields.push({ key: "Value", label: "Value", kind: "string", defaultValue: formatted });
+              values["Value"] = formatted;
+            }
+            if (cmp.model) {
+              parameters.push({
+                name: "Model",
+                value: cmp.model,
+                description: "SPICE .MODEL reference",
+                group: "Model",
+              });
+              fields.push({ key: "Model", label: "Model", kind: "string", defaultValue: cmp.model });
+              values["Model"] = cmp.model;
+            }
+            if (cmp.params) {
+              const pEntries: [string, any][] =
+                cmp.params instanceof Map ? Array.from(cmp.params.entries()) : Object.entries(cmp.params);
+              for (const [k, v] of pEntries) {
+                parameters.push({ name: k, value: String(v), description: `Parameter ${k}`, group: "Parameters" });
+                fields.push({ key: k, label: k, kind: typeof v === "number" ? "number" : "string", defaultValue: v });
+                values[k] = v;
+              }
+            }
+
+            return {
+              classKind: "component",
+              className: cmp.kind,
+              name: cmp.name,
+              description: `SPICE Component ${cmp.name} (${cmp.kind})`,
+              parameters,
+              schema: {
+                title: `SPICE Component: ${cmp.name}`,
+                tabs: [
+                  {
+                    id: "general",
+                    label: "Parameters",
+                    groups: [{ id: "main", label: "Attributes", fields }],
+                  },
+                ],
+              },
+              values,
+            };
+          } catch {
+            return null;
+          }
+        },
+
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+
+        async getPalette(): Promise<DiagramPalette> {
+          return {
+            categories: [
+              {
+                name: "Passive Components",
+                items: [
+                  { className: "R", label: "Resistor (R)", description: "Two-terminal resistor" },
+                  { className: "C", label: "Capacitor (C)", description: "Two-terminal capacitor" },
+                  { className: "L", label: "Inductor (L)", description: "Two-terminal inductor" },
+                ],
+              },
+              {
+                name: "Semiconductors",
+                items: [
+                  { className: "D", label: "Diode (D)", description: "PN junction diode" },
+                  { className: "Q", label: "BJT (Q)", description: "Bipolar junction transistor (NPN/PNP)" },
+                  { className: "M", label: "MOSFET (M)", description: "Metal-oxide FET (NMOS/PMOS)" },
+                ],
+              },
+              {
+                name: "Sources",
+                items: [
+                  { className: "V", label: "Voltage Source (V)", description: "Independent voltage source" },
+                  { className: "I", label: "Current Source (I)", description: "Independent current source" },
+                ],
+              },
+              {
+                name: "Subcircuits & ICs",
+                items: [{ className: "X", label: "Subcircuit (X)", description: "Subcircuit instance (.SUBCKT)" }],
+              },
+            ],
+          };
+        },
+      };
+    }
+    if (uri.endsWith(".xodr") || uri.endsWith(".opendrive")) {
+      if (backends.opendrive) return backends.opendrive;
+
+      const readOpenDriveSource = async (targetUri: string): Promise<string | null> => {
+        const memText =
+          (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
+          (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+        if (typeof memText === "string") return memText;
+        try {
+          const fs = await import("node:fs");
+          const { fileURLToPath } = await import("node:url");
+          const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+          if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, "utf-8");
+          }
+        } catch {
+          // ignore
+        }
+        return null;
+      };
+
+      backends.opendrive = {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          const text = await readOpenDriveSource(params.uri);
+          if (!text) return null;
+          const { parseOpenDrive } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+
+          const nodes: any[] = [];
+          const edges: any[] = [];
+
+          let row = 0;
+          let col = 0;
+          for (const road of doc.roads) {
+            const roadName = road.name ? `${road.name} (#${road.id})` : `Road ${road.id}`;
+            const x = 50 + col * 260;
+            const y = 50 + row * 160;
+            col++;
+            if (col > 3) {
+              col = 0;
+              row++;
+            }
+
+            nodes.push({
+              id: `road_${road.id}`,
+              label: roadName,
+              kind: "road",
+              position: { x, y },
+              size: { width: 220, height: 100 },
+              ports: [
+                { id: "start", name: "start", direction: "inout" },
+                { id: "end", name: "end", direction: "inout" },
+              ],
+              data: {
+                roadId: road.id,
+                length: road.length,
+                junction: road.junction,
+                segmentsCount: road.planView.length,
+                lanesCount: road.lanes.laneSections.length,
+                signalsCount: road.signals.length,
+              },
+            });
+
+            if (road.link?.successor?.elementType === "road") {
+              edges.push({
+                id: `edge_${road.id}_succ_${road.link.successor.elementId}`,
+                source: `road_${road.id}`,
+                target: `road_${road.link.successor.elementId}`,
+                sourcePort: "end",
+                targetPort: road.link.successor.contactPoint === "end" ? "end" : "start",
+                kind: "connection",
+              });
+            }
+          }
+
+          for (const junc of doc.junctions) {
+            const x = 50 + col * 260;
+            const y = 50 + row * 160;
+            col++;
+            if (col > 3) {
+              col = 0;
+              row++;
+            }
+
+            nodes.push({
+              id: `junc_${junc.id}`,
+              label: `Junction ${junc.name ?? junc.id}`,
+              kind: "junction",
+              position: { x, y },
+              size: { width: 180, height: 80 },
+              ports: [{ id: "junc_port", name: "junc", direction: "inout" }],
+              data: {
+                junctionId: junc.id,
+                connectionsCount: junc.connections.length,
+              },
+            });
+
+            for (const conn of junc.connections) {
+              edges.push({
+                id: `conn_${junc.id}_${conn.id}`,
+                source: `road_${conn.incomingRoad}`,
+                target: `road_${conn.connectingRoad}`,
+                sourcePort: "end",
+                targetPort: conn.contactPoint === "end" ? "end" : "start",
+                kind: "junction_connection",
+              });
+            }
+          }
+
+          return {
+            nodes,
+            edges,
+            coordinateSystem: null,
+            diagramBackground: null,
+          } as any;
+        },
+
+        async getComponentProperties(
+          params: DiagramGetComponentPropertiesParams,
+        ): Promise<ComponentPropertyData | null> {
+          const text = await readOpenDriveSource(params.uri);
+          if (!text) return null;
+          const { parseOpenDrive } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          const rawId = (params.componentName || "").replace(/^road_/, "").replace(/^junc_/, "");
+
+          const road = doc.roads.find((r) => r.id === rawId || r.name === rawId);
+          if (road) {
+            const parameters: ComponentPropertyData["parameters"] = [
+              { name: "id", value: road.id, group: "General" },
+              { name: "length", value: String(road.length), group: "Geometry" },
+              { name: "junction", value: road.junction, group: "Topology" },
+              { name: "segments", value: String(road.planView.length), group: "Geometry" },
+              { name: "signals", value: String(road.signals.length), group: "Equipment" },
+            ];
+            const fields: PropertyFieldConfig[] = [
+              { key: "id", label: "Road ID", kind: "string", defaultValue: road.id },
+              { key: "length", label: "Length (m)", kind: "number", defaultValue: road.length },
+              { key: "junction", label: "Junction ID", kind: "string", defaultValue: road.junction },
+            ];
+            return {
+              classKind: "road",
+              className: "Road",
+              name: road.name ?? `Road_${road.id}`,
+              description: `OpenDRIVE Road (${road.name ?? road.id}, length=${road.length}m)`,
+              parameters,
+              schema: {
+                title: `Road: ${road.name ?? road.id}`,
+                tabs: [
+                  { id: "general", label: "Road Properties", groups: [{ id: "main", label: "Configuration", fields }] },
+                ],
+              },
+              values: { id: road.id, length: road.length, junction: road.junction },
+            };
+          }
+
+          const junc = doc.junctions.find((j) => j.id === rawId || j.name === rawId);
+          if (junc) {
+            const parameters: ComponentPropertyData["parameters"] = [
+              { name: "id", value: junc.id, group: "General" },
+              { name: "connections", value: String(junc.connections.length), group: "Topology" },
+            ];
+            const fields: PropertyFieldConfig[] = [
+              { key: "id", label: "Junction ID", kind: "string", defaultValue: junc.id },
+              { key: "connections", label: "Connection Count", kind: "number", defaultValue: junc.connections.length },
+            ];
+            return {
+              classKind: "junction",
+              className: "Junction",
+              name: junc.name ?? `Junction_${junc.id}`,
+              description: `OpenDRIVE Junction (${junc.name ?? junc.id})`,
+              parameters,
+              schema: {
+                title: `Junction: ${junc.name ?? junc.id}`,
+                tabs: [
+                  {
+                    id: "general",
+                    label: "Junction Properties",
+                    groups: [{ id: "main", label: "Configuration", fields }],
+                  },
+                ],
+              },
+              values: { id: junc.id, connections: junc.connections.length },
+            };
+          }
+          return null;
+        },
+
+        async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {
+          const text = await readOpenDriveSource(params.uri);
+          if (!text) return null;
+          const { parseOpenDrive } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          const targetName = params.className || params.componentName || params.nodeId || "";
+          const rawId = targetName.replace(/^road_/, "");
+          const road = doc.roads.find((r) => r.id === rawId || r.name === rawId);
+          if (!road) return null;
+
+          const nodes = road.planView.map((geom, idx) => ({
+            id: `geom_${idx}`,
+            label: `${geom.type.toUpperCase()} [${geom.length.toFixed(1)}m]`,
+            kind: geom.type,
+            position: { x: 50 + idx * 180, y: 100 },
+            size: { width: 150, height: 70 },
+            ports: [
+              { id: "in", name: "in", direction: "in" },
+              { id: "out", name: "out", direction: "out" },
+            ],
+            data: { ...geom },
+          }));
+
+          const edges = [];
+          for (let i = 0; i < nodes.length - 1; i++) {
+            edges.push({
+              id: `geom_flow_${i}_${i + 1}`,
+              source: `geom_${i}`,
+              target: `geom_${i + 1}`,
+              sourcePort: "out",
+              targetPort: "in",
+            });
+          }
+
+          return {
+            data: {
+              nodes,
+              edges,
+              coordinateSystem: null,
+              diagramBackground: null,
+            } as any,
+            breadcrumbs: [{ id: road.id, label: road.name ?? `Road ${road.id}`, uri: params.uri }],
+            targetUri: params.uri,
+            targetClassName: road.name ?? road.id,
+          };
+        },
+
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+
+        async getPalette(): Promise<DiagramPalette> {
+          return {
+            categories: [
+              {
+                name: "Roadway Entities",
+                items: [
+                  { className: "Road", label: "Road", description: "OpenDRIVE road segment" },
+                  { className: "Junction", label: "Junction", description: "OpenDRIVE road junction" },
+                ],
+              },
+              {
+                name: "Geometry Elements",
+                items: [
+                  { className: "Line", label: "Line", description: "Straight road segment" },
+                  { className: "Spiral", label: "Spiral (Clothoid)", description: "Transition spiral curve" },
+                  { className: "Arc", label: "Arc", description: "Circular road curve" },
+                  { className: "Poly3", label: "Cubic Polynomial", description: "Polynomial curve" },
+                ],
+              },
+            ],
+          };
+        },
+      };
+    }
+
+    const readKinematicSource = async (targetUri: string): Promise<string | null> => {
+      const memText =
+        (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
+        (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+      if (typeof memText === "string") return memText;
+      try {
+        const fs = await import("node:fs");
+        const { fileURLToPath } = await import("node:url");
+        const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+        if (fs.existsSync(filePath)) {
+          return fs.readFileSync(filePath, "utf-8");
+        }
+      } catch {
+        // ignore fs errors
+      }
+      return null;
+    };
+
+    const formatKinematicDiagramData = (rawDiagram: any): DiagramData => {
+      const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
+      const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+      return {
+        nodes,
+        edges,
+        coordinateSystem: null,
+        diagramBackground: null,
+        cells: rawDiagram.cells,
+      } as any;
+    };
+
+    if (uri.endsWith(".spck") || uri.endsWith(".sim")) {
+      if (backends.simpack) return backends.simpack;
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const text = await readKinematicSource(params.uri);
+            if (!text) return null;
+            const { parseSpckXml, parseSimDeck, buildSimpackDiagram } = await import("@modelscript/simpack");
+            const model = params.uri.endsWith(".sim") ? parseSimDeck(text) : parseSpckXml(text);
+            const rawDiagram = buildSimpackDiagram(model);
+            return formatKinematicDiagramData(rawDiagram);
+          } catch {
+            return null;
+          }
+        },
+        async getComponentProperties(): Promise<ComponentPropertyData | null> {
+          return null;
+        },
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+      };
+    }
+
+    if (uri.endsWith(".calc") || uri.endsWith(".trax")) {
+      if (backends.gensys) return backends.gensys;
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const text = await readKinematicSource(params.uri);
+            if (!text) return null;
+            const { parseGensysDeck, buildGensysDiagram } = await import("@modelscript/gensys");
+            const model = parseGensysDeck(text);
+            const rawDiagram = buildGensysDiagram(model);
+            return formatKinematicDiagramData(rawDiagram);
+          } catch {
+            return null;
+          }
+        },
+        async getComponentProperties(): Promise<ComponentPropertyData | null> {
+          return null;
+        },
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+      };
+    }
+
+    if (uri.endsWith(".adm") || uri.endsWith(".cmd") || uri.endsWith(".mnf")) {
+      if (backends.adams) return backends.adams;
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const text = await readKinematicSource(params.uri);
+            if (!text) return null;
+            const { parseAdams, buildAdamsDiagram } = await import("@modelscript/adams");
+            const model = parseAdams(text);
+            const rawDiagram = buildAdamsDiagram(model);
+            return formatKinematicDiagramData(rawDiagram);
+          } catch {
+            return null;
+          }
+        },
+        async getComponentProperties(): Promise<ComponentPropertyData | null> {
+          return null;
+        },
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+      };
+    }
+
+    if (uri.endsWith(".urdf") || uri.endsWith(".xacro")) {
+      if (backends.urdf) return backends.urdf;
+      return {
+        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+          try {
+            const text = await readKinematicSource(params.uri);
+            if (!text) return null;
+            const { parseUrdf, buildUrdfDiagram } = await import("@modelscript/urdf");
+            const model = parseUrdf(text);
+            const rawDiagram = buildUrdfDiagram(model);
+            return formatKinematicDiagramData(rawDiagram);
+          } catch {
+            return null;
+          }
+        },
+        async getComponentProperties(): Promise<ComponentPropertyData | null> {
+          return null;
+        },
+        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        },
+      };
+    }
+
     return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);
   }
 

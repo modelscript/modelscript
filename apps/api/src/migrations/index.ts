@@ -15,6 +15,7 @@ import { migration0012 } from "./0012_granular_api_tokens.js";
 import { migration0013 } from "./0013_social_llm_bots.js";
 import { migration0014 } from "./0014_bot_byok.js";
 import { migration0015 } from "./0015_repo_bot_reviews.js";
+import { migration0016 } from "./0016_solutions.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -36,4 +37,5 @@ export const allMigrations: Migration[] = [
   migration0013,
   migration0014,
   migration0015,
+  migration0016,
 ];

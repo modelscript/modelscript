@@ -5,12 +5,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser, type TreeSitterParser } from "../src-gen/bindings.js";
+import { ScadErrorCode } from "./errors.js";
 import { ScadEvaluator, type ScadEvaluationOptions } from "./evaluator.js";
 import { scadLanguage } from "./language.js";
 import { lintScadCst, type ScadDiagnostic } from "./linter.js";
 import { ScadPatcher } from "./patcher.js";
 
-export { lintScadCst, ScadEvaluator, scadLanguage, ScadPatcher };
+export * from "./workspace-index.js";
+export { lintScadCst, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
 export type { ScadDiagnostic, ScadEvaluationOptions };
 
 export interface ScadCadComponent {

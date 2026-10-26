@@ -63,6 +63,28 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     return args;
   };
 
+  /** Extracts all '#123' entity references from an argument string without regex. */
+  const extractEntityReferences = (argsStr: string | undefined): string[] => {
+    if (!argsStr) return [];
+    const refs: string[] = [];
+    let i = 0;
+    while (i < argsStr.length) {
+      if (argsStr[i] === "#") {
+        const start = i;
+        i++;
+        while (i < argsStr.length && argsStr.charCodeAt(i) >= 48 && argsStr.charCodeAt(i) <= 57) {
+          i++;
+        }
+        if (i > start + 1) {
+          refs.push(argsStr.substring(start, i));
+        }
+      } else {
+        i++;
+      }
+    }
+    return refs;
+  };
+
   /** Looks up a parsed STEP entity record by its `#id` instance handle. */
   const resolveEntity = (ref: string) => entities.get(ref);
 
@@ -120,7 +142,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   const formationToProduct = new Map<string, string>();
   for (const [id, ent] of entities.entries()) {
     if (ent.type.startsWith("PRODUCT_DEFINITION_FORMATION")) {
-      const refs = ent.args.match(/#\d+/g) || [];
+      const refs = extractEntityReferences(ent.args);
       for (const ref of refs) {
         if (parts.has(ref)) {
           formationToProduct.set(id, ref);
@@ -132,7 +154,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   const prodDefToProduct = new Map<string, string>();
   for (const [id, ent] of entities.entries()) {
     if (ent.type === "PRODUCT_DEFINITION") {
-      const refs = ent.args.match(/#\d+/g) || [];
+      const refs = extractEntityReferences(ent.args);
       for (const ref of refs) {
         if (formationToProduct.has(ref)) {
           prodDefToProduct.set(id, formationToProduct.get(ref)!);
@@ -192,13 +214,13 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   const nauoToPlacement = new Map<string, StepPlacement>();
   for (const [, ent] of entities.entries()) {
     if (ent.type === "CONTEXT_DEPENDENT_SHAPE_REPRESENTATION") {
-      const refs = ent.args.match(/#\d+/g) || [];
+      const refs = extractEntityReferences(ent.args);
       let foundIdt: StepPlacement | undefined;
       let foundNauo: string | undefined;
       for (const ref of refs) {
         const childEnt = entities.get(ref);
         if (!childEnt) continue;
-        const subRefs = childEnt.args.match(/#\d+/g) || [];
+        const subRefs = extractEntityReferences(childEnt.args);
         for (const sr of [ref, ...subRefs]) {
           if (idtById.has(sr)) foundIdt = idtById.get(sr);
           const srEnt = entities.get(sr);
@@ -287,7 +309,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   for (let pass = 0; pass < 6; pass++) {
     for (const [id, ent] of entities.entries()) {
       if (ent.type === "NEXT_ASSEMBLY_USAGE_OCCURRENCE") continue;
-      const refs = ent.args.match(/#\d+/g) || [];
+      const refs = extractEntityReferences(ent.args);
       let foundPartId = entityToPartId.get(id);
       if (!foundPartId) {
         for (const ref of refs) {
@@ -522,7 +544,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   for (const [id, ent] of entities.entries()) {
     if (ent.type === "DATUM_SYSTEM") {
       const args = parseArgs(ent.args);
-      const dRefs = args[1]?.match(/#\d+/g) || [];
+      const dRefs = extractEntityReferences(args[1]);
       const primary = dRefs[0] ? datums.get(dRefs[0])?.name || dRefs[0] : "A";
       const secondary = dRefs[1] ? datums.get(dRefs[1])?.name || dRefs[1] : undefined;
       const tertiary = dRefs[2] ? datums.get(dRefs[2])?.name || dRefs[2] : undefined;

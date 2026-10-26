@@ -3,6 +3,7 @@
 export * from "./dae/index.js";
 export * from "./dialects/index.js";
 export { parseSu2Config } from "./dialects/su2.js";
+export * from "./errors.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

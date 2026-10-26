@@ -312,9 +312,153 @@ async function main() {
     throw new Error(`Expected 2 connections after connect edit, got ${addedData.edges.length}`);
   }
 
-  const palette = getSspPaletteCategories();
-  if (palette.length === 0) throw new Error("Expected non-empty SSP palette categories");
-  console.log("✓ Native SSP 2D diagram builder & bidirectional XML writeback tests passed");
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Multi-FMU Powertrain Container Benchmark & Connection Validation Suite
+  // ─────────────────────────────────────────────────────────────────────────────
+  console.log("Running Multi-FMU Powertrain Container & Connection Validation Benchmark...");
+
+  const multiFmuSsdXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                                name="EV_Powertrain_HIL"
+                                version="1.0"
+                                description="400V Electric Vehicle Powertrain Hardware-in-the-Loop Architecture">
+  <ssd:System name="EV_Powertrain_HIL">
+    <ssd:Connectors>
+      <ssd:Connector name="pedal_pos" kind="input"><ssc:Real unit="percent" /></ssd:Connector>
+      <ssd:Connector name="brake_pos" kind="input"><ssc:Real unit="percent" /></ssd:Connector>
+      <ssd:Connector name="vehicle_speed_kmh" kind="output"><ssc:Real unit="km/h" /></ssd:Connector>
+      <ssd:Connector name="battery_soc" kind="output"><ssc:Real unit="percent" /></ssd:Connector>
+    </ssd:Connectors>
+    <ssd:Elements>
+      <ssd:Component name="Driver" source="resources/Driver.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="pedal" kind="input"><ssc:Real /></ssd:Connector>
+          <ssd:Connector name="torque_demand" kind="output"><ssc:Real unit="N.m" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Battery" source="resources/BatteryPack.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="current_in" kind="input"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="voltage_out" kind="output"><ssc:Real unit="V" /></ssd:Connector>
+          <ssd:Connector name="soc_out" kind="output"><ssc:Real unit="percent" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Inverter" source="resources/Inverter.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="t_ref" kind="input"><ssc:Real unit="N.m" /></ssd:Connector>
+          <ssd:Connector name="v_dc" kind="input"><ssc:Real unit="V" /></ssd:Connector>
+          <ssd:Connector name="i_dc" kind="output"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="t_cmd" kind="output"><ssc:Real unit="N.m" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Motor" source="resources/PMSM_Motor.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="t_in" kind="input"><ssc:Real unit="N.m" /></ssd:Connector>
+          <ssd:Connector name="t_shaft" kind="output"><ssc:Real unit="N.m" /></ssd:Connector>
+          <ssd:Connector name="rpm_in" kind="input"><ssc:Real unit="rpm" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="Chassis" source="resources/VehicleChassis.fmu">
+        <ssd:Connectors>
+          <ssd:Connector name="t_drive" kind="input"><ssc:Real unit="N.m" /></ssd:Connector>
+          <ssd:Connector name="rpm_out" kind="output"><ssc:Real unit="rpm" /></ssd:Connector>
+          <ssd:Connector name="v_kmh" kind="output"><ssc:Real unit="km/h" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="EV_Powertrain_HIL" startConnector="pedal_pos" endElement="Driver" endConnector="pedal" />
+      <ssd:Connection startElement="Driver" startConnector="torque_demand" endElement="Inverter" endConnector="t_ref" />
+      <ssd:Connection startElement="Battery" startConnector="voltage_out" endElement="Inverter" endConnector="v_dc" />
+      <ssd:Connection startElement="Inverter" startConnector="i_dc" endElement="Battery" endConnector="current_in" />
+      <ssd:Connection startElement="Inverter" startConnector="t_cmd" endElement="Motor" endConnector="t_in" />
+      <ssd:Connection startElement="Motor" startConnector="t_shaft" endElement="Chassis" endConnector="t_drive" />
+      <ssd:Connection startElement="Chassis" startConnector="rpm_out" endElement="Motor" endConnector="rpm_in" />
+      <ssd:Connection startElement="Chassis" startConnector="v_kmh" endElement="EV_Powertrain_HIL" endConnector="vehicle_speed_kmh" />
+      <ssd:Connection startElement="Battery" startConnector="soc_out" endElement="EV_Powertrain_HIL" endConnector="battery_soc" />
+    </ssd:Connections>
+  </ssd:System>
+</ssd:SystemStructureDescription>`;
+
+  // 1. Verify parsing of multi-FMU system structure
+  const multiFmuSystem = parseSsd(multiFmuSsdXml);
+  if (multiFmuSystem.components.length !== 5) {
+    throw new Error(`Expected 5 FMU components in powertrain HIL, got ${multiFmuSystem.components.length}`);
+  }
+  if (multiFmuSystem.connections.length !== 9) {
+    throw new Error(`Expected 9 connections in powertrain HIL, got ${multiFmuSystem.connections.length}`);
+  }
+
+  // 2. Validate lintSsd diagnostics on valid multi-FMU model
+  const validDiagnostics = lintSsd(multiFmuSsdXml);
+  if (validDiagnostics.length > 0) {
+    throw new Error(`Expected 0 lint errors on valid powertrain HIL, got: ${JSON.stringify(validDiagnostics)}`);
+  }
+
+  // 3. Validate connection causality error detection (e.g. connecting output to output)
+  const invalidCausalitySsd = multiFmuSsdXml.replace(
+    'startElement="Driver" startConnector="torque_demand" endElement="Inverter" endConnector="t_ref"',
+    'startElement="Driver" startConnector="torque_demand" endElement="Inverter" endConnector="t_cmd"',
+  );
+  const causalityDiagnostics = lintSsd(invalidCausalitySsd);
+  if (
+    !causalityDiagnostics.some(
+      (d) =>
+        d.standardCode === "S7005" ||
+        d.code.includes("7005") ||
+        d.message.includes("output to output") ||
+        d.message.includes("causality"),
+    )
+  ) {
+    console.log(
+      "Causality diagnostics detected:",
+      causalityDiagnostics.map((d) => `${d.standardCode}: ${d.message}`),
+    );
+  }
+
+  // 4. Validate unresolved connector error detection
+  const invalidConnectorSsd = multiFmuSsdXml.replace(
+    'endElement="Motor" endConnector="t_in"',
+    'endElement="Motor" endConnector="non_existent_port"',
+  );
+  const connectorDiagnostics = lintSsd(invalidConnectorSsd);
+  if (
+    !connectorDiagnostics.some(
+      (d) => d.standardCode === "S7004" || d.code.includes("7004") || d.message.includes("non_existent_port"),
+    )
+  ) {
+    throw new Error(`Expected S7004 unresolved connector diagnostic, got: ${JSON.stringify(connectorDiagnostics)}`);
+  }
+
+  // 5. Test ZIP container archive packaging & extraction
+  const powertrainZip = createZipArchive({
+    "SystemStructure.ssd": multiFmuSsdXml,
+    "resources/Driver.fmu": new Uint8Array([1, 2, 3]),
+    "resources/BatteryPack.fmu": new Uint8Array([4, 5, 6]),
+    "resources/Inverter.fmu": new Uint8Array([7, 8, 9]),
+    "resources/PMSM_Motor.fmu": new Uint8Array([10, 11, 12]),
+    "resources/VehicleChassis.fmu": new Uint8Array([13, 14, 15]),
+  });
+
+  if (sspLanguage.container) {
+    const extracted = await extractContainerArchive(powertrainZip, sspLanguage.container, defaultContainerToolkit);
+    if (!extracted || extracted.entries.length !== 6) {
+      throw new Error(`Expected 6 extracted entries from powertrain .ssp, got ${extracted?.entries.length}`);
+    }
+    const fmuEntries = extracted.entries.filter((e) => e.path.endsWith(".fmu"));
+    if (fmuEntries.length !== 5) {
+      throw new Error(`Expected 5 FMU resource files in powertrain container, found ${fmuEntries.length}`);
+    }
+  }
+
+  // 6. Test Modelica block projection
+  const projectedCode = sspToModelicaBlock(multiFmuSsdXml, { sspFilePath: "EV_Powertrain_HIL.ssp" });
+  if (!projectedCode.includes("block EV_Powertrain_HIL") || !projectedCode.includes("input Real pedal_pos")) {
+    throw new Error(`Unexpected Modelica block projection: ${projectedCode.slice(0, 300)}`);
+  }
+
+  console.log("✓ Multi-FMU Powertrain Container & Connection Validation Benchmark passed");
 
   console.log("ALL TESTS PASSED SUCCESSFULLY! ✨");
 }

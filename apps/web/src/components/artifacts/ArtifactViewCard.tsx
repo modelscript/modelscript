@@ -64,6 +64,7 @@ const CfdConfigViewer = React.lazy(() => import("./CfdConfigViewer"));
 const Owl2Viewer = React.lazy(() => import("./Owl2Viewer"));
 const GensysViewer = React.lazy(() => import("./GensysViewer"));
 const SimpackViewer = React.lazy(() => import("./SimpackViewer"));
+const SolutionViewCard = React.lazy(() => import("./SolutionViewCard"));
 
 import { cacheArtifact, getCachedArtifact } from "../../util/offline-storage";
 import ArtifactDiffModal, { parseModelicaParameters } from "./ArtifactDiffModal";
@@ -489,6 +490,10 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       case "repository":
       case "repo":
         return <RepositoryViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "solution":
+      case "engineering-app":
+      case "app":
+        return <SolutionViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       default:
         return (
           <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">

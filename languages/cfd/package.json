@@ -19,6 +19,14 @@
     "./dialects": {
       "types": "./dist/src/dialects/index.d.ts",
       "default": "./dist/src/dialects/index.js"
+    },
+    "./errors": {
+      "types": "./dist/src/errors.d.ts",
+      "default": "./dist/src/errors.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
     }
   },
   "files": [

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { FeaErrorCode } from "../errors.js";
 import type { FeaModelData } from "../types.js";
+
+export { FeaErrorCode };
 
 export interface FeaDiagnostic {
   code: number;
+  standardCode?: string | undefined;
   rule: string;
   severity: "error" | "warning" | "info";
   message: string;
@@ -17,62 +21,6 @@ export interface FeaDiagnostic {
     replacement?: string;
   };
 }
-
-export const FeaErrorCode = {
-  ZERO_ELASTIC_MODULUS: {
-    code: 7401,
-    rule: "zero-elastic-modulus",
-    severity: "error" as const,
-    message: (mat: string, val: number) => `Material '${mat}' has non-positive Young's modulus '${val}'.`,
-  },
-  POISSON_RATIO_LIMIT: {
-    code: 7402,
-    rule: "poisson-ratio-limit",
-    severity: "error" as const,
-    message: (mat: string, val: number) =>
-      `Poisson's ratio '${val}' for material '${mat}' violates physical stability bounds (-1.0 < nu < 0.5).`,
-  },
-  UNCONSTRAINED_RIGID_BODY: {
-    code: 7403,
-    rule: "unconstrained-rigid-body",
-    severity: "warning" as const,
-    message: (name: string, count: number) =>
-      `Structural mesh '${name}' has only '${count}' constrained boundary nodes; rigid-body motion may be unconstrained.`,
-  },
-  EMPTY_MESH: {
-    code: 7404,
-    rule: "empty-mesh",
-    severity: "error" as const,
-    message: (name: string) => `FEA deck '${name}' does not contain any defined finite elements.`,
-  },
-  MISSING_MATERIAL_DEFINITION: {
-    code: 7405,
-    rule: "missing-material-definition",
-    severity: "error" as const,
-    message: (elset: string) => `Element set '${elset}' lacks an assigned material specification or section.`,
-  },
-  DEGENERATE_ELEMENT_NODES: {
-    code: 7406,
-    rule: "degenerate-element-nodes",
-    severity: "error" as const,
-    message: (elemId: number, type: string) =>
-      `Element '${elemId}' of type '${type}' contains duplicate or degenerate node references.`,
-  },
-  NEGATIVE_YIELD_STRESS: {
-    code: 7407,
-    rule: "negative-yield-stress",
-    severity: "error" as const,
-    message: (mat: string, val: number) =>
-      `Plastic yield strength '${val}' for material '${mat}' must be strictly positive.`,
-  },
-  NEGATIVE_DENSITY: {
-    code: 7408,
-    rule: "negative-density",
-    severity: "warning" as const,
-    message: (mat: string, val: number) =>
-      `Mass density '${val}' for material '${mat}' must be strictly positive for dynamic analysis.`,
-  },
-};
 
 /**
  * Pre-flight static linter for FEA decks.

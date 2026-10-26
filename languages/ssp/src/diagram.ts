@@ -449,16 +449,21 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
   const edits: SspTextEdit[] = [];
 
   const findComponentEndLine = (startLine0: number): number => {
-    if (/\/>\s*$/.test(lines[startLine0] ?? "")) return startLine0;
+    const startLineText = (lines[startLine0] ?? "").trimEnd();
+    if (startLineText.endsWith("/>")) return startLine0;
     for (let i = startLine0; i < lines.length; i++) {
-      if (/<\/(?:ssd:)?Component>/i.test(lines[i]!)) return i;
+      const line = lines[i]!;
+      if (line.includes("</Component>") || line.includes("</ssd:Component>")) return i;
     }
     return startLine0;
   };
 
-  const findTagLine = (pattern: RegExp, fromLine = 0): number => {
+  const findClosingTagLine = (tag: string, fromLine = 0): number => {
+    const target1 = `</${tag}>`.toLowerCase();
+    const target2 = `</ssd:${tag}>`.toLowerCase();
     for (let i = fromLine; i < lines.length; i++) {
-      if (pattern.test(lines[i]!)) return i;
+      const lower = lines[i]!.toLowerCase();
+      if (lower.includes(target1) || lower.includes(target2)) return i;
     }
     return -1;
   };
@@ -601,14 +606,14 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
         connSnippet = `      <ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}" />\n`;
       }
 
-      const closeConnsIdx = findTagLine(/<\/(?:ssd:)?Connections>/i);
+      const closeConnsIdx = findClosingTagLine("Connections");
       if (closeConnsIdx >= 0) {
         edits.push({
           range: { start: { line: closeConnsIdx, character: 0 }, end: { line: closeConnsIdx, character: 0 } },
           newText: connSnippet,
         });
       } else {
-        const closeSysIdx = findTagLine(/<\/(?:ssd:)?System>/i);
+        const closeSysIdx = findClosingTagLine("System");
         const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;
         edits.push({
           range: { start: { line: insertIdx, character: 0 }, end: { line: insertIdx, character: 0 } },
@@ -688,14 +693,14 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
         `        <ssd:ElementGeometry x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />\n` +
         `      </ssd:Component>\n`;
 
-      const closeElsIdx = findTagLine(/<\/(?:ssd:)?Elements>/i);
+      const closeElsIdx = findClosingTagLine("Elements");
       if (closeElsIdx >= 0) {
         edits.push({
           range: { start: { line: closeElsIdx, character: 0 }, end: { line: closeElsIdx, character: 0 } },
           newText: compSnippet,
         });
       } else {
-        const closeSysIdx = findTagLine(/<\/(?:ssd:)?System>/i);
+        const closeSysIdx = findClosingTagLine("System");
         const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;
         edits.push({
           range: { start: { line: insertIdx, character: 0 }, end: { line: insertIdx, character: 0 } },
@@ -833,7 +838,7 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
           }
         }
       } else {
-        const closeSysIdx = findTagLine(/<\/(?:ssd:)?System>/i);
+        const closeSysIdx = findClosingTagLine("System");
         const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;
         const bindingXml =
           `    <ssd:ParameterBindings>\n` +

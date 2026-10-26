@@ -10,11 +10,17 @@
  * AST token ranges.
  */
 
+import { ScadErrorCode } from "./errors.js";
+
 /**
  * Diagnostic emitted by the OpenSCAD semantic linter with 0-indexed byte offsets and 1-indexed line/column spans.
  */
 export interface ScadDiagnostic {
   code: string;
+  /** Standard ModelScript alphanumeric diagnostic code (e.g., `"K1001"`). */
+  standardCode?: string | undefined;
+  /** Numeric error code (e.g., `1001`). */
+  numericCode?: number | undefined;
   severity: "error" | "warning" | "info";
   message: string;
   /** 0-indexed character/byte start offset in source */
@@ -358,8 +364,11 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     const endOffset = Math.max(startOffset + 1, getNodeEnd(node));
     const startPos = locator.offsetToPos(startOffset);
     const endPos = locator.offsetToPos(endOffset);
+    const stdMatch = Object.values(ScadErrorCode).find((e) => e.rule === code);
     diagnostics.push({
       code,
+      standardCode: stdMatch?.stdCode,
+      numericCode: stdMatch?.code,
       severity,
       message,
       startOffset,

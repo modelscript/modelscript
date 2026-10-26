@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { SimpackErrorCode } from "../errors.js";
 import { analyzeMobility } from "../kinematics/mobility.js";
 import type { SimpackModel } from "../types.js";
 
 export interface SimpackDiagnostic {
   code: string;
+  rule?: string;
   severity: "error" | "warning";
   message: string;
 }
@@ -15,9 +17,10 @@ export function lintSimpackModel(model: SimpackModel): SimpackDiagnostic[] {
   for (const [id, body] of model.bodies.entries()) {
     if (body.mass <= 0) {
       diagnostics.push({
-        code: "S3001",
-        severity: "error",
-        message: `Body '${id}' has non-positive mass (${body.mass} kg).`,
+        code: SimpackErrorCode.INVALID_BODY_MASS.code,
+        rule: SimpackErrorCode.INVALID_BODY_MASS.rule,
+        severity: SimpackErrorCode.INVALID_BODY_MASS.severity,
+        message: SimpackErrorCode.INVALID_BODY_MASS.message(id, body.mass),
       });
     }
   }
@@ -25,9 +28,10 @@ export function lintSimpackModel(model: SimpackModel): SimpackDiagnostic[] {
   for (const [id, marker] of model.markers.entries()) {
     if (marker.bodyId !== "$inertial" && !model.bodies.has(marker.bodyId)) {
       diagnostics.push({
-        code: "S2001",
-        severity: "error",
-        message: `Marker '${id}' references unknown parent body '${marker.bodyId}'.`,
+        code: SimpackErrorCode.DANGLING_BODY_REFERENCE.code,
+        rule: SimpackErrorCode.DANGLING_BODY_REFERENCE.rule,
+        severity: SimpackErrorCode.DANGLING_BODY_REFERENCE.severity,
+        message: SimpackErrorCode.DANGLING_BODY_REFERENCE.message(id, marker.bodyId),
       });
     }
   }
@@ -35,16 +39,18 @@ export function lintSimpackModel(model: SimpackModel): SimpackDiagnostic[] {
   for (const [id, joint] of model.joints.entries()) {
     if (!model.markers.has(joint.fromMarker)) {
       diagnostics.push({
-        code: "S2002",
-        severity: "error",
-        message: `Joint '${id}' references unknown from-marker '${joint.fromMarker}'.`,
+        code: SimpackErrorCode.UNKNOWN_FROM_MARKER.code,
+        rule: SimpackErrorCode.UNKNOWN_FROM_MARKER.rule,
+        severity: SimpackErrorCode.UNKNOWN_FROM_MARKER.severity,
+        message: SimpackErrorCode.UNKNOWN_FROM_MARKER.message(id, joint.fromMarker),
       });
     }
     if (!model.markers.has(joint.toMarker)) {
       diagnostics.push({
-        code: "S2003",
-        severity: "error",
-        message: `Joint '${id}' references unknown to-marker '${joint.toMarker}'.`,
+        code: SimpackErrorCode.UNKNOWN_TO_MARKER.code,
+        rule: SimpackErrorCode.UNKNOWN_TO_MARKER.rule,
+        severity: SimpackErrorCode.UNKNOWN_TO_MARKER.severity,
+        message: SimpackErrorCode.UNKNOWN_TO_MARKER.message(id, joint.toMarker),
       });
     }
   }
@@ -52,9 +58,10 @@ export function lintSimpackModel(model: SimpackModel): SimpackDiagnostic[] {
   const mobility = analyzeMobility(model);
   if (mobility.isOverconstrained) {
     diagnostics.push({
-      code: "S4001",
-      severity: "warning",
-      message: `Mechanism is overconstrained according to Grübler-Kutzbach criterion (Mobility = ${mobility.calculatedMobility} < 0).`,
+      code: SimpackErrorCode.OVERCONSTRAINED_MOBILITY.code,
+      rule: SimpackErrorCode.OVERCONSTRAINED_MOBILITY.rule,
+      severity: SimpackErrorCode.OVERCONSTRAINED_MOBILITY.severity,
+      message: SimpackErrorCode.OVERCONSTRAINED_MOBILITY.message(mobility.calculatedMobility),
     });
   }
 

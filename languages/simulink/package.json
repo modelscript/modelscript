@@ -43,6 +43,10 @@
     "./tgg": {
       "types": "./dist/src/tgg/index.d.ts",
       "default": "./dist/src/tgg/index.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram/index.d.ts",
+      "default": "./dist/src/diagram/index.js"
     }
   },
   "files": [

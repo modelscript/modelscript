@@ -5,6 +5,7 @@
  */
 
 export * from "./dae/index.js";
+export * from "./diagram/index.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

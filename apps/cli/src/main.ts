@@ -572,6 +572,54 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "verilog-a <action> [files..]",
+      "Inspect, validate, lower to DAE, and project Verilog-A / Verilog-AMS compact models (.va, .vams)",
+      () => import("./commands/verilog-a.js"),
+      "VerilogACommand",
+    ),
+  )
+  .command(
+    lazy(
+      "plcopen <action> [files..]",
+      "Inspect, validate, simulate, and project IEC 61131-3 PLCopen XML & Structured Text models (.xml, .plcopen, .st)",
+      () => import("./commands/plcopen.js"),
+      "PlcopenCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "opendrive <action> [files..]",
+      "Inspect, validate, sample clothoids, lower to DAE, and project OpenDRIVE road networks (.xodr, .xml)",
+      () => import("./commands/opendrive.js"),
+      "OpenDriveCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "energyplus <action> [files..]",
+      "Inspect, validate, lower to DAE, and project US DOE EnergyPlus building models (.idf, .epJSON)",
+      () => import("./commands/energyplus.js"),
+      "EnergyPlusCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "epanet <action> [files..]",
+      "Inspect, validate, solve hydraulics, lower to DAE, and project US EPA EPANET water networks (.inp)",
+      () => import("./commands/epanet.js"),
+      "EpanetCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "ccsds <action> [files..]",
+      "Inspect, validate, propagate, lower to DAE, and project CCSDS and XTCE spacecraft data (.oem, .opm, .omm, .xtce)",
+      () => import("./commands/ccsds.js"),
+      "CcsdsCommand",
+    ),
+  )
+  .command(
+    lazy(
       "simulink <action> [files..]",
       "Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)",
       () => import("./commands/simulink.js"),

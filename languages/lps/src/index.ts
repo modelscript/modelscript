@@ -11,10 +11,12 @@
 
 export * from "./checkpoint/checkpoint-engine.js";
 export * from "./dae/index.js";
+export * from "./errors.js";
 export * from "./graph/pipeline-graph.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
+
 export * from "./parser/index.js";
 export * from "./projections/lps-to-modelica.js";
 export * from "./projections/lps-to-sysml2.js";

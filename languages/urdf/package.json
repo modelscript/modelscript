@@ -59,6 +59,7 @@
   "dependencies": {
     "@modelscript/adams": "*",
     "@modelscript/cad": "*",
+    "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simpack": "*"

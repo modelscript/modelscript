@@ -1,0 +1,64 @@
+{
+  "name": "@modelscript/energyplus",
+  "version": "0.0.0",
+  "description": "US DOE EnergyPlus building energy performance and thermal simulation language package for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/index.d.ts",
+      "default": "./dist/src/parser/index.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/index.d.ts",
+      "default": "./dist/src/projections/index.js"
+    },
+    "./workspace-index": {
+      "types": "./dist/src/workspace-index.d.ts",
+      "default": "./dist/src/workspace-index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}

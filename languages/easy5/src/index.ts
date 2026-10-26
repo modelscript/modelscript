@@ -10,7 +10,9 @@ export {
   type AntvGraphData,
   type AntvNode,
 } from "./diagram/easy5-diagram.js";
+export * from "./grammar/index.js";
 export { easy5Language } from "./language.js";
+
 export {
   buildModelEvaluator,
   computeBodePlot,

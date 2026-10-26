@@ -57,6 +57,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*"
   },

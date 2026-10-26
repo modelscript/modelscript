@@ -345,5 +345,49 @@ export function seedScriptsAndTemplates(db: LibraryDatabase): void {
   db.updateJobStepStatus(s6f, "SUCCESS");
   db.updateJobStatus(job6, "SUCCESS");
 
-  console.log("✅ Seeded example job runs!");
+  // ── Seed Example Solutions ──────────────────────────────────────
+  const seedUser = db.getUserByUsername("admin") || db.getUserByUsername("dev") || db.getUserByUsername("alice");
+  if (seedUser) {
+    const existing = db.getUserSolutions(seedUser.username);
+    if (existing.length === 0) {
+      const s1 = db.createOrUpdateSolution(seedUser.id, {
+        slug: "simulink-linter",
+        name: "Simulink Pre-Flight Linter",
+        description:
+          "Pre-flight static analyzer detecting algebraic loops, unconnected ports, and sample-time conflicts in Simulink models.",
+        category: "Control Systems & Aeronautics",
+        icon: "cpu",
+        supported_formats: [".slx", ".mdl"],
+      });
+      db.createSolutionRelease(s1, {
+        version: "1.0.0",
+        changelog: "Initial production release with M7201-M7210 control linter rules.",
+        bundle_url: "https://cdn.modelscript.org/solutions/simulink-linter/index.html",
+        tauri_windows_url:
+          "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter-x64.exe",
+        tauri_linux_url:
+          "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter.AppImage",
+        tauri_darwin_url: "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter.dmg",
+      });
+
+      const s2 = db.createOrUpdateSolution(seedUser.id, {
+        slug: "ieee-2800-auditor",
+        name: "IEEE 2800-2022 IBR Auditor",
+        description:
+          "Automated compliance auditor for Inverter-Based Resources (IBR) validating voltage/frequency ride-through against IEEE 2800-2022 clauses.",
+        category: "Power Systems & Interconnection",
+        icon: "zap",
+        supported_formats: [".raw", ".dyr", ".pscx"],
+      });
+      db.createSolutionRelease(s2, {
+        version: "1.2.0",
+        changelog: "Added automated dynamic impedance scan and PRC-024 curve overlay.",
+        bundle_url: "https://cdn.modelscript.org/solutions/ieee-2800-auditor/index.html",
+        tauri_windows_url:
+          "https://github.com/modelscript/ieee-2800-auditor/releases/download/v1.2.0/ieee-2800-auditor-x64.exe",
+      });
+    }
+  }
+
+  console.log("✅ Seeded example job runs & engineering solutions!");
 }

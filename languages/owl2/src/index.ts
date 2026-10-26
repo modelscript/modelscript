@@ -7,3 +7,4 @@ export * from "./factory.js";
 export * from "./language.js";
 export { default, default as owl2Language } from "./language.js";
 export * from "./lints.js";
+export * from "./workspace-index.js";

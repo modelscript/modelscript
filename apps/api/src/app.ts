@@ -43,6 +43,7 @@ import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
 import { simulateRouter } from "./routes/simulate.js";
 import { socialRouter } from "./routes/social.js";
+import { solutionsRouter } from "./routes/solutions.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
@@ -325,6 +326,36 @@ graph TD
               gcodeViewId,
             );
 
+            // Engineering Solution Post (Simulink Pre-Flight Linter)
+            const solutionViewId = database.createArtifactView(
+              devUser.id,
+              "solution",
+              "inline",
+              JSON.stringify({
+                author: devUser.username,
+                slug: "simulink-linter",
+                name: "Simulink Pre-Flight Linter",
+                version: "1.0.0",
+                description:
+                  "Pre-flight static analyzer detecting algebraic loops, unconnected ports, and sample-time conflicts in Simulink models.",
+                category: "Control Systems & Aeronautics",
+                supported_formats: [".slx", ".mdl"],
+                bundle_url: "https://cdn.modelscript.org/solutions/simulink-linter/index.html",
+                tauri_windows_url:
+                  "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter-x64.exe",
+                tauri_linux_url:
+                  "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter.AppImage",
+                tauri_darwin_url:
+                  "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter.dmg",
+              }),
+              "Simulink Pre-Flight Linter Solution",
+            );
+            database.createPost(
+              devUser.id,
+              "🚀 Just released the Simulink Pre-Flight Linter app! You can test it live in the post below or download the standalone offline Windows binary. #simulink #verification",
+              solutionViewId,
+            );
+
             // FEA Simulation
             if (isNpmDev) {
               seedDroneFea(database);
@@ -502,6 +533,7 @@ graph TD
   // Auth routes
   app.use("/api/v1/auth", authRouter(database));
   app.use("/api/v1/users", usersRouter(database, federationWorker));
+  app.use("/api/v1/solutions", solutionsRouter(database));
   app.use("/api/v1/organizations", organizationsRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker));
   app.use("/api/v1/repos", reposRouter(database));

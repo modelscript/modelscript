@@ -3,6 +3,7 @@
 export * from "./dae/index.js";
 export * from "./dialects/index.js";
 export { parseInpDeck } from "./dialects/inp.js";
+export * from "./errors.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

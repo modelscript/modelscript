@@ -15,8 +15,10 @@ export {
   type AntvGraphData,
   type AntvNode,
 } from "./diagram/index.js";
+export * from "./grammar/index.js";
 export { rocetsLanguage } from "./language.js";
 export { RocetsErrorCode, lintRocets, type RocetsDiagnostic } from "./lints/index.js";
+
 export {
   executeRocetsAction,
   getRocetsDocumentSymbols,

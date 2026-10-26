@@ -14,6 +14,13 @@ import {
   getAutosarHover,
   validateAutosar,
 } from "@modelscript/autosar";
+import {
+  ccsdsLanguage,
+  CcsdsWorkspaceIndex,
+  getCcsdsDocumentSymbols,
+  getCcsdsHover,
+  validateCcsds,
+} from "@modelscript/ccsds";
 import { cfdLanguage, CfdWorkspaceIndex, getCfdDocumentSymbols, getCfdHover, validateCfd } from "@modelscript/cfd";
 import csvLangFallback from "@modelscript/csv/language";
 import { createWasmParser } from "@modelscript/dsl/bindings";
@@ -24,6 +31,20 @@ import {
   getEasy5Hover,
   validateEasy5,
 } from "@modelscript/easy5";
+import {
+  energyplusLanguage,
+  EnergyPlusWorkspaceIndex,
+  getEnergyPlusDocumentSymbols,
+  getEnergyPlusHover,
+  validateEnergyPlus,
+} from "@modelscript/energyplus";
+import {
+  epanetLanguage,
+  EpanetWorkspaceIndex,
+  getEpanetDocumentSymbols,
+  getEpanetHover,
+  validateEpanet,
+} from "@modelscript/epanet";
 import { feaLanguage, FeaWorkspaceIndex, getFeaDocumentSymbols, getFeaHover, validateFea } from "@modelscript/fea";
 import { fortranLanguage } from "@modelscript/fortran";
 import {
@@ -64,8 +85,22 @@ import {
   OlgaWorkspaceIndex,
   validateOlga,
 } from "@modelscript/olga";
+import {
+  getOpenDriveDocumentSymbols,
+  getOpenDriveHover,
+  opendriveLanguage,
+  OpenDriveWorkspaceIndex,
+  validateOpenDrive,
+} from "@modelscript/opendrive";
 import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
 import owl2LangFallback from "@modelscript/owl2/language";
+import {
+  getPlcopenDocumentSymbols,
+  getPlcopenHover,
+  plcopenLanguage,
+  PlcopenWorkspaceIndex,
+  validatePlcopen,
+} from "@modelscript/plcopen";
 import { pscadLanguage, PscadWorkspaceIndex } from "@modelscript/pscad";
 import {
   getPsseDocumentSymbols,
@@ -134,6 +169,13 @@ import {
   UrdfWorkspaceIndex,
   validateUrdf,
 } from "@modelscript/urdf";
+import {
+  getVerilogADocumentSymbols,
+  getVerilogAHover,
+  validateVerilogA,
+  verilogALanguage,
+  VerilogAWorkspaceIndex,
+} from "@modelscript/verilog-a";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -1586,6 +1628,408 @@ export function startNodeServer(input?: any, output?: any) {
     connection.console.info("[NodeServer] Registered ROS URDF / SDFormat language plugin");
   } catch (err: any) {
     connection.console.warn(`[NodeServer] Could not register ROS URDF plugin: ${err.message}`);
+  }
+
+  // Register Verilog-A / Verilog-AMS Compact Modeling Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "verilog-a",
+      name: "Verilog-A / Verilog-AMS",
+      extensions: [".va", ".vams"],
+      languageDef: verilogALanguage,
+      workspaceIndex: new VerilogAWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getVerilogADocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getVerilogAHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateVerilogA(text);
+        },
+      },
+      actionHandlers: {
+        lint_verilog_a: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintVerilogA, parseVerilogA } = await import("@modelscript/verilog-a");
+          const doc = parseVerilogA(text);
+          return lintVerilogA(doc);
+        },
+        export_verilog_a_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseVerilogA, verilogAToModelica } = await import("@modelscript/verilog-a");
+          const doc = parseVerilogA(text);
+          if (doc.modules.length === 0) return "";
+          return verilogAToModelica(doc.modules[0]!);
+        },
+        export_verilog_a_spice: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseVerilogA, verilogAToSpice } = await import("@modelscript/verilog-a");
+          const doc = parseVerilogA(text);
+          if (doc.modules.length === 0) return "";
+          return verilogAToSpice(doc.modules[0]!);
+        },
+        export_verilog_a_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseVerilogA, lowerVerilogAToDae } = await import("@modelscript/verilog-a");
+          const doc = parseVerilogA(text);
+          if (doc.modules.length === 0) return null;
+          const arena = lowerVerilogAToDae(doc.modules[0]!);
+          return {
+            title: doc.modules[0]!.name,
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered Verilog-A language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register Verilog-A plugin: ${err.message}`);
+  }
+
+  // Register IEC 61131-3 PLCopen XML & Structured Text Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "plcopen",
+      name: "IEC 61131-3 PLCopen / Structured Text",
+      extensions: [".xml", ".plcopen", ".st"],
+      languageDef: plcopenLanguage,
+      workspaceIndex: new PlcopenWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getPlcopenDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getPlcopenHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validatePlcopen(text);
+        },
+      },
+      actionHandlers: {
+        lint_plcopen: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintPlcProject, parsePlcopen } = await import("@modelscript/plcopen");
+          const project = parsePlcopen(text);
+          return lintPlcProject(project);
+        },
+        export_plcopen_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parsePlcopen, plcopenToModelica } = await import("@modelscript/plcopen");
+          const project = parsePlcopen(text);
+          return plcopenToModelica(project);
+        },
+        export_plcopen_sysml: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parsePlcopen, plcopenToSysML } = await import("@modelscript/plcopen");
+          const project = parsePlcopen(text);
+          return plcopenToSysML(project);
+        },
+        export_plcopen_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parsePlcopen, lowerPlcopenToDae } = await import("@modelscript/plcopen");
+          const project = parsePlcopen(text);
+          const arena = lowerPlcopenToDae(project);
+          return {
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
+        },
+        run_plcopen_scan: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parsePlcopen, VirtualPlc } = await import("@modelscript/plcopen");
+          const project = parsePlcopen(text);
+          const plc = new VirtualPlc(project);
+          const cycles = params?.cycles ?? 10;
+          const dtMs = params?.dtMs ?? 10;
+          return { cycles, dtMs, history: plc.runCycles(cycles, dtMs) };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered PLCopen language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register PLCopen plugin: ${err.message}`);
+  }
+
+  // Register ASAM OpenDRIVE Roadway Network Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "opendrive",
+      name: "ASAM OpenDRIVE",
+      extensions: [".xodr", ".xml"],
+      languageDef: opendriveLanguage,
+      workspaceIndex: new OpenDriveWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getOpenDriveDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getOpenDriveHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateOpenDrive(text);
+        },
+      },
+      actionHandlers: {
+        lint_opendrive: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintOpenDrive, parseOpenDrive } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          return lintOpenDrive(doc);
+        },
+        export_opendrive_gensys: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { opendriveToGensys, parseOpenDrive } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          const step = params?.step ?? 1.0;
+          return opendriveToGensys(doc, step);
+        },
+        export_opendrive_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerOpenDriveToDae, parseOpenDrive } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          const arena = lowerOpenDriveToDae(doc);
+          return {
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
+        },
+        sample_opendrive_track: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseOpenDrive, sampleRoadTrack } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          const step = params?.step ?? 1.0;
+          return doc.roads.map((r) => ({
+            roadId: r.id,
+            name: r.name,
+            points: sampleRoadTrack(r, step),
+          }));
+        },
+        render_opendrive_svg: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseOpenDrive, renderOpenDriveSvg } = await import("@modelscript/opendrive");
+          const doc = parseOpenDrive(text);
+          return renderOpenDriveSvg(doc, {
+            sampleStep: params?.step ?? 1.0,
+            theme: params?.theme ?? "dark",
+          });
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered OpenDRIVE language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register OpenDRIVE plugin: ${err.message}`);
+  }
+
+  // Register US DOE EnergyPlus Building Energy Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "energyplus",
+      name: "EnergyPlus",
+      extensions: [".idf", ".epjson"],
+      languageDef: energyplusLanguage,
+      workspaceIndex: new EnergyPlusWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getEnergyPlusDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getEnergyPlusHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateEnergyPlus(text);
+        },
+      },
+      actionHandlers: {
+        lint_energyplus: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintEnergyPlus, parseEnergyPlus } = await import("@modelscript/energyplus");
+          const doc = parseEnergyPlus(text);
+          return lintEnergyPlus(doc);
+        },
+        export_energyplus_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { energyPlusToModelica, parseEnergyPlus } = await import("@modelscript/energyplus");
+          const doc = parseEnergyPlus(text);
+          return energyPlusToModelica(doc);
+        },
+        export_energyplus_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerEnergyPlusToDae, parseEnergyPlus } = await import("@modelscript/energyplus");
+          const doc = parseEnergyPlus(text);
+          const arena = lowerEnergyPlusToDae(doc);
+          return {
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered EnergyPlus language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register EnergyPlus plugin: ${err.message}`);
+  }
+
+  // Register US EPA EPANET Water Distribution Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "epanet",
+      name: "EPANET",
+      extensions: [".inp"],
+      languageDef: epanetLanguage,
+      workspaceIndex: new EpanetWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getEpanetDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getEpanetHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateEpanet(text);
+        },
+      },
+      actionHandlers: {
+        lint_epanet: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintEpanet, parseInp } = await import("@modelscript/epanet");
+          const net = parseInp(text);
+          return lintEpanet(net);
+        },
+        solve_epanet: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseInp, solveHydraulics } = await import("@modelscript/epanet");
+          const net = parseInp(text);
+          const res = solveHydraulics(net);
+          return {
+            converged: res.converged,
+            iterations: res.iterations,
+            maxFlowChange: res.maxFlowChange,
+            pressures: Object.fromEntries(res.nodePressures),
+            flows: Object.fromEntries(res.linkFlows),
+          };
+        },
+        export_epanet_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { epanetToModelica, parseInp } = await import("@modelscript/epanet");
+          const net = parseInp(text);
+          return epanetToModelica(net);
+        },
+        export_epanet_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerEpanetToDae, parseInp } = await import("@modelscript/epanet");
+          const net = parseInp(text);
+          const arena = lowerEpanetToDae(net);
+          return {
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered EPANET language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register EPANET plugin: ${err.message}`);
+  }
+
+  // Register CCSDS Spacecraft Astrodynamics & Telemetry Language Plugin
+  try {
+    globalLanguageRegistry.register({
+      id: "ccsds",
+      name: "CCSDS",
+      extensions: [".oem", ".opm", ".omm", ".xtce"],
+      languageDef: ccsdsLanguage,
+      workspaceIndex: new CcsdsWorkspaceIndex(),
+      customHandlers: {
+        symbols: (treeWrapper: any) => {
+          const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+          return getCcsdsDocumentSymbols(text);
+        },
+        hover: (offset: number, text: string) => {
+          return getCcsdsHover(text, offset);
+        },
+        validate: (doc: any) => {
+          const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+          return validateCcsds(text);
+        },
+      },
+      actionHandlers: {
+        lint_ccsds: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintCcsds, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          return lintCcsds(doc);
+        },
+        export_ccsds_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { ccsdsToModelica, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          return ccsdsToModelica(doc);
+        },
+        export_ccsds_sysml: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { ccsdsToSysml, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          return ccsdsToSysml(doc);
+        },
+        export_ccsds_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerCcsdsToDae, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          const arena = lowerCcsdsToDae(doc);
+          return {
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
+        },
+      },
+      disposables: [],
+    });
+    connection.console.info("[NodeServer] Registered CCSDS language plugin");
+  } catch (err: any) {
+    connection.console.warn(`[NodeServer] Could not register CCSDS plugin: ${err.message}`);
   }
 
   // Register MATLAB Simulink Language Plugin

@@ -42,6 +42,7 @@ const RenderArtifactPage = React.lazy(() => import("./pages/RenderArtifactPage")
 const RepositoryListPage = React.lazy(() => import("./pages/RepositoryListPage"));
 const ScriptDetailPage = React.lazy(() => import("./pages/ScriptDetailPage"));
 const ScriptsListPage = React.lazy(() => import("./pages/ScriptsListPage"));
+const SolutionPage = React.lazy(() => import("./pages/SolutionPage"));
 const PrivacyPage = React.lazy(() => import("./pages/PrivacyPage"));
 const ResetPasswordPage = React.lazy(() => import("./pages/ResetPasswordPage"));
 const SettingsPage = React.lazy(() => import("./pages/SettingsPage"));
@@ -241,6 +242,7 @@ function App() {
                   <Route path="/embed/playground" element={<EmbedPlaygroundPage />} />
                   <Route path="/morsel" element={<Navigate to="/playground" replace />} />
                   <Route path="/embed/morsel" element={<Navigate to="/embed/playground" replace />} />
+                  <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                   {/* Social shell routes */}
                   <Route element={<AppShell />}>
