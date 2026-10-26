@@ -3149,7 +3149,7 @@ export function buildDiagramFromDSL(
       const text = getNodeText(rawNode);
       // Non-destructive declaration match: optional modifiers followed by type and identifier
       const declMatch = text.match(
-        /(?:^|\s)(?:parameter|constant|input|output|flow|discrete|\s)*([a-zA-Z_][a-zA-Z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/,
+        /(?:^|\s+)(?:(?:parameter|constant|input|output|flow|discrete)\s+)*([a-zA-Z_][a-zA-Z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/,
       );
       if (declMatch) {
         compType = compType || declMatch[1]!;
