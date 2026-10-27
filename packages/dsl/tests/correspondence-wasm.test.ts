@@ -84,6 +84,7 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
   it("should have correspondence index WASM exports", () => {
     expect(wasmExports.createCorrespondenceIndex).toBeDefined();
     expect(wasmExports.corr_addLink).toBeDefined();
+    expect(wasmExports.corr_addLinkWithParent).toBeDefined();
     expect(wasmExports.corr_findBySource).toBeDefined();
     expect(wasmExports.corr_findByTarget).toBeDefined();
     expect(wasmExports.corr_markStale).toBeDefined();
@@ -101,11 +102,15 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
 
     const slot1 = wasmExports.corr_addLink(corrPtr, 101, 201, 0, 1, 10);
     const slot2 = wasmExports.corr_addLink(corrPtr, 102, 202, 1, 1, 10);
+    const slot3 = wasmExports.corr_addLinkWithParent(corrPtr, 103, 203, 0, 1, 10, slot1);
 
     expect(wasmExports.corr_findBySource(corrPtr, 101)).toBe(201);
     expect(wasmExports.corr_findBySource(corrPtr, 102)).toBe(202);
+    expect(wasmExports.corr_findBySource(corrPtr, 103)).toBe(203);
     expect(wasmExports.corr_findByTarget(corrPtr, 201)).toBe(101);
     expect(wasmExports.corr_findByTarget(corrPtr, 202)).toBe(102);
+    expect(wasmExports.corr_findByTarget(corrPtr, 203)).toBe(103);
+    expect(wasmExports.corr_getParentSlot(corrPtr, slot3)).toBe(slot1);
 
     expect(wasmExports.corr_findBySource(corrPtr, 999)).toBe(0);
     expect(wasmExports.corr_findByTarget(corrPtr, 999)).toBe(0);
@@ -121,7 +126,7 @@ describe("AssemblyScript Correspondence Index & Polyglot Arena WASM Tests", () =
     expect(wasmExports.corr_getParentSlot(corrPtr, slot2)).toBe(slot1);
 
     const cascadeCount = wasmExports.corr_markStaleCascading(corrPtr, slot1);
-    expect(cascadeCount).toBe(2);
+    expect(cascadeCount).toBe(3);
 
     wasmExports.corr_markStale(corrPtr, 101);
     wasmExports.corr_reset(corrPtr);

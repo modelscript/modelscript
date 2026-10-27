@@ -347,10 +347,10 @@ export class CorrespondenceIndex {
 /**
  * Creates and initializes a new CorrespondenceIndex in WASM linear memory.
  */
-export function createCorrespondenceIndex(initialCapacity: u32 = 1024): usize {
+export function createCorrespondenceIndex(initialCapacity: u32): usize {
   let ptr = atomicChunkAlloc(sizeof<CorrespondenceIndex>());
   let idx = changetype<CorrespondenceIndex>(ptr);
-  idx.init(initialCapacity);
+  idx.init(initialCapacity != 0 ? initialCapacity : 1024);
   return ptr;
 }
 
@@ -361,7 +361,18 @@ export function corr_addLink(
   ruleId: u16,
   flags: u16,
   revision: u32,
-  parentSlot: u32 = CORR_NO_PARENT,
+): u32 {
+  return changetype<CorrespondenceIndex>(ptr).addLink(sourceNodeId, targetNodeId, ruleId, flags, revision, CORR_NO_PARENT);
+}
+
+export function corr_addLinkWithParent(
+  ptr: usize,
+  sourceNodeId: u32,
+  targetNodeId: u32,
+  ruleId: u16,
+  flags: u16,
+  revision: u32,
+  parentSlot: u32,
 ): u32 {
   return changetype<CorrespondenceIndex>(ptr).addLink(sourceNodeId, targetNodeId, ruleId, flags, revision, parentSlot);
 }

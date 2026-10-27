@@ -300,13 +300,26 @@ export class Interval {
     if (b.lo <= 0 && b.hi >= 0) {
       return new Interval(-Infinity, Infinity);
     }
-    const p1 = a.lo / b.lo;
-    const p2 = a.lo / b.hi;
-    const p3 = a.hi / b.lo;
-    const p4 = a.hi / b.hi;
-    const minP = Math.min(p1, p2, p3, p4);
-    const maxP = Math.max(p1, p2, p3, p4);
-    return new Interval(subMachineEps(minP), addMachineEps(maxP));
+    if (b.lo > 0) {
+      let lo: number;
+      if (a.lo >= 0) {
+        lo = !Number.isFinite(b.hi) ? (Number.isFinite(a.lo) ? 0 : 0) : a.lo / b.hi;
+      } else {
+        lo = a.lo / b.lo;
+      }
+      let hi: number;
+      if (a.hi >= 0) {
+        hi = a.hi / b.lo;
+      } else {
+        hi = !Number.isFinite(b.hi) ? (Number.isFinite(a.hi) ? 0 : 0) : a.hi / b.hi;
+      }
+      return new Interval(subMachineEps(lo), addMachineEps(hi));
+    } else {
+      // b.hi < 0 => a / b = - (a / -b)
+      const posB = new Interval(-b.hi, -b.lo);
+      const res = Interval.divOutward(a, posB);
+      return new Interval(-res.hi, -res.lo);
+    }
   }
 }
 

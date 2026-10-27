@@ -31,8 +31,9 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
 
   if (
     typeof sourcePathOrText === "string" &&
-    (sourcePathOrText.startsWith("/") ||
+    (path.isAbsolute(sourcePathOrText) ||
       sourcePathOrText.startsWith("./") ||
+      sourcePathOrText.startsWith("../") ||
       sourcePathOrText.endsWith(".ts") ||
       sourcePathOrText.endsWith(".js")) &&
     fs.existsSync(sourcePathOrText)
@@ -115,24 +116,28 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     }
   });
 
+  function getImportCandidates(moduleSpecifier: string): string[] {
+    const baseDir = filePath !== "language.ts" ? path.dirname(path.resolve(filePath)) : "";
+    let targetPath = baseDir ? path.resolve(baseDir, moduleSpecifier) : moduleSpecifier;
+    if (targetPath.endsWith(".js")) {
+      targetPath = targetPath.slice(0, -3);
+    }
+    return [targetPath + ".ts", targetPath + ".js", path.join(targetPath, "index.ts"), targetPath];
+  }
+
   // Automatically resolve all relative named imports to collect helper functions and constants
   for (const [localName, imp] of namedImports.entries()) {
     if (imp.moduleSpecifier.startsWith("./") || imp.moduleSpecifier.startsWith("../")) {
       try {
-        const baseDir =
-          filePath !== "language.ts" && filePath.includes("/") ? filePath.substring(0, filePath.lastIndexOf("/")) : "";
-        let targetPath = baseDir ? `${baseDir}/${imp.moduleSpecifier}` : imp.moduleSpecifier;
-        if (targetPath.endsWith(".js")) {
-          targetPath = targetPath.slice(0, -3);
-        }
-        const candidates = [targetPath + ".ts", targetPath + ".js", targetPath + "/index.ts", targetPath];
+        const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
           const normalized = path.resolve(testPath);
+          const normalizedSlash = normalized.replace(/\\/g, "/");
           if (
-            normalized.includes("/packages/dsl/src/") ||
-            normalized.includes("/packages/runtime/src/") ||
-            normalized.includes("/packages/language/src/") ||
-            normalized.includes("/node_modules/")
+            normalizedSlash.includes("/packages/dsl/src/") ||
+            normalizedSlash.includes("/packages/runtime/src/") ||
+            normalizedSlash.includes("/packages/language/src/") ||
+            normalizedSlash.includes("/node_modules/")
           ) {
             continue;
           }
@@ -172,16 +177,20 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     const imp = namedImports.get(name);
     if (imp && (imp.moduleSpecifier.startsWith("./") || imp.moduleSpecifier.startsWith("../"))) {
       try {
-        const baseDir =
-          filePath !== "language.ts" && filePath.includes("/") ? filePath.substring(0, filePath.lastIndexOf("/")) : "";
-        let targetPath = baseDir ? `${baseDir}/${imp.moduleSpecifier}` : imp.moduleSpecifier;
-        if (targetPath.endsWith(".js")) {
-          targetPath = targetPath.slice(0, -3);
-        }
-        const candidates = [targetPath + ".ts", targetPath + ".js", targetPath + "/index.ts", targetPath];
+        const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          if (fs.existsSync(testPath)) {
-            const subAst = extractLanguageAST(testPath);
+          const normalized = path.resolve(testPath);
+          const normalizedSlash = normalized.replace(/\\/g, "/");
+          if (
+            normalizedSlash.includes("/packages/dsl/src/") ||
+            normalizedSlash.includes("/packages/runtime/src/") ||
+            normalizedSlash.includes("/packages/language/src/") ||
+            normalizedSlash.includes("/node_modules/")
+          ) {
+            continue;
+          }
+          if (fs.existsSync(normalized)) {
+            const subAst = extractLanguageAST(normalized);
             if (subAst) {
               const cls = subAst.classes.get(imp.importedName);
               if (cls) return cls;
@@ -202,16 +211,20 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     const imp = namedImports.get(name);
     if (imp && (imp.moduleSpecifier.startsWith("./") || imp.moduleSpecifier.startsWith("../"))) {
       try {
-        const baseDir =
-          filePath !== "language.ts" && filePath.includes("/") ? filePath.substring(0, filePath.lastIndexOf("/")) : "";
-        let targetPath = baseDir ? `${baseDir}/${imp.moduleSpecifier}` : imp.moduleSpecifier;
-        if (targetPath.endsWith(".js")) {
-          targetPath = targetPath.slice(0, -3);
-        }
-        const candidates = [targetPath + ".ts", targetPath + ".js", targetPath + "/index.ts", targetPath];
+        const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          if (fs.existsSync(testPath)) {
-            const subAst = extractLanguageAST(testPath);
+          const normalized = path.resolve(testPath);
+          const normalizedSlash = normalized.replace(/\\/g, "/");
+          if (
+            normalizedSlash.includes("/packages/dsl/src/") ||
+            normalizedSlash.includes("/packages/runtime/src/") ||
+            normalizedSlash.includes("/packages/language/src/") ||
+            normalizedSlash.includes("/node_modules/")
+          ) {
+            continue;
+          }
+          if (fs.existsSync(normalized)) {
+            const subAst = extractLanguageAST(normalized);
             if (subAst) {
               const fn = subAst.functions.get(imp.importedName);
               if (fn) return fn;
@@ -230,16 +243,20 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     const imp = namedImports.get(name);
     if (imp && (imp.moduleSpecifier.startsWith("./") || imp.moduleSpecifier.startsWith("../"))) {
       try {
-        const baseDir =
-          filePath !== "language.ts" && filePath.includes("/") ? filePath.substring(0, filePath.lastIndexOf("/")) : "";
-        let targetPath = baseDir ? `${baseDir}/${imp.moduleSpecifier}` : imp.moduleSpecifier;
-        if (targetPath.endsWith(".js")) {
-          targetPath = targetPath.slice(0, -3);
-        }
-        const candidates = [targetPath + ".ts", targetPath + ".js", targetPath + "/index.ts", targetPath];
+        const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          if (fs.existsSync(testPath)) {
-            const subAst = extractLanguageAST(testPath);
+          const normalized = path.resolve(testPath);
+          const normalizedSlash = normalized.replace(/\\/g, "/");
+          if (
+            normalizedSlash.includes("/packages/dsl/src/") ||
+            normalizedSlash.includes("/packages/runtime/src/") ||
+            normalizedSlash.includes("/packages/language/src/") ||
+            normalizedSlash.includes("/node_modules/")
+          ) {
+            continue;
+          }
+          if (fs.existsSync(normalized)) {
+            const subAst = extractLanguageAST(normalized);
             if (subAst) {
               for (const [k, v] of subAst.constants) {
                 result.constants.set(k, v);

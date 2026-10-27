@@ -250,20 +250,12 @@ export class Hc4Contractor {
 
         // if rightVal doesn't contain 0
         if (rightVal.lo > 0 || rightVal.hi < 0) {
-          const p1 = target.lo / rightVal.lo;
-          const p2 = target.lo / rightVal.hi;
-          const p3 = target.hi / rightVal.lo;
-          const p4 = target.hi / rightVal.hi;
-          const newLeftTarget = new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
+          const newLeftTarget = Interval.divOutward(target, rightVal);
           if (!Hc4Contractor.contractNode(node.left, newLeftTarget, box)) return false;
         }
 
         if (leftVal.lo > 0 || leftVal.hi < 0) {
-          const p1 = target.lo / leftVal.lo;
-          const p2 = target.lo / leftVal.hi;
-          const p3 = target.hi / leftVal.lo;
-          const p4 = target.hi / leftVal.hi;
-          const newRightTarget = new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
+          const newRightTarget = Interval.divOutward(target, leftVal);
           if (!Hc4Contractor.contractNode(node.right, newRightTarget, box)) return false;
         }
 
@@ -296,22 +288,12 @@ export class Hc4Contractor {
         }
 
         // Contract left: left ∈ target * rightVal
-        if (rightVal.lo > 0 || rightVal.hi < 0) {
-          const p1 = target.lo * rightVal.lo;
-          const p2 = target.lo * rightVal.hi;
-          const p3 = target.hi * rightVal.lo;
-          const p4 = target.hi * rightVal.hi;
-          const newLeftTarget = new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
-          if (!Hc4Contractor.contractNode(node.left, newLeftTarget, box)) return false;
-        }
+        const newLeftTarget = Interval.mulOutward(target, rightVal);
+        if (!Hc4Contractor.contractNode(node.left, newLeftTarget, box)) return false;
 
         // Contract right: right ∈ leftVal / target (when 0 ∉ target)
-        if ((target.lo > 0 || target.hi < 0) && (leftVal.lo > 0 || leftVal.hi < 0)) {
-          const p1 = leftVal.lo / target.lo;
-          const p2 = leftVal.lo / target.hi;
-          const p3 = leftVal.hi / target.lo;
-          const p4 = leftVal.hi / target.hi;
-          const newRightTarget = new Interval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
+        if (target.lo > 0 || target.hi < 0) {
+          const newRightTarget = Interval.divOutward(leftVal, target);
           if (!Hc4Contractor.contractNode(node.right, newRightTarget, box)) return false;
         }
 

@@ -19,4 +19,7 @@ export function extname(p) {
   const idx = base.lastIndexOf(".");
   return idx > 0 ? base.slice(idx) : "";
 }
-export default { resolve, join, dirname, basename, extname };
+export function isAbsolute(p) {
+  return typeof p === "string" && (/^[a-zA-Z]:[\\/]/.test(p) || p.startsWith("/"));
+}
+export default { resolve, join, dirname, basename, extname, isAbsolute };
