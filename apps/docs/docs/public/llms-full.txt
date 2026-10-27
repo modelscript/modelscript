@@ -45,14 +45,14 @@ flowchart LR
 
 ### Traditional Passive PLM vs. Computable Digital Thread
 
-| Dimension | Traditional Passive PLM / MBSE | ModelScript Computable Digital Thread |
-| :--- | :--- | :--- |
-| **Artifact Storage** | Proprietary binary blobs in centralized SQL/PLM vaults | Plain-text, human-readable source files versioned in Git |
-| **Cross-Domain Links** | Manual, untyped hyperlinks that silently go stale | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG) |
-| **Static Analysis** | Checked manually during design reviews | **790 static lint rules** across **43 languages** evaluated on every keystroke and CI push |
-| **Requirement Verification** | Post-hoc spreadsheet sign-offs | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs |
-| **Code Review & Diffs** | Opaque binary attachments or screenshot exports | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`) |
-| **AI Copilot Integration** | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
+| Dimension                    | Traditional Passive PLM / MBSE                              | ModelScript Computable Digital Thread                                                          |
+| :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
+| **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
+| **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
+| **Static Analysis**          | Checked manually during design reviews                      | **790 static lint rules** across **43 languages** evaluated on every keystroke and CI push     |
+| **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
+| **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
+| **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
 
 ---
 
@@ -6364,14 +6364,14 @@ These properties feed directly into Modelica 1D aerodynamic drag models ($F_d = 
 msx cfd <action> [files...] [options]
 ```
 
-| Action            | Description                                                                                     | Key Options |
-| :---------------- | :---------------------------------------------------------------------------------------------- | :---------- |
-| **`lint`**        | Validates SU2 and OpenFOAM configuration syntax, boundary markers, and thermodynamic consistency.| —           |
-| **`summary`**     | Prints turbulence model, freestream conditions, reference areas, and configured markers.        | —           |
-| **`inspect`**     | Dumps parsed marker tree, solver settings, and evaluated parametric expressions.                | —           |
-| **`to-modelica`** | Generates Modelica 1D aerodynamic drag models (`Modelica.Mechanics.Translational`) and ports.  | `--out=<file.mo>` |
-| **`to-dae`**      | Lowers boundary conditions and drag polar into ModelScript linear-memory DAE arena.             | `--out=<file.json>` |
-| **`solve`**       | Invokes external or embedded SU2 flow solver iteration for steady/unsteady aerodynamic fields.   | —           |
+| Action            | Description                                                                                       | Key Options         |
+| :---------------- | :------------------------------------------------------------------------------------------------ | :------------------ |
+| **`lint`**        | Validates SU2 and OpenFOAM configuration syntax, boundary markers, and thermodynamic consistency. | —                   |
+| **`summary`**     | Prints turbulence model, freestream conditions, reference areas, and configured markers.          | —                   |
+| **`inspect`**     | Dumps parsed marker tree, solver settings, and evaluated parametric expressions.                  | —                   |
+| **`to-modelica`** | Generates Modelica 1D aerodynamic drag models (`Modelica.Mechanics.Translational`) and ports.     | `--out=<file.mo>`   |
+| **`to-dae`**      | Lowers boundary conditions and drag polar into ModelScript linear-memory DAE arena.               | `--out=<file.json>` |
+| **`solve`**       | Invokes external or embedded SU2 flow solver iteration for steady/unsteady aerodynamic fields.    | —                   |
 
 ### Examples
 
@@ -6496,14 +6496,14 @@ Returning `{ mass, maxVonMisesPa, yieldStrengthPa, safetyFactor, isSafe }` direc
 msx fea <action> [files...] [options]
 ```
 
-| Action            | Description                                                                                          | Key Options |
-| :---------------- | :--------------------------------------------------------------------------------------------------- | :---------- |
-| **`lint`**        | Validates CalculiX, Abaqus, and NASTRAN syntax, element topologies, material cards, and constraints. | —           |
-| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.   | —           |
-| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.              | —           |
-| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.          | `--out=<file.mo>` |
+| Action            | Description                                                                                          | Key Options         |
+| :---------------- | :--------------------------------------------------------------------------------------------------- | :------------------ |
+| **`lint`**        | Validates CalculiX, Abaqus, and NASTRAN syntax, element topologies, material cards, and constraints. | —                   |
+| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.    | —                   |
+| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.               | —                   |
+| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.          | `--out=<file.mo>`   |
 | **`to-dae`**      | Lowers structural mass and stiffness matrices into ModelScript linear-memory DAE arena.              | `--out=<file.json>` |
-| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.  | —           |
+| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.   | —                   |
 
 ### Examples
 

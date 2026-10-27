@@ -48,6 +48,7 @@ packages/diagram/tests/*.py
 # Binary & compiled artifacts
 *.wasm
 !packages/simulate/src/wasm/sundials.wasm
+!packages/dsl/src/xml/parser.wasm
 apps/ide/models/
 apps/docs/docs/public/*.pdf
 *.a

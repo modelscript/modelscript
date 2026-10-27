@@ -49,8 +49,6 @@ jobs:
         run: npm run lint:filenames
       - name: Check Workspace Package Manifests & Versions
         run: npm run lint:manifests
-      - name: Check Docs Generated Data & Links
-        run: npm run check --workspace=@modelscript/docs
       - name: Check Root TypeScript Config
         run: npx tsc --noEmit
       - name: Lint Root Scripts
@@ -367,6 +365,8 @@ jobs:
           fi
       - name: Verify Dist & Exports Integrity
         run: npm run verify:dist
+      - name: Check Docs Generated Data & Links
+        run: npm run check --workspace=@modelscript/docs
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Package VS Code Extension

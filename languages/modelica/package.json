@@ -127,8 +127,8 @@
     "./parser.wasm": "./dist/parser.wasm",
     "./dist/parser.wasm": "./dist/parser.wasm",
     "./studies": {
-      "types": "./dist/src/studies.d.ts",
-      "default": "./dist/src/studies.js"
+      "types": "./dist/src/extensions/studies.d.ts",
+      "default": "./dist/src/extensions/studies.js"
     },
     "./dist/*": "./dist/*"
   },
