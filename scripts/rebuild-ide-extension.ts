@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BROWSER_BUFFER_AND_PROCESS_BANNER, createNodeBuiltinsIgnorePlugin } from "@modelscript/dsl";
 import esbuild from "esbuild";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  BROWSER_BUFFER_AND_PROCESS_BANNER,
+  createNodeBuiltinsIgnorePlugin,
+} from "../packages/dsl/src/codegen/ide/esbuild-browser-plugin.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
