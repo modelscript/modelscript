@@ -2,7 +2,7 @@
 
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
@@ -199,6 +199,11 @@ function GlobalModals() {
   );
 }
 
+function PreserveParamsNavigate({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
+}
+
 /**
  * Core ModelScript Hub React router and layout shell.
  */
@@ -238,15 +243,16 @@ function App() {
                   <Route path="/verify-email" element={<VerifyEmailPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
-                  <Route path="/playground" element={<PlaygroundPage />} />
                   <Route path="/embed/playground" element={<EmbedPlaygroundPage />} />
-                  <Route path="/morsel" element={<Navigate to="/playground" replace />} />
-                  <Route path="/embed/morsel" element={<Navigate to="/embed/playground" replace />} />
+                  <Route path="/morsel" element={<PreserveParamsNavigate to="/playground" />} />
+                  <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/playground" />} />
                   <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                   {/* Social shell routes */}
                   <Route element={<AppShell />}>
+                    <Route path="/playground" element={<PlaygroundPage />} />
                     <Route path="/home" element={user ? <HomeFeedPage /> : <Navigate to="/explore" replace />} />
+                    <Route path="/feed" element={<Navigate to="/home" replace />} />
                     <Route path="/explore" element={<ExplorePage />} />
                     <Route path="/notifications" element={<NotificationsPage />} />
                     <Route path="/bookmarks" element={<BookmarksPage />} />
@@ -264,18 +270,18 @@ function App() {
                     {/* ModelScript IDE Workbench */}
                     <Route
                       path="/ide"
-                      element={hasIde ? <IdeWorkspacePage /> : <Navigate to="/playground" replace />}
+                      element={hasIde ? <IdeWorkspacePage /> : <PreserveParamsNavigate to="/playground" />}
                     />
                     <Route
                       path="/ide/:templateId"
-                      element={hasIde ? <IdeWorkspacePage /> : <Navigate to="/playground" replace />}
+                      element={hasIde ? <IdeWorkspacePage /> : <PreserveParamsNavigate to="/playground" />}
                     />
 
                     {/* Repositories */}
                     <Route path="/repos" element={<RepositoryListPage />} />
                     <Route
                       path="/repos/:provider/:namespace/:project/ide"
-                      element={hasIde ? <IdeWorkspacePage /> : <Navigate to="/playground" replace />}
+                      element={hasIde ? <IdeWorkspacePage /> : <PreserveParamsNavigate to="/playground" />}
                     />
                     <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
 

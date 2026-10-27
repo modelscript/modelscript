@@ -9,6 +9,7 @@ import { GtSuiteErrorCode } from "./lints/index.js";
 export const gtsuiteLanguage = language({
   name: "gtsuite",
   fileExtensions: [".gtm", ".gtd", ".gtx", ".gt"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".gtm", ".gtd", ".gtx", ".gt"],
   },

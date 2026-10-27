@@ -5,12 +5,13 @@
 // component only wires props / lifecycle to this class.
 
 import * as THREE from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   bladeGeometry,
+  type BladeMaterial,
   bladeMatrices,
   bladeWire,
   BODIES,
+  type BodyMaterial,
   CALLOUTS,
   latheGeometry,
   latheWire,
@@ -33,10 +34,15 @@ interface Palette {
   accent: number;
   grid: number;
   gridOpacity: number;
-  casing: number;
-  hub: number;
-  blade: number;
+  nacelle: number;
+  spinner: number;
+  cowl: number;
+  drum: number;
   liner: number;
+  fanBlade: number;
+  compressorBlade: number;
+  turbineBlade: number;
+  envIntensity: number;
   exposure: number;
 }
 
@@ -48,10 +54,15 @@ const PALETTES: Record<"dark" | "light", Palette> = {
     accent: 0x67e8f9,
     grid: 0x22d3ee,
     gridOpacity: 0.22,
-    casing: 0x434b55,
-    hub: 0x3a414b,
-    blade: 0x9aa4b0,
-    liner: 0x8a7f74,
+    nacelle: 0x828890,
+    spinner: 0x646a74,
+    cowl: 0x8a8e94,
+    drum: 0x989ca4,
+    liner: 0xc48e62,
+    fanBlade: 0x929aa4,
+    compressorBlade: 0xa2a8b0,
+    turbineBlade: 0xb2967e,
+    envIntensity: 1.55,
     exposure: 1.05,
   },
   light: {
@@ -61,13 +72,240 @@ const PALETTES: Record<"dark" | "light", Palette> = {
     accent: 0x0891b2,
     grid: 0x0e7490,
     gridOpacity: 0.2,
-    casing: 0x5a6470,
-    hub: 0x4b5562,
-    blade: 0xa3adb8,
-    liner: 0x8f8377,
-    exposure: 0.95,
+    nacelle: 0x8a9098,
+    spinner: 0x6e747e,
+    cowl: 0x90949c,
+    drum: 0x9ea2aa,
+    liner: 0xca9468,
+    fanBlade: 0x9aa2ac,
+    compressorBlade: 0xa8aeb6,
+    turbineBlade: 0xb89e86,
+    envIntensity: 1.6,
+    exposure: 1.04,
   },
 };
+
+interface PbrMaps {
+  normal: THREE.DataTexture;
+  roughness: THREE.DataTexture;
+  ao: THREE.DataTexture;
+  iridescence: THREE.DataTexture;
+}
+
+function hash2(x: number, y: number): number {
+  const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453123;
+  return h - Math.floor(h);
+}
+
+/**
+ * Synthesizes high-frequency micro-brushed metal normal, roughness, specular-AO,
+ * and thermal-oxide thickness maps in memory (zero network fetches).
+ */
+function createPbrMaps(maxAnisotropy: number): PbrMaps {
+  const size = 256;
+  const normData = new Uint8Array(size * size * 4);
+  const roughData = new Uint8Array(size * size * 4);
+  const height = new Float32Array(size * size);
+
+  // Fine sub-millimeter lathe turning & brushed micro-grain (no coarse wave banding)
+  for (let y = 0; y < size; y++) {
+    const rowGrain = (hash2(y, 11.7) - 0.5) * 0.5 + (hash2(y >> 1, 37.1) - 0.5) * 0.35;
+    for (let x = 0; x < size; x++) {
+      const u = (x / size) * Math.PI * 2;
+      const micro = rowGrain * (0.85 + 0.15 * Math.sin(u * 4 + y * 0.31)) + (hash2(x, y) - 0.5) * 0.22;
+      height[y * size + x] = micro;
+      const rVal = Math.round(Math.min(255, Math.max(0, 210 + micro * 36)));
+      const idx = (y * size + x) * 4;
+      roughData[idx] = rVal;
+      roughData[idx + 1] = rVal;
+      roughData[idx + 2] = rVal;
+      roughData[idx + 3] = 255;
+    }
+  }
+
+  for (let y = 0; y < size; y++) {
+    const yPrev = (y - 1 + size) & (size - 1);
+    const yNext = (y + 1) & (size - 1);
+    for (let x = 0; x < size; x++) {
+      const xPrev = (x - 1 + size) & (size - 1);
+      const xNext = (x + 1) & (size - 1);
+      const dx = (height[y * size + xNext]! - height[y * size + xPrev]!) * 0.35;
+      const dy = (height[yNext * size + x]! - height[yPrev * size + x]!) * 0.9;
+      const invLen = 1 / Math.hypot(dx, dy, 1);
+      const idx = (y * size + x) * 4;
+      normData[idx] = Math.round((-dx * invLen * 0.5 + 0.5) * 255);
+      normData[idx + 1] = Math.round((-dy * invLen * 0.5 + 0.5) * 255);
+      normData[idx + 2] = Math.round((invLen * 0.5 + 0.5) * 255);
+      normData[idx + 3] = 255;
+    }
+  }
+
+  const normal = new THREE.DataTexture(normData, size, size, THREE.RGBAFormat);
+  normal.wrapS = THREE.RepeatWrapping;
+  normal.wrapT = THREE.RepeatWrapping;
+  normal.magFilter = THREE.LinearFilter;
+  normal.minFilter = THREE.LinearMipmapLinearFilter;
+  normal.generateMipmaps = true;
+  normal.anisotropy = maxAnisotropy;
+  normal.needsUpdate = true;
+
+  const roughness = new THREE.DataTexture(roughData, size, size, THREE.RGBAFormat);
+  roughness.wrapS = THREE.RepeatWrapping;
+  roughness.wrapT = THREE.RepeatWrapping;
+  roughness.magFilter = THREE.LinearFilter;
+  roughness.minFilter = THREE.LinearMipmapLinearFilter;
+  roughness.generateMipmaps = true;
+  roughness.anisotropy = maxAnisotropy;
+  roughness.needsUpdate = true;
+
+  // 1D Ambient Occlusion lookup sampled via uv1.x so MeshPhysicalMaterial applies
+  // both diffuse and Jimenez/Lagarde specular ambient occlusion in cavities.
+  const aoWidth = 64;
+  const aoData = new Uint8Array(aoWidth * 4);
+  for (let i = 0; i < aoWidth; i++) {
+    const v = Math.round((i / (aoWidth - 1)) * 255);
+    aoData[i * 4] = v;
+    aoData[i * 4 + 1] = v;
+    aoData[i * 4 + 2] = v;
+    aoData[i * 4 + 3] = 255;
+  }
+  const ao = new THREE.DataTexture(aoData, aoWidth, 1, THREE.RGBAFormat);
+  ao.wrapS = THREE.ClampToEdgeWrapping;
+  ao.wrapT = THREE.ClampToEdgeWrapping;
+  ao.magFilter = THREE.LinearFilter;
+  ao.minFilter = THREE.LinearFilter;
+  ao.channel = 1;
+  ao.needsUpdate = true;
+
+  // Organic thin-film oxide thickness variation for combustor & turbine heat tinting.
+  const iriSize = 128;
+  const iriData = new Uint8Array(iriSize * iriSize * 4);
+  for (let y = 0; y < iriSize; y++) {
+    const v = (y / iriSize) * Math.PI * 2;
+    for (let x = 0; x < iriSize; x++) {
+      const u = (x / iriSize) * Math.PI * 2;
+      const wave =
+        0.5 + 0.28 * Math.sin(u * 2 + v * 3) + 0.14 * Math.cos(u * 5 - v * 2) + 0.08 * Math.sin(u * 9 + v * 7);
+      const gVal = Math.round(Math.min(255, Math.max(0, wave * 255)));
+      const idx = (y * iriSize + x) * 4;
+      iriData[idx] = gVal;
+      iriData[idx + 1] = gVal;
+      iriData[idx + 2] = gVal;
+      iriData[idx + 3] = 255;
+    }
+  }
+  const iridescence = new THREE.DataTexture(iriData, iriSize, iriSize, THREE.RGBAFormat);
+  iridescence.wrapS = THREE.RepeatWrapping;
+  iridescence.wrapT = THREE.RepeatWrapping;
+  iridescence.magFilter = THREE.LinearFilter;
+  iridescence.minFilter = THREE.LinearFilter;
+  iridescence.needsUpdate = true;
+
+  return { normal, roughness, ao, iridescence };
+}
+
+/**
+ * Constructs a high-contrast dark aerospace photography studio using analytical
+ * spherical light banks on a high-resolution HDR dome so curved metals exhibit
+ * crisp longitudinal softbox reflections separated by deep metallic contrast bands.
+ */
+function buildStudioEnvironment(pmrem: THREE.PMREMGenerator): THREE.Texture {
+  const studio = new THREE.Scene();
+  studio.background = new THREE.Color(0x05070a);
+
+  const domeGeo = new THREE.SphereGeometry(16, 128, 64);
+  const domePos = domeGeo.getAttribute("position") as THREE.BufferAttribute;
+  const domeColors = new Float32Array(domePos.count * 3);
+
+  interface Lobe {
+    dir: THREE.Vector3;
+    u: THREE.Vector3;
+    v: THREE.Vector3;
+    su: number;
+    sv: number;
+    power: number;
+    r: number;
+    g: number;
+    b: number;
+  }
+
+  const makeLobe = (
+    pos: [number, number, number],
+    su: number,
+    sv: number,
+    color: number,
+    intensity: number,
+    power = 1.5,
+  ): Lobe => {
+    const dir = new THREE.Vector3(...pos).normalize();
+    const ref = Math.abs(dir.y) > 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+    // Align u along world X (engine axis) for longitudinal studio strip softboxes
+    const v = new THREE.Vector3(1, 0, 0).cross(dir);
+    if (v.lengthSq() < 1e-4) v.copy(ref).cross(dir);
+    v.normalize();
+    const u = new THREE.Vector3().crossVectors(dir, v).normalize();
+    const c = new THREE.Color(color).multiplyScalar(intensity);
+    return { dir, u, v, su, sv, power, r: c.r, g: c.g, b: c.b };
+  };
+
+  const lobes: Lobe[] = [
+    // Primary overhead axial softbox — creates a wide, luminous longitudinal ribbon along the upper-front ridge
+    makeLobe([-0.1, 0.72, 0.68], 0.85, 0.24, 0xfffcf7, 4.2, 1.1),
+    // Soft cool-steel mid-front studio fill for smooth cylindrical roll-off into the dark lower-mid shadow band
+    makeLobe([-0.2, 0.12, 0.96], 0.85, 0.32, 0xdbeafe, 1.35, 1.0),
+    // Front-intake key arc illuminating the polished intake nose lip, spinner cone, and 22 fan blades
+    makeLobe([-0.86, 0.2, 0.46], 0.38, 0.38, 0xffffff, 4.0, 1.1),
+    // Intake lower-left fill card for inner bypass duct and lower fan blades
+    makeLobe([-0.72, -0.38, 0.56], 0.38, 0.32, 0xcbd5e1, 1.9, 1.0),
+    // Crisp cool-blue upper-rear rim strip for upper silhouette definition
+    makeLobe([0.15, 0.7, -0.7], 0.82, 0.18, 0xbae6fd, 3.6, 1.2),
+    // Clean silver-slate lower studio floor bounce reflector for the underside and core
+    makeLobe([0.05, -0.82, 0.56], 0.8, 0.24, 0xe2e8f0, 1.75, 1.1),
+    // Aft side fill card for the turbine housing and exhaust plug
+    makeLobe([0.74, 0.22, 0.62], 0.42, 0.34, 0xf1f5f9, 2.2, 1.0),
+  ];
+
+  const dir = new THREE.Vector3();
+  for (let i = 0; i < domePos.count; i++) {
+    dir.set(domePos.getX(i), domePos.getY(i), domePos.getZ(i)).normalize();
+    const y = dir.y;
+    const sky = Math.pow(Math.max(0, y), 1.5);
+    const ground = Math.pow(Math.max(0, -y), 1.5);
+
+    // Rich dark-slate studio cyclorama so non-highlighted metal zones read as deep titanium
+    let r = 0.06 + 0.12 * sky + 0.07 * ground;
+    let g = 0.068 + 0.13 * sky + 0.075 * ground;
+    let b = 0.082 + 0.15 * sky + 0.085 * ground;
+
+    for (const l of lobes) {
+      const dot = dir.dot(l.dir);
+      if (dot <= 0) continue;
+      const du = Math.abs(dir.dot(l.u) / l.su);
+      const dv = Math.abs(dir.dot(l.v) / l.sv);
+      const d2 = du * du + dv * dv;
+      const w = Math.exp(-0.5 * Math.pow(d2, l.power)) * dot * dot;
+      r += l.r * w;
+      g += l.g * w;
+      b += l.b * w;
+    }
+
+    domeColors[i * 3] = r;
+    domeColors[i * 3 + 1] = g;
+    domeColors[i * 3 + 2] = b;
+  }
+
+  domeGeo.setAttribute("color", new THREE.BufferAttribute(domeColors, 3));
+  studio.add(new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+
+  const tex = pmrem.fromScene(studio, 0.01).texture;
+  studio.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.geometry.dispose();
+      (o.material as THREE.Material).dispose();
+    }
+  });
+  return tex;
+}
 
 const MAX_INTERVALS = 8;
 const SWEEP_MIN = -1.35;
@@ -146,23 +384,6 @@ function smoothstep(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function roundedRect(half: number, radius: number, steps = 6): Float32Array {
-  const pts: number[] = [];
-  const corners: [number, number, number][] = [
-    [half - radius, half - radius, 0],
-    [-(half - radius), half - radius, Math.PI / 2],
-    [-(half - radius), -(half - radius), Math.PI],
-    [half - radius, -(half - radius), (3 * Math.PI) / 2],
-  ];
-  for (const [cy, cz, a0] of corners) {
-    for (let i = 0; i <= steps; i++) {
-      const a = a0 + (i / steps) * (Math.PI / 2);
-      pts.push(0, cy + radius * Math.sin(a), cz + radius * Math.cos(a));
-    }
-  }
-  return new Float32Array(pts);
-}
-
 export interface TurbineSceneOptions {
   canvas: HTMLCanvasElement;
   callouts: CalloutElements[];
@@ -171,21 +392,39 @@ export interface TurbineSceneOptions {
   onFirstFrame?: () => void;
 }
 
+type SolidMaterialKey = BodyMaterial | BladeMaterial;
+
 export class TurbineScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(24, 1, 0.5, 60);
   private readonly pmrem: THREE.PMREMGenerator;
+  private readonly pbrMaps: PbrMaps;
   private readonly fog = new THREE.Fog(0x000000, 10, 24);
 
   private readonly solidPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
   private readonly wirePlane = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
 
+  private readonly solidKeys: readonly SolidMaterialKey[] = [
+    "nacelle",
+    "spinner",
+    "cowl",
+    "drum",
+    "liner",
+    "fanBlade",
+    "compressorBlade",
+    "turbineBlade",
+  ];
+
   private readonly mats: {
-    casing: THREE.MeshStandardMaterial;
-    hub: THREE.MeshStandardMaterial;
-    blade: THREE.MeshStandardMaterial;
-    liner: THREE.MeshStandardMaterial;
+    nacelle: THREE.MeshPhysicalMaterial;
+    spinner: THREE.MeshPhysicalMaterial;
+    cowl: THREE.MeshPhysicalMaterial;
+    drum: THREE.MeshPhysicalMaterial;
+    liner: THREE.MeshPhysicalMaterial;
+    fanBlade: THREE.MeshPhysicalMaterial;
+    compressorBlade: THREE.MeshPhysicalMaterial;
+    turbineBlade: THREE.MeshPhysicalMaterial;
     wireBody: THREE.LineBasicMaterial;
     wireBlade: THREE.LineBasicMaterial;
     contour: THREE.LineBasicMaterial;
@@ -219,8 +458,8 @@ export class TurbineScene {
   private reducedMotion: boolean;
   private dark: boolean;
 
-  private s = 0.2;
-  private time = 0;
+  private s = -0.35;
+  private time = SWEEP_PERIOD * 0.22;
   private last = 0;
   private raf = 0;
   private visible = true;
@@ -257,30 +496,38 @@ export class TurbineScene {
     this.renderer.setClearColor(0x000000, 0);
 
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
-    const room = new RoomEnvironment();
-    this.scene.environment = this.pmrem.fromScene(room, 0.04).texture;
-    room.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.geometry.dispose();
-        (o.material as THREE.Material).dispose();
-      }
-    });
+    this.scene.environment = buildStudioEnvironment(this.pmrem);
     this.scene.fog = this.fog;
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.1);
-    key.position.set(-4, 6, 5);
-    this.scene.add(key);
+    const maxAniso = Math.min(this.renderer.capabilities.getMaxAnisotropy(), 8);
+    this.pbrMaps = createPbrMaps(maxAniso);
 
-    const solid = (color: number, metalness: number, roughness: number) =>
-      new THREE.MeshStandardMaterial({
-        color,
-        metalness,
-        roughness,
+    // Subtle accent directional lights complementing the studio softbox IBL + internal combustor glow
+    const keyLight = new THREE.DirectionalLight(0xfffaf0, 0.75);
+    keyLight.position.set(-5.2, 6.2, 5.0);
+    const rimLight = new THREE.DirectionalLight(0xbae6fd, 0.85);
+    rimLight.position.set(4.2, 5.2, -5.5);
+    const fillLight = new THREE.DirectionalLight(0xe0f2fe, 0.35);
+    fillLight.position.set(-6.5, -1.8, 3.8);
+    const combustorLight = new THREE.PointLight(0xff6b1a, 2.2, 2.4, 1.5);
+    combustorLight.position.set(0.75, 0.0, 0.0);
+    this.scene.add(keyLight, rimLight, fillLight, combustorLight);
+
+    const pal = PALETTES[this.dark ? "dark" : "light"];
+    const physical = (params: THREE.MeshPhysicalMaterialParameters) =>
+      new THREE.MeshPhysicalMaterial({
+        vertexColors: true,
+        normalMap: this.pbrMaps.normal,
+        roughnessMap: this.pbrMaps.roughness,
+        aoMap: this.pbrMaps.ao,
+        aoMapIntensity: 0.92,
         side: THREE.DoubleSide,
         clippingPlanes: [this.solidPlane],
         fog: false,
-        envMapIntensity: 0.65,
+        envMapIntensity: pal.envIntensity,
+        ...params,
       });
+
     const line = (opacity: number) =>
       new THREE.LineBasicMaterial({
         transparent: true,
@@ -289,19 +536,92 @@ export class TurbineScene {
         clippingPlanes: [this.wirePlane],
       });
 
-    const pal = PALETTES[this.dark ? "dark" : "light"];
     this.mats = {
-      casing: solid(pal.casing, 0.6, 0.5),
-      hub: solid(pal.hub, 0.6, 0.38),
-      blade: solid(pal.blade, 0.85, 0.3),
-      liner: solid(pal.liner, 0.6, 0.45),
+      nacelle: physical({
+        color: pal.nacelle,
+        metalness: 0.93,
+        roughness: 0.19,
+        anisotropy: 0.22,
+        anisotropyRotation: Math.PI / 2,
+        normalScale: new THREE.Vector2(0.025, 0.01),
+      }),
+      spinner: physical({
+        color: pal.spinner,
+        metalness: 0.94,
+        roughness: 0.17,
+        anisotropy: 0.32,
+        anisotropyRotation: Math.PI / 2,
+        normalScale: new THREE.Vector2(0.035, 0.012),
+      }),
+      cowl: physical({
+        color: pal.cowl,
+        metalness: 0.95,
+        roughness: 0.18,
+        anisotropy: 0.28,
+        anisotropyRotation: Math.PI / 2,
+        iridescence: 0.18,
+        iridescenceIOR: 1.6,
+        iridescenceThicknessRange: [220, 320],
+        normalScale: new THREE.Vector2(0.03, 0.012),
+      }),
+      drum: physical({
+        color: pal.drum,
+        metalness: 0.96,
+        roughness: 0.15,
+        anisotropy: 0.34,
+        anisotropyRotation: Math.PI / 2,
+        iridescence: 0.34,
+        iridescenceIOR: 1.72,
+        iridescenceThicknessRange: [240, 420],
+        normalScale: new THREE.Vector2(0.035, 0.012),
+      }),
+      liner: physical({
+        color: pal.liner,
+        metalness: 0.94,
+        roughness: 0.19,
+        anisotropy: 0.28,
+        anisotropyRotation: Math.PI / 2,
+        iridescence: 0.85,
+        iridescenceIOR: 1.85,
+        iridescenceThicknessRange: [200, 500],
+        iridescenceThicknessMap: this.pbrMaps.iridescence,
+        emissive: 0xff4d0a,
+        emissiveIntensity: 0.15,
+        normalScale: new THREE.Vector2(0.045, 0.02),
+      }),
+      fanBlade: physical({
+        color: pal.fanBlade,
+        metalness: 0.97,
+        roughness: 0.13,
+        anisotropy: 0.35,
+        normalScale: new THREE.Vector2(0.022, 0.01),
+      }),
+      compressorBlade: physical({
+        color: pal.compressorBlade,
+        metalness: 0.96,
+        roughness: 0.15,
+        anisotropy: 0.3,
+        normalScale: new THREE.Vector2(0.022, 0.01),
+      }),
+      turbineBlade: physical({
+        color: pal.turbineBlade,
+        metalness: 0.95,
+        roughness: 0.17,
+        anisotropy: 0.28,
+        iridescence: 0.68,
+        iridescenceIOR: 1.75,
+        iridescenceThicknessRange: [240, 460],
+        emissive: 0xff4500,
+        emissiveIntensity: 0.06,
+        normalScale: new THREE.Vector2(0.025, 0.012),
+      }),
       wireBody: line(pal.wireBodyOpacity),
       wireBlade: line(pal.wireBladeOpacity),
       contour: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.95, fog: false }),
       frame: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false, fog: false }),
       frameFill: new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.045,
+        opacity: 0.16,
         depthWrite: false,
         side: THREE.DoubleSide,
         fog: false,
@@ -341,7 +661,7 @@ export class TurbineScene {
 
     for (const body of BODIES) {
       const parent = body.spool === "n1" ? this.n1 : body.spool === "n2" ? this.n2 : engine;
-      parent.add(new THREE.Mesh(latheGeometry(body.profile, body.segments), this.mats[body.material]));
+      parent.add(new THREE.Mesh(latheGeometry(body.profile, body.segments, body.material), this.mats[body.material]));
       const wire = new THREE.BufferGeometry();
       wire.setAttribute("position", new THREE.BufferAttribute(latheWire(body.profile, body.meridians), 3));
       parent.add(new THREE.LineSegments(wire, this.mats.wireBody));
@@ -350,7 +670,7 @@ export class TurbineScene {
     for (const row of ROWS) {
       const parent = row.spool === "n1" ? this.n1 : row.spool === "n2" ? this.n2 : engine;
       const mats = bladeMatrices(row);
-      const mesh = new THREE.InstancedMesh(bladeGeometry(row), this.mats.blade, mats.length);
+      const mesh = new THREE.InstancedMesh(bladeGeometry(row), this.mats[row.material], mats.length);
       mats.forEach((m, i) => mesh.setMatrixAt(i, m));
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
@@ -378,9 +698,6 @@ export class TurbineScene {
       this.section.add(ring);
     }
 
-    const frameGeo = new THREE.BufferGeometry();
-    frameGeo.setAttribute("position", new THREE.BufferAttribute(roundedRect(1.82, 0.12), 3));
-    this.section.add(new THREE.LineLoop(frameGeo, this.mats.frame));
     const fillGeo = new THREE.PlaneGeometry(3.64, 3.64);
     fillGeo.rotateY(Math.PI / 2);
     this.section.add(new THREE.Mesh(fillGeo, this.mats.frameFill));
@@ -453,6 +770,10 @@ export class TurbineScene {
     });
     geos.forEach((g) => g.dispose());
     Object.values(this.mats).forEach((m) => m.dispose());
+    this.pbrMaps.normal.dispose();
+    this.pbrMaps.roughness.dispose();
+    this.pbrMaps.ao.dispose();
+    this.pbrMaps.iridescence.dispose();
     this.scene.environment?.dispose();
     this.pmrem.dispose();
     this.renderer.dispose();
@@ -463,17 +784,17 @@ export class TurbineScene {
   private applyTheme(): void {
     const pal = PALETTES[this.dark ? "dark" : "light"];
     const m = this.mats;
-    m.casing.color.setHex(pal.casing);
-    m.hub.color.setHex(pal.hub);
-    m.blade.color.setHex(pal.blade);
-    m.liner.color.setHex(pal.liner);
+    for (const key of this.solidKeys) {
+      m[key].color.setHex(pal[key]);
+      m[key].envMapIntensity = pal.envIntensity;
+    }
     m.wireBody.color.setHex(pal.wire);
     m.wireBody.opacity = pal.wireBodyOpacity;
     m.wireBlade.color.setHex(pal.wire);
     m.wireBlade.opacity = pal.wireBladeOpacity;
     m.contour.color.setHex(pal.accent);
     m.frame.color.setHex(pal.wire);
-    m.frameFill.color.setHex(pal.wire);
+    m.frameFill.color.setHex(this.dark ? 0x02050b : 0x1e293b);
     this.capUniforms.uColor.value.setHex(pal.accent);
     this.gridUniforms.uColor.value.setHex(pal.grid);
     this.gridUniforms.uOpacity.value = pal.gridOpacity;
@@ -593,7 +914,7 @@ export class TurbineScene {
     const inside = smoothstep(-3.2, -2.75, s) * (1 - smoothstep(2.9, 3.35, s));
     this.section.visible = inside > 0.001;
     this.mats.frame.opacity = 0.55 * inside;
-    this.mats.frameFill.opacity = 0.045 * inside;
+    this.mats.frameFill.opacity = 0.16 * inside;
     this.mats.contour.opacity = 0.95 * inside;
     this.capUniforms.uOpacity.value = inside;
 

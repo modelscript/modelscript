@@ -20,6 +20,7 @@ import { solveTran } from "./solvers/tran.js";
 export const spiceLanguage = language({
   name: "spice",
   fileExtensions: [".cir", ".sp", ".net", ".lib"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".cir", ".sp", ".net", ".lib"],
     icons: {

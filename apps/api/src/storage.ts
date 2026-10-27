@@ -16,7 +16,17 @@ export * from "./storage/driver.js";
 export * from "./storage/filesystem-driver.js";
 export * from "./storage/s3-driver.js";
 
-const DEFAULT_DATA_DIR = "data/libraries";
+const DEFAULT_DATA_DIR = (() => {
+  try {
+    const repoRootLibDir = path.resolve(import.meta.dirname, "../../../data/libraries");
+    if (fs.existsSync(repoRootLibDir)) {
+      return repoRootLibDir;
+    }
+  } catch {
+    // fallback
+  }
+  return "data/libraries";
+})();
 
 /**
  * Storage manager for ModelScript libraries, supporting pluggable drivers
@@ -253,7 +263,7 @@ export class LibraryStorage {
     try {
       await extractZipToDir(zipData.buffer, tmpDir);
 
-      let libraryRoot = findLibraryRoot(tmpDir);
+      let libraryRoot = findLibraryRoot(tmpDir, name);
       if (!libraryRoot) {
         // Fallback for data-only packages (like drone-chassis)
         const entries = fs.readdirSync(tmpDir, { withFileTypes: true });

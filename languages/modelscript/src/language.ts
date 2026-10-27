@@ -30,6 +30,7 @@ export const modelscriptLanguage = language({
   name: "modelscript",
   displayName: "ModelScript",
   fileExtensions: [".modelscript", ".msx"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".modelscript", ".msx"],
     icons: {

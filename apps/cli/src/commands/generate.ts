@@ -55,10 +55,38 @@ export const Generate: CommandModule<any, any> = {
       const rawEntries =
         args["entries"] && args["entries"].length > 0 ? args["entries"] : [args["entry"] || "src/language.ts"];
       // If target was not 'extension' or 'parser', it might be the entry file path
-      const entryList =
+      let entryList =
         args["target"] && args["target"] !== "extension" && args["target"] !== "parser"
           ? [args["target"], ...rawEntries.filter((e: string) => e !== args["target"])]
           : rawEntries;
+
+      // Auto-discover all workspace languages when running `generate extension` from monorepo root without explicit entries
+      if (
+        isExtension &&
+        (!args["entries"] || args["entries"].length === 0) &&
+        !fs.existsSync(path.resolve(process.cwd(), entryList[0] || "src/language.ts")) &&
+        fs.existsSync(path.resolve(process.cwd(), "languages"))
+      ) {
+        const langsRoot = path.resolve(process.cwd(), "languages");
+        const dirEntries = fs
+          .readdirSync(langsRoot, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name)
+          .sort((a, b) => (a === "modelica" ? -1 : b === "modelica" ? 1 : a.localeCompare(b)));
+        const discoveredEntries: string[] = [];
+        for (const dirName of dirEntries) {
+          const srcLang = path.join("languages", dirName, "src", "language.ts");
+          const rootLang = path.join("languages", dirName, "language.ts");
+          if (fs.existsSync(path.resolve(process.cwd(), srcLang))) {
+            discoveredEntries.push(srcLang);
+          } else if (fs.existsSync(path.resolve(process.cwd(), rootLang))) {
+            discoveredEntries.push(rootLang);
+          }
+        }
+        if (discoveredEntries.length > 0) {
+          entryList = discoveredEntries;
+        }
+      }
 
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url);
@@ -74,7 +102,12 @@ export const Generate: CommandModule<any, any> = {
         const module = (await jiti.import(absoluteEntry)) as Record<string, unknown>;
         const lang = Object.values(module).find((val: unknown) => {
           const v = val as Record<string, unknown>;
-          return v && v["name"] && v["rules"];
+          return (
+            v &&
+            typeof v === "object" &&
+            typeof v["name"] === "string" &&
+            (v["rules"] || v["lsp"] || v["extensions"] || v["fileExtensions"] || v["primitives"])
+          );
         }) as any;
 
         if (lang) languageDefs.push(lang);
@@ -86,9 +119,25 @@ export const Generate: CommandModule<any, any> = {
       }
 
       if (isExtension) {
+        // Resolve workspace version if available
+        let detectedVersion: string | undefined;
+        for (const candidatePkg of ["packages/runtime/package.json", "package.json"]) {
+          const fullPkg = path.resolve(process.cwd(), candidatePkg);
+          if (fs.existsSync(fullPkg)) {
+            try {
+              const parsed = JSON.parse(fs.readFileSync(fullPkg, "utf-8"));
+              if (parsed.version && parsed.version !== "0.0.0") {
+                detectedVersion = parsed.version;
+                break;
+              }
+            } catch {}
+          }
+        }
+
         // Generate complete VS Code extension
         console.log(`Generating VS Code extension for ${languageDefs.length} language(s)...`);
         const files: ExtensionGeneratedFile[] = bundleExtension(languageDefs, {
+          ...(detectedVersion ? { version: detectedVersion } : {}),
           features: {
             diagramEditor: true,
             cad3dViewer: true,

@@ -162,7 +162,7 @@ const TemplateDetailPage: React.FC = () => {
                 {error}
               </Flash>
             )}
-            <FormControl sx={{ mb: 3 }}>
+            <FormControl style={{ marginBottom: 12 }}>
               <FormControl.Label>Simulation Mesh Resolution</FormControl.Label>
               <Select
                 value={meshResolution}
@@ -173,7 +173,7 @@ const TemplateDetailPage: React.FC = () => {
                 <Select.Option value="fine">Fine (High Accuracy)</Select.Option>
               </Select>
             </FormControl>
-            <FormControl sx={{ mb: 3 }}>
+            <FormControl style={{ marginBottom: 12 }}>
               <FormControl.Label>Maximum Iterations</FormControl.Label>
               <TextInput
                 value={String(maxIterations)}
@@ -183,7 +183,7 @@ const TemplateDetailPage: React.FC = () => {
                 max="100000"
               />
             </FormControl>
-            <FormControl sx={{ mb: 3 }}>
+            <FormControl style={{ marginBottom: 12 }}>
               <FormControl.Label>Target Tolerance</FormControl.Label>
               <TextInput value={tolerance} onChange={(e) => setTolerance(e.target.value)} placeholder="1e-5" />
             </FormControl>

@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Text } from "@primer/react";
 import React from "react";
+import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
 import Box from "../../Box";
 
 export interface StudioInspectorSidebarProps {
@@ -20,6 +21,17 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const isMultiFile = isMultiFileArtifact({
+    view_type: artifact?.view_type,
+    view_config: viewConfig,
+  });
+  const editorUrl = buildEditorUrlForArtifact({
+    artifactId,
+    viewType: artifact?.view_type,
+    viewConfig,
+    title: artifact?.title || artifact?.name || viewConfig?.title,
+  });
+
   return (
     <Box
       width="320px"
@@ -31,7 +43,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
       overflowY="auto"
       style={{ color: "#e2e8f0" }}
     >
-      <Text fontSize="13px" fontWeight="bold" mb={3} color="white">
+      <Text style={{ fontSize: "13px", fontWeight: "bold", marginBottom: "12px", color: "white" }}>
         Engineering Telemetry &amp; Specs
       </Text>
 
@@ -90,11 +102,11 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             </Box>
             <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
               <span style={{ color: "var(--color-fg-muted)" }}>Part Definitions</span>
-              <span>{viewConfig.parts?.length || 4} parts</span>
+              <span>{viewConfig.parts?.length ?? 0} parts</span>
             </Box>
             <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
               <span style={{ color: "var(--color-fg-muted)" }}>Requirements</span>
-              <span style={{ color: "#34d399" }}>{viewConfig.requirements?.length || 4} tracked</span>
+              <span style={{ color: "#34d399" }}>{viewConfig.requirements?.length ?? 0} tracked</span>
             </Box>
           </>
         )}
@@ -147,7 +159,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         )}
       </Box>
 
-      <Text fontSize="13px" fontWeight="bold" mb={2} color="white">
+      <Text style={{ fontSize: "13px", fontWeight: "bold", marginBottom: "8px", color: "white" }}>
         Interaction Guide
       </Text>
       <Box
@@ -241,7 +253,15 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
           </>
         )}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "4px", paddingTop: "4px" }}>
-          ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector &bull; [R] IDE &bull; [C] Copy Link
+          ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector &bull;{" "}
+          <a
+            href={editorUrl}
+            style={{ color: "#38bdf8", textDecoration: "none" }}
+            title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
+          >
+            [R] {isMultiFile ? "IDE" : "Playground"}
+          </a>{" "}
+          &bull; [C] Copy Link
         </div>
       </Box>
     </Box>

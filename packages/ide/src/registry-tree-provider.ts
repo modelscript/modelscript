@@ -521,7 +521,7 @@ export function registerRegistryView(
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const packument = (await resp.json()) as any;
         const readme = packument.description || "No description available.";
-        panel.webview.html = `<!DOCTYPE html><html><head><style>
+        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"><style>
           body { font-family: var(--vscode-font-family); padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
           h1 { font-size: 24px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
           .meta { color: var(--vscode-descriptionForeground); font-size: 13px; margin-bottom: 24px; }
@@ -543,7 +543,7 @@ export function registerRegistryView(
           <div class="readme">${escapeHtml(readme)}</div>
         </body></html>`;
       } catch (e) {
-        panel.webview.html = `<html><body><p>Failed to load package details: ${e}</p></body></html>`;
+        panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none';"></head><body><p>Failed to load package details: ${escapeHtml(String(e))}</p></body></html>`;
       }
     }),
   );

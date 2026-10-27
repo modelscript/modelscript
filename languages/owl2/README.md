@@ -3,7 +3,7 @@
 
 # @modelscript/owl2
 
-Web Ontology Language (OWL 2 DL) Functional-Style Syntax and Turtle compiler, CST-to-Arena axiom lowerer, Datalog/Tableau & WebGPU saturation reasoner integration, SPARQL-DL / Leapfrog Triejoin BGP query engine, interactive 2D ontology diagram builder, and MCP server (`owl2-mcp`) for ModelScript.
+Web Ontology Language (OWL 2 DL) Functional-Style Syntax and Turtle compiler, CST-to-Arena axiom lowerer, 24-rule static & reasoner linter (`O1001`–`O6001`), Datalog/Tableau & WebGPU saturation reasoner integration, SPARQL-DL / Leapfrog Triejoin BGP query engine, interactive 2D ontology diagram builder, and MCP server (`owl2-mcp`) for ModelScript.
 
 ---
 
@@ -15,6 +15,7 @@ Web Ontology Language (OWL 2 DL) Functional-Style Syntax and Turtle compiler, CS
   - **Class Expression & TBox Axioms**: `SubClassOf`, `EquivalentClasses`, `DisjointClasses`, `ObjectIntersectionOf`, `ObjectUnionOf`, `ObjectComplementOf`, `ObjectSomeValuesFrom`, `DataSomeValuesFrom`, `ObjectAllValuesFrom` (`UniversalRestriction`), `ObjectHasSelf` (`SelfRestriction`), `ObjectHasValue`, `ObjectOneOf`, and qualified cardinalities (`ObjectMinCardinality`, `ObjectMaxCardinality`, `ObjectExactCardinality`, `DataMinCardinality`, `DataMaxCardinality`, `DataExactCardinality`)
   - **RBox Property Axioms**: `SubObjectPropertyOf`, `SubDataPropertyOf`, `InverseObjectProperties`, `DisjointObjectProperties`, `ObjectPropertyDomain`, `ObjectPropertyRange`, `DataPropertyDomain`, `DataPropertyRange`, `FunctionalObjectProperty`, `InverseFunctionalObjectProperty`, `ReflexiveObjectProperty`, `IrreflexiveObjectProperty`, `SymmetricObjectProperty`, `AsymmetricObjectProperty`, `TransitiveObjectProperty`, `FunctionalDataProperty`
   - **ABox Individual Assertions**: `ClassAssertion`, `ObjectPropertyAssertion`, `DataPropertyAssertion`, `NegativeObjectPropertyAssertion`, `NegativeDataPropertyAssertion`, `SameIndividual`, `DifferentIndividuals`
+- **24 OWL 2 DL & EL Static & Reasoner Lint Rules (`lintOwl2Document`, `Owl2ErrorCode`, `O1001`–`O6001`)**: Validates prefix declarations, reserved vocabulary, OWL 2 DL property punning disjointness, XSD datatype lexical forms, global simple-role restrictions, property characteristic contradictions, hierarchy cycles, logical consistency, class satisfiability, and OWL 2 EL profile conformance.
 - **Datalog/Tableau & WebGPU Saturation Reasoner**: Integrates with `@modelscript/runtime`'s hybrid Tableau/Datalog reasoner and WebGPU saturation pipeline for consistency validation (`validate_consistency`), unsatisfiable class detection, minimal conflict core extraction, and formal justification trees (`explain_inferences`).
 - **SPARQL-DL & Leapfrog Triejoin BGP Querying**: Executes worst-case optimal multi-way joins via Leapfrog Triejoin over indexed SPO/POS/OSP triple tables (`query_ontology_bgp`) and SPARQL-DL property paths (`query_ontology_sparql`).
 - **Interactive 2D Ontology Diagram & Bidirectional Writeback**:
@@ -27,15 +28,49 @@ Web Ontology Language (OWL 2 DL) Functional-Style Syntax and Turtle compiler, CS
 
 ## Package Structure
 
-| Path                   | Description                                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`         | Public exports (`owl2Language`, `lowerCstToAxioms`, `OWL2Factory`, diagram builders and writeback editors)          |
-| `src/language.ts`      | OWL 2 grammar specification, writeback handler, LSP actions, `owl2-mcp` tool definitions, and 5 polyglot TGG rules  |
-| `src/cst-lowering.ts`  | `lowerCstToAxioms` CST walker lowering 25+ OWL 2 DL axiom constructs into `OWL2Axiom` arena records                 |
-| `src/factory.ts`       | Fluent `OWL2Factory` builder API for programmatic ontology construction                                             |
-| `src/diagram/data.ts`  | `buildOWL2DiagramData` converting asserted and reasoner-inferred axioms into interactive 2D node-link diagrams      |
-| `src/diagram/edits.ts` | `computeOWL2ElementInsert`, `computeOWL2ElementDelete`, and `computeOWL2ConnectionInsert` LSP `TextEdit` generators |
-| `build.js`             | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                        |
+| Path                             | Description                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                   | Public exports (`owl2Language`, `lowerCstToAxioms`, `lintOwl2Document`, `Owl2ErrorCode`, `OWL2Factory`, diagram builders) |
+| `src/language.ts`                | OWL 2 grammar specification, writeback handler, LSP actions, `owl2-mcp` tool definitions, and 5 polyglot TGG rules        |
+| `src/cst-lowering.ts`            | `lowerCstToAxioms` CST walker lowering 25+ OWL 2 DL axiom constructs into `OWL2Axiom` arena records                       |
+| `src/errors.ts`                  | `Owl2ErrorCode` diagnostic registry (`O1001`–`O6001` / numeric `1001`–`6001`)                                             |
+| `src/lints.ts` (`src/linter.ts`) | `lintOwl2Document` static, OWL 2 DL global restriction, reasoner satisfiability, and OWL 2 EL profile linter              |
+| `src/workspace-index.ts`         | Multi-file OWL 2 ontology workspace indexer and `Import(...)` resolver                                                    |
+| `src/factory.ts`                 | Fluent `OWL2Factory` builder API for programmatic ontology construction                                                   |
+| `src/diagram/data.ts`            | `buildOWL2DiagramData` converting asserted and reasoner-inferred axioms into interactive 2D node-link diagrams            |
+| `src/diagram/edits.ts`           | `computeOWL2ElementInsert`, `computeOWL2ElementDelete`, and `computeOWL2ConnectionInsert` LSP `TextEdit` generators       |
+| `build.js`                       | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                              |
+
+---
+
+## Semantic / Pre-Flight Lint Rules (`Owl2ErrorCode`, `O1001`–`O6001`)
+
+| Code (`Oxxxx` / `code`) | Rule                                     | Severity  | Description                                                                                                                          |
+| :---------------------- | :--------------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| `O1001` (`1001`)        | `parse-error`                            | `error`   | Syntax error detected in OWL 2 Functional-Style Syntax or Turtle input.                                                              |
+| `O1002` (`1002`)        | `undeclared-prefix`                      | `error`   | Abbreviated IRI references a `Prefix(p:=<...>)` that is not declared in the ontology header.                                         |
+| `O1003` (`1003`)        | `duplicate-prefix`                       | `warning` | Prefix name is declared multiple times in the ontology header.                                                                       |
+| `O1004` (`1004`)        | `invalid-iri`                            | `error`   | Malformed or invalid IRI syntax.                                                                                                     |
+| `O1005` (`1005`)        | `insufficient-arity`                     | `error`   | N-ary OWL 2 construct (`DisjointClasses`, `EquivalentClasses`, `SameIndividual`, etc.) has fewer than the minimum arguments.         |
+| `O2001` (`2001`)        | `undeclared-entity`                      | `warning` | Entity IRI is referenced without an explicit `Declaration(...)` axiom.                                                               |
+| `O2002` (`2002`)        | `duplicate-declaration`                  | `warning` | Duplicate `Declaration(Kind(IRI))` axiom in the same ontology.                                                                       |
+| `O2003` (`2003`)        | `reserved-vocabulary-declaration`        | `error`   | Attempt to declare or redefine a built-in `owl:`, `rdf:`, `rdfs:`, or `xsd:` vocabulary IRI.                                         |
+| `O3001` (`3001`)        | `illegal-property-punning`               | `error`   | Illegal OWL 2 DL punning: IRI is used as more than one of `ObjectProperty`, `DataProperty`, and `AnnotationProperty`.                |
+| `O3002` (`3002`)        | `expected-object-property`               | `error`   | Construct expects an `ObjectProperty`, but the IRI is declared as a `DataProperty`.                                                  |
+| `O3003` (`3003`)        | `expected-data-property`                 | `error`   | Construct expects a `DataProperty`, but the IRI is declared as an `ObjectProperty`.                                                  |
+| `O3004` (`3004`)        | `expected-class-expression`              | `error`   | Construct expects a `Class` expression, but the IRI is declared as a `Datatype`.                                                     |
+| `O3005` (`3005`)        | `invalid-datatype`                       | `warning` | Datatype IRI is not in the standard W3C OWL 2 datatype map.                                                                          |
+| `O3006` (`3006`)        | `datatype-literal-mismatch`              | `error`   | Lexical literal value is invalid for its declared XSD/OWL datatype.                                                                  |
+| `O4001` (`4001`)        | `non-simple-property-restriction`        | `error`   | OWL 2 DL global restriction violation: transitive or composite property used in cardinality, `HasSelf`, `Functional`, or `Disjoint`. |
+| `O4002` (`4002`)        | `contradictory-property-characteristics` | `error`   | Object property has contradictory characteristics (e.g., `Reflexive` + `Irreflexive`, or `Symmetric` + `Asymmetric`).                |
+| `O4003` (`4003`)        | `property-hierarchy-cycle`               | `warning` | Cycle detected in `SubObjectPropertyOf` or `SubDataPropertyOf` property hierarchy.                                                   |
+| `O4004` (`4004`)        | `class-hierarchy-cycle`                  | `info`    | Cycle detected in `SubClassOf` class hierarchy (implies equivalent classes).                                                         |
+| `O4005` (`4005`)        | `self-referential-axiom`                 | `warning` | Redundant or contradictory self-referential axiom on a single entity IRI.                                                            |
+| `O5001` (`5001`)        | `functional-property-clash`              | `error`   | `Functional` or `InverseFunctional` property links an individual to distinct targets or distinct data literals.                      |
+| `O5002` (`5002`)        | `negative-assertion-clash`               | `error`   | `NegativeObjectPropertyAssertion` or `NegativeDataPropertyAssertion` clashes with an asserted or inferred property value.            |
+| `O5003` (`5003`)        | `unsatisfiable-class`                    | `error`   | Named class is logically unsatisfiable (equivalent to `owl:Nothing`).                                                                |
+| `O5004` (`5004`)        | `ontology-inconsistent`                  | `error`   | Ontology ABox/TBox is logically inconsistent under `WasmOntologyReasoner`.                                                           |
+| `O6001` (`6001`)        | `profile-el-violation`                   | `warning` | Construct is outside the polynomial-time W3C OWL 2 EL profile.                                                                       |
 
 ---
 

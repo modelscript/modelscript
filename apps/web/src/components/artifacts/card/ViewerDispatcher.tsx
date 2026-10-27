@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Spinner, Text } from "@primer/react";
+import { Spinner } from "@primer/react";
 import React, { Suspense } from "react";
 import Box from "../../Box";
 import LazyHeavyViewer from "../LazyHeavyViewer";
@@ -51,6 +51,7 @@ const Owl2Viewer = React.lazy(() => import("../Owl2Viewer"));
 const GensysViewer = React.lazy(() => import("../GensysViewer"));
 const SimpackViewer = React.lazy(() => import("../SimpackViewer"));
 const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
+const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 
 export interface ViewerDispatcherProps {
   artifact: any;
@@ -114,9 +115,18 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "modelica-code":
         return <ModelicaCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelica-diagram":
+      case "modelica":
       case "morsel":
       case "polyglot-morsel":
         return <ModelicaDiagramViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "modelscript":
+      case "msx":
+        return (
+          <ModelicaDiagramViewer
+            viewConfig={{ ...viewConfig, dialect: viewConfig?.dialect || "msx" }}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "simulation-plot":
         return <SimulationPlotViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "vega":
@@ -307,12 +317,36 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "engineering-app":
       case "app":
         return <SolutionViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "aspen":
+      case "swmm":
+      case "touchstone":
+      case "ibis":
+      case "opendss":
+      case "openscenario":
+      case "relap5":
+      case "eclipse":
+      case "sbml":
+      case "jsbsim":
+      case "scad":
+      case "csg":
+      case "c":
+      case "fortran":
+      case "adams":
+      case "autosar":
+      case "ccsds":
+      case "energyplus":
+      case "epanet":
+      case "opendrive":
+      case "plcopen":
+      case "reqif":
+      case "simulink":
+      case "spice":
+      case "urdf":
+      case "verilog-a":
+      case "other":
+        return <PolyglotArtifactViewer viewConfig={viewConfig} viewType={artifact.view_type} artifactId={artifactId} />;
       default:
-        return (
-          <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">
-            <Text>Unsupported artifact type: {artifact.view_type}</Text>
-          </Box>
-        );
+        return <PolyglotArtifactViewer viewConfig={viewConfig} viewType={artifact.view_type} artifactId={artifactId} />;
     }
   };
 

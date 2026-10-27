@@ -61,6 +61,7 @@ interface DiagramEditorProps {
   onRenderComplete?: ((diagramData: any) => void) | undefined;
   onInteractiveWrite?: ((variableName: string, value: any, nodeId: string) => void) | undefined;
   onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
+  onNodeDoubleClick?: ((nodeId: string, nodeData?: any) => void) | undefined;
 }
 
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
@@ -71,6 +72,20 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useEffect(() => {
     propsRef.current = props;
   }, [props]);
+
+  const handleNodeDblClick = useRef(({ node }: any) => {
+    if (!node || isEphemeralDiagramNode(node.id)) return;
+    const data = typeof node.getData === "function" ? node.getData() : undefined;
+    propsRef.current.onNodeDoubleClick?.(node.id, data);
+  }).current;
+
+  const attachGraphListeners = () => {
+    const g = getGraph();
+    if (g && typeof g.on === "function") {
+      g.off?.("node:dblclick", handleNodeDblClick);
+      g.on("node:dblclick", handleNodeDblClick);
+    }
+  };
 
   const syncDiagramOptions = () => {
     if (!containerRef.current) return;
@@ -125,6 +140,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       onUndo: () => propsRef.current.onUndo?.(),
       onRedo: () => propsRef.current.onRedo?.(),
     });
+    attachGraphListeners();
   };
 
   useImperativeHandle(ref, () => ({
@@ -158,6 +174,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     if (props.diagramData && containerRef.current) {
       syncDiagramOptions();
       renderDiagram(props.diagramData, props.theme === "vs-dark");
+      attachGraphListeners();
       if (props.onRenderComplete) props.onRenderComplete(props.diagramData);
     }
   }, [props.diagramData, props.theme]);

@@ -20,7 +20,7 @@ hero:
       link: https://modelscript.org/playground
     - theme: alt
       text: Explore Industries
-      link: /industries/
+      link: /industries
 ---
 
 <HomeStats />
@@ -31,8 +31,10 @@ hero:
 
 <HomeThread />
 
-<HomeSurfaces />
+<HomeAiAgent />
 
 <HomeCapabilities />
+
+<HomeSurfaces />
 
 <HomeCta />

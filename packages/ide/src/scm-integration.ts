@@ -134,8 +134,11 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
           },
         );
 
+        const wrapCsp = (bodyHtml: string) =>
+          `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline';"></head><body>${bodyHtml}</body></html>`;
+
         if (!client) {
-          panel.webview.html = "<h3>Language client not running.</h3>";
+          panel.webview.html = wrapCsp("<h3>Language client not running.</h3>");
           return;
         }
 
@@ -153,12 +156,13 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
               });
 
               if (res && res.html) {
-                panel.webview.html = res.html;
+                panel.webview.html = res.html.includes("Content-Security-Policy") ? res.html : wrapCsp(res.html);
               } else {
-                panel.webview.html = "<h3>Could not generate visual diff for this model revision.</h3>";
+                panel.webview.html = wrapCsp("<h3>Could not generate visual diff for this model revision.</h3>");
               }
             } catch (err) {
-              panel.webview.html = `<h3>Error computing visual diff: ${err}</h3>`;
+              const safeErr = String(err).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              panel.webview.html = wrapCsp(`<h3>Error computing visual diff: ${safeErr}</h3>`);
             }
           },
         );

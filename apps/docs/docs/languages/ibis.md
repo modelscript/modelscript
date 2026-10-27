@@ -32,7 +32,7 @@
 ### 3. Direct DAE Lowering
 
 - Emits combined package RLC and non-linear buffer DAE equations into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation with multi-port S-parameter channel macromodels ([`@modelscript/touchstone`](file:///home/omar/git3/modelscript/languages/touchstone)) to assess eye diagrams, timing jitter, and simultaneous switching noise (SSN).
+- Enables co-simulation with multi-port S-parameter channel macromodels ([`@modelscript/touchstone`](./touchstone.md)) to assess eye diagrams, timing jitter, and simultaneous switching noise (SSN).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -40,17 +40,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8301`–`M8325`)
+## Pre-Flight Diagnostics
 
 The IBIS validator enforces monotonic I/V behavior and physical bounds:
 
-| Code    | Severity | Rule Identifier               | Condition Checked                                                                                                  |
-| :------ | :------- | :---------------------------- | :----------------------------------------------------------------------------------------------------------------- |
-| `M8303` | `error`  | `non-monotonic-iv-curve`      | Pullup or pulldown table has non-monotonic $dI/dV < 0$ (negative dynamic resistance risk).                         |
-| `M8305` | `error`  | `missing-pin-model-binding`   | Declared pin references a `[Model]` that is not defined in the `.ibs` file.                                        |
-| `M8317` | `error`  | `invalid-voltage-range`       | Typical operating voltage outside valid physical range ($V_{dd} \le 0\text{ V}$).                                  |
-| `M8320` | `error`  | `negative-package-parasitics` | Package resistance, inductance, or capacitance is negative ($R_{\text{pkg}}, L_{\text{pkg}}, C_{\text{pkg}} < 0$). |
-| `M8321` | `error`  | `negative-die-capacitance`    | Silicon die capacitance $C_{\text{comp}} < 0\text{ F}$.                                                            |
+<LintRules lang="ibis" />
 
 ---
 
@@ -63,8 +57,8 @@ msx ibis inspect Ddr4Driver.ibs
 # Run pre-flight linting and table monotonicity checks
 msx ibis lint Ddr4Driver.ibs
 
-# Evaluate driver dynamic currents and output resistance at a given operating voltage
-msx ibis eval Ddr4Driver.ibs --model=DQ_DRIVER --voltage=1.2
+# Evaluate driver dynamic currents and output resistance
+msx ibis eval Ddr4Driver.ibs
 
 # Lower buffer and package equations to ModelScript linear DAE arena
 msx ibis to-dae Ddr4Driver.ibs

@@ -151,10 +151,15 @@ export class CandidateTradeStudyPanel extends BaseWebviewPanel {
     this._client = client;
 
     this._panel.webview.html = this._getHtmlForWebview();
+    this.refresh();
 
     this._panel.webview.onDidReceiveMessage(
       async (msg) => {
         switch (msg.type) {
+          case "ready":
+            this.refresh();
+            break;
+
           case "selectCandidate":
             this._selectedCandidateId = msg.candidateId;
             this.refresh();

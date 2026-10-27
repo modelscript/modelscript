@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { OrganizationIcon, PlayIcon } from "@primer/octicons-react";
+import { CodeIcon, OrganizationIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface Owl2ViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
@@ -19,7 +22,9 @@ export interface Owl2ViewerProps {
     individualCount?: number | undefined;
     propertyCount?: number | undefined;
     axiomCount?: number | undefined;
-    classes?: string[] | undefined;
+    classes?: number | string[] | undefined;
+    axioms?: number | undefined;
+    individuals?: number | undefined;
     [key: string]: unknown;
   };
   isFullScreen?: boolean | undefined;
@@ -132,6 +137,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || "OWL2 Ontology Graph (.owl)";
 
   useEffect(() => {
@@ -146,58 +152,55 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
+        .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => setRawText(txt))
         .catch((err) => console.warn("[Owl2Viewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedMetrics = useMemo(() => {
+    const classes = new Set<string>();
+    const objProps = new Set<string>();
+    const individuals = new Set<string>();
+    let axioms = 0;
+
+    if (rawText) {
+      for (const m of rawText.matchAll(/\bClass\(\s*([A-Za-z0-9_:#/-]+)/g)) classes.add(m[1]!);
+      for (const m of rawText.matchAll(/\bObjectProperty\(\s*([A-Za-z0-9_:#/-]+)/g)) objProps.add(m[1]!);
+      for (const m of rawText.matchAll(/\bNamedIndividual\(\s*([A-Za-z0-9_:#/-]+)/g)) individuals.add(m[1]!);
+      const axiomMatches = rawText.match(
+        /\b(Declaration|SubClassOf|EquivalentClasses|DisjointClasses|ObjectPropertyDomain|ObjectPropertyRange|ClassAssertion|ObjectPropertyAssertion)\s*\(/g,
+      );
+      axioms = axiomMatches ? axiomMatches.length : 0;
+    }
+
+    return {
+      classCount:
+        viewConfig.classCount ??
+        (typeof viewConfig.classes === "number"
+          ? viewConfig.classes
+          : Array.isArray(viewConfig.classes)
+            ? viewConfig.classes.length
+            : undefined) ??
+        classes.size,
+      propertyCount: viewConfig.propertyCount ?? objProps.size,
+      individualCount: viewConfig.individualCount ?? viewConfig.individuals ?? individuals.size,
+      axiomCount: viewConfig.axiomCount ?? viewConfig.axioms ?? axioms,
+    };
+  }, [rawText, viewConfig]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean ontology taxonomy tree
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Root Concept: owl:Thing -->
-        <rect x="260" y="30" width="130" height="36" rx="6" fill="#1e1b4b" stroke="#8b5cf6" stroke-width="2" />
-        <text x="325" y="52" fill="#c4b5fd" font-size="12" font-family="sans-serif" text-anchor="middle" font-weight="bold">owl:Thing</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "owl2", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-        <!-- Subclasses Level 1 -->
-        <rect x="100" y="130" width="140" height="36" rx="6" fill="#0f291e" stroke="#10b981" stroke-width="1.8" />
-        <text x="170" y="152" fill="#6ee7b7" font-size="11" font-family="sans-serif" text-anchor="middle" font-weight="bold">PhysicalComponent</text>
-
-        <rect x="410" y="130" width="140" height="36" rx="6" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1.8" />
-        <text x="480" y="152" fill="#7dd3fc" font-size="11" font-family="sans-serif" text-anchor="middle" font-weight="bold">PhysicalSignal</text>
-
-        <!-- Subclasses Level 2 -->
-        <rect x="30" y="230" width="120" height="32" rx="4" fill="#1e293b" stroke="#34d399" stroke-width="1.5" />
-        <text x="90" y="250" fill="#a7f3d0" font-size="10" font-family="sans-serif" text-anchor="middle">Actuator</text>
-
-        <rect x="180" y="230" width="120" height="32" rx="4" fill="#1e293b" stroke="#34d399" stroke-width="1.5" />
-        <text x="240" y="250" fill="#a7f3d0" font-size="10" font-family="sans-serif" text-anchor="middle">Sensor</text>
-
-        <rect x="350" y="230" width="120" height="32" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
-        <text x="410" y="250" fill="#bae6fd" font-size="10" font-family="sans-serif" text-anchor="middle">ContinuousSignal</text>
-
-        <rect x="500" y="230" width="120" height="32" rx="4" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
-        <text x="560" y="250" fill="#bae6fd" font-size="10" font-family="sans-serif" text-anchor="middle">DiscreteSignal</text>
-
-        <!-- Taxonomy Edges -->
-        <g stroke="#64748b" stroke-width="1.5" fill="none">
-          <line x1="325" y1="66" x2="170" y2="130" />
-          <line x1="325" y1="66" x2="480" y2="130" />
-          <line x1="170" y1="166" x2="90" y2="230" />
-          <line x1="170" y1="166" x2="240" y2="230" />
-          <line x1="480" y1="166" x2="410" y2="230" />
-          <line x1="480" y1="166" x2="560" y2="230" />
-        </g>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
+  const codeLines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -208,14 +211,72 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           <PillBadge>OWL2 Ontology</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
+        <Box display="flex" alignItems="center" gap={2}>
+          <Box
+            display="flex"
+            bg="rgba(0,0,0,0.25)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
           >
-            Ontology Graph
-          </Button>
+            <button
+              type="button"
+              onClick={() => setViewMode("diagram")}
+              style={{
+                background: viewMode === "diagram" ? "rgba(139, 92, 246, 0.25)" : "transparent",
+                color: viewMode === "diagram" ? "#c4b5fd" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <WorkflowIcon size={12} /> Graph
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("code")}
+              style={{
+                background: viewMode === "code" ? "rgba(139, 92, 246, 0.25)" : "transparent",
+                color: viewMode === "code" ? "#c4b5fd" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <CodeIcon size={12} /> Source
+            </button>
+          </Box>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "owl2" as any,
+                  code: rawText || `Ontology(<http://example.org/ontology>\n)\n`,
+                  title,
+                });
+                const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -224,33 +285,64 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : (
+        ) : viewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+        ) : (
+          <Box
+            flex={1}
+            py={2}
+            overflow="auto"
+            bg="var(--color-canvas-inset, #010409)"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "owl2")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={4} color="var(--color-fg-muted)" textAlign="center">
+                No OWL2 ontology content available.
+              </Box>
+            )}
+          </Box>
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Ontology Metrics
           </Text>
           <StatItem>
             <span>Classes</span>
-            <strong>{viewConfig.classCount ?? 14}</strong>
+            <strong>{parsedMetrics.classCount}</strong>
           </StatItem>
           <StatItem>
             <span>Object Properties</span>
-            <strong>{viewConfig.propertyCount ?? 8}</strong>
+            <strong>{parsedMetrics.propertyCount}</strong>
           </StatItem>
           <StatItem>
             <span>Individuals</span>
-            <strong>{viewConfig.individualCount ?? 26}</strong>
+            <strong>{parsedMetrics.individualCount}</strong>
           </StatItem>
           <StatItem>
             <span>Axioms</span>
-            <strong>{viewConfig.axiomCount ?? 142}</strong>
-          </StatItem>
-          <StatItem>
-            <span>DL Expressivity</span>
-            <strong style={{ color: "#a78bfa" }}>ALCHIQ(D)</strong>
+            <strong>{parsedMetrics.axiomCount}</strong>
           </StatItem>
         </InspectorSidebar>
       </ContentArea>

@@ -55,22 +55,38 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
       const stat = statSync(targetPath);
 
       if (stat.isDirectory()) {
+        const pkgJsonPath = path.join(targetPath, "package.json");
+        const msJsonPath = path.join(targetPath, "modelscript.json");
+        const kparMetaPath = path.join(targetPath, ".meta.json");
         const packageMoPath = path.join(targetPath, "package.mo");
-        if (!existsSync(packageMoPath)) {
-          console.error(`Error: Directory must contain a 'package.mo' file: ${packageMoPath}`);
+
+        if (existsSync(pkgJsonPath)) {
+          const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+          name = parsed.name ?? null;
+          version = parsed.version || "0.0.0";
+        } else if (existsSync(msJsonPath)) {
+          const parsed = JSON.parse(readFileSync(msJsonPath, "utf-8"));
+          name = parsed.scope ? `${parsed.scope}/${parsed.idShort}` : (parsed.idShort ?? parsed.name ?? null);
+          version = parsed.version || "0.0.0";
+        } else if (existsSync(kparMetaPath)) {
+          const parsed = JSON.parse(readFileSync(kparMetaPath, "utf-8"));
+          name = parsed.name ?? null;
+          version = parsed.version || "0.0.0";
+        } else if (existsSync(packageMoPath)) {
+          const content = readFileSync(packageMoPath, "utf-8");
+          const parsed = parsePackageMo(content);
+          if (!parsed.name) {
+            console.error(`Error: Could not determine package name from ${packageMoPath}`);
+            process.exit(1);
+          }
+          name = parsed.name;
+          version = parsed.version || "0.0.0";
+        } else {
+          console.error(
+            `Error: Directory must contain a 'package.json', 'modelscript.json', '.meta.json', or 'package.mo' file: ${targetPath}`,
+          );
           process.exit(1);
         }
-
-        const content = readFileSync(packageMoPath, "utf-8");
-        const parsed = parsePackageMo(content);
-
-        if (!parsed.name) {
-          console.error(`Error: Could not determine package name from ${packageMoPath}`);
-          process.exit(1);
-        }
-
-        name = parsed.name;
-        version = parsed.version || "0.0.0";
       } else if (stat.isFile() && targetPath.endsWith(".mo")) {
         const content = readFileSync(targetPath, "utf-8");
         const parsed = parsePackageMo(content);
@@ -82,8 +98,12 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
 
         name = parsed.name;
         version = parsed.version || "0.0.0";
+      } else if (stat.isFile() && targetPath.endsWith(".json")) {
+        const parsed = JSON.parse(readFileSync(targetPath, "utf-8"));
+        name = parsed.name ?? parsed.idShort ?? null;
+        version = parsed.version || "0.0.0";
       } else {
-        console.error(`Error: Path must be a directory or a single .mo file`);
+        console.error(`Error: Path must be a package directory or manifest/model file`);
         process.exit(1);
       }
     }

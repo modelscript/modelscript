@@ -20,7 +20,7 @@
 - Executes storyboard acts, maneuver groups, and event-condition-action triggers across moving entities (ego vehicle, NPC traffic vehicles, pedestrians, cyclists):
   - **Triggers**: Simulation time, relative longitudinal distance, headway time, velocity thresholds, reach position.
   - **Actions**: Longitudinal speed change ($a(t)$), lane change ($\dot{y}(t)$), lateral offset, waypoint trajectory following.
-- Couples directly with analytical clothoid road geometry imported from **ASAM OpenDRIVE** ([`@modelscript/opendrive`](file:///home/omar/git3/modelscript/languages/opendrive)).
+- Couples directly with analytical clothoid road geometry imported from **ASAM OpenDRIVE** ([`@modelscript/opendrive`](./opendrive.md)).
 
 ### 2. Time-To-Collision (TTC) & Mobileye RSS Safety Verification
 
@@ -34,7 +34,7 @@
 ### 3. Direct DAE Lowering
 
 - Lowers entity kinematics (position, heading $\psi$, velocity $v$, acceleration $a$) into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation with vehicle multibody dynamics ([`@modelscript/simpack`](file:///home/omar/git3/modelscript/languages/simpack), [`@modelscript/adams`](file:///home/omar/git3/modelscript/languages/adams)) and powertrain control loops ([`@modelscript/simulink`](file:///home/omar/git3/modelscript/languages/simulink)).
+- Enables co-simulation with vehicle multibody dynamics ([`@modelscript/simpack`](./simpack.md), [`@modelscript/adams`](./adams.md)) and powertrain control loops ([`@modelscript/simulink`](./simulink.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -42,19 +42,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8501`–`M8510`)
+## Pre-Flight Diagnostics
 
 The OpenSCENARIO analyzer validates actor references, trigger reachability, and safety margins:
 
-| Code    | Severity  | Rule Identifier                    | Condition Checked                                                                  |
-| :------ | :-------- | :--------------------------------- | :--------------------------------------------------------------------------------- |
-| `M8501` | `error`   | `dangling-entity-reference`        | Action or trigger references an entity not declared in `Entities`.                 |
-| `M8503` | `error`   | `unreachable-road-position`        | Declared target road coordinate $(s, t)$ lies outside valid road bounds.           |
-| `M8505` | `error`   | `missing-ego-vehicle`              | Scenario does not declare an active ego vehicle for autonomous testing.            |
-| `M8506` | `error`   | `negative-speed-target`            | Target longitudinal speed $v_{\text{target}} < 0\text{ m/s}$.                      |
-| `M8508` | `error`   | `imminent-collision-initial-state` | Entities initialized in physical collision or initial $\text{TTC} < 0.2\text{ s}$. |
-| `M8509` | `warning` | `empty-maneuver-group`             | Maneuver group declared without any executable events.                             |
-| `M8510` | `warning` | `invalid-condition-delay`          | Trigger condition delay is negative ($\Delta t < 0$).                              |
+<LintRules lang="openscenario" />
 
 ---
 

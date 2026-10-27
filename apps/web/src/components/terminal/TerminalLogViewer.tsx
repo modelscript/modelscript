@@ -42,6 +42,8 @@ import {
 export interface TerminalLogViewerProps {
   packageName: string;
   packageVersion: string;
+  jobId?: string | number | undefined;
+  isProcessing?: boolean | undefined;
   initialJobInfo?: JobInfo | null | undefined;
   onJobCompleted?: (() => void) | undefined;
   defaultCollapsed?: boolean | undefined;

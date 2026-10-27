@@ -87,3 +87,7 @@ npx msx polyglot project chassis.step --target modelica --out chassis.mo
 # Verify cross-domain alignment between STEP CAD geometry and SysML v2 architecture
 npx msx align chassis.step architecture.sysml
 ```
+
+## Diagnostic Rules
+
+<LintRules lang="step" />

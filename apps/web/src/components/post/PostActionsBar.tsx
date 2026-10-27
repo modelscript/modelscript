@@ -18,6 +18,7 @@ import {
 import { Text } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import AnimatedCount from "../AnimatedCount";
 import Box from "../Box";
 import { ActionButton, EngActionButton, MenuButton, ViewsLink, formatNumber } from "./styles";
@@ -70,6 +71,29 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   const navigate = useNavigate();
   const [showRepostMenu, setShowRepostMenu] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+
+  const remixReplyButton = displayPost.artifact_view_id ? (
+    <EngActionButton
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        navigate(
+          buildEditorUrlForArtifact({
+            artifactId: displayPost.artifact_view_id,
+            viewType: (displayPost as any).artifact_type || (displayPost as any).artifact_view?.view_type,
+            viewConfig: (displayPost as any).artifact_config || (displayPost as any).artifact_view?.view_config,
+            title: (displayPost as any).artifact_title || (displayPost as any).artifact_view?.title,
+            mode: "reply",
+            replyToPostId: Number(displayPost.id),
+          }),
+        );
+      }}
+      style={{ marginRight: "8px" }}
+      title="Remix this artifact and reply in Playground / IDE"
+    >
+      ⚡ Remix / Reply in Editor
+    </EngActionButton>
+  ) : null;
 
   const replyButton = (
     <ActionButton
@@ -368,6 +392,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
           style={{ color: "var(--color-fg-muted)" }}
           onClick={(e) => e.preventDefault()}
         >
+          {remixReplyButton}
           {replyButton}
           {repostButtonAndMenu}
           {likeButton}
@@ -387,17 +412,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
       maxWidth="100%"
       onClick={(e) => e.preventDefault()}
     >
-      {displayPost.artifact_view_id && (
-        <EngActionButton
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/${displayPost.username}/status/${displayPost.id}`);
-          }}
-          style={{ marginRight: "8px" }}
-        >
-          ▶ Sandbox
-        </EngActionButton>
-      )}
+      {remixReplyButton}
 
       {replyButton}
       {repostButtonAndMenu}

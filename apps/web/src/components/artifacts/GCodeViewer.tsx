@@ -87,6 +87,8 @@ function CameraController({
 
 const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFullScreen }) => {
   const [object, setObject] = useState<THREE.Group | null>(null);
+  const [gcodeLines, setGcodeLines] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(true);
 
@@ -102,10 +104,12 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
     let active = true;
 
     async function loadGCode() {
+      setLoading(true);
+      setError(null);
       try {
         let text = "";
-        const inlineCode = viewConfig.data || viewConfig.code || viewConfig.gcode;
-        const targetUrl = viewConfig.url || viewConfig.downloadUrl || viewConfig.fileUrl;
+        const inlineCode = viewConfig?.data || viewConfig?.code || viewConfig?.gcode;
+        const targetUrl = viewConfig?.url || viewConfig?.downloadUrl || viewConfig?.fileUrl;
 
         if (typeof inlineCode === "string" && inlineCode.trim().length > 0) {
           text = inlineCode;
@@ -114,21 +118,17 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           if (!response.ok) throw new Error("Failed to fetch GCode file");
           text = await response.text();
         } else {
-          // Graceful parametric helical cylinder toolpath
-          const sampleLines: string[] = ["G21 ; millimeters", "G90 ; absolute positioning", "G1 Z0.2 F1200"];
-          for (let layer = 0; layer < 16; layer++) {
-            const z = 0.2 + layer * 0.3;
-            for (let pt = 0; pt <= 24; pt++) {
-              const th = (pt / 24) * 2 * Math.PI;
-              const x = (Math.cos(th) * 20).toFixed(3);
-              const y = (Math.sin(th) * 20).toFixed(3);
-              sampleLines.push(`G1 X${x} Y${y} Z${z.toFixed(2)} E${(layer * 8 + pt * 0.2).toFixed(3)} F1500`);
-            }
+          if (active) {
+            setGcodeLines([]);
+            setObject(null);
+            setLoading(false);
           }
-          text = sampleLines.join("\n");
+          (window as any).__ARTIFACT_READY = true;
+          return;
         }
 
         if (active && text) {
+          setGcodeLines(text.split(/\r?\n/));
           const loader = new GCodeLoader();
           const obj = loader.parse(text);
 
@@ -181,12 +181,21 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           }
 
           setObject(obj);
+          setLoading(false);
           setTimeout(() => {
             (window as any).__ARTIFACT_READY = true;
           }, 1500);
+        } else if (active) {
+          setGcodeLines([]);
+          setObject(null);
+          setLoading(false);
+          (window as any).__ARTIFACT_READY = true;
         }
       } catch (err: any) {
-        if (active) setError(err.message || "Error parsing GCode");
+        if (active) {
+          setError(err.message || "Error parsing GCode");
+          setLoading(false);
+        }
         (window as any).__ARTIFACT_READY = true;
       }
     }
@@ -224,7 +233,7 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
     );
   }
 
-  if (!object) {
+  if (loading) {
     return (
       <Box
         p={4}
@@ -237,6 +246,22 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
       >
         <Spinner size="medium" />
         <Text ml={3}>Parsing GCode...</Text>
+      </Box>
+    );
+  }
+
+  if (!object || gcodeLines.length === 0) {
+    return (
+      <Box
+        p={4}
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="300px"
+        bg="var(--color-canvas-subtle)"
+        borderRadius="8px"
+      >
+        <Text color="var(--color-fg-muted)">No G-Code toolpath provided</Text>
       </Box>
     );
   }

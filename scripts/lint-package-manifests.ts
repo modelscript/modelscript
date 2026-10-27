@@ -104,10 +104,190 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
     }
   }
 
+  // 2. Non-private publishable package requirements
+  const isPrivate = pkg["private"] === true;
+  if (!isPrivate) {
+    if (pkg["license"] !== "AGPL-3.0-or-later") {
+      violations.push({
+        file: relPath,
+        rule: "required-license",
+        message: `Publishable package must specify "license": "AGPL-3.0-or-later" (found: ${JSON.stringify(pkg["license"])}).`,
+      });
+    }
+
+    const files = pkg["files"];
+    if (!Array.isArray(files) || files.length === 0) {
+      violations.push({
+        file: relPath,
+        rule: "required-files",
+        message: `Publishable package must declare a non-empty "files" whitelist array.`,
+      });
+    }
+
+    if (!pkg["exports"] && !pkg["bin"] && !pkg["main"]) {
+      violations.push({
+        file: relPath,
+        rule: "required-entrypoint",
+        message: `Publishable package must specify at least one of "exports", "bin", or "main".`,
+      });
+    }
+  }
+
+  // 3. Workspace README.md existence, header, and table integrity
+  violations.push(...checkWorkspaceReadme(pkgDir));
+
   return violations;
 }
 
-function run(): void {
+const EXPECTED_BISMILLAH_LINE_1 = '<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>';
+const EXPECTED_BISMILLAH_LINE_2 = '<div align="center">In the name of Allah, the Compassionate, the Merciful</div>';
+
+function checkMarkdownTables(relReadmePath: string, content: string): Violation[] {
+  const violations: Violation[] = [];
+  const lines = content.split(/\r?\n/);
+  let inFence = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^\s*(`{3,}|~{3,})/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    // Detect a Markdown table delimiter row: | :--- | --- |
+    if (/^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(line) && i > 0) {
+      const prevLine = lines[i - 1]!;
+      if (/^\s*\|.*\|\s*$/.test(prevLine)) {
+        const delimCols = line.trim().slice(1, -1).split("|").length;
+        const headerCols = prevLine.trim().slice(1, -1).replace(/\\\|/g, "").split("|").length;
+        if (delimCols !== headerCols) {
+          violations.push({
+            file: relReadmePath,
+            rule: "readme-table-columns",
+            message: `Markdown table at line ${i} has ${headerCols} header column(s) but ${delimCols} delimiter column(s) (check for unescaped '|' in formulas).`,
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+function checkWorkspaceReadme(pkgDir: string): Violation[] {
+  const violations: Violation[] = [];
+  const readmePath = path.join(pkgDir, "README.md");
+  const relReadmePath = path.relative(REPO_ROOT, readmePath).replace(/\\/g, "/");
+
+  if (!fs.existsSync(readmePath)) {
+    violations.push({
+      file: relReadmePath,
+      rule: "readme-exists",
+      message: `Workspace package is missing a README.md file at ${relReadmePath}.`,
+    });
+    return violations;
+  }
+
+  const content = fs.readFileSync(readmePath, "utf-8");
+  if (content.trim().length === 0) {
+    violations.push({
+      file: relReadmePath,
+      rule: "readme-exists",
+      message: `Workspace README.md at ${relReadmePath} cannot be empty.`,
+    });
+    return violations;
+  }
+
+  const lines = content.split(/\r?\n/);
+  if (lines[0]?.trim() !== EXPECTED_BISMILLAH_LINE_1 || lines[1]?.trim() !== EXPECTED_BISMILLAH_LINE_2) {
+    violations.push({
+      file: relReadmePath,
+      rule: "readme-bismillah-header",
+      message: `README.md must begin with the standard 2-line UTF-8 Bismillah header.`,
+    });
+  }
+
+  violations.push(...checkMarkdownTables(relReadmePath, content));
+  return violations;
+}
+
+function checkCrossWorkspaceRules(packagePaths: string[]): Violation[] {
+  const violations: Violation[] = [];
+  const privatePackageNames = new Set<string>();
+  const parsedManifests: { relPath: string; pkg: Record<string, unknown> }[] = [];
+
+  for (const pkgPath of packagePaths) {
+    const relPath = path.relative(REPO_ROOT, pkgPath).replace(/\\/g, "/");
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+      parsedManifests.push({ relPath, pkg });
+      if (pkg["private"] === true && typeof pkg["name"] === "string") {
+        privatePackageNames.add(pkg["name"]);
+      }
+    } catch {
+      // Handled in checkPackageManifest
+    }
+  }
+
+  // 4. Ensure no publishable package depends on a private workspace package in "dependencies"
+  for (const { relPath, pkg } of parsedManifests) {
+    if (pkg["private"] === true) continue;
+    const deps = (pkg["dependencies"] as Record<string, string> | undefined) || {};
+    for (const depName of Object.keys(deps)) {
+      if (privatePackageNames.has(depName)) {
+        violations.push({
+          file: relPath,
+          rule: "no-private-dependency",
+          message: `Publishable package cannot list private workspace package "${depName}" in "dependencies".`,
+        });
+      }
+    }
+  }
+
+  // 5. Ensure Dockerfile contains COPY <relPath> <relDir>/ for every workspace package.json
+  const dockerfilePath = path.join(REPO_ROOT, "Dockerfile");
+  if (fs.existsSync(dockerfilePath)) {
+    const dockerfileContent = fs.readFileSync(dockerfilePath, "utf-8");
+    for (const { relPath } of parsedManifests) {
+      const relDir = path.posix.dirname(relPath);
+      const expectedCopyPattern = new RegExp(
+        `^COPY\\s+${relPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+${relDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/?\\s*$`,
+        "m",
+      );
+      if (!expectedCopyPattern.test(dockerfileContent)) {
+        violations.push({
+          file: "Dockerfile",
+          rule: "dockerfile-workspace-copy",
+          message: `Missing "COPY ${relPath} ${relDir}/" in Dockerfile builder stage for workspace package "${relPath}".`,
+        });
+      }
+    }
+  }
+
+  // 6. Validate root README.md and ensure every top-level apps/*, packages/*, and languages/* workspace is linked
+  const rootReadmePath = path.join(REPO_ROOT, "README.md");
+  if (fs.existsSync(rootReadmePath)) {
+    const rootReadme = fs.readFileSync(rootReadmePath, "utf-8");
+    violations.push(...checkWorkspaceReadme(REPO_ROOT));
+    for (const { relPath } of parsedManifests) {
+      const relDir = path.posix.dirname(relPath);
+      if (/^(apps|packages|languages)\/[^/]+$/.test(relDir)) {
+        if (!rootReadme.includes(`./${relDir}/`) && !rootReadme.includes(`./${relDir})`)) {
+          violations.push({
+            file: "README.md",
+            rule: "readme-root-link",
+            message: `Top-level workspace "${relDir}" is not linked in the root README.md.`,
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+async function run(): Promise<void> {
   const packagePaths = getWorkspacePackages();
   const allViolations: Violation[] = [];
 
@@ -116,18 +296,35 @@ function run(): void {
     allViolations.push(...violations);
   }
 
+  allViolations.push(...checkCrossWorkspaceRules(packagePaths));
+
+  const { syncVersions } = await import("./sync-versions.js");
+  const versionResult = syncVersions({ checkOnly: true });
+  for (const mismatch of versionResult.mismatches) {
+    allViolations.push({
+      file: mismatch.split(":")[0] || "package.json",
+      rule: "version-sync",
+      message: `Version mismatch (${mismatch}); expected canonical version ${versionResult.version}. Run "npm run sync:versions".`,
+    });
+  }
+
   if (allViolations.length > 0) {
-    console.error(`\nFound ${allViolations.length} package manifest violation(s):\n`);
+    console.error(`\nFound ${allViolations.length} package manifest / README violation(s):\n`);
     for (const v of allViolations) {
       console.error(`  ${v.file}: [${v.rule}] ${v.message}`);
     }
-    console.error("\nPlease correct these package.json issues before committing.\n");
+    console.error("\nPlease correct these package.json or README.md issues before committing.\n");
     process.exit(1);
   }
 
-  console.log(`✓ All ${packagePaths.length} workspace package manifests conform to repository standards.`);
+  console.log(
+    `✓ All ${packagePaths.length} workspace package manifests, READMEs, Dockerfile layer copies, and version pins (${versionResult.version}) conform to repository standards.`,
+  );
 }
 
 if (process.argv[1] === __filename) {
-  run();
+  run().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }

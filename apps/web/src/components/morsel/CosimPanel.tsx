@@ -24,34 +24,8 @@ export interface HistorianSession {
   durationSeconds: number;
   participantCount: number;
   signalCount: number;
+  rows?: Record<string, number | string>[] | undefined;
 }
-
-const DEFAULT_HISTORIAN_SESSIONS: HistorianSession[] = [
-  {
-    id: "session-2026-09-27-01",
-    name: "Coupled Thermal-Fluid Dynamics Test",
-    recordedAt: "2026-09-27 14:32:10 UTC",
-    durationSeconds: 120,
-    participantCount: 3,
-    signalCount: 24,
-  },
-  {
-    id: "session-2026-09-27-02",
-    name: "Permanent Magnet DC Motor Step Transient",
-    recordedAt: "2026-09-27 16:05:44 UTC",
-    durationSeconds: 60,
-    participantCount: 2,
-    signalCount: 16,
-  },
-  {
-    id: "session-2026-09-26-03",
-    name: "Multi-Zone HVAC Closed-Loop Verification",
-    recordedAt: "2026-09-26 09:12:00 UTC",
-    durationSeconds: 300,
-    participantCount: 5,
-    signalCount: 48,
-  },
-];
 
 interface CosimPanelProps {
   /** Currently selected data source. */
@@ -64,6 +38,8 @@ interface CosimPanelProps {
   sessionId?: string | undefined;
   /** Color mode for styling. */
   colorMode?: "light" | "dark" | undefined;
+  /** Recorded historian sessions from actual simulation runs. */
+  sessions?: HistorianSession[] | undefined;
   /** Optional handler when a recorded historian session is selected or replayed. */
   onReplaySession?: ((session: HistorianSession, speed: number) => void) | undefined;
 }
@@ -103,10 +79,11 @@ export function CosimPanel({
   onVariableSelected,
   sessionId,
   colorMode = "light",
+  sessions = [],
   onReplaySession,
 }: CosimPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(DEFAULT_HISTORIAN_SESSIONS[0]!.id);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [replaySpeed, setReplaySpeed] = useState<number>(1);
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
 
@@ -231,8 +208,7 @@ export function CosimPanel({
       {/* Historian Replay: recorded session selector and playback */}
       {dataSource === "historian-replay" &&
         (() => {
-          const selectedSession =
-            DEFAULT_HISTORIAN_SESSIONS.find((s) => s.id === selectedSessionId) ?? DEFAULT_HISTORIAN_SESSIONS[0];
+          const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? sessions[0] ?? null;
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div
@@ -251,45 +227,53 @@ export function CosimPanel({
                   <span style={{ color: textMuted, fontSize: 11 }}>TimescaleDB Historian</span>
                 </div>
 
-                <Select
-                  size="small"
-                  value={selectedSessionId}
-                  onChange={(e) => setSelectedSessionId(e.target.value)}
-                  aria-label="Recorded Session"
-                >
-                  {DEFAULT_HISTORIAN_SESSIONS.map((s) => (
-                    <Select.Option key={s.id} value={s.id}>
-                      {s.name} ({s.durationSeconds}s)
-                    </Select.Option>
-                  ))}
-                </Select>
-
-                {selectedSession && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      fontSize: 11,
-                      color: textMuted,
-                      marginTop: 2,
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Recorded:</span>
-                      <span style={{ fontFamily: "monospace" }}>{selectedSession.recordedAt}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Duration:</span>
-                      <span>{selectedSession.durationSeconds} seconds</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Participants / Signals:</span>
-                      <span>
-                        {selectedSession.participantCount} models / {selectedSession.signalCount} signals
-                      </span>
-                    </div>
+                {sessions.length === 0 ? (
+                  <div style={{ fontSize: 11, color: textMuted, padding: "4px 0" }}>
+                    No recorded historian sessions available. Run a simulation to record a session.
                   </div>
+                ) : (
+                  <>
+                    <Select
+                      size="small"
+                      value={selectedSession?.id ?? ""}
+                      onChange={(e) => setSelectedSessionId(e.target.value)}
+                      aria-label="Recorded Session"
+                    >
+                      {sessions.map((s) => (
+                        <Select.Option key={s.id} value={s.id}>
+                          {s.name} ({s.durationSeconds}s)
+                        </Select.Option>
+                      ))}
+                    </Select>
+
+                    {selectedSession && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 4,
+                          fontSize: 11,
+                          color: textMuted,
+                          marginTop: 2,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Recorded:</span>
+                          <span style={{ fontFamily: "monospace" }}>{selectedSession.recordedAt}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Duration:</span>
+                          <span>{selectedSession.durationSeconds} seconds</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Participants / Signals:</span>
+                          <span>
+                            {selectedSession.participantCount} models / {selectedSession.signalCount} signals
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div
@@ -320,12 +304,14 @@ export function CosimPanel({
 
                   <Button
                     size="small"
+                    disabled={!selectedSession}
                     variant={isReplaying ? "danger" : "primary"}
                     leadingVisual={isReplaying ? PauseIcon : PlayIcon}
                     onClick={() => {
+                      if (!selectedSession) return;
                       const next = !isReplaying;
                       setIsReplaying(next);
-                      if (next && selectedSession) {
+                      if (next) {
                         onReplaySession?.(selectedSession, replaySpeed);
                       }
                     }}
@@ -335,9 +321,9 @@ export function CosimPanel({
                 </div>
               </div>
 
-              {isReplaying && (
+              {isReplaying && selectedSession && (
                 <Flash variant="success" style={{ fontSize: 11, padding: "6px 10px" }}>
-                  Replaying {selectedSession?.name} at {replaySpeed}x speed…
+                  Replaying {selectedSession.name} at {replaySpeed}x speed…
                 </Flash>
               )}
             </div>

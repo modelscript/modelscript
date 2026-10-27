@@ -36,6 +36,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const {
     onPostCreated,
     editPostId,
+    forkedFromArtifactId,
     quotePost,
     replyToPost,
     placeholder,
@@ -47,6 +48,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     artifactId: controlledArtifactId,
     setArtifactId: setControlledArtifactId,
     isModal,
+    hideInput,
   } = props;
 
   const { user, token } = useAuth();
@@ -80,8 +82,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [showMorselModal, setShowMorselModal] = useState(false);
   const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
-  const hasHpc = useFeatureFlag("enableHpc", true);
-  const hasExperimental = useFeatureFlag("enableExperimentalLanguages", false);
+  const hasHpc = useFeatureFlag("cae_cloud_solver");
 
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const [showRecipientsModal, setShowRecipientsModal] = useState(false);
@@ -133,6 +134,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     quotePost,
     replyToPost,
     editPostId,
+    forkedFromArtifactId,
     pendingPin,
     onPostCreated,
     fileInputRef,
@@ -175,7 +177,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
         flexDirection={isModal ? "column" : undefined}
         height={isModal ? "100%" : undefined}
       >
-        {replyToPost && (
+        {replyToPost && !hideInput && (
           <Box
             mb={2}
             ml={13}
@@ -193,152 +195,159 @@ export default function ComposeBox(props: ComposeBoxProps) {
           </Box>
         )}
         <Box display="flex" gap={3} width="100%" flex={isModal ? 1 : undefined}>
-          <img
-            src={getAvatarUrl(user?.username || "?", user?.avatar_url)}
-            alt="avatar"
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              flexShrink: 0,
-              objectFit: "cover",
-              backgroundColor: "rgba(255, 255, 255, 0.05)",
-            }}
-          />
-          <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
-            {showContentWarning && (
-              <Box mb={2}>
-                <input
-                  type="text"
-                  placeholder="Content warning / sensitive summary..."
-                  value={contentWarning}
-                  onChange={(e) => setContentWarning(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    background: "rgba(210, 153, 34, 0.08)",
-                    border: "1px solid rgba(210, 153, 34, 0.3)",
-                    borderRadius: "8px",
-                    color: "var(--color-fg-default)",
-                    fontSize: "14px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </Box>
-            )}
-            {notebook.isNotebookMode ? (
-              <NotebookContainer>
-                <ComposeTutorialMetaEditor
-                  notebookTitle={notebook.notebookTitle}
-                  setNotebookTitle={notebook.setNotebookTitle}
-                  notebookSummary={notebook.notebookSummary}
-                  setNotebookSummary={notebook.setNotebookSummary}
-                  notebookDifficulty={notebook.notebookDifficulty}
-                  setNotebookDifficulty={notebook.setNotebookDifficulty}
-                  notebookSeries={notebook.notebookSeries}
-                  setNotebookSeries={notebook.setNotebookSeries}
-                  notebookDialect={notebook.notebookDialect}
-                  setNotebookDialect={notebook.setNotebookDialect}
-                  notebookCompanionRepo={notebook.notebookCompanionRepo}
-                  setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
-                  showTutorialMetaEditor={notebook.showTutorialMetaEditor}
-                  setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
-                  handleLoadBaeldungTemplate={notebook.handleLoadBaeldungTemplate}
-                  handleToggleNotebookMode={notebook.handleToggleNotebookMode}
-                  onTitleChange={(nextTitle) =>
-                    notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
-                  }
-                />
-
-                <ComposeNotebookCellsEditor
-                  notebookCells={notebook.notebookCells}
-                  activeCellId={notebook.activeCellId}
-                  setActiveCellId={notebook.setActiveCellId}
-                  insertMarkdownSnippet={notebook.insertMarkdownSnippet}
-                  moveCell={notebook.moveCell}
-                  addMarkdownCellAfter={notebook.addMarkdownCellAfter}
-                  removeCell={notebook.removeCell}
-                  updateMarkdownCell={notebook.updateMarkdownCell}
-                  updateArtifactCellCaption={notebook.updateArtifactCellCaption}
-                  updateTokenState={autocomplete.updateTokenState}
-                  handleInteraction={handleInteraction}
-                  handleSubmit={submitHandler.handleSubmit}
-                  setMentionQuery={autocomplete.setMentionQuery}
-                  setHashtagQuery={autocomplete.setHashtagQuery}
-                  setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
-                  setShowCodeSnippetModal={setShowCodeSnippetModal}
-                  setShowMorselModal={setShowMorselModal}
-                  createDummyArtifact={submitHandler.createDummyArtifact}
-                  fileInputRef={fileInputRef}
-                />
-              </NotebookContainer>
-            ) : (
-              <OverlayWrapper>
-                <Backdrop>
-                  {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
-                    part.startsWith("@") ? (
-                      <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
-                        {part}
-                      </span>
-                    ) : part.startsWith("#") ? (
-                      <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
-                        {part}
-                      </span>
-                    ) : (
-                      part
-                    ),
-                  )}
-                  {content.endsWith("\n") && <br />}
-                </Backdrop>
-                <ComposeInput
-                  ref={textareaRef}
-                  value={content}
-                  onChange={handleContentChange}
-                  onKeyUp={handleInteraction}
-                  onClick={handleInteraction}
-                  placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
-                  rows={minRows}
-                  autoFocus={autoFocus}
-                  style={{ marginBottom: replyToPost ? "0px" : "12px" }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                      submitHandler.handleSubmit();
-                    }
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => {
-                      autocomplete.setMentionQuery(null);
-                      autocomplete.setHashtagQuery(null);
-                    }, 150);
-                  }}
-                />
-              </OverlayWrapper>
-            )}
-
-            <ComposeMentionHashtagPopups
-              mentionQuery={autocomplete.mentionQuery}
-              mentionSuggestions={autocomplete.mentionSuggestions}
-              onSelectMention={autocomplete.insertMention}
-              hashtagQuery={autocomplete.hashtagQuery}
-              hashtagSuggestions={autocomplete.hashtagSuggestions}
-              onSelectHashtag={autocomplete.insertHashtag}
+          {!hideInput && (
+            <img
+              src={getAvatarUrl(user?.username || "?", user?.avatar_url)}
+              alt="avatar"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                flexShrink: 0,
+                objectFit: "cover",
+                backgroundColor: "rgba(255, 255, 255, 0.05)",
+              }}
             />
+          )}
+          <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
+            <div style={{ display: hideInput ? "none" : "contents" }}>
+              {showContentWarning && (
+                <Box mb={2}>
+                  <input
+                    type="text"
+                    placeholder="Content warning / sensitive summary..."
+                    value={contentWarning}
+                    onChange={(e) => setContentWarning(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      background: "rgba(210, 153, 34, 0.08)",
+                      border: "1px solid rgba(210, 153, 34, 0.3)",
+                      borderRadius: "8px",
+                      color: "var(--color-fg-default)",
+                      fontSize: "14px",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </Box>
+              )}
+              {notebook.isNotebookMode ? (
+                <NotebookContainer>
+                  <ComposeTutorialMetaEditor
+                    notebookTitle={notebook.notebookTitle}
+                    setNotebookTitle={notebook.setNotebookTitle}
+                    notebookSummary={notebook.notebookSummary}
+                    setNotebookSummary={notebook.setNotebookSummary}
+                    notebookDifficulty={notebook.notebookDifficulty}
+                    setNotebookDifficulty={notebook.setNotebookDifficulty}
+                    notebookSeries={notebook.notebookSeries}
+                    setNotebookSeries={notebook.setNotebookSeries}
+                    notebookDialect={notebook.notebookDialect}
+                    setNotebookDialect={notebook.setNotebookDialect}
+                    notebookCompanionRepo={notebook.notebookCompanionRepo}
+                    setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
+                    showTutorialMetaEditor={notebook.showTutorialMetaEditor}
+                    setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
+                    handleLoadBaeldungTemplate={notebook.handleLoadBaeldungTemplate}
+                    handleToggleNotebookMode={notebook.handleToggleNotebookMode}
+                    onTitleChange={(nextTitle) =>
+                      notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
+                    }
+                  />
 
-            {!notebook.isNotebookMode && (
-              <ComposeAttachedArtifact artifactId={artifactId} onRemove={() => setArtifactId(null)} />
-            )}
+                  <ComposeNotebookCellsEditor
+                    notebookCells={notebook.notebookCells}
+                    activeCellId={notebook.activeCellId}
+                    setActiveCellId={notebook.setActiveCellId}
+                    insertMarkdownSnippet={notebook.insertMarkdownSnippet}
+                    moveCell={notebook.moveCell}
+                    addMarkdownCellAfter={notebook.addMarkdownCellAfter}
+                    removeCell={notebook.removeCell}
+                    updateMarkdownCell={notebook.updateMarkdownCell}
+                    updateArtifactCellCaption={notebook.updateArtifactCellCaption}
+                    updateTokenState={autocomplete.updateTokenState}
+                    handleInteraction={handleInteraction}
+                    handleSubmit={submitHandler.handleSubmit}
+                    setMentionQuery={autocomplete.setMentionQuery}
+                    setHashtagQuery={autocomplete.setHashtagQuery}
+                    setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
+                    setShowCodeSnippetModal={setShowCodeSnippetModal}
+                    setShowMorselModal={setShowMorselModal}
+                    fileInputRef={fileInputRef}
+                  />
+                </NotebookContainer>
+              ) : (
+                <OverlayWrapper>
+                  <Backdrop>
+                    {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
+                      part.startsWith("@") ? (
+                        <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
+                          {part}
+                        </span>
+                      ) : part.startsWith("#") ? (
+                        <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
+                          {part}
+                        </span>
+                      ) : (
+                        part
+                      ),
+                    )}
+                    {content.endsWith("\n") && <br />}
+                  </Backdrop>
+                  <ComposeInput
+                    ref={textareaRef}
+                    value={content}
+                    onChange={handleContentChange}
+                    onKeyUp={handleInteraction}
+                    onClick={handleInteraction}
+                    placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
+                    rows={minRows}
+                    autoFocus={autoFocus}
+                    style={{ marginBottom: replyToPost ? "0px" : "12px" }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                        submitHandler.handleSubmit();
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        autocomplete.setMentionQuery(null);
+                        autocomplete.setHashtagQuery(null);
+                      }, 150);
+                    }}
+                  />
+                </OverlayWrapper>
+              )}
 
-            <ComposeQuoteAndPin pendingPin={pendingPin} quotePost={quotePost} />
-
-            {!replyToPost && (
-              <ComposeVisibilityMenu
-                replyVisibility={replyVisibility}
-                setReplyVisibility={setReplyVisibility}
-                showVisibilityMenu={showVisibilityMenu}
-                setShowVisibilityMenu={setShowVisibilityMenu}
+              <ComposeMentionHashtagPopups
+                mentionQuery={autocomplete.mentionQuery}
+                mentionSuggestions={autocomplete.mentionSuggestions}
+                onSelectMention={autocomplete.insertMention}
+                hashtagQuery={autocomplete.hashtagQuery}
+                hashtagSuggestions={autocomplete.hashtagSuggestions}
+                onSelectHashtag={autocomplete.insertHashtag}
               />
-            )}
+
+              {!notebook.isNotebookMode && (
+                <ComposeAttachedArtifact
+                  artifactId={artifactId}
+                  editPostId={editPostId}
+                  onRemove={() => setArtifactId(null)}
+                />
+              )}
+
+              <ComposeQuoteAndPin pendingPin={pendingPin} quotePost={quotePost} />
+
+              {!replyToPost && (
+                <ComposeVisibilityMenu
+                  replyVisibility={replyVisibility}
+                  setReplyVisibility={setReplyVisibility}
+                  showVisibilityMenu={showVisibilityMenu}
+                  setShowVisibilityMenu={setShowVisibilityMenu}
+                />
+              )}
+            </div>
 
             <ComposeToolbar
               isModal={isModal}
@@ -358,8 +367,6 @@ export default function ComposeBox(props: ComposeBoxProps) {
               setShowContentWarning={setShowContentWarning}
               showEmojiPicker={showEmojiPicker}
               setShowEmojiPicker={setShowEmojiPicker}
-              createDummyArtifact={submitHandler.createDummyArtifact}
-              hasExperimental={hasExperimental}
               handleSubmit={submitHandler.handleSubmit}
               submitting={submitHandler.submitting}
               artifactId={artifactId}
@@ -393,6 +400,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
       <Suspense fallback={null}>
         {showHpcPicker && (
           <HpcArtifactPickerModal
+            isOpen={showHpcPicker}
             onClose={() => setShowHpcPicker(false)}
             onSelect={(art: any) => {
               notebook.attachArtifactToComposer(art.id, art.title);
@@ -403,9 +411,12 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
         {showMorselModal && (
           <MorselComposeModal
+            isOpen={showMorselModal}
             onClose={() => setShowMorselModal(false)}
             onAttach={(art: any) => {
-              notebook.attachArtifactToComposer(art.id, art.title);
+              if (art.id) {
+                notebook.attachArtifactToComposer(art.id, art.title);
+              }
               setShowMorselModal(false);
             }}
           />
@@ -413,6 +424,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
         {showPackageRepoPicker && (
           <PackageRepoPickerModal
+            isOpen={showPackageRepoPicker}
             onClose={() => setShowPackageRepoPicker(false)}
             onSelect={(art: any) => {
               notebook.attachArtifactToComposer(art.id, art.title);

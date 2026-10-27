@@ -398,7 +398,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     const context = props.context;
     if (!context) return html;
 
-    return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, quote, uriPath) => {
+    return html.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, _quote, uriPath) => {
       const uri = `modelica://${uriPath}`;
       const resolvedPath = context.resolveURI(uri);
       if (resolvedPath) {

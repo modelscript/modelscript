@@ -88,15 +88,7 @@ msx olga convert input.opi --to=sysml2 --out=procedures.sysml
 
 ModelScript includes automated pre-flight linter diagnostics and limit verifications:
 
-| Rule Code   | Identifier                  | Severity | Description                                                                                                           |
-| :---------- | :-------------------------- | :------- | :-------------------------------------------------------------------------------------------------------------------- |
-| **`M7001`** | `cfl-condition-violation`   | Warning  | Spatial cell step $\Delta x$ violates Courant-Friedrichs-Lewy stability criteria for configured time step.            |
-| **`M7002`** | `invalid-pipe-dimensions`   | Error    | Non-positive pipe inner diameter or negative hydraulic roughness.                                                     |
-| **`M7003`** | `zero-pressure-boundary`    | Error    | Boundary pressure is zero or unphysical.                                                                              |
-| **`M7004`** | `steep-elevation-warning`   | Info     | Pipe inclination angle exceeds 80 degrees; monitor for riser base liquid accumulation.                                |
-| **`M7005`** | `fully-closed-choke-hazard` | Warning  | Choke valve is 100% closed; flowline shut-in overpressurization hazard.                                               |
-| **`M7006`** | `severe-slugging-hazard`    | Warning  | Seabed elevation dip followed by a steep catenary riser without an active slug controller.                            |
-| **`M7007`** | `pig-stuck-hazard`          | Error    | Mechanical scraper pig seal friction exceeds maximum available flowline drive capability ($\Delta P_{\max} \cdot A$). |
+<LintRules lang="olga" />
 
 ---
 
@@ -158,7 +150,7 @@ Long-duration or multi-stage pipeline flow assurance operations can be snapshot 
 # Snapshot simulation state at completion
 msx olga simulate subsea_tieback.opi --duration=3600 --checkpoint-out=t3600.rst
 
-# Resume simulation seamlessly from t=3600s
+# Resume simulation from t=3600s
 msx olga simulate subsea_tieback.opi --duration=7200 --restart=t3600.rst --out=second_stage.csv
 ```
 

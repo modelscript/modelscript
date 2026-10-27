@@ -2,7 +2,7 @@
 
 import { AlertIcon, HomeIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Heading, Text } from "@primer/react";
-import { Component, ErrorInfo, ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import styled from "styled-components";
 
 interface Props {
@@ -78,7 +78,7 @@ const ErrorDetails = styled.details`
 `;
 
 export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
+  public override state: State = {
     hasError: false,
     error: null,
     errorInfo: null,
@@ -88,7 +88,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error, errorInfo: null };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({ errorInfo });
   }
@@ -101,7 +101,7 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
-  public render() {
+  public override render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
@@ -114,11 +114,11 @@ export class ErrorBoundary extends Component<Props, State> {
               <AlertIcon size={28} />
             </IconCircle>
 
-            <Heading as="h2" sx={{ fontSize: 20, m: 0 }}>
+            <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
               Something unexpected occurred
             </Heading>
 
-            <Text sx={{ color: "fg.muted", fontSize: 14 }}>
+            <Text style={{ color: "var(--color-fg-muted)", fontSize: "14px" }}>
               An error occurred while rendering this section. You can try refreshing or returning to the explore feed.
             </Text>
 

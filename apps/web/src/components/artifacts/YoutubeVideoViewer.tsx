@@ -56,7 +56,7 @@ const PlayButton = styled.div`
   }
 `;
 
-const YoutubeVideoViewer: React.FC<YoutubeVideoViewerProps> = ({ viewConfig, isFullScreen }) => {
+const YoutubeVideoViewer: React.FC<YoutubeVideoViewerProps> = ({ viewConfig, isFullScreen: _isFullScreen }) => {
   const [isPlaying, setIsPlaying] = useState(false);
 
   const rawVideoId = viewConfig.videoId;

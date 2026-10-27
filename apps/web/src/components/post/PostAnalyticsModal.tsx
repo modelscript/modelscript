@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CommentIcon, HeartIcon, InfoIcon, RssIcon, SyncIcon, XIcon } from "@primer/octicons-react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { BookmarkIcon, CommentIcon, HeartIcon, InfoIcon, RssIcon, SyncIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton, Text, Tooltip } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { getPostAnalytics, type PostAnalyticsData } from "../../api";
+import { getPostAnalytics } from "../../api";
 import Box from "../Box";
 import { RenderContent } from "../Post";
 import WorldMap from "../WorldMap";
+
+export interface PostAnalyticsData {
+  view_count?: number;
+  location_stats?: any[];
+  region_stats?: any[];
+}
 
 const AnalyticsModalOverlay = styled.div`
   position: fixed;
@@ -132,12 +139,20 @@ export interface PostAnalyticsModalProps {
     created_at: string;
     content: string | null;
     view_count?: number;
+    views_count?: number;
     reply_count?: number;
+    replies_count?: number;
+    like_count?: number;
+    likes_count?: number;
+    repost_count?: number;
+    reposts_count?: number;
+    bookmark_count?: number;
   };
   liked?: boolean;
   likeCount?: number;
   reposted?: boolean;
   repostCount?: number;
+  bookmarkCount?: number;
   onClose: () => void;
 }
 
@@ -145,9 +160,10 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
   postId,
   displayPost,
   liked = false,
-  likeCount = 0,
+  likeCount,
   reposted = false,
-  repostCount = 0,
+  repostCount,
+  bookmarkCount,
   onClose,
 }) => {
   const [analyticsData, setAnalyticsData] = useState<PostAnalyticsData | null>(null);
@@ -160,10 +176,12 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
     }
   }, [postId]);
 
-  const impressions = analyticsData?.view_count ?? displayPost.view_count ?? 0;
-  const detailExpands = Math.ceil(impressions * 0.05);
-  const profileVisits = Math.ceil(impressions * 0.02);
-  const engagements = likeCount + repostCount + (displayPost.reply_count || 0) + detailExpands + profileVisits;
+  const impressions = analyticsData?.view_count ?? displayPost.views_count ?? displayPost.view_count ?? 0;
+  const likes = likeCount ?? displayPost.likes_count ?? displayPost.like_count ?? 0;
+  const reposts = repostCount ?? displayPost.reposts_count ?? displayPost.repost_count ?? 0;
+  const replies = displayPost.replies_count ?? displayPost.reply_count ?? 0;
+  const bookmarks = bookmarkCount ?? displayPost.bookmark_count ?? 0;
+  const engagements = likes + reposts + replies + bookmarks;
 
   return (
     <AnalyticsModalOverlay
@@ -188,8 +206,8 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
               <Box style={{ minWidth: 0, flex: 1 }}>
                 <Box display="flex" alignItems="center" gap={1}>
                   <Text
-                    fontWeight="bold"
                     style={{
+                      fontWeight: "bold",
                       display: "flex",
                       alignItems: "center",
                       gap: "4px",
@@ -202,19 +220,24 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
                       {displayPost.display_name || displayPost.username}
                     </span>
                     {displayPost.account_type === "rss" && (
-                      <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                      <span style={{ color: "var(--color-fg-muted)", flexShrink: 0, display: "inline-flex" }}>
+                        <RssIcon size={14} />
+                      </span>
                     )}
                   </Text>
                   <Text
-                    color="var(--color-fg-muted)"
-                    style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}
+                    style={{
+                      color: "var(--color-fg-muted)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flexShrink: 1,
+                    }}
                   >
                     @{displayPost.username}
                   </Text>
-                  <Text color="var(--color-fg-muted)" style={{ flexShrink: 0 }}>
-                    ·
-                  </Text>
-                  <Text color="var(--color-fg-muted)" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                  <Text style={{ color: "var(--color-fg-muted)", flexShrink: 0 }}>·</Text>
+                  <Text style={{ color: "var(--color-fg-muted)", flexShrink: 0, whiteSpace: "nowrap" }}>
                     {formatRelativeTime(displayPost.created_at)}
                   </Text>
                 </Box>
@@ -244,32 +267,42 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
           </Box>
           <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
             <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <HeartIcon
-                size={20}
-                style={{ color: liked ? "var(--color-danger-fg, #f91880)" : "var(--color-fg-muted)" }}
-              />
-              <Text fontWeight="bold" fontSize="16px">
-                {likeCount || 0}
-              </Text>
+              <span
+                style={{
+                  color: liked ? "var(--color-danger-fg, #f91880)" : "var(--color-fg-muted)",
+                  display: "inline-flex",
+                }}
+              >
+                <HeartIcon size={20} />
+              </span>
+              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{likes}</Text>
             </Box>
             <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <SyncIcon
-                size={20}
-                style={{ color: reposted ? "var(--color-success-fg, #00ba7c)" : "var(--color-fg-muted)" }}
-              />
-              <Text fontWeight="bold" fontSize="16px">
-                {repostCount || 0}
-              </Text>
+              <span
+                style={{
+                  color: reposted ? "var(--color-success-fg, #00ba7c)" : "var(--color-fg-muted)",
+                  display: "inline-flex",
+                }}
+              >
+                <SyncIcon size={20} />
+              </span>
+              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{reposts}</Text>
             </Box>
             <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <CommentIcon size={20} style={{ color: "var(--color-fg-muted)" }} />
-              <Text fontWeight="bold" fontSize="16px">
-                {displayPost.reply_count || 0}
-              </Text>
+              <span style={{ color: "var(--color-fg-muted)", display: "inline-flex" }}>
+                <CommentIcon size={20} />
+              </span>
+              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{replies}</Text>
+            </Box>
+            <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+              <span style={{ color: "var(--color-fg-muted)", display: "inline-flex" }}>
+                <BookmarkIcon size={20} />
+              </span>
+              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{bookmarks}</Text>
             </Box>
           </AnalyticsCard>
 
-          <Box display="flex" flexWrap="wrap" px={3} pt={4}>
+          <Box display="flex" flexWrap="wrap" style={{ padding: "16px 12px 24px" }}>
             <Box width="33.333%" display="flex" justifyContent="center">
               <AnalyticsStatGroup style={{ alignItems: "center" }}>
                 <AnalyticsStatTitle>
@@ -299,7 +332,7 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
                 <AnalyticsStatTitle>
                   Engagements{" "}
                   <Tooltip
-                    text="Total number of times a user interacted with a post. This includes all clicks anywhere on the post (including hashtags, links, avatar, username, and post expansion), reposts, replies, follows, and likes."
+                    text="Total number of recorded interactions on this post (likes, reposts, replies, and bookmarks)."
                     type="label"
                   >
                     <button
@@ -324,8 +357,8 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
             <Box width="33.333%" display="flex" justifyContent="center">
               <AnalyticsStatGroup style={{ alignItems: "center" }}>
                 <AnalyticsStatTitle>
-                  Detail expands{" "}
-                  <Tooltip text="Times people viewed the details about this post." type="label">
+                  Bookmarks{" "}
+                  <Tooltip text="Times this post was bookmarked." type="label">
                     <button
                       type="button"
                       style={{
@@ -342,31 +375,7 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
                     </button>
                   </Tooltip>
                 </AnalyticsStatTitle>
-                <AnalyticsStatValue>{formatNumber(detailExpands)}</AnalyticsStatValue>
-              </AnalyticsStatGroup>
-            </Box>
-            <Box width="100%" display="flex" justifyContent="center" mt="32px">
-              <AnalyticsStatGroup style={{ alignItems: "center" }}>
-                <AnalyticsStatTitle>
-                  Profile visits{" "}
-                  <Tooltip text="Number of profile views from this post." type="label">
-                    <button
-                      type="button"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        color: "inherit",
-                        cursor: "help",
-                        display: "inline-flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <InfoIcon size={14} />
-                    </button>
-                  </Tooltip>
-                </AnalyticsStatTitle>
-                <AnalyticsStatValue>{formatNumber(profileVisits)}</AnalyticsStatValue>
+                <AnalyticsStatValue>{formatNumber(bookmarks)}</AnalyticsStatValue>
               </AnalyticsStatGroup>
             </Box>
           </Box>

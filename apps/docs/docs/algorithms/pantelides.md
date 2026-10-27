@@ -32,7 +32,7 @@ Pantelides' algorithm identifies minimally singular subsets of equations and dif
 1. **In-WASM Linear Memory Execution**: Operates as an unmanaged WebAssembly kernel (`@unmanaged`) with zero garbage collection allocations.
 2. **Direct Arena Symbolic Differentiation**: Derivatives of equations ($\frac{d^k f}{dt^k} = 0$) are differentiated directly on `DAEBuilder` linear expression nodes in memory.
 3. **Flat Chunked Arrays**: Equation dependency incidence pointers, differentiation levels, and matching arrays are stored in flat `ChunkedInt32Array` buffers.
-4. **Augmenting Path Bipartite Matching**: Alternating path searches run directly over highest-derivative variables, seamlessly transferring matching data to the downstream `BltEngine`.
+4. **Augmenting Path Bipartite Matching**: Alternating path searches run directly over highest-derivative variables, passing matching data to the downstream `BltEngine`.
 
 ---
 

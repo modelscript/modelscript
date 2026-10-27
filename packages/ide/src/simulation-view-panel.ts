@@ -118,6 +118,7 @@ export class SimulationViewPanel extends BaseWebviewPanel {
             }
             break;
           case "run":
+          case "runSimulation":
             vscode.commands.executeCommand("modelscript.runSimulation");
             break;
         }
@@ -147,6 +148,11 @@ export class SimulationViewPanel extends BaseWebviewPanel {
       if (response) {
         this._panel.webview.postMessage({
           type: "studyData",
+          data: response,
+          className: this._className,
+        });
+        this._panel.webview.postMessage({
+          type: "configData",
           data: response,
           className: this._className,
         });

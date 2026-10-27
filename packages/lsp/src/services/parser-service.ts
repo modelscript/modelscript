@@ -601,6 +601,267 @@ export class ParserService {
     return { lineIndex: cached.lineIndex, tokens: cached.tokens };
   }
 
+  private serverDistBase = "";
+  private manifest: {
+    id: string;
+    wasm?: string | undefined;
+    displayName?: string | undefined;
+    fileExtensions?: string[] | undefined;
+    extensions?: string[] | undefined;
+    syntaxNames?: string[] | undefined;
+    fieldNames?: Record<string, number> | undefined;
+  }[] = [];
+  private lazyLoadParsers = false;
+  private useLocalMsl = false;
+  private validationServiceRef: any = null;
+  private projectDependenciesRef: { name: string; version: string }[] = [];
+  private loadingParserPromises = new Map<string, Promise<void>>();
+  private loadingStdlibPromises = new Map<string, Promise<void>>();
+
+  private resolveNormalizedLanguageId(languageIdOrUri: string): string {
+    const raw = (languageIdOrUri || "").trim();
+    if (!raw) return "modelica";
+    const lower = raw.toLowerCase();
+    if (lower === "sysml") return "sysml2";
+
+    // Direct match in manifest
+    const directManifest = this.manifest.find((m) => m.id.toLowerCase() === lower);
+    if (directManifest) return directManifest.id;
+
+    // Extension match in manifest if URI or filename
+    if (raw.includes(".") || raw.includes("/")) {
+      const cleanUri = lower.split("?")[0]!.split("#")[0]!;
+      for (const entry of this.manifest) {
+        const exts = entry.fileExtensions || entry.extensions || [`.${entry.id}`];
+        if (exts.some((ext) => cleanUri.endsWith(ext.toLowerCase()))) {
+          return entry.id;
+        }
+      }
+    }
+
+    const plugin =
+      globalLanguageRegistry.getPluginById(lower) ||
+      globalLanguageRegistry.getPluginForLanguageIdOrUri(raw, raw) ||
+      globalLanguageRegistry.getPluginForUri(raw);
+    if (plugin?.id) {
+      return plugin.id === "sysml" ? "sysml2" : plugin.id;
+    }
+
+    return lower;
+  }
+
+  private async loadSingleWasmEntry(entry: {
+    id: string;
+    wasm?: string | undefined;
+    displayName?: string | undefined;
+    fileExtensions?: string[] | undefined;
+    extensions?: string[] | undefined;
+    syntaxNames?: string[] | undefined;
+    fieldNames?: Record<string, number> | undefined;
+  }): Promise<void> {
+    if (!entry.wasm || !this.serverDistBase) return;
+    if (this.isParserReady(entry.id)) return;
+
+    const existingPromise = this.loadingParserPromises.get(entry.id);
+    if (existingPromise) {
+      await existingPromise;
+      return;
+    }
+
+    const loadPromise = (async () => {
+      const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
+      const fieldNames = entry.fieldNames || (globalThis as any)[`${entry.id}FieldNames`];
+      const exts = entry.fileExtensions || entry.extensions || [`.${entry.id}`];
+      const candidates = Array.from(
+        new Set([
+          `${this.serverDistBase}/${entry.wasm}`,
+          `${this.serverDistBase}/${entry.id}.wasm`,
+          `${this.serverDistBase}/parser.wasm`,
+        ]),
+      );
+
+      try {
+        let result: any = null;
+        let lastError: any = null;
+        for (const candUrl of candidates) {
+          try {
+            result = await createWasmParser(candUrl, { syntaxNames, fieldNames });
+            if (result) break;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        if (!result && lastError) {
+          throw lastError;
+        }
+
+        if (result) {
+          this.registerParser(entry.id, result.parser, result.facade);
+          if (this.workspaceManager?.unifiedWorkspace && result.parser) {
+            for (const ext of exts) {
+              this.workspaceManager.unifiedWorkspace.registerParser(ext, result.parser);
+            }
+          }
+          if (entry.id === "sysml2") {
+            this.registerParser("sysml", result.parser, result.facade);
+            const existingSysml = globalLanguageRegistry.getPluginById("sysml");
+            if (!existingSysml) {
+              globalLanguageRegistry.register({
+                id: "sysml",
+                name: "SysML v2",
+                extensions: [".sysml", ".sysml2", ".kerml"],
+                parser: result.parser,
+                facade: result.facade,
+                disposables: [],
+              });
+            } else {
+              existingSysml.parser = result.parser;
+              existingSysml.facade = result.facade;
+            }
+          }
+
+          // Register in globalLanguageRegistry as well
+          const existing = globalLanguageRegistry.getPluginById(entry.id);
+          if (!existing) {
+            globalLanguageRegistry.register({
+              id: entry.id,
+              name: entry.displayName || entry.id,
+              extensions: exts,
+              parser: result.parser,
+              facade: result.facade,
+              disposables: [],
+            });
+          } else {
+            existing.parser = result.parser;
+            existing.facade = result.facade;
+          }
+
+          this.connection.console.info(`ModelScript ${entry.displayName || entry.id} parser initialized`);
+        }
+      } catch (e) {
+        this.connection.console.warn(`Failed to load ${entry.id} language: ${e}`);
+      }
+    })();
+
+    this.loadingParserPromises.set(entry.id, loadPromise);
+    await loadPromise;
+  }
+
+  private async ensureStdlibForLanguage(langId: string): Promise<void> {
+    const norm = langId.toLowerCase();
+    const depName =
+      norm === "modelica" || norm === "modelscript"
+        ? "Modelica"
+        : norm === "sysml2" || norm === "sysml"
+          ? "SysML"
+          : null;
+    if (!depName) return;
+
+    const existingStdlib = this.loadingStdlibPromises.get(depName);
+    if (existingStdlib) {
+      await existingStdlib;
+      return;
+    }
+
+    const loaderCtx = (globalThis as any).savedLoaderCtx as LoaderContext | undefined;
+    if (!loaderCtx || !this.serverDistBase) return;
+
+    const dep =
+      this.projectDependenciesRef.find((d) => d.name === depName) ??
+      (depName === "Modelica" ? { name: "Modelica", version: "4.1.0" } : { name: "SysML", version: "2026.3.0" });
+
+    const stdlibPromise = (async () => {
+      if (this.validationServiceRef) {
+        const alreadyDeclared = this.validationServiceRef.declaredDependencies?.some(
+          (d: { name: string; version: string }) => d.name === dep.name && d.version === dep.version,
+        );
+        if (!alreadyDeclared) {
+          this.validationServiceRef.declaredDependencies.push(dep);
+        }
+      }
+
+      if (depName === "SysML") {
+        loaderCtx.sysml2Parser = this.getParser("sysml2") as any;
+      }
+
+      this.connection.sendNotification("modelscript/status", {
+        state: "loading",
+        message: `ModelScript (loading ${dep.name} standard library...)`,
+      });
+
+      try {
+        if (this.useLocalMsl && dep.name === "Modelica" && dep.version === "4.1.0") {
+          await loadMSL(this.serverDistBase, loaderCtx);
+        } else if (this.useLocalMsl && dep.name === "SysML" && dep.version === "2026.3.0") {
+          await loadSysML2StandardLibrary(this.serverDistBase, loaderCtx);
+        } else {
+          try {
+            await loadDependencyFromRegistry(dep, loaderCtx);
+          } catch (regErr) {
+            if (dep.name === "Modelica") {
+              this.connection.console.warn(
+                `[lsp] Registry load failed for Modelica, falling back to local MSL zip: ${regErr}`,
+              );
+              await loadMSL(this.serverDistBase, loaderCtx);
+            } else if (dep.name === "SysML") {
+              this.connection.console.warn(
+                `[lsp] Registry load failed for SysML, falling back to local SysML zip: ${regErr}`,
+              );
+              await loadSysML2StandardLibrary(this.serverDistBase, loaderCtx);
+            } else {
+              throw regErr;
+            }
+          }
+        }
+        if (this.validationServiceRef) {
+          this.validationServiceRef.markDependencyLoaded(dep.name, dep.version);
+        }
+      } catch (err) {
+        this.connection.console.warn(`[lsp] Failed to load ${dep.name}@${dep.version}: ${err}`);
+        if (this.validationServiceRef) {
+          this.validationServiceRef.markDependencyLoaded(dep.name, dep.version);
+        }
+      }
+
+      (globalThis as any).clearIconCache?.();
+      (globalThis as any).clearDiagramCache?.();
+      (globalThis as any).diagramCache?.clear();
+
+      for (const doc of this.documents.all()) {
+        try {
+          await (this.validationServiceRef?.validateTextDocument?.(doc) ??
+            (globalThis as any).validateTextDocument?.(doc));
+        } catch (err) {
+          this.connection.console.warn(`[lsp] Failed to validate open document after ${dep.name} load: ${err}`);
+        }
+      }
+
+      this.sendProjectTreeChanged();
+      this.connection.sendNotification("modelscript/status", {
+        state: "ready",
+        message: (globalThis as any).getReadyMessage?.() ?? "ModelScript",
+      });
+    })();
+
+    this.loadingStdlibPromises.set(depName, stdlibPromise);
+    await stdlibPromise;
+  }
+
+  public async ensureLanguageParserLoaded(languageIdOrUri: string): Promise<void> {
+    if (!this.serverDistBase) return;
+    const langId = this.resolveNormalizedLanguageId(languageIdOrUri);
+    if (!this.isParserReady(langId)) {
+      const entry = this.manifest.find((m) => m.id.toLowerCase() === langId.toLowerCase());
+      if (entry && entry.wasm) {
+        await this.loadSingleWasmEntry(entry);
+      }
+    }
+    if (this.lazyLoadParsers && (langId === "modelica" || langId === "modelscript" || langId === "sysml2")) {
+      // Trigger stdlib loading in background if not already loaded, after parser is ready
+      void this.ensureStdlibForLanguage(langId);
+    }
+  }
+
   async initWasmParsers(
     extensionUri: string,
     validationService?: any,
@@ -610,6 +871,7 @@ export class ParserService {
     ],
     useLocalMsl = false,
     onParsersReady?: () => void,
+    options?: { lazyLoadParsers?: boolean | undefined; initialLanguageId?: string | undefined } | undefined,
   ): Promise<void> {
     try {
       // Construct absolute URLs for WASM files using the extension URI.
@@ -634,6 +896,11 @@ export class ParserService {
       const stepWs = this.workspaceManager.getWorkspaceIndex("step");
       if (stepWs) stepWs.serverDistBase = serverDistBase;
       (globalThis as any).serverDistBase = serverDistBase;
+      this.serverDistBase = serverDistBase;
+      this.lazyLoadParsers = Boolean(options?.lazyLoadParsers);
+      this.useLocalMsl = useLocalMsl;
+      this.validationServiceRef = validationService;
+      this.projectDependenciesRef = projectDependencies;
 
       this.connection.sendNotification("modelscript/status", {
         state: "loading",
@@ -646,6 +913,7 @@ export class ParserService {
         wasm?: string | undefined;
         displayName?: string | undefined;
         fileExtensions?: string[] | undefined;
+        extensions?: string[] | undefined;
         syntaxNames?: string[] | undefined;
         fieldNames?: Record<string, number> | undefined;
       }[] = [];
@@ -676,83 +944,27 @@ export class ParserService {
           { id: "scad", wasm: "scad.wasm", displayName: "Scad", fileExtensions: [".scad"] },
         ];
       }
+      this.manifest = manifest;
 
-      await Promise.all(
-        manifest.map(async (entry) => {
-          if (!entry.wasm) return;
-          const syntaxNames = entry.syntaxNames || (globalThis as any)[`${entry.id}SyntaxNames`];
-          const fieldNames = entry.fieldNames || (globalThis as any)[`${entry.id}FieldNames`];
-          const candidates = Array.from(
-            new Set([
-              `${serverDistBase}/${entry.wasm}`,
-              `${serverDistBase}/${entry.id}.wasm`,
-              `${serverDistBase}/parser.wasm`,
-            ]),
-          );
-
-          try {
-            let result: any = null;
-            let lastError: any = null;
-            for (const candUrl of candidates) {
-              try {
-                result = await createWasmParser(candUrl, { syntaxNames, fieldNames });
-                if (result) break;
-              } catch (err) {
-                lastError = err;
-              }
+      if (this.lazyLoadParsers) {
+        const initialTargets = new Set<string>();
+        if (options?.initialLanguageId) {
+          initialTargets.add(this.resolveNormalizedLanguageId(options.initialLanguageId));
+        }
+        for (const doc of this.documents.all()) {
+          initialTargets.add(this.resolveNormalizedLanguageId(doc.languageId || doc.uri));
+        }
+        await Promise.all(
+          Array.from(initialTargets).map(async (langId) => {
+            const entry = manifest.find((m) => m.id.toLowerCase() === langId.toLowerCase());
+            if (entry && entry.wasm) {
+              await this.loadSingleWasmEntry(entry);
             }
-            if (!result && lastError) {
-              throw lastError;
-            }
-
-            if (result) {
-              this.registerParser(entry.id, result.parser, result.facade);
-              if (this.workspaceManager?.unifiedWorkspace && result.parser) {
-                for (const ext of entry.fileExtensions || [`.${entry.id}`]) {
-                  this.workspaceManager.unifiedWorkspace.registerParser(ext, result.parser);
-                }
-              }
-              if (entry.id === "sysml2") {
-                this.registerParser("sysml", result.parser, result.facade);
-                const existingSysml = globalLanguageRegistry.getPluginById("sysml");
-                if (!existingSysml) {
-                  globalLanguageRegistry.register({
-                    id: "sysml",
-                    name: "SysML v2",
-                    extensions: [".sysml", ".sysml2", ".kerml"],
-                    parser: result.parser,
-                    facade: result.facade,
-                    disposables: [],
-                  });
-                } else {
-                  existingSysml.parser = result.parser;
-                  existingSysml.facade = result.facade;
-                }
-              }
-
-              // Register in globalLanguageRegistry as well
-              const existing = globalLanguageRegistry.getPluginById(entry.id);
-              if (!existing) {
-                globalLanguageRegistry.register({
-                  id: entry.id,
-                  name: entry.displayName || entry.id,
-                  extensions: entry.fileExtensions || [`.${entry.id}`],
-                  parser: result.parser,
-                  facade: result.facade,
-                  disposables: [],
-                });
-              } else {
-                existing.parser = result.parser;
-                existing.facade = result.facade;
-              }
-
-              this.connection.console.info(`ModelScript ${entry.displayName || entry.id} parser initialized`);
-            }
-          } catch (e) {
-            this.connection.console.warn(`Failed to load ${entry.id} language: ${e}`);
-          }
-        }),
-      );
+          }),
+        );
+      } else {
+        await Promise.all(manifest.map((entry) => this.loadSingleWasmEntry(entry)));
+      }
 
       // Early callback: notify as soon as Modelica/SysML2 parser is ready
       if (typeof onParsersReady === "function") {
@@ -810,10 +1022,6 @@ export class ParserService {
           this.connection.console.warn(`[lsp] Early validation failed for ${doc.uri}: ${err?.message ?? err}`);
         }
       }
-      this.connection.sendNotification("modelscript/status", {
-        state: "loading",
-        message: "ModelScript (loading libraries...)",
-      });
 
       // Initialize FederatedCacheStore with local IndexedDB (browser) or Memory store (Node)
       const localStore =
@@ -879,6 +1087,37 @@ export class ParserService {
         federatedEndpoints,
       };
       (globalThis as any).savedLoaderCtx = loaderCtx;
+
+      if (this.lazyLoadParsers) {
+        const initialTargets = new Set<string>();
+        if (options?.initialLanguageId) {
+          initialTargets.add(this.resolveNormalizedLanguageId(options.initialLanguageId));
+        }
+        for (const doc of this.documents.all()) {
+          initialTargets.add(this.resolveNormalizedLanguageId(doc.languageId || doc.uri));
+        }
+        const stdlibPromises: Promise<void>[] = [];
+        for (const langId of initialTargets) {
+          if (langId === "modelica" || langId === "modelscript" || langId === "sysml2") {
+            stdlibPromises.push(this.ensureStdlibForLanguage(langId));
+          }
+        }
+        if (stdlibPromises.length > 0) {
+          await Promise.all(stdlibPromises);
+        } else {
+          this.sendProjectTreeChanged();
+          this.connection.sendNotification("modelscript/status", {
+            state: "ready",
+            message: (globalThis as any).getReadyMessage?.() ?? "ModelScript",
+          });
+        }
+        return;
+      }
+
+      this.connection.sendNotification("modelscript/status", {
+        state: "loading",
+        message: "ModelScript (loading libraries...)",
+      });
 
       // Load all project dependencies
       if (validationService) {

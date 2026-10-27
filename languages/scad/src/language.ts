@@ -43,6 +43,7 @@ const PREC = {
 export const scadLanguage = language({
   name: "scad",
   fileExtensions: [".scad"],
+  maturity: "stable",
   lsp: {
     fileExtensions: [".scad"],
     icons: {

@@ -38,6 +38,12 @@ import { MarkdownPreviewService } from "./services/markdown-preview-service.js";
 import { initWorkspaceAndTree, registerVirtualFileSystems } from "./services/virtual-fs-service.js";
 import { SimulationViewPanel } from "./simulation-view-panel.js";
 import { StepEditorProvider } from "./step-editor-provider.js";
+import {
+  getLanguageMaturity,
+  getLanguageMaturityBadge,
+  getStatusBarConfig,
+  isLanguageEnabled,
+} from "./utils/config.js";
 import { VrVisualizationPanel } from "./vr-visualization-panel.js";
 
 let lspManager: LspClientManager | undefined;
@@ -176,10 +182,19 @@ export async function activate(context: vscode.ExtensionContext) {
   shareStatusBar.text = "$(sparkle) Share to Feed";
   shareStatusBar.tooltip = "Share active model snippet or results to ModelScript social feed";
   shareStatusBar.command = "modelscript.shareToFeed";
-  shareStatusBar.show();
+  const updateShareStatusBarVisibility = () => {
+    const { visibility, showSocialFeed } = getStatusBarConfig();
+    if (showSocialFeed && visibility !== "never") {
+      shareStatusBar.show();
+    } else {
+      shareStatusBar.hide();
+    }
+  };
+  updateShareStatusBarVisibility();
   context.subscriptions.push(shareStatusBar);
 
   safeRegisterCommand("modelscript.shareToFeed", () => hostBridgeService.sendShareToFeed());
+  safeRegisterCommand("modelscript.collectWorkspaceSnapshot", () => hostBridgeService.collectWorkspaceSnapshot());
 
   // 11. Start Language Server Client & Notification Handlers
   let isScmRegistered = false;
@@ -279,7 +294,9 @@ export async function activate(context: vscode.ExtensionContext) {
     ),
     ...registerCloudCommands(context, lspManager.client, treeController.experimentsTreeProvider),
     ...registerCosimCommands(context, cosimProvider, treeController.mqttTreeProvider),
-    ...registerAnalyticalCommands(context, lspManager.client, {}, () => markdownService.scheduleMarkdownRefresh()),
+    ...registerAnalyticalCommands(context, lspManager.client, markdownService.markdownVarCache, () =>
+      markdownService.scheduleMarkdownRefresh(),
+    ),
     ...registerCadAndMeshingCommands(context, lspManager.client),
     registerPolyglotActions(context, lspManager.client),
     registerMultiDomainScaffolding(context),
@@ -287,7 +304,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 13. UI Navigation & Diagram Commands
   context.subscriptions.push(
-    commands.registerCommand("modelscript.openDiagram", async () => {
+    safeRegisterCommand("modelscript.openDiagram", async () => {
       const activeEditor = vscode.window.activeTextEditor;
       if (activeEditor?.document && activeEditor.document.uri.scheme !== "output") {
         try {
@@ -327,7 +344,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    commands.registerCommand("modelscript.openDiagramSource", () => {
+    safeRegisterCommand("modelscript.openDiagramSource", () => {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
       if (
         tab?.input instanceof vscode.TabInputCustom &&
@@ -337,7 +354,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    commands.registerCommand("modelscript.addToDiagram", async (firstArg: unknown) => {
+    safeRegisterCommand("modelscript.addToDiagram", async (firstArg: unknown) => {
       if (!lspManager?.client) return;
 
       let className: string | undefined;
@@ -401,7 +418,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    commands.registerCommand("modelscript.openRequirements", async () => {
+    safeRegisterCommand("modelscript.openRequirements", async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor?.document) {
         await vscode.commands.executeCommand(
@@ -414,11 +431,11 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    commands.registerCommand("modelscript.openVrVisualization", () => {
+    safeRegisterCommand("modelscript.openVrVisualization", () => {
       VrVisualizationPanel.createOrShow(context.extensionUri);
     }),
 
-    commands.registerCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
+    safeRegisterCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
       if (!iri) return;
       const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
         "vscode.executeWorkspaceSymbolProvider",
@@ -435,41 +452,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    commands.registerCommand("modelscript.runMcdcTests", async (uri?: string, actionName?: string) => {
-      if (!lspManager?.client) return;
-      const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
-      if (!targetUri) {
-        vscode.window.showWarningMessage("Open a SysML v2 file to run MC/DC formal tests.");
-        return;
-      }
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Synthesizing and executing formal MC/DC test suite for ${actionName || "action"}...`,
-          cancellable: false,
-        },
-        async () => {
-          try {
-            const res = await lspManager!.client.sendRequest<any>("modelscript/runMcdcTests", {
-              uri: targetUri,
-              actionName,
-            });
-            if (res?.success && res.report) {
-              const rep = res.report;
-              vscode.window.showInformationMessage(
-                `Formal MC/DC Tests: ${rep.passed}/${rep.totalTests} passed (${rep.totalDurationMs.toFixed(1)}ms). 100% Region & Facet coverage.`,
-              );
-            } else {
-              vscode.window.showErrorMessage(`MC/DC test generation failed: ${res?.error || "Unknown error"}`);
-            }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`MC/DC test execution failed: ${e?.message || e}`);
-          }
-        },
-      );
-    }),
-
-    commands.registerCommand("modelscript.decomposeRegions", async (uri?: string, actionName?: string) => {
+    safeRegisterCommand("modelscript.decomposeRegions", async (uri?: string, actionName?: string) => {
       if (!lspManager?.client) return;
       const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!targetUri) return;
@@ -496,7 +479,7 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     }),
 
-    commands.registerCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {
+    safeRegisterCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {
       let targetUri = uri;
       if (!targetUri && vscode.window.activeTextEditor) {
         targetUri = vscode.window.activeTextEditor.document.uri;
@@ -511,7 +494,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    commands.registerCommand(
+    safeRegisterCommand(
       "modelscript.runPhysicsSimulation",
       async (args?: { uri: string; className?: string | undefined }) => {
         if (!lspManager?.client) return;
@@ -549,11 +532,11 @@ export async function activate(context: vscode.ExtensionContext) {
       },
     ),
 
-    commands.registerCommand("modelscript.openChat", () => {
+    safeRegisterCommand("modelscript.openChat", () => {
       vscode.commands.executeCommand("modelscript.chat.focus");
     }),
 
-    commands.registerCommand("modelscript.openMultibodyAnimation", async (args?: { uri?: string | undefined }) => {
+    safeRegisterCommand("modelscript.openMultibodyAnimation", async (args?: { uri?: string | undefined }) => {
       if (!lspManager?.client) return;
       const uri = args?.uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!uri) return;
@@ -568,15 +551,78 @@ export async function activate(context: vscode.ExtensionContext) {
         docText,
       );
     }),
+
+    safeRegisterCommand("modelscript.configureLanguages", async () => {
+      const contributedLanguages =
+        (context.extension?.packageJSON?.contributes?.languages as
+          | { id: string; aliases?: string[] | undefined; extensions?: string[] | undefined }[]
+          | undefined) || [];
+      if (contributedLanguages.length === 0) {
+        vscode.commands.executeCommand("workbench.action.openSettings", "modelscript.languages");
+        return;
+      }
+
+      type LangPickItem = vscode.QuickPickItem & { langId?: string };
+      const items: LangPickItem[] = [];
+      const tiers: ("stable" | "beta" | "experimental")[] = ["stable", "beta", "experimental"];
+      const tierHeaders: Record<"stable" | "beta" | "experimental", string> = {
+        stable: "🟢 Stable Languages (Production-ready)",
+        beta: "🟡 Beta Languages (Active domain toolchains)",
+        experimental: "🧪 Experimental Languages (Preview / Grammar & AST)",
+      };
+
+      for (const tier of tiers) {
+        const group = contributedLanguages.filter((l) => getLanguageMaturity(l.id) === tier);
+        if (group.length === 0) continue;
+        items.push({
+          label: tierHeaders[tier],
+          kind: vscode.QuickPickItemKind.Separator,
+        });
+        for (const lang of group) {
+          const displayName = lang.aliases?.[0] ?? lang.id;
+          const badge = getLanguageMaturityBadge(lang.id);
+          const exts = (lang.extensions ?? []).join(", ");
+          items.push({
+            label: displayName,
+            description: `[${badge}]  ${exts}`,
+            picked: isLanguageEnabled(lang.id),
+            langId: lang.id,
+          });
+        }
+      }
+
+      const selected = await vscode.window.showQuickPick(items, {
+        canPickMany: true,
+        title: "ModelScript: Configure Enabled Languages & Maturity Tiers",
+        placeHolder: "Select which engineering languages to enable in this workspace",
+      });
+      if (!selected) return;
+
+      const selectedIds = new Set(selected.map((s) => s.langId).filter((id): id is string => Boolean(id)));
+      const cfg = vscode.workspace.getConfiguration("modelscript");
+      for (const lang of contributedLanguages) {
+        const shouldEnable = selectedIds.has(lang.id);
+        if (isLanguageEnabled(lang.id) !== shouldEnable) {
+          await cfg.update(`languages.${lang.id}.enabled`, shouldEnable, vscode.ConfigurationTarget.Global);
+        }
+      }
+      lspManager?.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
+      lspManager?.syncSettingsToServer();
+      vscode.window.showInformationMessage(
+        `Updated ModelScript enabled languages (${selectedIds.size} of ${contributedLanguages.length} enabled).`,
+      );
+    }),
   );
 
-  // 14. Editor Active State and Viewport Tracking
+  // 14. Editor Active State, Configuration Sync, and Viewport Tracking
+  lspManager.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor?.document && editor.document.uri.scheme !== "output") {
         treeController.libraryTreeProvider.setDocumentUri(editor.document.uri.toString());
       }
       const langId = editor?.document.languageId;
+      lspManager?.updateActiveEditorStatusBar(langId);
       vscode.commands.executeCommand("setContext", "modelscript.activeLanguage", langId);
       vscode.commands.executeCommand(
         "setContext",
@@ -585,7 +631,16 @@ export async function activate(context: vscode.ExtensionContext) {
       );
       vscode.commands.executeCommand("setContext", "modelscript.owl2Active", langId === "owl2");
       if (langId) {
-        vscode.commands.executeCommand("setContext", `modelscript.${langId}Active`, true);
+        vscode.commands.executeCommand("setContext", `modelscript.${langId}Active`, isLanguageEnabled(langId));
+      }
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("modelscript.ui.statusBar") || e.affectsConfiguration("modelscript.languages")) {
+        updateShareStatusBarVisibility();
+        lspManager?.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
+      }
+      if (e.affectsConfiguration("modelscript")) {
+        lspManager?.syncSettingsToServer();
       }
     }),
   );

@@ -9,6 +9,8 @@ import semver from "semver";
 import {
   type AasxFileEntry,
   type CanonicalWorkspaceManifest,
+  EXTENSION_TO_LANGUAGE_ID,
+  KparPackageAdapter,
   ManifestLensEngine,
   OpcAasxPackager,
   VariantResolver,
@@ -19,6 +21,7 @@ import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import type { LibraryStorage } from "../storage.js";
 import { inspectClassSource } from "../util/class-source-inspector.js";
 import { parsePackageMo } from "../util/package-mo.js";
+import { renderPolyglotClassDiagramSvg } from "../util/polyglot-doc-indexer.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
 function isValidPackageName(name: string): boolean {
@@ -718,9 +721,28 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const canManage = Boolean(req.user && database.canUserManagePackage(name, req.user.id));
 
       const pkgRecord = database.getPackage(name);
+      if (pkgRecord?.description) {
+        res.json({
+          name,
+          version,
+          description: pkgRecord.description,
+          modelicaVersion: version,
+          size: file.size,
+          contentHash: contentHash || undefined,
+          signature: release?.signature ?? undefined,
+          publishedAt: release?.published_at ?? undefined,
+          isDeprecated: Boolean(release?.is_deprecated),
+          deprecationReason: release?.deprecation_reason ?? null,
+          isYanked: Boolean(release?.is_yanked),
+          yankReason: release?.yank_reason ?? null,
+          yankedAt: release?.yanked_at ?? null,
+          canManage,
+        });
+        return;
+      }
 
       try {
-        const packageMoContent = await extractPackageMoFromZip(file.buffer);
+        const packageMoContent = await extractPackageMoFromZip(file.buffer, name);
         const parsed = parsePackageMo(packageMoContent);
 
         res.json({
@@ -765,7 +787,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    * GET /api/v1/libraries/:name/:version/files
    * GET /api/v1/libraries/:scope/:name/:version/files
    *
-   * Get all .mo files extracted for a specific package version.
+   * Get all source files across all 44 languages extracted for a specific package version.
    * This allows the LSP to download all source files without a zip.
    */
   router.get(
@@ -809,10 +831,15 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      const isPolyglotSourceFile = (relPath: string): boolean => {
+        const ext = path.extname(relPath).toLowerCase();
+        return Boolean(EXTENSION_TO_LANGUAGE_ID[ext]) || ext === ".mo" || ext === ".sysml" || ext === ".kerml";
+      };
+
       if (isStream) {
         res.setHeader("Content-Type", "application/x-ndjson");
         walkDir(extractedDir, (relPath, content) => {
-          if (relPath.endsWith(".mo")) {
+          if (isPolyglotSourceFile(relPath)) {
             res.write(JSON.stringify({ [relPath]: content }) + "\n");
           }
         });
@@ -820,7 +847,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       } else {
         const files: Record<string, string> = {};
         walkDir(extractedDir, (relPath, content) => {
-          if (relPath.endsWith(".mo")) {
+          if (isPolyglotSourceFile(relPath)) {
             files[relPath] = content;
           }
         });
@@ -1011,7 +1038,56 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           res.json(ManifestLensEngine.projectToOkhJson(resolvedManifest));
           return;
         }
+        if (lens === "kpar") {
+          res.json(ManifestLensEngine.projectToKpar(resolvedManifest));
+          return;
+        }
         res.json(ManifestLensEngine.projectToPackageJson(resolvedManifest));
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/export/kpar
+   * GET /api/v1/libraries/:scope/:name/:version/export/kpar
+   * Materialize and export an OMG SysML v2 / KerML compliant .kpar package archive
+   * containing .meta.json, .Index.json, and all SysML/KerML/model files.
+   */
+  router.get(
+    ["/:name/:version/export/kpar", "/:scope/:name/:version/export/kpar"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const variant = req.query["variant"] as string | undefined;
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const { manifest, extractedDir } = await resolveCanonicalManifest(storage, database, name, version);
+        const { resolvedManifest } = VariantResolver.resolveVariant(manifest, variant);
+
+        const files: { path: string; content: string | Uint8Array }[] = [];
+        if (extractedDir && fs.existsSync(extractedDir)) {
+          walkDir(extractedDir, (relPath, content) => {
+            if (relPath !== ".meta.json" && relPath !== ".Index.json") {
+              files.push({ path: relPath, content });
+            }
+          });
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const kparU8 = (KparPackageAdapter.buildKparArchive as any)(resolvedManifest, files);
+        const nodeBuf = Buffer.from(kparU8);
+
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader("Content-Disposition", `attachment; filename="${name.replace(/\//g, "-")}-${version}.kpar"`);
+        res.setHeader("Content-Length", nodeBuf.length);
+        res.send(nodeBuf);
       } catch (err: unknown) {
         res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
       }
@@ -1443,7 +1519,32 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      const svg = storage.readSvg(name, version, className, "icon");
+      let svg = storage.readSvg(name, version, className, "icon");
+      if (!svg) {
+        const cls = database.getClass(name, version, className);
+        if (cls) {
+          const generated = renderPolyglotClassDiagramSvg(
+            {
+              className,
+              classKind: cls.classKind,
+              description: cls.description,
+              documentation: cls.documentation,
+              baseClasses: cls.extends,
+              components: cls.components.map((c) => ({
+                name: c.component_name,
+                typeName: c.type_name,
+                description: c.description,
+                causality: c.causality,
+                variability: c.variability,
+                modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
+              })),
+            },
+            cls.classKind.startsWith("sysml") ? "SysML v2" : cls.classKind.replace(/_/g, " "),
+          );
+          storage.storeSvg(name, version, className, generated.iconSvg, generated.diagramSvg);
+          svg = generated.iconSvg;
+        }
+      }
       if (!svg) {
         res.status(204).end();
         return;
@@ -1514,7 +1615,32 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      const svg = storage.readSvg(name, version, className, "diagram");
+      let svg = storage.readSvg(name, version, className, "diagram");
+      if (!svg) {
+        const cls = database.getClass(name, version, className);
+        if (cls) {
+          const generated = renderPolyglotClassDiagramSvg(
+            {
+              className,
+              classKind: cls.classKind,
+              description: cls.description,
+              documentation: cls.documentation,
+              baseClasses: cls.extends,
+              components: cls.components.map((c) => ({
+                name: c.component_name,
+                typeName: c.type_name,
+                description: c.description,
+                causality: c.causality,
+                variability: c.variability,
+                modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
+              })),
+            },
+            cls.classKind.startsWith("sysml") ? "SysML v2" : cls.classKind.replace(/_/g, " "),
+          );
+          storage.storeSvg(name, version, className, generated.iconSvg, generated.diagramSvg);
+          svg = generated.diagramSvg;
+        }
+      }
       if (!svg) {
         res.status(204).end();
         return;

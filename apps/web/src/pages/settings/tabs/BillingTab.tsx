@@ -118,15 +118,34 @@ export interface BillingTabProps {
   onBack: () => void;
 }
 
+type BillingSummaryView = UserBillingSummary & {
+  wallet: {
+    balance: number;
+    total_spent: number;
+    total_jobs_dispatched: number;
+    total_cpu_core_hours: number;
+    total_gpu_hours: number;
+  };
+  recent_transactions: {
+    id: string | number;
+    created_at: string;
+    transaction_type: string;
+    description: string;
+    job_id?: string | null;
+    amount: number;
+    balance_after: number;
+  }[];
+};
+
 export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
-  const [billingSummary, setBillingSummary] = useState<UserBillingSummary | null>(null);
+  const [billingSummary, setBillingSummary] = useState<BillingSummaryView | null>(null);
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getUserBillingSummary()
-      .then((data) => setBillingSummary(data))
+      .then((data) => setBillingSummary(data as BillingSummaryView))
       .catch(() => {
         setError("Unable to retrieve billing summary. Please check your network connection.");
       });
@@ -142,7 +161,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
         prev
           ? {
               ...prev,
-              wallet: updatedWallet,
+              wallet: updatedWallet as unknown as BillingSummaryView["wallet"],
             }
           : null,
       );

@@ -70,6 +70,12 @@ export function inspectPackageZip(zipData: Uint8Array): ExtractedZipMetadata {
 
   let packageJsonText: string | null = null;
   let packageMoText: string | null = null;
+  let kparMetaText: string | null = null;
+  let fmuXmlText: string | null = null;
+  let sspXmlText: string | null = null;
+  let ddpJsonText: string | null = null;
+  let rosXmlText: string | null = null;
+  let fpmTomlText: string | null = null;
 
   let pos = cdOffset;
   while (pos < cdEnd && pos + 46 <= zipData.byteLength) {
@@ -95,16 +101,29 @@ export function inspectPackageZip(zipData: Uint8Array): ExtractedZipMetadata {
       packageJsonText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
     } else if (isRootOrTopDir && baseName === "package.mo" && !packageMoText) {
       packageMoText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
+    } else if (isRootOrTopDir && baseName === ".meta.json" && !kparMetaText) {
+      kparMetaText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
+    } else if (isRootOrTopDir && baseName === "modelDescription.xml" && !fmuXmlText) {
+      fmuXmlText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
+    } else if (isRootOrTopDir && (baseName === "SystemStructure.ssd" || baseName?.endsWith(".ssd")) && !sspXmlText) {
+      sspXmlText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
+    } else if (isRootOrTopDir && baseName === "ddp-manifest.json" && !ddpJsonText) {
+      ddpJsonText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
+    } else if (isRootOrTopDir && (baseName === "package.xml" || baseName === "model.config") && !rosXmlText) {
+      rosXmlText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
+    } else if (isRootOrTopDir && baseName === "fpm.toml" && !fpmTomlText) {
+      fpmTomlText = readEntryText(localHeaderOffset, compressionMethod, compressedSize);
     }
 
     pos += 46 + fileNameLength + extraLength + commentLength;
   }
 
-  if (packageJsonText) {
+  if (packageJsonText || kparMetaText || ddpJsonText) {
     result.hasManifest = true;
     try {
-      const parsed = JSON.parse(packageJsonText) as Record<string, unknown>;
-      if (typeof parsed.name === "string" && parsed.name.trim()) result.name = parsed.name.trim();
+      const parsed = JSON.parse(packageJsonText ?? kparMetaText ?? ddpJsonText!) as Record<string, unknown>;
+      const rawName = (parsed.name ?? parsed.title ?? parsed.idShort) as string | undefined;
+      if (typeof rawName === "string" && rawName.trim()) result.name = rawName.trim();
       if (typeof parsed.version === "string" && parsed.version.trim()) result.version = parsed.version.trim();
       if (typeof parsed.description === "string" && parsed.description.trim()) {
         result.description = parsed.description.trim();
@@ -130,6 +149,50 @@ export function inspectPackageZip(zipData: Uint8Array): ExtractedZipMetadata {
     if (!result.version && verMatch?.[1]) {
       result.version = verMatch[1];
     }
+  }
+
+  if (fmuXmlText && !result.hasManifest) {
+    result.hasManifest = true;
+    const nameMatch = fmuXmlText.match(/\bmodelName\s*=\s*"([^"]+)"/i);
+    const verMatch = fmuXmlText.match(/\bversion\s*=\s*"([^"]+)"/i);
+    const descMatch = fmuXmlText.match(/\bdescription\s*=\s*"([^"]+)"/i);
+    if (nameMatch?.[1]) result.name = nameMatch[1];
+    if (verMatch?.[1]) result.version = verMatch[1];
+    if (descMatch?.[1]) result.description = descMatch[1];
+  }
+
+  if (sspXmlText && !result.hasManifest) {
+    result.hasManifest = true;
+    const nameMatch = sspXmlText.match(/<(?:ssd:)?System\b[^>]*\bname\s*=\s*"([^"]+)"/i);
+    const verMatch = sspXmlText.match(/<(?:ssd:)?System\b[^>]*\bversion\s*=\s*"([^"]+)"/i);
+    const descMatch = sspXmlText.match(/<(?:ssd:)?System\b[^>]*\bdescription\s*=\s*"([^"]+)"/i);
+    if (nameMatch?.[1]) result.name = nameMatch[1];
+    if (verMatch?.[1]) result.version = verMatch[1];
+    if (descMatch?.[1]) result.description = descMatch[1];
+  }
+
+  if (rosXmlText && !result.hasManifest) {
+    result.hasManifest = true;
+    const nameMatch = rosXmlText.match(/<name>([^<]+)<\/name>/i);
+    const verMatch = rosXmlText.match(/<version>([^<]+)<\/version>/i);
+    const descMatch = rosXmlText.match(/<description>([\s\S]*?)<\/description>/i);
+    const licMatch = rosXmlText.match(/<license>([^<]+)<\/license>/i);
+    if (nameMatch?.[1]) result.name = nameMatch[1].trim();
+    if (verMatch?.[1]) result.version = verMatch[1].trim();
+    if (descMatch?.[1]) result.description = descMatch[1].trim();
+    if (licMatch?.[1]) result.license = licMatch[1].trim();
+  }
+
+  if (fpmTomlText && !result.hasManifest) {
+    result.hasManifest = true;
+    const nameMatch = fpmTomlText.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+    const verMatch = fpmTomlText.match(/^\s*version\s*=\s*["']([^"']+)["']/m);
+    const descMatch = fpmTomlText.match(/^\s*description\s*=\s*["']([^"']+)["']/m);
+    const licMatch = fpmTomlText.match(/^\s*license\s*=\s*["']([^"']+)["']/m);
+    if (nameMatch?.[1]) result.name = nameMatch[1].trim();
+    if (verMatch?.[1]) result.version = verMatch[1].trim();
+    if (descMatch?.[1]) result.description = descMatch[1].trim();
+    if (licMatch?.[1]) result.license = licMatch[1].trim();
   }
 
   return result;

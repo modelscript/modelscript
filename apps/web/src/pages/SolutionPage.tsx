@@ -197,7 +197,7 @@ export default function SolutionPage() {
         {/* Right Action Bar */}
         <Box display="flex" alignItems="center" gap={2}>
           {solution.supported_formats && solution.supported_formats.length > 0 && (
-            <Box display="flex" gap={1} mr={2} style={{ display: "none" }}>
+            <Box display="flex" gap={1} mr={2}>
               {solution.supported_formats.map((fmt) => (
                 <span
                   key={fmt}

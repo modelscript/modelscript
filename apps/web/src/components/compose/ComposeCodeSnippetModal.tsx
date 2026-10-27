@@ -6,7 +6,16 @@ import React from "react";
 import { createArtifactView } from "../../api";
 import type { NotebookCell } from "../../util/notebook";
 import Box from "../Box";
+import { MORSEL_LANGUAGES, getLanguageInfo } from "../morsel/constants";
 import { CommandPill, TweetButton } from "./styles";
+
+const GENERAL_CODE_LANGUAGES = [
+  { id: "typescript", label: "TypeScript", ext: "ts" },
+  { id: "python", label: "Python", ext: "py" },
+  { id: "rust", label: "Rust", ext: "rs" },
+  { id: "json", label: "JSON", ext: "json" },
+  { id: "bash", label: "Bash", ext: "sh" },
+] as const;
 
 export interface ComposeCodeSnippetModalProps {
   isOpen: boolean;
@@ -46,6 +55,8 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   attachArtifactToComposer,
 }) => {
   if (!isOpen) return null;
+
+  const snippetTitle = snippetFilename;
 
   return (
     <>
@@ -91,7 +102,9 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
           borderBottom="1px solid var(--color-border)"
         >
           <Box display="flex" alignItems="center" gap={2}>
-            <CodeIcon size={18} style={{ color: "var(--color-accent-cyan)" }} />
+            <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+              <CodeIcon size={18} />
+            </span>
             <Heading as="h3" style={{ fontSize: "16px", margin: 0 }}>
               Insert Code Snippet / Executable Model
             </Heading>
@@ -131,18 +144,27 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
                 outline: "none",
               }}
             >
-              <option value="modelica">Modelica (.mo)</option>
-              <option value="msx">ModelScript (.msx)</option>
-              <option value="sysml2">SysML v2 (.sysml)</option>
-              <option value="typescript">TypeScript (.ts)</option>
-              <option value="python">Python (.py)</option>
+              <optgroup label="Engineering & Simulation Languages (44)">
+                {MORSEL_LANGUAGES.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.label || lang.name} (.{lang.ext})
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="General Code Blocks">
+                {GENERAL_CODE_LANGUAGES.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.label} (.{lang.ext})
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </Box>
           <textarea
             rows={10}
             value={snippetCode}
             onChange={(e) => setSnippetCode(e.target.value)}
-            placeholder="Paste or write Modelica / ModelScript / SysML v2 code..."
+            placeholder="Paste or write Modelica / ModelScript / SysML v2 / engineering code..."
             style={{
               width: "100%",
               padding: "10px 12px",
@@ -158,9 +180,15 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
               resize: "vertical",
             }}
           />
-          <Box display="flex" justifyContent="space-between" alignItems="center" pt={1} flexWrap="wrap" gap={2}>
+          <Box
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            style={{ paddingTop: "4px", flexWrap: "wrap" }}
+            gap={2}
+          >
             <Text style={{ fontSize: "11.5px", color: "var(--color-text-muted)" }}>
-              Renders with Baeldung-style line numbers, syntax highlighting, Copy, and ▶ Open in IDE buttons.
+              Renders with Baeldung-style line numbers, syntax highlighting, Copy, and ▶ Open in Playground buttons.
             </Text>
             <Box display="flex" gap={2}>
               {token && (
@@ -168,12 +196,20 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
                   type="button"
                   onClick={async () => {
                     try {
+                      const langInfo = getLanguageInfo(snippetLang);
+                      const generalLang = GENERAL_CODE_LANGUAGES.find((g) => g.id === snippetLang);
+                      const langLabel = generalLang?.label || langInfo.label || langInfo.name;
+                      const resolvedTitle = snippetTitle.trim() || `${langLabel} Snippet`;
                       const data = await createArtifactView({
-                        artifact_type: "modelica-code",
-                        view_config: JSON.stringify({ code: snippetCode }),
-                        title: snippetFilename.trim() || "Modelica Code",
+                        artifact_type: snippetLang === "modelica" ? "modelica-code" : snippetLang,
+                        view_config: JSON.stringify({
+                          code: snippetCode,
+                          title: resolvedTitle,
+                          dialect: snippetLang,
+                        }),
+                        title: resolvedTitle,
                       });
-                      attachArtifactToComposer(data.id, snippetFilename.trim() || "Modelica Code");
+                      attachArtifactToComposer(data.id, resolvedTitle);
                       onClose();
                     } catch (err) {
                       console.error(err);

@@ -5,6 +5,7 @@ import { Heading, Label, Text } from "@primer/react";
 import React from "react";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
+import { formatFormalSignature } from "../../../components/classTreeUtils";
 import { HeaderBar, TabBar, TabButton, TabCountBadge } from "../styles";
 import type { ClassDetail, ClassTabId, JobStatus } from "../types";
 
@@ -29,6 +30,12 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   setActiveTab,
   equationsCount,
 }) => {
+  const signature = formatFormalSignature({
+    className,
+    classKind: cls.classKind,
+    baseClasses: cls.baseClasses,
+  });
+
   return (
     <HeaderBar>
       <Box mb={3}>
@@ -49,7 +56,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
         />
       </Box>
       <Box display="flex" alignItems="center" justifyContent="space-between" gap="16px" flexWrap="wrap">
-        <Box>
+        <Box style={{ width: "100%" }}>
           <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
             <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
               {className}
@@ -83,6 +90,21 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
               {cls.description}
             </Text>
           )}
+          <div
+            style={{
+              marginTop: 10,
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "var(--color-glass-bg)",
+              border: "1px solid var(--color-border)",
+              fontFamily: "var(--font-mono, monospace)",
+              fontSize: 12.5,
+              color: "var(--color-text-primary)",
+              overflowX: "auto",
+            }}
+          >
+            {signature}
+          </div>
         </Box>
       </Box>
 

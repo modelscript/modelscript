@@ -2,17 +2,7 @@
 
 /**
  * Code editor component that delegates all language intelligence to the
- * LSP server via the Monaco-LSP adapter.
- *
- * The editor no longer:
- *   - parses via tree-sitter
- *   - lints via ModelicaLinter
- *   - registers ad-hoc completion/hover/semantic-token providers
- *
- * Instead it:
- *   - sends didOpen/didChange to the LSP
- *   - receives diagnostics via publishDiagnostics notification
- *   - proxies completion/hover/formatting/semantic tokens via the adapter
+ * LSP server via the Monaco-LSP adapter across all 44 ModelScript languages.
  */
 
 import { Editor, loader, type Theme } from "@monaco-editor/react";
@@ -23,7 +13,7 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
 import { didChange, didChangeVisibleRanges, didOpen } from "./util/lsp-bridge";
 import { getLsp, startLsp } from "./util/lsp-worker";
-import { setupMonacoLspAdapter } from "./util/monaco-lsp-adapter";
+import { registerAllModelscriptLanguages, setupMonacoLspAdapter } from "./util/monaco-lsp-adapter";
 
 // ────────────────────────────────────────────────────────────────────
 // Monaco environment (editor web worker — NOT the LSP worker)
@@ -49,6 +39,7 @@ if (typeof window !== "undefined") {
 interface CodeEditorProps {
   content: string;
   uri: string;
+  languageId?: string | undefined;
   setEditor: (editor: editor.ICodeEditor) => void;
   onChange?: ((value: string) => void) | undefined;
   onProgress?: ((progress: number, message: string) => void) | undefined;
@@ -79,6 +70,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const adapterDisposableRef = useRef<IDisposable | null>(null);
   const didOpenSentRef = useRef(false);
   const lastValueRef = useRef<string | undefined>(undefined);
+  const uriRef = useRef(props.uri);
+  const languageIdRef = useRef(props.languageId ?? "modelica");
+  uriRef.current = props.uri;
+  languageIdRef.current = props.languageId ?? "modelica";
 
   // ── LSP adapter setup (runs once on mount) ──
   useEffect(() => {
@@ -86,15 +81,15 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
     (async () => {
       props.onProgress?.(20, "Starting language server…");
-      const connection = await startLsp();
+      const connection = await startLsp(languageIdRef.current);
       if (cancelled) return;
 
       props.onProgress?.(40, "Connecting editor to language server…");
 
       // Register Monaco providers that proxy to the LSP
-      adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection, props.uri, {
+      adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection as any, uriRef.current, {
         onDiagnostics: (_uri, markers) => {
-          if (_uri === props.uri) {
+          if (_uri === uriRef.current) {
             props.onDiagnostics?.(markers);
           }
         },
@@ -142,12 +137,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       didOpenSentRef.current = true;
       const value = ed.getValue();
       lastValueRef.current = value;
-      didOpen(props.uri, value);
+      didOpen(uriRef.current, value, languageIdRef.current);
     }
 
     // ── Viewport tracking: send visible line ranges to LSP ──
-    // This enables the server to prioritize linting symbols within
-    // the user's visible area for large files.
     const sendVisibleRanges = debounce(() => {
       const visibleRanges = ed.getVisibleRanges();
       if (visibleRanges.length > 0) {
@@ -155,18 +148,17 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           startLine: r.startLineNumber - 1, // Monaco is 1-indexed, LSP is 0-indexed
           endLine: r.endLineNumber - 1,
         }));
-        didChangeVisibleRanges(props.uri, ranges);
+        didChangeVisibleRanges(uriRef.current, ranges);
       }
     }, 150);
 
     ed.onDidScrollChange(sendVisibleRanges);
-    // Send initial viewport on mount
     sendVisibleRanges();
   };
 
   // ── Handler: content changed ──
   const sendDidChange = debounce((value: string) => {
-    didChange(props.uri, value);
+    didChange(uriRef.current, value);
     props.onParsed?.();
   }, 300);
 
@@ -183,18 +175,17 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       sendDidChange.cancel();
       const value = editorRef.current?.getValue();
       if (value !== undefined) {
-        didChange(props.uri, value);
+        didChange(uriRef.current, value);
       }
     },
     revealComponent: (name: string) => {
-      // Use document symbols to find the component
       const ed = editorRef.current;
       if (!ed) return;
       const conn = getLsp();
       if (!conn) return;
 
       conn
-        .sendRequest("textDocument/documentSymbol", { textDocument: { uri: props.uri } })
+        .sendRequest("textDocument/documentSymbol", { textDocument: { uri: uriRef.current } })
         .then((symbols: any) => {
           const findSymbol = (items: any[]): any => {
             for (const sym of items) {
@@ -227,8 +218,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     <Editor
       theme={props.theme}
       defaultValue={props.content}
-      defaultLanguage="modelica"
+      language={props.languageId ?? "modelica"}
       path={props.uri}
+      beforeMount={(m) => {
+        registerAllModelscriptLanguages(m);
+      }}
       onChange={handleDidChangeContent}
       onMount={handleEditorDidMount}
       options={
@@ -241,7 +235,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
               guides: {
                 indentation: true,
               },
-              readOnly: props.readOnly,
+              readOnly: Boolean(props.readOnly),
               "semanticHighlighting.enabled": true,
             }
           : {

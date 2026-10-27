@@ -31,7 +31,7 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   activitypub_federation: false,
   sysml2_omg_api: false,
   digital_thread_explorer: false,
-  heavy_vscode_ide: false,
+  heavy_vscode_ide: true,
   experimental_viewers: false,
   bot_accounts: false,
   sparql_rdf_endpoints: false,

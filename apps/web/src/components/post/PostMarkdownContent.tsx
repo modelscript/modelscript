@@ -8,6 +8,8 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { slugifyHeading } from "../../util/notebook";
+import { renderSourceToDiagramSvg } from "../artifacts/PolyglotArtifactViewer";
+import { compressMorselPayload } from "../morsel/util/permalink";
 import ProfileHoverCard from "../ProfileHoverCard";
 
 const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
@@ -300,6 +302,27 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
     color: var(--color-text-heading);
   }
 
+  .msx-code-btn-active {
+    background: rgba(6, 182, 212, 0.22);
+    border-color: var(--color-accent-cyan, #06b6d4);
+    color: #38bdf8;
+  }
+
+  .msx-code-diagram {
+    padding: 16px;
+    background: #010409;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    max-height: 440px;
+
+    svg {
+      max-width: 100%;
+      height: auto;
+    }
+  }
+
   .msx-code-body {
     padding: 10px 0;
     overflow-x: auto;
@@ -455,19 +478,120 @@ function formatLatexExpression(rawLatex: string): string {
   return out;
 }
 
-function highlightCodeLine(line: string): string {
+const POLYGLOT_EXT_MAP: Record<string, string> = {
+  modelica: ".mo",
+  mo: ".mo",
+  modelscript: ".msx",
+  msx: ".msx",
+  sysml: ".sysml",
+  sysml2: ".sysml",
+  kerml: ".kerml",
+  step: ".step",
+  stp: ".stp",
+  owl2: ".owl",
+  owl: ".owl",
+  ofn: ".ofn",
+  calculix: ".inp",
+  abaqus: ".inp",
+  "fea-deck": ".inp",
+  fea: ".inp",
+  su2: ".cfg",
+  "cfd-config": ".cfg",
+  cfd: ".cfg",
+  scad: ".scad",
+  openscad: ".scad",
+  csg: ".csg",
+  ssp: ".ssd",
+  pscad: ".pscx",
+  psse: ".raw",
+  raw: ".raw",
+  psout: ".psout",
+  olga: ".opi",
+  easy5: ".ez5",
+  rocets: ".roc",
+  "pipeline-lps": ".lps",
+  lps: ".lps",
+  sima: ".sima",
+  "gt-suite": ".gtm",
+  gtm: ".gtm",
+  gensys: ".gensys",
+  simpack: ".spck",
+  spck: ".spck",
+  adams: ".adm",
+  adm: ".adm",
+  autosar: ".arxml",
+  arxml: ".arxml",
+  ccsds: ".oem",
+  oem: ".oem",
+  energyplus: ".idf",
+  idf: ".idf",
+  epanet: ".inp",
+  opendrive: ".xodr",
+  xodr: ".xodr",
+  openscenario: ".xosc",
+  xosc: ".xosc",
+  plcopen: ".st",
+  iec61131: ".st",
+  st: ".st",
+  reqif: ".reqif",
+  simulink: ".mdl",
+  mdl: ".mdl",
+  slx: ".slx",
+  spice: ".sp",
+  cir: ".cir",
+  urdf: ".urdf",
+  "verilog-a": ".va",
+  va: ".va",
+  aspen: ".bkp",
+  swmm: ".inp",
+  touchstone: ".s2p",
+  s2p: ".s2p",
+  ibis: ".ibs",
+  opendss: ".dss",
+  dss: ".dss",
+  relap5: ".relap",
+  eclipse: ".data",
+  sbml: ".sbml",
+  jsbsim: ".xml",
+  c: ".c",
+  fortran: ".f90",
+  f90: ".f90",
+  csv: ".csv",
+  tsv: ".tsv",
+};
+
+function highlightCodeLine(line: string, lang = "modelica"): string {
+  const trimmed = line.trimStart();
+  if (
+    trimmed.startsWith("//") ||
+    trimmed.startsWith("#") ||
+    trimmed.startsWith(";") ||
+    trimmed.startsWith("!") ||
+    trimmed.startsWith("%") ||
+    trimmed.startsWith("--") ||
+    trimmed.startsWith("**") ||
+    (trimmed.startsWith("*") && ["spice", "cir", "adams", "adm"].includes(lang)) ||
+    (trimmed.startsWith("<!--") && trimmed.endsWith("-->"))
+  ) {
+    return `<span class="tok-comment">${escapeHtmlText(line)}</span>`;
+  }
+
   const commentIdx = line.indexOf("//");
-  const codePart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
-  const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : "";
+  const hashIdx = ["owl2", "owl", "su2", "cfd", "gensys", "scad", "python", "yaml", "toml"].includes(lang)
+    ? line.indexOf("#")
+    : -1;
+  const splitIdx = commentIdx >= 0 ? commentIdx : hashIdx;
+  const codePart = splitIdx >= 0 ? line.slice(0, splitIdx) : line;
+  const commentPart = splitIdx >= 0 ? line.slice(splitIdx) : "";
 
   let html = escapeHtmlText(codePart);
   html = html.replace(/(&quot;.*?&quot;)/g, '<span class="tok-str">$1</span>');
   html = html.replace(
-    /\b(model|block|connector|record|package|function|type|extends|equation|initial|algorithm|parameter|constant|discrete|input|output|flow|stream|if|then|else|elseif|when|elsewhen|for|loop|while|in|end|within|import|encapsulated|partial|replaceable|redeclare|final|inner|outer|public|protected|connect|der|pre|reinit|time|annotation|part|def|port|attribute|item|action|state|calc|constraint|requirement)\b/g,
+    /\b(model|block|connector|record|package|function|type|extends|equation|initial|algorithm|parameter|constant|discrete|input|output|flow|stream|if|then|else|elseif|when|elsewhen|for|loop|while|in|end|within|import|encapsulated|partial|replaceable|redeclare|final|inner|outer|public|protected|connect|der|pre|reinit|time|annotation|part|def|port|attribute|item|action|state|calc|constraint|requirement|module|union|difference|intersection|translate|rotate|scale|cube|sphere|cylinder|polyhedron|Ontology|Prefix|Declaration|SubClassOf|EquivalentClasses|ObjectPropertyAssertion|DataPropertyAssertion|Class|ObjectProperty|DataProperty|NamedIndividual|analog|electrical|discipline|enddiscipline|endmodule|ddt|idt|subroutine|program|implicit|none|real|integer|double|precision|dimension|void|int|float|double|struct|return|PROGRAM|END_PROGRAM|FUNCTION_BLOCK|END_FUNCTION_BLOCK|VAR|VAR_INPUT|VAR_OUTPUT|END_VAR|IF|THEN|ELSIF|ELSE|END_IF|CASE|OF|END_CASE|FOR|TO|DO|END_FOR|coupl|mass|func|s_var|l_var|body|joint|marker|force|pipe|branch|node|source|boundary|compressor)\b/g,
     '<span class="tok-kw">$1</span>',
   );
   html = html.replace(
-    /\b(Real|Integer|Boolean|String|StateSelect|SI\.Voltage|SI\.Current|SI\.Resistance|SI\.Capacitance|SI\.Inductance|SI\.Position|SI\.Velocity|SI\.Acceleration|SI\.Force|SI\.Torque|SI\.Temperature)\b/g,
+    /\b(Real|Integer|Boolean|String|StateSelect|SI\.Voltage|SI\.Current|SI\.Resistance|SI\.Capacitance|SI\.Inductance|SI\.Position|SI\.Velocity|SI\.Acceleration|SI\.Force|SI\.Torque|SI\.Temperature|BOOL|INT|DINT|REAL|LREAL|TIME|STRING)\b/g,
     '<span class="tok-type">$1</span>',
   );
   html = html.replace(/\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, '<span class="tok-num">$1</span>');
@@ -597,7 +721,7 @@ export const PostMarkdownContent: React.FC<{
       bq.parentNode?.replaceChild(calloutDiv, bq);
     });
 
-    // 8. Upgrade fenced code blocks with header, syntax highlighting, line numbers, Copy & Open in IDE
+    // 8. Upgrade fenced code blocks with header, 44-language highlighting, Diagram/Code toggle, Copy & Open in Playground
     const preBlocks = containerRef.current.querySelectorAll("pre");
     preBlocks.forEach((pre) => {
       const codeEl = pre.querySelector("code");
@@ -605,25 +729,36 @@ export const PostMarkdownContent: React.FC<{
       const rawCode = (codeEl.textContent || "").replace(/\n$/, "");
       const langClass = Array.from(codeEl.classList).find((c) => c.startsWith("language-"));
       const lang = (langClass ? langClass.replace("language-", "") : "modelica").toLowerCase();
+      const ext = POLYGLOT_EXT_MAP[lang] || `.${lang}`;
 
       const lines = rawCode.split("\n");
       let fileTitle = "";
       if (lines.length > 0) {
-        const fileMatch = lines[0]!.match(/^(?:\/\/|#)\s*(?:File|Filename):\s*(.+)$/i);
+        const fileMatch = lines[0]!.match(/^(?:\/\/|#|;|!|--|\*+)\s*(?:File|Filename):\s*(.+)$/i);
         if (fileMatch && fileMatch[1]) {
           fileTitle = fileMatch[1].trim();
         }
       }
       if (!fileTitle) {
         const modelMatch = rawCode.match(
-          /\b(?:model|block|package|function|record|connector|part\s+def)\s+([A-Za-z_]\w*)/,
+          /\b(?:model|block|package|function|record|connector|part\s+def|module|PROGRAM|FUNCTION_BLOCK)\s+([A-Za-z_]\w*)/,
         );
         if (modelMatch && modelMatch[1]) {
-          const ext = lang === "sysml" || lang === "sysml2" ? ".sysml" : lang === "msx" ? ".msx" : ".mo";
           fileTitle = `${modelMatch[1]}${ext}`;
         } else {
-          fileTitle = lang.toUpperCase();
+          fileTitle = `snippet${ext}`;
         }
+      }
+
+      // Check if this code block can be rendered as a polyglot schematic diagram
+      let diagramSvg = "";
+      try {
+        const built = renderSourceToDiagramSvg(rawCode, lang, fileTitle, true);
+        if (built.nodeCount > 0 && built.svg) {
+          diagramSvg = built.svg;
+        }
+      } catch {
+        // Not diagrammable
       }
 
       pre.classList.add("msx-code-pre");
@@ -640,6 +775,46 @@ export const PostMarkdownContent: React.FC<{
       const actions = document.createElement("div");
       actions.className = "msx-code-actions";
 
+      const codeBody = document.createElement("code");
+      codeBody.className = "msx-code-body";
+      codeBody.innerHTML = lines
+        .map(
+          (lineText, idx) =>
+            `<div class="msx-code-line"><span class="msx-line-num">${idx + 1}</span><span class="msx-line-content">${highlightCodeLine(lineText, lang)}</span></div>`,
+        )
+        .join("");
+
+      let diagramDiv: HTMLDivElement | null = null;
+      if (diagramSvg) {
+        diagramDiv = document.createElement("div");
+        diagramDiv.className = "msx-code-diagram";
+        diagramDiv.style.display = "none";
+        diagramDiv.innerHTML = diagramSvg;
+
+        const toggleBtn = document.createElement("button");
+        toggleBtn.type = "button";
+        toggleBtn.className = "msx-code-btn";
+        toggleBtn.textContent = "📐 Diagram";
+        let showingDiagram = false;
+        toggleBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showingDiagram = !showingDiagram;
+          if (showingDiagram) {
+            codeBody.style.display = "none";
+            diagramDiv!.style.display = "flex";
+            toggleBtn.textContent = "</> Code";
+            toggleBtn.classList.add("msx-code-btn-active");
+          } else {
+            codeBody.style.display = "block";
+            diagramDiv!.style.display = "none";
+            toggleBtn.textContent = "📐 Diagram";
+            toggleBtn.classList.remove("msx-code-btn-active");
+          }
+        };
+        actions.appendChild(toggleBtn);
+      }
+
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
       copyBtn.className = "msx-code-btn";
@@ -655,35 +830,36 @@ export const PostMarkdownContent: React.FC<{
       };
       actions.appendChild(copyBtn);
 
-      const ideBtn = document.createElement("button");
-      ideBtn.type = "button";
-      ideBtn.className = "msx-code-btn msx-code-btn-ide";
-      ideBtn.textContent = "▶ Open in IDE";
-      ideBtn.onclick = (e) => {
+      const playgroundBtn = document.createElement("button");
+      playgroundBtn.type = "button";
+      playgroundBtn.className = "msx-code-btn msx-code-btn-ide";
+      playgroundBtn.textContent = "▶ Open in Playground";
+      playgroundBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        navigate(`/ide?source=${encodeURIComponent(rawCode)}&title=${encodeURIComponent(fileTitle)}`);
+        const hash = compressMorselPayload({
+          v: 1,
+          lang: lang as any,
+          code: rawCode,
+          title: fileTitle,
+        });
+        navigate(`/playground#m=${hash}`);
       };
-      actions.appendChild(ideBtn);
+      actions.appendChild(playgroundBtn);
 
       header.appendChild(actions);
       pre.appendChild(header);
-
-      const codeBody = document.createElement("code");
-      codeBody.className = "msx-code-body";
-      codeBody.innerHTML = lines
-        .map(
-          (lineText, idx) =>
-            `<div class="msx-code-line"><span class="msx-line-num">${idx + 1}</span><span class="msx-line-content">${highlightCodeLine(lineText)}</span></div>`,
-        )
-        .join("");
+      if (diagramDiv) {
+        pre.appendChild(diagramDiv);
+      }
       pre.appendChild(codeBody);
     });
 
     // 9. Attach portals to user @mentions
     const links = containerRef.current.querySelectorAll("a:not(.msx-heading-anchor)");
     const newPortals: React.ReactPortal[] = [];
-    links.forEach((link) => {
+    links.forEach((rawLink) => {
+      const link = rawLink as HTMLAnchorElement;
       const href = link.getAttribute("href");
       if (href && href.startsWith("/@")) {
         const username = href.substring(2);
@@ -711,14 +887,14 @@ export const PostMarkdownContent: React.FC<{
         link.style.fontWeight = "bold";
         link.onmouseover = () => (link.style.textDecoration = "underline");
         link.onmouseout = () => (link.style.textDecoration = "none");
-        link.onclick = (e) => {
+        link.onclick = (e: MouseEvent) => {
           e.preventDefault();
           e.stopPropagation();
           navigate(href);
         };
       } else if (href && href.startsWith("#")) {
         link.style.color = "var(--color-accent-cyan)";
-        link.onclick = (e) => {
+        link.onclick = (e: MouseEvent) => {
           e.preventDefault();
           e.stopPropagation();
           const targetEl = document.getElementById(href.slice(1));
@@ -727,7 +903,7 @@ export const PostMarkdownContent: React.FC<{
           }
         };
       } else {
-        link.onclick = (e) => {
+        link.onclick = (e: MouseEvent) => {
           e.preventDefault();
           e.stopPropagation();
           if (href?.startsWith("/")) {

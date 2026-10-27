@@ -405,10 +405,10 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
               Side-by-Side
             </SegmentedControl.Button>
             <SegmentedControl.Button selected={mode === "base"} onClick={() => setMode("base")}>
-              v{baseVersion} (Base)
+              {`v${baseVersion} (Base)`}
             </SegmentedControl.Button>
             <SegmentedControl.Button selected={mode === "head"} onClick={() => setMode("head")}>
-              v{headVersion} (Head)
+              {`v${headVersion} (Head)`}
             </SegmentedControl.Button>
           </SegmentedControl>
         </ToolbarGroup>

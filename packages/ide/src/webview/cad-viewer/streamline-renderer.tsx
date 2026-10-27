@@ -35,27 +35,41 @@ export function StreamlineRenderer({
       const points: THREE.Vector3[] = [];
       const colors: number[] = [];
 
-      const steps = 40;
+      const steps = 48;
+      const dx = (maxX - minX) / steps;
+      const cx = (minX + maxX) * 0.5;
+      const cy = (minY + maxY) * 0.5;
+      const cz = (minZ + maxZ) * 0.5;
+      const charR = Math.max(0.04, Math.min(maxY - minY, maxZ - minZ) * 0.28);
+      const r2 = charR * charR;
+
       let curX = minX;
       let curY = y0;
-      const curZ = z0;
+      let curZ = z0;
 
       for (let s = 0; s <= steps; s++) {
         points.push(new THREE.Vector3(curX, curY, curZ));
 
-        // Speed ramps up around center obstruction and slows down in wake
-        const distFromCenter = Math.hypot(curX, curY, curZ);
-        const localVel = distFromCenter < 0.15 ? flowVelocity * 1.3 : flowVelocity * (0.8 + 0.2 * (s / steps));
-        const tNorm = Math.min(1.0, localVel / (flowVelocity * 1.4));
+        const rx = curX - cx;
+        const ry = curY - cy;
+        const rz = curZ - cz;
+        const distSq = Math.max(r2 * 0.35, rx * rx + ry * ry + rz * rz);
+
+        // Potential flow around 3D body: u_x = U*(1 + r^2*(y^2+z^2 - x^2)/d^4), u_y = U*2*r^2*x*y/d^4
+        const invD4 = 1.0 / (distSq * distSq);
+        const uxRatio = Math.max(0.25, 1.0 + r2 * (ry * ry + rz * rz - rx * rx) * invD4);
+        const uyRatio = -2.0 * r2 * rx * ry * invD4;
+        const uzRatio = -2.0 * r2 * rx * rz * invD4;
+
+        const localVel = flowVelocity * Math.hypot(uxRatio, uyRatio, uzRatio);
+        const tNorm = Math.min(1.0, Math.max(0.0, localVel / (flowVelocity * 1.4)));
 
         // Turbo colormap approximation
         colors.push(tNorm * 0.9, 0.2 + tNorm * 0.6, 1.0 - tNorm * 0.8);
 
-        // Advect along X with slight streamline curvature around origin
-        curX += (maxX - minX) / steps;
-        if (Math.abs(curX) < 0.2 && Math.abs(curY) < 0.1) {
-          curY += Math.sign(curY || 1) * 0.005;
-        }
+        curX += dx;
+        curY += (uyRatio / uxRatio) * dx;
+        curZ += (uzRatio / uxRatio) * dx;
       }
 
       const geo = new THREE.BufferGeometry().setFromPoints(points);

@@ -25,7 +25,7 @@
 
 ### 2. Direct DAE Lowering
 
-- Compiles building geometry and HVAC schedules directly into `@modelscript/runtime`'s `DAEBuilder` linear memory arena, enabling co-simulation with dynamic grid power models ([`@modelscript/pscad`](file:///home/omar/git3/modelscript/languages/pscad)) and district energy networks.
+- Compiles building geometry and HVAC schedules directly into `@modelscript/runtime`'s `DAEBuilder` linear memory arena, enabling co-simulation with dynamic grid power models ([`@modelscript/pscad`](./pscad.md)) and district energy networks.
 
 ### 3. Bidirectional Triple Graph Grammar (TGG) Sync
 
@@ -37,14 +37,7 @@
 
 ## Static Analysis & Pre-Flight Linter Rules
 
-The EnergyPlus analyzer enforces thermal consistency and geometric sanity before numerical simulation:
-
-| Rule Identifier              | Severity  | Condition Checked                                                                                           |
-| :--------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------- |
-| `unpaired-interzone-surface` | `error`   | Interzone boundary surface references an adjacent surface that does not reciprocate the boundary condition. |
-| `invalid-thermal-property`   | `error`   | Material thickness $\le 0$, conductivity $k \le 0$, or density $\rho \le 0$.                                |
-| `non-convex-zone-geometry`   | `warning` | Thermal zone vertices form a non-convex polyhedron, which may cause solar ray-tracing inaccuracies.         |
-| `extreme-window-ratio`       | `warning` | Window-to-wall surface ratio exceeds 0.95 or is unphysically configured.                                    |
+<LintRules lang="energyplus" />
 
 ---
 
@@ -59,7 +52,4 @@ msx energyplus to-dae CommercialOffice.idf --out=office.dae.json
 
 # Project into standard Modelica IBPSA Buildings library components
 msx energyplus to-modelica CommercialOffice.idf -o BuildingThermalModel.mo
-
-# Export co-simulation FMU container for district energy studies
-msx energyplus to-fmu CommercialOffice.idf -o BuildingEnergy.fmu
 ```

@@ -14,6 +14,7 @@ export interface DiscoveredLanguageManifestEntry {
   id: string;
   name: string;
   displayName: string;
+  maturity: "stable" | "beta" | "experimental";
   fileExtensions: string[];
   primaryExtension: string;
   wasm?: string | undefined;
@@ -187,6 +188,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       id: normalized!.id,
       name: normalized!.name,
       displayName: normalized!.displayName,
+      maturity: normalized!.maturity,
       fileExtensions: normalized!.fileExtensions,
       primaryExtension: normalized!.primaryExtension,
       wasm: wasmFileName,

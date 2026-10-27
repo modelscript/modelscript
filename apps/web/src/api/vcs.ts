@@ -13,6 +13,7 @@ export interface GitlabProject {
   path_with_namespace: string;
   default_branch: string;
   web_url: string;
+  visibility?: string | undefined;
 }
 
 export interface GitlabTreeNode {
@@ -69,8 +70,9 @@ export interface GitlabIssue {
   created_at: string;
   updated_at: string;
   author: {
+    id?: number | undefined;
     name: string;
-    avatar_url: string;
+    avatar_url?: string | undefined;
     username: string;
   };
   labels: string[];
@@ -79,17 +81,19 @@ export interface GitlabIssue {
 export interface GitlabMergeRequest {
   id: number;
   iid: number;
-  project_id: number;
+  project_id?: number | undefined;
   title: string;
   description: string;
   state: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string | undefined;
   target_branch: string;
   source_branch: string;
+  web_url?: string | undefined;
   author: {
+    id?: number | undefined;
     name: string;
-    avatar_url: string;
+    avatar_url?: string | undefined;
     username: string;
   };
 }

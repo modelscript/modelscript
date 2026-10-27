@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { FilterIcon, TagIcon, XIcon } from "@primer/octicons-react";
+import { FilterIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { FILTER_CHIPS } from "../constants";
-import { ActiveFilterBanner, FilterChipButton, FilterChipsScroll, FilterSection, HashtagPill } from "../styles";
+import { ActiveFilterBanner, FilterChipButton, FilterChipsScroll, FilterSection } from "../styles";
 import type { TopicItem } from "../types";
 
 export interface FeedFilterToolbarProps {
@@ -30,7 +30,7 @@ export const FeedFilterToolbar: React.FC<FeedFilterToolbarProps> = ({
   return (
     <>
       <FilterSection>
-        <FilterChipsScroll role="toolbar" aria-label="Engineering Artifact Filters & Topics">
+        <FilterChipsScroll role="toolbar" aria-label="Engineering Artifact Filters">
           {FILTER_CHIPS.map((chip) => {
             const isActive = activeFilter === chip.id;
             const IconComponent = chip.icon;
@@ -53,58 +53,6 @@ export const FeedFilterToolbar: React.FC<FeedFilterToolbarProps> = ({
                 </span>
                 <span>{chip.label}</span>
               </FilterChipButton>
-            );
-          })}
-
-          <div
-            style={{
-              height: "18px",
-              width: "1px",
-              background: "var(--color-border-default)",
-              margin: "0 4px",
-              flexShrink: 0,
-            }}
-          />
-
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              fontSize: "11px",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              color: "var(--color-text-muted)",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-              paddingRight: "2px",
-            }}
-          >
-            <TagIcon size={12} /> Topics:
-          </span>
-
-          {trendingTopics.map((item) => {
-            const isSelected = activeTag === item.concept || activeTag === item.displayName;
-            return (
-              <HashtagPill
-                key={item.concept}
-                $active={isSelected}
-                onClick={() => {
-                  if (isSelected) {
-                    setActiveTag(null);
-                  } else {
-                    setActiveTag(item.concept);
-                  }
-                }}
-                title={`Filter by #${item.displayName}`}
-                aria-pressed={isSelected}
-              >
-                <span>#{item.displayName}</span>
-                {typeof item.postCount === "number" && item.postCount > 0 && (
-                  <span className="post-count">{item.postCount}</span>
-                )}
-              </HashtagPill>
             );
           })}
         </FilterChipsScroll>

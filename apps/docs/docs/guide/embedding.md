@@ -135,7 +135,7 @@ import { PackageRehydrationCache } from "@modelscript/embed";
 const symbolBuffer = await PackageRehydrationCache.loadOrFetch("Modelica", "4.0.0");
 ```
 
-This bypasses parsing thousands of library classes on every page load, delivering instant sub-second boot times even on mobile devices.
+This bypasses parsing thousands of library classes on every page load, which substantially reduces startup time.
 
 ---
 

@@ -5,6 +5,7 @@ import { Spinner, useTheme } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
+import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import { safeJsonParse } from "../../util/json";
 import { parseModelicaParameters } from "../../util/modelica-params";
 import { cacheArtifact, getCachedArtifact } from "../../util/offline-storage";
@@ -39,6 +40,11 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const { resolvedColorMode } = useTheme();
   const navigate = useNavigate();
 
+  const viewConfig: any = useMemo(
+    () => ({ ...safeJsonParse(artifact?.view_config, {}), artifactId }),
+    [artifact?.view_config, artifactId],
+  );
+
   const handleCopyLink = useCallback(() => {
     const permalink = `${window.location.origin}/render-artifact/${artifactId}`;
     navigator.clipboard.writeText(permalink);
@@ -58,16 +64,36 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         e.preventDefault();
         setIsStudioSidebarOpen((prev) => !prev);
       } else if (e.key === "r" || e.key === "R") {
+        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
-        navigate(`/ide#memfs:artifact-${artifactId}`);
+        navigate(
+          buildEditorUrlForArtifact({
+            artifactId,
+            viewType: artifact?.view_type,
+            viewConfig,
+            title: artifact?.title || artifact?.name,
+          }),
+        );
       } else if (e.key === "c" || e.key === "C") {
+        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
         handleCopyLink();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullScreen, artifactId, navigate, handleCopyLink]);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [
+    isFullScreen,
+    artifactId,
+    artifact?.view_type,
+    artifact?.title,
+    artifact?.name,
+    viewConfig,
+    navigate,
+    handleCopyLink,
+  ]);
 
   useEffect(() => {
     if (initialArtifactView && initialArtifactView.id === artifactId) {
@@ -96,11 +122,6 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     }
     fetchArtifact();
   }, [artifactId, initialArtifactView]);
-
-  const viewConfig: any = useMemo(
-    () => ({ ...safeJsonParse(artifact?.view_config, {}), artifactId }),
-    [artifact?.view_config, artifactId],
-  );
 
   const resolvedForkedFromId = useMemo<number | string | null>(() => {
     if (forkedFromId) return forkedFromId;
@@ -281,6 +302,16 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             />
           </Box>
         </div>
+        {isDiffOpen && resolvedForkedFromId && (
+          <Suspense fallback={null}>
+            <ArtifactDiffModal
+              isOpen={isDiffOpen}
+              onClose={() => setIsDiffOpen(false)}
+              currentArtifact={artifact}
+              forkedFromArtifactId={resolvedForkedFromId}
+            />
+          </Suspense>
+        )}
       </>
     );
   }

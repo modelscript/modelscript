@@ -19,6 +19,7 @@ import { VirtualPlc } from "./solver/virtual-plc.js";
 export const plcopenLanguage = language({
   name: "plcopen",
   fileExtensions: [".xml", ".plcopen", ".st"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".xml", ".plcopen", ".st"],
   },

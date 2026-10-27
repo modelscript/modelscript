@@ -40,7 +40,7 @@
 ### 3. Direct DAE Lowering
 
 - Lowers reaction stoichiometric matrices and flux equations into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation between cellular metabolic networks and pharmacokinetics / drug delivery fluid pipelines ([`@modelscript/aspen`](file:///home/omar/git3/modelscript/languages/aspen)).
+- Enables co-simulation between cellular metabolic networks and pharmacokinetics / drug delivery fluid pipelines ([`@modelscript/aspen`](./aspen.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -48,19 +48,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8801`–`M8810`)
+## Pre-Flight Diagnostics
 
 The SBML analyzer validates stoichiometric consistency, undefined references, and physical rate bounds:
 
-| Code    | Severity  | Rule Identifier                   | Condition Checked                                                                        |
-| :------ | :-------- | :-------------------------------- | :--------------------------------------------------------------------------------------- |
-| `M8801` | `error`   | `missing-model-id`                | SBML document declared without a required unique model identifier.                       |
-| `M8802` | `error`   | `non-positive-compartment-size`   | Compartment physical volume or surface area $V \le 0$.                                   |
-| `M8803` | `error`   | `undefined-compartment-reference` | Species references a compartment not defined in `listOfCompartments`.                    |
-| `M8804` | `error`   | `negative-initial-quantity`       | Species initial concentration or amount is negative ($S_0 < 0$).                         |
-| `M8805` | `error`   | `empty-reaction`                  | Reaction declared without any reactants or products.                                     |
-| `M8806` | `error`   | `undefined-reaction-species`      | Reaction reactant or product references a species not declared in `listOfSpecies`.       |
-| `M8807` | `warning` | `circular-stoichiometry`          | Species appears as both reactant and product with identical stoichiometric coefficients. |
+<LintRules lang="sbml" />
 
 ---
 

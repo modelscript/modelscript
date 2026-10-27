@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
+import { getCloudApiUrl, getCloudPollIntervalMs, getStatusBarConfig } from "./utils/config.js";
 
 export class CloudStatusBar implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private timer: any = null;
+  private configSub: vscode.Disposable | undefined;
   private apiBaseUrl: string;
   private authToken: string | undefined;
 
@@ -15,15 +17,42 @@ export class CloudStatusBar implements vscode.Disposable {
     this.statusBarItem.command = "modelscript.openCloudMenu";
     this.statusBarItem.tooltip = "ModelScript Cloud HPC Orchestration — Click for profiles & balance";
     this.updateStatus(null);
-    this.statusBarItem.show();
 
+    this.applyVisibilityAndPolling();
+    this.configSub = vscode.workspace?.onDidChangeConfiguration?.((e) => {
+      if (
+        e.affectsConfiguration("modelscript.ui.statusBar") ||
+        e.affectsConfiguration("modelscript.cloud") ||
+        e.affectsConfiguration("modelscript.apiUrl")
+      ) {
+        this.applyVisibilityAndPolling();
+      }
+    });
+  }
+
+  private applyVisibilityAndPolling(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+
+    const { visibility, showCloudStatus } = getStatusBarConfig();
+    if (!showCloudStatus || visibility === "never") {
+      this.statusBarItem.hide();
+      return;
+    }
+
+    this.statusBarItem.show();
     this.refreshBalance();
-    this.timer = setInterval(() => this.refreshBalance(), 30000);
+    const intervalMs = getCloudPollIntervalMs();
+    if (intervalMs > 0) {
+      this.timer = setInterval(() => this.refreshBalance(), intervalMs);
+    }
   }
 
   private getConfig(): { baseUrl: string; headers: Record<string, string> } {
     const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
-    const baseUrl = (cfg.get<string>("apiBaseUrl") || this.apiBaseUrl).replace(/\/+$/, "");
+    const baseUrl = getCloudApiUrl() || this.apiBaseUrl;
     const token = cfg.get<string>("authToken") || this.authToken;
     const headers: Record<string, string> = {};
     if (token) {
@@ -66,6 +95,7 @@ export class CloudStatusBar implements vscode.Disposable {
     if (this.timer) {
       clearInterval(this.timer);
     }
+    this.configSub?.dispose();
     this.statusBarItem.dispose();
   }
 }

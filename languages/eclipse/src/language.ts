@@ -14,6 +14,7 @@ import { solveReservoirDepletion } from "./solvers/reservoir-solver.js";
 export const eclipseLanguage = language({
   name: "eclipse",
   fileExtensions: [".data", ".dat", ".inc"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".data", ".dat", ".inc"],
     icons: {

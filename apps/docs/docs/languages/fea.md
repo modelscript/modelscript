@@ -80,3 +80,37 @@ Returning `{ mass, maxVonMisesPa, yieldStrengthPa, safetyFactor, isSafe }` direc
 | `FeaBoundaryFixToModelicaFixed` | `Section` (`*BOUNDARY` / `SPC1`)    | `modelica`      | `ComponentClause` (`Modelica.Mechanics.MultiBody.Parts.Fixed`)           |
 | `FeaSpringToModelicaSpring`     | `Section` (`*SPRING`)               | `modelica`      | `ComponentClause` (`Modelica.Mechanics.Translational.Components.Spring`) |
 | `FeaLoadCaseToSysmlRequirement` | `Section` (`*STEP` / `SUBCASE`)     | `sysml2`        | `RequirementUsage`                                                       |
+
+## Command Line Interface (`msx fea`)
+
+```bash
+msx fea <action> [files...] [options]
+```
+
+| Action            | Description                                                                                          | Key Options         |
+| :---------------- | :--------------------------------------------------------------------------------------------------- | :------------------ |
+| **`lint`**        | Validates CalculiX, Abaqus, and NASTRAN syntax, element topologies, material cards, and constraints. | —                   |
+| **`summary`**     | Prints structural summary: element count by kind (C3D4, C3D10, CHEXA), materials, and load steps.    | —                   |
+| **`inspect`**     | Dumps parsed boundary sets, node coordinates, material elastic moduli, and load cases.               | —                   |
+| **`to-modelica`** | Generates Modelica equivalent structural stiffness models and translational boundary ports.          | `--out=<file.mo>`   |
+| **`to-dae`**      | Lowers structural mass and stiffness matrices into ModelScript linear-memory DAE arena.              | `--out=<file.json>` |
+| **`solve`**       | Solves linear elastostatic stiffness matrix for nodal displacements and von Mises stress contours.   | —                   |
+
+### Examples
+
+```bash
+# Validate element connectivity and material properties in an Abaqus deck
+msx fea lint BracketAssembly.inp
+
+# Display mesh statistics, node count, and material properties
+msx fea summary ChassisStructure.bdf
+
+# Solve linear static displacement and print max von Mises stress
+msx fea solve BracketAssembly.inp
+```
+
+---
+
+## Diagnostic Rules
+
+<LintRules lang="fea" />

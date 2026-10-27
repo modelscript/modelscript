@@ -8,6 +8,7 @@ import path from "path";
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
@@ -813,21 +814,6 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         }
       }
 
-      // Offline / Local development fallback so heat maps display correctly when testing locally
-      if (!countryCode) {
-        const ip = locationService.extractIp(req);
-        if (
-          ip === "127.0.0.1" ||
-          ip === "::1" ||
-          ip.startsWith("192.168.") ||
-          ip.startsWith("10.") ||
-          ip.startsWith("::ffff:127.")
-        ) {
-          countryCode = "US";
-          regionCode = "CA";
-        }
-      }
-
       database.incrementPostView(postId, countryCode, regionCode);
       res.json({ success: true });
     } catch (err) {
@@ -1176,23 +1162,154 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     }
   });
 
+  async function enrichInlineArtifactConfig(
+    artifactType: string,
+    rawViewConfig: unknown,
+    title?: string,
+  ): Promise<{ viewConfigStr: string; thumbnailUrl?: string | undefined }> {
+    let parsed: Record<string, any> = {};
+    if (typeof rawViewConfig === "string") {
+      try {
+        parsed = JSON.parse(rawViewConfig);
+      } catch {
+        return { viewConfigStr: rawViewConfig };
+      }
+    } else if (rawViewConfig && typeof rawViewConfig === "object") {
+      parsed = { ...(rawViewConfig as Record<string, any>) };
+    }
+
+    const inlineCode =
+      typeof parsed["code"] === "string"
+        ? parsed["code"]
+        : typeof parsed["modelicaCode"] === "string"
+          ? parsed["modelicaCode"]
+          : typeof parsed["source"] === "string"
+            ? parsed["source"]
+            : "";
+
+    let thumbnailUrl: string | undefined =
+      typeof parsed["thumbnailUrl"] === "string" ? parsed["thumbnailUrl"] : undefined;
+
+    if (inlineCode.trim().length > 0 && !parsed["svg"] && artifactType) {
+      const uploadDir = path.resolve(process.cwd(), "data", "uploads");
+      try {
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const tempName = `inline-${Date.now()}-${Math.round(Math.random() * 1e9)}.txt`;
+        const tempPath = path.join(uploadDir, tempName);
+        fs.writeFileSync(tempPath, inlineCode, "utf-8");
+        try {
+          const preprocessed = await pregenerateServerSvgThumbnail(
+            tempPath,
+            artifactType,
+            title || parsed["title"] || "model",
+            uploadDir,
+          );
+          if (preprocessed.viewConfigAdditions) {
+            parsed = { ...preprocessed.viewConfigAdditions, ...parsed };
+          }
+          if (preprocessed.svg) {
+            parsed["svg"] = preprocessed.svg;
+          }
+          if (preprocessed.metadata) {
+            parsed["metadata"] = { ...(parsed["metadata"] || {}), ...preprocessed.metadata };
+          }
+          if (preprocessed.thumbnailUrl) {
+            thumbnailUrl = preprocessed.thumbnailUrl;
+            parsed["thumbnailUrl"] = preprocessed.thumbnailUrl;
+          }
+        } finally {
+          try {
+            if (fs.existsSync(tempPath)) {
+              fs.unlinkSync(tempPath);
+            }
+          } catch {
+            // ignore cleanup error
+          }
+        }
+      } catch (err) {
+        console.warn("[socialRouter] Inline SVG pre-generation skipped:", err);
+      }
+    }
+
+    return {
+      viewConfigStr: JSON.stringify(parsed),
+      thumbnailUrl,
+    };
+  }
+
   /**
    * POST /api/v1/social/artifact-views
    */
-  router.post("/artifact-views", requireAuth, (req: Request, res: Response) => {
+  router.post("/artifact-views", requireAuth, async (req: Request, res: Response): Promise<void> => {
     const userId = req.user!.id;
     const { artifact_type, view_config, title } = req.body;
     try {
-      const id = database.createArtifactView(userId, artifact_type, "upload", view_config, title);
+      const { viewConfigStr, thumbnailUrl } = await enrichInlineArtifactConfig(artifact_type, view_config, title);
+      const id = database.createArtifactView(userId, artifact_type, "upload", viewConfigStr, title, thumbnailUrl);
 
       // Asynchronously trigger thumbnail generation if applicable
       if (["simulation-result", "fea-result", "cfd-result", "cad-step", "cad_step"].includes(artifact_type)) {
         generateThumbnail(id).catch((err) => console.error("Error triggering thumbnail generation:", err));
       }
 
-      res.status(201).json({ id });
+      res.status(201).json({ id, thumbnail_url: thumbnailUrl || null });
     } catch (err) {
       res.status(500).json({ error: "Failed to create artifact view" });
+    }
+  });
+
+  /**
+   * PUT /api/v1/social/artifact-views/:id
+   */
+  router.put("/artifact-views/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const rawId = req.params["id"];
+    const id = Number(Array.isArray(rawId) ? rawId[0] : rawId);
+    if (!id || isNaN(id)) {
+      res.status(400).json({ error: "Invalid artifact ID" });
+      return;
+    }
+
+    try {
+      const existing = database.getArtifactView(id);
+      if (!existing) {
+        res.status(404).json({ error: "Artifact view not found" });
+        return;
+      }
+
+      const ownerId = (existing as any).creator_id ?? (existing as any).author_id;
+      if (req.user && ownerId && ownerId !== req.user.id && (req.user as any).role !== "admin") {
+        res.status(403).json({ error: "Forbidden: Not the owner of this artifact view" });
+        return;
+      }
+
+      const { view_config, viewConfig, artifact_type, title } = req.body;
+      const rawConfig = view_config !== undefined ? view_config : viewConfig;
+      if (rawConfig === undefined) {
+        res.status(400).json({ error: "view_config is required" });
+        return;
+      }
+
+      const effectiveType = artifact_type || (existing as any).view_type || "modelica-code";
+      const effectiveTitle = title || (existing as any).title || "Model";
+
+      const { viewConfigStr, thumbnailUrl } = await enrichInlineArtifactConfig(
+        effectiveType,
+        rawConfig,
+        effectiveTitle,
+      );
+
+      database.updateArtifactViewConfig(id, viewConfigStr);
+      if (thumbnailUrl) {
+        database.updateArtifactThumbnail(id, thumbnailUrl);
+      }
+
+      const updated = database.getArtifactView(id);
+      res.json({ id, artifactView: updated });
+    } catch (err) {
+      console.error("[socialRouter] Error updating artifact view:", err);
+      res.status(500).json({ error: "Failed to update artifact view" });
     }
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/verilog-a",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "Verilog-A and Verilog-AMS (IEEE 1857) compact device modeling and analog simulation language package for ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",

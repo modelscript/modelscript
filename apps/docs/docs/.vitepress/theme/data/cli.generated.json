@@ -1,0 +1,7013 @@
+[
+  {
+    "name": "adams",
+    "specs": [
+      "adams <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, analyze, solve, and project MSC Adams multibody models (.adm, .cmd, .acf)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: lint | mobility | to-modelica | to-simpack | simulate",
+        "choices": [
+          "lint",
+          "mobility",
+          "to-modelica",
+          "to-simpack",
+          "simulate"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input MSC Adams files (.adm, .cmd, .acf)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation stop time [s]",
+        "default": 5
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation time step [s]",
+        "default": 0.005
+      },
+      {
+        "name": "stabilization",
+        "aliases": [],
+        "type": "string",
+        "description": "Constraint stabilization method",
+        "choices": [
+          "baumgarte",
+          "algebraic"
+        ],
+        "default": "baumgarte"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "align",
+    "specs": [
+      "align <source> <target>"
+    ],
+    "aliases": [],
+    "describe": "Fuzzy align and correlate brownfield engineering assets (STEP CAD, Modelica, SysML v2, ReqIF)",
+    "positionals": [
+      {
+        "name": "source",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to source model (e.g. .step, .mo, .sysml, .reqif, .json)"
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to target model (e.g. .mo, .sysml, .step, .reqif, .json)"
+      }
+    ],
+    "options": [
+      {
+        "name": "min-confidence",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum confidence score to display candidates (0.0 - 1.0)",
+        "default": 0.6
+      },
+      {
+        "name": "threshold",
+        "aliases": [],
+        "type": "number",
+        "description": "Confidence threshold to auto-seed into Digital Thread Hypergraph",
+        "default": 0.85
+      },
+      {
+        "name": "apply",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Auto-seed matching pairs into Digital Thread Hypergraph",
+        "default": false
+      },
+      {
+        "name": "hypergraph",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to existing hypergraph state JSON to update"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output raw JSON candidates",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "archive",
+    "specs": [
+      "archive [action] [users..]"
+    ],
+    "aliases": [],
+    "describe": "GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: request | status | download",
+        "default": "request"
+      },
+      {
+        "name": "users",
+        "aliases": [],
+        "type": "string",
+        "description": "Target usernames or IDs for batch processing",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Archive payload format: zip (default) or json",
+        "choices": [
+          "zip",
+          "json"
+        ],
+        "default": "zip"
+      },
+      {
+        "name": "concurrency",
+        "aliases": [
+          "c"
+        ],
+        "type": "number",
+        "description": "Maximum concurrent worker jobs (default: 2 or ARCHIVE_CONCURRENCY env)"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Destination path or file for single-user archive"
+      },
+      {
+        "name": "output-dir",
+        "aliases": [],
+        "type": "string",
+        "description": "Destination directory for batch archives (default: ./data/archives)"
+      },
+      {
+        "name": "wait",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Wait and stream download after queueing completes",
+        "default": true
+      },
+      {
+        "name": "api-url",
+        "aliases": [],
+        "type": "string",
+        "description": "ModelScript Hub API endpoint URL"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "aspen",
+    "specs": [
+      "aspen <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve, and lower Aspen Plus chemical process flowsheets (.in, .inp, .bkp)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, to-dae, to-modelica, solve-flash)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "to-dae",
+          "to-modelica",
+          "solve-flash"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Aspen Plus input deck file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "stream",
+        "aliases": [
+          "s"
+        ],
+        "type": "string",
+        "description": "Target feed stream ID for flash VLE calculation"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "autosar",
+    "specs": [
+      "autosar <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate Virtual RTE, lower to DAE, and project AUTOSAR Classic and Adaptive architectures (.arxml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | to-modelica | to-sysml | to-dae | simulate-rte",
+        "choices": [
+          "inspect",
+          "lint",
+          "to-modelica",
+          "to-sysml",
+          "to-dae",
+          "simulate-rte"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input AUTOSAR ARXML files (.arxml)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path for generated code or export"
+      },
+      {
+        "name": "duration",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation duration for Virtual RTE [s]",
+        "default": 0.1
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation timestep for Virtual RTE [s]",
+        "default": 0.01
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "build",
+    "specs": [
+      "build [entry]"
+    ],
+    "aliases": [],
+    "describe": "Compile the generated parser AssemblyScript into WASM and native platform binaries",
+    "positionals": [
+      {
+        "name": "entry",
+        "aliases": [],
+        "type": "string",
+        "description": "path to the generated parser.ts file (e.g. build/src-gen/parser.ts)",
+        "default": "build/src-gen/parser.ts"
+      }
+    ],
+    "options": [
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Compilation target (wasm or native)",
+        "choices": [
+          "wasm",
+          "native"
+        ],
+        "default": "native"
+      },
+      {
+        "name": "register",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Register the compiled language into the user catalog (~/.modelscript/languages/)",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "c",
+    "specs": [
+      "c <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, and bridge C99/ANSI C files and headers (.c, .h)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, summary, lint, to-modelica, to-dae, step)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "to-modelica",
+          "to-dae",
+          "step"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "C source or header file(s) (.c, .h) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "include",
+        "aliases": [],
+        "type": "string",
+        "description": "Header include directive name for Modelica external annotation"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "ccsds",
+    "specs": [
+      "ccsds <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, propagate, lower to DAE, and project CCSDS and XTCE spacecraft data (.oem, .opm, .omm, .xtce)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | propagate | to-modelica | to-sysml | to-dae",
+        "choices": [
+          "inspect",
+          "lint",
+          "propagate",
+          "to-modelica",
+          "to-sysml",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input CCSDS / XTCE files (.oem, .opm, .omm, .xtce)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path for generated Modelica or SysML v2 code"
+      },
+      {
+        "name": "duration",
+        "aliases": [],
+        "type": "number",
+        "description": "Propagation duration in seconds (~90 min default)",
+        "default": 5400
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Propagation time step in seconds",
+        "default": 30
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "cfd",
+    "specs": [
+      "cfd <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve, and project CFD aerodynamic models (.cfg, .foam, .su2)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, inspect, to-modelica, to-dae, solve)",
+        "choices": [
+          "lint",
+          "summary",
+          "inspect",
+          "to-modelica",
+          "to-dae",
+          "solve"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "CFD model configuration file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for code generation or DAE metadata)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "cloud",
+    "specs": [
+      "cloud <action> [target]"
+    ],
+    "aliases": [],
+    "describe": "Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: profiles | balance | jobs | status | logs | cancel | download | dispatch",
+        "choices": [
+          "profiles",
+          "balance",
+          "wallet",
+          "jobs",
+          "list",
+          "status",
+          "logs",
+          "cancel",
+          "download",
+          "dispatch"
+        ]
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Target Job ID or file path to dispatch"
+      }
+    ],
+    "options": [
+      {
+        "name": "profile",
+        "aliases": [
+          "p"
+        ],
+        "type": "string",
+        "description": "Compute profile ID (standard, high-memory, gpu-a100, hpc-mpi-64)"
+      },
+      {
+        "name": "domain",
+        "aliases": [
+          "d"
+        ],
+        "type": "string",
+        "description": "Simulation domain (modelica, cfd, fea, monte-carlo)"
+      },
+      {
+        "name": "follow",
+        "aliases": [
+          "f"
+        ],
+        "type": "boolean",
+        "description": "Follow log stream in real time"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output path for downloaded artifacts"
+      },
+      {
+        "name": "api-url",
+        "aliases": [],
+        "type": "string",
+        "description": "ModelScript API server URL"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "compile",
+    "specs": [
+      "compile <name> <paths...>",
+      "flatten <name> <paths...>"
+    ],
+    "aliases": [],
+    "describe": "Flatten a Modelica model to a flat DAE representation",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class to flatten"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "modelica-path",
+        "aliases": [
+          "L"
+        ],
+        "type": "string",
+        "description": "directories to search for Modelica libraries (colon-separated)"
+      },
+      {
+        "name": "flattener",
+        "aliases": [
+          "F"
+        ],
+        "type": "string",
+        "description": "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
+        "choices": [
+          "ts",
+          "wasm",
+          "hybrid",
+          "diff"
+        ],
+        "default": "hybrid"
+      },
+      {
+        "name": "timing",
+        "aliases": [],
+        "type": "boolean",
+        "description": "report timing information for each stage as JSON to stderr",
+        "default": false
+      },
+      {
+        "name": "memory-profile",
+        "aliases": [],
+        "type": "boolean",
+        "description": "profile memory usage across phases and report as JSON to stderr",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "cosim",
+    "specs": [
+      "cosim"
+    ],
+    "aliases": [],
+    "describe": "Co-simulation management (sessions, participants, FMUs, replay)",
+    "positionals": [],
+    "options": [
+      {
+        "name": "api-url",
+        "aliases": [],
+        "type": "string",
+        "description": "ModelScript API base URL",
+        "default": "http://localhost:3000"
+      }
+    ],
+    "subcommands": [
+      {
+        "name": "status",
+        "specs": [
+          "status"
+        ],
+        "aliases": [],
+        "describe": "Check co-simulation system health",
+        "positionals": [],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "sessions",
+        "specs": [
+          "sessions"
+        ],
+        "aliases": [],
+        "describe": "List co-simulation sessions",
+        "positionals": [],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "participants",
+        "specs": [
+          "participants"
+        ],
+        "aliases": [],
+        "describe": "List active MQTT participants",
+        "positionals": [],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "fmus",
+        "specs": [
+          "fmus"
+        ],
+        "aliases": [],
+        "describe": "List uploaded FMU archives",
+        "positionals": [],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "upload",
+        "specs": [
+          "upload <file>"
+        ],
+        "aliases": [],
+        "describe": "Upload an FMU archive",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to the .fmu file"
+          }
+        ],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "replay",
+        "specs": [
+          "replay"
+        ],
+        "aliases": [],
+        "describe": "Start historian replay of a recorded session",
+        "positionals": [],
+        "options": [
+          {
+            "name": "session",
+            "aliases": [],
+            "type": "string",
+            "description": "Session ID to replay"
+          },
+          {
+            "name": "speed",
+            "aliases": [],
+            "type": "number",
+            "description": "Playback speed factor (1.0 = real-time)",
+            "default": 1
+          },
+          {
+            "name": "from",
+            "aliases": [],
+            "type": "string",
+            "description": "Replay start time (ISO 8601)"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "history",
+        "specs": [
+          "history"
+        ],
+        "aliases": [],
+        "describe": "List recorded historian sessions",
+        "positionals": [],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "optimize",
+        "specs": [
+          "optimize [archive]"
+        ],
+        "aliases": [],
+        "describe": "Optimize parameters in a co-simulation session or SSP archive using metaheuristics",
+        "positionals": [
+          {
+            "name": "archive",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SSP archive (.ssp) or FMU (.fmu) model"
+          }
+        ],
+        "options": [
+          {
+            "name": "params",
+            "aliases": [],
+            "type": "string",
+            "description": "Parameter bounds formatted as 'kp:0.1:10.0,kd:0.01:1.0' or JSON array"
+          },
+          {
+            "name": "objective",
+            "aliases": [],
+            "type": "string",
+            "description": "Simulation objective signal or loss variable to minimize (e.g. 'error_integral')"
+          },
+          {
+            "name": "algorithm",
+            "aliases": [],
+            "description": "Optimization algorithm (de, cma-es, cmaes, pso)",
+            "choices": [
+              "de",
+              "cma-es",
+              "cmaes",
+              "pso"
+            ],
+            "default": "de"
+          },
+          {
+            "name": "generations",
+            "aliases": [],
+            "type": "number",
+            "description": "Maximum optimization generations",
+            "default": 15
+          },
+          {
+            "name": "population",
+            "aliases": [],
+            "type": "number",
+            "description": "Population / swarm size per generation",
+            "default": 12
+          },
+          {
+            "name": "seed",
+            "aliases": [],
+            "type": "number",
+            "description": "Random seed for reproducible optimization",
+            "default": 42
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "csg",
+    "specs": [
+      "csg <name> <paths...>"
+    ],
+    "aliases": [],
+    "describe": "Compile and extract CSG topologies to 3D meshes",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class to evaluate"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "daemon",
+    "specs": [
+      "daemon <action>"
+    ],
+    "aliases": [],
+    "describe": "Manage the background compiler daemon for instant compilation",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "description": "Daemon lifecycle action",
+        "choices": [
+          "start",
+          "stop",
+          "status",
+          "restart"
+        ]
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "db",
+    "specs": [
+      "db <action>"
+    ],
+    "aliases": [],
+    "describe": "Database schema migration, health verification, and pre-flight snapshot management",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: status | upgrade | verify",
+        "choices": [
+          "status",
+          "upgrade",
+          "verify"
+        ]
+      }
+    ],
+    "options": [
+      {
+        "name": "dry-run",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Preview pending migrations without applying changes",
+        "default": false
+      },
+      {
+        "name": "skip-backup",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Skip automated pre-flight hot snapshot (not recommended for production)",
+        "default": false
+      },
+      {
+        "name": "api-url",
+        "aliases": [],
+        "type": "string",
+        "description": "ModelScript API server URL"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "ddp",
+    "specs": [
+      "ddp <action>"
+    ],
+    "aliases": [],
+    "describe": "Digital Data Package (prostep ivip PSI 21 / OMG CASCaRA) packaging, inspection, and AASX bridging",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "inspect",
+        "specs": [
+          "inspect <file>"
+        ],
+        "aliases": [],
+        "describe": "Inspect a Digital Data Package (.ddp / .zip) manifest, domain artifacts, and traceability graph",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .ddp or .zip package file"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [],
+            "description": "Output format",
+            "choices": [
+              "table",
+              "json"
+            ],
+            "default": "table"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "pack",
+        "specs": [
+          "pack <manifest>"
+        ],
+        "aliases": [],
+        "describe": "Assemble engineering artifacts into a compliant .ddp container",
+        "positionals": [
+          {
+            "name": "manifest",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to ddp-manifest.json or workspace manifest"
+          }
+        ],
+        "options": [
+          {
+            "name": "output",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output file path (default: package.ddp)"
+          },
+          {
+            "name": "files",
+            "aliases": [
+              "f"
+            ],
+            "type": "array",
+            "description": "Additional files to bundle into package"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-aasx",
+        "specs": [
+          "to-aasx <file>"
+        ],
+        "aliases": [],
+        "describe": "Cross-compile an engineering Digital Data Package (.ddp) into an operational Asset Administration Shell (.aasx)",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .ddp or .zip package file"
+          }
+        ],
+        "options": [
+          {
+            "name": "output",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output .aasx file path"
+          },
+          {
+            "name": "kind",
+            "aliases": [],
+            "description": "Asset kind (Type or Instance)",
+            "choices": [
+              "Type",
+              "Instance"
+            ],
+            "default": "Type"
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "decompose",
+    "specs": [
+      "decompose <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Perform symbolic state-space region decomposition over SysML v2 decision conditions",
+    "positionals": [
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "Path(s) to .sysml files to decompose",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "max-regions",
+        "aliases": [
+          "r"
+        ],
+        "type": "number",
+        "description": "Maximum number of regions to partition (default: 64)",
+        "default": 64
+      },
+      {
+        "name": "max-depth",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Maximum branch condition exploration depth (default: 8)",
+        "default": 8
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output regions in JSON format",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "dhf",
+    "specs": [
+      "dhf <action> [paths..]"
+    ],
+    "aliases": [],
+    "describe": "Design History File (FDA 21 CFR 820.30 / ISO 14971 / IEC 62304) regulatory compliance exporter",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "description": "Action to perform (export DHF document, inspect status, or audit compliance)",
+        "choices": [
+          "export",
+          "status",
+          "audit"
+        ],
+        "default": "export"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "description": "Source paths or directories containing SysML v2 and Modelica models",
+        "array": true,
+        "default": [
+          "."
+        ]
+      }
+    ],
+    "options": [
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "description": "Output format",
+        "choices": [
+          "markdown",
+          "json",
+          "html"
+        ],
+        "default": "markdown"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "File path to save the generated DHF dossier"
+      },
+      {
+        "name": "title",
+        "aliases": [
+          "t"
+        ],
+        "type": "string",
+        "description": "Dossier Title",
+        "default": "Design History File (DHF) — IEC 62304 / ISO 14971 Compliance Dossier"
+      },
+      {
+        "name": "device",
+        "aliases": [
+          "d"
+        ],
+        "type": "string",
+        "description": "Target medical device name",
+        "default": "Automated Closed-Loop Insulin Delivery System (Class C)"
+      },
+      {
+        "name": "author",
+        "aliases": [
+          "a"
+        ],
+        "type": "string",
+        "description": "Author name",
+        "default": "ModelScript Verification Engineering Team"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "diff",
+    "specs": [
+      "diff <file1> <file2>"
+    ],
+    "aliases": [],
+    "describe": "Compute an AST-aware semantic diff between two model files (supports any registered DSL)",
+    "positionals": [
+      {
+        "name": "file1",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to original/baseline file"
+      },
+      {
+        "name": "file2",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to modified/target file"
+      }
+    ],
+    "options": [
+      {
+        "name": "language",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Explicit language override (e.g. modelica, sysml2, scad)"
+      },
+      {
+        "name": "order-agnostic",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Ignore child order changes in declarative sections (e.g. equation sets)",
+        "default": true
+      },
+      {
+        "name": "breaking-only",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Only report breaking changes (API modifications, deleted connectors, type switches)",
+        "default": false
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "description": "Output format",
+        "choices": [
+          "terminal",
+          "json",
+          "summary",
+          "visual-html",
+          "visual-svg",
+          "pr-comment"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path for visual formats"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "easy5",
+    "specs": [
+      "easy5 <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, linearize, and project EASY5 continuous simulation models (.ez5, .ezm, .ezd, .eas)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, inspect, linearize, bode, trim, to-modelica, to-ssp, to-dae, diagram, sync)",
+        "choices": [
+          "lint",
+          "summary",
+          "inspect",
+          "linearize",
+          "bode",
+          "trim",
+          "to-modelica",
+          "to-ssp",
+          "to-dae",
+          "diagram",
+          "sync"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "EASY5 model file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "from-modelica",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to modified Modelica file for bidirectional synchronization"
+      },
+      {
+        "name": "strategy",
+        "aliases": [],
+        "type": "string",
+        "description": "Conflict reconciliation strategy",
+        "choices": [
+          "target-wins",
+          "source-wins",
+          "physics-simplex"
+        ],
+        "default": "target-wins"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for code generation or SVG diagram)"
+      },
+      {
+        "name": "min-freq",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum frequency for Bode response (rad/s)",
+        "default": 0.01
+      },
+      {
+        "name": "max-freq",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum frequency for Bode response (rad/s)",
+        "default": 1000
+      },
+      {
+        "name": "num-points",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of frequency logarithmic evaluation points",
+        "default": 60
+      },
+      {
+        "name": "max-iter",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum Newton-Raphson iterations for trim equilibrium",
+        "default": 50
+      },
+      {
+        "name": "tol",
+        "aliases": [],
+        "type": "number",
+        "description": "Convergence tolerance for trim equilibrium",
+        "default": 0.000001
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: 'terminal' or 'json'",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "eclipse",
+    "specs": [
+      "eclipse <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve reservoir depletion, and lower Schlumberger ECLIPSE decks (.data, .dat, .inc)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, solve, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "solve",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "ECLIPSE deck file(s) (.data, .dat, .inc) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "days",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Simulation duration in days (default: 365.0)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "energyplus",
+    "specs": [
+      "energyplus <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, lower to DAE, and project US DOE EnergyPlus building models (.idf, .epJSON)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | summary | lint | to-modelica | to-dae | thermal-balance | sync",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "to-modelica",
+          "to-dae",
+          "thermal-balance",
+          "sync"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input EnergyPlus building files (.idf, .epJSON)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (Modelica model, JSON metadata, or synchronized EnergyPlus file)"
+      },
+      {
+        "name": "from-modelica",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to modified Modelica file for bidirectional synchronization"
+      },
+      {
+        "name": "strategy",
+        "aliases": [],
+        "type": "string",
+        "description": "Conflict reconciliation strategy for sync",
+        "choices": [
+          "target-wins",
+          "source-wins",
+          "physics-simplex"
+        ],
+        "default": "target-wins"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: 'terminal' or 'json'",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "tamb",
+        "aliases": [],
+        "type": "number",
+        "description": "Outdoor ambient temperature in deg C for thermal-balance",
+        "default": 10
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "epanet",
+    "specs": [
+      "epanet <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, solve hydraulics, lower to DAE, and project US EPA EPANET water networks (.inp)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | solve | to-modelica | to-dae",
+        "choices": [
+          "inspect",
+          "lint",
+          "solve",
+          "to-modelica",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input EPANET network files (.inp)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path for generated Modelica code"
+      },
+      {
+        "name": "max-iter",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum Todini hydraulic iterations",
+        "default": 40
+      },
+      {
+        "name": "tolerance",
+        "aliases": [],
+        "type": "number",
+        "description": "Relative flow convergence tolerance",
+        "default": 0.001
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "export-formal",
+    "specs": [
+      "export-formal <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Export SysML v2 models to standard formal verification formats (SMT-LIB2, nuXmv, OCRA)",
+    "positionals": [
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "Path(s) to .sysml files to export",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Target formal representation: 'smt2' (SMT-LIB v2.6), 'nuxmv' (nuXmv .smv), or 'ocra' (OCRA .oss)",
+        "choices": [
+          "smt2",
+          "nuxmv",
+          "ocra"
+        ],
+        "default": "smt2"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (prints to stdout if omitted)"
+      },
+      {
+        "name": "logic",
+        "aliases": [],
+        "type": "string",
+        "description": "SMT-LIB logic directive (default: auto-detected QF_LRA or QF_NRA)",
+        "choices": [
+          "QF_LRA",
+          "QF_NRA",
+          "QF_IDL",
+          "ALL"
+        ]
+      },
+      {
+        "name": "module",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "Module name for nuXmv or top-level component name for OCRA",
+        "default": "System"
+      },
+      {
+        "name": "scope",
+        "aliases": [
+          "s"
+        ],
+        "type": "string",
+        "description": "Scope filter for extracted constraints or state machines"
+      },
+      {
+        "name": "invariants",
+        "aliases": [],
+        "type": "string",
+        "description": "Additional safety invariants (INVARSPEC) to emit for nuXmv",
+        "array": true
+      },
+      {
+        "name": "ltl",
+        "aliases": [],
+        "type": "string",
+        "description": "Temporal logic specifications (LTLSPEC) to emit for nuXmv",
+        "array": true
+      },
+      {
+        "name": "minimize",
+        "aliases": [],
+        "type": "string",
+        "description": "Parametric optimization objectives to minimize in SMT-LIB2",
+        "array": true
+      },
+      {
+        "name": "maximize",
+        "aliases": [],
+        "type": "string",
+        "description": "Parametric optimization objectives to maximize in SMT-LIB2",
+        "array": true
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "falsify",
+    "specs": [
+      "falsify"
+    ],
+    "aliases": [],
+    "describe": "Run adversarial multi-domain requirement falsification across SysML, Modelica, and CAD",
+    "positionals": [],
+    "options": [
+      {
+        "name": "property",
+        "aliases": [],
+        "type": "string",
+        "description": "Name of the target SysML requirement or property"
+      },
+      {
+        "name": "sysml",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to SysML v2 model file (.sysml)"
+      },
+      {
+        "name": "modelica",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to Modelica DAE model file (.mo)"
+      },
+      {
+        "name": "cad",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to CAD procedural file (.scad or .ts)"
+      },
+      {
+        "name": "params",
+        "aliases": [],
+        "type": "string",
+        "description": "JSON array or file path containing parameter bounds"
+      },
+      {
+        "name": "formula",
+        "aliases": [],
+        "type": "string",
+        "description": "STL formula JSON or predicate shorthand (e.g. 'stress <= 200')"
+      },
+      {
+        "name": "algorithm",
+        "aliases": [],
+        "description": "Falsification global optimization algorithm",
+        "choices": [
+          "de",
+          "cem",
+          "cmaes",
+          "cma-es",
+          "pso"
+        ],
+        "default": "de"
+      },
+      {
+        "name": "generations",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum optimization generations",
+        "default": 10
+      },
+      {
+        "name": "population",
+        "aliases": [],
+        "type": "number",
+        "description": "Population size per generation",
+        "default": 12
+      },
+      {
+        "name": "outTrace",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to output CanonicalTraceRecord JSON"
+      },
+      {
+        "name": "outCad",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to output counterexample CAD model file"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "fea",
+    "specs": [
+      "fea <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve, and project FEA structural models (.inp, .bdf, .dat)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, inspect, to-modelica, to-dae, solve)",
+        "choices": [
+          "lint",
+          "summary",
+          "inspect",
+          "to-modelica",
+          "to-dae",
+          "solve"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "FEA deck file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for code generation or DAE metadata)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "fmu",
+    "specs": [
+      "fmu <name> [paths..]"
+    ],
+    "aliases": [
+      "export-fmu"
+    ],
+    "describe": "Export, validate, inspect, build, or simulate an FMU archive",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "class name to export, or subcommand ('import', 'validate', 'info', 'list', 'build', 'simulate')"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries/modules to load, or .fmu path when using a subcommand",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "output file path (default: <name>.fmu or <name>.fmu.xml)"
+      },
+      {
+        "name": "description",
+        "aliases": [],
+        "type": "string",
+        "description": "model description string"
+      },
+      {
+        "name": "start-time",
+        "aliases": [],
+        "type": "number",
+        "description": "default experiment start time"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "default experiment stop time"
+      },
+      {
+        "name": "step-size",
+        "aliases": [
+          "output-interval"
+        ],
+        "type": "number",
+        "description": "default experiment step size / output interval"
+      },
+      {
+        "name": "tolerance",
+        "aliases": [],
+        "type": "number",
+        "description": "solver relative tolerance"
+      },
+      {
+        "name": "xml-only",
+        "aliases": [],
+        "type": "boolean",
+        "description": "output only the modelDescription.xml (no archive)",
+        "default": false
+      },
+      {
+        "name": "type",
+        "aliases": [],
+        "type": "string",
+        "description": "FMU type: 'me' (Model Exchange), 'cs' (Co-Simulation), 'both' (default)",
+        "choices": [
+          "me",
+          "cs",
+          "both"
+        ],
+        "default": "both"
+      },
+      {
+        "name": "interface-type",
+        "aliases": [],
+        "type": "string",
+        "description": "FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'",
+        "choices": [
+          "cs",
+          "me",
+          "auto"
+        ]
+      },
+      {
+        "name": "solver",
+        "aliases": [],
+        "type": "string",
+        "description": "ODE solver when simulating an FMU in Model Exchange mode ('euler', 'rk4', 'cvode')",
+        "default": "rk4"
+      },
+      {
+        "name": "start-value",
+        "aliases": [],
+        "type": "string",
+        "description": "override FMU variable start value as name=value (repeatable)",
+        "array": true
+      },
+      {
+        "name": "input-file",
+        "aliases": [],
+        "type": "string",
+        "description": "CSV file providing time-varying input trajectories (time,u1,u2,...)"
+      },
+      {
+        "name": "output-variable",
+        "aliases": [],
+        "type": "string",
+        "description": "variable name(s) to record in simulation output (repeatable)",
+        "array": true
+      },
+      {
+        "name": "initial-fmu-state-file",
+        "aliases": [],
+        "type": "string",
+        "description": "restore serialized FMU state from file before stepping"
+      },
+      {
+        "name": "final-fmu-state-file",
+        "aliases": [],
+        "type": "string",
+        "description": "save serialized FMU state to file after simulation finishes"
+      },
+      {
+        "name": "log-fmi-calls",
+        "aliases": [],
+        "type": "boolean",
+        "description": "log all FMI C API calls and logger callbacks to stderr",
+        "default": false
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "simulation output format ('csv', 'json', 'none')",
+        "choices": [
+          "csv",
+          "json",
+          "none"
+        ],
+        "default": "csv"
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "export target: 'wasm' (WebAssembly), 'c' (C sources), 'js' (JavaScript), or 'all' (multi-target)",
+        "choices": [
+          "wasm",
+          "c",
+          "js",
+          "all"
+        ],
+        "default": "all"
+      },
+      {
+        "name": "source",
+        "aliases": [],
+        "type": "boolean",
+        "description": "include C source files in the FMU archive",
+        "default": true
+      },
+      {
+        "name": "compile",
+        "aliases": [],
+        "type": "boolean",
+        "description": "compile C sources into a shared library using the system C compiler",
+        "default": false
+      },
+      {
+        "name": "fmi-version",
+        "aliases": [],
+        "type": "string",
+        "description": "FMI version to include: '2', '3', or 'both'",
+        "choices": [
+          "2",
+          "3",
+          "both"
+        ],
+        "default": "both"
+      },
+      {
+        "name": "wasm",
+        "aliases": [],
+        "type": "boolean",
+        "description": "compile model to WebAssembly and include in the FMU archive",
+        "default": false
+      },
+      {
+        "name": "flattener",
+        "aliases": [
+          "F"
+        ],
+        "type": "string",
+        "description": "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
+        "choices": [
+          "ts",
+          "wasm",
+          "hybrid",
+          "diff"
+        ],
+        "default": "hybrid"
+      },
+      {
+        "name": "golden",
+        "aliases": [],
+        "type": "string",
+        "description": "path to golden CSV trajectory for 'verify' subcommand"
+      },
+      {
+        "name": "timing",
+        "aliases": [],
+        "type": "boolean",
+        "description": "report timing information for each stage as JSON to stderr",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "format",
+    "specs": [
+      "format <files..>"
+    ],
+    "aliases": [],
+    "describe": "Format source files using their language DSL formatter or unparser",
+    "positionals": [
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "File path(s) or directories to format",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "write",
+        "aliases": [
+          "w"
+        ],
+        "type": "boolean",
+        "description": "Edit files in place",
+        "default": false
+      },
+      {
+        "name": "check",
+        "aliases": [
+          "c"
+        ],
+        "type": "boolean",
+        "description": "Check if files are formatted without writing (exits with code 1 if unformatted)",
+        "default": false
+      },
+      {
+        "name": "language",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Explicit language override (e.g. modelica, sysml2, scad, step)"
+      },
+      {
+        "name": "indent-size",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of spaces per indentation level",
+        "default": 2
+      },
+      {
+        "name": "preserve-formatting",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Preserve original token layout where grammar permits",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "generate",
+    "specs": [
+      "generate [target] [entries..]"
+    ],
+    "aliases": [],
+    "describe": "Generate parser tables or a full VS Code extension from DSL language specs",
+    "positionals": [
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Generation target: 'parser' (default) or 'extension'",
+        "default": "parser"
+      },
+      {
+        "name": "entries",
+        "aliases": [],
+        "type": "string",
+        "description": "Path(s) to the language spec file(s) (e.g. src/language.ts)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "entry",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to primary language spec file",
+        "default": "src/language.ts"
+      },
+      {
+        "name": "outdir",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output directory",
+        "default": "build/src-gen"
+      },
+      {
+        "name": "vsix",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Package into a .vsix extension bundle",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "generate-tests",
+    "specs": [
+      "generate-tests <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Synthesize formal boundary-condition and 100% MC/DC test suites from SysML v2 models",
+    "positionals": [
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "Path(s) to .sysml files containing decision activities",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output report format (terminal, json, ctrf, junit, modelica)",
+        "choices": [
+          "terminal",
+          "json",
+          "ctrf",
+          "junit",
+          "modelica"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "mcdc",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enforce 100% MC/DC condition-outcome test pair synthesis",
+        "default": true
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Write generated test suite to file instead of stdout"
+      },
+      {
+        "name": "model",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "Target model name when generating Modelica .mos simulation scripts",
+        "default": "Model"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "gensys",
+    "specs": [
+      "gensys <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: lint | to-modelica | verify | simulate | to-fmu | report",
+        "choices": [
+          "lint",
+          "to-modelica",
+          "verify",
+          "simulate",
+          "to-fmu",
+          "report"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input GENSYS files (.calc, .sub, .run)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Report format: html | sarif | junit | ctrf",
+        "choices": [
+          "html",
+          "sarif",
+          "junit",
+          "ctrf"
+        ],
+        "default": "html"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation stop time [s]",
+        "default": 5
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation time step [s]",
+        "default": 0.005
+      },
+      {
+        "name": "y-force",
+        "aliases": [],
+        "type": "number",
+        "description": "Lateral wheel force Y [kN] for EN 14363 verification",
+        "default": 25
+      },
+      {
+        "name": "q-force",
+        "aliases": [],
+        "type": "number",
+        "description": "Vertical wheel force Q [kN] for EN 14363 verification",
+        "default": 80
+      },
+      {
+        "name": "axle-load",
+        "aliases": [],
+        "type": "number",
+        "description": "Nominal axle load 2*Q0 [kN] for Prud'homme limit",
+        "default": 160
+      },
+      {
+        "name": "wz-vert",
+        "aliases": [],
+        "type": "number",
+        "description": "Sperling vertical ride comfort index Wz"
+      },
+      {
+        "name": "wz-horiz",
+        "aliases": [],
+        "type": "number",
+        "description": "Sperling horizontal ride comfort index Wz"
+      },
+      {
+        "name": "unloading",
+        "aliases": [],
+        "type": "number",
+        "description": "EN 14067-6 crosswind wheel unloading ratio Delta Q / Q0"
+      },
+      {
+        "name": "conicity",
+        "aliases": [],
+        "type": "number",
+        "description": "Wheel-rail equivalent conicity lambda_eq"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "grad",
+    "specs": [
+      "grad <name> <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Compute exact parameter sensitivities through simulation using continuous adjoints",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of model to differentiate"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "params",
+        "aliases": [],
+        "type": "string",
+        "description": "comma-separated list of parameter names to differentiate"
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "target state variable name to compute terminal sensitivity for (default: first state)"
+      },
+      {
+        "name": "start-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override experiment start time"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override experiment stop time"
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "communication step size"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "output results as JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "gtsuite",
+    "specs": [
+      "gtsuite <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER engine models (.gtm, .gtd, .gtx)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, inspect, simulate, to-modelica, to-sysml2, to-ssp, to-dae, diagram, verify)",
+        "choices": [
+          "lint",
+          "summary",
+          "inspect",
+          "simulate",
+          "to-modelica",
+          "to-sysml2",
+          "to-ssp",
+          "to-dae",
+          "diagram",
+          "verify"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "GT-SUITE model file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for code generation, trajectories, or SVG diagrams)"
+      },
+      {
+        "name": "speed",
+        "aliases": [],
+        "type": "number",
+        "description": "Engine speed override in RPM"
+      },
+      {
+        "name": "duration",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation duration in seconds",
+        "default": 0.5
+      },
+      {
+        "name": "view",
+        "aliases": [],
+        "type": "string",
+        "description": "Diagram view: 'schematic' or 'pv'",
+        "choices": [
+          "schematic",
+          "pv"
+        ],
+        "default": "schematic"
+      },
+      {
+        "name": "max-bsfc",
+        "aliases": [],
+        "type": "number",
+        "description": "Verification ceiling for BSFC in g/kWh",
+        "default": 240
+      },
+      {
+        "name": "max-boost",
+        "aliases": [],
+        "type": "number",
+        "description": "Verification ceiling for boost pressure in bar",
+        "default": 2.8
+      },
+      {
+        "name": "max-nox",
+        "aliases": [],
+        "type": "number",
+        "description": "Verification ceiling for NOx concentration in ppm",
+        "default": 60
+      },
+      {
+        "name": "min-knock",
+        "aliases": [],
+        "type": "number",
+        "description": "Verification floor for knock safety margin",
+        "default": 0.05
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: 'terminal' or 'json'",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "hub",
+    "specs": [
+      "hub <command>"
+    ],
+    "aliases": [],
+    "describe": "Manage, configure, and inspect ModelScript hub nodes",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "init",
+        "specs": [
+          "init"
+        ],
+        "aliases": [],
+        "describe": "Initialize a ModelScript hub node with tailored profile configurations",
+        "positionals": [],
+        "options": [
+          {
+            "name": "profile",
+            "aliases": [
+              "p"
+            ],
+            "type": "string",
+            "description": "Deployment profile: 'standalone' | 'internal' | 'federated'",
+            "choices": [
+              "standalone",
+              "internal",
+              "federated"
+            ]
+          },
+          {
+            "name": "dir",
+            "aliases": [
+              "d"
+            ],
+            "type": "string",
+            "description": "Target directory to write configuration files into",
+            "default": "."
+          },
+          {
+            "name": "port",
+            "aliases": [],
+            "type": "number",
+            "description": "API server port",
+            "default": 3000
+          },
+          {
+            "name": "domain",
+            "aliases": [],
+            "type": "string",
+            "description": "Public domain for federated or internal node"
+          },
+          {
+            "name": "admin-user",
+            "aliases": [],
+            "type": "string",
+            "description": "Initial administrator username",
+            "default": "admin"
+          },
+          {
+            "name": "admin-email",
+            "aliases": [],
+            "type": "string",
+            "description": "Initial administrator email address",
+            "default": "admin@modelscript.local"
+          },
+          {
+            "name": "admin-pass",
+            "aliases": [],
+            "type": "string",
+            "description": "Initial administrator password"
+          },
+          {
+            "name": "yes",
+            "aliases": [
+              "y"
+            ],
+            "type": "boolean",
+            "description": "Skip interactive prompts and accept all defaults",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "status",
+        "specs": [
+          "status [url]"
+        ],
+        "aliases": [],
+        "describe": "Query the compliance and health readiness probe of a ModelScript node",
+        "positionals": [
+          {
+            "name": "url",
+            "aliases": [],
+            "type": "string",
+            "description": "Base URL of the ModelScript hub (defaults to http://localhost:3000)",
+            "default": "http://localhost:3000"
+          }
+        ],
+        "options": [],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "i18n",
+    "specs": [
+      "i18n <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Extract internationalization (.pot) translation templates from Modelica models",
+    "positionals": [
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to scan",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "path to the output .pot file"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "ibis",
+    "specs": [
+      "ibis <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, evaluate, and lower ANSI/EIA-656-B IBIS buffer models (.ibs)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, to-dae, to-modelica, eval)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "to-dae",
+          "to-modelica",
+          "eval"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "IBIS model file(s) (.ibs) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "import-fmu",
+    "specs": [
+      "import-fmu <fmu>"
+    ],
+    "aliases": [
+      "fmu-import"
+    ],
+    "describe": "Import an FMU archive and generate an acausal or causal Modelica wrapper",
+    "positionals": [
+      {
+        "name": "fmu",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to .fmu archive"
+      }
+    ],
+    "options": [
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output path for the generated .mo file"
+      },
+      {
+        "name": "package",
+        "aliases": [
+          "p"
+        ],
+        "type": "string",
+        "description": "Enclosing package name (e.g. ImportedFMUs)"
+      },
+      {
+        "name": "verbose",
+        "aliases": [
+          "v"
+        ],
+        "type": "boolean",
+        "description": "Verbose output",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "init",
+    "specs": [
+      "init [path]"
+    ],
+    "aliases": [],
+    "describe": "Initialize a ModelScript package.json for a Modelica/SysML project",
+    "positionals": [
+      {
+        "name": "path",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to the project directory (defaults to cwd)"
+      }
+    ],
+    "options": [
+      {
+        "name": "yes",
+        "aliases": [
+          "y"
+        ],
+        "type": "boolean",
+        "description": "Accept all defaults without prompts",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "install",
+    "specs": [
+      "install [package]"
+    ],
+    "aliases": [],
+    "describe": "Install a package from the ModelScript Registry into the local workspace",
+    "positionals": [
+      {
+        "name": "package",
+        "aliases": [],
+        "type": "string",
+        "description": "Package identifier to install (e.g. 'Modelica', 'Modelica@4.1.0', '@scope/name', or './package.msx.zip')"
+      }
+    ],
+    "options": [
+      {
+        "name": "save",
+        "aliases": [
+          "s"
+        ],
+        "type": "boolean",
+        "description": "Save installed package to package.json dependencies",
+        "default": true
+      },
+      {
+        "name": "frozen-lockfile",
+        "aliases": [
+          "frozen",
+          "ci"
+        ],
+        "type": "boolean",
+        "description": "Enforce zero-trust installation against msx.lock (fails if lockfile is missing, out of sync, or tampered)",
+        "default": false
+      },
+      {
+        "name": "dry-run",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Simulate transitive dependency resolution without writing packages or lockfile to disk",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "instantiate",
+    "specs": [
+      "instantiate <name> <paths...>"
+    ],
+    "aliases": [],
+    "describe": "Instantiate and query AST structure of a Modelica model",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class to instantiate"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "path of library and module to load",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "jsbsim",
+    "specs": [
+      "jsbsim <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate 6-DOF flight dynamics, and lower JSBSim models (.xml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, simulate, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "simulate",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "JSBSim XML file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "duration",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Simulation duration in seconds (default: 10.0)"
+      },
+      {
+        "name": "speed",
+        "aliases": [
+          "s"
+        ],
+        "type": "number",
+        "description": "Initial airspeed in ft/s (default: 180.0)"
+      },
+      {
+        "name": "altitude",
+        "aliases": [
+          "a"
+        ],
+        "type": "number",
+        "description": "Initial altitude in ft (default: 5000.0)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "language",
+    "specs": [
+      "language <action> [target]",
+      "lang <action> [target]"
+    ],
+    "aliases": [
+      "lang"
+    ],
+    "describe": "Manage registered language DSLs (list, register, unregister)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: 'list', 'register', or 'unregister'",
+        "choices": [
+          "list",
+          "register",
+          "unregister"
+        ]
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Target directory (for register) or language ID (for unregister)"
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "lint",
+    "specs": [
+      "lint <path> [paths...]"
+    ],
+    "aliases": [],
+    "describe": "Lint polyglot libraries using QueryEngine and DSL parsers",
+    "positionals": [
+      {
+        "name": "path",
+        "aliases": [],
+        "type": "string",
+        "description": "path of library or module to lint"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "additional paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "language",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran, easy5, rocets, lps, sima, gtsuite)"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: terminal or json",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "profile",
+        "aliases": [],
+        "type": "string",
+        "description": "OWL 2 ontology profile to validate against (DL or EL)",
+        "choices": [
+          "DL",
+          "EL"
+        ],
+        "default": "DL"
+      },
+      {
+        "name": "strict",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Treat warnings as errors",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "login",
+    "specs": [
+      "login"
+    ],
+    "aliases": [],
+    "describe": "Log in to the ModelScript Registry",
+    "positionals": [],
+    "options": [
+      {
+        "name": "email",
+        "aliases": [
+          "e"
+        ],
+        "type": "string",
+        "description": "Email address or username"
+      },
+      {
+        "name": "password",
+        "aliases": [
+          "p"
+        ],
+        "type": "string",
+        "description": "Password (recommended only in non-interactive/automated environments)"
+      },
+      {
+        "name": "token",
+        "aliases": [
+          "t"
+        ],
+        "type": "string",
+        "description": "Authenticate directly with a personal access token or API token"
+      },
+      {
+        "name": "otp",
+        "aliases": [],
+        "type": "string",
+        "description": "Two-factor authentication code (TOTP or backup recovery code)"
+      },
+      {
+        "name": "registry",
+        "aliases": [
+          "r"
+        ],
+        "type": "string",
+        "description": "Registry API URL"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "logout",
+    "specs": [
+      "logout"
+    ],
+    "aliases": [],
+    "describe": "Log out from the ModelScript Registry",
+    "positionals": [],
+    "options": [
+      {
+        "name": "registry",
+        "aliases": [
+          "r"
+        ],
+        "type": "string",
+        "description": "Registry API URL to log out from"
+      },
+      {
+        "name": "all",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Clear all saved registry preferences and credentials",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "lps",
+    "specs": [
+      "lps <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, solve, linepack, simulate, sysml, verify)",
+        "choices": [
+          "inspect",
+          "to-dae",
+          "to-modelica",
+          "lint",
+          "solve",
+          "linepack",
+          "simulate",
+          "sysml",
+          "verify"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "PipelineStudio model file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for SysML export)"
+      },
+      {
+        "name": "duration",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation duration in seconds for transient run",
+        "default": 3600
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Transient simulation timestep in seconds",
+        "default": 10
+      },
+      {
+        "name": "restart",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to .sav checkpoint file to resume simulation from"
+      },
+      {
+        "name": "save-checkpoint",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to write output .sav state snapshot"
+      },
+      {
+        "name": "eos",
+        "aliases": [],
+        "type": "string",
+        "description": "Equation of state to use (AGA8, GERG2008, PENG_ROBINSON, IDEAL)",
+        "choices": [
+          "AGA8",
+          "GERG2008",
+          "PENG_ROBINSON",
+          "IDEAL"
+        ]
+      },
+      {
+        "name": "soil",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Run 1D radial cylindrical soil thermal conduction simulation",
+        "default": false
+      },
+      {
+        "name": "slack",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Evaluate open-channel slack line gravity flow on downhill pipes",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "lsp",
+    "specs": [
+      "lsp"
+    ],
+    "aliases": [],
+    "describe": "Start the ModelScript polyglot Language Server (over stdio for editor integration)",
+    "positionals": [],
+    "options": [
+      {
+        "name": "stdio",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Run language server over standard I/O (default for VS Code, Neovim, Emacs)",
+        "default": true
+      },
+      {
+        "name": "port",
+        "aliases": [],
+        "type": "number",
+        "description": "Run language server over a TCP port"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "mc",
+    "specs": [
+      "mc <name> <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Run Monte Carlo simulation",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class to simulate"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "runs",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of Monte Carlo runs",
+        "default": 1000
+      },
+      {
+        "name": "threads",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of parallel threads",
+        "default": 1
+      },
+      {
+        "name": "params",
+        "aliases": [],
+        "type": "string",
+        "description": "Random variables in format name:dist:arg1:arg2 (comma-separated)"
+      },
+      {
+        "name": "seed",
+        "aliases": [],
+        "type": "number",
+        "description": "PRNG seed"
+      },
+      {
+        "name": "lhs",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Use Latin Hypercube Sampling",
+        "default": false
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "description": "Output format",
+        "choices": [
+          "csv",
+          "json"
+        ],
+        "default": "json"
+      },
+      {
+        "name": "output",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path (defaults to stdout if not provided)"
+      },
+      {
+        "name": "engine",
+        "aliases": [],
+        "type": "string",
+        "description": "simulation backend: wasm or js",
+        "choices": [
+          "wasm",
+          "js"
+        ],
+        "default": "wasm"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "merge",
+    "specs": [
+      "merge [base] [ours] [theirs]"
+    ],
+    "aliases": [],
+    "describe": "Perform an AST/CST-aware 3-way semantic merge across base, ours, and theirs model files",
+    "positionals": [
+      {
+        "name": "base",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to common ancestor (base / %O) model file"
+      },
+      {
+        "name": "ours",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to current branch (ours / %A) model file"
+      },
+      {
+        "name": "theirs",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to incoming branch (theirs / %B) model file"
+      }
+    ],
+    "options": [
+      {
+        "name": "strategy",
+        "aliases": [
+          "s"
+        ],
+        "description": "Conflict resolution strategy",
+        "choices": [
+          "strict",
+          "ours",
+          "theirs",
+          "physics-simplex"
+        ],
+        "default": "strict"
+      },
+      {
+        "name": "order-agnostic",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Ignore child ordering differences in declarative sections",
+        "default": true
+      },
+      {
+        "name": "git-driver",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Run as a Git custom merge driver (writes result to <ours> and exits 1 on conflict)",
+        "default": false
+      },
+      {
+        "name": "install-git-driver",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Configure .gitattributes and .git/config to use ModelScript as the Git merge driver",
+        "default": false
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "description": "Output format",
+        "choices": [
+          "text",
+          "json",
+          "summary"
+        ],
+        "default": "text"
+      },
+      {
+        "name": "language",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Explicit language override (modelica, sysml2)"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Write merged output to specified file path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "olga",
+    "specs": [
+      "olga <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Simulate, lint, verify, and visualize OLGA multiphase flow models (.opi, .key, .genkey)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (simulate, lint, verify, diagram, convert, survey, gate, fmu, trend, profile, cosim, tune, flash, network)",
+        "choices": [
+          "inspect",
+          "to-dae",
+          "to-modelica",
+          "simulate",
+          "lint",
+          "verify",
+          "diagram",
+          "convert",
+          "survey",
+          "gate",
+          "fmu",
+          "trend",
+          "profile",
+          "cosim",
+          "tune",
+          "flash",
+          "network"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "OLGA model file(s) to process (.opi, .key, .genkey, .fmu)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for trajectory CSV, SVG diagram, or .fmu archive)"
+      },
+      {
+        "name": "duration",
+        "aliases": [
+          "t"
+        ],
+        "type": "number",
+        "description": "Simulation duration in seconds [s]"
+      },
+      {
+        "name": "dt",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation time step in seconds [s]"
+      },
+      {
+        "name": "restart",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to checkpoint (.rst or .json) file to warm restart simulation from"
+      },
+      {
+        "name": "checkpoint-out",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to write simulation state checkpoint (.rst) at completion or periodically"
+      },
+      {
+        "name": "checkpoint-interval",
+        "aliases": [],
+        "type": "number",
+        "description": "Periodic checkpoint snapshot interval in seconds [s]"
+      },
+      {
+        "name": "tune",
+        "aliases": [],
+        "type": "string",
+        "description": "Comma-separated list of parameters to calibrate in 'tune' action (e.g. 'roughness,choke_cd,u_ambient')"
+      },
+      {
+        "name": "max-evals",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum number of objective evaluations during history matching optimization",
+        "default": 150
+      },
+      {
+        "name": "report",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to write tuning Markdown report"
+      },
+      {
+        "name": "view",
+        "aliases": [],
+        "type": "string",
+        "description": "Diagram view type: 'profile', 'schematic', 'pvt', 'wellbore', 'slug', 'bathy'",
+        "default": "profile"
+      },
+      {
+        "name": "to",
+        "aliases": [],
+        "type": "string",
+        "description": "Target format for conversion ('genkey', 'opi', 'sysml2')",
+        "choices": [
+          "genkey",
+          "opi",
+          "sysml2"
+        ],
+        "default": "genkey"
+      },
+      {
+        "name": "maop",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum Allowable Operating Pressure limit in bar [bar]",
+        "default": 250
+      },
+      {
+        "name": "margin",
+        "aliases": [],
+        "type": "number",
+        "description": "Required hydrate avoidance subcooling margin in Kelvin [K]",
+        "default": 3
+      },
+      {
+        "name": "capacity",
+        "aliases": [],
+        "type": "number",
+        "description": "Topside slug catcher maximum liquid surge capacity in m³ [m³]",
+        "default": 150
+      },
+      {
+        "name": "min-vel",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum gas turndown velocity in m/s [m/s]",
+        "default": 0.5
+      },
+      {
+        "name": "max-surge",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum allowable topside slug catcher surge volume in m³ [m³]",
+        "default": 85
+      },
+      {
+        "name": "min-hydrate-margin",
+        "aliases": [],
+        "type": "number",
+        "description": "Minimum required hydrate avoidance subcooling margin in Kelvin [K]",
+        "default": 3
+      },
+      {
+        "name": "max-wax",
+        "aliases": [],
+        "type": "string",
+        "description": "Maximum allowable wax deposition layer thickness in mm [mm]",
+        "default": "2mm"
+      },
+      {
+        "name": "max-corrosion",
+        "aliases": [],
+        "type": "string",
+        "description": "Maximum allowable internal sweet CO2 corrosion rate in mm/year [mm/yr]",
+        "default": "0.1mm/yr"
+      },
+      {
+        "name": "out-report",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to write Flow Assurance Gate Markdown summary report"
+      },
+      {
+        "name": "fmi-version",
+        "aliases": [],
+        "type": "string",
+        "description": "FMI specification version for FMU export: '2.0', '3.0', or 'both'",
+        "choices": [
+          "2.0",
+          "3.0",
+          "both"
+        ],
+        "default": "2.0"
+      },
+      {
+        "name": "macro-step",
+        "aliases": [],
+        "type": "number",
+        "description": "Co-simulation communication step size in seconds [s] (default: 1.0)",
+        "default": 1
+      },
+      {
+        "name": "algorithm",
+        "aliases": [],
+        "type": "string",
+        "description": "Co-simulation coupling algorithm ('gauss-seidel' | 'jacobi')",
+        "choices": [
+          "gauss-seidel",
+          "jacobi"
+        ],
+        "default": "gauss-seidel"
+      },
+      {
+        "name": "comp",
+        "aliases": [],
+        "type": "string",
+        "description": "Feed composition string for EOS flash (e.g. 'C1:0.75,C2:0.10,C3:0.08,nC4:0.04,C7:0.03')"
+      },
+      {
+        "name": "p",
+        "aliases": [],
+        "type": "number",
+        "description": "Operating pressure in bar [bar] for flash (default: 50.0)",
+        "default": 50
+      },
+      {
+        "name": "t",
+        "aliases": [],
+        "type": "number",
+        "description": "Operating temperature in Kelvin or Celsius for flash (default: 300.15 K)",
+        "default": 300.15
+      },
+      {
+        "name": "model",
+        "aliases": [],
+        "type": "string",
+        "description": "Cubic equation of state model ('pr' | 'srk')",
+        "choices": [
+          "pr",
+          "srk"
+        ],
+        "default": "pr"
+      },
+      {
+        "name": "envelope",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Trace two-phase saturation envelope (cricondenbar & cricondentherm)",
+        "default": false
+      },
+      {
+        "name": "anti-slug",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enable active subsea topside closed-loop anti-slug controller during simulation",
+        "default": false
+      },
+      {
+        "name": "slug-setpoint",
+        "aliases": [],
+        "type": "number",
+        "description": "Anti-slug riser base pressure setpoint in bar [bar] (default: 50.0)",
+        "default": 50
+      },
+      {
+        "name": "slug-kp",
+        "aliases": [],
+        "type": "number",
+        "description": "Anti-slug PI proportional gain [1/Pa] (default: 1.5e-6)",
+        "default": 0.0000015
+      },
+      {
+        "name": "slug-ti",
+        "aliases": [],
+        "type": "number",
+        "description": "Anti-slug PI integral time constant in seconds [s] (default: 30.0)",
+        "default": 30
+      },
+      {
+        "name": "slug-washout",
+        "aliases": [],
+        "type": "number",
+        "description": "Anti-slug high-pass washout filter time constant in seconds [s] (default: 20.0)",
+        "default": 20
+      },
+      {
+        "name": "slug-choke",
+        "aliases": [],
+        "type": "number",
+        "description": "Anti-slug baseline nominal choke opening [0..1] (default: 0.50)",
+        "default": 0.5
+      },
+      {
+        "name": "trip",
+        "aliases": [],
+        "type": "string",
+        "description": "Dynamic well trip event specification (e.g. 'WELL_1:20' for shut-in at t=20s)"
+      },
+      {
+        "name": "junction-vol",
+        "aliases": [],
+        "type": "number",
+        "description": "Gathering manifold junction accumulator volume in m³ [m³] (default: 5.0)",
+        "default": 5
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "opendrive",
+    "specs": [
+      "opendrive <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, sample clothoids, lower to DAE, and project OpenDRIVE road networks (.xodr, .xml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | track | to-gensys | to-dae | render",
+        "choices": [
+          "inspect",
+          "lint",
+          "track",
+          "to-gensys",
+          "to-dae",
+          "render"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input OpenDRIVE roadway files (.xodr, .xml)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path for generated track or SVG diagram"
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Discretization sampling step along road reference line in meters",
+        "default": 1
+      },
+      {
+        "name": "theme",
+        "aliases": [],
+        "type": "string",
+        "description": "Visual theme for vector SVG rendering (dark | light)",
+        "choices": [
+          "dark",
+          "light"
+        ],
+        "default": "dark"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "opendss",
+    "specs": [
+      "opendss <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve power flow, and lower EPRI OpenDSS distribution circuits (.dss)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, powerflow, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "powerflow",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "OpenDSS circuit script(s) (.dss) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "openscenario",
+    "specs": [
+      "openscenario <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate, and lower ASAM OpenSCENARIO scenario files (.xosc, .osc)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, simulate, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "simulate",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "OpenSCENARIO scenario file(s) (.xosc, .osc) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "duration",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Simulation duration in seconds (default: 10.0)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "optimize",
+    "specs": [
+      "optimize <name> <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Solve an optimal control problem for a Modelica model",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class to optimize"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "objective",
+        "aliases": [],
+        "type": "string",
+        "description": "cost integrand expression (e.g. \"u^2\")"
+      },
+      {
+        "name": "controls",
+        "aliases": [],
+        "type": "string",
+        "description": "control variable names (comma-separated)"
+      },
+      {
+        "name": "control-bounds",
+        "aliases": [],
+        "type": "string",
+        "description": "control bounds as var:min:max (comma-separated)"
+      },
+      {
+        "name": "start-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override start time"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override stop time"
+      },
+      {
+        "name": "num-intervals",
+        "aliases": [],
+        "type": "number",
+        "description": "number of collocation intervals",
+        "default": 50
+      },
+      {
+        "name": "tolerance",
+        "aliases": [],
+        "type": "number",
+        "description": "NLP convergence tolerance",
+        "default": 0.000001
+      },
+      {
+        "name": "max-iterations",
+        "aliases": [],
+        "type": "number",
+        "description": "maximum SQP iterations",
+        "default": 200
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "description": "output format",
+        "choices": [
+          "csv",
+          "json"
+        ],
+        "default": "csv"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "oslc",
+    "specs": [
+      "oslc <action>"
+    ],
+    "aliases": [],
+    "describe": "OSLC Core 3.0 enterprise coexistence gateway for Teamcenter, Windchill, and DOORS",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "export",
+        "specs": [
+          "export"
+        ],
+        "aliases": [],
+        "describe": "Export requirements, test results, or architecture models as OSLC Linked Data (Turtle or JSON-LD)",
+        "positionals": [],
+        "options": [
+          {
+            "name": "input",
+            "aliases": [
+              "i"
+            ],
+            "type": "string",
+            "description": "Path to input file (e.g. .reqif, .json)"
+          },
+          {
+            "name": "domain",
+            "aliases": [
+              "d"
+            ],
+            "description": "OSLC domain to export: rm (Requirements), qm (Quality/Tests), am (Architecture), or all",
+            "choices": [
+              "rm",
+              "qm",
+              "am",
+              "all"
+            ],
+            "default": "all"
+          },
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "RDF serialization format: turtle or jsonld",
+            "choices": [
+              "turtle",
+              "jsonld"
+            ],
+            "default": "turtle"
+          },
+          {
+            "name": "output",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output file path (prints to stdout if not specified)"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "serve",
+        "specs": [
+          "serve"
+        ],
+        "aliases": [],
+        "describe": "Start an embedded OSLC Core 3.0 Linked Data HTTP REST server",
+        "positionals": [],
+        "options": [
+          {
+            "name": "input",
+            "aliases": [
+              "i"
+            ],
+            "type": "string",
+            "description": "Optional initial requirements or thread file to populate"
+          },
+          {
+            "name": "port",
+            "aliases": [
+              "p"
+            ],
+            "type": "number",
+            "description": "Port to bind HTTP server",
+            "default": 8080
+          },
+          {
+            "name": "host",
+            "aliases": [
+              "H"
+            ],
+            "type": "string",
+            "description": "Host interface to listen on",
+            "default": "localhost"
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "pack",
+    "specs": [
+      "pack [path]"
+    ],
+    "aliases": [],
+    "describe": "Create an offline distribution zip archive from a package",
+    "positionals": [
+      {
+        "name": "path",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to the package directory or single Modelica file (defaults to current working directory)",
+        "default": "."
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output directory for the generated archive"
+      },
+      {
+        "name": "dry-run",
+        "aliases": [
+          "d"
+        ],
+        "type": "boolean",
+        "description": "Inspect files and archive details without creating the file",
+        "default": false
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output archive metadata as JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "parse",
+    "specs": [
+      "parse <file>"
+    ],
+    "aliases": [],
+    "describe": "Parse a file using its language DSL parser (supports any registered language)",
+    "positionals": [
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "path of file to parse"
+      }
+    ],
+    "options": [
+      {
+        "name": "language",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Explicit language override (e.g. modelica, sysml2, scad, step, owl2, csv)"
+      },
+      {
+        "name": "encoding",
+        "aliases": [],
+        "type": "string",
+        "description": "Input encoding to use",
+        "choices": [
+          "utf8",
+          "utf16le",
+          "utf16be",
+          "utf32le",
+          "utf32be"
+        ],
+        "default": "utf8"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "playground",
+    "specs": [
+      "playground"
+    ],
+    "aliases": [],
+    "describe": "Launch the dual-editor DSL workbench",
+    "positionals": [],
+    "options": [],
+    "subcommands": []
+  },
+  {
+    "name": "plcopen",
+    "specs": [
+      "plcopen <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, simulate, and project IEC 61131-3 PLCopen XML & Structured Text models (.xml, .plcopen, .st)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | run-scan | to-modelica | to-sysml | to-dae",
+        "choices": [
+          "inspect",
+          "lint",
+          "run-scan",
+          "to-modelica",
+          "to-sysml",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input PLCopen model files (.xml, .plcopen, .st)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "cycles",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of scan cycles for run-scan",
+        "default": 10
+      },
+      {
+        "name": "dt",
+        "aliases": [],
+        "type": "number",
+        "description": "Cycle time interval in milliseconds for run-scan",
+        "default": 10
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "polyglot",
+    "specs": [
+      "polyglot <action>"
+    ],
+    "aliases": [],
+    "describe": "Multi-domain TGG projection, formal verification, and digital thread tracking",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "project",
+        "specs": [
+          "project <sourceFile>"
+        ],
+        "aliases": [],
+        "describe": "Project active model to target domain (e.g. Modelica to SysML v2, OpenSCAD to STEP)",
+        "positionals": [
+          {
+            "name": "sourceFile",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to source model file (.mo, .sysml, .scad, .step, .owl, .csv)"
+          }
+        ],
+        "options": [
+          {
+            "name": "target",
+            "aliases": [],
+            "type": "string",
+            "description": "Target domain identifier",
+            "choices": [
+              "sysml2",
+              "modelica",
+              "owl2",
+              "step",
+              "csv",
+              "scad",
+              "json-schema"
+            ]
+          },
+          {
+            "name": "out",
+            "aliases": [],
+            "type": "string",
+            "description": "Output file destination path"
+          },
+          {
+            "name": "strict",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Enforce strict CPA confluence and type validation",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "verify",
+        "specs": [
+          "verify"
+        ],
+        "aliases": [],
+        "describe": "Verify formal confluence (CPA) and losslessness across all registered polyglot rules",
+        "positionals": [],
+        "options": [
+          {
+            "name": "strict",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Enforce strict CPA: fail on any cyclic conflict or ambiguous rule overlap",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "thread",
+        "specs": [
+          "thread <sourceFile>"
+        ],
+        "aliases": [],
+        "describe": "Inspect active digital thread alignment graph and multi-domain bindings",
+        "positionals": [
+          {
+            "name": "sourceFile",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to engineering asset (.mo, .sysml, .scad, .step, .reqif)"
+          }
+        ],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "query",
+        "specs": [
+          "query <target>",
+          "inspect <target>",
+          "cross-query <target>"
+        ],
+        "aliases": [],
+        "describe": "Query cross-domain symbol resolution, digital thread twins, and unit parity in Salsa",
+        "positionals": [
+          {
+            "name": "target",
+            "aliases": [],
+            "type": "string",
+            "description": "Symbol FQN, entity reference (#100), or file (e.g. Propulsion::Motor or Drone.mo)"
+          }
+        ],
+        "options": [
+          {
+            "name": "workspace",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to workspace directory containing polyglot models"
+          },
+          {
+            "name": "domain",
+            "aliases": [],
+            "type": "string",
+            "description": "Target domain filter (modelica, sysml2, step, owl2, scad, csv)"
+          },
+          {
+            "name": "check-parity",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Validate physical quantity and unit parity for linked twins",
+            "default": true
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output results in JSON format",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "check-twins",
+        "specs": [
+          "check-twins [paths..]",
+          "verify-twins [paths..]",
+          "parity [paths..]"
+        ],
+        "aliases": [],
+        "describe": "Validate digital thread twin consistency and physical quantity parity across models",
+        "positionals": [
+          {
+            "name": "paths",
+            "aliases": [],
+            "type": "string",
+            "description": "Files or directories to scan for polyglot models",
+            "array": true
+          }
+        ],
+        "options": [
+          {
+            "name": "workspace",
+            "aliases": [],
+            "type": "string",
+            "description": "Workspace root directory"
+          },
+          {
+            "name": "strict",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Exit with code 1 if any twin is broken or unit parity fails",
+            "default": false
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output results in JSON format",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "index",
+        "specs": [
+          "index [paths..]",
+          "build-index [paths..]",
+          "export-index [paths..]"
+        ],
+        "aliases": [],
+        "describe": "Build collision-free polyglot Salsa symbol index and export to SQLite salsa-index.db",
+        "positionals": [
+          {
+            "name": "paths",
+            "aliases": [],
+            "type": "string",
+            "description": "Files or directories to scan and index",
+            "array": true
+          }
+        ],
+        "options": [
+          {
+            "name": "workspace",
+            "aliases": [],
+            "type": "string",
+            "description": "Workspace root directory"
+          },
+          {
+            "name": "out",
+            "aliases": [],
+            "type": "string",
+            "description": "Output path for the generated salsa-index.db",
+            "default": "salsa-index.db"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output summary in JSON format",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "pr-diff",
+    "specs": [
+      "pr-diff [file]"
+    ],
+    "aliases": [],
+    "describe": "Compute visual and semantic pull request diff across Git revisions (SysML v2, Modelica)",
+    "positionals": [
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to model file to diff (optional; auto-detects changed model files if omitted)"
+      }
+    ],
+    "options": [
+      {
+        "name": "base",
+        "aliases": [
+          "b"
+        ],
+        "type": "string",
+        "description": "Base Git reference (branch, tag, or commit hash)",
+        "default": "HEAD~1"
+      },
+      {
+        "name": "head",
+        "aliases": [
+          "h"
+        ],
+        "type": "string",
+        "description": "Head Git reference (branch, commit hash, or omit for working tree)"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "description": "Output format for the visual diff",
+        "choices": [
+          "visual-html",
+          "visual-svg",
+          "pr-comment",
+          "json",
+          "terminal"
+        ],
+        "default": "visual-html"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (defaults to stdout or visual-diff.html / visual-diff.svg)"
+      },
+      {
+        "name": "view",
+        "aliases": [
+          "v"
+        ],
+        "type": "string",
+        "description": "SysML v2 viewpoint projection filter (e.g. All, BDD, IBD, StateMachine)",
+        "default": "All"
+      },
+      {
+        "name": "breaking-only",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Only report breaking changes",
+        "default": false
+      },
+      {
+        "name": "open",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Automatically open generated visual HTML in default web browser",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "pscad",
+    "specs": [
+      "pscad <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, diff, and simulate PSCAD projects (.pscx, .pslx)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, diagram, diff, sim, verify-ieee2800, export-modelica, export-ssp, psout)",
+        "choices": [
+          "lint",
+          "diagram",
+          "diff",
+          "sim",
+          "verify-ieee2800",
+          "export-modelica",
+          "export-ssp",
+          "psout"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Project file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)"
+      },
+      {
+        "name": "tstop",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation duration in seconds",
+        "default": 1
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "string",
+        "description": "Simulation fixed time step (e.g. '20us' or 20e-6)",
+        "default": "20us"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Result format for 'sim' with --out (base path): pscad (.out/.inf), psout (.psout), comtrade, comtrade-bin, cff",
+        "choices": [
+          "pscad",
+          "psout",
+          "comtrade",
+          "comtrade-bin",
+          "cff"
+        ],
+        "default": "pscad"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "psse",
+    "specs": [
+      "psse <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, diagram, netlist, solve)",
+        "choices": [
+          "inspect",
+          "to-dae",
+          "to-modelica",
+          "lint",
+          "summary",
+          "diagram",
+          "netlist",
+          "solve"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "PSS/E RAW file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for SVG diagram)"
+      },
+      {
+        "name": "algorithm",
+        "aliases": [
+          "alg"
+        ],
+        "type": "string",
+        "description": "Power flow algorithm: 'nr' (Newton-Raphson) or 'fdpf' (Fast Decoupled)",
+        "choices": [
+          "nr",
+          "fdpf"
+        ],
+        "default": "nr"
+      },
+      {
+        "name": "tol",
+        "aliases": [],
+        "type": "number",
+        "description": "Convergence tolerance in p.u.",
+        "default": 0.0001
+      },
+      {
+        "name": "max-iter",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum allowable power flow iterations",
+        "default": 25
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "publish",
+    "specs": [
+      "publish <path>"
+    ],
+    "aliases": [],
+    "describe": "Publish a library directory or single Modelica file to the ModelScript Registry",
+    "positionals": [
+      {
+        "name": "path",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to the unzipped library directory (containing package.mo) or a single .mo file"
+      }
+    ],
+    "options": [
+      {
+        "name": "signature",
+        "aliases": [],
+        "type": "string",
+        "description": "Cryptographic detached signature for supply chain verification"
+      },
+      {
+        "name": "dry-run",
+        "aliases": [
+          "d"
+        ],
+        "type": "boolean",
+        "description": "Report files and archive metadata without publishing to the registry",
+        "default": false
+      },
+      {
+        "name": "tag",
+        "aliases": [
+          "t"
+        ],
+        "type": "string",
+        "description": "Registers the published package with the given dist-tag",
+        "default": "latest"
+      },
+      {
+        "name": "no-verify",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Skip pre-flight syntax and manifest verification",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "relap5",
+    "specs": [
+      "relap5 <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, solve kinetics, and lower US NRC RELAP5-3D decks (.i, .inp, .r5)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, kinetics, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "kinetics",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "RELAP5 input deck file(s) (.i, .inp, .r5) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "duration",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Kinetics simulation duration in seconds (default: 10.0)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "render",
+    "specs": [
+      "render <name> <paths...>"
+    ],
+    "aliases": [],
+    "describe": "Render Modelica class diagram or icon to SVG",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "class/module name to render, or file path when paths are omitted"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "icon",
+        "aliases": [
+          "i"
+        ],
+        "type": "boolean",
+        "description": "render icon (Modelica)",
+        "default": false
+      },
+      {
+        "name": "view",
+        "aliases": [
+          "v"
+        ],
+        "type": "string",
+        "description": "diagram view/projection (e.g. All, BDD, IBD, StateMachine, Activity, SLD, Taxonomy, Properties)"
+      },
+      {
+        "name": "theme",
+        "aliases": [
+          "t"
+        ],
+        "description": "color theme for polyglot SVG export (dark, light, blueprint)",
+        "choices": [
+          "dark",
+          "light",
+          "blueprint"
+        ],
+        "default": "light"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "output SVG file path (defaults to stdout)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "reqif",
+    "specs": [
+      "reqif <action>"
+    ],
+    "aliases": [],
+    "describe": "Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "import",
+        "specs": [
+          "import <file>"
+        ],
+        "aliases": [],
+        "describe": "Import and inspect OMG ReqIF 1.2 requirements document with hierarchy and traceability relations",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .reqif or .xml file"
+          }
+        ],
+        "options": [
+          {
+            "name": "to-sysml",
+            "aliases": [],
+            "type": "string",
+            "description": "Generate SysML v2 requirement definition file"
+          },
+          {
+            "name": "to-modelica",
+            "aliases": [],
+            "type": "string",
+            "description": "Generate Modelica verification block file"
+          },
+          {
+            "name": "format",
+            "aliases": [],
+            "description": "Output display format",
+            "choices": [
+              "table",
+              "json"
+            ],
+            "default": "table"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "export",
+        "specs": [
+          "export <file>"
+        ],
+        "aliases": [],
+        "describe": "Export SysML v2 requirements or model specs into OMG ReqIF 1.2 XML format",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SysML v2 (.sysml) or JSON model file"
+          }
+        ],
+        "options": [
+          {
+            "name": "output",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Path to output .reqif file"
+          },
+          {
+            "name": "title",
+            "aliases": [
+              "t"
+            ],
+            "type": "string",
+            "description": "Document title for ReqIF specification",
+            "default": "Exported Requirements"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "lint",
+        "specs": [
+          "lint <file>"
+        ],
+        "aliases": [],
+        "describe": "Lint OMG ReqIF document for missing attributes, dangling relations, and unbounded contracts",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .reqif file"
+          }
+        ],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "verify",
+        "specs": [
+          "verify <file>"
+        ],
+        "aliases": [],
+        "describe": "Formally verify requirements decomposition completeness or multi-domain physics compliance using Nelson-Oppen",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .reqif file"
+          }
+        ],
+        "options": [
+          {
+            "name": "deck",
+            "aliases": [
+              "d"
+            ],
+            "type": "array",
+            "description": "One or more physics simulation decks (.raw, .inp, .cfg, .json) to verify against"
+          },
+          {
+            "name": "psse",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to PSS/E .raw power-flow case"
+          },
+          {
+            "name": "pscad",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to PSCAD / COMTRADE case or IEEE 2800 report"
+          },
+          {
+            "name": "sima",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SIMA .inp mooring case"
+          },
+          {
+            "name": "fea",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to FEA .inp / .bdf structural case"
+          },
+          {
+            "name": "cfd",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to CFD .cfg / .su2 / .foam aerodynamics case"
+          },
+          {
+            "name": "format",
+            "aliases": [],
+            "description": "Output format",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-sysml",
+        "specs": [
+          "to-sysml <file>"
+        ],
+        "aliases": [],
+        "describe": "Translate ReqIF requirements and satisfaction relations into SysML v2 definitions",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .reqif file"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [],
+            "type": "string",
+            "description": "Output .sysml file path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-modelica",
+        "specs": [
+          "to-modelica <file>"
+        ],
+        "aliases": [],
+        "describe": "Translate ReqIF requirements contracts into a Modelica plant monitor verification block",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .reqif file"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [],
+            "type": "string",
+            "description": "Output .mo file path"
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "rocets",
+    "specs": [
+      "rocets <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, balance, simulate, and project NASA ROCETS liquid propulsion models (.roc, .deck)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, summary, inspect, balance, simulate, to-modelica, to-ssp, to-dae, diagram)",
+        "choices": [
+          "lint",
+          "summary",
+          "inspect",
+          "balance",
+          "simulate",
+          "to-modelica",
+          "to-ssp",
+          "to-dae",
+          "diagram"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "ROCETS deck file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for code generation or SVG diagram)"
+      },
+      {
+        "name": "target-pc",
+        "aliases": [],
+        "type": "number",
+        "description": "Target chamber pressure in Pascals for balance solve"
+      },
+      {
+        "name": "mr",
+        "aliases": [],
+        "type": "number",
+        "description": "Target oxidizer-to-fuel mixture ratio for balance solve"
+      },
+      {
+        "name": "t-end",
+        "aliases": [],
+        "type": "number",
+        "description": "End time for transient trajectory simulation (seconds)",
+        "default": 2
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: 'terminal' or 'json'",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "sandbox",
+    "specs": [
+      "sandbox [entries..]"
+    ],
+    "aliases": [],
+    "describe": "Start a VS Code Web sandbox with on-the-fly compiled multi-language extension",
+    "positionals": [
+      {
+        "name": "entries",
+        "aliases": [],
+        "type": "string",
+        "description": "path(s) to the language spec file(s) (e.g. src/language.ts)",
+        "array": true,
+        "default": [
+          "src/language.ts"
+        ]
+      }
+    ],
+    "options": [
+      {
+        "name": "outdir",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "output directory for extension build artifacts",
+        "default": "build/src-gen"
+      },
+      {
+        "name": "open",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Open the browser automatically",
+        "default": true
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "sbml",
+    "specs": [
+      "sbml <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, simulate biochemical networks, and lower SBML models (.sbml, .xml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, simulate, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "simulate",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "SBML file(s) (.sbml, .xml) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "duration",
+        "aliases": [
+          "d"
+        ],
+        "type": "number",
+        "description": "Simulation duration in seconds (default: 10.0)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "sima",
+    "specs": [
+      "sima <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, verify, and project SINTEF Ocean SIMO / RIFLEX offshore models (.inp, .sima, .hyd)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (lint, verify, summary, inspect, offset, to-modelica, to-ssp, to-sysml2, to-dae)",
+        "choices": [
+          "lint",
+          "verify",
+          "summary",
+          "inspect",
+          "offset",
+          "to-modelica",
+          "to-ssp",
+          "to-sysml2",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "SIMO/RIFLEX input deck or .sima file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (for code generation or exported manifests)"
+      },
+      {
+        "name": "consequence-class",
+        "aliases": [],
+        "type": "number",
+        "description": "DNV consequence class (1 or 2, default: 2)",
+        "default": 2
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "simpack",
+    "specs": [
+      "simpack <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: lint | mobility | to-modelica | simulate | to-fmu | report",
+        "choices": [
+          "lint",
+          "mobility",
+          "to-modelica",
+          "simulate",
+          "to-fmu",
+          "report"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input SIMPACK files (.spck, .sim, .mbs)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Report format: html | sarif | junit | ctrf",
+        "choices": [
+          "html",
+          "sarif",
+          "junit",
+          "ctrf"
+        ],
+        "default": "html"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation stop time [s]",
+        "default": 5
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation time step [s]",
+        "default": 0.005
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "simulate",
+    "specs": [
+      "simulate <name> [paths..]"
+    ],
+    "aliases": [],
+    "describe": "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class to simulate, or path to a .fmu archive"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "output file path for simulation results"
+      },
+      {
+        "name": "start-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override experiment start time"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override experiment stop time"
+      },
+      {
+        "name": "tolerance",
+        "aliases": [],
+        "type": "number",
+        "description": "override experiment tolerance"
+      },
+      {
+        "name": "interval",
+        "aliases": [
+          "step-size",
+          "output-interval"
+        ],
+        "type": "number",
+        "description": "override experiment output interval / step size"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "output format",
+        "choices": [
+          "csv",
+          "json",
+          "none"
+        ],
+        "default": "csv"
+      },
+      {
+        "name": "solver",
+        "aliases": [],
+        "type": "string",
+        "description": "ODE solver to use",
+        "choices": [
+          "euler",
+          "rk4",
+          "dopri5",
+          "tsit5",
+          "trbdf2",
+          "rodas4p",
+          "bdf",
+          "auto",
+          "cvode",
+          "webgpu"
+        ],
+        "default": "dopri5"
+      },
+      {
+        "name": "interface-type",
+        "aliases": [],
+        "type": "string",
+        "description": "FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'",
+        "choices": [
+          "cs",
+          "me",
+          "auto"
+        ]
+      },
+      {
+        "name": "start-value",
+        "aliases": [],
+        "type": "string",
+        "description": "override FMU variable start value as name=value (repeatable)",
+        "array": true
+      },
+      {
+        "name": "input-file",
+        "aliases": [],
+        "type": "string",
+        "description": "CSV file providing time-varying input trajectories (time,u1,u2,...)"
+      },
+      {
+        "name": "output-variable",
+        "aliases": [],
+        "type": "string",
+        "description": "variable name(s) to record in FMU simulation output (repeatable)",
+        "array": true
+      },
+      {
+        "name": "initial-fmu-state-file",
+        "aliases": [],
+        "type": "string",
+        "description": "restore serialized FMU state from file before stepping"
+      },
+      {
+        "name": "final-fmu-state-file",
+        "aliases": [],
+        "type": "string",
+        "description": "save serialized FMU state to file after simulation finishes"
+      },
+      {
+        "name": "log-fmi-calls",
+        "aliases": [],
+        "type": "boolean",
+        "description": "log all FMI C API calls and logger callbacks to stderr",
+        "default": false
+      },
+      {
+        "name": "realtime",
+        "aliases": [],
+        "type": "number",
+        "description": "run simulation in real-time mode with given scale factor (e.g., 1.0 for 1x)"
+      },
+      {
+        "name": "engine",
+        "aliases": [],
+        "type": "string",
+        "description": "simulation backend: js (pure JavaScript), arena (arena-native DoD), wasm (WebAssembly via emcc), c (native compiled), jit (in-memory JIT)",
+        "choices": [
+          "js",
+          "arena",
+          "wasm",
+          "c",
+          "jit"
+        ],
+        "default": "js"
+      },
+      {
+        "name": "jit",
+        "aliases": [],
+        "type": "boolean",
+        "description": "enable in-memory JIT compilation engine (sub-15ms execution)",
+        "default": false
+      },
+      {
+        "name": "timing",
+        "aliases": [],
+        "type": "boolean",
+        "description": "report timing information for each stage as JSON to stderr",
+        "default": false
+      },
+      {
+        "name": "memory-profile",
+        "aliases": [],
+        "type": "boolean",
+        "description": "profile memory usage across phases and report as JSON to stderr",
+        "default": false
+      },
+      {
+        "name": "jacobian",
+        "aliases": [],
+        "description": "Jacobian calculation method",
+        "choices": [
+          "dense",
+          "sparse",
+          "fd"
+        ],
+        "default": "sparse"
+      },
+      {
+        "name": "flattener",
+        "aliases": [
+          "F"
+        ],
+        "type": "string",
+        "description": "Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison)",
+        "choices": [
+          "ts",
+          "wasm",
+          "hybrid",
+          "diff"
+        ],
+        "default": "hybrid"
+      },
+      {
+        "name": "steady-state",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Solve steady-state initial equilibrium only without time integration",
+        "default": false
+      },
+      {
+        "name": "cloud",
+        "aliases": [],
+        "type": "boolean",
+        "description": "dispatch simulation to ModelScript Cloud HPC cluster",
+        "default": false
+      },
+      {
+        "name": "profile",
+        "aliases": [],
+        "type": "string",
+        "description": "cloud compute profile (standard, high-memory, gpu-a100, hpc-mpi-64)",
+        "default": "standard"
+      },
+      {
+        "name": "async",
+        "aliases": [],
+        "type": "boolean",
+        "description": "submit cloud job asynchronously and return immediately with Job ID",
+        "default": false
+      },
+      {
+        "name": "poll-interval",
+        "aliases": [],
+        "type": "number",
+        "description": "polling interval in milliseconds for cloud simulation status",
+        "default": 1500
+      },
+      {
+        "name": "output-dir",
+        "aliases": [],
+        "type": "string",
+        "description": "directory to write downloaded simulation result file",
+        "default": "./results"
+      },
+      {
+        "name": "api-url",
+        "aliases": [],
+        "type": "string",
+        "description": "override ModelScript API base URL"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "simulink",
+    "specs": [
+      "simulink <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: lint | inspect | to-modelica | to-dae | sync",
+        "choices": [
+          "lint",
+          "inspect",
+          "to-modelica",
+          "to-dae",
+          "sync"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input Simulink model files (.slx, .mdl)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "from-modelica",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to modified Modelica file for bidirectional synchronization"
+      },
+      {
+        "name": "strategy",
+        "aliases": [],
+        "type": "string",
+        "description": "Conflict reconciliation strategy",
+        "choices": [
+          "target-wins",
+          "source-wins",
+          "physics-simplex"
+        ],
+        "default": "target-wins"
+      },
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path for generated code or export"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "spice",
+    "specs": [
+      "spice <action>"
+    ],
+    "aliases": [],
+    "describe": "SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "simulate",
+        "specs": [
+          "simulate <file>"
+        ],
+        "aliases": [],
+        "describe": "Simulate SPICE netlist with DC operating point (.OP), transient (.TRAN), or AC frequency response (.AC)",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "analysis",
+            "aliases": [
+              "a"
+            ],
+            "type": "string",
+            "description": "Analysis type (op, tran, ac). Defaults to directives defined in netlist",
+            "choices": [
+              "op",
+              "tran",
+              "ac"
+            ]
+          },
+          {
+            "name": "tstep",
+            "aliases": [],
+            "type": "number",
+            "description": "Transient step size (seconds)"
+          },
+          {
+            "name": "tstop",
+            "aliases": [],
+            "type": "number",
+            "description": "Transient stop time (seconds)"
+          },
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "Output format",
+            "choices": [
+              "table",
+              "json",
+              "csv"
+            ],
+            "default": "table"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Write results to output file"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "lint",
+        "specs": [
+          "lint <file>"
+        ],
+        "aliases": [],
+        "describe": "Perform pre-flight structural and electrical rule checks on SPICE netlist",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "Output format",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "inspect",
+        "specs": [
+          "inspect <file>"
+        ],
+        "aliases": [
+          "summary <file>",
+          "summary"
+        ],
+        "describe": "Inspect circuit topology, component breakdown by kind, nodes, models, subcircuits, and directives",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "Output format",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Write summary to output JSON file"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-modelica",
+        "specs": [
+          "to-modelica <file>"
+        ],
+        "aliases": [],
+        "describe": "Translate SPICE netlist to idiomatic Modelica 3.x electrical components and connections",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output .mo file path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-ecad",
+        "specs": [
+          "to-ecad <file>"
+        ],
+        "aliases": [],
+        "describe": "Project SPICE netlist to ECAD NetlistGraph for PCB routing and design rule checking",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output JSON file path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-dae",
+        "specs": [
+          "to-dae <file>"
+        ],
+        "aliases": [],
+        "describe": "Lower SPICE netlist directly into zero-GC linear-memory DAE arena",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "Output format",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output JSON file for DAE metadata"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "diagram",
+        "specs": [
+          "diagram <file>"
+        ],
+        "aliases": [],
+        "describe": "Render SPICE circuit schematic diagram to standalone vector SVG or JSON graph",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "Output format (svg or json)",
+            "choices": [
+              "svg",
+              "json"
+            ],
+            "default": "svg"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output file path (e.g., schematic.svg or graph.json)"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "sync",
+        "specs": [
+          "sync <file>"
+        ],
+        "aliases": [],
+        "describe": "Synchronize tuned parameters and topology from Modelica 3.x back into SPICE netlist",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SPICE netlist (.cir, .sp, .net, .lib)"
+          }
+        ],
+        "options": [
+          {
+            "name": "from-modelica",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to Modelica model file to synchronize from"
+          },
+          {
+            "name": "strategy",
+            "aliases": [],
+            "type": "string",
+            "description": "Conflict reconciliation strategy",
+            "choices": [
+              "target-wins",
+              "source-wins",
+              "physics-simplex"
+            ],
+            "default": "target-wins"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output file path (default: in-place)"
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "surrogate",
+    "specs": [
+      "surrogate <name> [paths..]"
+    ],
+    "aliases": [],
+    "describe": "Train or import an AI surrogate model (ROM) and generate C, ONNX, or Modelica code",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "name of class or model for surrogate"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "inputs",
+        "aliases": [],
+        "type": "string",
+        "description": "input parameter names (comma-separated)"
+      },
+      {
+        "name": "input-bounds",
+        "aliases": [],
+        "type": "string",
+        "description": "input bounds as var:min:max (comma-separated)"
+      },
+      {
+        "name": "outputs",
+        "aliases": [],
+        "type": "string",
+        "description": "output variable names (comma-separated)"
+      },
+      {
+        "name": "strategy",
+        "aliases": [],
+        "description": "Design of Experiments (DoE) sampling strategy",
+        "choices": [
+          "full-factorial",
+          "latin-hypercube",
+          "sobol",
+          "central-composite"
+        ],
+        "default": "latin-hypercube"
+      },
+      {
+        "name": "num-samples",
+        "aliases": [],
+        "type": "number",
+        "description": "number of samples to generate",
+        "default": 50
+      },
+      {
+        "name": "architecture",
+        "aliases": [],
+        "description": "Reduced Order Model (ROM) architecture",
+        "choices": [
+          "mlp",
+          "polynomial",
+          "rbf"
+        ],
+        "default": "mlp"
+      },
+      {
+        "name": "start-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override start time"
+      },
+      {
+        "name": "stop-time",
+        "aliases": [],
+        "type": "number",
+        "description": "override stop time"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "description": "target export format: C/WASM ('c'), ONNX graph ('onnx'), Modelica block ('mo'), or all ('all')",
+        "choices": [
+          "c",
+          "onnx",
+          "mo",
+          "all"
+        ],
+        "default": "c"
+      },
+      {
+        "name": "from-onnx",
+        "aliases": [],
+        "type": "string",
+        "description": "path to external ONNX JSON model file to import instead of training from Modelica source"
+      },
+      {
+        "name": "extrapolation-guardrails",
+        "aliases": [],
+        "type": "boolean",
+        "description": "embed Modelica assertion guardrails for input bounds",
+        "default": true
+      },
+      {
+        "name": "extrapolation-level",
+        "aliases": [],
+        "description": "severity level of Modelica extrapolation assertions",
+        "choices": [
+          "warning",
+          "error"
+        ],
+        "default": "warning"
+      },
+      {
+        "name": "extrapolation-flag",
+        "aliases": [],
+        "type": "boolean",
+        "description": "emit Boolean isExtrapolating output variable in Modelica",
+        "default": true
+      },
+      {
+        "name": "out-file",
+        "aliases": [],
+        "type": "string",
+        "description": "output file name (defaults to <model>_surrogate.<ext>)"
+      },
+      {
+        "name": "replace-component",
+        "aliases": [],
+        "type": "string",
+        "description": "name of component declaration in Modelica model to replace with surrogate"
+      },
+      {
+        "name": "replace-out",
+        "aliases": [],
+        "type": "string",
+        "description": "output path for modified Modelica model with replaced component"
+      },
+      {
+        "name": "report",
+        "aliases": [],
+        "type": "string",
+        "description": "output report JSON file",
+        "default": "report.json"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "swmm",
+    "specs": [
+      "swmm <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, route, and lower US EPA SWMM 5.x stormwater networks (.inp)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, to-dae, to-modelica, route-flow)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "to-dae",
+          "to-modelica",
+          "route-flow"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "SWMM input deck (.inp) file(s) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "sysml",
+    "specs": [
+      "sysml <action>"
+    ],
+    "aliases": [],
+    "describe": "OMG SysML v2 engineering toolkit: standard interchange (.sysmlx), validation, and container export",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "export",
+        "specs": [
+          "export <file>"
+        ],
+        "aliases": [],
+        "describe": "Export SysML v2 models to OMG standard interchange (.sysmlx), SSP containers, or FMI 3.0 FMUs",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .sysml source file"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "description": "Export format (sysmlx = OMG JSON-LD, ssp = SSP package, fmu = Monolithic FMU)",
+            "choices": [
+              "sysmlx",
+              "ssp",
+              "fmu"
+            ],
+            "default": "sysmlx"
+          },
+          {
+            "name": "output",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Target output filepath"
+          },
+          {
+            "name": "description",
+            "aliases": [
+              "d"
+            ],
+            "type": "string",
+            "description": "System or interchange description metadata"
+          },
+          {
+            "name": "include-stdlib",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Include KerML standard library symbols in export",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "import",
+        "specs": [
+          "import <file>"
+        ],
+        "aliases": [],
+        "describe": "Import OMG SysML v2 Model Interchange (.sysmlx) JSON-LD into textual SysML v2",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .sysmlx or JSON-LD file"
+          }
+        ],
+        "options": [
+          {
+            "name": "output",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Target output .sysml file path (default prints to stdout if not specified)"
+          },
+          {
+            "name": "indent",
+            "aliases": [],
+            "type": "number",
+            "description": "Indentation depth in spaces",
+            "default": 2
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "check",
+        "specs": [
+          "check <files..>",
+          "lint <files..>"
+        ],
+        "aliases": [],
+        "describe": "Run frontend static type checking and compiler diagnostics linter on SysML v2 models",
+        "positionals": [
+          {
+            "name": "files",
+            "aliases": [],
+            "type": "string",
+            "description": "One or more .sysml files to validate",
+            "array": true
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [],
+            "description": "Output format",
+            "choices": [
+              "terminal",
+              "json"
+            ],
+            "default": "terminal"
+          },
+          {
+            "name": "strict",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Treat warnings as errors",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "info",
+        "specs": [
+          "info <file>"
+        ],
+        "aliases": [],
+        "describe": "Inspect model architecture, symbol counts, and structural metrics of a SysML v2 file",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .sysml or .sysmlx file"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [],
+            "description": "Output display format",
+            "choices": [
+              "table",
+              "json"
+            ],
+            "default": "table"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "sync",
+        "specs": [
+          "sync <action>"
+        ],
+        "aliases": [],
+        "describe": "Synchronize SysML v2 models with Cameo Teamwork Cloud (TWC) or OpenMBEE MMS enterprise servers",
+        "positionals": [],
+        "options": [],
+        "subcommands": [
+          {
+            "name": "pull",
+            "specs": [
+              "pull"
+            ],
+            "aliases": [],
+            "describe": "Pull model elements from Cameo Teamwork Cloud (TWC) or OpenMBEE MMS and generate .sysml",
+            "positionals": [],
+            "options": [
+              {
+                "name": "target",
+                "aliases": [
+                  "t"
+                ],
+                "description": "Target enterprise repository system",
+                "choices": [
+                  "twc",
+                  "mms"
+                ]
+              },
+              {
+                "name": "url",
+                "aliases": [],
+                "type": "string",
+                "description": "Base URL of TWC or MMS instance"
+              },
+              {
+                "name": "resource",
+                "aliases": [
+                  "r"
+                ],
+                "type": "string",
+                "description": "TWC Resource ID or MMS Project ID"
+              },
+              {
+                "name": "org",
+                "aliases": [],
+                "type": "string",
+                "description": "OpenMBEE MMS Organization ID"
+              },
+              {
+                "name": "branch",
+                "aliases": [
+                  "b"
+                ],
+                "type": "string",
+                "description": "Branch or ref name",
+                "default": "master"
+              },
+              {
+                "name": "token",
+                "aliases": [],
+                "type": "string",
+                "description": "Bearer authentication token"
+              },
+              {
+                "name": "output",
+                "aliases": [
+                  "o"
+                ],
+                "type": "string",
+                "description": "Target output .sysml file path"
+              }
+            ],
+            "subcommands": []
+          },
+          {
+            "name": "push",
+            "specs": [
+              "push <file>"
+            ],
+            "aliases": [],
+            "describe": "Push local SysML v2 source changes upstream to Cameo Teamwork Cloud or OpenMBEE MMS",
+            "positionals": [
+              {
+                "name": "file",
+                "aliases": [],
+                "type": "string",
+                "description": "Path to .sysml file to push"
+              }
+            ],
+            "options": [
+              {
+                "name": "target",
+                "aliases": [
+                  "t"
+                ],
+                "description": "Target enterprise repository system",
+                "choices": [
+                  "twc",
+                  "mms"
+                ]
+              },
+              {
+                "name": "url",
+                "aliases": [],
+                "type": "string",
+                "description": "Base URL of TWC or MMS instance"
+              },
+              {
+                "name": "resource",
+                "aliases": [
+                  "r"
+                ],
+                "type": "string",
+                "description": "TWC Resource ID or MMS Project ID"
+              },
+              {
+                "name": "org",
+                "aliases": [],
+                "type": "string",
+                "description": "OpenMBEE MMS Organization ID"
+              },
+              {
+                "name": "branch",
+                "aliases": [
+                  "b"
+                ],
+                "type": "string",
+                "description": "Branch or ref name",
+                "default": "master"
+              },
+              {
+                "name": "token",
+                "aliases": [],
+                "type": "string",
+                "description": "Bearer authentication token"
+              },
+              {
+                "name": "message",
+                "aliases": [
+                  "m"
+                ],
+                "type": "string",
+                "description": "Commit message describing the revision"
+              },
+              {
+                "name": "force",
+                "aliases": [],
+                "type": "boolean",
+                "description": "Force push and overwrite conflicting upstream revisions",
+                "default": false
+              }
+            ],
+            "subcommands": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "token",
+    "specs": [
+      "token <action>"
+    ],
+    "aliases": [],
+    "describe": "Manage granular personal access tokens (create, list, revoke)",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "create",
+        "specs": [
+          "create <name>"
+        ],
+        "aliases": [],
+        "describe": "Create a new granular personal access token",
+        "positionals": [
+          {
+            "name": "name",
+            "aliases": [],
+            "type": "string",
+            "description": "Name/description of the token (e.g. 'ci-github-actions')"
+          }
+        ],
+        "options": [
+          {
+            "name": "scope",
+            "aliases": [
+              "s"
+            ],
+            "type": "array",
+            "description": "Token permissions (packages:read, packages:publish, packages:yank, packages:manage, *)",
+            "default": [
+              "packages:publish"
+            ]
+          },
+          {
+            "name": "pattern",
+            "aliases": [
+              "p"
+            ],
+            "type": "string",
+            "description": "Package pattern constraint (e.g. '@myorg/*', 'Modelica*', '*')",
+            "default": "*"
+          },
+          {
+            "name": "expires",
+            "aliases": [
+              "e"
+            ],
+            "type": "number",
+            "description": "Expiration period in days (e.g. 30, 90). Default: never expires"
+          },
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "list",
+        "specs": [
+          "list"
+        ],
+        "aliases": [],
+        "describe": "List all active personal access tokens for the authenticated user",
+        "positionals": [],
+        "options": [
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "revoke",
+        "specs": [
+          "revoke <id>"
+        ],
+        "aliases": [],
+        "describe": "Revoke an active personal access token by ID",
+        "positionals": [
+          {
+            "name": "id",
+            "aliases": [],
+            "type": "number",
+            "description": "ID of the token to revoke"
+          }
+        ],
+        "options": [
+          {
+            "name": "registry",
+            "aliases": [
+              "r"
+            ],
+            "type": "string",
+            "description": "Registry API URL"
+          },
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output result as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "touchstone",
+    "specs": [
+      "touchstone <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint, verify passivity, and lower Touchstone N-Port models (.s1p ... .sNp, .ts)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, passivity, to-dae, to-modelica, fit)",
+        "choices": [
+          "inspect",
+          "summary",
+          "lint",
+          "passivity",
+          "to-dae",
+          "to-modelica",
+          "fit"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Touchstone file(s) (.s1p ... .sNp, .ts) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (e.g. for Modelica export)"
+      },
+      {
+        "name": "order",
+        "aliases": [],
+        "type": "number",
+        "description": "Rational macromodel order for vector fitting",
+        "default": 2
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "unparse",
+    "specs": [
+      "unparse <file>"
+    ],
+    "aliases": [],
+    "describe": "Unparse and re-synthesize clean source code from the language AST",
+    "positionals": [
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "Path of source file to parse and unparse"
+      }
+    ],
+    "options": [
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path (default prints to stdout)"
+      },
+      {
+        "name": "language",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Explicit language override"
+      },
+      {
+        "name": "indent-size",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of spaces per indentation level",
+        "default": 2
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "unpublish",
+    "specs": [
+      "unpublish [path]"
+    ],
+    "aliases": [],
+    "describe": "Remove a published library version from the ModelScript Registry",
+    "positionals": [
+      {
+        "name": "path",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to a library directory (containing package.mo) or a single .mo file to infer name and version from"
+      }
+    ],
+    "options": [
+      {
+        "name": "name",
+        "aliases": [
+          "n"
+        ],
+        "type": "string",
+        "description": "Library name (used with --version instead of a path)"
+      },
+      {
+        "name": "version",
+        "aliases": [
+          "v"
+        ],
+        "type": "string",
+        "description": "Library version (used with --name instead of a path)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "urdf",
+    "specs": [
+      "urdf <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, solve kinematics, and project ROS URDF & SDFormat robot models (.urdf, .sdf, .xacro)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
+        "choices": [
+          "lint",
+          "rnea",
+          "to-modelica",
+          "to-simpack",
+          "to-adams",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input robot description files (.urdf, .sdf, .xacro)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "gravity",
+        "aliases": [],
+        "type": "number",
+        "description": "Gravitational acceleration [m/s^2]",
+        "default": 9.80665
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "verify",
+    "specs": [
+      "verify [target] [paths..]"
+    ],
+    "aliases": [],
+    "describe": "Unified formal verification and simulation validation for SysML v2 and Modelica",
+    "positionals": [
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "optional target element, verification case, or model name"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "paths of libraries, modules (.mo), SysML (.sysml), or CAD files to verify",
+        "array": true,
+        "default": []
+      }
+    ],
+    "options": [
+      {
+        "name": "all",
+        "aliases": [],
+        "type": "boolean",
+        "description": "execute all applicable formal verification stages",
+        "default": false
+      },
+      {
+        "name": "decisions",
+        "aliases": [],
+        "type": "boolean",
+        "description": "verify decision table exhaustiveness and determinism",
+        "default": true
+      },
+      {
+        "name": "contracts",
+        "aliases": [],
+        "type": "boolean",
+        "description": "verify assume-guarantee contract compatibility and refinement",
+        "default": true
+      },
+      {
+        "name": "state-machines",
+        "aliases": [],
+        "type": "boolean",
+        "description": "verify state machine and activity workflow soundness/deadlock-freedom",
+        "default": true
+      },
+      {
+        "name": "flowpipe",
+        "aliases": [],
+        "type": "boolean",
+        "description": "enable validated continuous/hybrid reachability flowpipes",
+        "default": false
+      },
+      {
+        "name": "order",
+        "aliases": [],
+        "type": "number",
+        "description": "Taylor model flowpipe expansion order",
+        "default": 4
+      },
+      {
+        "name": "dt",
+        "aliases": [],
+        "type": "number",
+        "description": "time step size in seconds for flowpipe reachability"
+      },
+      {
+        "name": "horizon",
+        "aliases": [],
+        "type": "number",
+        "description": "time horizon (stop time) in seconds for flowpipe reachability"
+      },
+      {
+        "name": "initial-set",
+        "aliases": [],
+        "type": "string",
+        "description": "initial state set bounds (e.g. 'x=[0.9,1.1],y=[-0.1,0.1]')"
+      },
+      {
+        "name": "barriers",
+        "aliases": [],
+        "type": "boolean",
+        "description": "enable sum-of-squares barrier certificate synthesis",
+        "default": false
+      },
+      {
+        "name": "falsify",
+        "aliases": [],
+        "type": "boolean",
+        "description": "enable adversarial requirement falsification",
+        "default": false
+      },
+      {
+        "name": "simulation",
+        "aliases": [],
+        "type": "boolean",
+        "description": "verify dynamic simulation trajectory requirements",
+        "default": true
+      },
+      {
+        "name": "clearance",
+        "aliases": [],
+        "type": "boolean",
+        "description": "enable 3D CAD clearance and physical collision verification",
+        "default": false
+      },
+      {
+        "name": "mcdc",
+        "aliases": [],
+        "type": "boolean",
+        "description": "synthesize 100% MC/DC independent condition test pairs",
+        "default": false
+      },
+      {
+        "name": "b2b",
+        "aliases": [],
+        "type": "boolean",
+        "description": "verify Back-to-Back MiL-vs-SiL equivalence against standalone C99",
+        "default": false
+      },
+      {
+        "name": "b2b-tol",
+        "aliases": [],
+        "type": "number",
+        "description": "maximum allowable numerical tolerance between MiL and SiL",
+        "default": 0.0001
+      },
+      {
+        "name": "b2b-compiler",
+        "aliases": [],
+        "type": "string",
+        "description": "host/target C compiler for SiL compilation",
+        "choices": [
+          "gcc",
+          "clang",
+          "tcc",
+          "arm-none-eabi-gcc"
+        ],
+        "default": "gcc"
+      },
+      {
+        "name": "b2b-dt",
+        "aliases": [],
+        "type": "number",
+        "description": "fixed integration step size in seconds for SiL RK4"
+      },
+      {
+        "name": "algorithms",
+        "aliases": [],
+        "type": "boolean",
+        "description": "execute sound algorithmic abstract interpretation for zero RTEs",
+        "default": true
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "output report format: terminal, json, ctrf, junit, sarif, html, or dhf",
+        "choices": [
+          "terminal",
+          "json",
+          "ctrf",
+          "junit",
+          "sarif",
+          "html",
+          "dhf"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "report",
+        "aliases": [],
+        "type": "string",
+        "description": "write test report to specified file path"
+      },
+      {
+        "name": "export",
+        "aliases": [],
+        "type": "string",
+        "description": "comma-separated list of formal spec export formats: smt2, nuxmv, ocra, mos"
+      },
+      {
+        "name": "export-dir",
+        "aliases": [],
+        "type": "string",
+        "description": "target directory for exported formal specifications",
+        "default": "."
+      },
+      {
+        "name": "flattener",
+        "aliases": [
+          "F"
+        ],
+        "type": "string",
+        "description": "Flattener backend: 'ts', 'wasm', 'hybrid', or 'diff'",
+        "choices": [
+          "ts",
+          "wasm",
+          "hybrid",
+          "diff"
+        ],
+        "default": "hybrid"
+      },
+      {
+        "name": "engine",
+        "aliases": [],
+        "type": "string",
+        "description": "simulation backend: wasm or js",
+        "choices": [
+          "wasm",
+          "js"
+        ],
+        "default": "wasm"
+      },
+      {
+        "name": "timing",
+        "aliases": [],
+        "type": "boolean",
+        "description": "output timing JSON to stderr",
+        "default": false
+      },
+      {
+        "name": "update-hypergraph",
+        "aliases": [],
+        "type": "boolean",
+        "description": "synchronize verification verdicts directly into digital thread hypergraph",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "verify-decisions",
+    "specs": [
+      "verify-decisions <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Formally verify SysML v2 decision tables, decide nodes, and state guards for exhaustiveness and disjointness",
+    "positionals": [
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "Path(s) to .sysml files containing activities or state machines",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output verification results in structured JSON format",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "verilog-a",
+    "specs": [
+      "verilog-a <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate, lower to DAE, and project Verilog-A / Verilog-AMS compact models (.va, .vams)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | to-modelica | to-spice | to-dae",
+        "choices": [
+          "inspect",
+          "lint",
+          "to-modelica",
+          "to-spice",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input Verilog-A model files (.va, .vams)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [],
+        "type": "string",
+        "description": "Output file path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "whoami",
+    "specs": [
+      "whoami"
+    ],
+    "aliases": [],
+    "describe": "Display information about the currently authenticated user",
+    "positionals": [],
+    "options": [
+      {
+        "name": "registry",
+        "aliases": [
+          "r"
+        ],
+        "type": "string",
+        "description": "Registry API URL to query against"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output in JSON format",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  }
+]

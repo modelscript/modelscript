@@ -8,14 +8,18 @@ import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface GtSuiteViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
     engineModel?: string | undefined;
+    componentCount?: number | undefined;
     displacementLiters?: number | undefined;
     cylinderCount?: number | undefined;
     peakPressureBar?: number | undefined;
@@ -140,7 +144,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"schematic" | "pv">("schematic");
+  const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">("schematic");
   const title = viewConfig.title || viewConfig.engineModel || "GT-SUITE Powertrain (.gtm)";
 
   useEffect(() => {
@@ -155,77 +159,81 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
+        .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => setRawText(txt))
         .catch((err) => console.warn("[GtSuiteViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedEngine = useMemo(() => {
+    const cylMatches = rawText ? Array.from(rawText.matchAll(/\b(EngCylinder|Cylinder)\b/gi)) : [];
+    const compMatches = rawText
+      ? Array.from(
+          rawText.matchAll(
+            /\b(EngCylinder|Cylinder|PipeRound|OrificeConn|FlowSplit|EnvAmbient|Turbine|Compressor)\b/gi,
+          ),
+        )
+      : [];
+    const boreMatch = rawText.match(/\bbore\s*[=:]\s*([0-9.]+)/i);
+    const strokeMatch = rawText.match(/\bstroke\s*[=:]\s*([0-9.]+)/i);
+    const crMatch = rawText.match(/\b(?:compression_ratio|cr)\s*[=:]\s*([0-9.]+)/i);
+    const cylCount = viewConfig.cylinderCount ?? cylMatches.length;
+    const boreMm = boreMatch ? Number(boreMatch[1]) : undefined;
+    const strokeMm = strokeMatch ? Number(strokeMatch[1]) : undefined;
+    const cr = crMatch ? Number(crMatch[1]) : 10.5;
+    let dispL = viewConfig.displacementLiters;
+    if (dispL === undefined && boreMm && strokeMm && cylCount > 0) {
+      const bMm = boreMm < 1 ? boreMm * 1000 : boreMm;
+      const sMm = strokeMm < 1 ? strokeMm * 1000 : strokeMm;
+      dispL = +((cylCount * Math.PI * Math.pow(bMm / 20, 2) * (sMm / 10)) / 1000).toFixed(2);
+    }
+    return {
+      cylinderCount: cylCount,
+      componentCount: viewConfig.componentCount ?? compMatches.length,
+      displacementLiters: dispL,
+      cr,
+    };
+  }, [rawText, viewConfig]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean internal combustion engine schematic
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Intake Runner -->
-        <path d="M 60 120 L 200 120 L 240 160" stroke="#38bdf8" stroke-width="3" fill="none" />
-        <rect x="100" y="105" width="50" height="30" rx="4" fill="#0c4a6e" stroke="#38bdf8" stroke-width="1.5" />
-        <text x="125" y="124" fill="#bae6fd" font-size="9" font-family="sans-serif" text-anchor="middle">Airbox</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "gtsuite", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-        <!-- Engine Cylinder -->
-        <rect x="220" y="140" width="120" height="150" rx="6" fill="#1e293b" stroke="#f97316" stroke-width="2" />
-        <text x="280" y="165" fill="#fdba74" font-size="11" font-family="sans-serif" text-anchor="middle" font-weight="bold">Cylinder #1</text>
-
-        <!-- Piston -->
-        <rect x="235" y="210" width="90" height="40" rx="3" fill="#334155" stroke="#94a3b8" />
-        <line x1="280" y1="250" x2="280" y2="300" stroke="#64748b" stroke-width="3" />
-
-        <!-- Spark/Combustion Flame symbol -->
-        <circle cx="280" cy="185" r="8" fill="#ef4444" />
-        <circle cx="280" cy="185" r="4" fill="#fbbf24" />
-
-        <!-- Exhaust Runner -->
-        <path d="M 320 160 L 360 120 L 520 120" stroke="#f43f5e" stroke-width="3" fill="none" />
-        
-        <!-- Turbocharger -->
-        <circle cx="440" cy="120" r="16" fill="#1e293b" stroke="#f59e0b" stroke-width="2" />
-        <text x="440" y="124" fill="#fbbf24" font-size="9" font-family="sans-serif" text-anchor="middle">TURBO</text>
-
-        <text x="325" y="40" fill="#f0f6fc" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle">GT-POWER 1D Gas Dynamics Engine</text>
-        <text x="325" y="60" fill="#64748b" font-size="10" font-family="monospace" text-anchor="middle">Crank-Angle Resolved Intake/Exhaust Network</text>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
-
-  const defaultPvData = useMemo(() => {
+  const pvData = useMemo(() => {
     if (viewConfig.pvData && Array.isArray(viewConfig.pvData)) {
       return viewConfig.pvData;
     }
-    // High-fidelity closed Otto/Diesel 4-stroke P-V indicator diagram
-    const points = [];
-    const vClearance = 50; // cc
-    const vSwept = 450; // cc
-    const gamma = 1.35;
-
-    // Compression stroke
-    for (let v = vClearance + vSwept; v >= vClearance; v -= 25) {
-      const p = 1.0 * Math.pow((vClearance + vSwept) / v, gamma);
-      points.push({ volumeCc: v, pressureBar: Number(p.toFixed(1)) });
+    if (parsedEngine.cylinderCount === 0 && !viewConfig.peakPressureBar) {
+      return [];
     }
-    // Combustion pressure spike at TDC
-    points.push({ volumeCc: vClearance, pressureBar: viewConfig.peakPressureBar ?? 142.0 });
-
-    // Expansion / power stroke
-    for (let v = vClearance; v <= vClearance + vSwept; v += 25) {
-      const p = (viewConfig.peakPressureBar ?? 142.0) * Math.pow(vClearance / v, gamma);
-      points.push({ volumeCc: v, pressureBar: Number(p.toFixed(1)) });
+    const points = [];
+    const cylSweptCc = parsedEngine.displacementLiters
+      ? (parsedEngine.displacementLiters * 1000) / Math.max(1, parsedEngine.cylinderCount)
+      : 450;
+    const vClearance = cylSweptCc / Math.max(2, parsedEngine.cr - 1);
+    const gamma = 1.35;
+    const step = Math.max(5, Math.round(cylSweptCc / 20));
+    for (let v = vClearance + cylSweptCc; v >= vClearance; v -= step) {
+      const p = 1.0 * Math.pow((vClearance + cylSweptCc) / v, gamma);
+      points.push({ volumeCc: Math.round(v), pressureBar: Number(p.toFixed(1)) });
+    }
+    const peakP = viewConfig.peakPressureBar ?? Number((1.0 * Math.pow(parsedEngine.cr, gamma) * 2.8).toFixed(1));
+    points.push({ volumeCc: Math.round(vClearance), pressureBar: peakP });
+    for (let v = vClearance; v <= vClearance + cylSweptCc; v += step) {
+      const p = peakP * Math.pow(vClearance / v, gamma);
+      points.push({ volumeCc: Math.round(v), pressureBar: Number(p.toFixed(1)) });
     }
     return points;
-  }, [viewConfig.pvData, viewConfig.peakPressureBar]);
+  }, [viewConfig.pvData, viewConfig.peakPressureBar, parsedEngine]);
+
+  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -236,7 +244,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           <PillBadge>GT-SUITE Powertrain</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
+        <Box display="flex" alignItems="center" gap={2}>
           <SegmentedControl size="small" aria-label="GT-SUITE View Selector">
             <SegmentedControl.Button selected={viewMode === "schematic"} onClick={() => setViewMode("schematic")}>
               Schematic
@@ -244,15 +252,30 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
             <SegmentedControl.Button selected={viewMode === "pv"} onClick={() => setViewMode("pv")}>
               P-V Diagram
             </SegmentedControl.Button>
+            <SegmentedControl.Button selected={viewMode === "code"} onClick={() => setViewMode("code")}>
+              Source
+            </SegmentedControl.Button>
           </SegmentedControl>
 
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Studio
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "gtsuite" as any,
+                  code: rawText || `# ${title}\n`,
+                  title,
+                });
+                const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -261,12 +284,12 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "schematic" ? (
+        ) : viewMode === "schematic" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
-        ) : (
+        ) : viewMode === "pv" && pvData.length > 0 ? (
           <ChartCanvas>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={defaultPvData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+              <LineChart data={pvData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="volumeCc" stroke="#8b949e" tick={{ fontSize: 11 }} unit="cc" name="Cylinder Volume" />
                 <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} unit="bar" name="Pressure" />
@@ -290,36 +313,79 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
               </LineChart>
             </ResponsiveContainer>
           </ChartCanvas>
+        ) : (
+          <Box
+            flex={1}
+            py={2}
+            overflow="auto"
+            bg="var(--color-canvas-inset, #010409)"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "gtsuite")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={4} color="var(--color-fg-muted)" textAlign="center">
+                No GT-SUITE model source available.
+              </Box>
+            )}
+          </Box>
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Engine Calibration Telemetry
           </Text>
           <StatItem>
-            <span>Displacement</span>
-            <strong>{viewConfig.displacementLiters ? `${viewConfig.displacementLiters} L` : "2.0 L Turbo"}</strong>
+            <span>Components</span>
+            <strong>{parsedEngine.componentCount}</strong>
           </StatItem>
           <StatItem>
             <span>Cylinder Count</span>
-            <strong>{viewConfig.cylinderCount ?? 4} (Inline-4)</strong>
+            <strong>{parsedEngine.cylinderCount}</strong>
           </StatItem>
-          <StatItem>
-            <span>Peak Pressure (P_max)</span>
-            <strong style={{ color: "#f87171" }}>
-              {viewConfig.peakPressureBar ? `${viewConfig.peakPressureBar} bar` : "142.0 bar"}
-            </strong>
-          </StatItem>
-          <StatItem>
-            <span>IMEP</span>
-            <strong>{viewConfig.imepBar ? `${viewConfig.imepBar} bar` : "18.6 bar"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Brake Thermal Eff</span>
-            <strong style={{ color: "#34d399" }}>
-              {viewConfig.thermalEfficiencyPct ? `${viewConfig.thermalEfficiencyPct}%` : "39.4%"}
-            </strong>
-          </StatItem>
+          {parsedEngine.displacementLiters !== undefined && (
+            <StatItem>
+              <span>Displacement</span>
+              <strong>{parsedEngine.displacementLiters} L</strong>
+            </StatItem>
+          )}
+          {viewConfig.peakPressureBar !== undefined && (
+            <StatItem>
+              <span>Peak Pressure (P_max)</span>
+              <strong style={{ color: "#f87171" }}>{viewConfig.peakPressureBar} bar</strong>
+            </StatItem>
+          )}
+          {viewConfig.imepBar !== undefined && (
+            <StatItem>
+              <span>IMEP</span>
+              <strong>{viewConfig.imepBar} bar</strong>
+            </StatItem>
+          )}
+          {viewConfig.thermalEfficiencyPct !== undefined && (
+            <StatItem>
+              <span>Brake Thermal Eff</span>
+              <strong style={{ color: "#34d399" }}>{viewConfig.thermalEfficiencyPct}%</strong>
+            </StatItem>
+          )}
         </InspectorSidebar>
       </ContentArea>
     </CardWrapper>

@@ -6,10 +6,15 @@ import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import type { Translations } from "./util/i18n";
 
+import { MORSEL_LANGUAGES } from "./constants";
 import { fmuBytesToModelica, sspBytesToModelica } from "./util/archive-parser";
 
+const ALL_ACCEPTED_EXTENSIONS = Array.from(
+  new Set([...MORSEL_LANGUAGES.flatMap((lang) => lang.extensions.map((ext) => `.${ext}`)), ".ssp", ".fmu", ".txt"]),
+);
+
 interface OpenFileDropzoneProps {
-  onFileContent: (content: string) => void;
+  onFileContent: (content: string, filename?: string) => void;
   colorMode: string;
   translations: Translations;
 }
@@ -36,9 +41,9 @@ export default function OpenFileDropzone({
               const name = nameRaw.replace(/[^a-zA-Z0-9_]/g, "_");
 
               if (file.name.endsWith(".ssp")) {
-                onFileContent(sspBytesToModelica(name, bytes));
+                onFileContent(sspBytesToModelica(name, bytes), `${name}.mo`);
               } else {
-                onFileContent(fmuBytesToModelica(name, bytes));
+                onFileContent(fmuBytesToModelica(name, bytes), `${name}.mo`);
               }
             }
           };
@@ -48,7 +53,7 @@ export default function OpenFileDropzone({
           reader.onload = (e) => {
             const content = e.target?.result as string;
             if (content) {
-              onFileContent(content);
+              onFileContent(content, file.name);
             }
           };
           reader.readAsText(file);
@@ -61,11 +66,12 @@ export default function OpenFileDropzone({
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "text/x-modelica": [".mo"],
-      "text/plain": [".mo", ".txt", ".sysml", ".step", ".scad", ".key", ".genkey", ".csv", ".pscx"],
+      "text/plain": ALL_ACCEPTED_EXTENSIONS,
       "application/zip": [".ssp", ".fmu"],
-      "application/step": [".step", ".stp"],
-      "application/xml": [".pscx", ".pslx"],
+      "application/xml": ALL_ACCEPTED_EXTENSIONS.filter((e) =>
+        [".xml", ".arxml", ".xodr", ".reqif", ".urdf", ".slx", ".pscx", ".pslx", ".ssd", ".ssv", ".ssm"].includes(e),
+      ),
+      "application/json": [".json"],
     },
     maxFiles: 1,
   });

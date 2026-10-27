@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { FlameIcon, PlayIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, FlameIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface RocetsViewerProps {
   viewConfig: {
+    artifactId?: string | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
@@ -84,6 +87,34 @@ const PillBadge = styled.span`
   border: 1px solid rgba(239, 68, 68, 0.35);
 `;
 
+const SegmentedControl = styled.div`
+  display: inline-flex;
+  background: var(--color-canvas-inset, #010409);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+`;
+
+const SegmentBtn = styled.button<{ $active: boolean }>`
+  border: none;
+  background: ${(p) => (p.$active ? "var(--color-accent-emphasis, #1f6feb)" : "transparent")};
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted, #8b949e)")};
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+
+  &:hover {
+    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default, #e6edf3)")};
+  }
+`;
+
 const ContentArea = styled.div`
   flex: 1;
   display: flex;
@@ -105,6 +136,35 @@ const SvgCanvas = styled.div`
     max-height: 100%;
     height: auto;
   }
+`;
+
+const CodePre = styled.pre`
+  flex: 1;
+  margin: 0;
+  padding: 14px 0;
+  overflow: auto;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-fg-default, #e6edf3);
+  background: var(--color-canvas-inset, #010409);
+`;
+
+const CodeLine = styled.div`
+  display: flex;
+  padding: 0 16px;
+  &:hover {
+    background: rgba(110, 118, 129, 0.08);
+  }
+`;
+
+const LineNo = styled.span`
+  width: 44px;
+  flex-shrink: 0;
+  color: var(--color-fg-subtle, #6e7681);
+  user-select: none;
+  text-align: right;
+  padding-right: 16px;
 `;
 
 const InspectorSidebar = styled.div`
@@ -129,10 +189,29 @@ const StatItem = styled.div`
   }
 `;
 
+function parseRocetsClient(code: string) {
+  const pcMatch = code.match(/(?:PC|CHAMBER_PRESSURE|P_CHAMBER)\s*=\s*([0-9.eE+-]+)/i);
+  const thrustMatch = code.match(/(?:THRUST|F_VAC|F_SL)\s*=\s*([0-9.eE+-]+)/i);
+  const ispMatch = code.match(/(?:ISP|I_SP)\s*=\s*([0-9.eE+-]+)/i);
+  const mdotMatch = code.match(/(?:MDOT|MASS_FLOW|W_TOTAL)\s*=\s*([0-9.eE+-]+)/i);
+  const rpmMatch = code.match(/(?:RPM|N_PUMP|SPEED_RPM)\s*=\s*([0-9.eE+-]+)/i);
+  const cycleMatch = code.match(/CYCLE\s*=\s*['"]?([A-Za-z0-9 _-]+)['"]?/i);
+  return {
+    chamberPressureBar: pcMatch?.[1] ? Number.parseFloat(pcMatch[1]) : undefined,
+    thrustKn: thrustMatch?.[1] ? Number.parseFloat(thrustMatch[1]) : undefined,
+    ispSec: ispMatch?.[1] ? Number.parseFloat(ispMatch[1]) : undefined,
+    massFlowKgSec: mdotMatch?.[1] ? Number.parseFloat(mdotMatch[1]) : undefined,
+    turbopumpRpm: rpmMatch?.[1] ? Number.parseFloat(rpmMatch[1]) : undefined,
+    cycleType: cycleMatch?.[1]?.trim(),
+  };
+}
+
 export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || viewConfig.engineName || "ROCETS Liquid Propulsion (.roc)";
 
   useEffect(() => {
@@ -147,71 +226,64 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
-        .then((txt) => setRawText(txt))
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setRawText(txt);
+        })
         .catch((err) => console.warn("[RocetsViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedClient = useMemo(() => (rawText ? parseRocetsClient(rawText) : undefined), [rawText]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean liquid rocket engine P&ID schematic
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 360" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="360" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- LOX Tank -->
-        <rect x="80" y="30" width="80" height="60" rx="8" fill="#1e3a8a" stroke="#60a5fa" stroke-width="1.5" />
-        <text x="120" y="65" fill="#93c5fd" font-size="11" font-family="sans-serif" text-anchor="middle" font-weight="bold">LOX Tank</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "rocets", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-        <!-- LH2/CH4 Tank -->
-        <rect x="220" y="30" width="80" height="60" rx="8" fill="#701a75" stroke="#e879f9" stroke-width="1.5" />
-        <text x="260" y="65" fill="#f5d0fe" font-size="11" font-family="sans-serif" text-anchor="middle" font-weight="bold">Fuel Tank</text>
+  const handleCopy = () => {
+    if (rawText) {
+      navigator.clipboard.writeText(rawText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-        <!-- Turbopump Assembly -->
-        <circle cx="120" cy="150" r="18" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />
-        <text x="120" y="154" fill="#38bdf8" font-size="10" font-family="monospace" text-anchor="middle">LOX-P</text>
+  const handleExportSvg = () => {
+    if (!sanitizedSvg) return;
+    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-rocets.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
-        <circle cx="260" cy="150" r="18" fill="#1e293b" stroke="#f472b6" stroke-width="2" />
-        <text x="260" y="154" fill="#f472b6" font-size="10" font-family="monospace" text-anchor="middle">Fuel-P</text>
+  const handleOpenInPlayground = () => {
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "rocets" as any,
+      code: rawText,
+      title,
+    });
+    const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
+    navigate(`/playground${fromParam}#m=${hash}`);
+  };
 
-        <rect x="160" y="140" width="60" height="20" fill="#334155" stroke="#94a3b8" />
-        <text x="190" y="154" fill="#ffffff" font-size="9" font-family="sans-serif" text-anchor="middle">Turbine</text>
-
-        <!-- Propellant lines -->
-        <g stroke="#94a3b8" stroke-width="2" fill="none">
-          <line x1="120" y1="90" x2="120" y2="132" />
-          <line x1="260" y1="90" x2="260" y2="132" />
-          <!-- Regenerative cooling feed -->
-          <line x1="260" y1="168" x2="260" y2="220" />
-          <line x1="260" y1="220" x2="420" y2="220" />
-          <line x1="120" y1="168" x2="120" y2="240" />
-          <line x1="120" y1="240" x2="380" y2="240" />
-        </g>
-
-        <!-- Combustion Chamber & De Laval Nozzle -->
-        <path d="M 400 150 L 460 150 L 480 180 L 475 190 L 530 270 L 370 270 L 425 190 L 420 180 Z"
-              fill="#18181b" stroke="#ef4444" stroke-width="2.5" />
-        
-        <text x="450" y="170" fill="#fca5a5" font-size="11" font-family="sans-serif" text-anchor="middle" font-weight="bold">Main Chamber</text>
-        <text x="450" y="240" fill="#f87171" font-size="10" font-family="monospace" text-anchor="middle">Nozzle (ε = 60)</text>
-
-        <!-- Exhaust plume -->
-        <polygon points="450,270 410,340 490,340" fill="url(#exhaustGrad)" opacity="0.75" />
-
-        <defs>
-          <linearGradient id="exhaustGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#ef4444" />
-            <stop offset="50%" stop-color="#f59e0b" />
-            <stop offset="100%" stop-color="#0284c7" stop-opacity="0" />
-          </linearGradient>
-        </defs>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
+  const cycleType = viewConfig.cycleType ?? parsedClient?.cycleType;
+  const thrustKn = viewConfig.thrustKn ?? parsedClient?.thrustKn;
+  const chamberPressureBar = viewConfig.chamberPressureBar ?? parsedClient?.chamberPressureBar;
+  const ispSec = viewConfig.ispSec ?? parsedClient?.ispSec;
+  const massFlowKgSec = viewConfig.massFlowKgSec ?? parsedClient?.massFlowKgSec;
+  const turbopumpRpm = viewConfig.turbopumpRpm ?? parsedClient?.turbopumpRpm;
+  const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -222,14 +294,28 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
           <PillBadge>ROCETS Propulsion</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Studio
+        <Box display="flex" alignItems="center" gap={2}>
+          <SegmentedControl>
+            <SegmentBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
+              <FlameIcon size={12} /> Schematic
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Deck Source
+            </SegmentBtn>
+          </SegmentedControl>
+          {sanitizedSvg && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
+              SVG
+            </Button>
+          )}
+          <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+            {copied ? "Copied" : "Copy"}
           </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -238,39 +324,52 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
+        ) : viewMode === "code" || !sanitizedSvg ? (
+          <CodePre>
+            {lines.length > 0 ? (
+              lines.map((line, idx) => (
+                <CodeLine key={idx}>
+                  <LineNo>{idx + 1}</LineNo>
+                  <span>{highlightPolyglotLine(line, "rocets")}</span>
+                </CodeLine>
+              ))
+            ) : (
+              <Box p={4} color="fg.muted">
+                No ROCETS propulsion deck loaded.
+              </Box>
+            )}
+          </CodePre>
         ) : (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Propulsion Power Balance
           </Text>
           <StatItem>
             <span>Engine Cycle</span>
-            <strong style={{ color: "#38bdf8" }}>{viewConfig.cycleType || "Gas Generator (GG)"}</strong>
+            <strong style={{ color: "#38bdf8" }}>{cycleType || "—"}</strong>
           </StatItem>
           <StatItem>
-            <span>Sea-Level Thrust</span>
-            <strong>{viewConfig.thrustKn ? `${viewConfig.thrustKn} kN` : "845 kN"}</strong>
+            <span>Thrust</span>
+            <strong>{thrustKn !== undefined ? `${thrustKn} kN` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Chamber Pressure</span>
-            <strong>{viewConfig.chamberPressureBar ? `${viewConfig.chamberPressureBar} bar` : "105.0 bar"}</strong>
+            <strong>{chamberPressureBar !== undefined ? `${chamberPressureBar} bar` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Specific Impulse</span>
-            <strong>{viewConfig.ispSec ? `${viewConfig.ispSec} s` : "312 s (vac)"}</strong>
+            <strong>{ispSec !== undefined ? `${ispSec} s` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Propellant Flow</span>
-            <strong>{viewConfig.massFlowKgSec ? `${viewConfig.massFlowKgSec} kg/s` : "274 kg/s"}</strong>
+            <strong>{massFlowKgSec !== undefined ? `${massFlowKgSec} kg/s` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Turbopump RPM</span>
-            <strong>
-              {viewConfig.turbopumpRpm ? `${viewConfig.turbopumpRpm.toLocaleString()} RPM` : "36,000 RPM"}
-            </strong>
+            <strong>{turbopumpRpm !== undefined ? `${turbopumpRpm.toLocaleString()} RPM` : "—"}</strong>
           </StatItem>
         </InspectorSidebar>
       </ContentArea>

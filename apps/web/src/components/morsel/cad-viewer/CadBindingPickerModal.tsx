@@ -25,7 +25,13 @@ interface CadBindingPickerModalProps {
   dark?: boolean | undefined;
 }
 
-const PROPERTY_OPTIONS = [
+const PROPERTY_OPTIONS: {
+  label: string;
+  property: string;
+  index?: number | undefined;
+  defaultUnit?: string | undefined;
+  format?: string | undefined;
+}[] = [
   { label: "Position X (Translation)", property: "position", index: 0, defaultUnit: "m" },
   { label: "Position Y (Translation)", property: "position", index: 1, defaultUnit: "m" },
   { label: "Position Z (Translation)", property: "position", index: 2, defaultUnit: "m" },
@@ -37,7 +43,7 @@ const PROPERTY_OPTIONS = [
   { label: "Scale Y (Expansion)", property: "scale", index: 1, defaultUnit: "1" },
   { label: "Scale Z (Expansion)", property: "scale", index: 2, defaultUnit: "1" },
   { label: "Volumetric Deformation (V/V0)", property: "deformation", defaultUnit: "m3" },
-] as const;
+];
 
 const COMMON_UNITS = ["m", "mm", "cm", "rad", "deg", "rpm", "1", "m3", "L"];
 
@@ -120,7 +126,6 @@ export function CadBindingPickerModal({
 
   const handlePreviewMotion = () => {
     if (!component || !animationController) return;
-    setIsPreviewing(true);
 
     // Apply live in-memory bindings to controller
     animationController.setBindings([

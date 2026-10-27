@@ -1,0 +1,1277 @@
+[
+  {
+    "slug": "modelscript",
+    "name": "ModelScript",
+    "sidebar": "ModelScript (.msx)",
+    "ext": ".msx",
+    "role": "Native systems modeling & query language",
+    "group": "core",
+    "pkgName": "@modelscript/modelscript",
+    "version": "0.0.18",
+    "cliCommand": "msx compile",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "modelica",
+    "name": "Modelica",
+    "sidebar": "Modelica",
+    "ext": ".mo",
+    "role": "Acausal multi-domain physics",
+    "group": "core",
+    "pkgName": "@modelscript/modelica",
+    "version": "0.0.18",
+    "cliCommand": "msx simulate",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "DAE",
+        "C",
+        "FMU"
+      ]
+    },
+    "ruleCount": 307
+  },
+  {
+    "slug": "sysml2",
+    "name": "SysML v2 / KerML",
+    "sidebar": "SysML v2 / KerML",
+    "ext": ".sysml",
+    "role": "Systems architecture & requirements",
+    "group": "core",
+    "pkgName": "@modelscript/sysml2",
+    "version": "0.0.18",
+    "cliCommand": "msx sysml",
+    "actions": [
+      "export",
+      "import",
+      "check",
+      "info",
+      "sync"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "ReqIF"
+      ]
+    },
+    "ruleCount": 48
+  },
+  {
+    "slug": "reqif",
+    "name": "ReqIF",
+    "sidebar": "ReqIF Requirements",
+    "ext": ".reqif",
+    "role": "Requirements interchange & contract entailment",
+    "group": "core",
+    "pkgName": "@modelscript/reqif",
+    "version": "0.0.18",
+    "cliCommand": "msx reqif",
+    "actions": [
+      "import",
+      "export",
+      "lint",
+      "verify",
+      "to-sysml",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "SysML v2",
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "ssp",
+    "name": "SSP",
+    "sidebar": "SSP System Packaging",
+    "ext": ".ssp",
+    "role": "FMU system structure & parameterization",
+    "group": "core",
+    "pkgName": "@modelscript/ssp",
+    "version": "0.0.18",
+    "cliCommand": "msx fmu",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "FMU",
+        "Modelica"
+      ]
+    },
+    "ruleCount": 12
+  },
+  {
+    "slug": "owl2",
+    "name": "OWL2",
+    "sidebar": "OWL2 Ontology",
+    "ext": ".owl",
+    "role": "Ontologies & description-logic reasoning",
+    "group": "core",
+    "pkgName": "@modelscript/owl2",
+    "version": "0.0.18",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "SPARQL",
+        "SysML v2"
+      ]
+    },
+    "ruleCount": 24
+  },
+  {
+    "slug": "step",
+    "name": "STEP (ISO 10303)",
+    "sidebar": "STEP CAD (ISO 10303)",
+    "ext": ".step",
+    "role": "B-Rep CAD assemblies & AP242 PMI",
+    "group": "geometry",
+    "pkgName": "@modelscript/step",
+    "version": "0.0.18",
+    "cliCommand": "msx csg",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "CSG"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "scad",
+    "name": "OpenSCAD",
+    "sidebar": "OpenSCAD CSG",
+    "ext": ".scad",
+    "role": "Parametric constructive solid geometry",
+    "group": "geometry",
+    "pkgName": "@modelscript/scad",
+    "version": "0.0.18",
+    "cliCommand": "msx csg",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "CSG",
+        "STEP"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "cfd",
+    "name": "CFD (SU2 / OpenFOAM)",
+    "sidebar": "CFD (SU2 / OpenFOAM)",
+    "ext": ".su2",
+    "role": "Computational fluid dynamics meshes",
+    "group": "geometry",
+    "pkgName": "@modelscript/cfd",
+    "version": "0.0.18",
+    "cliCommand": "msx cfd",
+    "actions": [
+      "lint",
+      "summary",
+      "inspect",
+      "to-modelica",
+      "to-dae",
+      "solve"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "fea",
+    "name": "FEA (CalculiX / Abaqus / NASTRAN)",
+    "sidebar": "FEA Structural Analysis",
+    "ext": ".inp",
+    "role": "Finite-element structural analysis",
+    "group": "geometry",
+    "pkgName": "@modelscript/fea",
+    "version": "0.0.18",
+    "cliCommand": "msx fea",
+    "actions": [
+      "lint",
+      "summary",
+      "inspect",
+      "to-modelica",
+      "to-dae",
+      "solve"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "csv",
+    "name": "CSV",
+    "sidebar": "CSV Telemetry",
+    "ext": ".csv",
+    "role": "Time-series & sensor logs",
+    "group": "integration",
+    "pkgName": "@modelscript/csv",
+    "version": "0.0.18",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "c",
+    "name": "C",
+    "sidebar": "C Integration",
+    "ext": ".c",
+    "role": "Numerical & embedded C integration",
+    "group": "integration",
+    "pkgName": "@modelscript/c",
+    "version": "0.0.18",
+    "cliCommand": "msx c",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "to-modelica",
+      "to-dae",
+      "step"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "fortran",
+    "name": "Fortran",
+    "sidebar": "Fortran Integration",
+    "ext": ".f90",
+    "role": "Legacy scientific subroutines",
+    "group": "integration",
+    "pkgName": "@modelscript/fortran",
+    "version": "0.0.18",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "jsbsim",
+    "name": "JSBSim",
+    "sidebar": "JSBSim Flight Dynamics",
+    "ext": ".xml",
+    "role": "6-DOF flight dynamics",
+    "group": "aerospace",
+    "pkgName": "@modelscript/jsbsim",
+    "version": "0.0.18",
+    "cliCommand": "msx jsbsim",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "simulate",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "rocets",
+    "name": "NASA ROCETS",
+    "sidebar": "NASA ROCETS Propulsion",
+    "ext": ".roc",
+    "role": "Liquid rocket engine transients",
+    "group": "aerospace",
+    "pkgName": "@modelscript/rocets",
+    "version": "0.0.18",
+    "cliCommand": "msx rocets",
+    "actions": [
+      "lint",
+      "summary",
+      "inspect",
+      "balance",
+      "simulate",
+      "to-modelica",
+      "to-ssp",
+      "to-dae",
+      "diagram"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SSP"
+      ]
+    },
+    "ruleCount": 14
+  },
+  {
+    "slug": "ccsds",
+    "name": "CCSDS",
+    "sidebar": "CCSDS Space Telemetry",
+    "ext": ".xtce",
+    "role": "Astrodynamics & spacecraft telemetry",
+    "group": "aerospace",
+    "pkgName": "@modelscript/ccsds",
+    "version": "0.0.18",
+    "cliCommand": "msx ccsds",
+    "actions": [
+      "inspect",
+      "lint",
+      "propagate",
+      "to-modelica",
+      "to-sysml",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SysML v2"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "easy5",
+    "name": "EASY5",
+    "sidebar": "EASY5 Simulation",
+    "ext": ".ez5",
+    "role": "Dynamic simulation & linear control",
+    "group": "aerospace",
+    "pkgName": "@modelscript/easy5",
+    "version": "0.0.18",
+    "cliCommand": "msx easy5",
+    "actions": [
+      "lint",
+      "summary",
+      "inspect",
+      "linearize",
+      "bode",
+      "trim",
+      "to-modelica",
+      "to-ssp",
+      "to-dae",
+      "diagram",
+      "sync"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "SSP"
+      ]
+    },
+    "ruleCount": 12
+  },
+  {
+    "slug": "autosar",
+    "name": "AUTOSAR",
+    "sidebar": "AUTOSAR Architecture",
+    "ext": ".arxml",
+    "role": "Classic & Adaptive software architecture",
+    "group": "automotive",
+    "pkgName": "@modelscript/autosar",
+    "version": "0.0.18",
+    "cliCommand": "msx autosar",
+    "actions": [
+      "inspect",
+      "lint",
+      "to-modelica",
+      "to-sysml",
+      "to-dae",
+      "simulate-rte"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SysML v2"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "simulink",
+    "name": "MATLAB Simulink",
+    "sidebar": "MATLAB Simulink",
+    "ext": ".slx",
+    "role": "Block diagrams & control systems",
+    "group": "automotive",
+    "pkgName": "@modelscript/simulink",
+    "version": "0.0.18",
+    "cliCommand": "msx simulink",
+    "actions": [
+      "lint",
+      "inspect",
+      "to-modelica",
+      "to-dae",
+      "sync"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "gtsuite",
+    "name": "GT-SUITE",
+    "sidebar": "GT-SUITE / GT-POWER",
+    "ext": ".gtm",
+    "role": "Engine, powertrain & thermal flow",
+    "group": "automotive",
+    "pkgName": "@modelscript/gtsuite",
+    "version": "0.0.18",
+    "cliCommand": "msx gtsuite",
+    "actions": [
+      "lint",
+      "summary",
+      "inspect",
+      "simulate",
+      "to-modelica",
+      "to-sysml2",
+      "to-ssp",
+      "to-dae",
+      "diagram",
+      "verify"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SysML v2",
+        "SSP"
+      ]
+    },
+    "ruleCount": 15
+  },
+  {
+    "slug": "opendrive",
+    "name": "ASAM OpenDRIVE",
+    "sidebar": "OpenDRIVE Roads",
+    "ext": ".xodr",
+    "role": "Road network geometry",
+    "group": "automotive",
+    "pkgName": "@modelscript/opendrive",
+    "version": "0.0.18",
+    "cliCommand": "msx opendrive",
+    "actions": [
+      "inspect",
+      "lint",
+      "track",
+      "to-gensys",
+      "to-dae",
+      "render"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "GENSYS"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "openscenario",
+    "name": "ASAM OpenSCENARIO",
+    "sidebar": "OpenSCENARIO AV Safety",
+    "ext": ".xosc",
+    "role": "Driving scenarios & RSS safety margins",
+    "group": "automotive",
+    "pkgName": "@modelscript/openscenario",
+    "version": "0.0.18",
+    "cliCommand": "msx openscenario",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "simulate",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "gensys",
+    "name": "GENSYS",
+    "sidebar": "GENSYS Railway Dynamics",
+    "ext": ".calc",
+    "role": "Railway vehicle dynamics & track",
+    "group": "rail",
+    "pkgName": "@modelscript/gensys",
+    "version": "0.0.18",
+    "cliCommand": "msx gensys",
+    "actions": [
+      "lint",
+      "to-modelica",
+      "verify",
+      "simulate",
+      "to-fmu",
+      "report"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "FMU"
+      ]
+    },
+    "ruleCount": 6
+  },
+  {
+    "slug": "simpack",
+    "name": "SIMPACK",
+    "sidebar": "SIMPACK Multibody Dynamics",
+    "ext": ".spck",
+    "role": "Spatial multibody dynamics",
+    "group": "rail",
+    "pkgName": "@modelscript/simpack",
+    "version": "0.0.18",
+    "cliCommand": "msx simpack",
+    "actions": [
+      "lint",
+      "mobility",
+      "to-modelica",
+      "simulate",
+      "to-fmu",
+      "report"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "FMU"
+      ]
+    },
+    "ruleCount": 6
+  },
+  {
+    "slug": "pscad",
+    "name": "PSCAD / EMTDC",
+    "sidebar": "PSCAD Power Systems",
+    "ext": ".pscx",
+    "role": "Electromagnetic transients (EMT)",
+    "group": "power",
+    "pkgName": "@modelscript/pscad",
+    "version": "0.0.18",
+    "cliCommand": "msx pscad",
+    "actions": [
+      "lint",
+      "diagram",
+      "diff",
+      "sim",
+      "verify-ieee2800",
+      "export-modelica",
+      "export-ssp",
+      "psout"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SSP"
+      ]
+    },
+    "ruleCount": 17
+  },
+  {
+    "slug": "psse",
+    "name": "PSS/E",
+    "sidebar": "PSS/E Power Flow (.raw)",
+    "ext": ".raw",
+    "role": "Transmission power flow",
+    "group": "power",
+    "pkgName": "@modelscript/psse",
+    "version": "0.0.18",
+    "cliCommand": "msx psse",
+    "actions": [
+      "inspect",
+      "to-dae",
+      "to-modelica",
+      "lint",
+      "summary",
+      "diagram",
+      "netlist",
+      "solve"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 15
+  },
+  {
+    "slug": "opendss",
+    "name": "OpenDSS",
+    "sidebar": "OpenDSS Distribution",
+    "ext": ".dss",
+    "role": "Unbalanced distribution & DER hosting",
+    "group": "power",
+    "pkgName": "@modelscript/opendss",
+    "version": "0.0.18",
+    "cliCommand": "msx opendss",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "powerflow",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "olga",
+    "name": "OLGA",
+    "sidebar": "OLGA Multiphase Flow",
+    "ext": ".genkey",
+    "role": "Transient multiphase flow assurance",
+    "group": "oil-gas",
+    "pkgName": "@modelscript/olga",
+    "version": "0.0.18",
+    "cliCommand": "msx olga",
+    "actions": [
+      "inspect",
+      "to-dae",
+      "to-modelica",
+      "simulate",
+      "lint",
+      "verify",
+      "diagram",
+      "convert",
+      "survey",
+      "gate",
+      "fmu",
+      "trend",
+      "profile",
+      "cosim",
+      "tune",
+      "flash",
+      "network"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 13
+  },
+  {
+    "slug": "lps",
+    "name": "PipelineStudio",
+    "sidebar": "PipelineStudio (.lps)",
+    "ext": ".lps",
+    "role": "Gas & liquid pipeline hydraulics",
+    "group": "oil-gas",
+    "pkgName": "@modelscript/lps",
+    "version": "0.0.18",
+    "cliCommand": "msx lps",
+    "actions": [
+      "inspect",
+      "to-dae",
+      "to-modelica",
+      "lint",
+      "solve",
+      "linepack",
+      "simulate",
+      "sysml",
+      "verify"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 12
+  },
+  {
+    "slug": "eclipse",
+    "name": "ECLIPSE",
+    "sidebar": "ECLIPSE Reservoir",
+    "ext": ".data",
+    "role": "Reservoir engineering",
+    "group": "oil-gas",
+    "pkgName": "@modelscript/eclipse",
+    "version": "0.0.18",
+    "cliCommand": "msx eclipse",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "solve",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "relap5",
+    "name": "RELAP5-3D",
+    "sidebar": "RELAP5 Nuclear Loops",
+    "ext": ".inp",
+    "role": "Reactor thermal-hydraulics & kinetics",
+    "group": "nuclear",
+    "pkgName": "@modelscript/relap5",
+    "version": "0.0.18",
+    "cliCommand": "msx relap5",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "kinetics",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "sima",
+    "name": "SIMA / SIMO / RIFLEX",
+    "sidebar": "SIMA / SIMO / RIFLEX",
+    "ext": ".sima",
+    "role": "Marine operations & riser dynamics",
+    "group": "marine",
+    "pkgName": "@modelscript/sima",
+    "version": "0.0.18",
+    "cliCommand": "msx sima",
+    "actions": [
+      "lint",
+      "verify",
+      "summary",
+      "inspect",
+      "offset",
+      "to-modelica",
+      "to-ssp",
+      "to-sysml2",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "SSP",
+        "SysML v2"
+      ]
+    },
+    "ruleCount": 15
+  },
+  {
+    "slug": "spice",
+    "name": "SPICE",
+    "sidebar": "SPICE Electronics",
+    "ext": ".cir",
+    "role": "Analog circuit simulation",
+    "group": "electronics",
+    "pkgName": "@modelscript/spice",
+    "version": "0.0.18",
+    "cliCommand": "msx spice",
+    "actions": [
+      "simulate",
+      "lint",
+      "inspect",
+      "to-modelica",
+      "to-ecad",
+      "to-dae",
+      "diagram",
+      "sync"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "ECAD"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "verilog-a",
+    "name": "Verilog-A / AMS",
+    "sidebar": "Verilog-A Devices",
+    "ext": ".va",
+    "role": "Analog compact device models",
+    "group": "electronics",
+    "pkgName": "@modelscript/verilog-a",
+    "version": "0.0.18",
+    "cliCommand": "msx verilog-a",
+    "actions": [
+      "inspect",
+      "lint",
+      "to-modelica",
+      "to-spice",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "SPICE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "ibis",
+    "name": "IBIS",
+    "sidebar": "IBIS Buffer Modeling",
+    "ext": ".ibs",
+    "role": "I/O buffer behavioral models",
+    "group": "electronics",
+    "pkgName": "@modelscript/ibis",
+    "version": "0.0.18",
+    "cliCommand": "msx ibis",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "to-dae",
+      "to-modelica",
+      "eval"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 9
+  },
+  {
+    "slug": "touchstone",
+    "name": "Touchstone",
+    "sidebar": "Touchstone RF / SI",
+    "ext": ".sNp",
+    "role": "RF & signal-integrity S-parameters",
+    "group": "electronics",
+    "pkgName": "@modelscript/touchstone",
+    "version": "0.0.18",
+    "cliCommand": "msx touchstone",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "passivity",
+      "to-dae",
+      "to-modelica",
+      "fit"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "urdf",
+    "name": "URDF / Xacro",
+    "sidebar": "URDF & Xacro Robotics",
+    "ext": ".urdf",
+    "role": "Robot kinematics & dynamics",
+    "group": "robotics",
+    "pkgName": "@modelscript/urdf",
+    "version": "0.0.18",
+    "cliCommand": "msx urdf",
+    "actions": [
+      "lint",
+      "rnea",
+      "to-modelica",
+      "to-simpack",
+      "to-adams",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "SIMPACK",
+        "MSC Adams"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "plcopen",
+    "name": "PLCopen / IEC 61131-3",
+    "sidebar": "PLCopen Automation",
+    "ext": ".st",
+    "role": "PLC control software",
+    "group": "robotics",
+    "pkgName": "@modelscript/plcopen",
+    "version": "0.0.18",
+    "cliCommand": "msx plcopen",
+    "actions": [
+      "inspect",
+      "lint",
+      "run-scan",
+      "to-modelica",
+      "to-sysml",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SysML v2"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "adams",
+    "name": "MSC Adams",
+    "sidebar": "MSC Adams MBD",
+    "ext": ".adm",
+    "role": "Mechanical system dynamics",
+    "group": "robotics",
+    "pkgName": "@modelscript/adams",
+    "version": "0.0.18",
+    "cliCommand": "msx adams",
+    "actions": [
+      "lint",
+      "mobility",
+      "to-modelica",
+      "to-simpack",
+      "simulate"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "SIMPACK"
+      ]
+    },
+    "ruleCount": 9
+  },
+  {
+    "slug": "energyplus",
+    "name": "EnergyPlus",
+    "sidebar": "EnergyPlus Thermal",
+    "ext": ".idf",
+    "role": "Building energy & HVAC",
+    "group": "buildings",
+    "pkgName": "@modelscript/energyplus",
+    "version": "0.0.18",
+    "cliCommand": "msx energyplus",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "to-modelica",
+      "to-dae",
+      "thermal-balance",
+      "sync"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "epanet",
+    "name": "EPANET",
+    "sidebar": "EPANET Water Networks",
+    "ext": ".inp",
+    "role": "Pressurized water distribution",
+    "group": "buildings",
+    "pkgName": "@modelscript/epanet",
+    "version": "0.0.18",
+    "cliCommand": "msx epanet",
+    "actions": [
+      "inspect",
+      "lint",
+      "solve",
+      "to-modelica",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
+    "slug": "swmm",
+    "name": "EPA SWMM",
+    "sidebar": "SWMM Urban Hydrology",
+    "ext": ".inp",
+    "role": "Stormwater & urban drainage",
+    "group": "buildings",
+    "pkgName": "@modelscript/swmm",
+    "version": "0.0.18",
+    "cliCommand": "msx swmm",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "to-dae",
+      "to-modelica",
+      "route-flow"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 13
+  },
+  {
+    "slug": "aspen",
+    "name": "Aspen Plus / HYSYS",
+    "sidebar": "Aspen Chemical Process",
+    "ext": ".bkp",
+    "role": "Chemical process flowsheets",
+    "group": "process",
+    "pkgName": "@modelscript/aspen",
+    "version": "0.0.18",
+    "cliCommand": "msx aspen",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "to-dae",
+      "to-modelica",
+      "solve-flash"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 15
+  },
+  {
+    "slug": "sbml",
+    "name": "SBML",
+    "sidebar": "SBML Systems Biology",
+    "ext": ".sbml",
+    "role": "Biochemical reaction networks",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/sbml",
+    "version": "0.0.18",
+    "cliCommand": "msx sbml",
+    "actions": [
+      "inspect",
+      "summary",
+      "lint",
+      "simulate",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  }
+]

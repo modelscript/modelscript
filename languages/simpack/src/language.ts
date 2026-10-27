@@ -8,6 +8,7 @@ import { choice, field, language, repeat, seq } from "@modelscript/dsl";
 export const simpackLanguage = language({
   name: "simpack",
   fileExtensions: [".spck", ".sim", ".mbs"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".spck", ".sim", ".mbs"],
   },

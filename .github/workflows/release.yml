@@ -47,29 +47,81 @@ jobs:
           git config user.name "Mohamad Omar Nachawati"
           git config user.email "mnachawa@gmail.com"
       - name: Cache MSL
+        id: cache-msl
         uses: actions/cache@v4
         with:
-          path: scripts/ModelicaStandardLibrary_v4.1.0.zip
+          path: |
+            scripts/ModelicaStandardLibrary_v4.1.0.zip
+            data/libraries/Modelica/4.1.0/extracted
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Install Dependencies
         run: npm ci
         env:
           CXXFLAGS: "-std=c++20"
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-release-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-build-${{ github.sha }}
+            ${{ runner.os }}-nx-build-
+            ${{ runner.os }}-nx-
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/asc-tests
+            languages/*/.cache
+            languages/*/dist/*.wasm
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
       - name: Download MSL
-        run: node scripts/download-msl.cjs
+        run: |
+          if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
+            node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
+          fi
       - name: Build
         run: npm run build
+      - name: Verify Dist & Exports Integrity
+        run: npm run verify:dist
       - name: Test
         run: npm run test:all
-      - name: Lint
-        run: npm run lint:all
+      - name: Lint & Manifest Verification
+        run: |
+          npm run lint:manifests
+          npm run check --workspace=@modelscript/docs
+          npm run lint:all
 
-      # --- Version, Changelog, Tag ---
+      # --- Version, Changelog, Full Monorepo Sync, Tag & Push ---
       - name: Version & Changelog
         run: npx nx release --skip-publish ${{ github.event.inputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Synchronize All Workspace & Desktop Versions
+        id: version
+        run: |
+          npm run sync:versions
+          VERSION=$(node -p 'require("./packages/runtime/package.json").version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit --amend --no-edit
+            git tag -f -a "v${VERSION}" -m "v${VERSION}"
+          fi
+
+      - name: Push Release Commit & Tag Before External Publishing
+        run: |
+          git push origin HEAD:main
+          git push origin "refs/tags/v${{ steps.version.outputs.version }}" --force
+
+      # --- Publish to npm ---
       - name: Publish to npm
         run: npx nx release publish --yes
         env:
@@ -82,22 +134,28 @@ jobs:
       - name: Sync VS Code Extension Version
         run: node scripts/sync-extension-version.cjs
       - name: Package VS Code Extension
-        run: npx @vscode/vsce package --no-dependencies
+        run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
         working-directory: dist/extension
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
           name: modelscript-vsix
           path: dist/extension/*.vsix
+      - name: Attach VSIX to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          files: dist/extension/*.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to VS Code Marketplace
-        run: npx @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --no-dependencies --allow-star-activation -p ${{ secrets.VSCE_PAT }}
         working-directory: dist/extension
       - name: Publish to Open VSX
-        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
         working-directory: dist/extension
 
       # --- Deploy Apps (IDE) ---
-
       - name: Cache WebLLM Model
         id: cache-model
         uses: actions/cache@v4
@@ -123,12 +181,19 @@ jobs:
           external_repository: modelscript-ide/modelscript-ide.github.io
           publish_dir: ./apps/ide/dist/static
 
-      # --- Deploy Docs ---
+      # --- Deploy Unified Site & Docs ---
       - name: Build PDF Manual
         run: npm run build:pdf --workspace=@modelscript/docs
       - name: Build Docs
-        run: npm run build --workspace=@modelscript/docs
-      - name: Deploy Docs
+        run: npx nx build @modelscript/docs
+      - name: Deploy Site (modelscript.org)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
+          external_repository: modelscript/modelscript.github.io
+          publish_dir: ./apps/docs/docs/.vitepress/dist
+          cname: modelscript.org
+      - name: Deploy Docs (docs.modelscript.org)
         uses: peaceiris/actions-gh-pages@v4
         with:
           personal_token: ${{ secrets.MODELSCRIPT_DOCS_DEPLOY_PAT || secrets.MODELSCRIPT_SITE_DEPLOY_PAT || secrets.DEPLOY_PAT }}
@@ -144,9 +209,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract version from package.json
-        id: version
-        run: echo "version=$(node -p 'require("./packages/runtime/package.json").version')" >> "$GITHUB_OUTPUT"
       - name: Build and push Docker images
         uses: docker/bake-action@v6
         with:
@@ -163,7 +225,7 @@ jobs:
             web.tags=ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
             ide.tags=ghcr.io/modelscript/ide:latest
             ide.tags=ghcr.io/modelscript/ide:${{ steps.version.outputs.version }}
-
-      # --- Push version commits and tags ---
-      - name: Push changes
-        run: git push --follow-tags
+            cli.tags=ghcr.io/modelscript/cli:latest
+            cli.tags=ghcr.io/modelscript/cli:${{ steps.version.outputs.version }}
+            appliance.tags=ghcr.io/modelscript/appliance:latest
+            appliance.tags=ghcr.io/modelscript/appliance:${{ steps.version.outputs.version }}

@@ -46,12 +46,12 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
             setNotificationPrefs((prev) => ({
               ...prev,
               ...data,
-              channels: { ...prev.channels, ...(data.channels || {}) },
+              channels: { ...prev.channels, ...(data.channels || {}) } as NotificationPreferences["channels"],
               events: {
                 social: { ...prev.events?.social, ...(data.events?.social || {}) },
                 engineering: { ...prev.events?.engineering, ...(data.events?.engineering || {}) },
                 computeHpc: { ...prev.events?.computeHpc, ...(data.events?.computeHpc || {}) },
-              },
+              } as NotificationPreferences["events"],
             }));
           }
         })
@@ -260,7 +260,7 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
                       events: {
                         ...p.events,
                         social: { ...p.events?.social, [evt.key]: val } as any,
-                      },
+                      } as NotificationPreferences["events"],
                     }));
                   }}
                   style={{ width: "18px", height: "18px", cursor: "pointer" }}

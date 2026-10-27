@@ -104,7 +104,7 @@ session.addParticipant(hwParticipant);
 
 ### Unthrottled Browser Pacing via `AudioWorkletClock`
 
-Browsers throttle `setInterval` to 1 Hz when tabs are backgrounded. ModelScript's `AudioWorkletClock` (`packages/exchange/src/cosim/audio-worklet-clock.ts`) leverages the high-priority OS audio thread (44.1 kHz) to drive the simulation loop with sub-millisecond precision, immune to background throttling.
+Browsers throttle `setInterval` to 1 Hz when tabs are backgrounded. ModelScript's `AudioWorkletClock` (`packages/exchange/src/cosim/audio-worklet-clock.ts`) leverages the high-priority OS audio thread (44.1 kHz) to drive the simulation loop, so it is not subject to background-tab timer throttling.
 
 ---
 

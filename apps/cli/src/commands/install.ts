@@ -8,7 +8,7 @@ import type { CommandModule } from "yargs";
 import { DependencySolver, type PackageVersionProvider } from "../solver/solver.js";
 import { getToken } from "../util/auth.js";
 import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
-import { parsePackageMo, parsePackageUses } from "../util/package-mo.js";
+import { parsePackageUses } from "../util/package-mo.js";
 
 interface InstallArgs {
   package?: string | undefined;
@@ -19,20 +19,18 @@ interface InstallArgs {
   dryRun?: boolean | undefined;
 }
 
+import { EXTENSION_TO_LANGUAGE_ID, detectAndAdaptArchiveManifest } from "@modelscript/exchange";
+
 function extractDomainSummaryFromZip(zip: AdmZip): Record<string, { files: string[] }> {
   const domains: Record<string, { files: string[] }> = {};
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) continue;
     const name = entry.entryName;
     const ext = path.extname(name).toLowerCase();
-    let domain: string | null = null;
-    if (ext === ".mo") domain = "modelica";
-    else if (ext === ".sysml") domain = "sysml2";
-    else if (ext === ".step" || ext === ".stp") domain = "cad";
+    let domain: string | null = EXTENSION_TO_LANGUAGE_ID[ext] ?? null;
+    if (ext === ".step" || ext === ".stp") domain = "cad";
     else if (ext === ".csv" || ext === ".tsv") domain = "dataset";
-    else if (ext === ".inp") domain = "fea";
-    else if (ext === ".cfg") domain = "cfd";
-    else if (ext === ".reqif") domain = "requirements";
+    else if (ext === ".reqif" || ext === ".reqifz") domain = "requirements";
 
     if (domain) {
       if (!domains[domain]) domains[domain] = { files: [] };
@@ -71,36 +69,45 @@ export function installLocalArchive(
   let pkgName: string | null = expectedName || null;
   let pkgVersion = "0.0.0";
 
-  const pkgJsonEntry = zip.getEntry("package.json");
-  if (pkgJsonEntry) {
-    try {
-      const parsed = JSON.parse(pkgJsonEntry.getData().toString("utf-8"));
-      if (parsed.name) {
-        pkgName = parsed.name;
+  const textEntries = new Map<string, string>();
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const base = path.basename(entry.entryName).toLowerCase();
+    if (
+      base === "package.json" ||
+      base === "modelscript.json" ||
+      base === ".meta.json" ||
+      base === ".index.json" ||
+      base === "package.mo" ||
+      base === "impact.json" ||
+      base === "modeldescription.xml" ||
+      base === "systemstructure.ssd" ||
+      base === "package.xml" ||
+      base === "model.config" ||
+      base === "fpm.toml" ||
+      base === "datapackage.json" ||
+      base === "component.xml"
+    ) {
+      try {
+        textEntries.set(entry.entryName, entry.getData().toString("utf-8"));
+      } catch {
+        // ignore
       }
-      if (parsed.version) {
-        pkgVersion = parsed.version;
-      }
-    } catch {
-      // fallback to package.mo or filename
     }
   }
 
-  if (!pkgName || pkgVersion === "0.0.0") {
-    const pkgMoEntry = zip.getEntry("package.mo");
-    if (pkgMoEntry) {
-      const parsed = parsePackageMo(pkgMoEntry.getData().toString("utf-8"));
-      if (!pkgName && parsed.name) {
-        pkgName = parsed.name;
-      }
-      if (pkgVersion === "0.0.0" && parsed.version) {
-        pkgVersion = parsed.version;
-      }
-    }
+  const adapted = detectAndAdaptArchiveManifest(textEntries, {
+    fallbackName: path.basename(archivePath),
+  });
+  if (adapted) {
+    if (!pkgName && adapted.name) pkgName = adapted.name;
+    if (adapted.version) pkgVersion = adapted.version;
   }
 
   if (!pkgName) {
-    const base = path.basename(archivePath).replace(/(\.msx)?\.zip$/i, "");
+    const base = path
+      .basename(archivePath)
+      .replace(/\.(msx\.zip|zip|kpar|mol|fmu|ssp|omex|reqifz|slx|sima|ddp|aasx|okh)$/i, "");
     const match = base.match(/^(.+?)-(\d+\.\d+\.\d+.*)$/);
     if (match) {
       pkgName = match[1]!;

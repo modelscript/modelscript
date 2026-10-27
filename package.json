@@ -1,6 +1,6 @@
 {
   "name": "modelscript",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "private": true,
   "description": "ModelScript",
   "keywords": [
@@ -31,7 +31,7 @@
     "build": "nx run-many --target=build --parallel=8",
     "build:affected": "nx affected --target=build --parallel=8",
     "build:all": "nx run-many --target=build --parallel=8",
-    "build:extension": "nx run-many --target=build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/c,@modelscript/fortran,@modelscript/easy5,@modelscript/rocets,@modelscript/modelica,@modelscript/sysml2,@modelscript/step,@modelscript/owl2,@modelscript/csv,@modelscript/aspen,@modelscript/swmm,@modelscript/touchstone,@modelscript/ibis,@modelscript/opendss,@modelscript/openscenario,@modelscript/relap5,@modelscript/eclipse,@modelscript/sbml,@modelscript/jsbsim && npx tsx apps/cli/src/main.ts generate extension languages/modelica/src/language.ts languages/sysml2/src/language.ts languages/step/src/language.ts languages/owl2/src/language.ts languages/csv/language.ts languages/modelscript/src/language.ts languages/c/src/language.ts languages/fortran/src/language.ts languages/easy5/src/language.ts languages/rocets/src/language.ts languages/aspen/src/language.ts languages/swmm/src/language.ts languages/touchstone/src/language.ts languages/ibis/src/language.ts languages/opendss/src/language.ts languages/openscenario/src/language.ts languages/relap5/src/language.ts languages/eclipse/src/language.ts languages/sbml/src/language.ts languages/jsbsim/src/language.ts --outdir dist/extension",
+    "build:extension": "nx run-many --target=build --projects=@modelscript/dsl,@modelscript/runtime --parallel=8 && npx tsx apps/cli/src/main.ts generate extension --outdir dist/extension",
     "build:ide:extension": "npm run build-extension --workspace=@modelscript/ide",
     "build:libs": "nx run-many --target=build --exclude=@modelscript/docs,@modelscript/web --parallel=8",
     "ci:act": "bash scripts/run-act.sh pull_request",
@@ -70,8 +70,9 @@
     "lint:lockfile": "npx tsx scripts/lint-lockfile.ts",
     "lint:manifests": "npx tsx scripts/lint-package-manifests.ts",
     "lint:scripts": "eslint scripts eslint.config.ts --no-warn-ignored",
-    "package:desktop": "npm run build --workspace=@modelscript/web && npm run build:tauri --workspace=@modelscript/desktop",
-    "package:desktop:portable": "npm run build --workspace=@modelscript/web && npm run build:portable --workspace=@modelscript/desktop",
+    "lint:versions": "npx tsx scripts/sync-versions.ts --check",
+    "package:desktop": "npx nx build @modelscript/web && npm run build:tauri --workspace=@modelscript/desktop",
+    "package:desktop:portable": "npx nx build @modelscript/web && npm run build:portable --workspace=@modelscript/desktop",
     "package:ide:extension": "npm run build-extension --workspace=@modelscript/ide && (cd apps/ide/dist/extension && npx --yes @vscode/vsce package --no-dependencies --allow-star-activation --out ../)",
     "prepare": "husky",
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
@@ -79,6 +80,7 @@
     "release:dry-run": "nx release --dry-run",
     "security:codeql": "bash scripts/codeql-scan.sh",
     "security:codeql:docker": "bash scripts/codeql-scan.sh --docker",
+    "sync:versions": "npx tsx scripts/sync-versions.ts",
     "test": "node scripts/test-coordinator.js affected",
     "test:all": "node scripts/test-coordinator.js run-many",
     "test:benchmarks": "npx tsx testsuite/benchmarks/cae-parity.test.ts",
@@ -124,6 +126,9 @@
     "@modelscript/docs": {
       "mermaid": {
         "katex": "^0.19.1"
+      },
+      "vitepress": {
+        "vite": "^6.4.5"
       }
     },
     "@modelscript/web": {

@@ -11,7 +11,7 @@
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
 [![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
-ModelScript is a Web-native, polyglot compiler & engineering intelligence platform that unifies modern open standards (SysML v2, Modelica, STEP, etc) and legacy/proprietary formats (.pscx, .gtm, .sima, .opi, .ez5, etc) into a continuous digital thread for end-to-end design, simulation, and analysis.
+ModelScript is a Web-native, polyglot compiler & engineering intelligence platform that unifies **44 modern open standards** (SysML v2, Modelica, STEP, SSP, ReqIF, OWL 2, OpenDRIVE, OpenSCENARIO, AUTOSAR, PLCopen, URDF, SBML) and **industrial simulation formats** (PSCAD, PSS/E, OpenDSS, SPICE, Verilog-A, IBIS, Touchstone, OLGA, PipelineStudio, Aspen Plus, ECLIPSE, EPANET, SWMM, RELAP5, EnergyPlus, ADAMS, SIMPACK, GENSYS, GT-SUITE, SIMA, Simulink, EASY5, JSBSim, ROCETS, CCSDS, CalculiX FEA, SU2 CFD, Fortran, C) into a continuous digital thread for end-to-end design, simulation, formal verification, and compliance auditing.
 
 ---
 
@@ -21,8 +21,8 @@ ModelScript is a Web-native, polyglot compiler & engineering intelligence platfo
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 ModelScript Digital Thread                               │
 ├──────────────────┬─────────────────┬─────────────────┬─────────────────┬─────────────────┤
-│  SysML v2 / OSLC │  Modelica / SSP │ STEP / CAD / CAE│ Power & Fluids  │ Legacy & SOTA   │
-│  (Requirements)  │  (1D Dynamics)  │  (3D Continuum) │ (PSCAD/OLGA/LPS)│(GT-SUITE/SIMA/+)│
+│ SysML v2 / ReqIF │ Modelica / SSP  │ STEP / CAD / CAE│ Power / Fluids  │ Multibody / Aero│
+│  OWL 2 / OSLC    │ Simulink / EASY5│  (OpenSCAD/FEA) │ (PSCAD/OLGA/+)  │ (GENSYS/ADAMS/+)│
 └────────┬─────────┴────────┬────────┴────────┬────────┴────────┬────────┴────────┬────────┘
          │                  │                 │                 │                 │
          ▼                  ▼                 ▼                 ▼                 ▼
@@ -74,31 +74,88 @@ Inspired by Rust's Salsa, compilation, name resolution, and specialized class in
 
 ---
 
-## Supported Languages & Domain Capabilities
+## Supported Languages & Domain Capabilities (44 Languages)
 
-ModelScript provides first-class support for 19 engineering languages and simulation formats under `languages/`, each powered by native WebAssembly parsers, linear-memory CST arenas, and direct `DAEBuilder` lowering:
+ModelScript provides first-class support for **44 engineering languages and simulation formats** under `languages/`, organized across 7 domain clusters and powered by native WebAssembly parsers, linear-memory CST arenas, static pre-flight linters, and direct `DAEBuilder` lowering:
 
-| Language & Directory                                                    | Domain & Role                                | Core Capabilities                                                                                                                                                                                                                                                     |
-| :---------------------------------------------------------------------- | :------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **ModelScript**<br>[`languages/modelscript/`](./languages/modelscript/) | **Native Unified Multi-Domain Modeling**     | Native `.msx` declarative syntax combining acausal physical modeling, discrete state machines, spatial constraints, and high-performance compilation to WebAssembly DAE arena.                                                                                        |
-| **Modelica**<br>[`languages/modelica/`](./languages/modelica/)          | **1D Multi-Domain Physical Simulation**      | Complete Modelica 3.x equation-based modeling; native AssemblyScript flattening kernel (`ModelicaFlattener`) supporting `hybrid`, `wasm`, `ts`, and `diff` modes; connector balancing; unit checking; BLT partition; and rigorous OpenModelica testsuite conformance. |
-| **SysML v2 / KerML**<br>[`languages/sysml2/`](./languages/sysml2/)      | **Systems Architecture & Requirements**      | Systems Modeling Language v2 and Kernel Modeling Language (KerML) parsing, AST queries, KerML standard library snapshot, structural breakdown (part/item defs), state machine semantics, activity flows, and requirements verification.                               |
-| **STEP (ISO 10303)**<br>[`languages/step/`](./languages/step/)          | **CAD Product Data & B-Rep Geometry**        | ISO 10303-21/203/214/242 parsing, geometric topological entity traversal, assembly hierarchy extraction, Geometric Dimensioning and Tolerancing (GD&T) annotations, and solid volume integration.                                                                     |
-| **OWL2**<br>[`languages/owl2/`](./languages/owl2/)                      | **Ontological Knowledge & Taxonomy**         | OWL 2 Functional-Style Syntax parsing, ontology taxonomy indexing, axiom extraction, concept classification, subsumption checking, and knowledge graph mapping.                                                                                                       |
-| **CSV**<br>[`languages/csv/`](./languages/csv/)                         | **Tabular Data & Telemetry Validation**      | High-throughput tabular parsing, schema validation, experimental sensor measurement loading, trajectory regression baselines, and parameter calibration datasets.                                                                                                     |
-| **CFD**<br>[`languages/cfd/`](./languages/cfd/)                         | **Computational Fluid Dynamics**             | Mesh boundary condition parsing, flow domain specifications, aerodynamic coefficient extraction, and dialects for SU2 and OpenFOAM configurations.                                                                                                                    |
-| **FEA**<br>[`languages/fea/`](./languages/fea/)                         | **Finite Element Analysis**                  | Structural mesh setup, material property assignments, load case definitions, displacement/stress field extraction, and CAE boundary contract verification.                                                                                                            |
-| **OpenSCAD**<br>[`languages/scad/`](./languages/scad/)                  | **Programmatic Constructive Solid Geometry** | Constructive Solid Geometry (CSG) AST evaluation, 3D boolean transformations (union, difference, intersection), parametric dimension extraction, and AST patching.                                                                                                    |
-| **SSP**<br>[`languages/ssp/`](./languages/ssp/)                         | **System Structure & Parameterization**      | System Structure and Parameterization standard packaging, multi-FMU co-simulation topologies, parameter set bindings, signal dictionary connections, and unit mappings.                                                                                               |
-| **PSCAD**<br>[`languages/pscad/`](./languages/pscad/)                   | **EMT & Power Systems Modeling**             | `.pscx`/`.pslx` parsing, Dommel companion-circuit EMT & Bergeron traveling-wave line simulation, IEEE 2800-2022 ride-through verification, COMTRADE `.cfg`/`.dat` I/O, and Modelica/SSP/SLD projection.                                                               |
-| **OLGA**<br>[`languages/olga/`](./languages/olga/)                      | **Multiphase Dynamic Flow Assurance**        | `.opi`/`.key` parsing, drift-flux hydrodynamic simulation, severe slugging envelope checks, hydrate/wax risk envelopes, and SysML v2/Modelica pipeline projection.                                                                                                    |
-| **PipelineStudio**<br>[`languages/lps/`](./languages/lps/)              | **Pipeline Hydraulics & Transmission**       | `.lps`/`.tgx`/`.tlx` pipeline network parsing, steady-state Colebrook-White pressure drop, line pack inventory analysis, dynamic Gas Euler solver, and MAOP limit verification.                                                                                       |
-| **PSS/E**<br>[`languages/psse/`](./languages/psse/)                     | **Transmission Grid Power Flow**             | `.raw`/`.dyr` network parsing, Newton-Raphson & Fast Decoupled power flow solving, bus branch thermal utilization, generator active/reactive capability limits, and SLD generation.                                                                                   |
-| **EASY5**<br>[`languages/easy5/`](./languages/easy5/)                   | **Dynamic Simulation & Linear Analysis**     | `.ez5`/`.ezm` model parsing, continuous block diagram topology extraction, state-space Jacobians ($A, B, C, D$), frequency response (Bode/Nyquist), and Modelica/SSP export.                                                                                          |
-| **ROCETS**<br>[`languages/rocets/`](./languages/rocets/)                | **Propulsion & Turbomachinery**              | NASA `.roc`/`.deck` liquid rocket engine parsing, power balance cycle solving, turbopump/combustion chamber operating lines, and transient blowdown simulation.                                                                                                       |
-| **SIMA**<br>[`languages/sima/`](./languages/sima/)                      | **Offshore Marine & Slender Dynamics**       | SINTEF SIMO/RIFLEX card deck and `.sima` XML archive parsing, Cummins 6-DOF floater dynamics, DNV-OS-E301 line safety factors, catenary profile solving, and polar spread diagrams.                                                                                   |
-| **GT-SUITE**<br>[`languages/gtsuite/`](./languages/gtsuite/)            | **1D Powertrain & Engine Simulation**        | `.gtm`/`.gtd` engine deck parsing, Wiebe combustion, Woschni heat transfer, crank-slider kinematics, turbocharger compressor maps, and DNV/emissions gate verification.                                                                                               |
-| **Fortran**<br>[`languages/fortran/`](./languages/fortran/)             | **Legacy Scientific & Engineering Solvers**  | Fixed/free form Fortran (`.f`, `.f90`) parsing, variable declaration extraction, expression conversion, and direct lowering to linear WebAssembly DAE arena.                                                                                                          |
+### 1. Native & Core Systems Engineering (7)
+
+| Language & Directory                                                    | Extensions             | Domain & Core Capabilities                                                                                                                                                                                                    |
+| :---------------------------------------------------------------------- | :--------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ModelScript**<br>[`languages/modelscript/`](./languages/modelscript/) | `.msx`                 | Unified declarative multi-domain language combining acausal physical equations, hierarchical state machines, spatial CAD constraints, and direct compilation to the WebAssembly DAE arena.                                    |
+| **Modelica**<br>[`languages/modelica/`](./languages/modelica/)          | `.mo`                  | Complete Modelica 3.x equation-based modeling; native AssemblyScript flattening kernel (`ModelicaFlattener`) supporting `hybrid`, `wasm`, `ts`, and `diff` modes; connector balancing; BLT partitioning; and OMC conformance. |
+| **SysML v2 / KerML**<br>[`languages/sysml2/`](./languages/sysml2/)      | `.sysml`, `.kerml`     | OMG Systems Modeling Language v2 & KerML parsing, standard library snapshot, structural part/port definitions, state machine & fUML activity execution, decision table verification, and requirements allocation.             |
+| **SSP 1.0**<br>[`languages/ssp/`](./languages/ssp/)                     | `.ssp`, `.ssd`, `.ssv` | System Structure and Parameterization standard packaging, multi-FMU co-simulation topologies (`SystemStructure.ssd`), parameter value catalogs (`.ssv`), and signal dictionary mappings (`.ssm`).                             |
+| **ReqIF**<br>[`languages/reqif/`](./languages/reqif/)                   | `.reqif`, `.reqifz`    | OMG Requirements Interchange Format v1.2 parsing, `SPEC-OBJECTS` / `SPEC-RELATIONS` traceability graph extraction, suspect-link detection, and bidirectional SysML v2 requirement synchronization.                            |
+| **OWL 2**<br>[`languages/owl2/`](./languages/owl2/)                     | `.owl`, `.ofn`         | W3C OWL 2 Functional-Style Syntax parsing, Tableau Description Logic (DL) reasoning, concept subsumption, Manchester syntax rendering, OWL 2 DL/EL profile linting, and SPARQL-DL querying.                                   |
+| **CSV**<br>[`languages/csv/`](./languages/csv/)                         | `.csv`                 | High-throughput tabular data parsing, RFC 4180 structural linting, experimental sensor telemetry ingestion, trajectory regression comparison, and parameter calibration datasets.                                             |
+
+### 2. Electrical Power Grids, RF & Electronics (7)
+
+| Language & Directory                                                 | Extensions                 | Domain & Core Capabilities                                                                                                                                                                                                                                              |
+| :------------------------------------------------------------------- | :------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PSCAD**<br>[`languages/pscad/`](./languages/pscad/)                | `.pscx`, `.pslx`, `.psout` | Electromagnetic transient (EMT) parsing, Dommel companion-circuit & Bergeron traveling-wave line simulation, IEEE 2800-2022 ride-through verification, COMTRADE `.cfg`/`.dat` I/O, and Modelica/SSP/SLD projection.                                                     |
+| **PSS/E**<br>[`languages/psse/`](./languages/psse/)                  | `.raw`, `.dyr`             | Siemens PTI PSS/E v33/v34 transmission grid parsing, Newton-Raphson & Fast Decoupled AC power flow solving, branch thermal loading, generator reactive capability checks, and Single-Line Diagram (SLD) synthesis.                                                      |
+| **OpenDSS**<br>[`languages/opendss/`](./languages/opendss/)          | `.dss`                     | EPRI OpenDSS unbalanced multi-phase distribution network parsing, radial/meshed forward-backward sweep power flow, DER solar PV/storage hosting capacity analysis, and Modelica projection.                                                                             |
+| **SPICE**<br>[`languages/spice/`](./languages/spice/)                | `.cir`, `.sp`, `.spice`    | Berkeley SPICE / LTspice / Ngspice netlist parsing, Modified Nodal Analysis (MNA) conservation lowering (`DAEBuilder`), MOSFET/BJT/diode device models, floating node & voltage-loop linting, and Modelica projection.                                                  |
+| **Verilog-A**<br>[`languages/verilog-a/`](./languages/verilog-a/)    | `.va`, `.vams`             | Accellera Verilog-A / Verilog-AMS analog behavioral hardware description parsing, `discipline`/`nature` extraction, branch contribution (`V(p,n) <+ ...`, `I(p,n) <+ ddt(...)`) lowering to DAE arena, and Modelica export.                                             |
+| **IBIS**<br>[`languages/ibis/`](./languages/ibis/)                   | `.ibs`                     | ANSI/EIA-656-B I/O Buffer Information Specification parsing, piecewise-linear pullup/pulldown & clamping diode I/V curve interpolation, dynamic output impedance calculation, monotonicity linting, and DAE lowering.                                                   |
+| **Touchstone**<br>[`languages/touchstone/`](./languages/touchstone/) | `.s1p`–`.s32p`, `.ts2`     | Touchstone v1.0/v2.0 N-port S/Y/Z network parameter parsing, spectral norm passivity verification ($\|\mathbf{S}(f)\|_2 \le 1$), Gustavsen-Semlyen rational Vector Fitting to state-space $(\mathbf{A},\mathbf{B},\mathbf{C},\mathbf{D})$, and DAE macromodel lowering. |
+
+### 3. Fluid, Process, Subsurface, Civil Water & Nuclear Thermal-Hydraulics (8)
+
+| Language & Directory                                                 | Extensions              | Domain & Core Capabilities                                                                                                                                                                                                   |
+| :------------------------------------------------------------------- | :---------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OLGA**<br>[`languages/olga/`](./languages/olga/)                   | `.opi`, `.olga`, `.key` | Multiphase dynamic flow assurance parsing, 1D two-fluid / drift-flux hydrodynamic simulation, severe slugging (Bøe/Pots), hydrate/wax/asphaltene & NACE MR0175 sour corrosion verification, and SysML/Modelica projection.   |
+| **PipelineStudio (LPS)**<br>[`languages/lps/`](./languages/lps/)     | `.lps`, `.tgx`, `.tlx`  | Gas and liquid transmission pipeline network parsing, Colebrook-White steady-state hydraulics, linepack inventory, isothermal Euler transient surge simulation, ASME B31.4/B31.8 MAOP checks, and Modelica projection.       |
+| **Aspen Plus**<br>[`languages/aspen/`](./languages/aspen/)           | `.in`, `.inp`, `.bkp`   | Chemical process flowsheet parsing, Rachford-Rice isothermal vapor-liquid equilibrium (VLE) flash solving, RadFrac distillation stage balances, tear-stream convergence linting, and Modelica fluid process projection.      |
+| **ECLIPSE**<br>[`languages/eclipse/`](./languages/eclipse/)          | `.data`, `.dat`, `.inc` | Schlumberger ECLIPSE 100/300 black-oil reservoir deck parsing (`RUNSPEC`, `GRID`, `PROPS`, `SOLUTION`, `SCHEDULE`), multiphase Darcy depletion & Peaceman wellbore inflow solver, PVT table linting, and DAE lowering.       |
+| **EPANET**<br>[`languages/epanet/`](./languages/epanet/)             | `.inp`                  | US EPA pressurized municipal water distribution network parsing, Todini & Pilati Global Gradient Method (GGM) hydraulic solver (Hazen-Williams / Darcy-Weisbach), tank level DAE lowering, and Modelica projection.          |
+| **SWMM**<br>[`languages/swmm/`](./languages/swmm/)                   | `.inp`                  | US EPA Storm Water Management Model v5 urban drainage parsing, Manning open-channel & partially-full circular conduit routing, subcatchment runoff, surcharge overflow linting, and DAE/Modelica projection.                 |
+| **RELAP5-3D**<br>[`languages/relap5/`](./languages/relap5/)          | `.i`, `.inp`, `.r5`     | US NRC nuclear reactor thermal-hydraulics deck parsing (hydrodynamic volumes, junctions, heat structures, trips), in-WASM 6-group delayed neutron point-kinetics solver with Doppler/moderator feedback, and DAE lowering.   |
+| **EnergyPlus**<br>[`languages/energyplus/`](./languages/energyplus/) | `.idf`, `.epjson`       | US DOE building energy simulation parsing (`Zone`, `Material`, `Construction`, 3D `BuildingSurface:Detailed`), polygon convexity & interzone surface linting, multi-zone RC thermal network DAE lowering, and Modelica sync. |
+
+### 4. Multibody, Automotive, Robotics, Marine & Rail (9)
+
+| Language & Directory                                                       | Extensions                | Domain & Core Capabilities                                                                                                                                                                                                       |
+| :------------------------------------------------------------------------- | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MSC ADAMS**<br>[`languages/adams/`](./languages/adams/)                  | `.adm`, `.cmd`, `.acf`    | Multibody dynamics deck & command script parsing, Grübler-Kutzbach mobility & redundant constraint analysis, IMPACT contact and bushing force lowering to `DAEBuilder`, and `Modelica.Mechanics.MultiBody` projection.           |
+| **SIMPACK**<br>[`languages/simpack/`](./languages/simpack/)                | `.spck`, `.sim`, `.fbi`   | Multibody systems & Craig-Bampton flexible body (`.fbi`) parsing, in-WASM spatial kinematics, Baumgarte stabilization & Newton-Raphson kinematic loop closure, Berg hydro-mount bushing model, and DAE/Modelica projection.      |
+| **GENSYS**<br>[`languages/gensys/`](./languages/gensys/)                   | `.calc`, `.run`, `.trax`  | Railway vehicle dynamics & track geometry parsing, in-WASM SIMD Kalker FASTSIM & Polach creep force solvers, UIC60/S1002 wheel-rail contact, ERRI/FRA track PSD synthesis, EN 14067-6 cross-wind, and EN 14363 homologation.     |
+| **GT-SUITE**<br>[`languages/gtsuite/`](./languages/gtsuite/)               | `.gtm`, `.gtx`, `.gtd`    | 1D powertrain and engine deck parsing, Wiebe combustion burn rate, Woschni heat transfer, slider-crank kinematics, turbocharger maps, 1D gas dynamics solver, and Modelica/SSP export.                                           |
+| **SIMA**<br>[`languages/sima/`](./languages/sima/)                         | `.sima`, `.stask`, `.sys` | SINTEF SIMO/RIFLEX offshore marine card deck & archive parsing, Cummins 6-DOF floater dynamics, analytical inelastic catenary mooring solver, DNV-OS-E301 tension safety factor verification, and polar spread diagrams.         |
+| **URDF / SDF**<br>[`languages/urdf/`](./languages/urdf/)                   | `.urdf`, `.sdf`, `.world` | ROS 2 Robot Description Format & Gazebo SDF parsing, kinematic tree & triangle-inequality inertia tensor validation, Newton-Euler rigid-body DAE lowering, and `Modelica.Mechanics.MultiBody` projection.                        |
+| **OpenDRIVE**<br>[`languages/opendrive/`](./languages/opendrive/)          | `.xodr`                   | ASAM OpenDRIVE v1.4–v1.8 road network parsing, analytical clothoid (Euler spiral), arc, and cubic polynomial reference line evaluation, $C^1$ heading continuity verification, and 6-DOF vehicle road-tire DAE lowering.         |
+| **OpenSCENARIO**<br>[`languages/openscenario/`](./languages/openscenario/) | `.xosc`, `.osc`           | ASAM OpenSCENARIO v1.x XML & v2.0 DSL autonomous driving scenario parsing, closed-loop actor maneuver/trigger simulation, Time-to-Collision (TTC) & IEEE 2846 RSS longitudinal safety margin verification, and DAE lowering.     |
+| **AUTOSAR**<br>[`languages/autosar/`](./languages/autosar/)                | `.arxml`                  | AUTOSAR Classic & Adaptive R22-11 `.arxml` parsing, Software Component (`SWC`), Sender/Receiver & Client/Server port interface validation, runnable WCET utilization & CAN/FlexRay PDU bit-packing linting, and Modelica export. |
+
+### 5. Aerospace, Flight Dynamics, Astrodynamics & Controls (6)
+
+| Language & Directory                                                    | Extensions                      | Domain & Core Capabilities                                                                                                                                                                                                          |
+| :---------------------------------------------------------------------- | :------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simulink**<br>[`languages/simulink/`](./languages/simulink/)          | `.slx`, `.mdl`                  | MATLAB Simulink `.slx` (OPC ZIP XML) and legacy `.mdl` block diagram parsing, Stateflow chart extraction, algebraic loop & sample-time hit linting, direct lowering to `DAEBuilder`, and `Modelica.Blocks` projection.              |
+| **EASY5**<br>[`languages/easy5/`](./languages/easy5/)                   | `.ez5`, `.ezm`, `.dat`          | Boeing / MSC EASY5 schematic & macro library parsing, continuous/discrete control block topology extraction, state-space linearization ($A, B, C, D$), Bode/Nyquist frequency response, and Modelica/SSP export.                    |
+| **JSBSim**<br>[`languages/jsbsim/`](./languages/jsbsim/)                | `.xml`                          | JSBSim 2.0 6-DOF flight dynamics model (`<fdm_config>`) parsing, ISA atmosphere & aerodynamic coefficient evaluation, flight control system (FCS) channel validation, RK4 trajectory integration, and Modelica projection.          |
+| **ROCETS**<br>[`languages/rocets/`](./languages/rocets/)                | `.roc`, `.inp`, `.deck`         | NASA liquid rocket engine propulsion deck parsing, cryogenic turbopump/turbine shaft power balance cycle solver, injector/regenerative cooling jacket pressure drop, transient startup/shutdown simulation, and DAE lowering.       |
+| **CCSDS / XTCE**<br>[`languages/ccsds/`](./languages/ccsds/)            | `.oem`, `.opm`, `.omm`, `.xtce` | CCSDS Orbit Ephemeris/Parameter/Mean-Elements KVN & OMG XTCE satellite telemetry parsing, 6-DOF Cowell orbit propagator ($J_2$ oblateness, drag, solar radiation pressure), bit-packing overlap linting, and SysML/Modelica export. |
+| **PLCopen IEC 61131-3**<br>[`languages/plcopen/`](./languages/plcopen/) | `.st`, `.iec`, `.plcxml`        | IEC 61131-3 Structured Text (`.st`) and PLCopen TC6 XML (`.plcxml`) industrial control parsing, deterministic scan-cycle state machine lowering to synchronous clocked DAE equations, and `Modelica_Synchronous` export.            |
+
+### 6. 3D CAD & Continuum Physics — FEA / CFD (4)
+
+| Language & Directory                                           | Extensions                      | Domain & Core Capabilities                                                                                                                                                                                                             |
+| :------------------------------------------------------------- | :------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **STEP (ISO 10303)**<br>[`languages/step/`](./languages/step/) | `.step`, `.stp`, `.p21`         | ISO 10303-21 (AP203/AP214/AP242) Clear Text Encoding parsing, B-Rep topological entity graph traversal, assembly hierarchy extraction, GD&T datum/tolerance validation, and solid volume/centroid integration.                         |
+| **OpenSCAD**<br>[`languages/scad/`](./languages/scad/)         | `.scad`                         | Constructive Solid Geometry (CSG) AST evaluation, 3D boolean transformations (`union`, `difference`, `intersection`, `hull`), parametric dimension extraction, surgical AST writeback, and STEP/Modelica CAD synchronisation.          |
+| **FEA**<br>[`languages/fea/`](./languages/fea/)                | `.fea`, `.inp`, `.bdf`          | CalculiX/Abaqus (`.inp`), Nastran (`.bdf`), and declarative `.fea` structural mesh setup, Tet4/Tet10 thermo-elastic stiffness assembly, von Mises stress recovery, and CAE boundary contract verification.                             |
+| **CFD**<br>[`languages/cfd/`](./languages/cfd/)                | `.cfd`, `.cfg`, `.su2`, `.foam` | SU2 (`.cfg`/`.su2`), OpenFOAM (`.foam`), and declarative `.cfd` flow specification parsing, $y^+$ & Courant-Friedrichs-Lewy (CFL) mesh quality linting, WebGPU D3Q19 Lattice Boltzmann coupling, and aerodynamic drag/lift extraction. |
+
+### 7. Systems Biology & Scientific / Embedded Code (3)
+
+| Language & Directory                                        | Extensions                   | Domain & Core Capabilities                                                                                                                                                                                                   |
+| :---------------------------------------------------------- | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SBML**<br>[`languages/sbml/`](./languages/sbml/)          | `.sbml`, `.xml`              | Systems Biology Markup Language (Level 2 / Level 3) parsing, compartment/species/reaction stoichiometry matrix construction, MathML & infix kinetic law evaluation, RK4 concentration ODE solver, and DAE/Modelica lowering. |
+| **Fortran**<br>[`languages/fortran/`](./languages/fortran/) | `.f`, `.for`, `.f90`, `.f95` | Fixed-form Fortran 77 and free-form Fortran 90/95 legacy scientific code parsing, `COMMON` block & `EQUIVALENCE` symbol extraction, `DO`/`GOTO` control-flow lifting, and direct lowering into the WebAssembly DAE arena.    |
+| **C (ISO C99)**<br>[`languages/c/`](./languages/c/)         | `.c`, `.h`                   | Embedded flight/automotive control C99 source parsing, Static Single Assignment (SSA) control-flow graph construction, pointer/buffer safety linting, in-browser C-to-WASM compilation, and synchronous DAE lowering.        |
 
 ---
 
@@ -123,28 +180,31 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ### Packages (`packages/`)
 
-| Package                                         | Responsibility                                                                                                                    |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/dsl`](./packages/dsl/)           | Grammar DSL syntax combinators, WASM GLR parser compiler (`buildParser`), TGG rewriting compiler, CPA engine, term-rewriting      |
-| [`@modelscript/runtime`](./packages/runtime/)   | Linear-memory DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, Nelson-Oppen theory coordinator  |
-| [`@modelscript/simulate`](./packages/simulate/) | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, surrogate ROM modeling, Monte Carlo           |
-| [`@modelscript/lsp`](./packages/lsp/)           | Multi-language Language Server Protocol server, semantic analysis services, multi-file workspace indexing, background worker pool |
-| [`@modelscript/diagram`](./packages/diagram/)   | Polyglot diagram builder, auto-layout engine, diagram protocol, dark-mode SVG rendering                                           |
-| [`@modelscript/exchange`](./packages/exchange/) | FMI 2.0/3.0 FMU export/import, SSP container toolkit, Co-Simulation master orchestrator                                           |
-| [`@modelscript/cad`](./packages/cad/)           | CAD and ECAD engine — CSG primitives, OpenCascade operations, STEP serialization/deserialization, Gerber parser                   |
-| [`@modelscript/mcp`](./packages/mcp/)           | Model Context Protocol (MCP) server exposing ModelScript compilation, simulation, and query tools to AI agents                    |
-| [`@modelscript/ide-client`](./packages/ide/)    | VS Code Web Extension client, custom editors, and webview panels                                                                  |
-| [`@modelscript/examples`](./packages/examples/) | Cross-domain verification examples and reference models (`drone-chassis` and `drone-reachability` under `./packages/examples/`)   |
+| Package                                         | Responsibility                                                                                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [`@modelscript/dsl`](./packages/dsl/)           | Grammar DSL syntax combinators, WASM GLR parser compiler (`buildParser`), TGG rewriting compiler, CPA engine, term-rewriting         |
+| [`@modelscript/runtime`](./packages/runtime/)   | Linear-memory DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, Nelson-Oppen theory coordinator     |
+| [`@modelscript/simulate`](./packages/simulate/) | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, 3D FEA/LBM CFD, surrogate ROMs, Monte Carlo      |
+| [`@modelscript/lsp`](./packages/lsp/)           | Polyglot Language Server Protocol engine across all 44 languages, incremental Salsa workspace index, background worker pool          |
+| [`@modelscript/diagram`](./packages/diagram/)   | Polyglot diagram builder, Sugiyama/TSM auto-layout, Manhattan A\* port router, perceptual dark-mode SVG rendering, visual diffs      |
+| [`@modelscript/exchange`](./packages/exchange/) | FMI 2.0/3.0 FMU export/import, SSP 1.0 toolkit, `CoSimMaster` orchestrator, AASX/DDP/OKH lenses, MDF4/MCAP binary telemetry          |
+| [`@modelscript/cad`](./packages/cad/)           | MCAD & ECAD engine — CSG primitives, OpenCascade/Manifold B-Rep, STEP AP242 I/O, dynamic clearance, GD&T stack-up, Gerber/PCB DRC    |
+| [`@modelscript/mcp`](./packages/mcp/)           | Model Context Protocol (MCP) server exposing 47 compilation, simulation, ontology, TGG, RTM, and domain tools to AI agents           |
+| [`@modelscript/ide-client`](./packages/ide/)    | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 18 custom editors, 20+ panels   |
+| [`@modelscript/embed`](./packages/embed/)       | Embeddable `<modelscript-viewer>` Web Component, iframe postMessage RPC client, and compressed permalink URL codec                   |
+| [`@modelscript/react`](./packages/react/)       | React SDK & engineering UI widgets (`ModelScriptProvider`, `BlackboxInspector`, `StepResponseTestbench`, WebWorker/WASM hooks)       |
+| [`@modelscript/examples`](./packages/examples/) | End-to-end polyglot reference workspaces (`drone-reachability`, `drone-chassis`, and `pscad-microgrid` under `./packages/examples/`) |
 
 ### Applications (`apps/`)
 
-| Package                             | Responsibility                                                                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)   | `modelscript` (`msx`) unified command-line toolchain — compile, simulate, optimize, lint, render, fmu, csg, surrogate, mc |
-| [`@modelscript/api`](./apps/api/)   | REST, GraphQL, SPARQL, and simulation backend API server                                                                  |
-| [`@modelscript/ide`](./apps/ide/)   | ModelScript VS Code Web IDE with GitHub repository integration                                                            |
-| [`@modelscript/web`](./apps/web/)   | Web frontend — library registry, social explorer, and visual modeling playground (`/playground`)                          |
-| [`@modelscript/docs`](./apps/docs/) | Unified modelscript.org website and documentation portal (VitePress)                                                      |
+| Package                                   | Responsibility                                                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)         | `modelscript` (`msx`) unified command-line toolchain — 89 commands across compilation, simulation, verification, and domains |
+| [`@modelscript/api`](./apps/api/)         | Backend REST, GraphQL, SPARQL, Git Smart HTTP, SysML v2 REST, Co-Simulation, Slurm HPC, and MCP SSE gateway server           |
+| [`@modelscript/ide`](./apps/ide/)         | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling         |
+| [`@modelscript/web`](./apps/web/)         | Web frontend — package registry, social engineering hub, ActivityPub federation, Cloud HPC studio, and `/playground`         |
+| [`@modelscript/desktop`](./apps/desktop/) | Native cross-platform Desktop Studio (Tauri v2) with direct FFI `NativeFmuRunner` and NERC CIP / FERC CEII air-gap controls  |
+| [`@modelscript/docs`](./apps/docs/)       | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                      |
 
 ---
 
@@ -152,14 +212,14 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ModelScript bridges modern engineering workflows with extensive export and auditing formats:
 
-- **FMI 2.0 & 3.0 FMU Export/Import**: Export standalone Modelica models as Functional Mock-up Units (Model Exchange and Co-Simulation) or import external FMUs into composite systems.
-- **SSP Container Packaging**: Package complex multi-model simulation architectures according to the Modelica Association System Structure and Parameterization standard.
-- **Standard Interop Gateways**: OSLC (Open Services for Lifecycle Collaboration) REST endpoints and ReqIF (Requirements Interchange Format) synchronization.
+- **FMI 2.0 & 3.0 FMU Export/Import**: Export standalone Modelica models as Functional Mock-up Units (Model Exchange and Co-Simulation in C99, WASM, or JS) or import external FMUs into composite systems.
+- **SSP 1.0, IDTA AASX & PSI 21 DDP Packaging**: Package multi-model simulation architectures into `.ssp` containers, Industry 4.0 Asset Administration Shells (`.aasx`), ISO/PAS 81346 Digital Data Packages (`.ddp`), and DIN SPEC 3105 Open Know-How (`okh.json`) manifests.
+- **Standard Interop Gateways**: OSLC 3.0 (Open Services for Lifecycle Collaboration) REST endpoints, OMG SysML v2 REST API, and ReqIF 1.2 synchronization.
 - **Auditing & Compliance Reports**:
   - **CTRF**: Common Test Report Format output for CI/CD test tracking.
   - **SARIF**: Static Analysis Results Interchange Format for deep linter and static verification diagnostics in GitHub Code Scanning.
-  - **LaTeX**: High-precision formal verification certificates and mathematical proofs ready for academic or regulatory publication.
-  - **Interactive HTML**: Self-contained graphical reports with embedded simulation trajectories and SVG diagrams.
+  - **FDA / ISO Design History Files (DHF) & EN 14363 / IEEE 2800 Dossiers**: Regulatory compliance dossiers with SHA-256 cryptographic proof manifests.
+  - **LaTeX & Interactive HTML**: High-precision formal verification certificates and self-contained graphical HTML reports with embedded simulation trajectories and SVG diagrams.
 
 ---
 
@@ -189,7 +249,7 @@ Build all packages in dependency order via Nx:
 npm run build
 ```
 
-#### Building the VS Code Extension (.vsix)
+#### Building the VS Code Extension (`.vsix`) & Native Desktop App
 
 ```bash
 # Build the complete standalone IDE extension into apps/ide/dist/extension/
@@ -198,8 +258,11 @@ npm run build:ide:extension
 # Package the complete IDE extension into a deployable .vsix bundle (~121 MB)
 npm run package:ide:extension
 
-# Or generate a lightweight syntax-only extension into dist/extension/
+# Or generate a lightweight multi-language syntax extension into dist/extension/
 npm run build:extension
+
+# Package the native Tauri v2 Desktop Studio
+npm run package:desktop
 ```
 
 ### Running (Development)
@@ -212,16 +275,17 @@ npm run dev
 
 This launches the primary development stack:
 
-| Service  | Port / URL              | Description                                       |
-| -------- | ----------------------- | ------------------------------------------------- |
-| **API**  | `http://localhost:3000` | REST / GraphQL / SPARQL API server                |
-| **Web**  | `http://localhost:3001` | Package registry, hub, and interactive playground |
-| **IDE**  | `http://localhost:3003` | Browser-based VS Code Web IDE                     |
-| **Docs** | `http://localhost:5173` | VitePress documentation portal                    |
+| Service     | Port / URL              | Description                                                        |
+| ----------- | ----------------------- | ------------------------------------------------------------------ |
+| **API**     | `http://localhost:3000` | REST / GraphQL / SPARQL / MCP SSE API server                       |
+| **Web**     | `http://localhost:3001` | Package registry, social engineering hub, and `/playground`        |
+| **IDE**     | `http://localhost:3003` | Browser-based VS Code Web IDE                                      |
+| **Docs**    | `http://localhost:5173` | VitePress documentation portal                                     |
+| **Desktop** | `npm run dev:desktop`   | Native Tauri v2 air-gapped desktop studio (`@modelscript/desktop`) |
 
 #### Browser-Local AI Assistant (Optional)
 
-The IDE includes a browser-local AI assistant powered by WebLLM (Qwen3-0.6B). To enable it, download the model weights (~350 MB, one-time):
+The IDE includes a browser-local AI assistant powered by WebLLM (`Qwen3-0.6B`). To enable it, download the model weights (~350 MB, one-time):
 
 ```bash
 npm run download-model --workspace=@modelscript/ide
@@ -229,48 +293,36 @@ npm run download-model --workspace=@modelscript/ide
 
 ---
 
-## CLI Usage (`modelscript` / `msx`)
+## 60-Second Quick Tour & CLI Usage (`modelscript` / `msx`)
 
-After building, the unified CLI is available as `modelscript` (alias `msx`):
+After building (`npm run build`), the unified CLI is available as `modelscript` (alias `msx`). You can run these commands immediately against the bundled reference workspaces in [`packages/examples/`](./packages/examples/):
 
 ```bash
-# Compile / flatten a Modelica model to flat DAE
-npx msx compile BouncingBall model.mo
-npx msx flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL
+# 1. Verify cross-domain requirements & zonotope reachability on the polyglot drone workspace
+npx msx verify packages/examples/drone-reachability/modelica/DroneSimulation.mo \
+  --sysml packages/examples/drone-reachability/sysml/drone_specs.sysml
 
-# Simulate a model (CSV or JSON output)
-npx msx simulate BouncingBall model.mo --stop-time 5
-npx msx simulate BouncingBall model.mo --format json
+# 2. Flatten & simulate the Modelica flight dynamics (CSV or JSON output)
+npx msx compile DroneSimulation packages/examples/drone-reachability/modelica/DroneSimulation.mo
+npx msx simulate DroneSimulation packages/examples/drone-reachability/modelica/DroneSimulation.mo \
+  --stop-time 10 --solver dopri5 --format json
 
-# Export a model as an FMI 2.0/3.0 FMU
-npx msx fmu MyModel model.mo --fmi-version 3 --output MyModel.fmu
+# 3. Simulate the multi-disciplinary drone chassis trade study
+npx msx simulate TradeStudy packages/examples/drone-chassis/TradeStudy.mo --stop-time 5.0
 
-# Solve an optimal control problem via direct collocation
-npx msx optimize MyModel model.mo \
-  --objective "u^2" --controls "u" --control-bounds "u:-1:1" --stop-time 10
+# 4. Lint, simulate, and verify IEEE 2800-2022 grid compliance on the PSCAD 230 kV microgrid
+npx msx pscad lint packages/examples/pscad-microgrid/Microgrid_IBR.pscx
+npx msx pscad sim packages/examples/pscad-microgrid/Microgrid_IBR.pscx --step=20us --tstop=0.25
+npx msx pscad verify-ieee2800 packages/examples/pscad-microgrid/Microgrid_IBR.pscx
 
-# Continuous requirements verification
-npx msx verify SystemRequirement model.mo architecture.sysml
+# 5. Render a schematic diagram to SVG or project OpenSCAD to ISO 10303-21 STEP
+npx msx render DroneSimulation packages/examples/drone-reachability/modelica/DroneSimulation.mo > diagram.svg
+npx msx polyglot project packages/examples/drone-reachability/cad/drone.scad --target step --out drone.step
 
-# Evaluate CSG geometry in Modelica or project OpenSCAD to STEP
-npx msx csg MyPart model.mo
-npx msx polyglot project chassis.scad --target step --out chassis.step
-
-# Train a parametric surrogate Reduced Order Model
-npx msx surrogate MyPlant model.mo --inputs "R,C" --input-bounds "R:1:100,C:0.001:0.1" --outputs "v" --num-samples 100 --out-file surrogate.onnx
-
-# Lint Modelica and polyglot files (supports 19 languages & legacy formats)
-npx msx lint model.mo
-npx msx lint network.pscx
-npx msx lint flowline.opi
-
-# Inspect, simulate, and verify legacy/SOTA industrial models
-npx msx pscad simulate microgrid.pscx
-npx msx olga simulate subsea_flowline.opi
-npx msx gtsuite simulate engine.gtm
-
-# Render a model diagram to SVG
-npx msx render MyModel model.mo > diagram.svg
+# 6. Export an FMI 3.0 FMU or FDA/ISO Design History File (DHF) compliance dossier
+npx msx fmu DroneSimulation packages/examples/drone-reachability/modelica/DroneSimulation.mo \
+  --fmi-version 3 --output DroneSimulation.fmu
+npx msx dhf export packages/examples/drone-reachability --format markdown -o Drone_DHF.md
 ```
 
 ---
@@ -288,11 +340,12 @@ npm run test:all
 npm run test:modelica -- OpenModelica/flattening/modelica/types
 npm run test:single -- OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
 
-# Update expected output against OpenModelica ground truth
-npm run test:modelica:update -- OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
+# Run Modelica Standard Library (MSL) verification & benchmark suite
+npm run test:msl
 
-# Code quality checks
+# Code quality & manifest integrity checks
 npm run lint
+npm run lint:manifests
 npm run format
 ```
 

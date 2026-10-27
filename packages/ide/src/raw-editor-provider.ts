@@ -169,6 +169,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PSS/E Power Flow Case Editor</title>
   <style>

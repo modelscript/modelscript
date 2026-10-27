@@ -188,7 +188,9 @@ const AppShell: React.FC = () => {
   const [isResetDbDialogOpen, setIsResetDbDialogOpen] = React.useState(false);
   const [isResettingDb, setIsResettingDb] = React.useState(false);
   const [resetError, setResetError] = React.useState<string | null>(null);
-  const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(true);
+  const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(
+    () => localStorage.getItem("modelscript:dev_header") === "true",
+  );
   const [isDevFlagsModalOpen, setIsDevFlagsModalOpen] = React.useState(false);
   const { overrides } = useFeatureFlags();
   const activeOverrideCount = Object.keys(overrides).length;
@@ -226,6 +228,9 @@ const AppShell: React.FC = () => {
 
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (location.pathname.startsWith("/playground") || location.pathname.startsWith("/ide")) {
+        return;
+      }
       const activeEl = document.activeElement;
       const isInput =
         activeEl?.tagName === "INPUT" ||
@@ -244,7 +249,7 @@ const AppShell: React.FC = () => {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, []);
+  }, [location.pathname]);
 
   const [composeInitialState, setComposeInitialState] = React.useState<ComposeInitialState | undefined>(undefined);
 
@@ -280,6 +285,9 @@ const AppShell: React.FC = () => {
 
   const isDev = import.meta.env.DEV;
 
+  // Standalone full-bleed layout for /playground (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
+  const isStandaloneRoute = location.pathname.startsWith("/playground");
+
   // Make wide layout for /settings/*
   const isWideLayout = location.pathname.startsWith("/settings");
 
@@ -292,11 +300,19 @@ const AppShell: React.FC = () => {
     (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/") ||
     location.pathname.startsWith("/ide");
 
+  const LegacyDialog = Dialog as any;
+
   return (
     <ComposeContext.Provider value={{ openCompose: handleOpenComposeContext }}>
       <OfflineBanner />
-      <div style={{ "--dev-header-height": isDev && isDevHeaderVisible ? "40px" : "0px" } as React.CSSProperties}>
-        {isDev && isDevHeaderVisible && (
+      <div
+        style={
+          {
+            "--dev-header-height": !isStandaloneRoute && isDev && isDevHeaderVisible ? "40px" : "0px",
+          } as React.CSSProperties
+        }
+      >
+        {!isStandaloneRoute && isDev && isDevHeaderVisible && (
           <div
             style={{
               backgroundColor: "#6f42c1",
@@ -475,134 +491,144 @@ const AppShell: React.FC = () => {
             </div>
           </div>
         )}
-        <ShellContainer>
-          <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
-            <SidebarWrapper>
-              <Sidebar onPostClick={() => setIsComposeOpen(true)} />
-            </SidebarWrapper>
-            <MainColumn
-              $isWideLayout={isWideLayout}
-              $isFullScreenLayout={isFullScreenLayout}
-              $isInspectorLayout={isInspectorLayout}
-            >
-              <ErrorBoundary>
-                <Outlet context={{ openCompose: handleOpenComposeContext }} />
-              </ErrorBoundary>
-            </MainColumn>
-            {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
-              <RightPanelWrapper>
-                <RightPanel
-                  clusterInfo={clusterStatus}
-                  onOpenCommandPalette={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
-                />
-              </RightPanelWrapper>
+        {isStandaloneRoute ? (
+          <ErrorBoundary>
+            <Outlet context={{ openCompose: handleOpenComposeContext }} />
+          </ErrorBoundary>
+        ) : (
+          <>
+            <ShellContainer>
+              <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
+                <SidebarWrapper>
+                  <Sidebar onPostClick={() => setIsComposeOpen(true)} />
+                </SidebarWrapper>
+                <MainColumn
+                  $isWideLayout={isWideLayout}
+                  $isFullScreenLayout={isFullScreenLayout}
+                  $isInspectorLayout={isInspectorLayout}
+                >
+                  <ErrorBoundary>
+                    <Outlet context={{ openCompose: handleOpenComposeContext }} />
+                  </ErrorBoundary>
+                </MainColumn>
+                {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
+                  <RightPanelWrapper>
+                    <RightPanel
+                      clusterInfo={clusterStatus}
+                      onOpenCommandPalette={() => {
+                        window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"));
+                      }}
+                    />
+                  </RightPanelWrapper>
+                )}
+                {isFullScreenLayout && <div style={{ flex: 1, maxWidth: "max(0px, calc(340px - 275px))" }} />}
+              </ContentWrapper>
+            </ShellContainer>
+
+            {!loading && !user && (
+              <Banner style={{ bottom: window.innerWidth <= 500 ? "60px" : "0" }}>
+                <BannerContent>
+                  <Box display="flex" flexDirection="column">
+                    <span style={{ fontSize: "22px", fontWeight: 800 }}>Don't miss what's happening</span>
+                    <span style={{ fontSize: "15px" }}>People on ModelScript are the first to know.</span>
+                  </Box>
+                  <Box display="flex" gap={3}>
+                    <button
+                      onClick={() => navigate("/login")}
+                      style={{
+                        background: "transparent",
+                        border: "1px solid rgba(255,255,255,0.4)",
+                        color: "#fff",
+                        borderRadius: 9999,
+                        padding: "8px 16px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        fontSize: 15,
+                        minWidth: 80,
+                      }}
+                    >
+                      Log in
+                    </button>
+                    <button
+                      onClick={() => navigate("/signup")}
+                      style={{
+                        background: "#fff",
+                        border: "none",
+                        color: "#1f1f1f",
+                        borderRadius: 9999,
+                        padding: "8px 16px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        fontSize: 15,
+                        minWidth: 80,
+                      }}
+                    >
+                      Sign up
+                    </button>
+                  </Box>
+                </BannerContent>
+              </Banner>
             )}
-            {isFullScreenLayout && <div style={{ flex: 1, maxWidth: "max(0px, calc(340px - 275px))" }} />}
-          </ContentWrapper>
-        </ShellContainer>
 
-        {!loading && !user && (
-          <Banner style={{ bottom: window.innerWidth <= 500 ? "60px" : "0" }}>
-            <BannerContent>
-              <Box display="flex" flexDirection="column">
-                <span style={{ fontSize: "22px", fontWeight: 800 }}>Don't miss what's happening</span>
-                <span style={{ fontSize: "15px" }}>People on ModelScript are the first to know.</span>
-              </Box>
-              <Box display="flex" gap={3}>
-                <button
-                  onClick={() => navigate("/login")}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.4)",
-                    color: "#fff",
-                    borderRadius: 9999,
-                    padding: "8px 16px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    fontSize: 15,
-                    minWidth: 80,
-                  }}
-                >
-                  Log in
-                </button>
-                <button
-                  onClick={() => navigate("/signup")}
-                  style={{
-                    background: "#fff",
-                    border: "none",
-                    color: "#1f1f1f",
-                    borderRadius: 9999,
-                    padding: "8px 16px",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                    fontSize: 15,
-                    minWidth: 80,
-                  }}
-                >
-                  Sign up
-                </button>
-              </Box>
-            </BannerContent>
-          </Banner>
-        )}
-
-        <BottomBarContainer>
-          {user && (
-            <BottomBarButton $active={location.pathname === "/home"} onClick={() => navigate("/home")}>
-              <HomeIcon size={24} />
-            </BottomBarButton>
-          )}
-          <BottomBarButton $active={location.pathname === "/explore"} onClick={() => navigate("/explore")}>
-            <SearchIcon size={24} />
-          </BottomBarButton>
-          <CenterPostButton
-            onClick={() => {
-              if (user) {
-                setIsComposeOpen(true);
-              } else {
-                navigate("/login");
-              }
-            }}
-          >
-            <PlusIcon size={24} />
-          </CenterPostButton>
-          <BottomBarButton
-            $active={location.pathname === "/notifications"}
-            onClick={() => navigate(user ? "/notifications" : "/login")}
-            style={{ position: "relative" }}
-          >
-            <BellIcon size={24} />
-            {unreadCount > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 4,
-                  right: 4,
-                  backgroundColor: "var(--color-accent-cyan)",
-                  color: "white",
-                  borderRadius: "50%",
-                  minWidth: "16px",
-                  height: "16px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "10px",
-                  fontWeight: "bold",
-                  padding: "0 4px",
-                  boxShadow: "0 0 0 2px var(--color-bg-primary)",
+            <BottomBarContainer>
+              {user && (
+                <BottomBarButton $active={location.pathname === "/home"} onClick={() => navigate("/home")}>
+                  <HomeIcon size={24} />
+                </BottomBarButton>
+              )}
+              <BottomBarButton $active={location.pathname === "/explore"} onClick={() => navigate("/explore")}>
+                <SearchIcon size={24} />
+              </BottomBarButton>
+              <CenterPostButton
+                onClick={() => {
+                  if (user) {
+                    setIsComposeOpen(true);
+                  } else {
+                    navigate("/login");
+                  }
                 }}
               >
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </div>
-            )}
-          </BottomBarButton>
-          <BottomBarButton
-            $active={Boolean(user && location.pathname === `/${user.username}`)}
-            onClick={() => navigate(user ? `/${user.username}` : "/login")}
-          >
-            <PersonIcon size={24} />
-          </BottomBarButton>
-        </BottomBarContainer>
+                <PlusIcon size={24} />
+              </CenterPostButton>
+              <BottomBarButton
+                $active={location.pathname === "/notifications"}
+                onClick={() => navigate(user ? "/notifications" : "/login")}
+                style={{ position: "relative" }}
+              >
+                <BellIcon size={24} />
+                {unreadCount > 0 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 4,
+                      right: 4,
+                      backgroundColor: "var(--color-accent-cyan)",
+                      color: "white",
+                      borderRadius: "50%",
+                      minWidth: "16px",
+                      height: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "10px",
+                      fontWeight: "bold",
+                      padding: "0 4px",
+                      boxShadow: "0 0 0 2px var(--color-bg-primary)",
+                    }}
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </div>
+                )}
+              </BottomBarButton>
+              <BottomBarButton
+                $active={Boolean(user && location.pathname === `/${user.username}`)}
+                onClick={() => navigate(user ? `/${user.username}` : "/login")}
+              >
+                <PersonIcon size={24} />
+              </BottomBarButton>
+            </BottomBarContainer>
+          </>
+        )}
 
         {isComposeOpen && (
           <React.Suspense fallback={null}>
@@ -620,14 +646,14 @@ const AppShell: React.FC = () => {
         )}
 
         {isResetDbDialogOpen && (
-          <Dialog
+          <LegacyDialog
             isOpen={isResetDbDialogOpen}
             onDismiss={() => {
               if (!isResettingDb) setIsResetDbDialogOpen(false);
             }}
             aria-labelledby="reset-db-title"
           >
-            <Dialog.Header id="reset-db-title">Reset Development Database</Dialog.Header>
+            <LegacyDialog.Header id="reset-db-title">Reset Development Database</LegacyDialog.Header>
             <Box p={3}>
               <Text as="p" color="var(--color-fg-default)" style={{ marginBottom: "16px" }}>
                 Are you sure you want to reload the database with seed and development data? This will clear all
@@ -664,11 +690,11 @@ const AppShell: React.FC = () => {
                 </Button>
               </Box>
             </Box>
-          </Dialog>
+          </LegacyDialog>
         )}
 
         {isTopUpModalOpen && (
-          <Dialog
+          <LegacyDialog
             isOpen={isTopUpModalOpen}
             onDismiss={() => {
               setIsTopUpModalOpen(false);
@@ -676,7 +702,7 @@ const AppShell: React.FC = () => {
             }}
             aria-labelledby="wallet-topup-title"
           >
-            <Dialog.Header id="wallet-topup-title">Compute Wallet &amp; Cloud Credits</Dialog.Header>
+            <LegacyDialog.Header id="wallet-topup-title">Compute Wallet &amp; Cloud Credits</LegacyDialog.Header>
             <Box p={3} display="flex" flexDirection="column" gap={3}>
               <Box p={3} borderRadius="8px" bg="rgba(255, 255, 255, 0.03)" border="1px solid var(--color-border)">
                 <Text style={{ fontSize: "12px", color: "var(--color-text-muted)", display: "block" }}>
@@ -757,7 +783,7 @@ const AppShell: React.FC = () => {
                 display="flex"
                 justifyContent="space-between"
                 alignItems="center"
-                pt={2}
+                style={{ paddingTop: "8px" }}
                 borderTop="1px solid var(--color-border-subtle)"
               >
                 <button
@@ -779,7 +805,7 @@ const AppShell: React.FC = () => {
                 <Button onClick={() => setIsTopUpModalOpen(false)}>Done</Button>
               </Box>
             </Box>
-          </Dialog>
+          </LegacyDialog>
         )}
 
         {isDevFlagsModalOpen && (

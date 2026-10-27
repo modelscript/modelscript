@@ -48,6 +48,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [reposted, setReposted] = useState(Boolean(displayPost.reposted));
   const [repostCount, setRepostCount] = useState(displayPost.repost_count);
   const [bookmarked, setBookmarked] = useState(Boolean(displayPost.bookmarked));
+  const [bookmarkCount, setBookmarkCount] = useState(displayPost.bookmark_count || 0);
+  const [isDeleted, setIsDeleted] = useState(false);
 
   useEffect(() => {
     setLiked(Boolean(displayPost.liked));
@@ -55,7 +57,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     setReposted(Boolean(displayPost.reposted));
     setRepostCount(displayPost.repost_count);
     setBookmarked(Boolean(displayPost.bookmarked));
-    setBookmarkCount(displayPost.bookmark_count);
+    setBookmarkCount(displayPost.bookmark_count || 0);
   }, [
     displayPost.id,
     displayPost.liked,
@@ -246,6 +248,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     onOpenEditModal: () => setShowEditModal(true),
     onOpenSignatureModal: () => setShowSignatureModal(true),
     onOpenLoginModal: () => setShowLoginModal(true),
+    onPostDeleted: () => {
+      if (isDetail) {
+        navigate("/");
+      } else {
+        setIsDeleted(true);
+      }
+    },
     token,
     remoteOriginUrl,
   };
@@ -290,6 +299,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     isDetail: Boolean(isDetail),
   };
 
+  if (isDeleted) {
+    return null;
+  }
+
   const modals = (
     <Suspense fallback={null}>
       {showLoginModal && <LoginPromptModal onClose={() => setShowLoginModal(false)} />}
@@ -316,8 +329,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           initialState={{
             editPostId: displayPost.id,
             content: displayPost.content,
-            artifactViewId: displayPost.artifact_view_id,
-            isNotebookMode: isNotebook,
+            artifactId: displayPost.artifact_view_id,
+            notebookMode: isNotebook,
             notebookTitle: notebookData?.title || "",
             notebookSummary: notebookData?.summary || "",
             notebookDifficulty: notebookData?.difficulty,
@@ -341,6 +354,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           likeCount={likeCount}
           reposted={reposted}
           repostCount={repostCount}
+          bookmarkCount={bookmarkCount}
           onClose={() => setShowAnalyticsModal(false)}
         />
       )}
@@ -363,7 +377,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           <PostAuthorHeader {...authorHeaderProps} />
           <PostBodyContent {...bodyContentProps} />
           {displayPost.quote_post && (
-            <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor} />
+            <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
           )}
           <PostActionsBar {...actionsBarProps} />
         </PostWrapper>
@@ -435,7 +449,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 <PostAuthorHeader {...authorHeaderProps} />
                 <PostBodyContent {...bodyContentProps} />
                 {displayPost.quote_post && (
-                  <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor} />
+                  <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
                 )}
                 <PostActionsBar {...actionsBarProps} />
               </Box>

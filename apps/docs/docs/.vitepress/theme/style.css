@@ -22,9 +22,27 @@ body {
   --ms-surface-glass: rgba(255, 255, 255, 0.92);
   --ms-surface-hover: rgba(15, 23, 42, 0.045);
   --ms-surface-footer: rgba(15, 23, 42, 0.025);
-  --ms-grid-line: rgba(15, 23, 42, 0.05);
+  --ms-grid-line: rgba(15, 23, 42, 0.045);
+  --ms-grid-sub: rgba(15, 23, 42, 0.02);
+  --ms-dot-matrix: rgba(15, 23, 42, 0.08);
+  --ms-schematic-bg: #f8fafc;
+  --ms-glow-teal: rgba(20, 184, 166, 0.11);
+  --ms-glow-cyan: rgba(6, 182, 212, 0.12);
+  --ms-glow-indigo: rgba(99, 102, 241, 0.09);
   /* How much of an industry accent hue to use for text (rest is --vp-c-text-1). */
   --ms-accent-strength: 62%;
+
+  /* Illustration hues: saturated -600 shades for contrast on light surfaces. */
+  --hue-indigo: #4f46e5;
+  --hue-cyan: #0891b2;
+  --hue-teal: #0d9488;
+  --hue-emerald: #059669;
+  --hue-amber: #d97706;
+  --hue-rose: #e11d48;
+  --hue-violet: #7c3aed;
+  --sx-ink: rgba(51, 65, 85, 0.42);
+  --sx-ink-soft: rgba(51, 65, 85, 0.07);
+  --sx-label: #475569;
 
   --vp-font-family-mono:
     "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
@@ -56,8 +74,26 @@ body {
   --ms-surface-glass: rgba(10, 15, 28, 0.88);
   --ms-surface-hover: rgba(148, 163, 184, 0.08);
   --ms-surface-footer: rgba(148, 163, 184, 0.04);
-  --ms-grid-line: rgba(148, 163, 184, 0.06);
+  --ms-grid-line: rgba(148, 163, 184, 0.055);
+  --ms-grid-sub: rgba(148, 163, 184, 0.022);
+  --ms-dot-matrix: rgba(148, 163, 184, 0.14);
+  --ms-schematic-bg: #080d19;
+  --ms-glow-teal: rgba(20, 184, 166, 0.14);
+  --ms-glow-cyan: rgba(34, 211, 238, 0.15);
+  --ms-glow-indigo: rgba(99, 102, 241, 0.13);
   --ms-accent-strength: 100%;
+
+  /* Illustration hues: luminous -400 shades for contrast on dark surfaces. */
+  --hue-indigo: #818cf8;
+  --hue-cyan: #22d3ee;
+  --hue-teal: #2dd4bf;
+  --hue-emerald: #34d399;
+  --hue-amber: #fbbf24;
+  --hue-rose: #fb7185;
+  --hue-violet: #a78bfa;
+  --sx-ink: rgba(148, 163, 184, 0.5);
+  --sx-ink-soft: rgba(148, 163, 184, 0.09);
+  --sx-label: #94a3b8;
 
   --vp-button-brand-bg: #0891b2;
   --vp-button-brand-hover-bg: #06b6d4;
@@ -71,8 +107,93 @@ body {
   -webkit-backdrop-filter: saturate(160%) blur(14px);
 }
 
+/* Highlighted 'Playground' pill CTA in top navbar */
+.VPNavBarMenu .VPNavBarMenuLink[href*="playground"] {
+  margin-left: 8px;
+  padding: 0 14px !important;
+  height: 32px !important;
+  line-height: 30px !important;
+  align-self: center;
+  border-radius: 999px;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  color: var(--vp-c-brand-1) !important;
+  background: radial-gradient(circle at 20% 20%, rgba(34, 211, 238, 0.18), transparent 70%), var(--vp-c-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 42%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 6px 18px -6px rgba(6, 182, 212, 0.45);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease !important;
+}
+
+.VPNavBarMenu .VPNavBarMenuLink[href*="playground"]:hover {
+  transform: translateY(-1px);
+  border-color: var(--vp-c-brand-1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 10px 24px -6px rgba(6, 182, 212, 0.65);
+}
+
+/* ───────────────────────── Atmospheric CAD Grid & Radial Mesh ───────────────────────── */
+.VPHome {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Hero CAD blueprint grid + dual teal/indigo ambient glows */
+.VPHome .VPHero {
+  position: relative;
+}
+
+.VPHome .VPHero::before {
+  content: "";
+  position: absolute;
+  inset: -80px 0 -40px 0;
+  background-image:
+    radial-gradient(ellipse 55% 60% at 72% 42%, var(--ms-glow-cyan), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 22% 24%, var(--ms-glow-indigo), transparent 70%),
+    linear-gradient(var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--ms-grid-sub) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-sub) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    64px 64px,
+    64px 64px,
+    16px 16px,
+    16px 16px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 38%, #000 35%, transparent 82%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 38%, #000 35%, transparent 82%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Subtle ambient glow on standard documentation pages */
+.VPDoc {
+  position: relative;
+}
+
+.VPDoc::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 680px;
+  height: 480px;
+  background: radial-gradient(circle at 80% 15%, var(--ms-glow-teal), transparent 68%);
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* ───────────────────────── Utilities ───────────────────────── */
 .ms-container {
+  position: relative;
+  z-index: 1;
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 24px;
@@ -85,13 +206,38 @@ body {
 }
 
 .ms-section {
+  position: relative;
   padding: 88px 0;
 }
 
 .ms-section-alt {
-  background: var(--vp-c-bg-alt);
+  position: relative;
+  background:
+    radial-gradient(ellipse 60% 70% at 15% 15%, var(--ms-glow-teal), transparent 68%),
+    radial-gradient(ellipse 55% 65% at 85% 85%, var(--ms-glow-indigo), transparent 68%), var(--vp-c-bg-alt);
   border-top: 1px solid var(--vp-c-divider);
   border-bottom: 1px solid var(--vp-c-divider);
+  overflow: hidden;
+}
+
+.ms-section-alt::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--ms-grid-sub) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-sub) 1px, transparent 1px);
+  background-size:
+    64px 64px,
+    64px 64px,
+    16px 16px,
+    16px 16px;
+  mask-image: radial-gradient(ellipse 85% 75% at 50% 50%, #000 20%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 50%, #000 20%, transparent 80%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .ms-section-head {
@@ -192,10 +338,13 @@ body {
   padding: 48px;
   border-radius: 24px;
   overflow: hidden;
-  border: 1px solid var(--vp-c-divider);
+  border: 1px solid var(--ms-border-strong);
   background:
-    radial-gradient(80% 140% at 100% 0%, rgba(99, 102, 241, 0.18), transparent 60%),
-    radial-gradient(80% 140% at 0% 100%, rgba(20, 184, 166, 0.18), transparent 60%), var(--vp-c-bg-soft);
+    radial-gradient(80% 140% at 100% 0%, rgba(99, 102, 241, 0.2), transparent 60%),
+    radial-gradient(80% 140% at 0% 100%, rgba(20, 184, 166, 0.2), transparent 60%), var(--vp-c-bg-soft);
+  box-shadow:
+    0 28px 60px -30px rgba(2, 6, 23, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .ms-cta h2 {
@@ -359,4 +508,139 @@ body {
   .turbine-ssr-fallback .fallback-img {
     max-height: 200px;
   }
+}
+
+/* Generated lint-rule reference: keep code / rule / severity on one line. */
+.lint-reference .vp-doc td:nth-child(-n + 3) {
+  white-space: nowrap;
+}
+.lint-reference .vp-doc td:nth-child(4) {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Math overflow handling for display equations */
+.vp-doc mjx-container[jax="CHTML"][display="true"],
+.vp-doc .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 0;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+
+/* Enhanced table scrolling */
+.vp-doc table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-collapse: collapse;
+}
+
+/* ───────────────── Schematic illustrations (two-tone) ─────────────────
+ * Each illustrated card sets `--tone-p` (primary) and `--tone-a` (accent).
+ * Structure is drawn in neutral ink; the primary hue carries the subject;
+ * the accent hue marks the single insight the card is about. */
+.ms-schematic {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--vp-c-divider);
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--tone-p) 9%, transparent), transparent 62%),
+    radial-gradient(90% 80% at 100% 100%, color-mix(in srgb, var(--tone-a) 6%, transparent), transparent 60%),
+    var(--ms-schematic-bg);
+  overflow: hidden;
+  transition: border-color 0.25s ease;
+}
+
+.ms-schematic svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.sx-ink {
+  stroke: var(--sx-ink);
+}
+.sx-ink-f {
+  fill: var(--sx-ink-soft);
+  stroke: var(--sx-ink);
+}
+.sx-ink-d {
+  fill: var(--sx-ink);
+  stroke: none;
+}
+.sx-p {
+  stroke: var(--tone-p);
+}
+.sx-pf {
+  fill: color-mix(in srgb, var(--tone-p) 15%, transparent);
+  stroke: var(--tone-p);
+}
+.sx-pd {
+  fill: var(--tone-p);
+  stroke: none;
+}
+.sx-a {
+  stroke: var(--tone-a);
+}
+.sx-af {
+  fill: color-mix(in srgb, var(--tone-a) 18%, transparent);
+  stroke: var(--tone-a);
+}
+.sx-ad {
+  fill: var(--tone-a);
+  stroke: none;
+}
+.sx-bg {
+  fill: var(--ms-schematic-bg);
+}
+.sx-pop {
+  fill: var(--vp-c-bg-elv);
+  stroke: var(--tone-p);
+}
+.sx-label,
+.sx-mono {
+  fill: var(--sx-label);
+  stroke: none;
+  font-size: 9.5px;
+  font-weight: 560;
+  font-family: var(--vp-font-family-base);
+}
+.sx-mono {
+  font-family: var(--vp-font-family-mono);
+  font-size: 9px;
+  font-weight: 500;
+}
+.sx-tp {
+  fill: var(--tone-p);
+}
+.sx-ta {
+  fill: var(--tone-a);
+}
+
+/* Accent elements gain a soft glow when the parent card is hovered. */
+.sx-glow {
+  transition: filter 0.3s ease;
+}
+a:hover .sx-glow {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--tone-a) 70%, transparent));
+}
+
+/* Two-tone icon tile: primary-hued tile, accent-hued icon detail. */
+.ms-tone-tile {
+  display: grid;
+  place-items: center;
+  color: var(--tone-p);
+  --ms-icon-secondary: var(--tone-a);
+  --ms-icon-fill-opacity: 0.22;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--tone-p) 16%, transparent),
+    color-mix(in srgb, var(--tone-a) 10%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--tone-p) 30%, transparent);
 }

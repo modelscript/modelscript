@@ -207,6 +207,105 @@ export function extractSysmlComponentsFromSource(code: string): ExtractedClassCo
 }
 
 /**
+ * Extract a specific package or definition block (with any leading `doc` comment) from SysML v2 / KerML source.
+ */
+export function extractSysmlDeclarationBlock(content: string, className: string): string | null {
+  const parts = className.split(".");
+  const shortName = parts[parts.length - 1] ?? className;
+  const parentName = parts.length > 1 ? parts[parts.length - 2] : null;
+
+  let searchSpace = content;
+  if (parentName) {
+    const parentBlock = extractSingleSysmlBlock(content, parentName);
+    if (!parentBlock) {
+      return null;
+    }
+    searchSpace = parentBlock;
+  }
+
+  return extractSingleSysmlBlock(searchSpace, shortName);
+}
+
+function extractSingleSysmlBlock(source: string, shortName: string): string | null {
+  const escaped = shortName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const declRegex = new RegExp(
+    `\\b(?:abstract\\s+|standard\\s+|library\\s+)*(?:package|(?:attribute|part|item|port|connection|interface|allocation|action|state|constraint|requirement|calc|calculation|case|analysis|verification|use\\s+case|view|viewpoint|rendering|metadata|enum|enumeration|occurrence|flow|individual)\\s+def|datatype|classifier|struct|class|assoc|behavior|function|predicate|interaction|part|attribute|port|requirement|action|state|constraint|calc|item)\\s+(?:<[^>]+>\\s+)?'?${escaped}'?\\b`,
+    "m",
+  );
+  const match = declRegex.exec(source);
+  if (!match || match.index === undefined) return null;
+
+  const startIdx = match.index;
+  // Scan forward from the end of match to find either ';' (before '{') or balanced '{ ... }'
+  let i = startIdx + match[0].length;
+  let depth = 0;
+  let foundBrace = false;
+  let inBlockComment = false;
+  let inLineComment = false;
+  let inString: string | null = null;
+
+  while (i < source.length) {
+    const ch = source[i]!;
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\" && next) {
+        i += 2;
+        continue;
+      }
+      if (ch === inString) inString = null;
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i += 2;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      i++;
+      continue;
+    }
+
+    if (ch === "{") {
+      foundBrace = true;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (foundBrace && depth === 0) {
+        return source.slice(startIdx, i + 1).trim();
+      }
+    } else if (ch === ";" && !foundBrace) {
+      return source.slice(startIdx, i + 1).trim();
+    }
+    i++;
+  }
+
+  return source.slice(startIdx).trim();
+}
+
+/**
  * Inspect extracted package files to enrich a class detail response with source code,
  * equations, fallback components, and embedded SysML/CAD viewer descriptors.
  */
@@ -229,7 +328,9 @@ export function inspectClassSource(
   }
 
   const allFiles = listAllFiles(extractedDir);
-  const shortName = className.split(".").pop() ?? className;
+  const fqnParts = className.split(".");
+  const shortName = fqnParts[fqnParts.length - 1] ?? className;
+  const parentFqn = fqnParts.length > 1 ? fqnParts.slice(0, -1).join(".") : null;
   const encodedPkgPath = packageName.startsWith("@")
     ? packageName
         .split("/")
@@ -263,19 +364,28 @@ export function inspectClassSource(
   const sysmlFiles = allFiles.filter(
     (f) => f.relPath.toLowerCase().endsWith(".sysml") || f.relPath.toLowerCase().endsWith(".kerml"),
   );
-  for (const sf of sysmlFiles) {
+  // Sort so files matching top-level package name or shortName come first
+  const topPkg = fqnParts[0] ?? shortName;
+  const sortedSysml = [...sysmlFiles].sort((a, b) => {
+    const aBase = path.basename(a.relPath, path.extname(a.relPath)).toLowerCase();
+    const bBase = path.basename(b.relPath, path.extname(b.relPath)).toLowerCase();
+    const targetLower = topPkg.toLowerCase();
+    if (aBase === targetLower && bBase !== targetLower) return -1;
+    if (bBase === targetLower && aBase !== targetLower) return 1;
+    return a.relPath.localeCompare(b.relPath);
+  });
+
+  for (const sf of sortedSysml) {
     try {
       const content = fs.readFileSync(sf.fullPath, "utf-8");
-      const escapedShort = shortName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const symRegex = new RegExp(
-        `\\b(?:package|part\\s+def|part|requirement\\s+def|requirement|port\\s+def|item\\s+def)\\s+${escapedShort}\\b`,
-      );
-      if (symRegex.test(content) || (sysmlFiles.length === 1 && !allFiles.some((f) => f.relPath.endsWith(".mo")))) {
+      const scopedBlock = extractSysmlDeclarationBlock(content, className);
+      if (scopedBlock) {
         result.sourceFile = sf.relPath;
-        result.sourceCode = content;
-        const sysmlMeta = parseSysmlSourceMetadata(content, sf.relPath);
+        result.sourceCode = scopedBlock;
+        const sysmlMeta = parseSysmlSourceMetadata(scopedBlock, sf.relPath);
+        sysmlMeta.systemName = className;
         result.sysmlConfig = sysmlMeta;
-        result.extractedComponents = extractSysmlComponentsFromSource(content);
+        result.extractedComponents = extractSysmlComponentsFromSource(scopedBlock);
         result.equations = sysmlMeta.connections.map(
           (c) => `connect ${c.source} to ${c.target}${c.flowType ? ` /* ${c.flowType} */` : ""};`,
         );
@@ -285,23 +395,110 @@ export function inspectClassSource(
       // ignore
     }
   }
+  // Fallback for root package (e.g. className === "SysML" when file is KerML.sysml/SysML.sysml)
+  if (sortedSysml.length > 0 && !allFiles.some((f) => f.relPath.endsWith(".mo"))) {
+    const sf = sortedSysml[0]!;
+    try {
+      const content = fs.readFileSync(sf.fullPath, "utf-8");
+      result.sourceFile = sf.relPath;
+      result.sourceCode = content;
+      const sysmlMeta = parseSysmlSourceMetadata(content, sf.relPath);
+      sysmlMeta.systemName = className;
+      result.sysmlConfig = sysmlMeta;
+      result.extractedComponents = extractSysmlComponentsFromSource(content);
+      result.equations = sysmlMeta.connections.map(
+        (c) => `connect ${c.source} to ${c.target}${c.flowType ? ` /* ${c.flowType} */` : ""};`,
+      );
+      return result;
+    } catch {
+      // ignore
+    }
+  }
 
-  // 3. Check Modelica (.mo) files
+  // 3. Check Modelica (.mo) files with FQN-aware candidate ranking
   const moFiles = allFiles.filter((f) => f.relPath.toLowerCase().endsWith(".mo"));
   const escapedShort = shortName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const classBlockRegex = new RegExp(
-    `((?:partial\\s+|encapsulated\\s+|expandable\\s+)*(?:model|block|class|connector|record|package|function|type|operator)\\s+${escapedShort}\\b[\\s\\S]*?\\bend\\s+${escapedShort}\\s*;)`,
+    `((?:partial\\s+|encapsulated\\s+|expandable\\s+|replaceable\\s+|redeciare\\s+)*(?:model|block|class|connector|record|package|function|type|operator\\s+record|operator\\s+function|operator)\\s+${escapedShort}\\b[\\s\\S]*?\\bend\\s+${escapedShort}\\s*;)`,
+  );
+  const shortClassRegex = new RegExp(
+    `((?:replaceable\\s+|redeclare\\s+)*(?:model|block|class|connector|record|type|package|function)\\s+${escapedShort}\\s*=\\s*[^;]+;)`,
   );
 
-  // Prefer file whose name matches shortName.mo or dotted path
-  const sortedMo = [...moFiles].sort((a, b) => {
-    const aBase = path.basename(a.relPath, ".mo");
-    const bBase = path.basename(b.relPath, ".mo");
-    if (aBase === shortName && bBase !== shortName) return -1;
-    if (bBase === shortName && aBase !== shortName) return 1;
-    return a.relPath.localeCompare(b.relPath);
-  });
+  // Build expected relative paths from FQN (both with and without leading root package segment)
+  const relSegmentsWithRoot = fqnParts.join("/");
+  const relSegmentsWithoutRoot = fqnParts.length > 1 ? fqnParts.slice(1).join("/") : fqnParts[0]!;
+  const parentWithRoot = fqnParts.length > 1 ? fqnParts.slice(0, -1).join("/") : "";
+  const parentWithoutRoot = fqnParts.length > 2 ? fqnParts.slice(1, -1).join("/") : "";
 
+  const scoreMoFile = (relPath: string): number => {
+    const norm = relPath.replace(/\\/g, "/");
+    if (
+      norm === `${relSegmentsWithoutRoot}.mo` ||
+      norm === `${relSegmentsWithRoot}.mo` ||
+      norm === `${relSegmentsWithoutRoot}/package.mo` ||
+      norm === `${relSegmentsWithRoot}/package.mo`
+    ) {
+      return 100;
+    }
+    if (fqnParts.length === 1 && norm === "package.mo") {
+      return 100;
+    }
+    if (
+      (parentWithoutRoot && (norm === `${parentWithoutRoot}.mo` || norm === `${parentWithoutRoot}/package.mo`)) ||
+      (parentWithRoot && (norm === `${parentWithRoot}.mo` || norm === `${parentWithRoot}/package.mo`))
+    ) {
+      return 90;
+    }
+    if (parentWithoutRoot && norm.startsWith(`${parentWithoutRoot}/`)) {
+      return 80;
+    }
+    if (parentWithRoot && norm.startsWith(`${parentWithRoot}/`)) {
+      return 75;
+    }
+    const base = path.basename(norm, ".mo");
+    if (base === shortName) return 50;
+    return 0;
+  };
+
+  const sortedMo = [...moFiles]
+    .map((f) => ({ ...f, score: scoreMoFile(f.relPath) }))
+    .sort((a, b) => b.score - a.score || a.relPath.localeCompare(b.relPath));
+
+  const withinMatchesParent = (content: string): boolean => {
+    if (!parentFqn) return true;
+    const withinMatch = content.match(/^\s*within\s+([A-Za-z0-9_.]+)\s*;/m);
+    if (!withinMatch?.[1]) return true;
+    const fileWithin = withinMatch[1].trim();
+    return parentFqn === fileWithin || parentFqn.startsWith(`${fileWithin}.`);
+  };
+
+  // Pass 1: strict `within` verification + block or short class match
+  for (const mf of sortedMo) {
+    if (mf.score === 0 && sortedMo[0] && sortedMo[0].score >= 75) continue;
+    try {
+      const content = fs.readFileSync(mf.fullPath, "utf-8");
+      if (!withinMatchesParent(content)) continue;
+      const blockMatch = content.match(classBlockRegex);
+      if (blockMatch?.[1]) {
+        result.sourceFile = mf.relPath;
+        result.sourceCode = blockMatch[1].trim();
+        result.equations = extractModelicaEquations(result.sourceCode);
+        result.extractedComponents = extractModelicaComponentsFromSource(result.sourceCode);
+        return result;
+      }
+      const shortMatch = content.match(shortClassRegex);
+      if (shortMatch?.[1]) {
+        result.sourceFile = mf.relPath;
+        result.sourceCode = shortMatch[1].trim();
+        return result;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Pass 2: fallback without `within` constraint
   for (const mf of sortedMo) {
     try {
       const content = fs.readFileSync(mf.fullPath, "utf-8");
@@ -313,22 +510,55 @@ export function inspectClassSource(
         result.extractedComponents = extractModelicaComponentsFromSource(result.sourceCode);
         return result;
       }
-    } catch {
-      // ignore
-    }
-  }
-
-  // Fallback if class declaration uses short syntax (`type Foo = Real(...);`)
-  const shortClassRegex = new RegExp(`((?:model|block|class|connector|record|type)\\s+${escapedShort}\\s*=[^;]+;)`);
-  for (const mf of sortedMo) {
-    try {
-      const content = fs.readFileSync(mf.fullPath, "utf-8");
       const shortMatch = content.match(shortClassRegex);
       if (shortMatch?.[1]) {
         result.sourceFile = mf.relPath;
         result.sourceCode = shortMatch[1].trim();
         return result;
       }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. Polyglot fallback across all other 41 engineering languages
+  const polyglotCandidates = allFiles.filter((f) => {
+    const lower = f.relPath.toLowerCase();
+    return (
+      !lower.endsWith(".mo") &&
+      !lower.endsWith(".sysml") &&
+      !lower.endsWith(".kerml") &&
+      !lower.endsWith(".step") &&
+      !lower.endsWith(".stp") &&
+      !lower.endsWith(".json") &&
+      !lower.endsWith(".md") &&
+      !lower.endsWith(".sha256") &&
+      !lower.endsWith(".zip") &&
+      !lower.endsWith(".png") &&
+      !lower.endsWith(".jpg") &&
+      !lower.endsWith(".svg")
+    );
+  });
+
+  const matchingPolyglot =
+    polyglotCandidates.find(
+      (f) => path.basename(f.relPath, path.extname(f.relPath)).toLowerCase() === shortName.toLowerCase(),
+    ) ??
+    polyglotCandidates.find((f) => {
+      try {
+        const text = fs.readFileSync(f.fullPath, "utf-8");
+        return text.includes(shortName);
+      } catch {
+        return false;
+      }
+    }) ??
+    polyglotCandidates[0];
+
+  if (matchingPolyglot) {
+    try {
+      const content = fs.readFileSync(matchingPolyglot.fullPath, "utf-8");
+      result.sourceFile = matchingPolyglot.relPath;
+      result.sourceCode = content.length > 24000 ? `${content.slice(0, 24000)}\n/* ... truncated ... */` : content;
     } catch {
       // ignore
     }

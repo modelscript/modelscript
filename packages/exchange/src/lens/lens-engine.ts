@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { OpcAasxPackager } from "../aasx/opc-packager.js";
+import {
+  type AdaptedPackageManifest,
+  detectAndAdaptArchiveManifest,
+  type KparIndexJson,
+  type KparMetaJson,
+  KparPackageAdapter,
+} from "../adapters/native-package-adapters.js";
 import { DdpPackager } from "../ddp/packager.js";
 import type { DdpArtifactDescriptor, DdpManifest, DdpPackageContent } from "../ddp/types.js";
 import type {
@@ -480,5 +487,36 @@ export class ManifestLensEngine {
       aasJson,
       files: supplementaryFiles,
     });
+  }
+
+  /**
+   * Project canonical workspace into OMG KerML/SysML v2 `.kpar` metadata (`.meta.json` + `.Index.json`).
+   */
+  static projectToKpar(
+    manifest: CanonicalWorkspaceManifest,
+    sysmlFiles?: { packageName: string; path: string }[],
+  ): { metaJson: KparMetaJson; indexJson: KparIndexJson } {
+    return KparPackageAdapter.projectToKpar(manifest, sysmlFiles);
+  }
+
+  /**
+   * Ingest an OMG `.kpar` `.meta.json` and `.Index.json` into a CanonicalWorkspaceManifest.
+   */
+  static parseFromKpar(
+    metaJson: string | KparMetaJson,
+    indexJson?: string | KparIndexJson,
+  ): CanonicalWorkspaceManifest {
+    return KparPackageAdapter.ingestFromKpar(metaJson, indexJson).manifest;
+  }
+
+  /**
+   * Automatically detect and adapt any native archive/directory manifest across all 44 languages
+   * into both a CanonicalWorkspaceManifest and an NPM-compatible PackageJsonProjection.
+   */
+  static adaptNativeArchive(
+    files: Map<string, string>,
+    options?: { fallbackName?: string | undefined; fallbackVersion?: string | undefined },
+  ): AdaptedPackageManifest {
+    return detectAndAdaptArchiveManifest(files, options);
   }
 }

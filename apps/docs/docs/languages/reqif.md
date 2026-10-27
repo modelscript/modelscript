@@ -40,19 +40,20 @@ ModelScript delivers first-class support for **ReqIF** (Requirements Interchange
 msx reqif <action> [files...] [options]
 ```
 
-| Action            | Description                                                                        | Key Options          |
-| :---------------- | :--------------------------------------------------------------------------------- | :------------------- |
-| **`inspect`**     | Dumps requirement count, specification hierarchies, and attribute schemas.         | —                    |
-| **`lint`**        | Runs structural consistency checks, link validation, and safety contract analysis. | —                    |
-| **`verify`**      | Runs Nelson-Oppen formal entailment proofs across requirement hierarchies.         | —                    |
-| **`to-sysml`**    | Projects ReqIF specifications into OMG SysML v2 requirement definitions.           | `--out=<file.sysml>` |
-| **`to-modelica`** | Generates Modelica assertion blocks for in-simulation verification.                | `--out=<file.mo>`    |
+| Action            | Description                                                                        | Key Options            |
+| :---------------- | :--------------------------------------------------------------------------------- | :--------------------- |
+| **`import`**      | Parses a ReqIF 1.2 document and prints requirements, hierarchy, and relations.     | `--format table\|json` |
+| **`export`**      | Exports SysML v2 requirements into ReqIF 1.2 XML.                                  | `--output`, `--title`  |
+| **`lint`**        | Runs structural consistency checks, link validation, and safety contract analysis. | —                      |
+| **`verify`**      | Runs Nelson-Oppen formal entailment proofs across requirement hierarchies.         | —                      |
+| **`to-sysml`**    | Projects ReqIF specifications into OMG SysML v2 requirement definitions.           | `--out=<file.sysml>`   |
+| **`to-modelica`** | Generates Modelica assertion blocks for in-simulation verification.                | `--out=<file.mo>`      |
 
 ### Examples
 
 ```bash
-# Inspect requirement specifications and hierarchies
-msx reqif inspect SystemRequirements.reqif
+# Import requirement specifications and hierarchies
+msx reqif import SystemRequirements.reqif
 
 # Run pre-flight linting on ASIL safety requirements
 msx reqif lint BrakeSafetyRequirements.reqif
@@ -71,13 +72,4 @@ msx reqif to-modelica ThermalLimits.reqif --out=ThermalMonitors.mo
 
 ## Requirements Linters & Diagnostic Rules
 
-| Code        | Identifier                        | Severity | Description                                                                                             |
-| :---------- | :-------------------------------- | :------- | :------------------------------------------------------------------------------------------------------ |
-| **`M7001`** | `dangling-requirement-relation`   | Error    | Spec-relation references a source or target spec-object absent from the document.                       |
-| **`M7002`** | `empty-specification`             | Warning  | Specification hierarchy declares no child spec-objects or requirements.                                 |
-| **`M7003`** | `circular-requirement-hierarchy`  | Error    | Child requirement hierarchy contains a circular loop back to a parent requirement.                      |
-| **`M7004`** | `untyped-spec-object`             | Warning  | Spec-object does not declare an associated `SPEC-OBJECT-TYPE`.                                          |
-| **`M7005`** | `unbounded-safety-contract`       | Error    | Requirement tagged with safety integrity level (e.g. ASIL-D / SIL-3) lacks formal mathematical bounds.  |
-| **`M7006`** | `unparseable-contract-expression` | Warning  | Requirement contract text cannot be parsed into formal propositional or linear arithmetic inequalities. |
-| **`M7007`** | `missing-mandatory-attribute`     | Error    | Spec-object omits an attribute marked mandatory in its type definition.                                 |
-| **`M7008`** | `entailment-gap-detected`         | Error    | Formal proof proves that sub-requirements do not mathematically entail the parent requirement.          |
+<LintRules lang="reqif" />

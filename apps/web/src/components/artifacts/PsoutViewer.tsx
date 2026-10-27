@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon, PulseIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl } from "@primer/react";
-import React, { useMemo, useState } from "react";
+import { CodeIcon, PlayIcon, PulseIcon } from "@primer/octicons-react";
+import { Button, Spinner, Text } from "@primer/react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface PsoutViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     title?: string | undefined;
+    code?: string | undefined;
     timeStepSec?: number | undefined;
     durationSec?: number | undefined;
     channels?: string[] | undefined;
@@ -83,48 +87,87 @@ const ChartContainer = styled.div`
   flex: 1;
   padding: 16px;
   background: var(--color-canvas-inset, #010409);
+  overflow: hidden;
 `;
+
+const LINE_COLORS = ["#38bdf8", "#f59e0b", "#10b981", "#a855f7", "#ec4899", "#06b6d4"];
+
+function parsePsoutText(raw: string): { rows: Record<string, number>[]; channels: string[]; timeKey: string } {
+  if (!raw.trim()) return { rows: [], channels: [], timeKey: "time" };
+  try {
+    const json = JSON.parse(raw);
+    if (Array.isArray(json) && json.length > 0 && typeof json[0] === "object") {
+      const keys = Object.keys(json[0]);
+      const timeKey = keys.find((k) => /^(t|time)$/i.test(k)) || keys[0] || "time";
+      return { rows: json, channels: keys.filter((k) => k !== timeKey), timeKey };
+    }
+  } catch {
+    // Parse as CSV / whitespace-delimited PSOUT trace
+  }
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("!"));
+  if (lines.length < 2) return { rows: [], channels: [], timeKey: "time" };
+  const sep = lines[0]!.includes(",") ? "," : /\s+/;
+  const headers = lines[0]!
+    .split(sep)
+    .map((h) => h.trim())
+    .filter(Boolean);
+  const timeKey = headers[0] || "time";
+  const channels = headers.slice(1);
+  const rows: Record<string, number>[] = [];
+  for (let i = 1; i < Math.min(lines.length, 2000); i++) {
+    const vals = lines[i]!.split(sep).map((v) => Number(v.trim()));
+    if (vals.length >= 2 && vals.every((v) => Number.isFinite(v))) {
+      const row: Record<string, number> = { [timeKey]: vals[0]! };
+      for (let c = 0; c < channels.length; c++) {
+        if (vals[c + 1] !== undefined) row[channels[c]!] = vals[c + 1]!;
+      }
+      rows.push(row);
+    }
+  }
+  return { rows, channels, timeKey };
+}
 
 export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
-  const [activeSignal, setActiveSignal] = useState<"voltages" | "currents" | "power">("voltages");
+  const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"plot" | "code">("plot");
   const title = viewConfig.title || "PSCAD Simulation Waveforms (.psout)";
 
-  // Generate synthetic high-density EMT waveform trajectory if raw data is omitted
-  const waveformData = useMemo(() => {
+  useEffect(() => {
+    if (viewConfig.code) {
+      setRawText(viewConfig.code);
+      return;
+    }
+    if (viewConfig.url) {
+      setLoading(true);
+      const targetUrl =
+        viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
+          ? viewConfig.url
+          : `/api${viewConfig.url}`;
+      fetch(targetUrl)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => setRawText(txt))
+        .catch((err) => console.warn("[PsoutViewer] Failed to fetch PSOUT data:", err))
+        .finally(() => setLoading(false));
+    }
+  }, [viewConfig.code, viewConfig.url]);
+
+  const { waveformData, channels, timeKey } = useMemo(() => {
     if (viewConfig.data && Array.isArray(viewConfig.data) && viewConfig.data.length > 0) {
-      return viewConfig.data;
+      const keys = Object.keys(viewConfig.data[0] || {});
+      const tKey = keys.find((k) => /^(t|time)$/i.test(k)) || keys[0] || "time";
+      const chs = viewConfig.channels?.length ? viewConfig.channels : keys.filter((k) => k !== tKey);
+      return { waveformData: viewConfig.data, channels: chs, timeKey: tKey };
     }
-    const points: Record<string, number>[] = [];
-    const dt = 0.0005;
-    const f0 = 60; // 60 Hz fundamental
-    for (let i = 0; i < 200; i++) {
-      const t = i * dt;
-      // 3-phase symmetrical sinusoidal voltages with mild 5th harmonic distortion
-      const va = 330 * Math.sin(2 * Math.PI * f0 * t) + 12 * Math.sin(10 * Math.PI * f0 * t);
-      const vb = 330 * Math.sin(2 * Math.PI * f0 * t - (2 * Math.PI) / 3) + 12 * Math.sin(10 * Math.PI * f0 * t);
-      const vc = 330 * Math.sin(2 * Math.PI * f0 * t + (2 * Math.PI) / 3) + 12 * Math.sin(10 * Math.PI * f0 * t);
+    const parsed = parsePsoutText(rawText);
+    return { waveformData: parsed.rows, channels: parsed.channels, timeKey: parsed.timeKey };
+  }, [viewConfig.data, viewConfig.channels, rawText]);
 
-      // Inverter currents with high-frequency switching ripple
-      const ia = 24 * Math.sin(2 * Math.PI * f0 * t - 0.2);
-      const ib = 24 * Math.sin(2 * Math.PI * f0 * t - (2 * Math.PI) / 3 - 0.2);
-      const ic = 24 * Math.sin(2 * Math.PI * f0 * t + (2 * Math.PI) / 3 - 0.2);
-
-      const pMw = (va * ia + vb * ib + vc * ic) * 0.001;
-
-      points.push({
-        time: Number((t * 1000).toFixed(2)), // in ms
-        Va: Number(va.toFixed(2)),
-        Vb: Number(vb.toFixed(2)),
-        Vc: Number(vc.toFixed(2)),
-        Ia: Number(ia.toFixed(2)),
-        Ib: Number(ib.toFixed(2)),
-        Ic: Number(ic.toFixed(2)),
-        P: Number(pMw.toFixed(2)),
-      });
-    }
-    return points;
-  }, [viewConfig.data]);
+  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -132,69 +175,152 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
         <HeaderLeft>
           <PulseIcon size={16} fill="#c084fc" />
           <ModelTitle>{title}</ModelTitle>
-          <PillBadge>PSOUT Waveform</PillBadge>
+          <PillBadge>PSOUT Waveform ({channels.length} ch)</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
-          <SegmentedControl size="small" aria-label="Signal Selector">
-            <SegmentedControl.Button selected={activeSignal === "voltages"} onClick={() => setActiveSignal("voltages")}>
-              Voltages (kV)
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={activeSignal === "currents"} onClick={() => setActiveSignal("currents")}>
-              Currents (kA)
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={activeSignal === "power"} onClick={() => setActiveSignal("power")}>
-              Power (MW)
-            </SegmentedControl.Button>
-          </SegmentedControl>
-
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?title=${encodeURIComponent(title)}`)}
+        <Box display="flex" alignItems="center" gap={2}>
+          <Box
+            display="flex"
+            bg="rgba(0,0,0,0.25)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
           >
-            Waveform Studio
-          </Button>
+            <button
+              type="button"
+              onClick={() => setViewMode("plot")}
+              style={{
+                background: viewMode === "plot" ? "rgba(168, 85, 247, 0.25)" : "transparent",
+                color: viewMode === "plot" ? "#c084fc" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <PulseIcon size={12} /> Waveforms
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("code")}
+              style={{
+                background: viewMode === "code" ? "rgba(168, 85, 247, 0.25)" : "transparent",
+                color: viewMode === "code" ? "#c084fc" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <CodeIcon size={12} /> Raw Data
+            </button>
+          </Box>
+
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "pscad" as any,
+                  code: rawText || `# ${title}\n`,
+                  title,
+                });
+                const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
       <ChartContainer>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={waveformData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-            <XAxis dataKey="time" stroke="#8b949e" tick={{ fontSize: 11 }} unit="ms" />
-            <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#161b22",
-                borderColor: "#30363d",
-                borderRadius: "6px",
-                fontSize: "12px",
-              }}
-            />
-            <Legend wrapperStyle={{ fontSize: "12px" }} />
-
-            {activeSignal === "voltages" && (
-              <>
-                <Line type="monotone" dataKey="Va" stroke="#38bdf8" dot={false} strokeWidth={1.8} name="Phase A (kV)" />
-                <Line type="monotone" dataKey="Vb" stroke="#f59e0b" dot={false} strokeWidth={1.8} name="Phase B (kV)" />
-                <Line type="monotone" dataKey="Vc" stroke="#10b981" dot={false} strokeWidth={1.8} name="Phase C (kV)" />
-              </>
+        {loading ? (
+          <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+            <Spinner size="medium" />
+          </Box>
+        ) : viewMode === "plot" && waveformData.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={waveformData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+              <XAxis dataKey={timeKey} stroke="#8b949e" tick={{ fontSize: 11 }} />
+              <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#161b22",
+                  borderColor: "#30363d",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: "12px" }} />
+              {channels.slice(0, 6).map((ch, idx) => (
+                <Line
+                  key={ch}
+                  type="monotone"
+                  dataKey={ch}
+                  stroke={LINE_COLORS[idx % LINE_COLORS.length] || "#38bdf8"}
+                  dot={false}
+                  strokeWidth={1.8}
+                  name={ch}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <Box
+            height="100%"
+            overflow="auto"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 10px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "csv")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box
+                display="flex"
+                justifyContent="center"
+                alignItems="center"
+                height="100%"
+                color="var(--color-fg-muted)"
+              >
+                <Text style={{ fontSize: "12px" }}>No PSOUT waveform trajectory data loaded.</Text>
+              </Box>
             )}
-
-            {activeSignal === "currents" && (
-              <>
-                <Line type="monotone" dataKey="Ia" stroke="#a855f7" dot={false} strokeWidth={1.8} name="Ia (kA)" />
-                <Line type="monotone" dataKey="Ib" stroke="#ec4899" dot={false} strokeWidth={1.8} name="Ib (kA)" />
-                <Line type="monotone" dataKey="Ic" stroke="#06b6d4" dot={false} strokeWidth={1.8} name="Ic (kA)" />
-              </>
-            )}
-
-            {activeSignal === "power" && (
-              <Line type="monotone" dataKey="P" stroke="#10b981" dot={false} strokeWidth={2} name="Active Power (MW)" />
-            )}
-          </LineChart>
-        </ResponsiveContainer>
+          </Box>
+        )}
       </ChartContainer>
     </CardWrapper>
   );

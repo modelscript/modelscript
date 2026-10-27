@@ -16,7 +16,7 @@ export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
     <StyledWalletCard>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center" gap={2}>
-          <ZapIcon size={14} fill="var(--color-accent-purple)" style={{ color: "var(--color-accent-purple)" }} />
+          <ZapIcon size={14} fill="var(--color-accent-purple)" />
           <Text
             style={{
               fontSize: "12px",
@@ -81,8 +81,8 @@ export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
         display="flex"
         justifyContent="space-between"
         alignItems="center"
-        pt={2}
         style={{
+          paddingTop: "8px",
           borderTop: "1px solid var(--color-border-default)",
           fontSize: "11px",
           fontFamily: "var(--font-mono)",

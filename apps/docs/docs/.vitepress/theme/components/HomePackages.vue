@@ -13,7 +13,8 @@ interface PackageInfo {
 const packages: PackageInfo[] = [
   {
     name: "@modelscript/cli",
-    description: "The unified msx command-line toolchain — flatten, simulate, optimize, lint, render, and execute the digital thread.",
+    description:
+      "The unified msx command-line toolchain — flatten, simulate, optimize, lint, render, and execute the digital thread.",
     install: "npm install -g @modelscript/cli",
     docsLink: "/cli/overview",
     npmLink: "https://www.npmjs.com/package/@modelscript/cli",
@@ -29,7 +30,8 @@ const packages: PackageInfo[] = [
   },
   {
     name: "@modelscript/dsl",
-    description: "Polyglot modeling language runtime — AST combinators, GLR parser generator, and graph rewriting engines.",
+    description:
+      "Polyglot modeling language runtime — AST combinators, GLR parser generator, and graph rewriting engines.",
     install: "npm install @modelscript/dsl",
     docsLink: "/architecture/overview",
     npmLink: "https://www.npmjs.com/package/@modelscript/dsl",
@@ -37,7 +39,8 @@ const packages: PackageInfo[] = [
   },
   {
     name: "@modelscript/runtime",
-    description: "Linear-memory WebAssembly DAE arena, Salsa incremental query engine, and computable digital thread coordinator.",
+    description:
+      "Linear-memory WebAssembly DAE arena, Salsa incremental query engine, and computable digital thread coordinator.",
     install: "npm install @modelscript/runtime",
     docsLink: "/architecture/dae-arena",
     npmLink: "https://www.npmjs.com/package/@modelscript/runtime",
@@ -116,7 +119,9 @@ async function copyInstall(install: string, name: string) {
           <p class="package-desc">{{ pkg.description }}</p>
 
           <div class="package-install-box">
-            <span class="install-cmd"><code>{{ pkg.install }}</code></span>
+            <span class="install-cmd"
+              ><code>{{ pkg.install }}</code></span
+            >
             <button
               type="button"
               class="pkg-copy-btn"
@@ -197,7 +202,10 @@ async function copyInstall(install: string, name: string) {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  transition:
+    border-color 0.25s ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .package-card:hover {

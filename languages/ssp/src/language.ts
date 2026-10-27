@@ -21,6 +21,7 @@ import { parseSsd } from "./ssd-parser.js";
 export const sspLanguage = language({
   name: "ssp",
   fileExtensions: [".ssp", ".ssd", ".ssv"],
+  maturity: "stable",
   lsp: {
     fileExtensions: [".ssp", ".ssd", ".ssv"],
     icons: {

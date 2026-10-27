@@ -7,7 +7,7 @@ import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { usePageTitle } from "../util/title";
 import type { PackageData, PersonData, PostData, RepoData, TopicData } from "./explore";
-import { CURATED_REPOS, ExploreLandingView, ExploreSearchResultsView, ExploreTopicView } from "./explore";
+import { ExploreLandingView, ExploreSearchResultsView, ExploreTopicView } from "./explore";
 
 const ExplorePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -115,12 +115,6 @@ const ExplorePage: React.FC = () => {
           const data = await getRepos();
           const userRepos = data.repos || [];
 
-          const filteredCurated = CURATED_REPOS.filter(
-            (r) =>
-              r.project.toLowerCase().includes(query.toLowerCase()) ||
-              r.namespace.toLowerCase().includes(query.toLowerCase()) ||
-              (r.description && r.description.toLowerCase().includes(query.toLowerCase())),
-          );
           const filteredUser = userRepos.filter(
             (r: RepoData) =>
               r.project.toLowerCase().includes(query.toLowerCase()) ||
@@ -128,8 +122,8 @@ const ExplorePage: React.FC = () => {
               (r.description && r.description.toLowerCase().includes(query.toLowerCase())),
           );
 
-          const seen = new Set();
-          const combined = [...filteredUser, ...filteredCurated].filter((r) => {
+          const seen = new Set<string>();
+          const combined = filteredUser.filter((r: RepoData) => {
             const key = `${r.namespace}/${r.project}`;
             if (seen.has(key)) return false;
             seen.add(key);

@@ -11,6 +11,7 @@ import { decodeBase64ToArray } from "../services/virtual-fs-service.js";
 import { type FlowpipeEnvelope, SimulationPanel } from "../simulation-panel.js";
 import { SurrogatePanel } from "../surrogate-panel.js";
 import { UncertaintyPanel } from "../uncertainty-panel.js";
+import { getSimulationDefaults } from "../utils/config.js";
 import { extractFromZip } from "../utils/zip.js";
 import { VerificationPanel } from "../verification-panel.js";
 
@@ -178,6 +179,12 @@ export function registerSimulationCommands(
         }
       }
 
+      const simDefaults = getSimulationDefaults();
+      if (inputs.stopTime === undefined) inputs.stopTime = simDefaults.stopTime;
+      if (inputs.intervals === undefined) inputs.intervals = simDefaults.intervals;
+      if (inputs.tolerance === undefined) inputs.tolerance = simDefaults.tolerance;
+      if (inputs.solver === undefined) inputs.solver = simDefaults.solver;
+
       try {
         const lang = editor?.document.languageId ?? "modelica";
         await vscode.window.withProgress(
@@ -203,10 +210,10 @@ export function registerSimulationCommands(
                   y: res.y || [],
                   experiment: res.experiment ?? {
                     startTime: 0,
-                    stopTime: 1,
-                    interval: 0.002,
-                    tolerance: 1e-4,
-                    solver: "dopri5",
+                    stopTime: simDefaults.stopTime,
+                    interval: simDefaults.stopTime / Math.max(1, simDefaults.intervals),
+                    tolerance: simDefaults.tolerance,
+                    solver: simDefaults.solver,
                   },
                   parameters: res.parameters ?? [],
                   telemetry: res.telemetry,

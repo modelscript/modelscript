@@ -20,7 +20,10 @@ export interface DatasetColumn {
 export interface CsvViewerProps {
   viewConfig: {
     data?: string | string[][] | undefined;
+    code?: string | undefined;
     url?: string | undefined;
+    title?: string | undefined;
+    maxPreviewRows?: number | undefined;
     columns?: DatasetColumn[] | undefined;
     previewRows?: string[][] | undefined;
     rows?: string[][] | undefined;
@@ -160,7 +163,7 @@ const PaginationBar = styled.div`
   color: var(--color-text-muted, #8b949e);
 `;
 
-const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
+export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +172,9 @@ const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
   // Table controls
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(() =>
+    typeof viewConfig?.maxPreviewRows === "number" && viewConfig.maxPreviewRows > 0 ? viewConfig.maxPreviewRows : 50,
+  );
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -200,12 +205,13 @@ const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
       return;
     }
 
-    // 2. Direct string or 2D array
-    if (viewConfig?.data) {
-      if (typeof viewConfig.data === "string") {
-        parseCsvText(viewConfig.data);
-      } else if (Array.isArray(viewConfig.data)) {
-        setCsvData(viewConfig.data);
+    // 2. Direct string or 2D array via code or data
+    const inlineSource = viewConfig?.code ?? viewConfig?.data;
+    if (inlineSource) {
+      if (typeof inlineSource === "string") {
+        parseCsvText(inlineSource);
+      } else if (Array.isArray(inlineSource)) {
+        setCsvData(inlineSource);
       }
       return;
     }
@@ -242,7 +248,14 @@ const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
   }, [viewConfig]);
 
   const headers = useMemo(() => csvData[0] || [], [csvData]);
-  const rawRows = useMemo(() => csvData.slice(1), [csvData]);
+  const maxPreviewRows = typeof viewConfig?.maxPreviewRows === "number" ? viewConfig.maxPreviewRows : 0;
+  const rawRows = useMemo(() => {
+    const sliced = csvData.slice(1);
+    if (maxPreviewRows > 0) {
+      return sliced.slice(0, maxPreviewRows);
+    }
+    return sliced;
+  }, [csvData, maxPreviewRows]);
 
   // Search filtering
   const filteredRows = useMemo(() => {
@@ -312,7 +325,12 @@ const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
   return (
     <TableWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
-        <Box display="flex" alignItems="center" gap={2} flex={1} maxWidth="320px">
+        <Box display="flex" alignItems="center" gap={2} flex={1} maxWidth="420px">
+          {typeof viewConfig?.title === "string" && viewConfig.title && (
+            <Text fontWeight="bold" fontSize="13px" color="var(--color-text-primary)" style={{ whiteSpace: "nowrap" }}>
+              {viewConfig.title}
+            </Text>
+          )}
           <TextInput
             leadingVisual={SearchIcon}
             size="small"

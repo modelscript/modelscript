@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/ide",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "private": true,
   "description": "ModelScript VS Code Web IDE with GitHub/GitLab repository integration",
   "license": "AGPL-3.0-or-later",

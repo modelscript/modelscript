@@ -14,47 +14,233 @@ const activeCategory = ref<string>("all");
 
 const languages: LanguageItem[] = [
   // Systems & Architecture
-  { name: "Modelica", category: "systems", badge: ".mo", role: "Acausal Multi-Domain Physics", link: "/languages/modelica" },
-  { name: "SysML v2 / KerML", category: "systems", badge: ".sysml", role: "Systems Architecture & Requirements", link: "/languages/sysml2" },
-  { name: "MATLAB Simulink", category: "systems", badge: ".slx / .mdl", role: "Block Diagrams & Control Systems", link: "/languages/simulink" },
-  { name: "AUTOSAR", category: "systems", badge: ".arxml", role: "Automotive Software Components", link: "/languages/autosar" },
-  { name: "ReqIF", category: "systems", badge: ".reqif", role: "Requirements Interchange Format", link: "/languages/reqif" },
-  { name: "ModelScript", category: "systems", badge: ".msx", role: "Native Multi-Paradigm Thread", link: "/languages/modelscript" },
+  {
+    name: "Modelica",
+    category: "systems",
+    badge: ".mo",
+    role: "Acausal Multi-Domain Physics",
+    link: "/languages/modelica",
+  },
+  {
+    name: "SysML v2 / KerML",
+    category: "systems",
+    badge: ".sysml",
+    role: "Systems Architecture & Requirements",
+    link: "/languages/sysml2",
+  },
+  {
+    name: "MATLAB Simulink",
+    category: "systems",
+    badge: ".slx / .mdl",
+    role: "Block Diagrams & Control Systems",
+    link: "/languages/simulink",
+  },
+  {
+    name: "AUTOSAR",
+    category: "systems",
+    badge: ".arxml",
+    role: "Automotive Software Components",
+    link: "/languages/autosar",
+  },
+  {
+    name: "ReqIF",
+    category: "systems",
+    badge: ".reqif",
+    role: "Requirements Interchange Format",
+    link: "/languages/reqif",
+  },
+  {
+    name: "ModelScript",
+    category: "systems",
+    badge: ".msx",
+    role: "Native Multi-Paradigm Thread",
+    link: "/languages/modelscript",
+  },
 
   // Multi-Body & Kinematics
-  { name: "SIMPACK", category: "kinematics", badge: ".spck", role: "Nonlinear Multibody Dynamics", link: "/languages/simpack" },
-  { name: "GENSYS", category: "kinematics", badge: ".gen", role: "Railway Vehicle Dynamics & Track", link: "/languages/gensys" },
-  { name: "MSC Adams", category: "kinematics", badge: ".adm", role: "Mechanical System Kinematics", link: "/languages/adams" },
-  { name: "URDF / Xacro", category: "kinematics", badge: ".urdf", role: "Robotics Kinematic Chains", link: "/languages/urdf" },
+  {
+    name: "SIMPACK",
+    category: "kinematics",
+    badge: ".spck",
+    role: "Nonlinear Multibody Dynamics",
+    link: "/languages/simpack",
+  },
+  {
+    name: "GENSYS",
+    category: "kinematics",
+    badge: ".gen",
+    role: "Railway Vehicle Dynamics & Track",
+    link: "/languages/gensys",
+  },
+  {
+    name: "MSC Adams",
+    category: "kinematics",
+    badge: ".adm",
+    role: "Mechanical System Kinematics",
+    link: "/languages/adams",
+  },
+  {
+    name: "URDF / Xacro",
+    category: "kinematics",
+    badge: ".urdf",
+    role: "Robotics Kinematic Chains",
+    link: "/languages/urdf",
+  },
 
   // Fluids, Thermal & Propulsion
-  { name: "OLGA", category: "fluids", badge: ".genkey", role: "Transient Multiphase Pipeline Flow", link: "/languages/olga" },
-  { name: "PipelineStudio", category: "fluids", badge: ".lps", role: "Gas & Liquid Pipeline Hydraulics", link: "/languages/lps" },
-  { name: "GT-SUITE", category: "fluids", badge: ".gtm", role: "Engine, Powertrain & Thermal Flow", link: "/languages/gtsuite" },
-  { name: "EASY5", category: "fluids", badge: ".ez5", role: "Aerospace Control & Fluid Systems", link: "/languages/easy5" },
-  { name: "SIMA / RIFLEX", category: "fluids", badge: ".sima", role: "Offshore Marine Hydrodynamics", link: "/languages/sima" },
-  { name: "NASA ROCETS", category: "fluids", badge: ".roc", role: "Rocket Engine & Propulsion Cycles", link: "/languages/rocets" },
-  { name: "EnergyPlus", category: "fluids", badge: ".idf", role: "Building Energy & HVAC Physics", link: "/languages/energyplus" },
-  { name: "EPANET", category: "fluids", badge: ".inp", role: "Pressurized Water Distribution", link: "/languages/epanet" },
+  {
+    name: "OLGA",
+    category: "fluids",
+    badge: ".genkey",
+    role: "Transient Multiphase Pipeline Flow",
+    link: "/languages/olga",
+  },
+  {
+    name: "PipelineStudio",
+    category: "fluids",
+    badge: ".lps",
+    role: "Gas & Liquid Pipeline Hydraulics",
+    link: "/languages/lps",
+  },
+  {
+    name: "GT-SUITE",
+    category: "fluids",
+    badge: ".gtm",
+    role: "Engine, Powertrain & Thermal Flow",
+    link: "/languages/gtsuite",
+  },
+  {
+    name: "EASY5",
+    category: "fluids",
+    badge: ".ez5",
+    role: "Aerospace Control & Fluid Systems",
+    link: "/languages/easy5",
+  },
+  {
+    name: "SIMA / RIFLEX",
+    category: "fluids",
+    badge: ".sima",
+    role: "Offshore Marine Hydrodynamics",
+    link: "/languages/sima",
+  },
+  {
+    name: "NASA ROCETS",
+    category: "fluids",
+    badge: ".roc",
+    role: "Rocket Engine & Propulsion Cycles",
+    link: "/languages/rocets",
+  },
+  {
+    name: "EnergyPlus",
+    category: "fluids",
+    badge: ".idf",
+    role: "Building Energy & HVAC Physics",
+    link: "/languages/energyplus",
+  },
+  {
+    name: "EPANET",
+    category: "fluids",
+    badge: ".inp",
+    role: "Pressurized Water Distribution",
+    link: "/languages/epanet",
+  },
 
   // Power Systems & Electronics
-  { name: "PSCAD", category: "power", badge: ".pscx", role: "Electromagnetic Transient (EMT) Grid", link: "/languages/pscad" },
-  { name: "PSS/E", category: "power", badge: ".raw", role: "Transmission Power Flow & Dynamics", link: "/languages/psse" },
+  {
+    name: "PSCAD",
+    category: "power",
+    badge: ".pscx",
+    role: "Electromagnetic Transient (EMT) Grid",
+    link: "/languages/pscad",
+  },
+  {
+    name: "PSS/E",
+    category: "power",
+    badge: ".raw",
+    role: "Transmission Power Flow & Dynamics",
+    link: "/languages/psse",
+  },
   { name: "SPICE", category: "power", badge: ".cir", role: "Analog Electronic Circuits", link: "/languages/spice" },
-  { name: "PLCopen", category: "power", badge: ".xml", role: "Industrial Automation & IEC 61131-3", link: "/languages/plcopen" },
-  { name: "Verilog-A", category: "power", badge: ".va", role: "Semiconductor Behavioral Models", link: "/languages/verilog-a" },
+  {
+    name: "PLCopen",
+    category: "power",
+    badge: ".xml",
+    role: "Industrial Automation & IEC 61131-3",
+    link: "/languages/plcopen",
+  },
+  {
+    name: "Verilog-A",
+    category: "power",
+    badge: ".va",
+    role: "Semiconductor Behavioral Models",
+    link: "/languages/verilog-a",
+  },
 
   // CAD, Geometry & Infrastructure
-  { name: "STEP (ISO 10303)", category: "cad", badge: ".step", role: "3D Boundary Representation & CSG", link: "/languages/step" },
+  {
+    name: "STEP (ISO 10303)",
+    category: "cad",
+    badge: ".step",
+    role: "3D Boundary Representation & CSG",
+    link: "/languages/step",
+  },
   { name: "OpenSCAD", category: "cad", badge: ".scad", role: "Programmatic Parametric CAD", link: "/languages/scad" },
-  { name: "OpenDRIVE", category: "cad", badge: ".xodr", role: "Road Network Geometry & Logic", link: "/languages/opendrive" },
-  { name: "SU2 / CFD", category: "cad", badge: ".su2", role: "Computational Fluid Dynamics Mesh", link: "/languages/cfd" },
-  { name: "FEA Structural", category: "cad", badge: ".inp", role: "Finite Element Elasticity & Stress", link: "/languages/fea" },
-  { name: "OWL2 Ontology", category: "cad", badge: ".owl", role: "Semantic Knowledge & Ontologies", link: "/languages/owl2" },
-  { name: "SSP Standard", category: "cad", badge: ".ssp", role: "System Structure & Parameterization", link: "/languages/ssp" },
-  { name: "CSV / Telemetry", category: "cad", badge: ".csv", role: "Time-Series & Sensor Logs", link: "/languages/csv" },
-  { name: "CCSDS Space", category: "cad", badge: ".xtce", role: "Spacecraft Telemetry & Commands", link: "/languages/ccsds" },
-  { name: "Fortran", category: "cad", badge: ".f90", role: "Legacy Scientific Subroutines", link: "/languages/fortran" },
+  {
+    name: "OpenDRIVE",
+    category: "cad",
+    badge: ".xodr",
+    role: "Road Network Geometry & Logic",
+    link: "/languages/opendrive",
+  },
+  {
+    name: "SU2 / CFD",
+    category: "cad",
+    badge: ".su2",
+    role: "Computational Fluid Dynamics Mesh",
+    link: "/languages/cfd",
+  },
+  {
+    name: "FEA Structural",
+    category: "cad",
+    badge: ".inp",
+    role: "Finite Element Elasticity & Stress",
+    link: "/languages/fea",
+  },
+  {
+    name: "OWL2 Ontology",
+    category: "cad",
+    badge: ".owl",
+    role: "Semantic Knowledge & Ontologies",
+    link: "/languages/owl2",
+  },
+  {
+    name: "SSP Standard",
+    category: "cad",
+    badge: ".ssp",
+    role: "System Structure & Parameterization",
+    link: "/languages/ssp",
+  },
+  {
+    name: "CSV / Telemetry",
+    category: "cad",
+    badge: ".csv",
+    role: "Time-Series & Sensor Logs",
+    link: "/languages/csv",
+  },
+  {
+    name: "CCSDS Space",
+    category: "cad",
+    badge: ".xtce",
+    role: "Spacecraft Telemetry & Commands",
+    link: "/languages/ccsds",
+  },
+  {
+    name: "Fortran",
+    category: "cad",
+    badge: ".f90",
+    role: "Legacy Scientific Subroutines",
+    link: "/languages/fortran",
+  },
 ];
 
 const categories = [
@@ -79,7 +265,8 @@ const filteredLanguages = computed(() => {
         <span class="section-badge">Polyglot Computable Digital Thread</span>
         <h2 class="section-title">One Compiler. 33+ Modeling Languages.</h2>
         <p class="section-subtitle">
-          Unify requirements, physical simulation, multi-body kinematics, fluid dynamics, power systems, and 3D CAD without brittle export bridges.
+          Unify requirements, physical simulation, multi-body kinematics, fluid dynamics, power systems, and 3D CAD
+          without brittle export bridges.
         </p>
       </div>
 
@@ -99,12 +286,7 @@ const filteredLanguages = computed(() => {
 
       <!-- Language Cards Grid -->
       <div class="languages-grid">
-        <a
-          v-for="lang in filteredLanguages"
-          :key="lang.name"
-          :href="lang.link"
-          class="lang-card"
-        >
+        <a v-for="lang in filteredLanguages" :key="lang.name" :href="lang.link" class="lang-card">
           <div class="lang-top">
             <span class="lang-name">{{ lang.name }}</span>
             <span class="lang-badge">{{ lang.badge }}</span>
@@ -114,9 +296,7 @@ const filteredLanguages = computed(() => {
       </div>
 
       <div class="languages-cta">
-        <a href="/languages/overview" class="btn-matrix">
-          View Full Polyglot Compatibility Matrix &rarr;
-        </a>
+        <a href="/languages/overview" class="btn-matrix"> View Full Polyglot Compatibility Matrix &rarr; </a>
       </div>
     </div>
   </section>

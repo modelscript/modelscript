@@ -1,13 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { BlockedIcon, GraphIcon, LinkExternalIcon, MuteIcon, PersonAddIcon, ReportIcon } from "@primer/octicons-react";
+import {
+  BlockedIcon,
+  CodeIcon,
+  GraphIcon,
+  LinkExternalIcon,
+  MuteIcon,
+  PersonAddIcon,
+  ReportIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { blockUser, followUser, muteUser, reportUser } from "../../api";
+import * as apiModule from "../../api";
+import { useAuth } from "../../AuthContext";
+import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { useToast } from "../ToastContext";
 import { MenuButton } from "./styles";
+
+const { blockUser, followUser, muteUser, reportUser } = apiModule;
+const deletePost =
+  (apiModule as any).deletePost ||
+  (async (id: string | number) => (await apiModule.api.delete(`/social/posts/${id}`)).data);
 
 export interface PostActionMenuProps {
   isOpen: boolean;
@@ -15,6 +31,7 @@ export interface PostActionMenuProps {
   canEditPost: boolean;
   isNotebook: boolean;
   onOpenEditModal: () => void;
+  onPostDeleted?: (() => void) | undefined;
   displayPost: any;
   token: string | null;
   onOpenLoginModal: () => void;
@@ -27,6 +44,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
   canEditPost,
   isNotebook,
   onOpenEditModal,
+  onPostDeleted,
   displayPost,
   token,
   onOpenLoginModal,
@@ -34,8 +52,12 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
 }) => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
 
   if (!isOpen) return null;
+
+  const isOwnPost = Boolean(user?.username && user.username === displayPost?.username);
+  const canDeletePost = isOwnPost || user?.role === "admin";
 
   return (
     <>
@@ -73,79 +95,115 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
             <span>✏️</span> {isNotebook ? "Edit tutorial / notebook" : "Edit post"}
           </MenuButton>
         )}
-        <MenuButton
-          onClick={async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            if (token) {
+        {isOwnPost && Boolean(displayPost?.artifact_view_id) && (
+          <MenuButton
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+              navigate(
+                buildEditorUrlForArtifact({
+                  artifactId: displayPost.artifact_view_id,
+                  viewType: (displayPost as any).artifact_type || (displayPost as any).artifact_view?.view_type,
+                  viewConfig: (displayPost as any).artifact_config || (displayPost as any).artifact_view?.view_config,
+                  title: (displayPost as any).artifact_title || (displayPost as any).artifact_view?.title,
+                  mode: "edit",
+                  editPostId: Number(displayPost.id),
+                }),
+              );
+            }}
+          >
+            <CodeIcon size={16} /> Edit Artifact in Playground / VS Code
+          </MenuButton>
+        )}
+        {canDeletePost && (
+          <MenuButton
+            style={{ color: "var(--color-danger-fg, #f85149)" }}
+            onClick={async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+              if (!token) {
+                onOpenLoginModal();
+                return;
+              }
+              try {
+                await deletePost(displayPost.id);
+                toast.success("Post deleted.");
+                onPostDeleted?.();
+              } catch (err) {
+                console.error(err);
+                toast.error("Failed to delete post.");
+              }
+            }}
+          >
+            <TrashIcon size={16} /> Delete post
+          </MenuButton>
+        )}
+        {!isOwnPost && (
+          <MenuButton
+            onClick={async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+              if (!token) {
+                onOpenLoginModal();
+                return;
+              }
               try {
                 await followUser(displayPost.username);
+                toast.success(`Followed @${displayPost.username}`);
+              } catch (err) {
+                console.error(err);
+                toast.error(`Failed to follow @${displayPost.username}`);
+              }
+            }}
+          >
+            <PersonAddIcon size={16} /> Follow @{displayPost.username}
+          </MenuButton>
+        )}
+        {!isOwnPost && (
+          <MenuButton
+            onClick={async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+              if (!token) {
+                onOpenLoginModal();
+                return;
+              }
+              try {
+                await muteUser(displayPost.username);
+                toast.info(`Muted @${displayPost.username}`);
               } catch (err) {
                 console.error(err);
               }
-            }
-            onClose();
-          }}
-        >
-          <PersonAddIcon size={16} /> Follow @{displayPost.username}
-        </MenuButton>
-        <MenuButton
-          onClick={async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onClose();
-            if (!token) {
-              onOpenLoginModal();
-              return;
-            }
-            try {
-              await muteUser(displayPost.username);
-              toast.info(`Muted @${displayPost.username}`);
-            } catch (err) {
-              console.error(err);
-            }
-          }}
-        >
-          <MuteIcon size={16} /> Mute
-        </MenuButton>
-        <MenuButton
-          onClick={async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onClose();
-            if (!token) {
-              onOpenLoginModal();
-              return;
-            }
-            try {
-              await muteUser(displayPost.username);
-              toast.info(`Muted conversation from @${displayPost.username}`);
-            } catch (err) {
-              console.error(err);
-            }
-          }}
-        >
-          <MuteIcon size={16} /> Mute this conversation
-        </MenuButton>
-        <MenuButton
-          onClick={async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onClose();
-            if (!token) {
-              onOpenLoginModal();
-              return;
-            }
-            try {
-              await blockUser(displayPost.username);
-              toast.info(`Blocked @${displayPost.username}`);
-            } catch (err) {
-              console.error(err);
-            }
-          }}
-        >
-          <BlockedIcon size={16} /> Block @{displayPost.username}
-        </MenuButton>
+            }}
+          >
+            <MuteIcon size={16} /> Mute @{displayPost.username}
+          </MenuButton>
+        )}
+        {!isOwnPost && (
+          <MenuButton
+            onClick={async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+              if (!token) {
+                onOpenLoginModal();
+                return;
+              }
+              try {
+                await blockUser(displayPost.username);
+                toast.info(`Blocked @${displayPost.username}`);
+              } catch (err) {
+                console.error(err);
+              }
+            }}
+          >
+            <BlockedIcon size={16} /> Block @{displayPost.username}
+          </MenuButton>
+        )}
         <MenuButton
           onClick={(e) => {
             e.stopPropagation();
@@ -168,25 +226,27 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
             <LinkExternalIcon size={16} /> Open original on remote node
           </MenuButton>
         )}
-        <MenuButton
-          onClick={async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onClose();
-            if (!token) {
-              onOpenLoginModal();
-              return;
-            }
-            try {
-              await reportUser(displayPost.username, `Reported post #${displayPost.id}`);
-              toast.info("Post reported to moderators.");
-            } catch (err) {
-              console.error(err);
-            }
-          }}
-        >
-          <ReportIcon size={16} /> Report post
-        </MenuButton>
+        {!isOwnPost && (
+          <MenuButton
+            onClick={async (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onClose();
+              if (!token) {
+                onOpenLoginModal();
+                return;
+              }
+              try {
+                await reportUser(displayPost.username, `Reported post #${displayPost.id}`);
+                toast.info("Post reported to moderators.");
+              } catch (err) {
+                console.error(err);
+              }
+            }}
+          >
+            <ReportIcon size={16} /> Report post
+          </MenuButton>
+        )}
       </Box>
     </>
   );

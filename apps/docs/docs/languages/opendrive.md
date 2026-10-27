@@ -31,7 +31,7 @@
 
 - Compiles OpenDRIVE tracks directly into curvilinear Frenet-Serret coordinates ($s, d, \theta_e$) within `@modelscript/runtime`'s `DAEBuilder` arena:
   $$\dot{s} = \frac{v \cos \theta_e}{1 - d \cdot \kappa(s)}, \quad \dot{d} = v \sin \theta_e, \quad \dot{\theta}_e = \dot{\psi} - \dot{s}\kappa(s)$$
-- Enables high-speed closed-loop vehicle chassis simulation with [@modelscript/simpack](file:///home/omar/git3/modelscript/languages/simpack) and [@modelscript/adams](file:///home/omar/git3/modelscript/languages/adams).
+- Enables high-speed closed-loop vehicle chassis simulation with [@modelscript/simpack](./simpack.md) and [@modelscript/adams](./adams.md).
 
 ### 4. GENSYS Track Export
 
@@ -41,14 +41,7 @@
 
 ## Static Analysis & Pre-Flight Linter Rules
 
-The OpenDRIVE linter verifies geometric continuity and topological integrity:
-
-| Rule Identifier          | Severity  | Condition Checked                                                                                              |
-| :----------------------- | :-------- | :------------------------------------------------------------------------------------------------------------- |
-| `discontinuous-geometry` | `error`   | $C^0$ position or $C^1$ heading discontinuity exceeds tolerance between adjacent road segments.                |
-| `invalid-lane-linkage`   | `error`   | Lane successor or predecessor ID does not exist on the adjacent connecting road.                               |
-| `clothoid-divergence`    | `warning` | Clothoid curvature rate $\dot{\kappa}$ or integration length causes numerical Fresnel convergence degradation. |
-| `junction-conflict`      | `warning` | Overlapping connecting roads within a junction lack priority or collision clearance metadata.                  |
+<LintRules lang="opendrive" />
 
 ---
 
@@ -59,7 +52,7 @@ The OpenDRIVE linter verifies geometric continuity and topological integrity:
 msx opendrive lint HighwayInterchange.xodr
 
 # Sample 3D road centerline and lane boundaries at 0.5m resolution
-msx opendrive sample-track HighwayInterchange.xodr --step 0.5 -o track_points.json
+msx opendrive track HighwayInterchange.xodr --step 0.5 -o track_points.json
 
 # Lower road geometry to DAE path-following arena
 msx opendrive to-dae HighwayInterchange.xodr --out=road.dae.json

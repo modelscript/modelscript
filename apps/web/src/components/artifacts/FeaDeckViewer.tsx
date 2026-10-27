@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
+import { CodeIcon, PlayIcon, WorkflowIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
@@ -8,18 +8,23 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { runPhysicsJob } from "../../api";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 import SimulationResultViewer from "./SimulationResultViewer";
 
 export interface FeaDeckViewerProps {
   artifactId?: number | undefined;
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
     meshName?: string | undefined;
     nodeCount?: number | undefined;
+    nodes?: number | undefined;
     elementCount?: number | undefined;
+    elements?: number | undefined;
     elementType?: string | undefined;
     youngsModulusGpa?: number | undefined;
     poissonsRatio?: number | undefined;
@@ -133,6 +138,78 @@ const StatItem = styled.div`
   }
 `;
 
+function parseCalculixDeckClient(text: string) {
+  const nodes: { id: number; x: number; y: number; z: number }[] = [];
+  const elements: { id: number; type: string; nodes: number[] }[] = [];
+  let elementType: string | undefined;
+  let youngsModulusGpa: number | undefined;
+  let poissonsRatio: number | undefined;
+  let totalLoadN = 0;
+
+  if (!text.trim()) {
+    return { nodes, elements, elementType, youngsModulusGpa, poissonsRatio, loadKn: undefined };
+  }
+
+  let section = "";
+  let currentElemType = "C3D8";
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("**")) continue;
+    if (line.startsWith("*")) {
+      const upper = line.toUpperCase();
+      if (upper.startsWith("*NODE")) section = "NODE";
+      else if (upper.startsWith("*ELEMENT")) {
+        section = "ELEMENT";
+        const tm = line.match(/TYPE\s*=\s*([A-Za-z0-9_]+)/i);
+        if (tm?.[1]) {
+          currentElemType = tm[1].toUpperCase();
+          if (!elementType) elementType = currentElemType;
+        }
+      } else if (upper.startsWith("*ELASTIC")) section = "ELASTIC";
+      else if (upper.startsWith("*CLOAD")) section = "CLOAD";
+      else section = "OTHER";
+      continue;
+    }
+
+    const parts = line
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (section === "NODE" && parts.length >= 3) {
+      const id = Number(parts[0]);
+      const x = Number(parts[1]);
+      const y = Number(parts[2]);
+      const z = Number(parts[3] ?? 0);
+      if (Number.isFinite(id) && Number.isFinite(x) && Number.isFinite(y)) {
+        nodes.push({ id, x, y, z });
+      }
+    } else if (section === "ELEMENT" && parts.length >= 3) {
+      const id = Number(parts[0]);
+      const nids = parts.slice(1).map(Number).filter(Number.isFinite);
+      if (Number.isFinite(id) && nids.length >= 2) {
+        elements.push({ id, type: currentElemType, nodes: nids });
+      }
+    } else if (section === "ELASTIC" && parts.length >= 2) {
+      const E = Number(parts[0]);
+      const nu = Number(parts[1]);
+      if (Number.isFinite(E)) youngsModulusGpa = E > 1e6 ? +(E / 1e9).toFixed(1) : +E.toFixed(1);
+      if (Number.isFinite(nu)) poissonsRatio = nu;
+    } else if (section === "CLOAD" && parts.length >= 3) {
+      const f = Math.abs(Number(parts[2]));
+      if (Number.isFinite(f)) totalLoadN += f;
+    }
+  }
+
+  return {
+    nodes,
+    elements,
+    elementType,
+    youngsModulusGpa,
+    poissonsRatio,
+    loadKn: totalLoadN > 0 ? +(totalLoadN / 1000).toFixed(2) : undefined,
+  };
+}
+
 export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -140,6 +217,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
   const [simCompleted, setSimCompleted] = useState(false);
   const [completedResultConfig, setCompletedResultConfig] = useState<any>(null);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || viewConfig.meshName || "FEA Simulation Deck (.inp)";
 
   useEffect(() => {
@@ -154,59 +232,67 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
+        .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => setRawText(txt))
         .catch((err) => console.warn("[FeaDeckViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedDeck = useMemo(() => parseCalculixDeckClient(rawText), [rawText]);
+
+  const nodeCount = viewConfig.nodeCount ?? viewConfig.nodes ?? parsedDeck.nodes.length;
+  const elementCount = viewConfig.elementCount ?? viewConfig.elements ?? parsedDeck.elements.length;
+  const elementType = viewConfig.elementType ?? parsedDeck.elementType;
+  const youngsModulusGpa = viewConfig.youngsModulusGpa ?? parsedDeck.youngsModulusGpa;
+  const poissonsRatio = viewConfig.poissonsRatio ?? parsedDeck.poissonsRatio;
+  const loadKn = viewConfig.loadKn ?? parsedDeck.loadKn;
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean FEA mesh grid wireframe with boundary conditions
+    if (parsedDeck.nodes.length === 0) {
+      return "";
+    }
+    const width = 650;
+    const height = 340;
+    const pad = 44;
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    for (const n of parsedDeck.nodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+    const spanX = Math.max(1e-6, maxX - minX);
+    const spanY = Math.max(1e-6, maxY - minY);
+    const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2 - 24) / spanY);
+    const nodeMap = new Map<number, [number, number]>();
+    for (const n of parsedDeck.nodes) {
+      nodeMap.set(n.id, [+(pad + (n.x - minX) * scale).toFixed(1), +(height - pad - (n.y - minY) * scale).toFixed(1)]);
+    }
+    const polys = parsedDeck.elements.slice(0, 500).map((el) => {
+      const pts = el.nodes.map((nid) => nodeMap.get(nid)).filter(Boolean) as [number, number][];
+      if (pts.length >= 3) {
+        return `<polygon points="${pts.map((p) => `${p[0]},${p[1]}`).join(" ")}" fill="rgba(56, 189, 248, 0.12)" stroke="#38bdf8" stroke-width="1"/>`;
+      }
+      if (pts.length === 2) {
+        return `<line x1="${pts[0]![0]}" y1="${pts[0]![1]}" x2="${pts[1]![0]}" y2="${pts[1]![1]}" stroke="#38bdf8" stroke-width="1.5"/>`;
+      }
+      return "";
+    });
     return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Structural Bracket FEA Tetrahedral / Hex Mesh Wireframe -->
-        <g stroke="#38bdf8" stroke-width="1.2" fill="rgba(14, 165, 233, 0.08)" stroke-linejoin="round">
-          <!-- Main block elements -->
-          <polygon points="120,80 280,60 340,120 180,140" />
-          <polygon points="180,140 340,120 340,240 180,260" />
-          <polygon points="120,80 180,140 180,260 120,200" />
-
-          <!-- Tetrahedral subdivisions -->
-          <line x1="120" y1="80" x2="340" y2="120" stroke="#0284c7" stroke-dasharray="3 3" />
-          <line x1="180" y1="140" x2="280" y2="60" stroke="#0284c7" stroke-dasharray="3 3" />
-          <line x1="180" y1="260" x2="340" y2="120" stroke="#0284c7" stroke-dasharray="3 3" />
-
-          <!-- Arm projection -->
-          <polygon points="340,120 480,140 480,220 340,240" />
-          <polygon points="480,140 540,180 540,240 480,220" />
-          <line x1="340" y1="120" x2="480" y2="220" stroke="#0284c7" stroke-dasharray="3 3" />
-        </g>
-
-        <!-- Fixed boundary condition markers (clamped base) -->
-        <g stroke="#ef4444" stroke-width="2" fill="none">
-          <line x1="110" y1="70" x2="120" y2="80" />
-          <line x1="110" y1="190" x2="120" y2="200" />
-          <line x1="170" y1="250" x2="180" y2="260" />
-          <text x="100" y="145" fill="#f87171" font-size="10" font-family="monospace">FIXED (U=0)</text>
-        </g>
-
-        <!-- Applied Force Vector Arrow -->
-        <g>
-          <line x1="540" y1="110" x2="540" y2="175" stroke="#10b981" stroke-width="3" />
-          <polygon points="535,175 545,175 540,185" fill="#10b981" />
-          <text x="540" y="100" fill="#34d399" font-size="11" font-family="monospace" text-anchor="middle" font-weight="bold">F = 15.0 kN ↓</text>
-        </g>
-
-        <text x="325" y="40" fill="#f0f6fc" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle">CalculiX Solid FEA Input Deck</text>
+      <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${width}" height="${height}" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
+        <text x="20" y="26" fill="#f0f6fc" font-size="12" font-weight="bold" font-family="monospace">${title}</text>
+        ${polys.join("\n")}
       </svg>
     `);
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, parsedDeck, title]);
 
   const [simError, setSimError] = useState<string | null>(null);
 
@@ -220,11 +306,11 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
         type: "FEA",
         workflowClass: "StaticStructuralFEA",
         material: {
-          E: (viewConfig.youngsModulusGpa ?? 210) * 1e9,
-          nu: viewConfig.poissonsRatio ?? 0.3,
+          E: (youngsModulusGpa ?? 210) * 1e9,
+          nu: poissonsRatio ?? 0.3,
         },
         boundaryConditions: {
-          loadKn: viewConfig.loadKn ?? 15.0,
+          loadKn: loadKn ?? 1.0,
         },
       };
 
@@ -254,6 +340,8 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
     );
   }
 
+  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
+
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
@@ -263,32 +351,88 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
           <PillBadge>CalculiX FEA Deck</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Box
+            display="flex"
+            bg="rgba(0,0,0,0.25)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("diagram")}
+              style={{
+                background: viewMode === "diagram" ? "rgba(14, 165, 233, 0.25)" : "transparent",
+                color: viewMode === "diagram" ? "#38bdf8" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <WorkflowIcon size={12} /> Mesh
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("code")}
+              style={{
+                background: viewMode === "code" ? "rgba(14, 165, 233, 0.25)" : "transparent",
+                color: viewMode === "code" ? "#38bdf8" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <CodeIcon size={12} /> Deck
+            </button>
+          </Box>
           <Button
             size="small"
-            variant="primary"
             leadingVisual={runningSim ? Spinner : PlayIcon}
             disabled={runningSim}
             onClick={handleRunSimulationLocally}
           >
-            {runningSim ? "Running Locally..." : "Run Simulation"}
+            {runningSim ? "Solving..." : "Run Solver"}
           </Button>
 
-          <Button
-            size="small"
-            leadingVisual={CodeIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in IDE
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={CodeIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "fea" as any,
+                  code: rawText || `*HEADING\n${title}\n`,
+                  title,
+                });
+                const resolvedId = artifactId ?? viewConfig.artifactId;
+                const fromArtifact = resolvedId ? `?fromArtifact=${resolvedId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
       {simError && (
         <Box px={3} py={2} bg="rgba(248, 81, 73, 0.15)" borderBottom="1px solid var(--color-danger-border)">
-          <Text fontSize="12px" color="var(--color-danger-fg)">
-            Simulation Error: {simError}
-          </Text>
+          <Text style={{ fontSize: "12px", color: "var(--color-danger-fg)" }}>Simulation Error: {simError}</Text>
         </Box>
       )}
 
@@ -297,38 +441,81 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : (
+        ) : viewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+        ) : (
+          <Box
+            flex={1}
+            py={2}
+            overflow="auto"
+            bg="var(--color-canvas-inset, #010409)"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "fea")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={4} color="var(--color-fg-muted)" textAlign="center">
+                No FEA deck source available.
+              </Box>
+            )}
+          </Box>
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             FEA Mesh &amp; Boundary Conditions
           </Text>
           <StatItem>
             <span>Nodes</span>
-            <strong>{viewConfig.nodeCount ? viewConfig.nodeCount.toLocaleString() : "14,820"}</strong>
+            <strong>{nodeCount.toLocaleString()}</strong>
           </StatItem>
           <StatItem>
             <span>Elements</span>
-            <strong>{viewConfig.elementCount ? viewConfig.elementCount.toLocaleString() : "8,450"}</strong>
+            <strong>{elementCount.toLocaleString()}</strong>
           </StatItem>
-          <StatItem>
-            <span>Element Type</span>
-            <strong style={{ color: "#38bdf8" }}>{viewConfig.elementType || "C3D10 (2nd-Order Tet)"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Young's Modulus</span>
-            <strong>{viewConfig.youngsModulusGpa ? `${viewConfig.youngsModulusGpa} GPa` : "210 GPa (Steel)"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Poisson's Ratio</span>
-            <strong>{viewConfig.poissonsRatio ?? 0.3}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Boundary Load</span>
-            <strong style={{ color: "#10b981" }}>{viewConfig.loadKn ? `${viewConfig.loadKn} kN` : "15.0 kN"}</strong>
-          </StatItem>
+          {elementType && (
+            <StatItem>
+              <span>Element Type</span>
+              <strong style={{ color: "#38bdf8" }}>{elementType}</strong>
+            </StatItem>
+          )}
+          {youngsModulusGpa !== undefined && (
+            <StatItem>
+              <span>Young's Modulus</span>
+              <strong>{youngsModulusGpa} GPa</strong>
+            </StatItem>
+          )}
+          {poissonsRatio !== undefined && (
+            <StatItem>
+              <span>Poisson's Ratio</span>
+              <strong>{poissonsRatio}</strong>
+            </StatItem>
+          )}
+          {loadKn !== undefined && (
+            <StatItem>
+              <span>Boundary Load</span>
+              <strong style={{ color: "#10b981" }}>{loadKn} kN</strong>
+            </StatItem>
+          )}
         </InspectorSidebar>
       </ContentArea>
     </CardWrapper>

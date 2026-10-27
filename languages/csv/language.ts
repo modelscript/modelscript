@@ -43,6 +43,7 @@ interface CsvMetadata {
 export const csvLanguage = language({
   name: "csv",
   fileExtensions: [".csv"],
+  maturity: "stable",
   lsp: {
     fileExtensions: [".csv"],
     icons: {

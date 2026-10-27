@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/opendrive",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "ASAM OpenDRIVE roadway network and autonomous vehicle simulation language package for ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",

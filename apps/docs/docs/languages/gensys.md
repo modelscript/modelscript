@@ -56,3 +56,7 @@ AI agents interacting via the ModelScript MCP server have access to:
 - `gensys_lint`: Validates body parameters, mass positivity, and suspension couplings.
 - `gensys_verify_en14363`: Assesses derailment quotient and lateral track shift limits.
 - `gensys_fastsim`: Computes rolling contact tangential creep forces and adhesion saturation.
+
+## Diagnostic Rules
+
+<LintRules lang="gensys" />

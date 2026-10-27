@@ -478,7 +478,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
   }
 
-  const studioLinks = [
+  const studioLinks: { to: string; icon: any; label: string; shortcut?: string }[] = [
     { to: "/playground", icon: PlayIcon, label: "Playground", shortcut: "g p" },
     { to: "/packages", icon: PackageIcon, label: "Packages", shortcut: "g k" },
     { to: "/repos", icon: RepoIcon, label: "Repositories", shortcut: "g r" },

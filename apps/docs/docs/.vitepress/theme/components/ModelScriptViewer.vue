@@ -17,7 +17,7 @@ const props = withDefaults(
     view: "diagram",
     height: "480px",
     isMultiFile: false,
-  }
+  },
 );
 
 const encodedPayload = computed(() => {

@@ -1,4 +1,7 @@
-# `@modelscript/exchange`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
+# @modelscript/exchange
 
 ModelScript Standards & Interoperability Engine — Functional Mock-up Interface (**FMI 2.0 & 3.0**) FMU export and import, System Structure and Parameterization (**SSP 1.0**) packaging, Master Co-Simulation Orchestrator (`CoSimMaster`) with adaptive step-size & Hardware-in-the-Loop (HIL) participants, ISO/PAS 81346 Digital Data Package (**PSI 21 `.ddp`**), Industry 4.0 Asset Administration Shell (**IDTA `.aasx`**), **DIN SPEC 3105 `okh`** Open Know-How lens engine, and high-speed binary telemetry readers (**ASAM MDF4 `.mf4`**, **ROS 2 MCAP `.mcap`**).
 

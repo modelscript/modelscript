@@ -111,7 +111,7 @@ Subdivides the horizon $[t_0, t_{\text{end}}]$ into $M$ subintervals with mesh p
 Transforms procedural CSG trees into boundary-tagged solid geometries:
 
 - Evaluates transformations (`translate`, `rotate`, `scale`, `mirror`) and regularized Boolean operators (`union`, `difference`, `intersection`).
-- Decorates faces with CFD boundary tags (`tagPatch`, `BoundaryPatchType`: `inlet`, `outlet`, `wall`, `symmetry`), enabling seamless handoff to automated SU2 mesh generators.
+- Decorates faces with CFD boundary tags (`tagPatch`, `BoundaryPatchType`: `inlet`, `outlet`, `wall`, `symmetry`), for handoff to automated SU2 mesh generators.
 
 ### 4. 3D Continuum Physics & B-Rep Meshing (`packages/simulate`)
 

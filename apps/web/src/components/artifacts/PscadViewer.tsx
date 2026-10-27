@@ -1,21 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CopyIcon, DownloadIcon, PlayIcon, ShieldCheckIcon, ZapIcon } from "@primer/octicons-react";
+import {
+  CheckIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
+  PlayIcon,
+  ShieldCheckIcon,
+  ZapIcon,
+} from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface PscadViewerProps {
   viewConfig: {
+    artifactId?: string | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
     projectTitle?: string | undefined;
     definitionName?: string | undefined;
+    timeStepUs?: number | undefined;
     netlist?:
       | {
           buses?: { id: string; name: string; kv?: number }[];
@@ -109,6 +121,34 @@ const PillBadge = styled.span<{ $variant?: "pscad" | "ieee" | "warning" }>`
   }}
 `;
 
+const SegmentedControl = styled.div`
+  display: inline-flex;
+  background: var(--color-canvas-inset, #010409);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+`;
+
+const SegmentBtn = styled.button<{ $active: boolean }>`
+  border: none;
+  background: ${(p) => (p.$active ? "var(--color-accent-emphasis, #1f6feb)" : "transparent")};
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted, #8b949e)")};
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+
+  &:hover {
+    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default, #e6edf3)")};
+  }
+`;
+
 const ContentArea = styled.div`
   flex: 1;
   display: flex;
@@ -133,6 +173,35 @@ const SvgCanvas = styled.div`
   }
 `;
 
+const CodePre = styled.pre`
+  flex: 1;
+  margin: 0;
+  padding: 14px 0;
+  overflow: auto;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-fg-default, #e6edf3);
+  background: var(--color-canvas-inset, #010409);
+`;
+
+const CodeLine = styled.div`
+  display: flex;
+  padding: 0 16px;
+  &:hover {
+    background: rgba(110, 118, 129, 0.08);
+  }
+`;
+
+const LineNo = styled.span`
+  width: 44px;
+  flex-shrink: 0;
+  color: var(--color-fg-subtle, #6e7681);
+  user-select: none;
+  text-align: right;
+  padding-right: 16px;
+`;
+
 const InspectorSidebar = styled.div`
   width: 260px;
   border-left: 1px solid var(--color-border-default, #30363d);
@@ -155,11 +224,28 @@ const StatItem = styled.div`
   }
 `;
 
+function parsePscadClient(code: string) {
+  const compMatches = Array.from(code.matchAll(/<User\b[^>]*name="([^"]+)"/gi));
+  const busMatches = Array.from(code.matchAll(/<Bus\b|<Wire\b/gi));
+  const xfrmrCount = compMatches.filter((m) => /xfmr|trans|tp3/i.test(m[1] || "")).length;
+  const ibrCount = compMatches.filter((m) => /ibr|inv|vsc|pv|bess|wind/i.test(m[1] || "")).length;
+  const dtMatch = code.match(/time_step\s*=\s*"?([0-9.eE+-]+)"?/i);
+  const timeStepUs = dtMatch?.[1] ? Number.parseFloat(dtMatch[1]) : undefined;
+  return {
+    componentCount: compMatches.length,
+    busCount: busMatches.length,
+    transformerCount: xfrmrCount,
+    ibrCount,
+    timeStepUs,
+  };
+}
+
 export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
 
   const title = viewConfig.title || viewConfig.projectTitle || viewConfig.definitionName || "PSCAD Case";
 
@@ -175,44 +261,26 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
-        .then((txt) => setRawText(txt))
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setRawText(txt);
+        })
         .catch((err) => console.warn("[PscadViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedClient = useMemo(() => (rawText ? parsePscadClient(rawText) : undefined), [rawText]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // Generate fallback vector graphic if SVG is missing
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 600 360" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="600" height="360" rx="8" fill="#090d16" stroke="#1f293d" stroke-width="1.5" />
-        <g stroke="#38bdf8" stroke-width="2" fill="none">
-          <line x1="80" y1="180" x2="220" y2="180" />
-          <line x1="220" y1="180" x2="260" y2="120" />
-          <line x1="260" y1="120" x2="380" y2="120" />
-          <line x1="380" y1="120" x2="420" y2="180" />
-          <line x1="420" y1="180" x2="520" y2="180" />
-          <line x1="220" y1="180" x2="260" y2="240" />
-          <line x1="260" y1="240" x2="380" y2="240" />
-          <line x1="380" y1="240" x2="420" y2="180" />
-        </g>
-        <circle cx="80" cy="180" r="14" fill="#0284c7" stroke="#38bdf8" stroke-width="2" />
-        <text x="80" y="184" fill="#ffffff" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">GEN</text>
-        <rect x="240" y="110" width="40" height="20" rx="3" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
-        <text x="260" y="124" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">XFRMR</text>
-        <rect x="240" y="230" width="40" height="20" rx="3" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
-        <text x="260" y="244" fill="#94a3b8" font-size="8" font-family="sans-serif" text-anchor="middle">IBR</text>
-        <circle cx="520" cy="180" r="14" fill="#047857" stroke="#34d399" stroke-width="2" />
-        <text x="520" y="184" fill="#ffffff" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">GRID</text>
-        <text x="300" y="45" fill="#f0f6fc" font-size="14" font-weight="bold" font-family="sans-serif" text-anchor="middle">${title}</text>
-        <text x="300" y="65" fill="#64748b" font-size="11" font-family="monospace" text-anchor="middle">EMT Circuit Schematic (PSCAD)</text>
-      </svg>
-    `);
-  }, [viewConfig.svg, title]);
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "pscad", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
   const handleCopy = () => {
     if (rawText) {
@@ -223,6 +291,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   };
 
   const handleExportSvg = () => {
+    if (!sanitizedSvg) return;
     const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -232,7 +301,25 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     URL.revokeObjectURL(url);
   };
 
+  const handleOpenInPlayground = () => {
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "pscad" as any,
+      code: rawText || `<!-- ${title} -->\n`,
+      title,
+    });
+    const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
+    navigate(`/playground${fromParam}#m=${hash}`);
+  };
+
   const netlist = viewConfig.netlist;
+  const busCount = netlist?.buses?.length ?? parsedClient?.busCount;
+  const componentCount = netlist?.components?.length ?? parsedClient?.componentCount;
+  const ibrCount =
+    netlist?.components?.filter((c) => /inverter|ibr|vsc/i.test(c.definition)).length ?? parsedClient?.ibrCount;
+  const transformerCount = netlist?.transformers?.length ?? parsedClient?.transformerCount;
+  const timeStepUs = viewConfig.timeStepUs ?? parsedClient?.timeStepUs;
+  const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -241,28 +328,34 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           <ZapIcon size={16} fill="#38bdf8" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge $variant="pscad">PSCAD / EMT</PillBadge>
-          {viewConfig.ieee2800Compliant !== false && (
+          {viewConfig.ieee2800Compliant === true && (
             <PillBadge $variant="ieee">
               <ShieldCheckIcon size={12} /> IEEE 2800 Verified
             </PillBadge>
           )}
         </HeaderLeft>
         <Box display="flex" alignItems="center" gap={2}>
-          <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
-            SVG
-          </Button>
+          <SegmentedControl>
+            <SegmentBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
+              <ZapIcon size={12} /> Schematic
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Source
+            </SegmentBtn>
+          </SegmentedControl>
+          {sanitizedSvg && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
+              SVG
+            </Button>
+          )}
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => {
-              navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`);
-            }}
-          >
-            Open in Studio
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -271,41 +364,51 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
+        ) : viewMode === "code" || !sanitizedSvg ? (
+          <CodePre>
+            {lines.length > 0 ? (
+              lines.map((line, idx) => (
+                <CodeLine key={idx}>
+                  <LineNo>{idx + 1}</LineNo>
+                  <span>{highlightPolyglotLine(line, "pscad")}</span>
+                </CodeLine>
+              ))
+            ) : (
+              <Box p={4} color="fg.muted">
+                No PSCAD XML source loaded.
+              </Box>
+            )}
+          </CodePre>
         ) : (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Circuit Telemetry
           </Text>
+          {timeStepUs !== undefined && !Number.isNaN(timeStepUs) && (
+            <StatItem>
+              <span>Time-Step (Δt)</span>
+              <strong>{timeStepUs} µs</strong>
+            </StatItem>
+          )}
           <StatItem>
-            <span>Topology Type</span>
-            <strong>Three-Phase EMT</strong>
+            <span>Components</span>
+            <strong>{componentCount ?? "—"}</strong>
           </StatItem>
           <StatItem>
-            <span>Time-Step (Δt)</span>
-            <strong>50.0 µs</strong>
+            <span>Buses / Wires</span>
+            <strong>{busCount ?? "—"}</strong>
           </StatItem>
           <StatItem>
-            <span>Buses</span>
-            <strong>{netlist?.buses?.length ?? "Auto (Multi-Bus)"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>IBR Inverters</span>
-            <strong>
-              {netlist?.components?.filter((c) => c.definition.toLowerCase().includes("inverter")).length || 1}
-            </strong>
+            <span>IBR / Converters</span>
+            <strong>{ibrCount ?? "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Transformers</span>
-            <strong>{netlist?.transformers?.length ?? 2}</strong>
+            <strong>{transformerCount ?? "—"}</strong>
           </StatItem>
-          <Box pt={2} borderTop="1px solid var(--color-border-default)">
-            <Text fontSize="11px" color="var(--color-fg-muted)">
-              Conforms to IEEE 2800-2022 ride-through and fast frequency response benchmarks.
-            </Text>
-          </Box>
         </InspectorSidebar>
       </ContentArea>
     </CardWrapper>

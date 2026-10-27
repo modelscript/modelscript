@@ -34,6 +34,7 @@ export interface DigitalThreadTwin {
     targetUnit: string;
     message: string;
     factor?: number | undefined;
+    deviationPercent?: number | undefined;
   };
   cadViewerConfig?:
     | {
@@ -178,7 +179,7 @@ export function computeDigitalThreadMetrics(twins: DigitalThreadTwin[]): Digital
 
 export function extractDigitalThreadTwins(
   packageName: string,
-  packageVersion: string,
+  _packageVersion: string,
   classes?: ClassSummary[],
   rootClass?: ClassDetail | null,
   artifactViewers?: ArtifactViewerInfo[],

@@ -17,6 +17,7 @@ import { energyPlusToModelica } from "./projections/energyplus-to-modelica.js";
 export const energyplusLanguage = language({
   name: "energyplus",
   fileExtensions: [".idf", ".epjson"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".idf", ".epjson"],
   },

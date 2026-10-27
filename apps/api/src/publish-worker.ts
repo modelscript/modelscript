@@ -27,11 +27,13 @@ import type { ClassMetadata } from "./database.js";
 import { LibraryDatabase } from "./database.js";
 import { LibraryStorage } from "./storage.js";
 import { convertStepBufferToJson } from "./util/cad-converter.js";
-import {
-  extractModelicaComponentsFromSource,
-  extractSysmlComponentsFromSource,
-} from "./util/class-source-inspector.js";
+import { extractModelicaComponentsFromSource } from "./util/class-source-inspector.js";
 import { exportLspBundle } from "./util/lsp-bundle-exporter.js";
+import {
+  indexRemainingPolyglotFiles,
+  indexSysmlFiles,
+  renderPolyglotClassDiagramSvg,
+} from "./util/polyglot-doc-indexer.js";
 import { exportSalsaIndex } from "./util/salsa-index-exporter.js";
 import { processLibrary } from "./util/svg-renderer.js";
 
@@ -290,54 +292,22 @@ process.on(
         }
         unifiedWs.registerWorkspace("sysml2", sysmlWs);
 
-        const sysmlIndex = sysmlWs.toUnified();
-        for (const entry of sysmlIndex.symbols.values()) {
-          if (entry.resourceId && !entry.resourceId.startsWith("sysml2://stdlib/")) {
-            if (entry.parentId === null || entry.parentId === 0) {
-              if (!processedClassNames.has(entry.name)) {
-                const childIds = sysmlIndex.childrenOf.get(entry.id) || [];
-                const sysmlComps = childIds
-                  .map((cid) => sysmlIndex.symbols.get(cid))
-                  .filter((c): c is NonNullable<typeof c> => Boolean(c && c.name))
-                  .map((c) => ({
-                    name: c.name,
-                    typeName:
-                      (c.metadata?.["typeSpecifier"] as string) ||
-                      (c.metadata?.["type"] as string) ||
-                      c.inherits?.[0] ||
-                      c.kind,
-                    description: (c.metadata?.["description"] as string) || null,
-                    causality: c.kind.toLowerCase().includes("port") ? "connector" : null,
-                    variability: c.kind.toLowerCase().includes("attribute") ? "parameter" : null,
-                    modifiers: [],
-                  }));
-                const fileText = sysmlTextByUri.get(entry.resourceId) || "";
-                const fallbackComps =
-                  sysmlComps.length > 0
-                    ? sysmlComps
-                    : extractSysmlComponentsFromSource(fileText).map((c) => ({
-                        name: c.component_name,
-                        typeName: c.type_name,
-                        description: c.description,
-                        causality: c.causality,
-                        variability: c.variability,
-                        modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
-                      }));
-                const docCommentMatch = fileText.match(/doc\s*\/\*\s*([\s\S]*?)\s*\*\//);
-                const docText = docCommentMatch?.[1]?.trim() || null;
-
-                metadataBatch.push({
-                  className: entry.name,
-                  classKind: entry.kind.toLowerCase(),
-                  description:
-                    (entry.metadata?.["description"] as string) || docText || `SysML v2 ${entry.kind}: ${entry.name}`,
-                  documentation: docText ? `<p>${docText}</p>` : null,
-                  baseClasses: entry.inherits || [],
-                  components: fallbackComps,
-                });
-                processedClassNames.add(entry.name);
-              }
+        const sysmlIndexed = await indexSysmlFiles({
+          extractedDir: libraryPath,
+          packageName: name,
+          version,
+        });
+        for (const item of sysmlIndexed) {
+          if (!processedClassNames.has(item.metadata.className)) {
+            if (item.metadata.className === name) {
+              rootMetadata = item.metadata;
             }
+            storage.storeSvg(name, version, item.metadata.className, item.iconSvg, item.diagramSvg);
+            if (item.iconSvg) {
+              iconSvgs[item.metadata.className] = item.iconSvg;
+            }
+            metadataBatch.push(item.metadata);
+            processedClassNames.add(item.metadata.className);
           }
         }
       }
@@ -384,17 +354,36 @@ process.on(
                   variability: null,
                   modifiers: [],
                 }));
-              metadataBatch.push({
+              const stepMeta: ClassMetadata = {
                 className: entry.name,
                 classKind: "cad-assembly",
                 description: `STEP CAD assembly: ${entry.name}`,
-                documentation: null,
+                documentation: `<p>ISO 10303 STEP CAD assembly <code>${entry.name}</code> with ${stepComps.length} structural B-Rep components.</p>`,
                 baseClasses: [],
                 components: stepComps,
-              });
+              };
+              const { iconSvg, diagramSvg } = renderPolyglotClassDiagramSvg(stepMeta, "STEP ISO 10303", "#0f766e");
+              storage.storeSvg(name, version, stepMeta.className, iconSvg, diagramSvg);
+              if (iconSvg) iconSvgs[stepMeta.className] = iconSvg;
+              metadataBatch.push(stepMeta);
               processedClassNames.add(entry.name);
             }
           }
+        }
+      }
+
+      // 3b. Process remaining 41 polyglot engineering languages (PSCAD, SSP, SPICE, OpenSCAD, URDF, SBML, ReqIF, AUTOSAR, PLCopen, Verilog-A, Simulink, C, Fortran, OWL2, CFD, FEA, PSS/E, OpenDSS, etc.)
+      const polyglotItems = indexRemainingPolyglotFiles({
+        extractedDir: libraryPath,
+        packageName: name,
+        version,
+      });
+      for (const item of polyglotItems) {
+        if (!processedClassNames.has(item.metadata.className)) {
+          storage.storeSvg(name, version, item.metadata.className, item.iconSvg, item.diagramSvg);
+          if (item.iconSvg) iconSvgs[item.metadata.className] = item.iconSvg;
+          metadataBatch.push(item.metadata);
+          processedClassNames.add(item.metadata.className);
         }
       }
 
@@ -497,6 +486,29 @@ process.on(
           rootMetadata = { description: "", documentation: readmeText };
         } else if (!rootMetadata.documentation) {
           rootMetadata.documentation = readmeText;
+        }
+      }
+
+      if (!rootMetadata?.documentation) {
+        const indexedClasses = database.getClasses(name, version);
+        if (indexedClasses.length > 0) {
+          const topClasses = indexedClasses.filter((c) => !c.class_name.includes(".")).slice(0, 40);
+          const summaryLines = [
+            `# ${name} (\`v${version}\`)`,
+            "",
+            rootMetadata?.description ||
+              `Engineering artifact package containing ${indexedClasses.length} indexed symbols.`,
+            "",
+            "## Indexed Modules & Definitions",
+            "",
+            ...(topClasses.length > 0 ? topClasses : indexedClasses.slice(0, 40)).map(
+              (c) => `- **\`${c.class_name}\`** (_${c.class_kind}_)${c.description ? ` — ${c.description}` : ""}`,
+            ),
+          ];
+          rootMetadata = {
+            description: rootMetadata?.description || `Engineering artifact package (${indexedClasses.length} symbols)`,
+            documentation: summaryLines.join("\n"),
+          };
         }
       }
 

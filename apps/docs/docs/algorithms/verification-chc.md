@@ -87,7 +87,7 @@ $$\mathcal{L} B(x) = \nabla B(x) \cdot f(x) + \frac{1}{2} \text{tr}\!\left(\sigm
 
 Large-scale systems engineering ontologies (`languages/owl2/` and SysML v2 KerML specialization hierarchies) contain $10^5$ to $10^7$ ABox/TBox assertions. Evaluating transitive role closures (`subClassOf`, `partOf`, `satisfies`) and SHACL numeric property constraints sequentially on the CPU becomes a bottleneck during workspace-wide verification.
 
-`WebGPUOntologyReasoner` (`packages/runtime/src/gpu/webgpu_reasoner.ts`) implements a massively parallel GPU relational join and saturation co-processor with seamless CPU SIMD bitset fallback:
+`WebGPUOntologyReasoner` (`packages/runtime/src/gpu/webgpu_reasoner.ts`) implements a massively parallel GPU relational join and saturation co-processor with a CPU SIMD bitset fallback:
 
 - **Bit-Packed Adjacency Matrix (`BitsetGraph`)**: Encodes an $N \times N$ directed graph as a flat `Uint32Array` where each node row $u$ occupies $\lceil N / 32 \rceil$ 32-bit words, achieving $32\times$ memory compression and single-instruction bitwise row unions.
 - **Parallel Logarithmic Doubling in WGSL (`TRANSITIVE_CLOSURE_WGSL`)**: Dispatches compute workgroups (`workgroups = ceil(N / 64)`) over ping-pong storage buffers (`bufIn`, `bufOut`) for $\lceil \log_2 N \rceil + 1$ doubling rounds, computing the full reflexive-transitive closure $R^*$ in $\mathcal{O}(\log N)$ GPU passes.

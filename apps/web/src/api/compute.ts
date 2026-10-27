@@ -127,6 +127,8 @@ export interface CloudSimulationRequest {
   libraryVersion?: string | undefined;
   dependencies?: { name: string; version: string }[] | undefined;
   profile?: string | undefined;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
   numberOfIntervals?: number | undefined;
 }
 
@@ -206,6 +208,86 @@ export interface UnifiedJob {
   hasCsv?: boolean | undefined;
 }
 
+export interface ComputeJobStep {
+  id: number;
+  name: string;
+  status: string;
+}
+
+export interface ComputeJob {
+  id: string | number;
+  jobId?: string | undefined;
+  name: string;
+  status: string;
+  type?: string | undefined;
+  domain?: string | undefined;
+  solver?: string | undefined;
+  profile?: string | undefined;
+  started_at?: string | undefined;
+  startedAt?: string | number | undefined;
+  completed_at?: string | null | undefined;
+  completedAt?: string | number | null | undefined;
+  elapsedSeconds?: number | undefined;
+  costCredits?: number | undefined;
+  usage?: Record<string, any> | undefined;
+  error?: string | undefined;
+  hasResult?: boolean | undefined;
+  resultPath?: string | undefined;
+  metadata?: string | Record<string, any> | undefined;
+  steps?: ComputeJobStep[] | undefined;
+  job?: ComputeJob | undefined;
+}
+
+function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
+  const raw = data?.job && typeof data.job === "object" ? data.job : data || {};
+  const steps: ComputeJobStep[] = Array.isArray(data?.steps) ? data.steps : Array.isArray(raw?.steps) ? raw.steps : [];
+
+  const resolvedId = raw.id ?? raw.jobId ?? fallbackId;
+  const startedIso =
+    raw.started_at ??
+    raw.createdAt ??
+    (typeof raw.startTime === "number"
+      ? new Date(raw.startTime).toISOString()
+      : typeof raw.startedAt === "string"
+        ? raw.startedAt
+        : undefined);
+  const completedIso =
+    raw.completed_at ??
+    raw.completedAt ??
+    (typeof raw.endTime === "number" ? new Date(raw.endTime).toISOString() : null);
+
+  const baseJob: ComputeJob = {
+    id: resolvedId,
+    jobId: String(raw.jobId ?? resolvedId),
+    name: raw.name || `Job #${String(resolvedId)}`,
+    status: String(raw.status || "queued"),
+    type:
+      raw.type ||
+      (raw.domain ? String(raw.domain).toUpperCase() : raw.solver ? String(raw.solver).toUpperCase() : "SIMULATION"),
+    domain: raw.domain || (raw.solver === "su2" ? "cfd" : raw.solver === "calculix" ? "fea" : "simulation"),
+    solver: raw.solver,
+    profile: raw.profile || raw.compute_profile || raw.computeProfile || "standard",
+    started_at: startedIso,
+    startedAt: raw.startedAt ?? raw.startTime ?? startedIso,
+    completed_at: completedIso,
+    completedAt: raw.completedAt ?? raw.endTime ?? completedIso,
+    elapsedSeconds: raw.elapsedSeconds,
+    costCredits: raw.costCredits ?? raw.cost_credits ?? raw.usage?.costCredits,
+    usage: raw.usage,
+    error: raw.error,
+    hasResult: raw.hasResult ?? Boolean(raw.resultPath),
+    resultPath: raw.resultPath,
+    metadata: raw.metadata,
+    steps,
+  };
+
+  return {
+    ...baseJob,
+    job: baseJob,
+    steps,
+  };
+}
+
 export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
   const jobs: UnifiedJob[] = [];
 
@@ -213,9 +295,11 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
     const cloudRes = await api.get<{ jobs: any[] }>("/cloud/jobs");
     if (cloudRes.data?.jobs && Array.isArray(cloudRes.data.jobs)) {
       for (const j of cloudRes.data.jobs) {
+        const rawCloudId = String(j.jobId ?? j.id ?? "");
+        const prefixedId = rawCloudId.startsWith("cloud-") ? rawCloudId : `cloud-${rawCloudId}`;
         jobs.push({
-          id: j.jobId,
-          name: j.name || `Job #${String(j.jobId).slice(0, 8)}`,
+          id: prefixedId,
+          name: j.name || `Job #${rawCloudId.slice(0, 8)}`,
           domain: j.domain || "modelica",
           profile: j.profile || "standard",
           status: j.status,
@@ -232,9 +316,11 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
     const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit } });
     if (caeRes.data?.jobs && Array.isArray(caeRes.data.jobs)) {
       for (const j of caeRes.data.jobs) {
-        if (!jobs.some((existing) => String(existing.id) === String(j.id))) {
+        const rawCaeId = String(j.id ?? "");
+        const prefixedId = rawCaeId.startsWith("cae-") ? rawCaeId : `cae-${rawCaeId}`;
+        if (!jobs.some((existing) => String(existing.id) === prefixedId || String(existing.id) === rawCaeId)) {
           jobs.push({
-            id: j.id,
+            id: prefixedId,
             name: j.name,
             domain: j.solver === "su2" ? "cfd" : j.solver === "calculix" ? "fea" : "simulation",
             profile: j.computeProfile || "standard",
@@ -266,14 +352,117 @@ export const getJobTemplates = async (): Promise<{ templates: any[] }> => {
   return data;
 };
 
+export const getJob = async (id: string | number): Promise<ComputeJob> => {
+  const strId = String(id);
+  if (strId.startsWith("cloud-")) {
+    const rawId = strId.slice("cloud-".length);
+    try {
+      const { data } = await api.get(`/cloud/jobs/${rawId}`);
+      return mapToComputeJob(data, rawId);
+    } catch {
+      const { data } = await api.get(`/jobs/${rawId}`);
+      return mapToComputeJob(data, rawId);
+    }
+  }
+  if (strId.startsWith("cae-")) {
+    const rawId = strId.slice("cae-".length);
+    try {
+      const { data } = await api.get(`/cae/jobs/${rawId}`);
+      return mapToComputeJob(data, rawId);
+    } catch {
+      const { data } = await api.get(`/jobs/${rawId}`);
+      return mapToComputeJob(data, rawId);
+    }
+  }
+  const { data } = await api.get(`/jobs/${strId}`);
+  return mapToComputeJob(data, strId);
+};
+
+export const getJobDetails = getJob;
+
 export const getJobLogs = async (id: string | number): Promise<any> => {
-  const { data } = await api.get(`/jobs/${id}/logs`);
+  const strId = String(id);
+  if (strId.startsWith("cloud-")) {
+    const rawId = strId.slice("cloud-".length);
+    try {
+      const { data } = await api.get(`/cloud/jobs/${rawId}/logs`);
+      return Array.isArray(data?.logs) ? data.logs.join("\n") : data;
+    } catch {
+      const { data } = await api.get(`/jobs/${rawId}/logs`);
+      return data;
+    }
+  }
+  if (strId.startsWith("cae-")) {
+    const rawId = strId.slice("cae-".length);
+    try {
+      const { data } = await api.get(`/cae/jobs/${rawId}/logs`);
+      return Array.isArray(data?.logs) ? data.logs.join("\n") : data;
+    } catch {
+      const { data } = await api.get(`/jobs/${rawId}/logs`);
+      return data;
+    }
+  }
+  const { data } = await api.get(`/jobs/${strId}/logs`);
   return data;
 };
 
-export const getJobDetails = async (id: string | number): Promise<{ job: any; steps?: any[] | undefined }> => {
-  const { data } = await api.get(`/jobs/${id}`);
+export const cancelJob = async (id: string | number): Promise<any> => {
+  const strId = String(id);
+  if (strId.startsWith("cloud-")) {
+    const rawId = strId.slice("cloud-".length);
+    try {
+      const { data } = await api.post(`/cloud/jobs/${rawId}/cancel`);
+      return data;
+    } catch {
+      const { data } = await api.post(`/jobs/${rawId}/cancel`);
+      return data;
+    }
+  }
+  if (strId.startsWith("cae-")) {
+    const rawId = strId.slice("cae-".length);
+    try {
+      const { data } = await api.post(`/cae/jobs/${rawId}/cancel`);
+      return data;
+    } catch {
+      try {
+        const { data } = await api.delete(`/cae/jobs/${rawId}`);
+        return data;
+      } catch {
+        const { data } = await api.post(`/jobs/${rawId}/cancel`);
+        return data;
+      }
+    }
+  }
+  const { data } = await api.post(`/jobs/${strId}/cancel`);
   return data;
+};
+
+export const cancelDbJob = cancelJob;
+
+export const retryJob = async (id: string | number): Promise<ComputeJob> => {
+  const strId = String(id);
+  if (strId.startsWith("cloud-")) {
+    const rawId = strId.slice("cloud-".length);
+    try {
+      const { data } = await api.post(`/cloud/jobs/${rawId}/retry`);
+      return mapToComputeJob(data, rawId);
+    } catch {
+      const { data } = await api.post(`/jobs/${rawId}/retry`);
+      return mapToComputeJob(data, rawId);
+    }
+  }
+  if (strId.startsWith("cae-")) {
+    const rawId = strId.slice("cae-".length);
+    try {
+      const { data } = await api.post(`/cae/jobs/${rawId}/retry`);
+      return mapToComputeJob(data, rawId);
+    } catch {
+      const { data } = await api.post(`/jobs/${rawId}/retry`);
+      return mapToComputeJob(data, rawId);
+    }
+  }
+  const { data } = await api.post(`/jobs/${strId}/retry`);
+  return mapToComputeJob(data, strId);
 };
 
 export const getJobTemplate = async (id: string | number): Promise<any> => {
@@ -283,11 +472,6 @@ export const getJobTemplate = async (id: string | number): Promise<any> => {
 
 export const runJobTemplate = async (id: string | number, payload?: any): Promise<any> => {
   const { data } = await api.post(`/jobs/templates/${id}/run`, payload || {});
-  return data;
-};
-
-export const cancelDbJob = async (id: string | number): Promise<any> => {
-  const { data } = await api.post(`/jobs/${id}/cancel`);
   return data;
 };
 

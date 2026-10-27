@@ -8,6 +8,7 @@ import { choice, language, repeat, seq } from "@modelscript/dsl";
 export const autosarLanguage = language({
   name: "autosar",
   fileExtensions: [".arxml"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".arxml"],
   },

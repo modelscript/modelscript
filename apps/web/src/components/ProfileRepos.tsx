@@ -130,10 +130,10 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
               </Text>
               <Box display="flex" gap={3} color="var(--color-fg-muted)" fontSize={0}>
                 <Box display="flex" alignItems="center" gap={1}>
-                  <StarIcon /> 0
+                  <StarIcon /> {repo.stars_count ?? (repo as any).stargazers_count ?? 0}
                 </Box>
                 <Box display="flex" alignItems="center" gap={1}>
-                  <RepoForkedIcon /> 0
+                  <RepoForkedIcon /> {repo.forks_count ?? 0}
                 </Box>
               </Box>
             </Box>

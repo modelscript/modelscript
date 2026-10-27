@@ -72,22 +72,9 @@ Automates invocation of local Emerson PipelineStudio CLI engines (`tgnet.exe` / 
 
 ---
 
-## Pre-Flight Pipeline Diagnostic Linter (`M8001`–`M8012`)
+## Pre-Flight Pipeline Diagnostic Linter
 
-| Code    | Rule                          | Severity  | Description                                                                            |
-| :------ | :---------------------------- | :-------- | :------------------------------------------------------------------------------------- |
-| `M8001` | `maop-exceeded`               | `error`   | Steady or transient pressure exceeds Maximum Allowable Operating Pressure.             |
-| `M8002` | `compressor-surge-hazard`     | `warning` | Operating point is below compressor surge limit or exceeds maximum pressure ratio.     |
-| `M8003` | `compressor-stonewall-limit`  | `warning` | Throughput flow rate exceeds maximum compressor choke/stonewall capacity.              |
-| `M8004` | `unconnected-pipeline-node`   | `error`   | Topological node has no connecting links or active boundary conditions.                |
-| `M8005` | `delivery-pressure-deficit`   | `error`   | Delivery node is hydraulically unreachable from any supply or storage cavern.          |
-| `M8006` | `erosional-velocity-hazard`   | `warning` | Gas velocity exceeds API RP 14E erosional guideline ($v > 20 \text{ m/s}$).            |
-| `M8007` | `liquid-column-separation`    | `error`   | Pressure drops below liquid vapor pressure, risking cavitation & water hammer surge.   |
-| `M8008` | `hydrogen-embrittlement-risk` | `warning` | Hydrogen blend fraction exceeds 10% on steel without fracture toughness verification.  |
-| `M8009` | `batch-transmix-excess`       | `warning` | Liquid batch volume is below minimum threshold or excessive interface transmix volume. |
-| `M8010` | `joule-thomson-freezing`      | `warning` | Pressure drop across regulator exceeds 25 bar without preheater, risking ice/hydrates. |
-| `M8011` | `pump-npsh-deficit`           | `error`   | Available Net Positive Suction Head is below required NPSH ($NPSHA < NPSHR$).          |
-| `M8012` | `line-pack-depletion-risk`    | `warning` | Continuous delivery demand exceeds supply; line pack storage buffer will deplete.      |
+<LintRules lang="lps" />
 
 ---
 

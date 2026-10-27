@@ -1,15 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertIcon, CheckCircleIcon, PlayIcon, PulseIcon } from "@primer/octicons-react";
+import {
+  AlertIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
+  PlayIcon,
+  PulseIcon,
+} from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface OlgaFlowViewerProps {
   viewConfig: {
+    artifactId?: string | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
@@ -103,6 +115,34 @@ const PillBadge = styled.span<{ $variant?: "olga" | "slug-low" | "slug-warn" }>`
   }}
 `;
 
+const SegmentedControl = styled.div`
+  display: inline-flex;
+  background: var(--color-canvas-inset, #010409);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+`;
+
+const SegmentBtn = styled.button<{ $active: boolean }>`
+  border: none;
+  background: ${(p) => (p.$active ? "var(--color-accent-emphasis, #1f6feb)" : "transparent")};
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted, #8b949e)")};
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+
+  &:hover {
+    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default, #e6edf3)")};
+  }
+`;
+
 const ContentArea = styled.div`
   flex: 1;
   display: flex;
@@ -124,6 +164,35 @@ const SvgCanvas = styled.div`
     max-height: 100%;
     height: auto;
   }
+`;
+
+const CodePre = styled.pre`
+  flex: 1;
+  margin: 0;
+  padding: 14px 0;
+  overflow: auto;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-fg-default, #e6edf3);
+  background: var(--color-canvas-inset, #010409);
+`;
+
+const CodeLine = styled.div`
+  display: flex;
+  padding: 0 16px;
+  &:hover {
+    background: rgba(110, 118, 129, 0.08);
+  }
+`;
+
+const LineNo = styled.span`
+  width: 44px;
+  flex-shrink: 0;
+  color: var(--color-fg-subtle, #6e7681);
+  user-select: none;
+  text-align: right;
+  padding-right: 16px;
 `;
 
 const InspectorSidebar = styled.div`
@@ -148,10 +217,38 @@ const StatItem = styled.div`
   }
 `;
 
+function parseOlgaClient(code: string) {
+  let totalLengthM = 0;
+  for (const m of code.matchAll(/LENGTH\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/gi)) {
+    const val = Number.parseFloat(m[1] || "0");
+    const unit = (m[2] || "m").toLowerCase();
+    if (!Number.isNaN(val)) {
+      totalLengthM += unit === "km" ? val * 1000 : val;
+    }
+  }
+  const diaMatch = code.match(/DIAMETER\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
+  let diameterInches: number | undefined;
+  if (diaMatch?.[1]) {
+    const d = Number.parseFloat(diaMatch[1]);
+    const u = (diaMatch[2] || "m").toLowerCase();
+    if (!Number.isNaN(d)) {
+      diameterInches = u.startsWith("in") ? d : Number((d * 39.3701).toFixed(1));
+    }
+  }
+  const pipeCount = Array.from(code.matchAll(/\bPIPE\b|\bBRANCH\b/gi)).length;
+  return {
+    lengthKm: totalLengthM > 0 ? Number((totalLengthM / 1000).toFixed(2)) : undefined,
+    diameterInches,
+    pipeCount: pipeCount > 0 ? pipeCount : undefined,
+  };
+}
+
 export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || viewConfig.pipelineName || "OLGA Flow Assurance (.opi)";
 
   useEffect(() => {
@@ -166,63 +263,61 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
-        .then((txt) => setRawText(txt))
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setRawText(txt);
+        })
         .catch((err) => console.warn("[OlgaFlowViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedClient = useMemo(() => (rawText ? parseOlgaClient(rawText) : undefined), [rawText]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean seabed elevation profile with sea water line and slugging risk
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 700 360" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="700" height="360" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Water Line -->
-        <line x1="50" y1="80" x2="650" y2="80" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="8 4" opacity="0.6" />
-        <text x="60" y="74" fill="#38bdf8" font-size="10" font-family="sans-serif">Sea Level (0m)</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "olga", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-        <!-- Pipeline Terrain / Seabed Profile -->
-        <path d="M 60 110 L 140 180 L 260 250 L 380 220 L 500 280 L 580 160 L 640 120"
-              fill="none" stroke="#f472b6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  const handleCopy = () => {
+    if (rawText) {
+      navigator.clipboard.writeText(rawText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-        <!-- Liquid Holdup Gradient fill under pipeline -->
-        <path d="M 60 110 L 140 180 L 260 250 L 380 220 L 500 280 L 580 160 L 640 120 L 640 320 L 60 320 Z"
-              fill="url(#seabedGrad)" opacity="0.15" />
+  const handleExportSvg = () => {
+    if (!sanitizedSvg) return;
+    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-olga.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
-        <defs>
-          <linearGradient id="seabedGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#f472b6" />
-            <stop offset="100%" stop-color="#0284c7" />
-          </linearGradient>
-        </defs>
+  const handleOpenInPlayground = () => {
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "olga" as any,
+      code: rawText,
+      title,
+    });
+    const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
+    navigate(`/playground${fromParam}#m=${hash}`);
+  };
 
-        <!-- Elevation Markers -->
-        <circle cx="60" cy="110" r="6" fill="#38bdf8" />
-        <text x="60" y="135" fill="#94a3b8" font-size="10" font-family="sans-serif" text-anchor="middle">Platform (-40m)</text>
-
-        <circle cx="260" cy="250" r="6" fill="#f43f5e" />
-        <text x="260" y="275" fill="#fda4af" font-size="10" font-family="sans-serif" text-anchor="middle">Low Point (-320m)</text>
-        <text x="260" y="290" fill="#f43f5e" font-size="9" font-family="sans-serif" text-anchor="middle">Liquid Holdup: 72%</text>
-
-        <circle cx="500" cy="280" r="6" fill="#fbbf24" />
-        <text x="500" y="305" fill="#fde68a" font-size="10" font-family="sans-serif" text-anchor="middle">Riser Base (-360m)</text>
-
-        <circle cx="640" cy="120" r="6" fill="#34d399" />
-        <text x="640" y="145" fill="#a7f3d0" font-size="10" font-family="sans-serif" text-anchor="middle">FPSO Riser</text>
-
-        <!-- Axis Labels -->
-        <line x1="50" y1="320" x2="650" y2="320" stroke="#334155" stroke-width="1.5" />
-        <text x="350" y="345" fill="#64748b" font-size="11" font-family="monospace" text-anchor="middle">Pipeline Chainage (0 - 42.5 km)</text>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
-
-  const slugRisk = viewConfig.slugRisk || "low";
+  const slugRisk = viewConfig.slugRisk;
+  const lengthKm = viewConfig.lengthKm ?? parsedClient?.lengthKm;
+  const diameterInches = viewConfig.diameterInches ?? parsedClient?.diameterInches;
+  const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -231,20 +326,36 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           <PulseIcon size={16} fill="#f472b6" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>OLGA Multiphase</PillBadge>
-          <PillBadge $variant={slugRisk === "low" ? "slug-low" : "slug-warn"}>
-            {slugRisk === "low" ? <CheckCircleIcon size={12} /> : <AlertIcon size={12} />}
-            Slugging Risk: {slugRisk.toUpperCase()}
-          </PillBadge>
+          {slugRisk && (
+            <PillBadge $variant={slugRisk === "low" ? "slug-low" : "slug-warn"}>
+              {slugRisk === "low" ? <CheckCircleIcon size={12} /> : <AlertIcon size={12} />}
+              Slugging Risk: {slugRisk.toUpperCase()}
+            </PillBadge>
+          )}
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Flow Editor
+        <Box display="flex" alignItems="center" gap={2}>
+          <SegmentedControl>
+            <SegmentBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
+              <PulseIcon size={12} /> Profile
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Input Deck
+            </SegmentBtn>
+          </SegmentedControl>
+          {sanitizedSvg && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
+              SVG
+            </Button>
+          )}
+          <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+            {copied ? "Copied" : "Copy"}
           </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -253,35 +364,52 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
+        ) : viewMode === "code" || !sanitizedSvg ? (
+          <CodePre>
+            {lines.length > 0 ? (
+              lines.map((line, idx) => (
+                <CodeLine key={idx}>
+                  <LineNo>{idx + 1}</LineNo>
+                  <span>{highlightPolyglotLine(line, "olga")}</span>
+                </CodeLine>
+              ))
+            ) : (
+              <Box p={4} color="fg.muted">
+                No OLGA input deck loaded.
+              </Box>
+            )}
+          </CodePre>
         ) : (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Flow Assurance Telemetry
           </Text>
           <StatItem>
             <span>Total Length</span>
-            <strong>{viewConfig.lengthKm ? `${viewConfig.lengthKm} km` : "42.5 km"}</strong>
+            <strong>{lengthKm !== undefined ? `${lengthKm} km` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Nominal Diameter</span>
-            <strong>{viewConfig.diameterInches ? `${viewConfig.diameterInches}"` : '16"'}</strong>
+            <strong>{diameterInches !== undefined ? `${diameterInches}"` : "—"}</strong>
           </StatItem>
+          {parsedClient?.pipeCount !== undefined && (
+            <StatItem>
+              <span>Pipes / Branches</span>
+              <strong>{parsedClient.pipeCount}</strong>
+            </StatItem>
+          )}
           <StatItem>
             <span>Pressure Drop (ΔP)</span>
-            <strong>{viewConfig.pressureDropBar ? `${viewConfig.pressureDropBar} bar` : "18.4 bar"}</strong>
+            <strong>{viewConfig.pressureDropBar !== undefined ? `${viewConfig.pressureDropBar} bar` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Avg Liquid Holdup</span>
             <strong>
-              {viewConfig.liquidHoldupAvg ? `${(viewConfig.liquidHoldupAvg * 100).toFixed(1)}%` : "34.2%"}
+              {viewConfig.liquidHoldupAvg !== undefined ? `${(viewConfig.liquidHoldupAvg * 100).toFixed(1)}%` : "—"}
             </strong>
-          </StatItem>
-          <StatItem>
-            <span>Flow Regime</span>
-            <strong style={{ color: "#38bdf8" }}>Stratified Wavy</strong>
           </StatItem>
         </InspectorSidebar>
       </ContentArea>

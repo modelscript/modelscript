@@ -38,24 +38,30 @@
 
 The Fortran analyzer surfaces modernization issues and common numeric defects:
 
-| Rule Identifier           | Severity  | Condition Checked                                                                                 |
-| :------------------------ | :-------- | :------------------------------------------------------------------------------------------------ |
-| `implicit-none-missing`   | `warning` | Program unit lacks `IMPLICIT NONE`, risking unintended variable type coercion (I-N integer rule). |
-| `subroutine-arg-mismatch` | `error`   | Subroutine or function call provides an argument count or type incompatible with the declaration. |
-| `array-bounds-exceeded`   | `error`   | Literal or constant array index subscript exceeds declared dimension bounds.                      |
-| `obsolete-control-flow`   | `warning` | Computed `GOTO` or arithmetic `IF` statement detected; recommends structured modernization.       |
+<LintRules lang="fortran" />
 
 ---
 
 ## CLI Usage
 
+Fortran sources are handled by the generic workspace commands. The language is detected from the file extension (`.f`, `.for`, `.f90`, `.f95`, `.f03`, `.f08`).
+
 ```bash
 # Lint legacy Fortran engineering subroutines
-msx fortran lint TurbomachineryModel.f
+msx lint TurbomachineryModel.f
 
-# Lower Fortran state equations to ModelScript linear DAE arena
-msx fortran to-dae PropulsionAero.f90 --out=propulsion.dae.json
+# Lint only the Fortran files in a mixed-language workspace
+msx lint ./src --language fortran
 
-# Project Fortran computational subroutines into Modelica function blocks
-msx fortran to-modelica LegacyThermodynamics.f -o Thermodynamics.mo
+# Print the parse tree of a Fortran source file
+msx parse PropulsionAero.f90
+```
+
+DAE lowering is available from the package API (there is no dedicated `msx fortran` command yet):
+
+```ts
+import { lintFortranSource, lowerFortranToDae } from "@modelscript/fortran";
+
+const diagnostics = lintFortranSource(source);
+const result = lowerFortranToDae(builder, source.split("\n"));
 ```

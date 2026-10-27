@@ -38,6 +38,22 @@ export interface SvgResult {
   diagram: string | null;
 }
 
+export interface ClassRenderResult {
+  metadata: ClassMetadata;
+  iconSvg: string | null;
+  diagramSvg: string | null;
+}
+
+function cleanModelicaDescription(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const cleaned = raw
+    .replace(/\s*\bannotation\s*\([\s\S]*$/i, "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 /**
  * Extract modifier name/value pairs from a modification or CST node.
  */
@@ -73,8 +89,17 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
   if (!targetNode) return result;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const walk = (node: any) => {
+  const walk = (node: any, depth = 0) => {
     if (!node) return;
+    if (
+      node.type === "annotation_clause" ||
+      node.type === "AnnotationClause" ||
+      node.type === "description" ||
+      node.type === "comment" ||
+      node.type === "description_string"
+    ) {
+      return;
+    }
     if (node.type === "element_modification" || node.type === "ElementModification") {
       const nameNode = node.children?.find(
         (c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier" || c.type === "Identifier",
@@ -83,16 +108,43 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
       if (nameNode?.text) {
         result.push({
           name: nameNode.text.trim(),
-          value: valNode?.text?.replace(/^=\s*/, "").trim() ?? null,
+          value: valNode?.text?.replace(/^:?=\s*/, "").trim() ?? null,
         });
       }
       return;
     }
+    // Direct `= expr` or `(start=1) = expr` binding on the component declaration's top-level modification
+    if ((node.type === "modification" || node.type === "Modification") && depth <= 3) {
+      const directExpr = node.children?.find(
+        (c: any) =>
+          c.type !== "class_modification" &&
+          c.type !== "ClassModification" &&
+          c.type !== "=" &&
+          c.type !== ":=" &&
+          c.text &&
+          c.text.trim() !== "=" &&
+          c.text.trim() !== ":=",
+      );
+      if (directExpr?.text) {
+        result.push({
+          name: "value",
+          value: directExpr.text.trim(),
+        });
+      } else if (typeof node.text === "string" && /^:?=\s*/.test(node.text.trim())) {
+        result.push({
+          name: "value",
+          value: node.text
+            .trim()
+            .replace(/^:?=\s*/, "")
+            .trim(),
+        });
+      }
+    }
     for (const child of node.children || []) {
-      walk(child);
+      walk(child, depth + 1);
     }
   };
-  walk(targetNode);
+  walk(targetNode, 0);
 
   return result;
 }
@@ -106,7 +158,7 @@ export function _extractComponentMetadata(component: any): ComponentMetadata | n
   if (!name) return null;
 
   const typeName = component.classInstance?.compositeName ?? component.declaredType?.compositeName ?? "unknown";
-  const description = component.description ?? null;
+  const description = cleanModelicaDescription(component.description ?? null);
   const cst = component.cstNode ?? component.abstractSyntaxNode;
 
   // Get causality and variability from component properties, symbol metadata, or AST/CST node
@@ -421,11 +473,16 @@ export async function processLibrary(
             if (baseName) baseClasses.push(baseName);
           } else if (child.kind === "Component" || child.kind === "Variable") {
             const compCst = queryDB.cstNode(child.id) as any;
-            let compDesc: string | null = (child.metadata?.["description"] as string) ?? null;
+            let compDesc: string | null = cleanModelicaDescription((child.metadata?.["description"] as string) ?? null);
             if (!compDesc && compCst?.children) {
-              const descChild = compCst.children.find((c: any) => c.type === "description" || c.type === "comment");
-              if (descChild?.text) {
-                compDesc = descChild.text.replace(/^["']|["']$/g, "").trim();
+              const descChild = compCst.children.find(
+                (c: any) => c.type === "description" || c.type === "comment" || c.type === "description_string",
+              );
+              const descStrNode =
+                descChild?.children?.find((c: any) => c.type === "description_string" || c.type === "string_comment") ??
+                descChild;
+              if (descStrNode?.text) {
+                compDesc = cleanModelicaDescription(descStrNode.text);
               }
             }
 
@@ -452,16 +509,26 @@ export async function processLibrary(
           }
         }
 
-        let description: string | null = (sym.metadata?.["description"] as string) ?? null;
+        let description: string | null = cleanModelicaDescription((sym.metadata?.["description"] as string) ?? null);
         if (!description && cstNode?.children) {
           // Check for description_string in long_class_specifier or children
           const walkForDesc = (n: any): string | null => {
             if (!n) return null;
-            if (n.type === "description_string" || n.type === "description" || n.type === "comment") {
-              return n.text?.replace(/^["']|["']$/g, "").trim() ?? null;
+            if (n.type === "annotation_clause" || n.type === "AnnotationClause" || n.type === "composition") {
+              return null;
+            }
+            if (n.type === "description_string" || n.type === "string_comment") {
+              return cleanModelicaDescription(n.text);
+            }
+            if (n.type === "description" || n.type === "comment") {
+              const strNode = n.children?.find(
+                (c: any) => c.type === "description_string" || c.type === "string_comment",
+              );
+              if (strNode?.text) return cleanModelicaDescription(strNode.text);
+              return cleanModelicaDescription(n.text);
             }
             for (const ch of n.children || []) {
-              if (ch.type === "composition") continue; // Don't look inside class body
+              if (ch.type === "composition" || ch.type === "annotation_clause") continue;
               const d = walkForDesc(ch);
               if (d) return d;
             }

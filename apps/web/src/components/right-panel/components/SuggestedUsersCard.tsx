@@ -20,7 +20,9 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
   return (
     <Card>
       <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <PeopleIcon size={14} style={{ color: "var(--color-accent-purple)" }} />
+        <span style={{ color: "var(--color-accent-purple)", display: "inline-flex" }}>
+          <PeopleIcon size={14} />
+        </span>
         <Text
           style={{
             fontSize: "12px",
@@ -92,9 +94,7 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
           </Box>
         ))}
         {filteredSuggestions.length === 0 && (
-          <Text color="var(--color-fg-muted)" sx={{ fontSize: "14px" }}>
-            No suggestions at this time.
-          </Text>
+          <Text style={{ color: "var(--color-fg-muted)", fontSize: "14px" }}>No suggestions at this time.</Text>
         )}
       </Box>
       <ShowMoreLink to="/explore" style={{ marginTop: "12px" }}>

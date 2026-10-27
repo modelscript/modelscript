@@ -39,27 +39,28 @@ ModelScript features high-performance native support for **SPICE** (`.cir`, `.sp
 msx spice <action> [files...] [options]
 ```
 
-| Action            | Description                                                                       | Key Options                                                                                   |
-| :---------------- | :-------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------- |
-| **`inspect`**     | Dumps circuit netlist statistics, components, nodes, subcircuits, and directives. | —                                                                                             |
-| **`lint`**        | Runs pre-flight electrical topology checks and floating node analysis.            | —                                                                                             |
-| **`op`**          | Computes DC operating point node voltages and branch currents.                    | —                                                                                             |
-| **`tran`**        | Runs time-domain transient analysis.                                              | `--stop=<sec>`, `--step=<sec>`, `--out=<file.csv>`                                            |
-| **`ac`**          | Runs small-signal AC frequency sweep.                                             | `--fstart=<hz>`, `--fstop=<hz>`, `--points=<num>`, `--type=dec\|oct\|lin`, `--out=<file.csv>` |
-| **`to-modelica`** | Projects SPICE netlist to standard `Modelica.Electrical.Analog`.                  | `--out=<file.mo>`                                                                             |
-| **`to-dae`**      | Lowers netlist directly into `DAEBuilder` SoA linear memory arena.                | —                                                                                             |
+| Action            | Description                                                                        | Key Options                                                                           |
+| :---------------- | :--------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| **`simulate`**    | Runs DC operating point, transient, or AC analysis (AC sweep from the `.AC` card). | `--analysis op\|tran\|ac`, `--tstep`, `--tstop`, `--format table\|json\|csv`, `--out` |
+| **`lint`**        | Runs pre-flight structural and electrical rule checks.                             | `--format`                                                                            |
+| **`inspect`**     | Dumps topology, component breakdown, nodes, models, subcircuits, and directives.   | `--format`, `--out`                                                                   |
+| **`to-modelica`** | Translates the netlist to Modelica 3.x electrical components and connections.      | `--out`                                                                               |
+| **`to-ecad`**     | Projects the netlist to an ECAD netlist graph for PCB routing and DRC.             | `--out`                                                                               |
+| **`to-dae`**      | Lowers the netlist directly into the linear-memory DAE arena.                      | `--format`, `--out`                                                                   |
+| **`diagram`**     | Renders the circuit schematic to SVG or a JSON graph.                              | `--format`, `--out`                                                                   |
+| **`sync`**        | Synchronizes tuned parameters and topology from Modelica back into the netlist.    | `--from-modelica`, `--strategy`, `--out`                                              |
 
 ### Examples
 
 ```bash
 # Calculate DC bias voltages on all circuit nodes
-msx spice op LowPassFilter.cir
+msx spice simulate LowPassFilter.cir --analysis op
 
 # Simulate transient step response and export trajectory
-msx spice tran PowerSupply.cir --stop=0.01 --step=1e-6 --out=transient.csv
+msx spice simulate PowerSupply.cir --analysis tran --tstep 1e-6 --tstop 0.01 --out transient.csv
 
-# Run AC frequency response analysis from 10 Hz to 1 MHz
-msx spice ac AudioAmplifier.sp --fstart=10 --fstop=1e6 --points=100 --out=bode.csv
+# Run the AC frequency response defined by the netlist's .AC directive
+msx spice simulate AudioAmplifier.sp --analysis ac --format csv --out bode.csv
 
 # Lint netlist for floating electrical nodes and ground connectivity
 msx spice lint SensorFrontEnd.net
@@ -69,14 +70,4 @@ msx spice lint SensorFrontEnd.net
 
 ## Electrical Linters & Diagnostic Rules
 
-| Code        | Identifier                      | Severity | Description                                                                           |
-| :---------- | :------------------------------ | :------- | :------------------------------------------------------------------------------------ |
-| **`M7101`** | `floating-node`                 | Error    | Electrical node has only one connected pin; floating circuit hazard.                  |
-| **`M7102`** | `parallel-voltage-sources`      | Error    | Loop of ideal voltage sources with zero series impedance violates KVL.                |
-| **`M7103`** | `series-current-sources`        | Error    | Cutset of ideal current sources with unequal branch currents violates KCL.            |
-| **`M7104`** | `unresolved-subcircuit`         | Error    | Subcircuit invocation (`X...`) references a `.SUBCKT` name absent from netlist.       |
-| **`M7105`** | `invalid-passive-value`         | Error    | Resistance, capacitance, or inductance is non-positive or non-finite.                 |
-| **`M7106`** | `transient-step-violation`      | Warning  | Transient maximum step size `TSTEP` is larger than total simulation duration `TSTOP`. |
-| **`M7107`** | `duplicate-component-name`      | Warning  | Multiple circuit components share an identical reference designator.                  |
-| **`M7108`** | `missing-model-definition`      | Error    | Semiconductor device references a `.MODEL` card that is not defined.                  |
-| **`M7109`** | `subcircuit-pin-count-mismatch` | Error    | Number of pins on subcircuit instance does not match `.SUBCKT` header declaration.    |
+<LintRules lang="spice" />

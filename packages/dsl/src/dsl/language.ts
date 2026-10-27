@@ -42,6 +42,14 @@ export interface SymbolConfig<FieldName extends string = string> {
 }
 
 /**
+ * Maturity classification for a ModelScript language package.
+ * - "stable": Production-grade native WASM GLR parser, Salsa queries, and verification/simulation pipeline.
+ * - "beta": Domain-complete parser, lowering, and IDE editor/diagram integration.
+ * - "experimental": Early-stage domain parser, DAE/Modelica projection, or experimental support.
+ */
+export type LanguageMaturity = "stable" | "beta" | "experimental";
+
+/**
  * Configuration options passed to the `language(...)` function.
  * Modeled after Tree-sitter's Grammar API.
  */
@@ -53,6 +61,9 @@ export interface LanguageOptions<
 > {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
+
+  /** Maturity level of this language integration ('stable' | 'beta' | 'experimental'). */
+  maturity?: LanguageMaturity | undefined;
 
   /** Optional file path of the language source file for Direct Source AST extraction. */
   sourcePath?: string | undefined;

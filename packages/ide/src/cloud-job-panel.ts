@@ -253,21 +253,17 @@ export class CloudJobPanel {
       const y: number[][] = [];
       const states = header.filter((_, idx) => idx !== validTimeIdx);
 
-      for (let i = 0; i < states.length; i++) {
-        y.push([]);
-      }
-
       for (let i = 1; i < lines.length; i++) {
         const parts = lines[i]?.split(",").map(Number) || [];
         if (parts.length === header.length) {
           t.push(parts[validTimeIdx] ?? 0);
-          let varCounter = 0;
+          const row: number[] = [];
           for (let j = 0; j < parts.length; j++) {
             if (j !== validTimeIdx) {
-              y[varCounter]?.push(parts[j] ?? 0);
-              varCounter++;
+              row.push(parts[j] ?? 0);
             }
           }
+          y.push(row);
         }
       }
 
@@ -291,6 +287,7 @@ export class CloudJobPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ModelScript Cloud HPC Dispatch</title>
   <style>

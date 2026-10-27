@@ -24,6 +24,7 @@ import FederatedDomainPill from "../../../components/FederatedDomainPill";
 import FollowButton from "../../../components/FollowButton";
 import { CircleIconButton, StickyHeader } from "../../../components/SharedStyles";
 import { parseFederatedHandle } from "../../../util/federation";
+import { safeCssImageUrl, sanitizeHttpUrl } from "../../../util/url";
 import type { LinkedAccount, ProfileData } from "../types";
 
 const XIcon: React.FC = () => (

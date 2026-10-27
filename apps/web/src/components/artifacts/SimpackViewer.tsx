@@ -1,22 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleIcon, CpuIcon, PlayIcon } from "@primer/octicons-react";
+import { CheckCircleIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
+import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface SimpackViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
+    svg?: string | undefined;
     title?: string | undefined;
     modelName?: string | undefined;
+    bodies?: { name: string; mass?: number }[] | undefined;
+    joints?: { name: string; type?: string; from?: string; to?: string }[] | undefined;
+    forces?: { name: string; type?: string; from?: string; to?: string }[] | undefined;
     bodyCount?: number | undefined;
     markerCount?: number | undefined;
     jointCount?: number | undefined;
+    forceCount?: number | undefined;
     calculatedMobility?: number | undefined;
     isOverconstrained?: boolean | undefined;
     [key: string]: unknown;
@@ -103,7 +112,7 @@ const ContentArea = styled.div`
 
 const MetricGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 `;
@@ -131,18 +140,22 @@ const MetricValue = styled.span`
   color: var(--color-fg-default, #e6edf3);
 `;
 
-const CodePre = styled.pre`
+const SvgContainer = styled.div`
+  width: 100%;
+  min-height: 220px;
   background: var(--color-canvas-default, #0d1117);
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
-  padding: 14px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-fg-default, #e6edf3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: auto;
-  white-space: pre-wrap;
-  margin: 0;
+  padding: 12px;
+
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
 `;
 
 const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen = false }) => {
@@ -154,7 +167,11 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
   useEffect(() => {
     if (!viewConfig.code && viewConfig.url) {
       setIsLoading(true);
-      fetch(viewConfig.url)
+      const targetUrl =
+        viewConfig.url.startsWith("http") || viewConfig.url.startsWith("/api")
+          ? viewConfig.url
+          : `/api${viewConfig.url}`;
+      fetch(targetUrl)
         .then((res) => (res.ok ? res.text() : ""))
         .then((text) => setFetchedCode(text))
         .catch(() => setFetchedCode(null))
@@ -163,58 +180,85 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
   }, [viewConfig.code, viewConfig.url]);
 
   const rawDeck = viewConfig.code || fetchedCode || "";
-  const modelName = viewConfig.modelName || viewConfig.title || "MultibodyAssembly";
+  const modelName = viewConfig.modelName || viewConfig.title || "SIMPACK Multibody Assembly";
 
-  // Quick extract counts if not in viewConfig
   const bodyCount = useMemo(() => {
     if (typeof viewConfig.bodyCount === "number") return viewConfig.bodyCount;
-    const xmlMatches = (rawDeck.match(/<body/gi) || []).length;
+    if (Array.isArray(viewConfig.bodies)) return viewConfig.bodies.length;
+    const xmlMatches = (rawDeck.match(/<body\b/gi) || []).length;
     const simMatches = (rawDeck.match(/^\s*(?:\$body|body)\s+/gim) || []).length;
-    return Math.max(xmlMatches, simMatches, 1);
-  }, [viewConfig.bodyCount, rawDeck]);
+    return Math.max(xmlMatches, simMatches);
+  }, [viewConfig.bodyCount, viewConfig.bodies, rawDeck]);
 
   const jointCount = useMemo(() => {
     if (typeof viewConfig.jointCount === "number") return viewConfig.jointCount;
-    const xmlMatches = (rawDeck.match(/<joint/gi) || []).length;
+    if (Array.isArray(viewConfig.joints)) return viewConfig.joints.length;
+    const xmlMatches = (rawDeck.match(/<joint\b/gi) || []).length;
     const simMatches = (rawDeck.match(/^\s*(?:\$joint|joint)\s+/gim) || []).length;
-    return Math.max(xmlMatches, simMatches, 1);
-  }, [viewConfig.jointCount, rawDeck]);
+    return Math.max(xmlMatches, simMatches);
+  }, [viewConfig.jointCount, viewConfig.joints, rawDeck]);
 
-  const mobilityDof = viewConfig.calculatedMobility ?? Math.max(1, bodyCount * 6 - jointCount * 5);
+  const forceCount = useMemo(() => {
+    if (typeof viewConfig.forceCount === "number") return viewConfig.forceCount;
+    if (Array.isArray(viewConfig.forces)) return viewConfig.forces.length;
+    const xmlMatches = (rawDeck.match(/<force\b/gi) || []).length;
+    const simMatches = (rawDeck.match(/^\s*(?:\$force|force)\s+/gim) || []).length;
+    return Math.max(xmlMatches, simMatches);
+  }, [viewConfig.forceCount, viewConfig.forces, rawDeck]);
+
+  const mobilityDof = viewConfig.calculatedMobility ?? Math.max(0, bodyCount * 6 - jointCount * 5);
   const isOverconstrained = viewConfig.isOverconstrained ?? mobilityDof < 0;
+
+  const svgMarkup = useMemo(() => {
+    if (viewConfig.svg) {
+      return DOMPurify.sanitize(viewConfig.svg);
+    }
+    if (rawDeck.trim()) {
+      return renderSourceToDiagramSvg(rawDeck, "simpack", modelName, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawDeck, modelName]);
 
   const { nodes3D, links3D } = useMemo(() => {
     const nodes: MultibodyNode3D[] = [];
     const links: MultibodyLink3D[] = [];
 
-    // Parse simple body positions if present in rawDeck
-    const bodyRegex = /<body\s+[^>]*id="([^"]+)"[^>]*>/gi;
-    let bMatch;
-    let bIdx = 0;
-    while ((bMatch = bodyRegex.exec(rawDeck)) !== null) {
-      const id = bMatch[1]!;
-      nodes.push({
-        id,
-        name: id,
-        type: "body",
-        position: [bIdx * 1.6 - 1.2, 0, 0.5],
-      });
-      bIdx++;
-    }
-
-    if (nodes.length === 0) {
-      for (let i = 0; i < bodyCount; i++) {
+    if (Array.isArray(viewConfig.bodies) && viewConfig.bodies.length > 0) {
+      viewConfig.bodies.forEach((b, idx) => {
         nodes.push({
-          id: `body_${i + 1}`,
-          name: `Body ${i + 1}`,
+          id: b.name,
+          name: b.name,
           type: "body",
-          position: [i * 1.8 - 0.9, 0, 0.5],
+          position: [idx * 1.8 - 1.2, 0, 0.5],
         });
+      });
+    } else {
+      const bodyRegex = /<body\s+[^>]*id="([^"]+)"[^>]*>/gi;
+      let bMatch;
+      let bIdx = 0;
+      while ((bMatch = bodyRegex.exec(rawDeck)) !== null) {
+        const id = bMatch[1]!;
+        nodes.push({
+          id,
+          name: id,
+          type: "body",
+          position: [bIdx * 1.6 - 1.2, 0, 0.5],
+        });
+        bIdx++;
+      }
+      if (nodes.length === 0) {
+        for (let i = 0; i < bodyCount; i++) {
+          nodes.push({
+            id: `body_${i + 1}`,
+            name: `Body ${i + 1}`,
+            type: "body",
+            position: [i * 1.8 - 0.9, 0, 0.5],
+          });
+        }
       }
     }
 
-    // Connect sequential bodies with joint links
-    for (let j = 0; j < Math.min(jointCount, nodes.length - 1); j++) {
+    for (let j = 0; j < Math.min(jointCount, Math.max(0, nodes.length - 1)); j++) {
       links.push({
         id: `joint_${j + 1}`,
         name: `Joint ${j + 1}`,
@@ -225,11 +269,20 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     }
 
     return { nodes3D: nodes, links3D: links };
-  }, [rawDeck, bodyCount, jointCount]);
+  }, [rawDeck, viewConfig.bodies, bodyCount, jointCount]);
 
   const handleOpenPlayground = () => {
-    navigate("/playground", { state: { code: rawDeck, language: "simpack" } });
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "simpack" as any,
+      code: rawDeck || `$ ${modelName}\n`,
+      title: modelName,
+    });
+    const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+    navigate(`/playground${fromArtifact}#m=${hash}`);
   };
+
+  const codeLines = rawDeck ? rawDeck.split(/\r?\n/) : [];
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -239,14 +292,16 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
           <Badge $variant="info">SIMPACK MBS</Badge>
           {!isOverconstrained ? (
             <Badge $variant="success">
-              <CheckCircleIcon size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
+              <span style={{ verticalAlign: "middle", marginRight: 4, display: "inline-flex" }}>
+                <CheckCircleIcon size={12} />
+              </span>
               {mobilityDof} DOF KINEMATIC
             </Badge>
           ) : (
             <Badge $variant="warning">OVERCONSTRAINED (M &lt; 0)</Badge>
           )}
         </HeaderLeft>
-        <Box display="flex" alignItems="center" gridGap={2}>
+        <Box display="flex" alignItems="center" gap={2}>
           <SegmentedControl size="small" aria-label="SIMPACK Views">
             <SegmentedControl.Button selected={tabIndex === 0} onClick={() => setTabIndex(0)}>
               Mechanism
@@ -255,21 +310,20 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               3D View
             </SegmentedControl.Button>
             <SegmentedControl.Button selected={tabIndex === 2} onClick={() => setTabIndex(2)}>
-              Mobility
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={tabIndex === 3} onClick={() => setTabIndex(3)}>
               Model Source
             </SegmentedControl.Button>
           </SegmentedControl>
-          <Button
-            size="small"
-            variant="primary"
-            leadingVisual={PlayIcon}
-            onClick={handleOpenPlayground}
-            title="Open in Simulation Playground"
-          >
-            Simulate
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={handleOpenPlayground}
+              title="Open in Playground"
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -290,49 +344,30 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
                 <MetricValue>{jointCount}</MetricValue>
               </MetricCard>
               <MetricCard>
+                <MetricLabel>Force Elements</MetricLabel>
+                <MetricValue>{forceCount}</MetricValue>
+              </MetricCard>
+              <MetricCard>
                 <MetricLabel>Calculated Mobility</MetricLabel>
                 <MetricValue>{mobilityDof} DOF</MetricValue>
               </MetricCard>
-              <MetricCard>
-                <MetricLabel>Kinematic Status</MetricLabel>
-                <MetricValue
-                  style={{
-                    color: !isOverconstrained
-                      ? "var(--color-success-fg, #3fb950)"
-                      : "var(--color-attention-fg, #d29922)",
-                  }}
-                >
-                  {!isOverconstrained ? "Valid Mechanism" : "Redundant Constraint"}
-                </MetricValue>
-              </MetricCard>
             </MetricGrid>
 
-            <Box
-              p={3}
-              bg="canvas.default"
-              borderWidth={1}
-              borderStyle="solid"
-              borderColor="border.default"
-              borderRadius={2}
-            >
-              <Box display="flex" alignItems="center" gridGap={2} mb={2}>
-                <CpuIcon size={16} fill="var(--color-accent-fg, #58a6ff)" />
-                <Text fontWeight="bold">Spatial 6-DOF Multi-Body Assembly</Text>
-              </Box>
-              <Text as="p" fontSize={1} color="fg.muted" mb={0}>
-                Model structure lowered into ModelScript linear memory arena with exact 3D Tait-Bryan rotation matrices
-                and kinematic joint constraints. Translational and rotational Newton-Euler equations are formulated
-                directly for SUNDIALS/CVODE integration.
-              </Text>
-            </Box>
+            {svgMarkup ? (
+              <SvgContainer dangerouslySetInnerHTML={{ __html: svgMarkup }} />
+            ) : (
+              <SvgContainer>
+                <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                  No SIMPACK kinematic diagram elements found. Switch to Model Source to inspect the file.
+                </Text>
+              </SvgContainer>
+            )}
           </div>
         ) : tabIndex === 1 ? (
           <div>
             <Box mb={2} display="flex" justifyContent="space-between" alignItems="center">
-              <Text fontSize={1} fontWeight="bold">
-                3D Multibody Mechanism Viewport
-              </Text>
-              <Text fontSize={1} color="fg.muted">
+              <Text style={{ fontSize: "12px", fontWeight: "bold" }}>3D Multibody Mechanism Viewport</Text>
+              <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
                 {nodes3D.length} bodies/markers • {links3D.length} joints
               </Text>
             </Box>
@@ -342,52 +377,42 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               height={isFullScreen ? "calc(100vh - 140px)" : "320px"}
             />
           </div>
-        ) : tabIndex === 2 ? (
-          <div>
-            <MetricGrid>
-              <MetricCard>
-                <MetricLabel>Grübler-Kutzbach Formula</MetricLabel>
-                <MetricValue>M = 6n - Σc_i</MetricValue>
-                <Text fontSize={1} color="fg.muted">
-                  Spatial 3D Criterion
-                </Text>
-              </MetricCard>
-              <MetricCard>
-                <MetricLabel>Moving Coordinate Dofs</MetricLabel>
-                <MetricValue>{bodyCount * 6}</MetricValue>
-                <Text fontSize={1} color="fg.muted">
-                  6 * {bodyCount} bodies
-                </Text>
-              </MetricCard>
-              <MetricCard>
-                <MetricLabel>Effective Degrees of Freedom</MetricLabel>
-                <MetricValue>{mobilityDof}</MetricValue>
-                <Text fontSize={1} color="fg.muted">
-                  Free dynamic variables
-                </Text>
-              </MetricCard>
-            </MetricGrid>
-
-            <Box
-              p={3}
-              bg="canvas.default"
-              borderWidth={1}
-              borderStyle="solid"
-              borderColor="border.default"
-              borderRadius={2}
-            >
-              <Text fontWeight="bold" mb={1} as="div">
-                Mobility & Loop Closure Diagnostics
-              </Text>
-              <Text as="p" fontSize={1} color="fg.muted" mb={0}>
-                The mechanism has {mobilityDof} independent degree(s) of freedom. Joint constraints restrict relative
-                marker motion in the global frame with zero residual constraint violation at nominal assembly
-                configuration.
-              </Text>
-            </Box>
-          </div>
         ) : (
-          <CodePre>{rawDeck || "$ No SIMPACK model content loaded."}</CodePre>
+          <Box
+            py={2}
+            bg="var(--color-canvas-default, #0d1117)"
+            border="1px solid var(--color-border-default, #30363d)"
+            borderRadius="6px"
+            overflow="auto"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "simpack")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={3} color="var(--color-fg-muted)">
+                $ No SIMPACK model content loaded.
+              </Box>
+            )}
+          </Box>
         )}
       </ContentArea>
     </CardWrapper>

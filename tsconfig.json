@@ -25,6 +25,8 @@
       "@modelscript/lsp/*": ["./packages/lsp/src/*"],
       "@modelscript/embed": ["./packages/embed/src/index.ts"],
       "@modelscript/embed/*": ["./packages/embed/src/*"],
+      "@modelscript/react": ["./packages/react/src/index.ts"],
+      "@modelscript/react/*": ["./packages/react/src/*"],
       "@modelscript/mcp": ["./packages/mcp/src/index.ts"],
       "@modelscript/mcp/*": ["./packages/mcp/src/*"],
       "@modelscript/ide-client": ["./packages/ide/src/browser-client-main.ts"],
@@ -62,7 +64,8 @@
       "@modelscript/ssp/*": ["./languages/ssp/src/*"],
       "@modelscript/modelscript": ["./languages/modelscript/src/index.ts"],
       "@modelscript/modelscript/parser": ["./languages/modelscript/src-gen/bindings.js"],
-      "@modelscript/modelscript/*": ["./languages/modelscript/src/*"]
+      "@modelscript/modelscript/*": ["./languages/modelscript/src/*"],
+      "@modelscript/*": ["./packages/*/src/index.ts", "./languages/*/src/index.ts", "./languages/*/language.ts"]
     }
   },
   "include": ["scripts/**/*", "eslint.config.ts"],

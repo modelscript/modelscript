@@ -17,6 +17,61 @@ export interface CcsdsDiagnostic {
   range: CcsdsRange;
 }
 
+export const CcsdsErrorCode = {
+  SUB_ORBITAL_IMPACT_TRAJECTORY: {
+    code: "M8201",
+    rule: "sub-orbital-impact-trajectory",
+    severity: "error" as const,
+    message: (rp: string, earthRadius: string) =>
+      `Sub-orbital pericenter radius ${rp} km is below Earth radius ${earthRadius} km, resulting in atmospheric re-entry or impact.`,
+  },
+  TELEMETRY_BIT_PACKING_OVERLAP: {
+    code: "M8202",
+    rule: "telemetry-bit-packing-overlap",
+    severity: "error" as const,
+    message: (containerName: string, entryName: string, bitOffset: number, prevEntry: string, endBit: number) =>
+      `Telemetry bit packing overlap in container '${containerName}': entry '${entryName}' starts at bit ${bitOffset} before previous entry '${prevEntry}' ends at bit ${endBit}.`,
+  },
+  HYPERBOLIC_UNBOUNDED_ORBIT: {
+    code: "M8203",
+    rule: "hyperbolic-unbounded-orbit",
+    severity: "warning" as const,
+    message: (eccentricity: string) =>
+      `Orbit eccentricity ${eccentricity} indicates a hyperbolic or parabolic trajectory.`,
+  },
+  UNRECOGNIZED_REFERENCE_FRAME: {
+    code: "M8204",
+    rule: "unrecognized-reference-frame",
+    severity: "error" as const,
+    message: (refFrame: string) => `Unrecognized or non-inertial reference frame '${refFrame}'.`,
+  },
+  MISSING_EPOCH_TIMESTAMP: {
+    code: "M8205",
+    rule: "missing-epoch-timestamp",
+    severity: "error" as const,
+    message: (index: number) => `Ephemeris point missing valid timestamp at index ${index}.`,
+  },
+  NON_MONOTONIC_EPHEMERIS_EPOCHS: {
+    code: "M8206",
+    rule: "non-monotonic-ephemeris-epochs",
+    severity: "error" as const,
+    message: (epoch: string, prevEpoch: string) =>
+      `Ephemeris timestamp '${epoch}' is not strictly greater than previous timestamp '${prevEpoch}'.`,
+  },
+  DUPLICATE_PARAMETER_NAME: {
+    code: "M8207",
+    rule: "duplicate-parameter-name",
+    severity: "error" as const,
+    message: (paramName: string) => `Duplicate telemetry parameter declaration for '${paramName}'.`,
+  },
+  NEGATIVE_SPACECRAFT_MASS: {
+    code: "M8208",
+    rule: "negative-spacecraft-mass",
+    severity: "error" as const,
+    message: (massKg: number) => `Spacecraft mass ${massKg} kg must be strictly positive.`,
+  },
+};
+
 const EARTH_RADIUS_KM = 6378.137;
 const VALID_REF_FRAMES = new Set(["EME2000", "GCRF", "ITRF", "TEME", "TOD", "J2000", "ICRF", "TDR"]);
 

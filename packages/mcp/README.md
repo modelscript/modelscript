@@ -1,6 +1,9 @@
-# `@modelscript/mcp`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing multi-physics compilation, arena simulation, sensitivity analysis, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, and PSCAD IEEE 2800 grid compliance to AI coding agents.
+# @modelscript/mcp
+
+Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **47 specialized engineering tools** across multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 grid compliance, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, and federated social engineering threads to AI coding agents.
 
 ---
 
@@ -12,18 +15,20 @@ Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for Mod
 
 ---
 
-## All 29 Registered MCP Tools (Across 7 Categories)
+## All 47 Registered MCP Tools (Across 10 Categories)
 
-The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **29 specialized engineering tools** organized across 7 categories:
+The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **47 specialized engineering tools** organized across 10 categories:
 
-### 1. Modelica Compilation & Inspection (4 Tools)
+### 1. Modelica Compilation, Inspection & Control Linearization (6 Tools)
 
-| Tool               | Description                                                                                                                    |
-| :----------------- | :----------------------------------------------------------------------------------------------------------------------------- |
-| `modelica_load`    | Load Modelica libraries or `.mo` files from filesystem paths into the active `Context`.                                        |
-| `modelica_parse`   | Parse inline Modelica source code via the native WASM GLR parser and return classes, components, equations, and syntax errors. |
-| `modelica_flatten` | Flatten a Modelica class FQN to its canonical Differential Algebraic Equation (DAE) system.                                    |
-| `modelica_query`   | Introspect a loaded Modelica class—returning its kind, description, components, `extends` hierarchy, and equations.            |
+| Tool                 | Description                                                                                                                                     |
+| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modelica_load`      | Load Modelica libraries or `.mo` files from filesystem paths into the active `Context`.                                                         |
+| `modelica_parse`     | Parse inline Modelica source code via the native WASM GLR parser and return classes, components, equations, and syntax errors.                  |
+| `modelica_flatten`   | Flatten a Modelica class FQN to its canonical Differential Algebraic Equation (DAE) system.                                                     |
+| `modelica_query`     | Introspect a loaded Modelica class—returning its kind, description, components, `extends` hierarchy, and equations.                             |
+| `modelica_linearize` | Linearize a Modelica DAE model around an operating point or equilibrium to extract LTI State-Space matrices ($A, B, C, D$), poles, and margins. |
+| `modelica_tune_pid`  | Automatically tune a P, PI, or PID controller for a linearized Modelica plant using Skogestad IMC (SIMC) and sensitivity loop shaping.          |
 
 ### 2. Multi-Physics Simulation, DoE & Sensitivity (5 Tools)
 
@@ -67,7 +72,7 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **29 special
 | :----------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `modelscript_closed_loop_synthesize` | Synthesize and certify a SysML v2 or Modelica model through closed-loop compiler verification gates (Syntax, QUDV Dimensions, SMT Feasibility, DAE Structural Balance). |
 | `modelica_diff_calibrate`            | Calibrate Modelica parameters against experimental measurement curves using continuous DAE adjoint sensitivity and L-BFGS-B optimization (`ModelicaCalibrator`).        |
-| `modelscript_patch_code`             | Surgically patch a workspace model file by replacing `searchBlock` with `replaceBlock` (`runSelfHealingPipeline`).                                                      |
+| `modelscript_patch_code`             | Surgically patch a workspace model file by replacing `searchBlock` with `replaceBlock`.                                                                                 |
 | `modelscript_read_file`              | Read full contents or a 1-indexed line range from a workspace file.                                                                                                     |
 | `modelscript_list_workspace_files`   | List engineering model files in the workspace (`.mo`, `.sysml`, `.step`, `.scad`, `.csv`, etc.).                                                                        |
 
@@ -75,10 +80,41 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **29 special
 
 | Tool                    | Description                                                                                                                                                                                                        |
 | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pscad_lint`            | Lint a PSCAD project (`.pscx`, `.pslx`) or workspace (`.pswx`) for electrical topology, floating terminals, and weak grid (SCR) issues.                                                                            |
+| `pscad_lint`            | Lint a PSCAD project (`.pscx`, `.pslx`) or workspace (`.pswx`) for electrical topology, floating terminals, and weak grid (SCR) issues (`M6001`–`M6017`).                                                          |
 | `pscad_simulate`        | Simulate a PSCAD electromagnetic transient (EMT) circuit using the WebAssembly Dommel companion-circuit solver (Bergeron lines, CDA switch damping, IBR FMUs).                                                     |
 | `pscad_verify_ieee2800` | Automate **IEEE Std 2800-2022** grid code compliance testing for Inverter-Based Resources (momentary cessation, reactive current injection $T_{90} \le 50\,\text{ms}$, overvoltage ceiling $\le 1.20\,\text{pu}$). |
 | `pscad_export`          | Export a PSCAD project (`.pscx`, `.pslx`) to Modelica (`OpenIPSL`) or FMI/SSP (`SystemStructure.ssd`).                                                                                                             |
+
+### 8. OLGA Multiphase Flow Assurance (9 Tools)
+
+| Tool             | Description                                                                                                                                                     |
+| :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `olga_simulate`  | Simulate transient multiphase flow, liquid holdup, pressure drops, terrain slugging, and pigging for an OLGA model (`.opi`, `.key`, `.genkey`).                 |
+| `olga_lint`      | Run pre-flight multiphase flow assurance diagnostics (`M7001`–`M7013`: CFL stability, steep risers, severe slugging dips, pig stuck, sour service, asphaltene). |
+| `olga_verify`    | Formally verify multiphase simulation against flow assurance limits (MAOP, hydrate subcooling margin, and slug catcher capacity).                               |
+| `olga_diagram`   | Generate standalone SVG diagrams for an OLGA flowline: topological P&ID schematic or pipeline elevation bathymetry $Z(X)$ with holdup heatmaps.                 |
+| `olga_parse_tpl` | Parse an OLGA simulation trend plot (`.tpl`) into a structured time-series dataset with variable catalog, units, and channel statistics.                        |
+| `olga_parse_ppl` | Parse an OLGA spatial profile plot (`.ppl`) into spatial snapshots along pipeline coordinate $X$ with flow regimes and critical extrema.                        |
+| `olga_tune`      | Calibrate OLGA flowline parameters (roughness, choke $C_d$, heat transfer, well PI) via Nelder-Mead simplex history matching against telemetry CSV data.        |
+| `olga_gate`      | Evaluate an automated Flow Assurance CI/CD Safety Gate check on an OLGA model for pull requests and operational envelope verification.                          |
+| `olga_survey`    | Ingest 3D seabed bathymetry survey coordinates (CSV) and discretize into adaptive curvature-aware OLGA pipe segments.                                           |
+
+### 9. GENSYS Railway Dynamics & SIMPACK Multibody Kinematics (5 Tools)
+
+| Tool                    | Description                                                                                                                              |
+| :---------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| `gensys_lint`           | Perform pre-flight semantic and physical validation (`G1001`–`G1006`) on GENSYS railway vehicle models (`.calc`, `.run`, `.sub`).        |
+| `gensys_verify_en14363` | Verify Nadal derailment quotient ($Y/Q \le 0.8$) and Prud'homme lateral track shifting force limits according to **EN 14363 / UIC 518**. |
+| `gensys_fastsim`        | Compute tangential longitudinal/lateral creep forces and spin moment using Kalker's **FASTSIM** algorithm in WebAssembly.                |
+| `simpack_lint`          | Perform structural and reference diagnostics (`K7001`–`K7006`) on SIMPACK XML (`.spck`) or classic deck (`.sim`, `.mbs`) files.          |
+| `simpack_mobility`      | Calculate spatial degrees of freedom and overconstrained mechanisms using the Grübler-Kutzbach criterion.                                |
+
+### 10. Federated Engineering Social Threads (2 Tools)
+
+| Tool                 | Description                                                                                                                    |
+| :------------------- | :----------------------------------------------------------------------------------------------------------------------------- |
+| `social_read_thread` | Read the conversation thread history, parent post, and engineering artifact attachments for a given social post ID.            |
+| `social_post_reply`  | Post an engineering verification result or simulation response to a social discussion thread on behalf of an authorized agent. |
 
 ---
 

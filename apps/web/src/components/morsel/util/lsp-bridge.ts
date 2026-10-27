@@ -16,6 +16,7 @@ import {
   type DiagramNode,
   type DiagramPort,
 } from "@modelscript/diagram/protocol";
+import pako from "pako";
 import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
 import { getLsp, startLsp } from "./lsp-worker";
 
@@ -25,10 +26,10 @@ export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditActi
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 
-async function lsp(): Promise<ProtocolConnection> {
+async function lsp(initialLanguageId?: string): Promise<ProtocolConnection> {
   const c = getLsp();
   if (c) return c;
-  return startLsp();
+  return startLsp(initialLanguageId);
 }
 
 /** Version counter for incremental didChange notifications. */
@@ -46,7 +47,7 @@ function nextVersion(uri: string): number {
 
 /** Notify the LSP that a document was opened. */
 export function didOpen(uri: string, text: string, languageId = "modelica"): void {
-  lsp().then((c) => {
+  lsp(languageId).then((c) => {
     c.sendNotification("textDocument/didOpen", {
       textDocument: { uri, languageId, version: nextVersion(uri), text },
     });
@@ -261,6 +262,153 @@ export async function getDocumentSymbols(uri: string): Promise<any[]> {
 
 export async function installDependency(name: string, version: string): Promise<void> {
   (await lsp()).sendNotification("modelscript/installDependency", { name, version });
+}
+
+/** Place a component onto the diagram canvas at (x, y) via unified diagram edits. */
+export async function placeComponent(uri: string, className: string, x = 0, y = 0): Promise<DiagramApplyEditsResult> {
+  return applyDiagramEdits(uri, [{ type: "addComponent", className, x, y } as DiagramEditAction], 1);
+}
+
+/** Extract text entries from a standard ZIP archive buffer using pako.inflateRaw. */
+function extractZipTextFiles(zipBytes: Uint8Array): Record<string, string> {
+  const files: Record<string, string> = {};
+  const view = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
+  const decoder = new TextDecoder("utf-8");
+
+  // Try Central Directory at end of archive first for reliable sizes (handles data descriptors)
+  let eocdOffset = -1;
+  for (let i = zipBytes.byteLength - 22; i >= Math.max(0, zipBytes.byteLength - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocdOffset = i;
+      break;
+    }
+  }
+
+  if (eocdOffset !== -1) {
+    const cdEntries = view.getUint16(eocdOffset + 10, true);
+    let cdOffset = view.getUint32(eocdOffset + 16, true);
+    for (let e = 0; e < cdEntries && cdOffset + 46 <= zipBytes.byteLength; e++) {
+      if (view.getUint32(cdOffset, true) !== 0x02014b50) break;
+      const method = view.getUint16(cdOffset + 10, true);
+      const compSize = view.getUint32(cdOffset + 20, true);
+      const nameLen = view.getUint16(cdOffset + 28, true);
+      const extraLen = view.getUint16(cdOffset + 30, true);
+      const commentLen = view.getUint16(cdOffset + 32, true);
+      const localHeaderOffset = view.getUint32(cdOffset + 42, true);
+      const name = decoder.decode(zipBytes.subarray(cdOffset + 46, cdOffset + 46 + nameLen));
+      cdOffset += 46 + nameLen + extraLen + commentLen;
+
+      if (name.endsWith("/") || localHeaderOffset + 30 > zipBytes.byteLength) continue;
+      if (!/\.(mo|msim|msx|sysml|sysml2|kerml|owl|step|stp|scad|cir|sp|dss|raw|inp|cfg|urdf)$/i.test(name)) {
+        continue;
+      }
+
+      const localNameLen = view.getUint16(localHeaderOffset + 26, true);
+      const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
+      const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+      if (dataStart + compSize > zipBytes.byteLength) continue;
+      const rawSlice = zipBytes.subarray(dataStart, dataStart + compSize);
+
+      try {
+        if (method === 0) {
+          files[name] = decoder.decode(rawSlice);
+        } else if (method === 8) {
+          const inflated = pako.inflateRaw(rawSlice);
+          files[name] = decoder.decode(inflated);
+        }
+      } catch {
+        // skip corrupt entry
+      }
+    }
+    return files;
+  }
+
+  // Fallback: sequential scan of Local File Headers (PK\x03\x04)
+  let offset = 0;
+  while (offset + 30 <= zipBytes.byteLength) {
+    const sig = view.getUint32(offset, true);
+    if (sig !== 0x04034b50) break;
+    const method = view.getUint16(offset + 8, true);
+    const compSize = view.getUint32(offset + 18, true);
+    const nameLen = view.getUint16(offset + 26, true);
+    const extraLen = view.getUint16(offset + 28, true);
+    const name = decoder.decode(zipBytes.subarray(offset + 30, offset + 30 + nameLen));
+    const dataStart = offset + 30 + nameLen + extraLen;
+    if (dataStart + compSize > zipBytes.byteLength) break;
+
+    if (!name.endsWith("/") && compSize > 0) {
+      const rawSlice = zipBytes.subarray(dataStart, dataStart + compSize);
+      try {
+        if (method === 0) {
+          files[name] = decoder.decode(rawSlice);
+        } else if (method === 8) {
+          files[name] = decoder.decode(pako.inflateRaw(rawSlice));
+        }
+      } catch {
+        // skip
+      }
+    }
+    offset = dataStart + compSize;
+  }
+
+  return files;
+}
+
+/**
+ * Load a library archive (.zip), FMU (.fmu), or Modelica/SysML source file from a Uint8Array
+ * buffer into the active LSP workspace.
+ */
+export async function loadLibraryFromBuffer(buffer: Uint8Array, filename: string): Promise<void> {
+  const conn = await lsp();
+  const cleanName = filename.replace(/\.(zip|mo|fmu|msx|sysml|sysml2)$/i, "") || "UploadedLibrary";
+
+  if (/\.fmu$/i.test(filename)) {
+    const chunkSize = 0x8000;
+    const chunks: string[] = [];
+    for (let i = 0; i < buffer.length; i += chunkSize) {
+      chunks.push(String.fromCharCode.apply(null, Array.from(buffer.subarray(i, i + chunkSize))));
+    }
+    const base64 = btoa(chunks.join(""));
+    await conn.sendRequest("modelscript/importFmu", { name: cleanName, data: base64 });
+    return;
+  }
+
+  const isZip =
+    /\.zip$/i.test(filename) ||
+    (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04);
+
+  if (isZip) {
+    const extracted = extractZipTextFiles(buffer);
+    const keys = Object.keys(extracted);
+    if (keys.length === 0) {
+      throw new Error(`No supported model files found inside archive '${filename}'.`);
+    }
+    // Infer top-level package name from root directory if present
+    const firstSegment = keys[0]?.split("/")[0]?.split(" ")[0];
+    const pkgName = firstSegment && keys[0]?.includes("/") ? firstSegment : cleanName;
+    conn.sendNotification("modelscript/registryPackages", {
+      packages: [
+        {
+          name: pkgName,
+          version: "1.0.0",
+          files: extracted,
+        },
+      ],
+    });
+    return;
+  }
+
+  // Single source file (.mo, .sysml, etc.)
+  const text = new TextDecoder("utf-8").decode(buffer);
+  conn.sendNotification("modelscript/registryPackages", {
+    packages: [
+      {
+        name: cleanName,
+        version: "1.0.0",
+        files: { [`${cleanName}/${filename}`]: text },
+      },
+    ],
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────

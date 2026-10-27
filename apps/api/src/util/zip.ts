@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { detectAndAdaptArchiveManifest, readZipTextEntries } from "@modelscript/exchange";
 import fs from "node:fs";
 import path from "node:path";
 import yauzl from "yauzl";
@@ -11,7 +12,7 @@ import yauzl from "yauzl";
  * depth in the archive. Commonly this is either `package.mo` or
  * `<LibraryName>/package.mo` (i.e. the zip contains a single top-level folder).
  */
-export async function extractPackageMoFromZip(buffer: Buffer): Promise<string> {
+export async function extractPackageMoFromZip(buffer: Buffer, preferredName?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
       if (err || !zipfile) {
@@ -19,7 +20,8 @@ export async function extractPackageMoFromZip(buffer: Buffer): Promise<string> {
         return;
       }
 
-      let bestMatch: { depth: number; entry: yauzl.Entry } | null = null;
+      let bestMatch: { depth: number; matchesName: boolean; entry: yauzl.Entry } | null = null;
+      const cleanPref = preferredName ? preferredName.split("/").pop()!.toLowerCase() : "";
 
       zipfile.readEntry();
 
@@ -38,8 +40,17 @@ export async function extractPackageMoFromZip(buffer: Buffer): Promise<string> {
 
         if (baseName === "package.mo") {
           const depth = segments.length;
-          if (!bestMatch || depth < bestMatch.depth) {
-            bestMatch = { depth, entry };
+          const topFolder = (segments[0] || "").toLowerCase();
+          const matchesName = Boolean(
+            cleanPref &&
+            (topFolder === cleanPref || topFolder.startsWith(`${cleanPref} `) || topFolder.startsWith(`${cleanPref}-`)),
+          );
+          if (
+            !bestMatch ||
+            depth < bestMatch.depth ||
+            (depth === bestMatch.depth && matchesName && !bestMatch.matchesName)
+          ) {
+            bestMatch = { depth, matchesName, entry };
           }
         }
 
@@ -123,11 +134,35 @@ export async function extractZipToDir(buffer: Buffer, targetDir: string): Promis
   });
 }
 
+const RECOGNIZED_NATIVE_MANIFEST_FILES = new Set([
+  "package.json",
+  "modelscript.json",
+  "package.mo",
+  ".meta.json",
+  "impact.json",
+  "ddp-manifest.json",
+  "aas.json",
+  "okh.json",
+  "modelDescription.xml",
+  "SystemStructure.ssd",
+  "manifest.xml",
+  "package.xml",
+  "model.config",
+  "fpm.toml",
+  "datapackage.json",
+  "component.xml",
+  "workspace.xml",
+]);
+
 /**
- * Extract either package.json or package.mo from a zip buffer.
- * Prefers package.json at root if available, otherwise package.mo.
+ * Extract manifest (`package.json`, `modelscript.json`, `package.mo`, or adapted native manifest
+ * from `.kpar`, `.fmu`, `.ssp`, `.ddp`, `.aasx`, `.omex`, `.reqifz`, `.slx`, ROS `package.xml`, `fpm.toml`, etc.)
+ * from a zip buffer.
  */
-export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "json" | "mo"; content: string }> {
+export async function extractManifestFromZip(
+  buffer: Buffer,
+  options?: { fallbackName?: string | undefined; fallbackVersion?: string | undefined },
+): Promise<{ type: "json" | "mo"; content: string; format?: string | undefined }> {
   return new Promise((resolve, reject) => {
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
       if (err || !zipfile) {
@@ -137,6 +172,7 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
 
       let bestJson: { depth: number; entry: yauzl.Entry } | null = null;
       let bestMo: { depth: number; entry: yauzl.Entry } | null = null;
+      let hasNativeIndicator = false;
 
       zipfile.readEntry();
 
@@ -148,7 +184,7 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
         }
 
         const segments = fileName.split("/").filter((s) => s.length > 0);
-        const baseName = segments[segments.length - 1];
+        const baseName = segments[segments.length - 1] ?? "";
         const depth = segments.length;
 
         if (baseName === "package.json" || baseName === "modelscript.json") {
@@ -159,6 +195,15 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
           if (!bestMo || depth < bestMo.depth) {
             bestMo = { depth, entry };
           }
+        } else if (
+          RECOGNIZED_NATIVE_MANIFEST_FILES.has(baseName) ||
+          baseName.endsWith(".reqif") ||
+          baseName.endsWith(".ssd") ||
+          baseName.endsWith(".pswx") ||
+          baseName.endsWith(".pslx") ||
+          fileName.endsWith("simulink/blockdiagram.xml")
+        ) {
+          hasNativeIndicator = true;
         }
 
         zipfile.readEntry();
@@ -167,7 +212,29 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
       zipfile.on("end", () => {
         const target = bestJson ?? bestMo;
         if (!target) {
-          reject(new Error("No package.json, modelscript.json, or package.mo file found in the zip archive"));
+          if (hasNativeIndicator) {
+            try {
+              const { textFiles } = readZipTextEntries(
+                new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength),
+              );
+              if (textFiles.size > 0) {
+                const adapted = detectAndAdaptArchiveManifest(textFiles, options);
+                resolve({
+                  type: "json",
+                  content: JSON.stringify(adapted.packageJson, null, 2),
+                  format: adapted.format,
+                });
+                return;
+              }
+            } catch {
+              // Fall through to reject
+            }
+          }
+          reject(
+            new Error(
+              "No package.json, modelscript.json, package.mo, or supported native package manifest (.kpar, .fmu, .ssp, .ddp, .aasx, .omex, .reqifz, .slx, package.xml, fpm.toml) found in the zip archive",
+            ),
+          );
           return;
         }
 
@@ -193,29 +260,38 @@ export async function extractManifestFromZip(buffer: Buffer): Promise<{ type: "j
   });
 }
 
+function hasDirectManifestInDir(dir: string): boolean {
+  for (const name of RECOGNIZED_NATIVE_MANIFEST_FILES) {
+    if (fs.existsSync(path.join(dir, name))) return true;
+  }
+  return false;
+}
+
 /**
  * Find the library root directory inside an extracted zip.
- * Looks for the shallowest `package.json`, `modelscript.json`, or `package.mo` file.
+ * Looks for the shallowest `package.json`, `modelscript.json`, `package.mo`, or native manifest file.
  */
-export function findLibraryRoot(dir: string): string | null {
-  // Check if package.json, modelscript.json, or package.mo is directly in the directory
-  if (
-    fs.existsSync(path.join(dir, "package.json")) ||
-    fs.existsSync(path.join(dir, "modelscript.json")) ||
-    fs.existsSync(path.join(dir, "package.mo"))
-  ) {
+export function findLibraryRoot(dir: string, preferredName?: string): string | null {
+  if (hasDirectManifestInDir(dir)) {
     return dir;
   }
 
-  // Check one level deeper (common: zip contains a single top-level folder)
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      const candidateJson = path.join(dir, entry.name, "package.json");
-      const candidateMsJson = path.join(dir, entry.name, "modelscript.json");
-      const candidateMo = path.join(dir, entry.name, "package.mo");
-      if (fs.existsSync(candidateJson) || fs.existsSync(candidateMsJson) || fs.existsSync(candidateMo)) {
-        return path.join(dir, entry.name);
-      }
+  const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
+  if (preferredName) {
+    const cleanPref = preferredName.split("/").pop()!.toLowerCase();
+    const matchingDir = entries.find((e) => {
+      const lower = e.name.toLowerCase();
+      return lower === cleanPref || lower.startsWith(`${cleanPref} `) || lower.startsWith(`${cleanPref}-`);
+    });
+    if (matchingDir && hasDirectManifestInDir(path.join(dir, matchingDir.name))) {
+      return path.join(dir, matchingDir.name);
+    }
+  }
+
+  for (const entry of entries) {
+    const subDir = path.join(dir, entry.name);
+    if (hasDirectManifestInDir(subDir)) {
+      return subDir;
     }
   }
 

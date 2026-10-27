@@ -5,24 +5,17 @@ import { HubotIcon, KebabHorizontalIcon, RssIcon, ShieldCheckIcon } from "@prime
 import { Text, Tooltip } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
+import { safeJsonParse } from "../../util/json";
 import Box from "../Box";
 import FederatedDomainPill from "../FederatedDomainPill";
 import ProfileHoverCard from "../ProfileHoverCard";
 import { PostActionMenu } from "./PostActionMenu";
-import {
-  ActionButton,
-  AiBadge,
-  HoverAvatar,
-  ModelSpecTag,
-  ProfileNameLink,
-  SignatureBadge,
-  formatRelativeTime,
-} from "./styles";
+import { ActionButton, AiBadge, HoverAvatar, ProfileNameLink, SignatureBadge, formatRelativeTime } from "./styles";
 
 export interface PostAuthorHeaderProps {
   displayPost: any;
   isDetail: boolean;
-  parsedAuthor: { localUsername: string; isFederated: boolean; remoteDomain?: string };
+  parsedAuthor: { localUsername: string; isFederated: boolean; remoteDomain?: string | null | undefined };
   hasSignature: boolean;
   isNotebook: boolean;
   notebookData?: any;
@@ -32,6 +25,9 @@ export interface PostAuthorHeaderProps {
   onOpenEditModal: () => void;
   onOpenSignatureModal: () => void;
   onOpenLoginModal: () => void;
+  onPostDeleted?: (() => void) | undefined;
+  showAiDetails?: boolean | undefined;
+  setShowAiDetails?: ((show: boolean) => void) | undefined;
   token: string | null;
   remoteOriginUrl: string | null;
 }
@@ -42,16 +38,21 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
   parsedAuthor,
   hasSignature,
   isNotebook,
-  notebookData,
   showPostMenu,
   setShowPostMenu,
   canEditPost,
   onOpenEditModal,
   onOpenSignatureModal,
   onOpenLoginModal,
+  onPostDeleted,
   token,
   remoteOriginUrl,
 }) => {
+  const postMeta =
+    typeof displayPost?.metadata === "string"
+      ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
+      : displayPost?.metadata || {};
+
   if (isDetail) {
     return (
       <Box display="flex" alignItems="center" gap={3}>
@@ -89,10 +90,14 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
                     {displayPost.display_name || displayPost.username}
                   </span>
                   {displayPost.account_type === "rss" && (
-                    <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                    <span style={{ flexShrink: 0, display: "inline-flex", color: "var(--color-fg-muted)" }}>
+                      <RssIcon size={14} />
+                    </span>
                   )}
                   {displayPost.account_type === "bot" && (
-                    <HubotIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                    <span style={{ flexShrink: 0, display: "inline-flex", color: "var(--color-fg-muted)" }}>
+                      <HubotIcon size={14} />
+                    </span>
                   )}
                 </Text>
               </ProfileNameLink>
@@ -126,22 +131,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
                 </SignatureBadge>
               </Tooltip>
             )}
-          </Box>
-          <Box display="flex" gap={1} flexWrap="wrap" mt={1}>
-            {isNotebook && <AiBadge $variant="verified">📓 Notebook</AiBadge>}
-            {(displayPost.artifact_view_id || Boolean(notebookData?.artifactIds?.length)) && (
-              <ModelSpecTag>
-                <span className="verified-dot" />
-                <span>Modelica 3.4</span>
-                <span style={{ opacity: 0.4 }}>·</span>
-                <span>CVODE</span>
-                <span style={{ opacity: 0.4 }}>·</span>
-                <span>FMU 3.0</span>
-              </ModelSpecTag>
-            )}
-            {(displayPost.artifact_view_id || Boolean(notebookData?.artifactIds?.length)) && (
-              <AiBadge $variant="verified">✨ AI Verified</AiBadge>
-            )}
+            {postMeta?.["aiVerified"] === true && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
             {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
           </Box>
         </Box>
@@ -164,6 +154,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             canEditPost={canEditPost}
             isNotebook={isNotebook}
             onOpenEditModal={onOpenEditModal}
+            onPostDeleted={onPostDeleted}
             displayPost={displayPost}
             token={token}
             onOpenLoginModal={onOpenLoginModal}
@@ -190,16 +181,20 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             }}
           >
             {displayPost.display_name || displayPost.username}
-            {displayPost.account_type === "rss" && <RssIcon size={14} color="var(--color-fg-muted)" />}
-            {displayPost.account_type === "bot" && <HubotIcon size={14} color="var(--color-fg-muted)" />}
+            {displayPost.account_type === "rss" && (
+              <span style={{ display: "inline-flex", color: "var(--color-fg-muted)" }}>
+                <RssIcon size={14} />
+              </span>
+            )}
+            {displayPost.account_type === "bot" && (
+              <span style={{ display: "inline-flex", color: "var(--color-fg-muted)" }}>
+                <HubotIcon size={14} />
+              </span>
+            )}
           </Text>
         </ProfileNameLink>
       </ProfileHoverCard>
-      {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
-      {isNotebook && <AiBadge $variant="verified">📓 Notebook</AiBadge>}
-      {(displayPost.artifact_view_id || Boolean(notebookData?.artifactIds?.length)) && (
-        <AiBadge $variant="verified">✨ AI Verified</AiBadge>
-      )}
+      {postMeta?.["aiVerified"] === true && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
       <Link
         to={`/${displayPost.username}`}
         className="handle-text"
@@ -248,11 +243,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             cursor: "pointer",
           }}
         >
-          <Text
-            className="handle-text"
-            sx={{ "&:hover": { textDecoration: "underline" } }}
-            style={{ flexShrink: 0, whiteSpace: "nowrap" }}
-          >
+          <Text className="handle-text" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
             {formatRelativeTime(displayPost.created_at)}
           </Text>
         </button>
@@ -277,6 +268,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           canEditPost={canEditPost}
           isNotebook={isNotebook}
           onOpenEditModal={onOpenEditModal}
+          onPostDeleted={onPostDeleted}
           displayPost={displayPost}
           token={token}
           onOpenLoginModal={onOpenLoginModal}

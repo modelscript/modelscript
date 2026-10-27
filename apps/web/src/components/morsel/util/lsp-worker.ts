@@ -24,7 +24,7 @@ let initPromise: Promise<ProtocolConnection> | null = null;
  *
  * If the worker is already running the existing connection is returned.
  */
-export async function startLsp(): Promise<ProtocolConnection> {
+export async function startLsp(initialLanguageId?: string): Promise<ProtocolConnection> {
   if (connection) return connection;
   if (initPromise) return initPromise;
 
@@ -107,6 +107,13 @@ export async function startLsp(): Promise<ProtocolConnection> {
           codeLens: {},
           documentHighlight: {},
           codeAction: {},
+          definition: {},
+          typeDefinition: {},
+          references: {},
+          rename: { prepareSupport: true },
+          inlayHint: {},
+          foldingRange: {},
+          selectionRange: {},
         },
       },
       initializationOptions: {
@@ -118,6 +125,8 @@ export async function startLsp(): Promise<ProtocolConnection> {
             (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
             "http://localhost") + "/lsp",
         useLocalMsl: true,
+        lazyLoadParsers: true,
+        initialLanguageId: initialLanguageId ?? "modelica",
       },
     });
     console.log("[lsp-worker] Initialize response received:", initResponse);

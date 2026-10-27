@@ -39,12 +39,18 @@ jobs:
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
+      - name: Check Lockfile Consistency
+        run: npm run lint:lockfile
       - name: Check Project Graph Cycles
         run: npm run lint:cycles
       - name: Check License Headers
         run: npm run lint:headers
       - name: Check Filename Conventions
         run: npm run lint:filenames
+      - name: Check Workspace Package Manifests & Versions
+        run: npm run lint:manifests
+      - name: Check Docs Generated Data & Links
+        run: npm run check --workspace=@modelscript/docs
       - name: Check Root TypeScript Config
         run: npx tsc --noEmit
       - name: Lint Root Scripts
@@ -193,8 +199,11 @@ jobs:
           path: |
             .cache/asc-tests
             languages/*/.cache
+            languages/*/dist/*.wasm
             packages/runtime/build/*.wasm
             packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
           key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
@@ -335,6 +344,20 @@ jobs:
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/asc-tests
+            languages/*/.cache
+            languages/*/dist/*.wasm
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
       - name: Run Build
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -342,6 +365,8 @@ jobs:
           else
             npx nx run-many -t build --parallel=3
           fi
+      - name: Verify Dist & Exports Integrity
+        run: npm run verify:dist
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Package VS Code Extension

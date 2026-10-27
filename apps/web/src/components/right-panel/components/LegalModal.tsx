@@ -13,10 +13,12 @@ export const LegalModal: React.FC<LegalModalProps> = ({ legalModal, onClose }) =
   if (!legalModal) return null;
 
   return (
-    <Dialog isOpen={!!legalModal} onDismiss={onClose} aria-labelledby="legal-modal-title">
-      <Dialog.Header id="legal-modal-title">
-        {legalModal === "terms" ? "Terms of Service" : legalModal === "privacy" ? "Privacy Policy" : "Cookie Policy"}
-      </Dialog.Header>
+    <Dialog
+      title={
+        legalModal === "terms" ? "Terms of Service" : legalModal === "privacy" ? "Privacy Policy" : "Cookie Policy"
+      }
+      onClose={onClose}
+    >
       <Box p={3} style={{ maxHeight: "400px", overflowY: "auto" }}>
         {legalModal === "terms" && (
           <Box display="flex" flexDirection="column" gap={2}>

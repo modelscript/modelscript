@@ -7,7 +7,7 @@ interface DiagramMacroProps {
   type?: string | undefined;
 }
 
-export function DiagramMacro(props: DiagramMacroProps) {
+export function DiagramMacro(_props: DiagramMacroProps) {
   // Integrate the existing Diagram component, parsing target string
   return (
     <div className="diagram-macro my-4 border rounded shadow-sm overflow-hidden" style={{ minHeight: "300px" }}>

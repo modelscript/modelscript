@@ -19,6 +19,7 @@ import { ccsdsToSysml } from "./projections/ccsds-to-sysml.js";
 export const ccsdsLanguage = language({
   name: "ccsds",
   fileExtensions: [".oem", ".opm", ".omm", ".xtce"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".oem", ".opm", ".omm", ".xtce"],
   },

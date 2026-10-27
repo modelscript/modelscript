@@ -10,8 +10,10 @@ export interface User {
   email: string;
   display_name?: string | undefined;
   avatar_url?: string | undefined;
+  banner_url?: string | undefined;
   account_type?: string | undefined;
   role?: string | undefined;
+  isAdmin?: boolean | undefined;
   has_password?: boolean | undefined;
   token_version?: number | undefined;
   totp_enabled?: boolean | undefined;

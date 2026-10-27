@@ -27,12 +27,12 @@
 - Models distributed solar photovoltaic (PVSystem) generators, battery energy storage systems (Storage), and wind generators.
 - Analyzes thermal line loading limits and voltage regulation limits (ANSI C84.1 Range A: $0.95 \le |V| \le 1.05\text{ p.u.}$):
   $$\Delta V \approx \frac{R P_{\text{DER}} + X Q_{\text{DER}}}{V_0}$$
-- Identifies reverse power flow hazards where generation exceeds local demand, pushing power back through substation transformers into the transmission bulk grid ([`@modelscript/psse`](file:///home/omar/git3/modelscript/languages/psse)).
+- Identifies reverse power flow hazards where generation exceeds local demand, pushing power back through substation transformers into the transmission bulk grid ([`@modelscript/psse`](./psse.md)).
 
 ### 3. Direct DAE Lowering
 
 - Compiles lines, transformers, and voltage-dependent loads into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation between distribution feeders, electromagnetic transients in inverter controllers ([`@modelscript/pscad`](file:///home/omar/git3/modelscript/languages/pscad)), and building thermal energy consumption ([`@modelscript/energyplus`](file:///home/omar/git3/modelscript/languages/energyplus)).
+- Enables co-simulation between distribution feeders, electromagnetic transients in inverter controllers ([`@modelscript/pscad`](./pscad.md)), and building thermal energy consumption ([`@modelscript/energyplus`](./energyplus.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -40,17 +40,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8401`–`M8408`)
+## Pre-Flight Diagnostics
 
 The OpenDSS linter verifies electrical connectivity and DER operating envelopes:
 
-| Code    | Severity  | Rule Identifier        | Condition Checked                                                                                 |
-| :------ | :-------- | :--------------------- | :------------------------------------------------------------------------------------------------ |
-| `M8401` | `error`   | `unconnected-bus`      | Element terminal references a bus that is detached from the voltage source substation.            |
-| `M8404` | `warning` | `reverse-power-risk`   | Distributed generation capacity exceeds local feeder demand ($P_{\text{gen}} > P_{\text{load}}$). |
-| `M8406` | `error`   | `negative-load-power`  | Load active power $P_k < 0\text{ kW}$ declared without generator semantics.                       |
-| `M8407` | `error`   | `negative-line-length` | Line physical length $L \le 0\text{ km}$ / $\text{kft}$.                                          |
-| `M8408` | `error`   | `missing-line-code`    | Line references an undefined `LineCode` geometry specification.                                   |
+<LintRules lang="opendss" />
 
 ---
 

@@ -76,7 +76,8 @@ async function copyCode(code: string, index: number) {
         <span class="section-badge">Get Started Fast</span>
         <h2 class="section-title">Quick Start</h2>
         <p class="section-subtitle">
-          From installation to computable digital thread simulation and rendering in under two minutes with the unified <code>msx</code> CLI.
+          From installation to computable digital thread simulation and rendering in under two minutes with the unified
+          <code>msx</code> CLI.
         </p>
       </div>
 
@@ -195,7 +196,9 @@ async function copyCode(code: string, index: number) {
   border: 1px solid var(--vp-c-border);
   border-radius: 14px;
   padding: 20px;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .step-card:hover {
@@ -244,9 +247,15 @@ async function copyCode(code: string, index: number) {
   height: 10px;
   border-radius: 50%;
 }
-.dot.red { background: #ff5f56; }
-.dot.yellow { background: #ffbd2e; }
-.dot.green { background: #27c93f; }
+.dot.red {
+  background: #ff5f56;
+}
+.dot.yellow {
+  background: #ffbd2e;
+}
+.dot.green {
+  background: #27c93f;
+}
 
 .terminal-label {
   font-size: 0.75rem;

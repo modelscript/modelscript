@@ -37,39 +37,30 @@ When a `.ssp` ZIP archive is loaded into the workspace, `sspLanguage.container` 
 
 ---
 
-## Semantic Linter & 20 Diagnostic Codes
+## Semantic Linter & Diagnostic Codes
 
 `lintSsd` and `lintSsv` (`languages/ssp/src/linter.ts`) validate structural, causal, and type soundness across `.ssd` and `.ssv` files with 20 diagnostic codes (13 `SSP_*` + 7 `SSV_*`):
 
 ### `.ssd` System Structure Diagnostics (`lintSsd`)
 
-| Code                               | Severity  | Condition Checked                                                                                                       |
-| :--------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------- |
-| `SSP_EMPTY_CONNECTOR_NAME`         | `error`   | A `<Connector>` on a system or component has an empty `name` attribute                                                  |
-| `SSP_DUPLICATE_CONNECTOR`          | `error`   | Duplicate connector `name` declared on the same system or component                                                     |
-| `SSP_INVALID_CONNECTOR_KIND`       | `error`   | Connector `kind` is not one of `input`, `output`, `parameter`, `calculatedParameter`, `local`, `inout`                  |
-| `SSP_EMPTY_COMPONENT_NAME`         | `error`   | A `<Component>` element has an empty `name` attribute                                                                   |
-| `SSP_DUPLICATE_COMPONENT`          | `error`   | Two `<Component>` elements in the same `<System>` share the same `name`                                                 |
-| `SSP_MISSING_COMPONENT_SOURCE`     | `warning` | A `<Component>` has an empty `source` URI (no FMU or nested `.ssp` referenced)                                          |
-| `SSP_UNRESOLVED_ELEMENT`           | `error`   | A `<Connection>` references a `startElement` or `endElement` component that does not exist                              |
-| `SSP_UNRESOLVED_CONNECTOR`         | `error`   | A `<Connection>` references a `startConnector` or `endConnector` that does not exist on the target element              |
-| `SSP_SELF_CONNECTION`              | `error`   | A `<Connection>` connects an element's connector back to the exact same element and connector                           |
-| `SSP_CONNECTOR_TYPE_MISMATCH`      | `error`   | Connected `startConnector` and `endConnector` have incompatible data types (e.g., `Real` connected to `Boolean`)        |
-| `SSP_CONNECTOR_CAUSALITY_CONFLICT` | `warning` | Invalid causal connection (e.g., component `output` to component `output`, or `input` to `input`)                       |
-| `SSP_UNRESOLVED_BINDING_PREFIX`    | `warning` | `<Parameter>` `name="prefix.param"` in an inline `<ParameterValues>` block references a non-existent component `prefix` |
-| `SSP_INVALID_EXPERIMENT_BOUNDS`    | `error`   | `<DefaultExperiment>` has `stopTime <= startTime`                                                                       |
+<LintRules lang="ssp" />
 
-### `.ssv` Parameter Value Diagnostics (`lintSsv`)
+---
 
-| Code                          | Severity  | Condition Checked                                                                                                       |
-| :---------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------- |
-| `SSV_EMPTY_PARAMETER_NAME`    | `error`   | A `<ssv:Parameter>` element has an empty `name` attribute                                                               |
-| `SSV_DUPLICATE_PARAMETER`     | `warning` | The same parameter `name` is defined more than once in the `<ssv:Parameters>` set                                       |
-| `SSV_MISSING_PARAMETER_TYPE`  | `error`   | A `<ssv:Parameter>` is missing its child type element (`<Real>`, `<Integer>`, `<Boolean>`, `<String>`, `<Enumeration>`) |
-| `SSV_MISSING_PARAMETER_VALUE` | `error`   | The typed child element of `<ssv:Parameter>` is missing its `value` attribute                                           |
-| `SSV_INVALID_REAL_VALUE`      | `error`   | `<ssv:Real value="..."/>` is not a valid finite floating-point number                                                   |
-| `SSV_INVALID_INTEGER_VALUE`   | `error`   | `<ssv:Integer value="..."/>` is not a valid base-10 integer                                                             |
-| `SSV_INVALID_BOOLEAN_VALUE`   | `error`   | `<ssv:Boolean value="..."/>` is not `"true"`, `"false"`, `"1"`, or `"0"`                                                |
+## Command Line Interface (`msx fmu` & `msx cosim`)
+
+ModelScript CLI provides turnkey subcommands for packaging, validating, and co-simulating SSP archives:
+
+```bash
+# Validate an FMU or SSP container
+msx fmu validate VehicleChassis.fmu
+
+# Simulate an FMU archive directly via SU2, CVODE, or BDF solvers
+msx fmu simulate Powertrain.fmu --stop-time=10.0 --step-size=0.001 --format=csv -o output.csv
+
+# Optimize SSP parameter values using differential evolution (CMA-ES, DE, PSO)
+msx cosim optimize PlantModel.ssp --params="kp:0.1:10.0,kd:0.01:1.0" --objective="tracking_error"
+```
 
 ---
 

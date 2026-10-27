@@ -82,14 +82,14 @@ The `msx` CLI registers **41 commands** (plus ergonomic aliases) organized into 
 
 ### 3. Formal Verification, Safety & Test Synthesis
 
-| Command                                              | Aliases | Summary                                                                                                        |
-| :--------------------------------------------------- | :------ | :------------------------------------------------------------------------------------------------------------- |
-| [`verify`](./commands.md#verify)                     | —       | Verify contracts, requirements, and physical invariants using BMC, $k$-induction, IC3/PDR, and Z3 SMT solving. |
-| [`falsify`](./commands.md#falsify)                   | —       | Search for Signal Temporal Logic (STL) counterexamples by minimizing robustness $\rho(\phi, \mathbf{x}, t)$.   |
-| [`export-formal`](./commands.md#export-formal)       | —       | Export flattened DAE systems to formal verification formats (`smt2`, `lustre`, `nusmv`, `tla`, `keymaera`).    |
-| [`verify-decisions`](./commands.md#verify-decisions) | —       | Verify architectural decision records (ADRs) and parameter trade-space bounds against formal system models.    |
-| [`decompose`](./commands.md#decompose)               | —       | Perform assume-guarantee contract decomposition and structural subsystem partitioning.                         |
-| [`generate-tests`](./commands.md#generate-tests)     | —       | Synthesize MC/DC-complete unit test vectors and stimulus harnesses from formal model constraints.              |
+| Command                                              | Aliases | Summary                                                                                                      |
+| :--------------------------------------------------- | :------ | :----------------------------------------------------------------------------------------------------------- |
+| [`verify`](./commands.md#verify)                     | —       | Verify decision tables, assume-guarantee contracts, and state machines; emit SARIF/JUnit/HTML reports.       |
+| [`falsify`](./commands.md#falsify)                   | —       | Search for Signal Temporal Logic (STL) counterexamples by minimizing robustness $\rho(\phi, \mathbf{x}, t)$. |
+| [`export-formal`](./commands.md#export-formal)       | —       | Export SysML v2 models to formal verification formats (`smt2`, `nuxmv`, `ocra`).                             |
+| [`verify-decisions`](./commands.md#verify-decisions) | —       | Verify architectural decision records (ADRs) and parameter trade-space bounds against formal system models.  |
+| [`decompose`](./commands.md#decompose)               | —       | Perform assume-guarantee contract decomposition and structural subsystem partitioning.                       |
+| [`generate-tests`](./commands.md#generate-tests)     | —       | Synthesize MC/DC-complete unit test vectors and stimulus harnesses from formal model constraints.            |
 
 ### 4. Polyglot Digital Thread, Co-Simulation & Standards Interop
 

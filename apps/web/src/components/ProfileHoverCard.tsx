@@ -141,7 +141,7 @@ export default function ProfileHoverCard({
   const [isFollowing, setIsFollowing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [showUnblockModal, setShowUnblockModal] = useState(false);
-  const { user, token } = useAuth();
+  const { user } = useAuth();
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 

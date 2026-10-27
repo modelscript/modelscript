@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, FlameIcon, PlayIcon } from "@primer/octicons-react";
+import { CodeIcon, FlameIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
@@ -8,11 +8,14 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { runPhysicsJob } from "../../api";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 import SimulationResultViewer from "./SimulationResultViewer";
 
 export interface CfdConfigViewerProps {
   artifactId?: number | undefined;
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
@@ -20,9 +23,15 @@ export interface CfdConfigViewerProps {
     configName?: string | undefined;
     machNumber?: number | undefined;
     aoaDeg?: number | undefined;
+    aoa?: number | undefined;
     reynoldsNumber?: number | undefined;
     flowModel?: string | undefined;
+    solver?: string | undefined;
+    turbulenceModel?: string | undefined;
     markerCount?: number | undefined;
+    markersEuler?: string[] | undefined;
+    markersFar?: string[] | undefined;
+    markersHeatflux?: string[] | undefined;
     geometryHash?: string | undefined;
     [key: string]: unknown;
   };
@@ -132,6 +141,46 @@ const StatItem = styled.div`
   }
 `;
 
+function parseSu2Client(text: string) {
+  let solver: string | undefined;
+  let turbModel: string | undefined;
+  let machNumber: number | undefined;
+  let aoaDeg: number | undefined;
+  let reynoldsNumber: number | undefined;
+  const markers: string[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/%.*$/, "").trim();
+    if (!line) continue;
+    const eqIdx = line.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = line.slice(0, eqIdx).trim().toUpperCase();
+    const val = line.slice(eqIdx + 1).trim();
+    if (key === "SOLVER" || key === "PHYSICAL_PROBLEM") solver = val;
+    else if (key === "KIND_TURB_MODEL") turbModel = val;
+    else if (key === "MACH_NUMBER") {
+      const n = Number(val);
+      if (Number.isFinite(n)) machNumber = n;
+    } else if (key === "AOA") {
+      const n = Number(val);
+      if (Number.isFinite(n)) aoaDeg = n;
+    } else if (key === "REYNOLDS_NUMBER") {
+      const n = Number(val);
+      if (Number.isFinite(n)) reynoldsNumber = n;
+    } else if (key.startsWith("MARKER_")) {
+      const inner = val
+        .replace(/[()]/g, "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const m of inner) {
+        if (!markers.includes(m) && Number.isNaN(Number(m))) markers.push(m);
+      }
+    }
+  }
+  return { solver, turbModel, machNumber, aoaDeg, reynoldsNumber, markers };
+}
+
 export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -139,6 +188,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
   const [simCompleted, setSimCompleted] = useState(false);
   const [completedResultConfig, setCompletedResultConfig] = useState<any>(null);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || viewConfig.configName || "SU2 Aerodynamic Config (.cfg)";
 
   useEffect(() => {
@@ -153,46 +203,52 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
+        .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => setRawText(txt))
         .catch((err) => console.warn("[CfdConfigViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedCfg = useMemo(() => parseSu2Client(rawText), [rawText]);
+
+  const solver = viewConfig.flowModel ?? viewConfig.solver ?? parsedCfg.solver;
+  const turbModel = viewConfig.turbulenceModel ?? parsedCfg.turbModel;
+  const machNumber = viewConfig.machNumber ?? parsedCfg.machNumber;
+  const aoaDeg = viewConfig.aoaDeg ?? viewConfig.aoa ?? parsedCfg.aoaDeg;
+  const reynoldsNumber = viewConfig.reynoldsNumber ?? parsedCfg.reynoldsNumber;
+  const allMarkers = useMemo(() => {
+    const fromConfig = [
+      ...(viewConfig.markersEuler || []),
+      ...(viewConfig.markersFar || []),
+      ...(viewConfig.markersHeatflux || []),
+    ];
+    return fromConfig.length > 0 ? fromConfig : parsedCfg.markers;
+  }, [viewConfig.markersEuler, viewConfig.markersFar, viewConfig.markersHeatflux, parsedCfg.markers]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean transonic airfoil / streamline vector diagram
+    if (!solver && machNumber === undefined && allMarkers.length === 0) {
+      return "";
+    }
     return DOMPurify.sanitize(`
       <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
         <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Streamlines -->
+        <text x="24" y="30" fill="#f0f6fc" font-size="12" font-weight="bold" font-family="monospace">CFD DOMAIN // ${title}</text>
+        <text x="24" y="48" fill="#38bdf8" font-size="11" font-family="monospace">Solver: ${solver || "N/A"}${turbModel ? ` (${turbModel})` : ""}${machNumber !== undefined ? ` | Mach: ${machNumber}` : ""}${aoaDeg !== undefined ? ` | AoA: ${aoaDeg}°` : ""}</text>
+        <rect x="60" y="70" width="530" height="230" rx="10" fill="rgba(30, 41, 59, 0.4)" stroke="#38bdf8" stroke-dasharray="6 4" stroke-width="1.5" />
         <g stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6">
-          <path d="M 60 90 Q 250 50 600 80" />
-          <path d="M 60 130 Q 250 80 600 130" stroke="#f59e0b" />
-          <path d="M 60 170 Q 220 120 340 160 Q 460 200 600 180" stroke="#f43f5e" stroke-width="2" />
-          <path d="M 60 210 Q 280 260 600 230" />
-          <path d="M 60 250 Q 280 290 600 270" />
+          <path d="M 85 125 Q 250 95 565 120" />
+          <path d="M 85 185 Q 220 145 340 180 Q 460 210 565 190" stroke="#fb923c" stroke-width="2" />
+          <path d="M 85 245 Q 280 275 565 250" />
         </g>
-
-        <!-- Airfoil Wing Profile (NACA 0012 Transonic) -->
-        <path d="M 180 170 Q 240 130 380 160 Q 480 178 500 180 Q 440 188 320 186 Q 220 184 180 170 Z"
-              fill="#1e293b" stroke="#fb923c" stroke-width="2.5" />
-
-        <!-- Angle of Attack Vector & Chord Line -->
-        <line x1="150" y1="170" x2="520" y2="180" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 4" />
-        <line x1="130" y1="185" x2="210" y2="155" stroke="#10b981" stroke-width="2" />
-        <polygon points="210,155 198,157 203,165" fill="#10b981" />
-        <text x="130" y="205" fill="#6ee7b7" font-size="11" font-family="monospace">V_∞ (AoA = 2.5°)</text>
-
-        <text x="325" y="40" fill="#f0f6fc" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle">SU2 Computational Fluid Dynamics Study</text>
-        <text x="325" y="60" fill="#64748b" font-size="10" font-family="monospace" text-anchor="middle">Transonic Euler / RANS Aerodynamic Flowfield</text>
+        <path d="M 210 185 Q 260 155 370 178 Q 440 190 460 192 Q 410 198 310 196 Q 240 194 210 185 Z" fill="#1e293b" stroke="#fb923c" stroke-width="2" />
+        <text x="325" y="285" fill="#94a3b8" font-size="10" font-family="monospace" text-anchor="middle">Boundaries: ${allMarkers.join(", ") || "default"}</text>
       </svg>
     `);
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, solver, turbModel, machNumber, aoaDeg, allMarkers, title]);
 
   const [simError, setSimError] = useState<string | null>(null);
 
@@ -205,8 +261,8 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
       const studyConfig = {
         type: "CFD",
         workflowClass: "DroneCFDStudy",
-        mach: viewConfig.machNumber ?? 0.8,
-        aoa: viewConfig.aoaDeg ?? 2.5,
+        mach: machNumber ?? 0.5,
+        aoa: aoaDeg ?? 0.0,
       };
 
       const result = await runPhysicsJob({ geometryHash: geoHash, config: studyConfig });
@@ -235,6 +291,8 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
     );
   }
 
+  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
+
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
@@ -244,32 +302,88 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           <PillBadge>SU2 CFD Config</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Box
+            display="flex"
+            bg="rgba(0,0,0,0.25)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("diagram")}
+              style={{
+                background: viewMode === "diagram" ? "rgba(249, 115, 22, 0.25)" : "transparent",
+                color: viewMode === "diagram" ? "#fb923c" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <WorkflowIcon size={12} /> Domain
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("code")}
+              style={{
+                background: viewMode === "code" ? "rgba(249, 115, 22, 0.25)" : "transparent",
+                color: viewMode === "code" ? "#fb923c" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <CodeIcon size={12} /> Config
+            </button>
+          </Box>
           <Button
             size="small"
-            variant="primary"
             leadingVisual={runningSim ? Spinner : PlayIcon}
             disabled={runningSim}
             onClick={handleRunSimulationLocally}
           >
-            {runningSim ? "Running Locally..." : "Run Simulation"}
+            {runningSim ? "Solving..." : "Run Solver"}
           </Button>
 
-          <Button
-            size="small"
-            leadingVisual={CodeIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in IDE
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={CodeIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "cfd" as any,
+                  code: rawText || `% ${title}\nSOLVER= EULER\n`,
+                  title,
+                });
+                const resolvedId = artifactId ?? viewConfig.artifactId;
+                const fromArtifact = resolvedId ? `?fromArtifact=${resolvedId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
       {simError && (
         <Box px={3} py={2} bg="rgba(248, 81, 73, 0.15)" borderBottom="1px solid var(--color-danger-border)">
-          <Text fontSize="12px" color="var(--color-danger-fg)">
-            Simulation Error: {simError}
-          </Text>
+          <Text style={{ fontSize: "12px", color: "var(--color-danger-fg)" }}>Simulation Error: {simError}</Text>
         </Box>
       )}
 
@@ -278,33 +392,82 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : (
+        ) : viewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+        ) : (
+          <Box
+            flex={1}
+            py={2}
+            overflow="auto"
+            bg="var(--color-canvas-inset, #010409)"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "cfd")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={4} color="var(--color-fg-muted)" textAlign="center">
+                No CFD configuration source available.
+              </Box>
+            )}
+          </Box>
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Aerodynamic Setup Telemetry
           </Text>
-          <StatItem>
-            <span>Flow Solver</span>
-            <strong style={{ color: "#38bdf8" }}>{viewConfig.flowModel || "RANS (Spalart-Allmaras)"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Mach Number (M)</span>
-            <strong>{viewConfig.machNumber ?? 0.8}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Angle of Attack (α)</span>
-            <strong>{viewConfig.aoaDeg ? `${viewConfig.aoaDeg}°` : "2.5°"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Reynolds Number (Re)</span>
-            <strong>{viewConfig.reynoldsNumber ? `${(viewConfig.reynoldsNumber / 1e6).toFixed(1)}M` : "6.5M"}</strong>
-          </StatItem>
+          {solver && (
+            <StatItem>
+              <span>Flow Solver</span>
+              <strong style={{ color: "#38bdf8" }}>{solver}</strong>
+            </StatItem>
+          )}
+          {turbModel && (
+            <StatItem>
+              <span>Turbulence Model</span>
+              <strong>{turbModel}</strong>
+            </StatItem>
+          )}
+          {machNumber !== undefined && (
+            <StatItem>
+              <span>Mach Number (M)</span>
+              <strong>{machNumber}</strong>
+            </StatItem>
+          )}
+          {aoaDeg !== undefined && (
+            <StatItem>
+              <span>Angle of Attack (α)</span>
+              <strong>{aoaDeg}°</strong>
+            </StatItem>
+          )}
+          {reynoldsNumber !== undefined && (
+            <StatItem>
+              <span>Reynolds Number (Re)</span>
+              <strong>{reynoldsNumber >= 1e6 ? `${(reynoldsNumber / 1e6).toFixed(2)}M` : reynoldsNumber}</strong>
+            </StatItem>
+          )}
           <StatItem>
             <span>Boundary Markers</span>
-            <strong>{viewConfig.markerCount ?? 3} (Airfoil, Farfield, Sym)</strong>
+            <strong>{viewConfig.markerCount ?? allMarkers.length}</strong>
           </StatItem>
         </InspectorSidebar>
       </ContentArea>

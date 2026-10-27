@@ -52,7 +52,13 @@ export interface PackageRightSidebarProps {
   publishedAt?: string | null | undefined;
   contentHash?: string | null | undefined;
   packageSignature?: string | null | undefined;
-  availableDomains: { id: string; label: string; icon: React.ReactNode; count: number; color: string }[];
+  availableDomains: {
+    id: string;
+    label: string;
+    icon: React.ReactNode | React.ComponentType<any>;
+    count: number;
+    color: string;
+  }[];
   packageStats?: PackageStats | null | undefined;
   dependents: PackageDependent[];
   packageOwner?: string | null | undefined;
@@ -353,7 +359,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                     color: d.color,
                   }}
                 >
-                  <span>{d.icon}</span>
+                  <span>{typeof d.icon === "function" ? React.createElement(d.icon, { size: 12 }) : d.icon}</span>
                   <span>{d.label}</span>
                   <span style={{ opacity: 0.7, fontSize: 11 }}>({d.count})</span>
                 </span>

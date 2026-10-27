@@ -8,6 +8,7 @@ import {
   RepoForkedIcon,
   SearchIcon,
   ShareIcon,
+  TerminalIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button } from "@primer/react";
@@ -15,13 +16,18 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { useTheme } from "../../../theme";
-import { HERO_EXAMPLES, type HeroExample } from "../constants";
+import { getExtensionForDialect } from "../../../util/editor-routing";
+import { HERO_EXAMPLES, PLAYGROUND_LANGUAGES, type HeroExample } from "../constants";
 import { Badge, BrandLink, NavLeft, NavRight, NavText, PlaygroundNavbar as NavbarContainer } from "../styles";
 
 export interface PlaygroundNavbarProps {
   fromArtifactParam: string | null;
   currentTitle: string;
+  currentLang?: string;
+  publishLabel?: string;
   onSelectExample: (ex: HeroExample) => void;
+  onSelectLang?: (lang: string) => void;
+  onOpenInVsCode?: () => void;
   onDownloadModel: () => void;
   onCopyEmbed: () => void;
   onOpenShare: () => void;
@@ -31,7 +37,11 @@ export interface PlaygroundNavbarProps {
 export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   fromArtifactParam,
   currentTitle,
+  currentLang = "modelica",
+  publishLabel,
   onSelectExample,
+  onSelectLang,
+  onOpenInVsCode,
   onDownloadModel,
   onCopyEmbed,
   onOpenShare,
@@ -39,6 +49,14 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 }) => {
   const { user } = useAuth();
   const { theme } = useTheme();
+
+  const currentLangOption = PLAYGROUND_LANGUAGES.find((l) => l.id === currentLang) || {
+    id: currentLang,
+    label: currentLang.toUpperCase(),
+    ext: getExtensionForDialect(currentLang),
+  };
+
+  const effectivePublishLabel = publishLabel || (fromArtifactParam ? "Fork to Feed" : "Post to Feed");
 
   return (
     <NavbarContainer>
@@ -58,7 +76,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 
         {fromArtifactParam && (
           <Link
-            to={`/feed?artifact=${fromArtifactParam}`}
+            to={`/home?artifact=${fromArtifactParam}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -92,13 +110,39 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                     <ActionList.LeadingVisual>
                       <FileIcon />
                     </ActionList.LeadingVisual>
-                    {ex.name}
+                    {ex.title}
+                    <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
                   </ActionList.Item>
                 ))}
               </ActionList.Group>
             </ActionList>
           </ActionMenu.Overlay>
         </ActionMenu>
+
+        {/* Language / Dialect Selector */}
+        {onSelectLang && (
+          <ActionMenu>
+            <ActionMenu.Button size="small" leadingVisual={CodeIcon}>
+              <span>{currentLangOption.label}</span>
+            </ActionMenu.Button>
+            <ActionMenu.Overlay width="medium" style={{ maxHeight: "360px", overflowY: "auto" }}>
+              <ActionList selectionVariant="single">
+                <ActionList.Group title="Engineering Dialect (44 Languages)">
+                  {PLAYGROUND_LANGUAGES.map((lang) => (
+                    <ActionList.Item
+                      key={lang.id}
+                      selected={lang.id === currentLang}
+                      onSelect={() => onSelectLang(lang.id)}
+                    >
+                      {lang.label}
+                      <ActionList.Description variant="inline">{lang.ext}</ActionList.Description>
+                    </ActionList.Item>
+                  ))}
+                </ActionList.Group>
+              </ActionList>
+            </ActionMenu.Overlay>
+          </ActionMenu>
+        )}
       </NavLeft>
 
       <NavRight>
@@ -113,6 +157,19 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           <span style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>⌘K</span>
         </Button>
 
+        {/* Promote to Multi-File VS Code Workbench */}
+        {onOpenInVsCode && (
+          <Button
+            size="small"
+            variant="default"
+            leadingVisual={TerminalIcon}
+            onClick={onOpenInVsCode}
+            title="Promote this model to the full multi-file VS Code Workbench"
+          >
+            <NavText>Open in VS Code (Multi-File)</NavText>
+          </Button>
+        )}
+
         {/* Export Menu */}
         <ActionMenu>
           <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
@@ -124,7 +181,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 <ActionList.LeadingVisual>
                   <DownloadIcon />
                 </ActionList.LeadingVisual>
-                Download Model (.mo)
+                Download Model ({currentLangOption.ext})
               </ActionList.Item>
               <ActionList.Item onSelect={onCopyEmbed}>
                 <ActionList.LeadingVisual>
@@ -141,10 +198,10 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           <NavText>Share</NavText>
         </Button>
 
-        {/* Publish / Open in IDE */}
+        {/* Publish / Save Edit / Reply / Fork to Feed */}
         {user ? (
           <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={onPublishToFeed}>
-            Post to Feed
+            {effectivePublishLabel}
           </Button>
         ) : (
           <div style={{ display: "flex", gap: "6px" }}>

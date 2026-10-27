@@ -1,6 +1,9 @@
-# `@modelscript/ide-client`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) — polyglot Language Server Protocol (`vscode-languageclient`) integration, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 17 custom editors, and 20+ specialized engineering webview panels.
+# @modelscript/ide-client
+
+ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) — polyglot Language Server Protocol (`vscode-languageclient`) integration across all 44 languages, Debug Adapter Protocol (**DAP**) equation-level simulation debugger, 3-Tier AI Engineering Copilot (WebGPU `Qwen3-0.6B`, local Ollama, hosted MCP SSE), interactive `.monb` engineering notebooks, virtual filesystems (`memfs://`, `modelica://`), 18 custom editors, and 20+ specialized engineering webview panels.
 
 ---
 
@@ -25,13 +28,13 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) �
 
 - **Tier 1 — In-Browser WebGPU (`@mlc-ai/web-llm`, `Qwen3-0.6B`)**: 100% local, zero-egress GPU inference inside the browser or desktop webview for air-gapped syntax assistance, equation explanation, and unit checks.
 - **Tier 2 — Local Workstation Inference (`Ollama` / `vLLM`)**: Connects to local OpenAI-compatible endpoints (`http://localhost:11434`) with tool-calling bound to the in-process `@modelscript/mcp` bridge (`registerMCPTools`).
-- **Tier 3 — Hosted MCP SSE Gateway**: Streams multi-step agentic tool calls over `/api/v1/mcp/sse`, invoking all 29 ModelScript MCP tools (`modelscript_closed_loop_synthesize`, `modelica_diff_calibrate`, `tgg_reconcile_slot`, etc.).
+- **Tier 3 — Hosted MCP SSE Gateway**: Streams multi-step agentic tool calls over `/api/v1/mcp/sse`, invoking all **47 ModelScript MCP tools** (`modelscript_closed_loop_synthesize`, `modelica_diff_calibrate`, `tgg_reconcile_slot`, `pscad_verify_ieee2800`, `olga_verify`, `gensys_verify_en14363`, etc.).
 
 ### 4. Interactive `.monb` Engineering Notebooks (`src/notebook-serializer.ts`, `src/notebook-controller.ts`)
 
 - **`ModelicaNotebookSerializer` & `ModelicaNotebookController`**: Native VS Code Notebook integration for `.monb` files interleaving GitHub-Flavored Markdown + KaTeX equations (`src/markdown-it-plugin.ts`) with executable polyglot code cells (`modelica`, `sysml2`, `modelscript`, `scad`, `sparql`), rendering inline time-series plots, Bode diagrams, 3D CAD meshes, and SVG schematics.
 
-### 5. 17 Custom Editors
+### 5. 18 Custom Editors
 
 1. **Bi-Directional Diagram & Schematic Editor (`src/diagram-editor-provider.ts`)**: Interactive graphical editor for `.mo`, `.sysml`, `.pscx`, and polyglot schematics.
 2. **Interactive `.monb` Notebook Editor (`src/notebook-serializer.ts`)**: Literate multi-domain simulation notebooks.
@@ -54,13 +57,13 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) �
 
 ### 6. 20+ Specialized Engineering Webview Panels & Tree Views
 
-- **Simulation & Reachability Flowpipe Studio (`src/simulation-panel.ts`, `src/physics-setup-editor-provider.ts`)**: Multi-axis time-series oscilloscope, FFT spectrum analyzer, phase portraits, and zonotope/interval flowpipe envelope ribbons.
+- **Simulation & Reachability Flowpipe Studio (`src/simulation-panel.ts`, `src/simulation-view-panel.ts`, `src/physics-setup-editor-provider.ts`)**: Multi-axis time-series oscilloscope, FFT spectrum analyzer, phase portraits, and zonotope/interval flowpipe envelope ribbons.
 - **3D CAD & Multibody Animation Viewport (`src/cad-viewer-panel.ts`, `src/multibody-animation-panel.ts`, `src/vr-visualization-panel.ts`)**: Hardware-accelerated Three.js / WebXR viewport with section planes, kinematic playback, and FEA/CFD field overlays.
 - **Formal Verification & Counterexample Replay (`src/verification-panel.ts`, `src/trace-replay-panel.ts`, `src/contract-hierarchy-panel.ts`)**: BMC/$k$-induction/IC3 proof dashboard, assume-guarantee contract hierarchy viewer, and step-by-step counterexample trace replay.
 - **Digital Thread, Polyglot Visualizer & Trade Studies (`src/thread-explorer-panel.ts`, `src/polyglot-visualizer-panel.ts`, `src/candidate-trade-study-panel.ts`)**: Cross-domain hypergraph explorer, TGG alignment inspector, and Pareto trade-study explorer.
 - **Co-Simulation & MQTT Live Studio (`src/cosim-panel.ts`, `src/mqtt-tree-provider.ts`, `src/fmu-browser-participant.ts`)**: Real-time multi-FMU and HIL co-simulation dashboard.
 - **Optimization, Calibration, Surrogates & UQ (`src/optimization-panel.ts`, `src/calibration-panel.ts`, `src/surrogate-panel.ts`, `src/uncertainty-panel.ts`, `src/analysis-panel.ts`)**: Interactive parameter calibration, ROM training, Monte Carlo / Sobol sensitivity charts, and linearized state-space ($A, B, C, D$) Bode/Nyquist/Root-Locus analysis.
-- **Domain Panels & Trees**: `OWL2DiagramPanel` (`src/owl2-diagram-panel.ts`), `PacemakerProgrammerPanel` (`src/pacemaker-programmer-panel.ts`), `CloudJobPanel` (`src/cloud-job-panel.ts`), `ElementTableProvider` (`src/element-table-provider.ts`), `LibraryTreeProvider` (`src/library-tree-provider.ts`), `RegistryTreeProvider` (`src/registry-tree-provider.ts`), `ExperimentsTreeProvider` (`src/experiments-tree.ts`), `ScmTreeView` & `SemanticDiffComments` (`src/scm-tree-view.ts`, `src/semantic-diff-comments.ts`), and interactive REPL (`src/repl-terminal.ts`).
+- **Domain Panels & Trees**: `OWL2DiagramPanel` (`src/owl2-diagram-panel.ts`), `OWL2ClassHierarchyProvider` (`src/owl2-class-hierarchy-provider.ts`), `OWL2PropertyHierarchyProvider` (`src/owl2-property-hierarchy-provider.ts`), `LineGeometryPanel` (`src/line-geometry-panel.ts`), `PacemakerProgrammerPanel` (`src/pacemaker-programmer-panel.ts`), `CloudJobPanel` (`src/cloud-job-panel.ts`), `ElementTableProvider` (`src/element-table-provider.ts`), `LibraryTreeProvider` (`src/library-tree-provider.ts`), `RegistryTreeProvider` (`src/registry-tree-provider.ts`), `ExperimentsTreeProvider` (`src/experiments-tree.ts`), `ScmTreeView` & `SemanticDiffComments` (`src/scm-tree-view.ts`, `src/semantic-diff-comments.ts`), and interactive REPL (`src/repl-terminal.ts`).
 
 ---
 

@@ -2,6 +2,7 @@
 
 import { InlayHint, InlayHintKind, Position, Range } from "vscode-languageserver";
 import type { LspContext } from "../lsp-context.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 export function registerInlayHintProvider(context: LspContext) {
   context.connection.onRequest(
@@ -9,8 +10,21 @@ export function registerInlayHintProvider(context: LspContext) {
     (params: { textDocument: { uri: string }; range: Range }): InlayHint[] => {
       const uri = params.textDocument.uri;
       const hints: InlayHint[] = [];
+
+      const inlayCfg = context.settings?.inlayHints;
+      if (inlayCfg?.enabled === false) {
+        return hints;
+      }
+      const showUnitsAndBounds = inlayCfg?.unitsAndBounds ?? true;
+      const showVariabilityPrefixes = inlayCfg?.variabilityPrefixes ?? false;
+
       const document = context.documents.get(uri);
       if (!document) return hints;
+
+      const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(document.languageId, uri);
+      if (plugin && !globalLanguageRegistry.isLanguageEnabled(plugin.id)) {
+        return hints;
+      }
 
       const fileIndex =
         context.workspaceManager.getWorkspaceIndex("modelica")?.getFileIndex(uri) ??
@@ -40,25 +54,29 @@ export function registerInlayHintProvider(context: LspContext) {
         }
 
         // 1. Parameter Unit Inlay Hint (e.g. `R = 100` -> ` [Ω]`)
-        const unit = sym.metadata?.unit ?? sym.metadata?.displayUnit;
-        if (unit && typeof unit === "string") {
-          hints.push({
-            position: Position.create(symEnd.line, symEnd.character),
-            label: ` [${unit}]`,
-            kind: InlayHintKind.Type,
-            paddingLeft: true,
-          });
+        if (showUnitsAndBounds) {
+          const unit = sym.metadata?.unit ?? sym.metadata?.displayUnit;
+          if (unit && typeof unit === "string") {
+            hints.push({
+              position: Position.create(symEnd.line, symEnd.character),
+              label: ` [${unit}]`,
+              kind: InlayHintKind.Type,
+              paddingLeft: true,
+            });
+          }
         }
 
         // 2. Inferred Causality/Flow Inlay Hint (e.g. `in` / `out`)
-        const causality = sym.metadata?.causality;
-        if (causality && (causality === "input" || causality === "output")) {
-          hints.push({
-            position: Position.create(symStart.line, symStart.character),
-            label: `${causality} `,
-            kind: InlayHintKind.Parameter,
-            paddingRight: true,
-          });
+        if (showVariabilityPrefixes || inlayCfg?.variabilityPrefixes === undefined) {
+          const causality = sym.metadata?.causality;
+          if (causality && (causality === "input" || causality === "output")) {
+            hints.push({
+              position: Position.create(symStart.line, symStart.character),
+              label: `${causality} `,
+              kind: InlayHintKind.Parameter,
+              paddingRight: true,
+            });
+          }
         }
       }
 

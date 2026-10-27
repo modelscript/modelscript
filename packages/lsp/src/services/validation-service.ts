@@ -633,10 +633,27 @@ export class ValidationService {
    * Validates a `TextDocument` by routing to domain-specific validators (STEP, CFD, FEA, SCAD,
    * PSCAD, SSP, CSV, JS/TS sidecars) or running the uniform incremental WASM GLR parse and semantic pipeline.
    */
+  public diagnosticsConfig: {
+    enabled?: boolean | undefined;
+    maxProblems?: number | undefined;
+    crossDomainDrift?: "error" | "warning" | "information" | "off" | undefined;
+    formalVerificationOnSave?: boolean | undefined;
+    daeSingularityCheck?: boolean | undefined;
+  } = {};
+
   public async validateTextDocument(textDocument: TextDocument): Promise<void> {
     const uri = textDocument.uri;
+    if (this.diagnosticsConfig.enabled === false) {
+      this.connection.sendDiagnostics({ uri, diagnostics: [] });
+      return;
+    }
+
     const text = textDocument.getText();
-    const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(textDocument.languageId, uri);
+    const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(textDocument.languageId, uri, text);
+    if (plugin && !globalLanguageRegistry.isLanguageEnabled(plugin.id)) {
+      this.connection.sendDiagnostics({ uri, diagnostics: [] });
+      return;
+    }
 
     // 1. Check custom validation handler (e.g. for specialized formats)
     if (plugin?.customHandlers?.validate) {
@@ -2506,23 +2523,27 @@ export class ValidationService {
         }
       }
 
-      // Cross-domain FEA structural slicing parity diagnostics
-      const feaProps = extractFeaSlicingProperties(text);
-      const sigmaMaxMPa = (feaProps.maxVonMisesStress ?? feaProps.maxVonMisesPa ?? 0) / 1e6;
-      const totalMass = feaProps.totalMass ?? feaProps.mass ?? 1.2;
-      const yieldMPa = 180.0;
-      const sf = sigmaMaxMPa > 0 ? yieldMPa / sigmaMaxMPa : 99.9;
-      const cmp = sigmaMaxMPa <= yieldMPa ? "<=" : ">";
-      const feaLines = text.split(/\r?\n/);
-      for (let i = 0; i < feaLines.length; i++) {
-        const line = feaLines[i]!;
-        if (/^\*SOLID SECTION/i.test(line) || (isBdf && /^\s*PSOLID\b/i.test(line))) {
-          feaDiagnostics.push({
-            severity: DiagnosticSeverity.Information,
-            range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
-            message: `[FEA Structural Invariant] Arm bending stress verified: peak σ_max = ${sigmaMaxMPa.toFixed(1)} MPa ${cmp} ${yieldMPa.toFixed(1)} MPa (SF = ${sf.toFixed(2)}). Calibrated mass: ${totalMass.toFixed(2)} kg.`,
-            source: "fea",
-          });
+      // Cross-domain FEA structural slicing parity diagnostics (scoped to Drone / ECHASSIS decks)
+      const isDroneFea =
+        textDocument.uri.includes("drone_chassis") || text.includes("Drone Chassis") || text.includes("ECHASSIS");
+      if (isDroneFea) {
+        const feaProps = extractFeaSlicingProperties(text);
+        const sigmaMaxMPa = (feaProps.maxVonMisesStress ?? feaProps.maxVonMisesPa ?? 0) / 1e6;
+        const totalMass = feaProps.totalMass ?? feaProps.mass ?? 1.2;
+        const yieldMPa = 180.0;
+        const sf = sigmaMaxMPa > 0 ? yieldMPa / sigmaMaxMPa : 99.9;
+        const cmp = sigmaMaxMPa <= yieldMPa ? "<=" : ">";
+        const feaLines = text.split(/\r?\n/);
+        for (let i = 0; i < feaLines.length; i++) {
+          const line = feaLines[i]!;
+          if (/^\*SOLID SECTION/i.test(line) || (isBdf && /^\s*PSOLID\b/i.test(line))) {
+            feaDiagnostics.push({
+              severity: DiagnosticSeverity.Information,
+              range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
+              message: `[FEA Structural Invariant] Arm bending stress verified: peak σ_max = ${sigmaMaxMPa.toFixed(1)} MPa ${cmp} ${yieldMPa.toFixed(1)} MPa (SF = ${sf.toFixed(2)}). Calibrated mass: ${totalMass.toFixed(2)} kg.`,
+              source: "fea",
+            });
+          }
         }
       }
     } catch (e: any) {

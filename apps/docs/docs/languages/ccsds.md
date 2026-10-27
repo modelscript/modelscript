@@ -44,14 +44,9 @@
 
 ## Static Analysis & Pre-Flight Linter Rules
 
-The CCSDS analyzer enforces space mission integrity and flight safety constraints:
+The CCSDS analyzer enforces space mission integrity and flight safety constraints (`M8201`–`M8208`):
 
-| Rule Identifier          | Severity  | Condition Checked                                                                                            |
-| :----------------------- | :-------- | :----------------------------------------------------------------------------------------------------------- |
-| `suborbital-perigee`     | `error`   | Orbit perigee altitude drops below safe atmospheric entry threshold ($r_p < R_\text{Earth} + h_\text{min}$). |
-| `unsupported-frame`      | `error`   | Ephemeris references an undefined or unsupported non-inertial reference frame.                               |
-| `uncalibrated-parameter` | `warning` | XTCE parameter definition lacks valid engineering unit calibration or polynomial transform.                  |
-| `bit-packing-overlap`    | `error`   | Bit-level overlap or invalid byte alignment detected inside telecommand sequence containers.                 |
+<LintRules lang="ccsds" />
 
 ---
 

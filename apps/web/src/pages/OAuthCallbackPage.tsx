@@ -24,6 +24,7 @@ const OAuthCallbackPage: React.FC = () => {
       window.history.replaceState({}, document.title, window.location.pathname);
       localStorage.setItem("modelscript-auth-token", token);
       window.location.href = "/home"; // Hard reload to re-init auth context
+      return undefined;
     } else {
       // Simulate OAuth flow locally if no backend token is present
       const timer = setTimeout(() => navigate("/login"), 2000);

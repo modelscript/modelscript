@@ -141,4 +141,4 @@ msx dhf audit release_v1.dhf.md
 Enterprise teams can connect cloud AI agents and internal copilot orchestrators directly to the Hub's **Hosted Model Context Protocol (MCP) Gateway**:
 
 - **`GET /api/v1/mcp/sse`**: Authenticates via Bearer token (`JWT` or `ms_bot_*`) and opens a server-sent events transport session.
-- **`POST /api/v1/mcp/messages`**: Dispatches any of the [29 MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.
+- **`POST /api/v1/mcp/messages`**: Dispatches any of the [31 MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.

@@ -25,7 +25,7 @@ import { useFeatureFlag } from "../../../FeatureFlagContext";
 import CommitInfoBar from "../components/CommitInfoBar";
 import RepoAboutSidebar from "../components/RepoAboutSidebar";
 import { FileRow, MarkdownBody, StyledBox } from "../styles";
-import { getLanguageFromFileName } from "../utils";
+import { getLanguageFromFileName, getRelativeTime } from "../utils";
 
 export interface CodeTabProps {
   projectId: string;

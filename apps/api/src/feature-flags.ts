@@ -120,11 +120,10 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
   heavy_vscode_ide: {
     key: "heavy_vscode_ide",
     name: "Full VS Code Web Workbench",
-    description: "Iframe-based VS Code Web environment (defaults to Morsel Playground).",
-    defaultValue: false,
+    description: "Iframe-based VS Code Web environment for multi-file projects and repositories.",
+    defaultValue: true,
     category: "developer",
-    maturity: "beta",
-    allowedRoles: ["admin", "beta_tester"],
+    maturity: "production",
   },
   experimental_viewers: {
     key: "experimental_viewers",

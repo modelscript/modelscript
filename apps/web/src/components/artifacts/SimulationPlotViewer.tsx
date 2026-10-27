@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { DownloadIcon, GraphIcon, PlayIcon, SearchIcon } from "@primer/octicons-react";
+import { DownloadIcon, GraphIcon, SearchIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import Papa from "papaparse";
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   CartesianGrid,
   Legend,
@@ -62,7 +61,6 @@ const OverridePill = styled.span`
 `;
 
 const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const navigate = useNavigate();
   const [data, setData] = useState<Record<string, number>[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,25 +144,8 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
         return;
       }
 
-      // 3. Fallback: generate sample parametric step/frequency response if model specified
-      if (viewConfig?.model || viewConfig?.overrides) {
-        const samplePoints: Record<string, number>[] = [];
-        const nSteps = 50;
-        const tEnd = 10;
-        const damping = 0.2;
-        const freq = 1.5;
-
-        for (let i = 0; i <= nSteps; i++) {
-          const t = (i / nSteps) * tEnd;
-          const x = 1.0 - Math.exp(-damping * t) * Math.cos(freq * t);
-          const v = Math.exp(-damping * t) * (damping * Math.cos(freq * t) + freq * Math.sin(freq * t));
-          samplePoints.push({
-            time: Number(t.toFixed(2)),
-            position: Number(x.toFixed(4)),
-            velocity: Number(v.toFixed(4)),
-          });
-        }
-        setData(samplePoints);
+      if (active) {
+        setData([]);
       }
     }
 
@@ -237,18 +218,6 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
           <Button size="small" leadingVisual={DownloadIcon} onClick={exportCsv} title="Download trajectory as CSV">
             CSV
           </Button>
-          {viewConfig?.model && (
-            <Button
-              size="small"
-              leadingVisual={PlayIcon}
-              onClick={() => {
-                const fromArtifact = viewConfig?.artifactId ? `&fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/playground?model=${encodeURIComponent(viewConfig.model)}${fromArtifact}`);
-              }}
-            >
-              Playground
-            </Button>
-          )}
         </Box>
       </Toolbar>
 

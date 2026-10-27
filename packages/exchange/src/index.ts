@@ -9,6 +9,7 @@
  */
 
 export * as aasx from "./aasx/index.js";
+export * as adapters from "./adapters/index.js";
 export * as compliance from "./compliance/index.js";
 export * as cosim from "./cosim/index.js";
 export * as ddp from "./ddp/index.js";
@@ -20,6 +21,7 @@ export * as telemetry from "./telemetry/index.js";
 export * as variants from "./variants/index.js";
 
 export * from "./aasx/index.js";
+export * from "./adapters/index.js";
 export * from "./compliance/index.js";
 export * from "./cosim/index.js";
 export * from "./ddp/index.js";

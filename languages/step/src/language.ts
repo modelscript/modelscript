@@ -22,6 +22,7 @@ import {
  */
 export const stepLanguage = language({
   name: "step",
+  maturity: "stable",
 
   // Bi-directional source writeback for updating quoted string parameters in STEP entity records
   writeback: (ctx) => {

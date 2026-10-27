@@ -49,4 +49,43 @@ export interface LspContext {
     /** Whether all declared external package/library dependencies have finished loading. */
     dependenciesReady: boolean;
   };
+
+  /** Live user configuration synchronized from VS Code settings (`modelscript.*`). */
+  settings?: ModelScriptLspSettings | undefined;
+}
+
+export interface ModelScriptLspSettings {
+  languages?:
+    | {
+        maturityTier?: "all" | "betaAndStable" | "stableOnly" | "stable" | "beta" | "experimental" | undefined;
+        enabledOverrides?: Record<string, boolean> | undefined;
+      }
+    | undefined;
+  codeLens?:
+    | {
+        enabled?: boolean | undefined;
+        simulate?: boolean | undefined;
+        verification?: boolean | undefined;
+        polyglotLinks?: boolean | undefined;
+        cadMetrics?: boolean | undefined;
+        fileConversions?: boolean | undefined;
+      }
+    | undefined;
+  inlayHints?:
+    | {
+        enabled?: boolean | undefined;
+        unitsAndBounds?: boolean | undefined;
+        formalProofBadges?: boolean | undefined;
+        variabilityPrefixes?: boolean | undefined;
+      }
+    | undefined;
+  diagnostics?:
+    | {
+        enabled?: boolean | undefined;
+        maxProblems?: number | undefined;
+        crossDomainDrift?: "error" | "warning" | "information" | "off" | undefined;
+        formalVerificationOnSave?: boolean | undefined;
+        daeSingularityCheck?: boolean | undefined;
+      }
+    | undefined;
 }

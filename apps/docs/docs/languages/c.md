@@ -51,18 +51,7 @@
 
 The C analyzer surfaces common numeric defects, memory safety concerns, and algorithmic cycles (`M8401`–`M8410`):
 
-| Code    | Rule Identifier               | Severity  | Condition Checked                                                                         |
-| :------ | :---------------------------- | :-------- | :---------------------------------------------------------------------------------------- |
-| `M8401` | `uninitialized-variable`      | `warning` | Local variable may be read before being assigned or initialized.                          |
-| `M8402` | `constant-division-by-zero`   | `error`   | Division or modulo by constant zero detected in arithmetic expression.                    |
-| `M8403` | `array-bounds-overflow`       | `error`   | Static array subscript index exceeds declared dimension bound ($i \ge N$).                |
-| `M8404` | `unreachable-code`            | `warning` | Unreachable statements detected following unconditional `return`, `break`, or `goto`.     |
-| `M8405` | `assignment-in-conditional`   | `warning` | Assignment operator `=` used inside conditional expression instead of comparison `==`.    |
-| `M8406` | `algebraic-dependency-cycle`  | `error`   | Procedural algebraic loop / mutual cyclic variable assignment detected without state lag. |
-| `M8407` | `null-pointer-dereference`    | `error`   | Dereference of statically known `NULL` pointer constant.                                  |
-| `M8408` | `function-prototype-mismatch` | `error`   | Function definition signature conflicts with previously declared prototype.               |
-| `M8409` | `missing-return-value`        | `error`   | Non-void function reaches end of body without returning a value.                          |
-| `M8410` | `implicit-lossy-conversion`   | `info`    | Floating-point value implicitly assigned to integer without explicit cast.                |
+<LintRules lang="c" />
 
 ---
 

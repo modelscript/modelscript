@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon, ZapIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface PsseSldViewerProps {
   viewConfig: {
+    artifactId?: string | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
@@ -89,6 +92,34 @@ const PillBadge = styled.span`
   border: 1px solid rgba(16, 185, 129, 0.35);
 `;
 
+const SegmentedControl = styled.div`
+  display: inline-flex;
+  background: var(--color-canvas-inset, #010409);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+`;
+
+const SegmentBtn = styled.button<{ $active: boolean }>`
+  border: none;
+  background: ${(p) => (p.$active ? "var(--color-accent-emphasis, #1f6feb)" : "transparent")};
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted, #8b949e)")};
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+
+  &:hover {
+    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default, #e6edf3)")};
+  }
+`;
+
 const ContentArea = styled.div`
   flex: 1;
   display: flex;
@@ -110,6 +141,35 @@ const SvgCanvas = styled.div`
     max-height: 100%;
     height: auto;
   }
+`;
+
+const CodePre = styled.pre`
+  flex: 1;
+  margin: 0;
+  padding: 14px 0;
+  overflow: auto;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-fg-default, #e6edf3);
+  background: var(--color-canvas-inset, #010409);
+`;
+
+const CodeLine = styled.div`
+  display: flex;
+  padding: 0 16px;
+  &:hover {
+    background: rgba(110, 118, 129, 0.08);
+  }
+`;
+
+const LineNo = styled.span`
+  width: 44px;
+  flex-shrink: 0;
+  color: var(--color-fg-subtle, #6e7681);
+  user-select: none;
+  text-align: right;
+  padding-right: 16px;
 `;
 
 const InspectorSidebar = styled.div`
@@ -134,10 +194,57 @@ const StatItem = styled.div`
   }
 `;
 
+function parsePsseRawClient(code: string) {
+  const lines = code.split(/\r?\n/);
+  let section = 0; // 0 = header/bus, 1 = load, 2 = fixed shunt, 3 = generator, 4 = branch, 5 = transformer
+  let busCount = 0;
+  let loadMw = 0;
+  let genMw = 0;
+  let branchCount = 0;
+  let minVm = Number.POSITIVE_INFINITY;
+  let maxVm = Number.NEGATIVE_INFINITY;
+
+  for (let i = 3; i < lines.length; i++) {
+    const line = (lines[i] ?? "").trim();
+    if (!line || line.startsWith("@!") || line.startsWith("/")) continue;
+    if (/^0\s*\/|^\s*Q\b/i.test(line)) {
+      section++;
+      continue;
+    }
+    const parts = line.split(",").map((p) => p.trim());
+    if (section === 0 && parts.length >= 8) {
+      busCount++;
+      const vm = Number.parseFloat(parts[7] || "");
+      if (!Number.isNaN(vm) && vm > 0) {
+        if (vm < minVm) minVm = vm;
+        if (vm > maxVm) maxVm = vm;
+      }
+    } else if (section === 1 && parts.length >= 6) {
+      const pl = Number.parseFloat(parts[5] || "");
+      if (!Number.isNaN(pl)) loadMw += pl;
+    } else if (section === 3 && parts.length >= 3) {
+      const pg = Number.parseFloat(parts[2] || "");
+      if (!Number.isNaN(pg)) genMw += pg;
+    } else if (section === 4 && parts.length >= 3) {
+      branchCount++;
+    }
+  }
+  return {
+    busCount: busCount > 0 ? busCount : undefined,
+    totalLoadMw: loadMw > 0 ? Number(loadMw.toFixed(1)) : undefined,
+    totalGenMw: genMw > 0 ? Number(genMw.toFixed(1)) : undefined,
+    branchCount: branchCount > 0 ? branchCount : undefined,
+    minVm: Number.isFinite(minVm) ? minVm : undefined,
+    maxVm: Number.isFinite(maxVm) ? maxVm : undefined,
+  };
+}
+
 export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || "PSS/E Power Flow Case (.raw)";
 
   useEffect(() => {
@@ -152,65 +259,67 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
-        .then((txt) => setRawText(txt))
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setRawText(txt);
+        })
         .catch((err) => console.warn("[PsseSldViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedClient = useMemo(() => (rawText ? parsePsseRawClient(rawText) : undefined), [rawText]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean electrical Single-Line Diagram
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 700 380" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="700" height="380" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Grid Buses -->
-        <g stroke-width="4">
-          <line x1="80" y1="120" x2="80" y2="260" stroke="#f59e0b" />
-          <text x="70" y="110" fill="#f59e0b" font-size="11" font-family="monospace" font-weight="bold">BUS 101 (230kV)</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "psse", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-          <line x1="340" y1="100" x2="340" y2="280" stroke="#38bdf8" />
-          <text x="330" y="90" fill="#38bdf8" font-size="11" font-family="monospace" font-weight="bold">BUS 102 (500kV)</text>
+  const handleCopy = () => {
+    if (rawText) {
+      navigator.clipboard.writeText(rawText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-          <line x1="600" y1="120" x2="600" y2="260" stroke="#10b981" />
-          <text x="590" y="110" fill="#10b981" font-size="11" font-family="monospace" font-weight="bold">BUS 103 (138kV)</text>
-        </g>
+  const handleExportSvg = () => {
+    if (!sanitizedSvg) return;
+    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-sld.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
-        <!-- Transmission Lines & Transformers -->
-        <g stroke="#64748b" stroke-width="2" fill="none">
-          <line x1="80" y1="160" x2="340" y2="160" />
-          <circle cx="210" cy="160" r="14" stroke="#f59e0b" stroke-width="2" fill="#0f172a" />
-          <circle cx="225" cy="160" r="14" stroke="#38bdf8" stroke-width="2" fill="#0f172a" />
-          <text x="217" y="195" fill="#94a3b8" font-size="10" font-family="sans-serif" text-anchor="middle">XFRMR T1</text>
-
-          <line x1="340" y1="220" x2="600" y2="220" />
-          <line x1="80" y1="240" x2="340" y2="240" stroke-dasharray="6 3" />
-        </g>
-
-        <!-- Generation & Load Symbols -->
-        <g>
-          <circle cx="40" cy="190" r="16" fill="#0284c7" stroke="#38bdf8" stroke-width="2" />
-          <text x="40" y="194" fill="#ffffff" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">G1</text>
-          <line x1="56" y1="190" x2="80" y2="190" stroke="#38bdf8" stroke-width="2" />
-
-          <!-- Load Arrow -->
-          <polygon points="630,190 655,190 642,208" fill="#ef4444" />
-          <line x1="600" y1="190" x2="630" y2="190" stroke="#ef4444" stroke-width="2" />
-          <text x="642" y="225" fill="#f87171" font-size="10" font-family="sans-serif" text-anchor="middle">Load: 120 MW</text>
-        </g>
-
-        <!-- Flow Overlay -->
-        <text x="470" y="210" fill="#34d399" font-size="10" font-family="monospace">P = 124.3 MW →</text>
-        <text x="470" y="235" fill="#64748b" font-size="9" font-family="monospace">Q = 18.2 MVAR</text>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
+  const handleOpenInPlayground = () => {
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "psse" as any,
+      code: rawText,
+      title,
+    });
+    const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
+    navigate(`/playground${fromParam}#m=${hash}`);
+  };
 
   const metrics = viewConfig.metrics;
+  const busCount = metrics?.busCount ?? viewConfig.buses?.length ?? parsedClient?.busCount;
+  const totalGenMw = metrics?.totalGenMw ?? parsedClient?.totalGenMw;
+  const totalLoadMw = metrics?.totalLoadMw ?? parsedClient?.totalLoadMw;
+  const lossesMw =
+    metrics?.lossesMw ??
+    (totalGenMw !== undefined && totalLoadMw !== undefined && totalGenMw >= totalLoadMw
+      ? Number((totalGenMw - totalLoadMw).toFixed(2))
+      : undefined);
+  const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -221,14 +330,28 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           <PillBadge>PSS/E RAW SLD</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Grid Editor
+        <Box display="flex" alignItems="center" gap={2}>
+          <SegmentedControl>
+            <SegmentBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
+              <ZapIcon size={12} /> SLD
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Raw Data
+            </SegmentBtn>
+          </SegmentedControl>
+          {sanitizedSvg && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
+              SVG
+            </Button>
+          )}
+          <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+            {copied ? "Copied" : "Copy"}
           </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -237,34 +360,53 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
+        ) : viewMode === "code" || !sanitizedSvg ? (
+          <CodePre>
+            {lines.length > 0 ? (
+              lines.map((line, idx) => (
+                <CodeLine key={idx}>
+                  <LineNo>{idx + 1}</LineNo>
+                  <span>{highlightPolyglotLine(line, "psse")}</span>
+                </CodeLine>
+              ))
+            ) : (
+              <Box p={4} color="fg.muted">
+                No PSS/E RAW source loaded.
+              </Box>
+            )}
+          </CodePre>
         ) : (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Power Flow Case Overview
           </Text>
           <StatItem>
             <span>Total Buses</span>
-            <strong>{metrics?.busCount ?? 3}</strong>
+            <strong>{busCount ?? "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Total Generation</span>
-            <strong>{metrics?.totalGenMw ? `${metrics.totalGenMw} MW` : "245.0 MW"}</strong>
+            <strong>{totalGenMw !== undefined ? `${totalGenMw} MW` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Total Load</span>
-            <strong>{metrics?.totalLoadMw ? `${metrics.totalLoadMw} MW` : "238.4 MW"}</strong>
+            <strong>{totalLoadMw !== undefined ? `${totalLoadMw} MW` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Losses (I²R)</span>
-            <strong>{metrics?.lossesMw ? `${metrics.lossesMw} MW` : "6.6 MW (2.7%)"}</strong>
+            <strong>{lossesMw !== undefined ? `${lossesMw} MW` : "—"}</strong>
           </StatItem>
-          <StatItem>
-            <span>Voltage Status</span>
-            <strong style={{ color: "#34d399" }}>Normal (0.98 - 1.03 pu)</strong>
-          </StatItem>
+          {parsedClient?.minVm !== undefined && parsedClient?.maxVm !== undefined && (
+            <StatItem>
+              <span>Voltage Profile</span>
+              <strong style={{ color: "#34d399" }}>
+                {parsedClient.minVm.toFixed(3)} – {parsedClient.maxVm.toFixed(3)} pu
+              </strong>
+            </StatItem>
+          )}
         </InspectorSidebar>
       </ContentArea>
     </CardWrapper>

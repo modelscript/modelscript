@@ -15,6 +15,8 @@ interface RepositoryViewCardProps {
     description?: string | undefined;
     defaultBranch?: string | undefined;
     cloneUrl?: string | undefined;
+    repoUrl?: string | undefined;
+    url?: string | undefined;
     [key: string]: any;
   };
   isFullScreen?: boolean | undefined;
@@ -67,21 +69,27 @@ const ProviderBadge = styled.span`
 export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConfig }) => {
   const navigate = useNavigate();
 
-  const namespace = viewConfig.namespace || "user";
-  const project = viewConfig.project || "repository";
+  const rawUrl = String(viewConfig.cloneUrl || viewConfig.repoUrl || viewConfig.url || "");
+  const urlMatch = rawUrl.match(/(?:github\.com|gitlab\.com|gitea\.[^/]+)\/([^/]+)\/([^/.]+)/i);
+  const namespace = viewConfig.namespace || urlMatch?.[1] || "user";
+  const project = (viewConfig.project || urlMatch?.[2] || "repository").replace(/\.git$/i, "");
   const fullName = `${namespace}/${project}`;
   const description = viewConfig.description || "Engineering model repository.";
-  const provider = viewConfig.provider || "github";
+  const provider =
+    viewConfig.provider ||
+    (rawUrl.includes("github.com") ? "github" : rawUrl.includes("gitlab.com") ? "gitlab" : "internal");
   const branch = viewConfig.defaultBranch || "main";
 
   const handleOpenIde = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/ide?repo=${encodeURIComponent(fullName)}`);
+    navigate(
+      `/repos/${encodeURIComponent(provider)}/${encodeURIComponent(namespace)}/${encodeURIComponent(project)}/ide`,
+    );
   };
 
   const handleBrowseRepo = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/repos/${encodeURIComponent(namespace)}/${encodeURIComponent(project)}`);
+    navigate(`/repos/${encodeURIComponent(provider)}/${encodeURIComponent(namespace)}/${encodeURIComponent(project)}`);
   };
 
   return (
@@ -97,7 +105,7 @@ export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConf
             display="flex"
             alignItems="center"
             justifyContent="center"
-            flexShrink={0}
+            style={{ flexShrink: 0 }}
           >
             <RepoIcon size={20} />
           </Box>

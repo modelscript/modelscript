@@ -2,7 +2,6 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
-  BeakerIcon,
   BookIcon,
   CodeIcon,
   ImageIcon,
@@ -10,10 +9,7 @@ import {
   PaperclipIcon,
   PulseIcon,
   ServerIcon,
-  SlidersIcon,
   SmileyIcon,
-  SparkleIcon,
-  ZapIcon,
 } from "@primer/octicons-react";
 import React from "react";
 import Box from "../Box";
@@ -21,7 +17,7 @@ import SimpleEmojiPicker from "../SimpleEmojiPicker";
 import { ActionIconButton, CommandPill, TweetButton } from "./styles";
 
 export interface ComposeToolbarProps {
-  isModal?: boolean;
+  isModal?: boolean | undefined;
   isNotebookMode: boolean;
   content: string;
   setContent: (val: string) => void;
@@ -38,13 +34,11 @@ export interface ComposeToolbarProps {
   setShowContentWarning: React.Dispatch<React.SetStateAction<boolean>>;
   showEmojiPicker: boolean;
   setShowEmojiPicker: React.Dispatch<React.SetStateAction<boolean>>;
-  createDummyArtifact: (type: string) => void;
-  hasExperimental: boolean;
   handleSubmit: () => void;
   submitting: boolean;
   artifactId: number | null;
   hasNotebookContent: boolean;
-  editPostId?: string | number | null;
+  editPostId?: string | number | null | undefined;
   replyToPost?: any;
 }
 
@@ -66,8 +60,6 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   setShowContentWarning,
   showEmojiPicker,
   setShowEmojiPicker,
-  createDummyArtifact,
-  hasExperimental,
   handleSubmit,
   submitting,
   artifactId,
@@ -107,36 +99,6 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
             <BookIcon size={11} />
           </span>
           <span>{isNotebookMode ? "Notebook Mode: ON" : "📓 Notebook Mode"}</span>
-        </CommandPill>
-        <CommandPill
-          type="button"
-          onClick={() => setContent(content ? `${content} /synthesize model ` : "/synthesize model ")}
-          title="Generate a physics-informed Modelica or DAE model"
-        >
-          <span className="pill-icon">
-            <SparkleIcon size={11} />
-          </span>
-          <span>/synthesize model</span>
-        </CommandPill>
-        <CommandPill
-          type="button"
-          onClick={() => setContent(content ? `${content} /benchmark solver=cvode ` : "/benchmark solver=cvode ")}
-          title="Run numerical benchmark on SUNDIALS CVODE solver"
-        >
-          <span className="pill-icon">
-            <ZapIcon size={11} />
-          </span>
-          <span>/benchmark solver</span>
-        </CommandPill>
-        <CommandPill
-          type="button"
-          onClick={() => setContent(content ? `${content} /analyze dae_index=1 ` : "/analyze dae_index=1 ")}
-          title="Perform structural DAE index analysis"
-        >
-          <span className="pill-icon">
-            <BeakerIcon size={11} />
-          </span>
-          <span>/analyze DAE</span>
         </CommandPill>
         <CommandPill
           type="button"
@@ -239,22 +201,6 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
               </>
             )}
           </div>
-          <ActionIconButton
-            onClick={() => createDummyArtifact("simulation-plot")}
-            aria-label="Add Params"
-            title="Add Simulation Plot / Params Cell"
-          >
-            <SlidersIcon size={20} />
-          </ActionIconButton>
-          {hasExperimental && (
-            <ActionIconButton
-              onClick={() => createDummyArtifact("tei-document")}
-              aria-label="Add TEI Document"
-              title="Add TEI Document"
-            >
-              <BookIcon size={20} />
-            </ActionIconButton>
-          )}
           {uploadingFile && (
             <span style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginLeft: "8px" }}>Uploading...</span>
           )}

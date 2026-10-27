@@ -335,7 +335,7 @@ function SceneContents({
   vtkBuffer?: Uint8Array | null | undefined;
   touchScrollPassThrough?: boolean | undefined;
 }) {
-  const { gl, camera, scene } = useThree();
+  const { gl, scene } = useThree();
   const controlsRef = useRef<any>(null);
 
   // WebGL context loss interception and resource cleanup on unmount
@@ -540,7 +540,7 @@ export default function CadViewer({
     );
   }
 
-  if (components.length === 0) {
+  if (components.length === 0 && !vtkBuffer) {
     return (
       <div style={{ height: "100%", position: "relative", background: dark ? "#1e1e1e" : "#f5f5f5" }}>
         <EmptyState dark={dark} />

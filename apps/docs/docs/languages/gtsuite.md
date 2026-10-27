@@ -58,25 +58,9 @@ flowchart TD
 
 ---
 
-## Pre-Flight Powertrain Linter Rules (`M9001`–`M9015`)
+## Pre-Flight Powertrain Linter Rules
 
-| Code    | Identifier                           | Severity  | Description                                                                                |
-| :------ | :----------------------------------- | :-------- | :----------------------------------------------------------------------------------------- |
-| `M9001` | `cfl-stability-violation`            | `error`   | Discretized runner sub-volume CFL acoustic travel time exceeds integration step.           |
-| `M9002` | `compressor-surge-risk`              | `warning` | Operating point is to the left of the compressor surge boundary.                           |
-| `M9003` | `turbine-choke-limit`                | `warning` | Turbine mass flow exceeds choked sonic flow limit.                                         |
-| `M9004` | `valve-timing-overlap-excess`        | `warning` | Intake and exhaust valve overlap duration exceeds 90° crank angle.                         |
-| `M9005` | `invalid-compression-ratio`          | `error`   | Cylinder compression ratio is non-physical ($CR \le 1.0$ or $CR > 30.0$).                  |
-| `M9006` | `unconnected-plenum-port`            | `error`   | Intake or exhaust plenum boundary port is open with no runner connected.                   |
-| `M9007` | `intercooler-effectiveness-overflow` | `error`   | Thermal heat exchanger effectiveness exceeds physical maximum ($E > 1.0$).                 |
-| `M9008` | `injector-delivery-mismatch`         | `warning` | Commanded fuel mass delivery exceeds maximum injector flow capability.                     |
-| `M9009` | `negative-friction-mep`              | `error`   | Engine friction mean effective pressure (FMEP) is negative.                                |
-| `M9010` | `unbounded-wiebe-exponent`           | `error`   | Wiebe burn function form factor $m$ is negative or out of bounds.                          |
-| `M9011` | `duplicate-component-id`             | `error`   | Duplicate component identifier declared in the engine circuit.                             |
-| `M9012` | `out-of-bounds-equivalence-ratio`    | `error`   | Fuel-air equivalence ratio $\lambda$ outside combustible range ($0.2 < \lambda < 4.0$).    |
-| `M9013` | `inconsistent-stroke-bore-ratio`     | `warning` | Stroke-to-bore ratio is outside realistic automotive bounds ($0.5 < S/B < 2.5$).           |
-| `M9014` | `excessive-piston-speed`             | `warning` | Mean piston speed exceeds race/heavy-duty threshold ($v_{\text{piston}} > 26\text{ m/s}$). |
-| `M9015` | `choked-exhaust-runner`              | `warning` | Exhaust runner Mach number exceeds 0.7 during blowdown.                                    |
+<LintRules lang="gtsuite" />
 
 ---
 

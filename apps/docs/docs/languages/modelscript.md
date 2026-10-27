@@ -79,17 +79,38 @@ let criticalNodes =
 
 `ModelScriptCompiler` (`languages/modelscript/src/index.ts`) lowers the linear-memory CST across three code generation backends:
 
-| Backend                 | Emitter Class   | API Methods                                                                        | Target Output                                                                                |
-| :---------------------- | :-------------- | :--------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------- |
-| **JavaScript**          | `JsEmitter`     | `compileToJs(source)` / `executeJs(source, fn, args)`                              | Executable ES module with lowered FLWOR pipelines (`.filter().sort().map()`)                 |
-| **WebAssembly**         | `WasmEmitter`   | `compileToWat(source)` / `compileToWasm(source)` / `executeWasm(source, fn, args)` | Textual WAT S-expressions and binary `.wasm` modules with `@unmanaged` linear-memory offsets |
-| **Native C++ / Binary** | `NativeEmitter` | `compileToNative(source)`                                                          | Standards-compliant C++17 source compiled via host `clang++`/`g++` (`-O3`)                   |
+| Backend           | Emitter Class   | API Methods                                                                        | Target Output                                                                                   |
+| :---------------- | :-------------- | :--------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------- |
+| **JavaScript**    | `JsEmitter`     | `compileToJs(source)` / `executeJs(source, context)`                               | Executable ES module with lowered FLWOR pipelines (`.filter().sort().map()`)                    |
+| **WebAssembly**   | `WasmEmitter`   | `compileToWat(source)` / `compileToWasm(source)` / `executeWasm(source, fn, args)` | Textual WAT S-expressions and binary `.wasm` modules with `@unmanaged` linear-memory offsets    |
+| **Native Binary** | `NativeEmitter` | `compileToNative(source, { outPath, entryFn?, cc?, cflags? })`                     | WASM lowered to C via `wasm2c`, then compiled with the host C compiler (`$CC`, default `clang`) |
+
+```ts
+import fs from "node:fs";
+import { ModelScriptCompiler } from "@modelscript/modelscript";
+
+const compiler = new ModelScriptCompiler();
+await compiler.init();
+
+const source = fs.readFileSync("kernel.msx", "utf8");
+const { js } = compiler.compileToJs(source); // ES module source
+const wasm = await compiler.compileToWasm(source); // Uint8Array
+const result = await compiler.executeWasm(source, "main", []);
+const binary = await compiler.compileToNative(source, { outPath: "build/kernel" }); // requires wasm2c + clang
+```
+
+---
+
+## Command Line Interface (`msx compile` & `msx lint`)
+
+Compile, lint, and run ModelScript source modules directly from the terminal:
 
 ```bash
-# Compile a .msx file to JavaScript, WAT, binary WASM, or a native executable
-npx msx build kernel.msx --target wasm --out kernel.wasm
-npx msx build kernel.msx --target native --out kernel.bin
-npx msx build kernel.msx --target js --run main
+# Lint ModelScript modules for syntax, type errors, and unmanaged struct layout
+msx lint kernel.msx
+
+# Compile a ModelScript module into flattened DAE or WebAssembly bytecode
+msx compile MainModule kernel.msx --flattener=wasm --timing
 ```
 
 ---
@@ -111,18 +132,7 @@ npx msx build kernel.msx --target js --run main
 
 `ModelScriptLinter` (`languages/modelscript/src/linter.ts` and `languages/modelscript/src/errors.ts`) enforces 10 static analysis rules across syntax, name resolution, type checking, FLWOR clauses, and struct/function calls:
 
-| Code   | Rule                      | Severity | Diagnostic Message                                                                        |
-| :----- | :------------------------ | :------- | :---------------------------------------------------------------------------------------- |
-| `1001` | `parse-error`             | `error`  | `Parse error.`                                                                            |
-| `2001` | `undefined-variable`      | `error`  | `Variable '${name}' is not declared in current scope.`                                    |
-| `2002` | `duplicate-declaration`   | `error`  | `Identifier '${name}' is already declared in this scope.`                                 |
-| `2003` | `unknown-type`            | `error`  | `Type '${typeName}' is not recognized.`                                                   |
-| `3001` | `type-mismatch`           | `error`  | `Type mismatch: cannot assign '${sourceType}' to '${targetType}'.`                        |
-| `3002` | `invalid-binary-operand`  | `error`  | `Operator '${op}' cannot be applied to operands of type '${type}'.`                       |
-| `4001` | `non-iterable-collection` | `error`  | `Expression '${expr}' in 'for' clause is not iterable.`                                   |
-| `4002` | `flwor-unbound-variable`  | `error`  | `Variable '${varName}' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.` |
-| `5001` | `argument-count-mismatch` | `error`  | `Function '${fnName}' expects ${expected} arguments, but got ${actual}.`                  |
-| `5002` | `unknown-struct-field`    | `error`  | `Struct '${structName}' has no field named '${fieldName}'.`                               |
+<LintRules lang="modelscript" />
 
 ---
 

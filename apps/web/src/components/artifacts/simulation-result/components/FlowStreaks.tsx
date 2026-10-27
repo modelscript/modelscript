@@ -47,7 +47,9 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
     const baseCylinder = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 5);
     baseCylinder.rotateX(Math.PI / 2); // Align cylinder along Z axis locally so we can orient it easily if needed, or keep Y axis
 
-    const instancedGeo = new THREE.InstancedBufferGeometry().copy(baseCylinder);
+    const instancedGeo = new THREE.InstancedBufferGeometry().copy(
+      baseCylinder as unknown as THREE.InstancedBufferGeometry,
+    );
     baseCylinder.dispose();
 
     const randoms = new Float32Array(count);

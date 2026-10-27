@@ -8,7 +8,17 @@ import path from "node:path";
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 
-const DEFAULT_DB_DIR = "data";
+const DEFAULT_DB_DIR = (() => {
+  try {
+    const repoRootData = path.resolve(import.meta.dirname, "../../../data");
+    if (fs.existsSync(path.join(repoRootData, "modelscript.db"))) {
+      return repoRootData;
+    }
+  } catch {
+    // fallback
+  }
+  return "data";
+})();
 
 export interface ClassRow {
   id: number;
@@ -1138,6 +1148,51 @@ export class LibraryDatabase {
           updateEdStmt.run(keys.privateKey, keys.publicKey, u.id);
         }
       })();
+    } catch (e) {}
+
+    // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
+    // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
+    try {
+      const stripAnno = (raw: string): string | null => {
+        const cleaned = raw
+          .replace(/\s*\bannotation\s*\([\s\S]*$/i, "")
+          .trim()
+          .replace(/^"|"$/g, "")
+          .trim();
+        return cleaned.length > 0 ? cleaned : null;
+      };
+      const dirtyClasses = this.#db
+        .prepare(
+          `SELECT id, description FROM classes WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
+        )
+        .all() as Array<{ id: number; description: string }>;
+      const dirtyComps = this.#db
+        .prepare(
+          `SELECT id, description FROM components WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
+        )
+        .all() as Array<{ id: number; description: string }>;
+      if (dirtyClasses.length > 0 || dirtyComps.length > 0) {
+        const updClass = this.#db.prepare(`UPDATE classes SET description = ? WHERE id = ?`);
+        const updComp = this.#db.prepare(`UPDATE components SET description = ? WHERE id = ?`);
+        this.#db.transaction(() => {
+          for (const row of dirtyClasses) {
+            updClass.run(stripAnno(row.description), row.id);
+          }
+          for (const row of dirtyComps) {
+            updComp.run(stripAnno(row.description), row.id);
+          }
+        })();
+      }
+      this.#db.exec(`
+        DELETE FROM modifiers
+        WHERE modifier_name IN (
+          'Placement', 'Dialog', 'Icon', 'Diagram', 'Documentation',
+          'Evaluate', 'HideResult', 'choices', 'DynamicSelect',
+          'Line', 'Text', 'Rectangle', 'Ellipse', 'Polygon', 'Bitmap',
+          'coordinateSystem', 'graphics', 'smoothOrder', 'version'
+        );
+        UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
+      `);
     } catch (e) {}
   }
 

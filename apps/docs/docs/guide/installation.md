@@ -1,47 +1,90 @@
 # Installation
 
-ModelScript can be installed as a VS Code extension for end users, or set up locally for developers looking to contribute.
+ModelScript runs from the same WebAssembly compiler core across browsers, desktop IDEs, headless CI runners, and AI agent hosts. Choose the surface that matches your workflow.
+
+---
 
 ## For Users & Engineers
 
-ModelScript provides four deployment modalities tailored to your workflow:
+### 1. Zero-Install Browser Playground & Web IDE
 
-### 1. VS Code Extension
+To explore ModelScript without installing anything locally:
 
-The official extension transforms VS Code into a comprehensive multi-domain modeling environment:
-
-1. Open VS Code.
-2. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
-3. Search for **`ModelScript`** and click **Install**.
-
-The extension automatically provisions the native WebAssembly Language Server (LSP), the interactive 3D WebGL viewer, and compiler diagnostics out of the box.
+- **[Interactive Playground (`/playground`)](https://modelscript.org/playground)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
+- **Full Web Studio (`https://ide.modelscript.org`)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
 
 ### 2. Command-Line Interface (`msx`)
 
-The `msx` toolchain executes headless simulations, CI/CD linting, and export tasks:
+The `@modelscript/cli` package installs both the `modelscript` binary and its shorthand alias `msx` for local development, simulation sweeps, formal verification, and CI/CD automation (requires **Node.js ≥ 22**):
 
 ```bash
-# Run immediately via npx without manual installation
-npx msx --help
+# Run any command via npx without global installation
+npx @modelscript/cli --help
 
 # Or install globally for system-wide access
 npm install -g @modelscript/cli
 msx --version
 ```
 
-### 3. Native Desktop Studio (Tauri v2)
+#### Accelerating Repeated CLI Runs with `--daemon`
 
-For low-latency, air-gapped, or high-performance workstation workflows, download the standalone native desktop application (`@modelscript/desktop`):
+When running frequent interactive checks or pre-commit hooks, start the persistent background compiler daemon so `msx` reuses warm WebAssembly parser instances and incremental Salsa caches over a local Unix socket (`~/.modelscript/daemon.sock`):
 
-- **Linux**: Standalone `.AppImage` or native Debian/Ubuntu `.deb` packages.
+```bash
+# Start the background daemon and inspect its status
+msx daemon start
+msx daemon status
+
+# Pass --daemon to any command to reuse warm workspace caches
+msx lint ./models --daemon
+```
+
+### 3. VS Code Extension
+
+The official extension turns VS Code or Cursor into a complete multi-domain modeling studio:
+
+1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
+2. Search for **`ModelScript`** (`modelscript.modelscript-vscode`) and click **Install**.
+
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 44 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer, and the DAP time-travel simulation debugger.
+
+### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
+
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **31 deterministic engineering tools** over the Model Context Protocol:
+
+```bash
+# Register @modelscript/mcp in Claude Code with a single command
+claude mcp add modelscript -- npx -y @modelscript/mcp
+```
+
+For **Cursor** (`.cursor/mcp.json`), **Claude Desktop**, or **VS Code**, add the `stdio` server entry:
+
+```json
+{
+  "mcpServers": {
+    "modelscript": {
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"]
+    }
+  }
+}
+```
+
+See the [AI Agents & MCP Workflows Guide](./ai-agents.md) for closed-loop synthesis recipes and remote SSE gateway configuration.
+
+### 5. Native Desktop Studio (Tauri v2)
+
+For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches, download the standalone native desktop application (`@modelscript/desktop`) from [GitHub Releases](https://github.com/modelscript/modelscript/releases):
+
+- **Linux**: Standalone `.AppImage` or Debian/Ubuntu `.deb` packages.
 - **macOS**: Universal Apple Silicon / Intel `.dmg` disk image.
-- **Windows**: Modern Windows 64-bit installer (`.msi`) or portable executable (`.exe`).
+- **Windows**: 64-bit `.msi` installer or portable `.exe`.
 
-The desktop app bundles offline native WebAssembly GLR language parsers, embedded SQLite caching, and direct hardware serial/IPC bridges for Hardware-in-the-Loop (HIL) testing. Downloads are available from the [ModelScript GitHub Releases](https://github.com/modelscript/modelscript/releases).
+The desktop studio embeds offline WebAssembly GLR parsers, local SQLite artifact caching, and native serial/UDP bridges for real-time HIL testing.
 
-### 4. Containerized Hub & Simulation Server
+### 6. Containerized Enterprise Hub & Simulation Server
 
-Spin up the complete private simulation hub, REST/GraphQL APIs, and web studio using Docker:
+Deploy the self-hosted ModelScript Hub, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker:
 
 ```bash
 # Pull official multi-architecture containers
@@ -52,40 +95,40 @@ docker pull ghcr.io/modelscript/web:latest
 docker compose up -d
 ```
 
-## For Developers
+See the [Platform Administration Guide](./administration.md) for Kubernetes Helm charts, Slurm HPC worker provisioning, and PostgreSQL audit-ledger setup.
 
-To set up ModelScript for local development, you will need **Node.js ≥ 24** (matching `.nvmrc`) and `npm`. Docker is optional and only required if running backend database/API services.
+---
 
-### 1. Clone the Repository
+## For Contributors & Compiler Developers
+
+To build and hack on the ModelScript monorepo locally, install **Node.js ≥ 24** (matching `.nvmrc`) and `npm`.
+
+### 1. Clone & Install
 
 ```bash
 git clone https://github.com/modelscript/modelscript.git
 cd modelscript
-```
-
-### 2. Install Dependencies
-
-We use `npm` workspaces to manage our monorepo packages.
-
-```bash
 npm install
 ```
 
-### 3. Build the Monorepo
+### 2. Build Core Compiler & Language Runtimes
 
-ModelScript compiles its native WebAssembly GLR parsers, AssemblyScript flattening kernels, and TypeScript packages via Nx:
+ModelScript compiles its native WebAssembly GLR parsers (`parser.wasm`), AssemblyScript flattening kernels, and TypeScript packages via Nx:
 
 ```bash
 npm run build:libs    # Build core compiler packages and language runtimes
-npm run build         # Build all monorepo targets
+npm run build         # Build all monorepo packages and applications
 ```
 
-### 4. Run the Dev Server
-
-You can launch the IDE and the local web environment via:
+### 3. Launch Local Development Servers
 
 ```bash
-npm run dev
+npm run dev           # Start API backend, LSP workers, and Web IDE
 ```
 
-This will spawn the compiler backend, the LSP workers, and open the web UI in your browser.
+---
+
+## Next Steps
+
+- Follow the **[Getting Started Tutorial](./getting-started.md)** to build, verify, simulate, and export your first connected multi-domain model.
+- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 41 `msx` commands.

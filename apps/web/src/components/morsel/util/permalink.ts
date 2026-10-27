@@ -4,15 +4,16 @@ import pako from "pako";
 import parseDataUrl from "parse-data-url";
 
 export interface CompressedMorselPayload {
-  v: number;
-  lang?: "modelica" | "sysml2" | "owl2" | "step" | "scad" | "pscad" | "olga" | "csv" | undefined;
+  v?: number | undefined;
+  lang?: string | undefined;
+  dialect?: string | undefined;
   code: string;
   title?: string | undefined;
-  view?: "split-columns" | "split-rows" | "code-only" | "diagram-only" | "cad-only" | "plot-only" | undefined;
+  view?: string | undefined;
   anchor?:
     | {
-        elementId: string;
-        kind?: "component" | "connection" | "line" | "cad-node" | undefined;
+        elementId?: string | undefined;
+        kind?: string | undefined;
         line?: number | undefined;
         column?: number | undefined;
       }
@@ -39,7 +40,12 @@ export interface CompressedMorselPayload {
  * Compresses a Morsel payload into a URL-safe Base64 string.
  */
 export function compressMorselPayload(payload: CompressedMorselPayload): string {
-  const jsonStr = JSON.stringify(payload);
+  const normalized: CompressedMorselPayload = {
+    v: payload.v ?? 1,
+    ...payload,
+    lang: payload.lang ?? payload.dialect ?? "modelica",
+  };
+  const jsonStr = JSON.stringify(normalized);
   const compressed = pako.deflate(jsonStr);
   let binary = "";
   const len = compressed.length;
@@ -48,6 +54,8 @@ export function compressMorselPayload(payload: CompressedMorselPayload): string 
   }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+
+export const encodeMorselPermalink = compressMorselPayload;
 
 /**
  * Decompresses a URL-safe Base64 string into a Morsel payload.

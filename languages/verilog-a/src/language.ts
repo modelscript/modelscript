@@ -18,6 +18,7 @@ import { verilogAToSpice } from "./projections/verilog-a-to-spice.js";
 export const verilogALanguage = language({
   name: "verilog-a",
   fileExtensions: [".va", ".vams"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".va", ".vams"],
   },

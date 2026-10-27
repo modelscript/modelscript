@@ -71,3 +71,37 @@ These properties feed directly into Modelica 1D aerodynamic drag models ($F_d = 
 | `CfdHeatFluxToModelicaHeatPort` | `Directive` (`MARKER_HEATFLUX`)                | `modelica`      | `ComponentClause` (`Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a`) |
 | `CfdMarkerToSysmlPort`          | `Directive` (`MARKER_*`)                       | `sysml2`        | `PortUsage`                                                               |
 | `CfdDirectiveToSysmlConstraint` | `Directive` (`MACH_NUMBER`, `REYNOLDS_NUMBER`) | `sysml2`        | `ConstraintUsage`                                                         |
+
+## Command Line Interface (`msx cfd`)
+
+```bash
+msx cfd <action> [files...] [options]
+```
+
+| Action            | Description                                                                                       | Key Options         |
+| :---------------- | :------------------------------------------------------------------------------------------------ | :------------------ |
+| **`lint`**        | Validates SU2 and OpenFOAM configuration syntax, boundary markers, and thermodynamic consistency. | —                   |
+| **`summary`**     | Prints turbulence model, freestream conditions, reference areas, and configured markers.          | —                   |
+| **`inspect`**     | Dumps parsed marker tree, solver settings, and evaluated parametric expressions.                  | —                   |
+| **`to-modelica`** | Generates Modelica 1D aerodynamic drag models (`Modelica.Mechanics.Translational`) and ports.     | `--out=<file.mo>`   |
+| **`to-dae`**      | Lowers boundary conditions and drag polar into ModelScript linear-memory DAE arena.               | `--out=<file.json>` |
+| **`solve`**       | Invokes external or embedded SU2 flow solver iteration for steady/unsteady aerodynamic fields.    | —                   |
+
+### Examples
+
+```bash
+# Validate boundary markers and turbulence settings in an SU2 configuration
+msx cfd lint transonic_wing.cfg
+
+# Display mesh markers, Mach number, and reference area
+msx cfd summary wing_template.cfgt
+
+# Project aerodynamic drag polar to standard Modelica component
+msx cfd to-modelica transonic_wing.cfg --out=AeroDrag.mo
+```
+
+---
+
+## Diagnostic Rules
+
+<LintRules lang="cfd" />

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertIcon, CodeIcon } from "@primer/octicons-react";
+import { CodeIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -8,7 +8,7 @@ import Box from "../../components/Box";
 import FollowButton from "../../components/FollowButton";
 import Post from "../../components/Post";
 import type { PackageData, PersonData, PostData, RepoData } from "./constants";
-import { SEARCH_TABS, STARTER_TEMPLATES } from "./constants";
+import { SEARCH_TABS } from "./constants";
 import { ExploreSearchHeader } from "./ExploreSearchHeader";
 import { TabButton, TabContainer } from "./styles";
 
@@ -255,152 +255,6 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                   <CodeIcon size={16} /> Launch Bouncing Ball
                 </Link>
               </Box>
-
-              {/* Deprecation Notice Banner */}
-              <Box
-                p={3}
-                mb={4}
-                borderRadius="8px"
-                display="flex"
-                alignItems="flex-start"
-                gap={3}
-                style={{
-                  backgroundColor: "rgba(210, 153, 34, 0.1)",
-                  border: "1px solid rgba(210, 153, 34, 0.3)",
-                  color: "var(--color-fg-default)",
-                }}
-              >
-                <AlertIcon size={18} style={{ color: "#d29922", marginTop: "2px", flexShrink: 0 }} />
-                <Box>
-                  <div style={{ fontWeight: 600, fontSize: "13px", color: "#d29922", marginBottom: "2px" }}>
-                    Example Workspaces Deprecated
-                  </div>
-                  <Text as="p" style={{ fontSize: "12px", color: "var(--color-text-muted)", margin: 0 }}>
-                    Pre-configured example workspaces are currently deprecated in favor of clean-slate development in
-                    the Blank Project Workspace. The legacy workspaces below remain accessible for reference purposes.
-                  </Text>
-                </Box>
-              </Box>
-
-              <Heading
-                as="h4"
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  color: "var(--color-text-muted)",
-                  marginBottom: "16px",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                }}
-              >
-                Deprecated Example Workspaces (Legacy)
-              </Heading>
-
-              <Box display="grid" gridTemplateColumns="repeat(auto-fill, minmax(280px, 1fr))" gap={3}>
-                {STARTER_TEMPLATES.filter((t) => t.id !== "bouncing-ball")
-                  .filter(
-                    (t) =>
-                      t.title.toLowerCase().includes(query.toLowerCase()) ||
-                      t.description.toLowerCase().includes(query.toLowerCase()) ||
-                      t.category.toLowerCase().includes(query.toLowerCase()) ||
-                      t.badge.toLowerCase().includes(query.toLowerCase()),
-                  )
-                  .map((template) => (
-                    <Box
-                      key={template.id}
-                      p={3}
-                      borderRadius="12px"
-                      border="1px solid var(--color-border-glass)"
-                      bg="var(--color-bg-card)"
-                      display="flex"
-                      flexDirection="column"
-                      justifyContent="space-between"
-                      sx={{
-                        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-                        "&:hover": {
-                          borderColor: "rgba(210, 153, 34, 0.5)",
-                          boxShadow: "0 0 16px rgba(210, 153, 34, 0.1)",
-                        },
-                      }}
-                    >
-                      <Box>
-                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                          <span style={{ fontSize: "24px" }}>{template.icon}</span>
-                          <Box display="flex" gap="6px" alignItems="center">
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontFamily: "var(--font-mono)",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                backgroundColor: "rgba(210, 153, 34, 0.15)",
-                                color: "#d29922",
-                                border: "1px solid rgba(210, 153, 34, 0.3)",
-                                fontWeight: 600,
-                              }}
-                            >
-                              Deprecated
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                fontFamily: "var(--font-mono)",
-                                padding: "2px 8px",
-                                borderRadius: "9999px",
-                                backgroundColor: "var(--color-accent-blue-bg)",
-                                color: "var(--color-accent-cyan)",
-                                border: "1px solid var(--color-accent-blue-border)",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {template.badge}
-                            </span>
-                          </Box>
-                        </Box>
-                        <Heading
-                          as="h4"
-                          style={{
-                            fontSize: "15px",
-                            fontWeight: "bold",
-                            marginBottom: "6px",
-                            color: "var(--color-text-heading)",
-                          }}
-                        >
-                          {template.title}
-                        </Heading>
-                        <Text
-                          as="p"
-                          color="var(--color-text-muted)"
-                          style={{ fontSize: "13px", lineHeight: 1.4, margin: 0 }}
-                        >
-                          {template.description}
-                        </Text>
-                      </Box>
-                      <Box mt={3} pt={2} borderTop="1px solid var(--color-border)">
-                        <Link
-                          to={`/ide/${template.id}`}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "6px",
-                            padding: "8px 12px",
-                            borderRadius: "6px",
-                            background: "rgba(255, 255, 255, 0.05)",
-                            border: "1px solid var(--color-border-glass)",
-                            color: "var(--color-text-muted)",
-                            fontSize: "13px",
-                            fontWeight: 500,
-                            textDecoration: "none",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <CodeIcon size={14} /> Launch Legacy Workspace
-                        </Link>
-                      </Box>
-                    </Box>
-                  ))}
-              </Box>
             </Box>
           )}
 
@@ -571,7 +425,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                             {pkg.name}
                           </Heading>
                           <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
-                            @npm/{pkg.name} · v{(pkg as any).latestVersion || pkg.version || "1.0.0"}
+                            {pkg.name} · v{(pkg as any).latestVersion || pkg.version || "1.0.0"}
                           </Text>
                           <Text
                             as="p"

@@ -43,8 +43,8 @@ export const AuthPromptCard: React.FC = () => {
       </Box>
       <Box
         mt={3}
-        pt={2}
         style={{
+          paddingTop: "8px",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",

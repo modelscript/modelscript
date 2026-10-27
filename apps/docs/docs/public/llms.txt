@@ -1,0 +1,115 @@
+# ModelScript
+
+> Free, open-source computable digital thread for polyglot engineering and simulation. Imports 44 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+
+## Quick Links
+- [Official Website](https://modelscript.org/)
+- [GitHub Repository](https://github.com/modelscript/modelscript)
+- [Full Documentation (Single File)](https://modelscript.org/llms-full.txt)
+
+## Guides & Learning
+- [Introduction](https://modelscript.org/guide/introduction): Architectural vision, computable digital thread, and key differentiators.
+- [Installation](https://modelscript.org/guide/installation): CLI installation, VS Code extension, and local setup.
+- [Getting Started](https://modelscript.org/guide/getting-started): First steps, project scaffolding, and simulation execution.
+- [Embedding ModelScript](https://modelscript.org/guide/embedding): Headless programmatic usage in Node.js, browsers, and WebAssembly.
+- [Administration](https://modelscript.org/guide/administration): Enterprise deployment, licensing, and security disclosures.
+
+## Compiler Architecture & WebAssembly Runtime
+- [Architecture Overview](https://modelscript.org/architecture/overview): Salsa memoization, WASM linear memory DAE arena, and lowering pipeline.
+- [DAE Arena](https://modelscript.org/architecture/dae-arena): Struct-of-arrays linear memory DAE container for zero-overhead symbolic transformations.
+- [GLR Parser](https://modelscript.org/architecture/glr-parser): High-performance native WebAssembly generalized LR parser generator.
+- [Salsa Query Engine](https://modelscript.org/architecture/salsa-queries): Incremental memoization, dependency tracking, and Salsa cache backdating.
+- [Simulation Solvers](https://modelscript.org/architecture/simulation-solvers): SUNDIALS CVODE/IDA, BDF, Runge-Kutta, and WebGPU batched solver.
+- [Triple Graph Grammars](https://modelscript.org/architecture/tgg): Bidirectional schema synchronization and multi-language transformation.
+- [Theory Coordinator](https://modelscript.org/architecture/theory-coordinator): Cross-domain physical theory unification and ontology coordination.
+- [HIL & WASM Runtime](https://modelscript.org/architecture/hil-wasm-runtime): Hardware-in-the-loop and headless WebAssembly execution.
+
+## Algorithms & Solvers Catalog
+- [Algorithms Catalog Overview](https://modelscript.org/algorithms/overview): Catalog of 16 symbolic and numerical algorithms.
+- [BLT Partitioning](https://modelscript.org/algorithms/blt): Block Lower Triangular decomposition, bipartite matching, and Tarjan SCC.
+- [Pantelides Index Reduction](https://modelscript.org/algorithms/pantelides): Structural index reduction for high-index DAEs to index-1 form.
+- [Algebraic Loop Tearing](https://modelscript.org/algorithms/tearing): Cellier tearing and minimal residual selection for nonlinear systems.
+- [Numerical Solvers (ODE/DAE)](https://modelscript.org/algorithms/solvers-ode-dae): Adaptive step-size numerical integrators and stiff solvers.
+- [Automatic Differentiation](https://modelscript.org/algorithms/autodiff): Forward and reverse mode algorithmic differentiation on arena expressions.
+- [Optimization & Optimal Control](https://modelscript.org/algorithms/optimization): Collocation, parameter estimation, and nonlinear programming.
+- [Surrogates & Linear Algebra](https://modelscript.org/algorithms/surrogates-linear-algebra): Dynamic mode decomposition, POD, and neural surrogates.
+- [Connector Balancing](https://modelscript.org/algorithms/connector-balancing): Kirchhoff current law and flow variable balance equations.
+- [Physical Theory Coordination](https://modelscript.org/algorithms/theory-coordinator): Multi-physics conservation laws and constitutive relations.
+- [Graph Rewriting & E-Graphs](https://modelscript.org/algorithms/graph-rewriting): E-graph rewriting and term normalization.
+- [Formal Verification & CHC](https://modelscript.org/algorithms/verification-chc): Constrained Horn Clauses and formal contract verification.
+- [Abstract Interpretation](https://modelscript.org/algorithms/abstract-interpretation): Interval arithmetic and sign domain safety analysis.
+- [SDP & BVP for CAD](https://modelscript.org/algorithms/sdp-bvp-cad): Boundary value problem solving on CSG and boundary representation geometry.
+- [Diagram Layout](https://modelscript.org/algorithms/diagram-layout): Orthogonal routing and hierarchical port placement.
+- [Linear Memory Structures](https://modelscript.org/algorithms/linear-memory-structures): Zero-allocation arena buffers and offset-based pointers.
+
+## Command-Line Interface (`msx`)
+- [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 91 CLI commands and subcommands.
+
+## Polyglot Languages (44 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 44 formats.
+- [ModelScript (.msx)](https://modelscript.org/languages/modelscript): Native systems modeling & query language.
+- [Modelica (.mo)](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
+- [SysML v2 / KerML (.sysml)](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
+- [ReqIF (.reqif)](https://modelscript.org/languages/reqif): Requirements interchange & contract entailment.
+- [SSP (.ssp)](https://modelscript.org/languages/ssp): FMU system structure & parameterization.
+- [OWL2 (.owl)](https://modelscript.org/languages/owl2): Ontologies & description-logic reasoning.
+- [STEP (ISO 10303) (.step)](https://modelscript.org/languages/step): B-Rep CAD assemblies & AP242 PMI.
+- [OpenSCAD (.scad)](https://modelscript.org/languages/scad): Parametric constructive solid geometry.
+- [CFD (SU2 / OpenFOAM) (.su2)](https://modelscript.org/languages/cfd): Computational fluid dynamics meshes.
+- [FEA (CalculiX / Abaqus / NASTRAN) (.inp)](https://modelscript.org/languages/fea): Finite-element structural analysis.
+- [CSV (.csv)](https://modelscript.org/languages/csv): Time-series & sensor logs.
+- [C (.c)](https://modelscript.org/languages/c): Numerical & embedded C integration.
+- [Fortran (.f90)](https://modelscript.org/languages/fortran): Legacy scientific subroutines.
+- [JSBSim (.xml)](https://modelscript.org/languages/jsbsim): 6-DOF flight dynamics.
+- [NASA ROCETS (.roc)](https://modelscript.org/languages/rocets): Liquid rocket engine transients.
+- [CCSDS (.xtce)](https://modelscript.org/languages/ccsds): Astrodynamics & spacecraft telemetry.
+- [EASY5 (.ez5)](https://modelscript.org/languages/easy5): Dynamic simulation & linear control.
+- [AUTOSAR (.arxml)](https://modelscript.org/languages/autosar): Classic & Adaptive software architecture.
+- [MATLAB Simulink (.slx)](https://modelscript.org/languages/simulink): Block diagrams & control systems.
+- [GT-SUITE (.gtm)](https://modelscript.org/languages/gtsuite): Engine, powertrain & thermal flow.
+- [ASAM OpenDRIVE (.xodr)](https://modelscript.org/languages/opendrive): Road network geometry.
+- [ASAM OpenSCENARIO (.xosc)](https://modelscript.org/languages/openscenario): Driving scenarios & RSS safety margins.
+- [GENSYS (.calc)](https://modelscript.org/languages/gensys): Railway vehicle dynamics & track.
+- [SIMPACK (.spck)](https://modelscript.org/languages/simpack): Spatial multibody dynamics.
+- [PSCAD / EMTDC (.pscx)](https://modelscript.org/languages/pscad): Electromagnetic transients (EMT).
+- [PSS/E (.raw)](https://modelscript.org/languages/psse): Transmission power flow.
+- [OpenDSS (.dss)](https://modelscript.org/languages/opendss): Unbalanced distribution & DER hosting.
+- [OLGA (.genkey)](https://modelscript.org/languages/olga): Transient multiphase flow assurance.
+- [PipelineStudio (.lps)](https://modelscript.org/languages/lps): Gas & liquid pipeline hydraulics.
+- [ECLIPSE (.data)](https://modelscript.org/languages/eclipse): Reservoir engineering.
+- [RELAP5-3D (.inp)](https://modelscript.org/languages/relap5): Reactor thermal-hydraulics & kinetics.
+- [SIMA / SIMO / RIFLEX (.sima)](https://modelscript.org/languages/sima): Marine operations & riser dynamics.
+- [SPICE (.cir)](https://modelscript.org/languages/spice): Analog circuit simulation.
+- [Verilog-A / AMS (.va)](https://modelscript.org/languages/verilog-a): Analog compact device models.
+- [IBIS (.ibs)](https://modelscript.org/languages/ibis): I/O buffer behavioral models.
+- [Touchstone (.sNp)](https://modelscript.org/languages/touchstone): RF & signal-integrity S-parameters.
+- [URDF / Xacro (.urdf)](https://modelscript.org/languages/urdf): Robot kinematics & dynamics.
+- [PLCopen / IEC 61131-3 (.st)](https://modelscript.org/languages/plcopen): PLC control software.
+- [MSC Adams (.adm)](https://modelscript.org/languages/adams): Mechanical system dynamics.
+- [EnergyPlus (.idf)](https://modelscript.org/languages/energyplus): Building energy & HVAC.
+- [EPANET (.inp)](https://modelscript.org/languages/epanet): Pressurized water distribution.
+- [EPA SWMM (.inp)](https://modelscript.org/languages/swmm): Stormwater & urban drainage.
+- [Aspen Plus / HYSYS (.bkp)](https://modelscript.org/languages/aspen): Chemical process flowsheets.
+- [SBML (.sbml)](https://modelscript.org/languages/sbml): Biochemical reaction networks.
+
+## Engineering Industries (12 Sectors)
+- [Industries Overview](https://modelscript.org/industries): Multi-domain solutions across 12 engineering sectors.
+- [Aerospace & Defense](https://modelscript.org/industries/aerospace): Flight dynamics, propulsion & mission telemetry (SysML v2 / KerML, ReqIF, CCSDS OEM / OPM / XTCE).
+- [Automotive & Mobility](https://modelscript.org/industries/automotive): AUTOSAR, powertrain & autonomous-driving scenarios (AUTOSAR Classic & Adaptive, ASAM OpenDRIVE, ASAM OpenSCENARIO).
+- [Rail](https://modelscript.org/industries/rail): Vehicle dynamics, track geometry & EN 14363 (EN 14363, UIC 518, STEP AP242).
+- [Marine & Offshore](https://modelscript.org/industries/marine): Marine operations, risers & mooring (DNV-OS-E301, DNV-ST-0119, FMI 2.0 / 3.0).
+- [Power Systems & Grid](https://modelscript.org/industries/power-systems): EMT, power flow & grid-code compliance (IEEE 2800-2022, NERC PRC-029-1, IEEE C37.111 COMTRADE).
+- [Oil, Gas & Subsurface](https://modelscript.org/industries/oil-gas): Flow assurance, pipelines & reservoirs (ISO 20765-1, ISO 20765-2, FMI 2.0 / 3.0).
+- [Nuclear](https://modelscript.org/industries/nuclear): Reactor thermal-hydraulics & point kinetics (RELAP5-3D input decks, SysML v2, ReqIF).
+- [Buildings & Civil Infrastructure](https://modelscript.org/industries/buildings): Building energy, water & stormwater networks (EnergyPlus IDF / epJSON, EPANET INP, SWMM 5.x).
+- [Electronics & Semiconductors](https://modelscript.org/industries/electronics): SPICE, compact models, IBIS & S-parameters (IEEE 1857 Verilog-A / AMS, IBIS, Touchstone 1.0 / 2.0).
+- [Robotics & Industrial Automation](https://modelscript.org/industries/robotics): URDF kinematics, PLCs & mechanisms (IEC 61131-3, PLCopen XML, URDF / Xacro).
+- [Chemical & Process](https://modelscript.org/industries/process): Process flowsheets & dynamic simulation (Aspen Plus / HYSYS inputs, IEC 61131-3, FMI 2.0 / 3.0).
+- [Life Sciences](https://modelscript.org/industries/life-sciences): Systems biology & biochemical kinetics (SBML Level 2 & 3 Core, OWL2, FMI 2.0 / 3.0).
+
+## Reference & Tooling
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 770+ diagnostics across 41 engineering languages.
+- [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
+- [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
+

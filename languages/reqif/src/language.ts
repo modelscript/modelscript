@@ -17,6 +17,7 @@ import { verifyReqIfEntailment } from "./verification/entailment.js";
 export const reqifLanguage = language({
   name: "reqif",
   fileExtensions: [".reqif", ".reqifz"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".reqif", ".reqifz"],
     icons: {

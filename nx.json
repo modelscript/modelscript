@@ -58,6 +58,7 @@
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/eslint.config.ts",
       "{workspaceRoot}/scripts/build-language-parser.js",
+      "{workspaceRoot}/scripts/build-language-wasm.js",
       "{workspaceRoot}/scripts/test-runner.js",
       "{workspaceRoot}/scripts/asc-cache.js",
       "{workspaceRoot}/scripts/node-test-ctrf-reporter.cjs"
@@ -76,8 +77,8 @@
         "{projectRoot}/as-gen",
         "{projectRoot}/*.wasm",
         "{projectRoot}/build/**/*.wasm",
-        "{projectRoot}/.cache/parser.wasm",
-        "{projectRoot}/.cache/parser.hash",
+        "{projectRoot}/.cache/*.wasm",
+        "{projectRoot}/.cache/*.hash",
         "{projectRoot}/.cache/bindings.js",
         "{projectRoot}/.cache/bindings.d.ts",
         "{projectRoot}/.tsbuildinfo",
@@ -106,29 +107,8 @@
     }
   },
   "release": {
-    "projects": [
-      "packages/dsl",
-      "packages/runtime",
-      "packages/simulate",
-      "packages/diagram",
-      "packages/exchange",
-      "packages/lsp",
-      "packages/cad",
-      "packages/mcp",
-      "languages/modelica",
-      "languages/sysml2",
-      "languages/step",
-      "languages/scad",
-      "languages/owl2",
-      "languages/pscad",
-      "languages/ssp",
-      "languages/csv",
-      "languages/cfd",
-      "languages/fea",
-      "languages/modelscript",
-      "apps/api",
-      "apps/cli"
-    ],
+    "projects": ["packages/*", "!packages/ide", "!packages/examples/*", "languages/*", "apps/api", "apps/cli"],
+    "projectsRelationship": "fixed",
     "version": {
       "conventionalCommits": true,
       "fallbackCurrentVersionResolver": "disk",
@@ -140,7 +120,7 @@
       "workspaceChangelog": {
         "createRelease": "github"
       },
-      "projectChangelogs": true
+      "projectChangelogs": false
     },
     "git": {
       "commit": true,

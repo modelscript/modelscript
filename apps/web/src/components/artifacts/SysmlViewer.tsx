@@ -9,13 +9,16 @@ import {
   DotFillIcon,
   SearchIcon,
   ShieldCheckIcon,
+  WorkflowIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Text, TextInput } from "@primer/react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SysmlPart {
   name: string;
@@ -40,10 +43,14 @@ export interface SysmlConnection {
 
 export interface SysmlViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     format?: "SysML2" | "KerML" | string | undefined;
     systemName?: string | undefined;
     title?: string | undefined;
     code?: string | undefined;
+    source?: string | undefined;
+    url?: string | undefined;
+    svg?: string | undefined;
     parts?: SysmlPart[] | undefined;
     requirements?: SysmlRequirement[] | undefined;
     connections?: SysmlConnection[] | undefined;
@@ -219,138 +226,183 @@ const CodeEditor = styled.pre`
   white-space: pre;
 `;
 
-const DEFAULT_SAMPLE_CODE = `package QuadcopterSystem {
-  import ScalarValues::*;
-  import ISQ::*;
+function parseSysmlSource(code: string): {
+  parts: SysmlPart[];
+  requirements: SysmlRequirement[];
+  connections: SysmlConnection[];
+} {
+  const parts: SysmlPart[] = [];
+  const requirements: SysmlRequirement[] = [];
+  const connections: SysmlConnection[] = [];
 
-  part def AvionicsComputer {
-    port telemetryPort: TelemetryPort;
-    port motorControlPort: PwmPort;
+  if (!code.trim()) {
+    return { parts, requirements, connections };
   }
 
-  part def BatteryUnit {
-    attribute capacity: EnergyValue = 5000 [mA * hr];
-    port dcPowerOut: PowerPort;
+  // Extract part definitions and usages
+  const partDefRe = /\bpart\s+def\s+([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
+  let m: RegExpExecArray | null;
+  const defPorts = new Map<string, string[]>();
+  while ((m = partDefRe.exec(code)) !== null) {
+    const defName = m[1]!;
+    const body = m[2] || "";
+    const ports: string[] = [];
+    const portRe = /\bport\s+([A-Za-z_]\w*)/g;
+    let pm: RegExpExecArray | null;
+    while ((pm = portRe.exec(body)) !== null) {
+      ports.push(pm[1]!);
+    }
+    defPorts.set(defName, ports);
   }
 
-  part def ElectricMotor {
-    attribute maxRpm: FrequencyValue = 12000 [rpm];
-    port powerIn: PowerPort;
-    port controlIn: PwmPort;
+  const partUsageRe = /\bpart\s+(?!def\b)([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)(?:\[([^\]]+)\])?/g;
+  while ((m = partUsageRe.exec(code)) !== null) {
+    const name = m[1]!;
+    const type = m[2]!;
+    const mult = m[3] || "1";
+    parts.push({
+      name,
+      type,
+      multiplicity: mult,
+      ports: defPorts.get(type) || [],
+    });
   }
 
-  part quadcopter {
-    part fc: AvionicsComputer;
-    part battery: BatteryUnit;
-    part motors: ElectricMotor[4];
-
-    connect battery.dcPowerOut to fc.powerIn;
-    connect fc.motorControlPort to motors.controlIn;
+  if (parts.length === 0) {
+    for (const [defName, ports] of defPorts.entries()) {
+      parts.push({
+        name: defName,
+        type: "PartDefinition",
+        multiplicity: "1",
+        ports,
+      });
+    }
   }
 
-  requirement def MaxTakeoffWeightReq {
-    doc /* Total system mass must not exceed 1.8 kg including payload. */
-    attribute maxWeight: MassValue = 1.8 [kg];
+  // Extract requirement definitions and usages
+  const reqRe = /\brequirement\s+(?:def\s+)?([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
+  let reqIdx = 1;
+  while ((m = reqRe.exec(code)) !== null) {
+    const reqName = m[1]!;
+    const body = m[2] || "";
+    const docMatch = body.match(/\/\*([\s\S]*?)\*\//);
+    const text = docMatch ? docMatch[1]!.trim() : `Requirement specification for ${reqName}`;
+    const isVerified = new RegExp(`\\bsatisfy\\s+${reqName}\\b|\\bverify\\s+${reqName}\\b`).test(code);
+    requirements.push({
+      id: `REQ-${String(reqIdx++).padStart(2, "0")}`,
+      name: reqName,
+      text,
+      status: isVerified ? "satisfied" : "verified",
+    });
   }
 
-  requirement def FlightEnduranceReq {
-    doc /* Continuous flight endurance must exceed 22 minutes at sea level. */
-    attribute minEndurance: TimeValue = 22 [min];
+  // Extract connections
+  const connRe = /\bconnect\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)/g;
+  while ((m = connRe.exec(code)) !== null) {
+    connections.push({
+      source: m[1]!,
+      target: m[2]!,
+    });
   }
-}`;
+
+  return { parts, requirements, connections };
+}
 
 const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"architecture" | "requirements" | "source">("architecture");
+  const [activeTab, setActiveTab] = useState<"diagram" | "architecture" | "requirements" | "source">("diagram");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
+  const [fetchedCode, setFetchedCode] = useState<string | null>(null);
 
+  const inlineCode = (viewConfig.code as string) || (viewConfig.source as string) || "";
+  useEffect(() => {
+    if (!inlineCode && typeof viewConfig.url === "string") {
+      fetch(viewConfig.url)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setFetchedCode(txt);
+        })
+        .catch(() => {});
+    }
+  }, [inlineCode, viewConfig.url]);
+
+  const sourceCode = inlineCode || fetchedCode || "";
   const format = viewConfig.format || "SysML2";
   const systemName = viewConfig.systemName || (viewConfig.title as string) || "System Architecture";
 
-  // Parts list
+  const parsedModel = useMemo(() => parseSysmlSource(sourceCode), [sourceCode]);
+
+  // Parts list strictly from viewConfig or parsed source code (no hardcoded Quadcopter mock)
   const parts: SysmlPart[] = useMemo(() => {
     if (Array.isArray(viewConfig.parts) && viewConfig.parts.length > 0) {
       return viewConfig.parts;
     }
-    return [
-      {
-        name: "fc",
-        type: "AvionicsComputer",
-        multiplicity: "1",
-        ports: ["telemetryPort", "motorControlPort"],
-        description: "Flight controller & IMU",
-      },
-      {
-        name: "battery",
-        type: "BatteryUnit",
-        multiplicity: "1",
-        ports: ["dcPowerOut"],
-        description: "LiPo 4S 5000mAh pack",
-      },
-      {
-        name: "motors",
-        type: "ElectricMotor",
-        multiplicity: "4",
-        ports: ["powerIn", "controlIn"],
-        description: "Brushless DC 2207 motors",
-      },
-      {
-        name: "cameraGimbal",
-        type: "PayloadGimbal",
-        multiplicity: "1",
-        ports: ["videoOut", "auxPower"],
-        description: "3-axis stabilized sensor",
-      },
-    ];
-  }, [viewConfig.parts]);
+    return parsedModel.parts;
+  }, [viewConfig.parts, parsedModel.parts]);
 
-  // Requirements list
+  // Requirements list strictly from viewConfig or parsed source code
   const requirements: SysmlRequirement[] = useMemo(() => {
     if (Array.isArray(viewConfig.requirements) && viewConfig.requirements.length > 0) {
       return viewConfig.requirements;
     }
-    return [
-      {
-        id: "REQ-01",
-        name: "MaxTakeoffWeightReq",
-        text: "Total system mass must not exceed 1.8 kg including payload.",
-        status: "satisfied",
-      },
-      {
-        id: "REQ-02",
-        name: "FlightEnduranceReq",
-        text: "Continuous flight endurance must exceed 22 minutes at sea level.",
-        status: "satisfied",
-      },
-      {
-        id: "REQ-03",
-        name: "WindResistanceReq",
-        text: "Stable hover in sustained cross-winds up to 12 m/s.",
-        status: "verified",
-      },
-      {
-        id: "REQ-04",
-        name: "ThermalDissipationReq",
-        text: "ESC operating temperatures must stay below 75°C under max continuous thrust.",
-        status: "unverified",
-      },
-    ];
-  }, [viewConfig.requirements]);
+    return parsedModel.requirements;
+  }, [viewConfig.requirements, parsedModel.requirements]);
 
-  // Connections list
+  // Connections list strictly from viewConfig or parsed source code
   const connections: SysmlConnection[] = useMemo(() => {
     if (Array.isArray(viewConfig.connections) && viewConfig.connections.length > 0) {
       return viewConfig.connections;
     }
-    return [
-      { source: "battery.dcPowerOut", target: "fc.powerIn", flowType: "ElectricalPower" },
-      { source: "fc.motorControlPort", target: "motors.controlIn", flowType: "PWM / DShot" },
-      { source: "fc.telemetryPort", target: "groundStation.radio", flowType: "MAVLink" },
-    ];
-  }, [viewConfig.connections]);
+    return parsedModel.connections;
+  }, [viewConfig.connections, parsedModel.connections]);
 
-  const sourceCode = (viewConfig.code as string) || DEFAULT_SAMPLE_CODE;
+  const svgMarkup = useMemo(() => {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
+      return sanitizeSvgMarkup(viewConfig.svg);
+    }
+    if (sourceCode.trim()) {
+      const rendered = renderSourceToDiagramSvg(sourceCode, "sysml2", systemName, true);
+      if (rendered.svg) {
+        return rendered.svg;
+      }
+    }
+    if (parts.length === 0) return "";
+    const width = 680;
+    const cols = Math.min(3, Math.max(1, parts.length));
+    const rows = Math.ceil(parts.length / cols);
+    const height = Math.max(240, rows * 110 + 70);
+    const boxW = 180;
+    const boxH = 68;
+    const posMap = new Map<string, { x: number; y: number }>();
+    const nodesSvg = parts.map((p, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = 40 + col * 210;
+      const y = 55 + row * 100;
+      posMap.set(p.name, { x: x + boxW / 2, y: y + boxH / 2 });
+      return `<g transform="translate(${x}, ${y})">
+        <rect width="${boxW}" height="${boxH}" rx="6" fill="#161b22" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="10" y="18" fill="#60a5fa" font-family="monospace" font-size="9">«part» ${p.type}</text>
+        <text x="10" y="38" fill="#e6edf3" font-family="monospace" font-size="12" font-weight="bold">${p.name}${p.multiplicity ? ` [${p.multiplicity}]` : ""}</text>
+        <text x="10" y="56" fill="#8b949e" font-family="monospace" font-size="9">${(p.ports || []).slice(0, 3).join(", ")}</text>
+      </g>`;
+    });
+    const edgesSvg = connections.map((c) => {
+      const srcPart = c.source.split(".")[0]!;
+      const tgtPart = c.target.split(".")[0]!;
+      const p1 = posMap.get(srcPart);
+      const p2 = posMap.get(tgtPart);
+      if (!p1 || !p2) return "";
+      return `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+    });
+    return sanitizeSvgMarkup(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
+      <rect width="${width}" height="${height}" rx="8" fill="#0d1117"/>
+      <text x="20" y="28" fill="#e6edf3" font-family="monospace" font-size="12" font-weight="bold">bdd [package] ${systemName}</text>
+      ${edgesSvg.join("\n")}
+      ${nodesSvg.join("\n")}
+    </svg>`);
+  }, [viewConfig.svg, sourceCode, parts, connections, systemName]);
 
   const satisfiedCount = requirements.filter((r) => r.status === "satisfied" || r.status === "verified").length;
 
@@ -358,6 +410,17 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     navigator.clipboard.writeText(sourceCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleOpenPlayground = () => {
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "sysml2" as any,
+      code: sourceCode || `package ${systemName.replace(/\W+/g, "_")} {\n}\n`,
+      title: systemName,
+    });
+    const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+    navigate(`/playground${fromArtifact}#m=${hash}`);
   };
 
   const filteredParts = useMemo(() => {
@@ -371,6 +434,8 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     );
   }, [parts, searchQuery]);
 
+  const codeLines = useMemo(() => (sourceCode ? sourceCode.split(/\r?\n/) : []), [sourceCode]);
+
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
@@ -378,33 +443,38 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
           <CpuIcon size={16} fill="var(--color-accent-blue, #60a5fa)" />
           <SystemTitle title={systemName}>{systemName}</SystemTitle>
           <Badge $variant={format === "KerML" ? "kerml" : "sysml"}>{format}</Badge>
-          <Badge $variant={satisfiedCount === requirements.length ? "req-pass" : "req-warn"}>
-            <ShieldCheckIcon size={12} /> {satisfiedCount}/{requirements.length} Reqs Satisfied
-          </Badge>
+          {requirements.length > 0 && (
+            <Badge $variant={satisfiedCount === requirements.length ? "req-pass" : "req-warn"}>
+              <ShieldCheckIcon size={12} /> {satisfiedCount}/{requirements.length} Reqs Satisfied
+            </Badge>
+          )}
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
-            {copiedCode ? <CheckIcon size={14} fill="var(--color-accent-cyan)" /> : <CopyIcon size={14} />}
-            <Text fontSize="11px" ml={1}>
-              {copiedCode ? "Copied" : "Source"}
-            </Text>
-          </Button>
-          <Button
-            size="small"
-            variant="primary"
-            onClick={() => navigate("/ide")}
-            title="Mount and edit SysML v2 model in ModelScript IDE"
-          >
-            <CodeIcon size={14} />
-            <Text fontSize="11px" ml={1}>
-              Open in IDE
-            </Text>
-          </Button>
+          {sourceCode && (
+            <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
+              {copiedCode ? <CheckIcon size={14} fill="var(--color-accent-cyan)" /> : <CopyIcon size={14} />}
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
+            </Button>
+          )}
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              onClick={handleOpenPlayground}
+              title="Open SysML v2 model in Playground"
+            >
+              <CodeIcon size={14} />
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
       <TabNav>
+        <TabButton $active={activeTab === "diagram"} onClick={() => setActiveTab("diagram")}>
+          <WorkflowIcon size={12} /> BDD / IBD Diagram
+        </TabButton>
         <TabButton $active={activeTab === "architecture"} onClick={() => setActiveTab("architecture")}>
           System Architecture ({parts.length})
         </TabButton>
@@ -417,10 +487,22 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       </TabNav>
 
       <ContentBody>
+        {activeTab === "diagram" && (
+          <Box display="flex" justifyContent="center" alignItems="center" style={{ minHeight: "260px" }}>
+            {svgMarkup ? (
+              <div style={{ width: "100%" }} dangerouslySetInnerHTML={{ __html: svgMarkup }} />
+            ) : (
+              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                No diagram elements found in this SysML v2 artifact. Switch to the Source tab to inspect the code.
+              </Text>
+            )}
+          </Box>
+        )}
+
         {activeTab === "architecture" && (
           <Box display="flex" flexDirection="column" gap={2}>
             <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
-              <Text fontSize="12px" color="var(--color-text-muted)">
+              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                 Composition breakdown &amp; internal port bindings
               </Text>
               <TextInput
@@ -429,21 +511,23 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                 size="small"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{ width: ["100%", "220px"] }}
+                style={{ width: "220px" }}
               />
             </Box>
 
-            <Box display="grid" gridTemplateColumns={["1fr", "1fr 1fr"]} gap={2}>
+            <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }} gap={2}>
               {filteredParts.map((p) => (
                 <TreeCard key={p.name}>
                   <Box display="flex" alignItems="center" justifyContent="space-between">
                     <Box display="flex" alignItems="center" gap={1}>
                       <DotFillIcon size={12} fill="var(--color-accent-blue, #60a5fa)" />
-                      <Text fontSize="13px" fontWeight="700" color="var(--color-text-primary)">
+                      <Text style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
                         {p.name}
                       </Text>
                       {p.multiplicity && (
-                        <Text fontSize="11px" color="var(--color-text-muted)" fontFamily="var(--font-mono)">
+                        <Text
+                          style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}
+                        >
                           [{p.multiplicity}]
                         </Text>
                       )}
@@ -452,16 +536,12 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                   </Box>
 
                   {p.description && (
-                    <Text fontSize="11.5px" color="var(--color-text-muted)">
-                      {p.description}
-                    </Text>
+                    <Text style={{ fontSize: "11.5px", color: "var(--color-text-muted)" }}>{p.description}</Text>
                   )}
 
                   {p.ports && p.ports.length > 0 && (
                     <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt={1}>
-                      <Text fontSize="10.5px" color="var(--color-text-muted)">
-                        Ports:
-                      </Text>
+                      <Text style={{ fontSize: "10.5px", color: "var(--color-text-muted)" }}>Ports:</Text>
                       {p.ports.map((port) => (
                         <span
                           key={port}
@@ -503,11 +583,11 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                       display="flex"
                       alignItems="center"
                       justifyContent="space-between"
-                      fontSize="11.5px"
-                      fontFamily="var(--font-mono, monospace)"
                       py={1}
                       px={1}
                       style={{
+                        fontSize: "11.5px",
+                        fontFamily: "var(--font-mono, monospace)",
                         borderBottom: idx < connections.length - 1 ? "1px solid rgba(255,255,255,0.05)" : "none",
                       }}
                     >
@@ -529,46 +609,77 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
         {activeTab === "requirements" && (
           <Box display="flex" flexDirection="column" gap={2}>
-            {requirements.map((req) => {
-              const isVerified = req.status === "satisfied" || req.status === "verified";
-              return (
-                <Box
-                  key={req.id}
-                  p={3}
-                  bg="var(--color-canvas-subtle)"
-                  border="1px solid var(--color-border-default)"
-                  borderRadius="6px"
-                  display="flex"
-                  flexDirection="column"
-                  gap={1}
-                >
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box display="flex" alignItems="center" gap={2}>
-                      {isVerified ? (
-                        <CheckCircleFillIcon size={16} fill="#34d399" />
-                      ) : req.status === "violated" ? (
-                        <XCircleFillIcon size={16} fill="#f87171" />
-                      ) : (
-                        <DotFillIcon size={16} fill="#fbbf24" />
-                      )}
-                      <Text fontSize="12.5px" fontWeight="700" color="var(--color-text-primary)">
-                        {req.id}: {req.name}
-                      </Text>
+            {requirements.length > 0 ? (
+              requirements.map((req) => {
+                const isVerified = req.status === "satisfied" || req.status === "verified";
+                return (
+                  <Box
+                    key={req.id}
+                    p={3}
+                    bg="var(--color-canvas-subtle)"
+                    border="1px solid var(--color-border-default)"
+                    borderRadius="6px"
+                    display="flex"
+                    flexDirection="column"
+                    gap={1}
+                  >
+                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                      <Box display="flex" alignItems="center" gap={2}>
+                        {isVerified ? (
+                          <CheckCircleFillIcon size={16} fill="#34d399" />
+                        ) : req.status === "violated" ? (
+                          <XCircleFillIcon size={16} fill="#f87171" />
+                        ) : (
+                          <DotFillIcon size={16} fill="#fbbf24" />
+                        )}
+                        <Text style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                          {req.id}: {req.name}
+                        </Text>
+                      </Box>
+
+                      <Badge $variant={isVerified ? "req-pass" : "req-warn"}>{req.status.toUpperCase()}</Badge>
                     </Box>
 
-                    <Badge $variant={isVerified ? "req-pass" : "req-warn"}>{req.status.toUpperCase()}</Badge>
+                    <Text style={{ fontSize: "12px", color: "var(--color-text-secondary)", paddingLeft: "24px" }}>
+                      {req.text}
+                    </Text>
                   </Box>
-
-                  <Text fontSize="12px" color="var(--color-text-secondary)" pl={4}>
-                    {req.text}
-                  </Text>
-                </Box>
-              );
-            })}
+                );
+              })
+            ) : (
+              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                No requirement definitions found in this SysML v2 model.
+              </Text>
+            )}
           </Box>
         )}
 
-        {activeTab === "source" && <CodeEditor>{sourceCode}</CodeEditor>}
+        {activeTab === "source" && (
+          <CodeEditor>
+            {codeLines.length > 0 ? (
+              codeLines.map((line, i) => (
+                <div key={i} style={{ display: "flex" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "34px",
+                      minWidth: "34px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-text-muted)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre" }}>{highlightPolyglotLine(line, "sysml")}</span>
+                </div>
+              ))
+            ) : (
+              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>No SysML v2 source available.</Text>
+            )}
+          </CodeEditor>
+        )}
       </ContentBody>
     </CardWrapper>
   );

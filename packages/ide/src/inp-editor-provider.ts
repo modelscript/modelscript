@@ -496,8 +496,18 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
         }
 
         case "openRequirement": {
-          const reqId = message.data;
-          vscode.window.showInformationMessage(`Navigating to requirement: ${reqId}`);
+          const reqId = String(message.data || "");
+          const leafId = reqId.split("::").pop() || reqId;
+          const reqDoc = vscode.workspace.textDocuments.find(
+            (d) =>
+              (d.fileName.endsWith(".sysml") || d.fileName.endsWith(".sysml2") || d.fileName.endsWith(".reqif")) &&
+              (d.getText().includes(leafId) || d.getText().includes(reqId)),
+          );
+          if (reqDoc) {
+            await vscode.window.showTextDocument(reqDoc, vscode.ViewColumn.Beside);
+          } else {
+            vscode.window.showInformationMessage(`Requirement target: ${reqId}`);
+          }
           break;
         }
 
@@ -507,15 +517,51 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
             `Launching DoE Sweep: ${sweepCfg.title || "CalculiX Sweep"} (${sweepCfg.sampleCount || 10} runs)...`,
           );
 
+          const baseDeck = parseInpDeck(document.getText());
+          const baseGeom = extractCalculixInpMesh(baseDeck);
+          const baseE = baseGeom.material.E || 70e9;
+          let baseLoadMag = 0;
+          for (const fVec of baseDeck.nodalLoads.values()) {
+            baseLoadMag += Math.hypot(fVec[0], fVec[1], fVec[2]);
+          }
+          if (baseLoadMag <= 0) baseLoadMag = 100.0;
+          let baseMaxStressPa = 140e6;
+          if (currentMesh && currentMesh.numElements > 0 && currentMaterial) {
+            try {
+              const fixedNodes = new Set<number>();
+              for (const nId of baseDeck.fixedNodes) {
+                const nIdx = currentNodeIdToIdx.get(nId);
+                if (nIdx !== undefined) fixedNodes.add(nIdx);
+              }
+              const nodalLoads = new Map<number, [number, number, number]>();
+              for (const [nId, f] of baseDeck.nodalLoads.entries()) {
+                const nIdx = currentNodeIdToIdx.get(nId);
+                if (nIdx !== undefined) nodalLoads.set(nIdx, f);
+              }
+              const stepRes = new FeaSolver(currentMesh, currentMaterial).solve({ fixedNodes, nodalLoads });
+              if (stepRes.maxVonMisesStress > 0) {
+                baseMaxStressPa = Math.max(25e6, stepRes.maxVonMisesStress);
+              }
+            } catch {
+              // Fallback to analytical scaling if solver throws on degenerate mesh
+            }
+          }
+
           let completed = 0;
           const total = sweepCfg.sampleCount || 10;
           const sweepId = `sweep_${Date.now()}`;
           const runs: any[] = [];
           for (let i = 0; i < total; i++) {
+            const frac = total > 1 ? i / (total - 1) : 0;
+            const loadScale = 0.6 + frac * 1.2;
+            const eScale = 0.85 + ((i % 3) - 1) * 0.1;
             runs.push({
               runIndex: i,
               status: "pending",
-              parameters: { thrustForce: 100 + i * 25, youngsModulus: 70e9 },
+              parameters: {
+                thrustForce: Math.round(baseLoadMag * loadScale * 10) / 10,
+                youngsModulus: Math.round(baseE * eScale),
+              },
             });
           }
 
@@ -538,8 +584,13 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               return;
             }
             if (completed < total) {
+              const run = runs[completed];
+              const forceRatio = (run.parameters?.thrustForce ?? baseLoadMag) / Math.max(1e-6, baseLoadMag);
+              const eRatio = baseE / Math.max(1e6, run.parameters?.youngsModulus ?? baseE);
               runs[completed].status = "completed";
-              runs[completed].scalars = { maxVonMisesStressPa: (150 + completed * 15) * 1e6 };
+              runs[completed].scalars = {
+                maxVonMisesStressPa: Math.round(baseMaxStressPa * forceRatio * (0.9 + 0.1 * eRatio)),
+              };
               completed++;
               const percent = Number(((completed / total) * 100).toFixed(1));
               webviewPanel.webview.postMessage({

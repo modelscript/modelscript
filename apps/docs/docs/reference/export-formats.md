@@ -66,34 +66,26 @@ npx msx pscad export-ssp GridInterconnection.pswx -o GridInterconnection.ssp
 
 ---
 
-## 3. Formal Verification & Theorem Proving Formats
+## 3. Formal Verification Formats
 
-The `msx export-formal` command lowers flattened DAE systems, synchronous clock partitions, and hybrid state machines into five formal verification languages for external model checkers and interactive theorem provers:
+The `msx export-formal` command translates SysML v2 models (constraints, requirements, and state machines) into three formal verification formats for external solvers and model checkers:
 
 ```bash
-# Export a discrete-time transition encoding to SMT-LIB v2 for Z3 / cvc5
-npx msx export-formal FlightControl fcs.mo --format smt2 --dt 0.005 -o fcs.smt2
+# Export constraints to SMT-LIB v2.6 for Z3 / cvc5 (logic auto-detected as QF_LRA or QF_NRA)
+npx msx export-formal FlightControl.sysml --format smt2 -o fcs.smt2
 
-# Export synchronous dataflow equations to Lustre v6 (Kind 2 / Lesar)
-npx msx export-formal FlightControl fcs.mo --format lustre -o fcs.lus
+# Export state machines to nuXmv with an extra safety invariant
+npx msx export-formal FlightControl.sysml --format nuxmv --module FlightControl --invariants "altitude >= 0" -o fcs.smv
 
-# Export finite-state and quantized hybrid dynamics to NuSMV / nuXmv
-npx msx export-formal FlightControl fcs.mo --format nusmv -o fcs.smv
-
-# Export distributed state transitions and temporal invariants to TLA+ (TLC / Apalache)
-npx msx export-formal RedundantBus bus.mo --format tla -o RedundantBus.tla
-
-# Export continuous ODEs + discrete guards to KeYmaera X Differential Dynamic Logic (dL)
-npx msx export-formal AdaptiveCruise acc.mo --format keymaera -o acc.kyx
+# Export assume-guarantee contracts to OCRA
+npx msx export-formal FlightControl.sysml --format ocra -o fcs.oss
 ```
 
-| Format Flag | Extension | Target Toolchains          | Encoding Semantics                                                                                                                                                        |
-| :---------- | :-------- | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `smt2`      | `.smt2`   | Z3, cvc5, MathSAT, Yices 2 | QF*NRA / QF_LRA unrolled transition relation $\mathcal{I}(\mathbf{x}\_0) \land \bigwedge*{k} \mathcal{T}(\mathbf{x}_k, \mathbf{x}_{k+1})$ with negated safety assertions. |
-| `lustre`    | `.lus`    | Kind 2, JKind, Lustre v6   | Synchronous dataflow `node` with `pre` / `->` temporal operators and `--%PROPERTY` observer annotations.                                                                  |
-| `nusmv`     | `.smv`    | NuSMV, nuXmv               | Symbolic transition system (`MODULE main`, `VAR`, `INIT`, `TRANS`) with `INVARSPEC` and `LTLSPEC` properties.                                                             |
-| `tla`       | `.tla`    | TLC, Apalache              | TLA+ `MODULE` with `Init`, `Next`, state variables `VARIABLES`, and temporal `Spec == Init /\ [][Next]_vars`.                                                             |
-| `keymaera`  | `.kyx`    | KeYmaera X                 | Differential Dynamic Logic ($\text{d}\mathcal{L}$) `ArchiveEntry` combining hybrid programs (`{x' = f(x) & H(x)}*`) and postcondition invariants.                         |
+| Format Flag | Extension | Target Toolchains | Encoding Semantics                                                                                                                     |
+| :---------- | :-------- | :---------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| `smt2`      | `.smt2`   | Z3, cvc5          | SMT-LIB v2.6 with a `set-logic` directive (`--logic QF_LRA\|QF_NRA\|QF_IDL\|ALL`) and optional `--minimize` / `--maximize` objectives. |
+| `nuxmv`     | `.smv`    | nuXmv             | Symbolic transition system module with optional `INVARSPEC` (`--invariants`) and `LTLSPEC` (`--ltl`) properties.                       |
+| `ocra`      | `.oss`    | OCRA              | Contract-based component specification; `--module` sets the top-level component name.                                                  |
 
 ---
 

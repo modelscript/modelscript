@@ -116,7 +116,9 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
 }) => {
   // Source State
   const [sourceDomain, setSourceDomain] = useState<DomainType>("modelica");
-  const [sourceName, setSourceName] = useState(rootClass?.name || packageName || "");
+  const [sourceName, setSourceName] = useState(
+    (rootClass as any)?.class_name || (rootClass as any)?.name || packageName || "",
+  );
   const [sourceVariable, setSourceVariable] = useState("");
   const [sourceUnit, setSourceUnit] = useState("N.m");
   const [sourceKind, setSourceKind] = useState("Variable");
@@ -156,7 +158,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
 
   // Candidate source options from classes
   const classOptions = useMemo(() => {
-    return classes.map((c) => c.name);
+    return classes.map((c) => c.class_name || (c as any).name);
   }, [classes]);
 
   // Candidate CAD artifacts from viewers
@@ -182,25 +184,26 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
         name: sourceName.trim(),
         qualifiedName: `${sourceDomain}::${sourceName.trim()}`,
         kind: sourceKind,
-        variable: sourceVariable.trim() || undefined,
-        unit: sourceUnit.trim() || undefined,
+        ...(sourceVariable.trim() ? { variable: sourceVariable.trim() } : {}),
+        ...(sourceUnit.trim() ? { unit: sourceUnit.trim() } : {}),
       },
       target: {
         domain: targetDomain,
         name: targetName.trim(),
         qualifiedName: `${targetDomain}::${targetName.trim()}`,
         kind: targetKind,
-        attribute: targetAttribute.trim() || undefined,
-        unit: targetUnit.trim() || undefined,
+        ...(targetAttribute.trim() ? { attribute: targetAttribute.trim() } : {}),
+        ...(targetUnit.trim() ? { unit: targetUnit.trim() } : {}),
       },
       relationship,
       parity,
-      cadViewerConfig:
-        targetDomain === "cad"
-          ? {
+      ...(targetDomain === "cad"
+        ? {
+            cadViewerConfig: {
               url: `/api/v1/libraries/${packageName}/${packageVersion}/artifacts/${encodeURIComponent(targetName)}`,
-            }
-          : undefined,
+            },
+          }
+        : {}),
     };
 
     onSave(newTwin);
@@ -209,11 +212,15 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
 
   return (
     <Dialog
-      isOpen={isOpen}
-      onDismiss={onClose}
-      aria-labelledby="create-semantic-link-title"
-      sx={{
-        width: ["90vw", "720px"],
+      title={
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <LinkIcon size={20} fill="#38bdf8" />
+          <Text style={{ fontWeight: 600, fontSize: 16 }}>Create Cross-Language Semantic Link</Text>
+        </div>
+      }
+      onClose={onClose}
+      style={{
+        width: "90vw",
         maxWidth: "760px",
         background: "var(--color-canvas-default, #0d1117)",
         border: "1px solid var(--color-border-default, #30363d)",
@@ -221,13 +228,6 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
         boxShadow: "0 24px 48px rgba(0, 0, 0, 0.5)",
       }}
     >
-      <Dialog.Header id="create-semantic-link-title" sx={{ borderBottomColor: "var(--color-border-subtle, #21262d)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <LinkIcon size={20} fill="#38bdf8" />
-          <Text sx={{ fontWeight: 600, fontSize: 16 }}>Create Cross-Language Semantic Link</Text>
-        </div>
-      </Dialog.Header>
-
       <form onSubmit={handleSubmit}>
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "18px" }}>
           {/* Relationship Selection */}
@@ -236,7 +236,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
             <Select
               value={relationship}
               onChange={(e) => setRelationship(e.target.value as DigitalThreadTwin["relationship"])}
-              sx={{ width: "100%" }}
+              style={{ width: "100%" }}
             >
               <Select.Option value="twin">Digital Twin Counterpart (Bidirectional Equivalence)</Select.Option>
               <Select.Option value="cad-binding">CAD Geometry Binding (Kinematic Transform Coupling)</Select.Option>
@@ -261,7 +261,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                 <Select
                   value={sourceDomain}
                   onChange={(e) => handleSourceDomainChange(e.target.value as DomainType)}
-                  sx={{ width: "100%" }}
+                  style={{ width: "100%" }}
                 >
                   <Select.Option value="modelica">Modelica (.mo)</Select.Option>
                   <Select.Option value="sysml2">SysML v2 (.sysml)</Select.Option>
@@ -274,7 +274,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
               <FieldGroup>
                 <FieldLabel>Element Name / Class</FieldLabel>
                 {classOptions.length > 0 && sourceDomain === "modelica" ? (
-                  <Select value={sourceName} onChange={(e) => setSourceName(e.target.value)} sx={{ width: "100%" }}>
+                  <Select value={sourceName} onChange={(e) => setSourceName(e.target.value)} style={{ width: "100%" }}>
                     {classOptions.map((opt) => (
                       <Select.Option key={opt} value={opt}>
                         {opt}
@@ -286,7 +286,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                     value={sourceName}
                     onChange={(e) => setSourceName(e.target.value)}
                     placeholder="e.g. ElectricDrive or Propulsion::Motor"
-                    sx={{ width: "100%" }}
+                    style={{ width: "100%" }}
                   />
                 )}
               </FieldGroup>
@@ -299,7 +299,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                   value={sourceVariable}
                   onChange={(e) => setSourceVariable(e.target.value)}
                   placeholder="e.g. tau or flange_b.tau"
-                  sx={{ width: "100%" }}
+                  style={{ width: "100%" }}
                 />
               </FieldGroup>
 
@@ -309,7 +309,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                   value={sourceUnit}
                   onChange={(e) => setSourceUnit(e.target.value)}
                   placeholder="e.g. N.m, kg, V, m/s, W"
-                  sx={{ width: "100%" }}
+                  style={{ width: "100%" }}
                 />
               </FieldGroup>
             </FieldRow>
@@ -328,7 +328,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                 <Select
                   value={targetDomain}
                   onChange={(e) => handleTargetDomainChange(e.target.value as DomainType)}
-                  sx={{ width: "100%" }}
+                  style={{ width: "100%" }}
                 >
                   <Select.Option value="cad">STEP CAD (.step)</Select.Option>
                   <Select.Option value="sysml2">SysML v2 (.sysml)</Select.Option>
@@ -341,7 +341,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
               <FieldGroup>
                 <FieldLabel>Target Resource / Part</FieldLabel>
                 {cadOptions.length > 0 && targetDomain === "cad" ? (
-                  <Select value={targetName} onChange={(e) => setTargetName(e.target.value)} sx={{ width: "100%" }}>
+                  <Select value={targetName} onChange={(e) => setTargetName(e.target.value)} style={{ width: "100%" }}>
                     <Select.Option value="">Select a CAD model...</Select.Option>
                     {cadOptions.map((opt) => (
                       <Select.Option key={opt} value={opt}>
@@ -354,7 +354,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                     value={targetName}
                     onChange={(e) => setTargetName(e.target.value)}
                     placeholder="e.g. Chassis.step or Avionics::Inverter"
-                    sx={{ width: "100%" }}
+                    style={{ width: "100%" }}
                   />
                 )}
               </FieldGroup>
@@ -367,7 +367,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                   value={targetAttribute}
                   onChange={(e) => setTargetAttribute(e.target.value)}
                   placeholder="e.g. rotor_solid or torqueLimit"
-                  sx={{ width: "100%" }}
+                  style={{ width: "100%" }}
                 />
               </FieldGroup>
 
@@ -377,7 +377,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                   value={targetUnit}
                   onChange={(e) => setTargetUnit(e.target.value)}
                   placeholder="e.g. N*m, kg, V, m/s, W"
-                  sx={{ width: "100%" }}
+                  style={{ width: "100%" }}
                 />
               </FieldGroup>
             </FieldRow>
@@ -386,10 +386,20 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
           {/* Live Physical Quantity Parity Card */}
           <ParityCard $status={parity.status}>
             {parity.status === "compatible" && (
-              <CheckCircleFillIcon size={20} fill="#3fb950" style={{ flexShrink: 0 }} />
+              <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                <CheckCircleFillIcon size={20} fill="#3fb950" />
+              </span>
             )}
-            {parity.status === "warning" && <AlertIcon size={20} fill="#d29922" style={{ flexShrink: 0 }} />}
-            {parity.status === "incompatible" && <XCircleFillIcon size={20} fill="#f85149" style={{ flexShrink: 0 }} />}
+            {parity.status === "warning" && (
+              <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                <AlertIcon size={20} fill="#d29922" />
+              </span>
+            )}
+            {parity.status === "incompatible" && (
+              <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                <XCircleFillIcon size={20} fill="#f85149" />
+              </span>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
               <div style={{ fontWeight: 600, fontSize: "13px" }}>

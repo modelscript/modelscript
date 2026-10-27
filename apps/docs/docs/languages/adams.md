@@ -41,14 +41,13 @@ ModelScript features comprehensive, native support for **MSC Adams** (`.adm`, `.
 msx adams <action> [files...] [options]
 ```
 
-| Action            | Description                                                                    | Key Options         |
-| :---------------- | :----------------------------------------------------------------------------- | :------------------ |
-| **`inspect`**     | Dumps part hierarchy, markers, joints, forces, and initial conditions.         | —                   |
-| **`lint`**        | Runs structural validation, inertia verification, and kinematic sanity checks. | —                   |
-| **`mobility`**    | Evaluates spatial degrees of freedom and overconstrained loops.                | —                   |
-| **`to-simpack`**  | Projects Adams mechanism to SIMPACK XML (`.spck`).                             | `--out=<file.spck>` |
-| **`to-modelica`** | Projects Adams mechanism to `Modelica.Mechanics.MultiBody`.                    | `--out=<file.mo>`   |
-| **`to-dae`**      | Lowers kinematic and dynamic momentum equations into `DAEBuilder` arena.       | —                   |
+| Action            | Description                                                                    | Key Options                                                     |
+| :---------------- | :----------------------------------------------------------------------------- | :-------------------------------------------------------------- |
+| **`lint`**        | Runs structural validation, inertia verification, and kinematic sanity checks. | —                                                               |
+| **`mobility`**    | Evaluates spatial degrees of freedom and overconstrained loops.                | —                                                               |
+| **`to-simpack`**  | Projects Adams mechanism to SIMPACK XML (`.spck`).                             | `--out=<file.spck>`                                             |
+| **`to-modelica`** | Projects Adams mechanism to `Modelica.Mechanics.MultiBody`.                    | `--out=<file.mo>`                                               |
+| **`simulate`**    | Lowers to a DAE and integrates it in time.                                     | `--stop-time`, `--step`, `--stabilization=baumgarte\|algebraic` |
 
 ### Examples
 
@@ -62,23 +61,12 @@ msx adams lint LandingGear.adm
 # Convert Adams dataset into SIMPACK XML format
 msx adams to-simpack RobotArm.adm --out=RobotArm.spck
 
-# Lower multibody equations into ModelScript DAE arena
-msx adams to-dae ExcavatorMechanism.adm
+# Compute mechanism mobility (degrees of freedom)
+msx adams mobility ExcavatorMechanism.adm
 ```
 
 ---
 
 ## Multibody Linters & Diagnostic Rules
 
-| Code        | Identifier                    | Severity | Description                                                                                               |
-| :---------- | :---------------------------- | :------- | :-------------------------------------------------------------------------------------------------------- |
-| **`M7301`** | `dangling-part-reference`     | Error    | Marker or joint references a part ID that does not exist in the dataset.                                  |
-| **`M7302`** | `dangling-marker-reference`   | Error    | Joint or force element references an undeclared marker ID.                                                |
-| **`M7303`** | `non-physical-inertia-tensor` | Error    | Moments of inertia violate the triangle inequality ($I_{xx} + I_{yy} < I_{zz}$) or are non-positive.      |
-| **`M7304`** | `massless-moving-part`        | Warning  | Non-ground moving part has zero mass or zero principal inertia moments.                                   |
-| **`M7305`** | `coincident-joint-markers`    | Warning  | Two markers on a joint are coincident in position and orientation, which may cause kinematic singularity. |
-| **`M7306`** | `overconstrained-mechanism`   | Warning  | Mobility analysis indicates overconstrained loops ($M < 0$) requiring redundant constraint elimination.   |
-| **`M7307`** | `negative-spring-stiffness`   | Error    | Spring-damper element defines negative stiffness $K$ or negative damping coefficient $C$.                 |
-| **`M7308`** | `missing-ground-part`         | Error    | Mechanism does not declare an inertial ground reference frame (`GROUND`).                                 |
-| **`M7309`** | `unsupported-joint-primitive` | Warning  | Joint card specifies an experimental or proprietary constraint type.                                      |
-| **`M7310`** | `zero-length-link`            | Warning  | Distance between base and joint markers on a moving part is zero.                                         |
+<LintRules lang="adams" />

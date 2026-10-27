@@ -50,21 +50,15 @@
 ### 4. Direct DAE Lowering & Modelica Projection
 
 - Lowers state-space companion matrices directly into `@modelscript/runtime`'s `DAEBuilder` SoA linear memory arena.
-- Projects multiport networks into `Modelica.Electrical.Analog` pin networks for joint electro-mechanical and power electronic simulations ([`@modelscript/spice`](file:///home/omar/git3/modelscript/languages/spice)).
+- Projects multiport networks into `Modelica.Electrical.Analog` pin networks for joint electro-mechanical and power electronic simulations ([`@modelscript/spice`](./spice.md)).
 
 ---
 
-## Pre-Flight Diagnostics (`M8301`–`M8320`)
+## Pre-Flight Diagnostics
 
 The Touchstone linter checks physical validity and numerical stability:
 
-| Code    | Severity  | Rule Identifier                 | Condition Checked                                                               |
-| :------ | :-------- | :------------------------------ | :------------------------------------------------------------------------------ | --------------- | ----------------------------------------------- |
-| `M8301` | `error`   | `passivity-violation`           | Spectral norm $\|S\|_2 > 1.0$, indicating an unphysical active passive network. |
-| `M8304` | `error`   | `non-monotonic-frequency`       | Frequency point $f_{k} \le f_{k-1}$ in frequency sweep grid.                    |
-| `M8307` | `error`   | `invalid-port-count`            | Number of matrix elements does not match declared $N \times N$ ports.           |
-| `M8309` | `error`   | `negative-reference-resistance` | Port reference impedance $R_0 \le 0\ \Omega$ (standard: $50\ \Omega$).          |
-| `M8310` | `warning` | `reciprocity-violation`         | Asymmetry $                                                                     | S*{ij} - S*{ji} | > 0.05$ detected in passive reciprocal network. |
+<LintRules lang="touchstone" />
 
 ---
 

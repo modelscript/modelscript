@@ -14,7 +14,6 @@ import {
   ShareAndroidIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
-  SponsorTiersIcon,
   StackIcon,
   SunIcon,
   UnwrapIcon,
@@ -23,6 +22,7 @@ import {
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton } from "@primer/react";
 import React from "react";
+import { MORSEL_LANGUAGES, getLanguageInfo } from "../constants";
 import { MorselView } from "./types";
 export { MorselView };
 
@@ -42,6 +42,8 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 export interface MorselFloatingDockProps {
   colorMode: "dark" | "light";
+  dialect?: string | undefined;
+  onSelectDialect?: ((dialect: string) => void) | undefined;
   treeVisible: boolean;
   setTreeVisible: React.Dispatch<React.SetStateAction<boolean>>;
   translations: any;
@@ -69,6 +71,8 @@ export interface MorselFloatingDockProps {
 
 export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   colorMode,
+  dialect = "modelica",
+  onSelectDialect,
   treeVisible,
   setTreeVisible,
   translations,
@@ -93,6 +97,8 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   isDark,
   toggleTheme,
 }) => {
+  const activeLangInfo = getLanguageInfo(dialect);
+  const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
   return (
     <div
       style={{
@@ -114,15 +120,50 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
         zIndex: 1000,
       }}
     >
-      <a
-        href="https://github.com/modelscript/modelscript"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ display: "flex", alignItems: "center" }}
-      >
-        <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
-      </a>
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+      {!isPlaygroundRoute && (
+        <>
+          <a
+            href="https://github.com/modelscript/modelscript"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center" }}
+          >
+            <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
+          </a>
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <ActionMenu>
+            <ActionMenu.Button
+              size="small"
+              variant="invisible"
+              aria-label="Select Language Dialect"
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "2px 8px",
+                color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+              }}
+            >
+              {activeLangInfo.name}{" "}
+              <span style={{ opacity: 0.6, fontWeight: 400, marginLeft: 2 }}>.{activeLangInfo.ext}</span>
+            </ActionMenu.Button>
+            <ActionMenu.Overlay width="medium" style={{ maxHeight: 340, overflowY: "auto" }}>
+              <ActionList selectionVariant="single">
+                {MORSEL_LANGUAGES.map((lang) => (
+                  <ActionList.Item
+                    key={lang.id}
+                    selected={activeLangInfo.id === lang.id}
+                    onSelect={() => onSelectDialect?.(lang.id)}
+                  >
+                    {lang.name}
+                    <ActionList.TrailingVisual>.{lang.ext}</ActionList.TrailingVisual>
+                  </ActionList.Item>
+                ))}
+              </ActionList>
+            </ActionMenu.Overlay>
+          </ActionMenu>
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+        </>
+      )}
       <IconButton
         icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
         size="small"
@@ -158,14 +199,16 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
         ref={openFileButtonRef}
         onClick={onOpenFile}
       />
-      <IconButton
-        icon={DownloadIcon}
-        size="small"
-        variant="invisible"
-        aria-label={translations.saveModel}
-        title={translations.saveModel}
-        onClick={onSaveModel}
-      />
+      {!isPlaygroundRoute && (
+        <IconButton
+          icon={DownloadIcon}
+          size="small"
+          variant="invisible"
+          aria-label={translations.saveModel}
+          title={translations.saveModel}
+          onClick={onSaveModel}
+        />
+      )}
       <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
       <IconButton
         icon={FlowchartIcon}
@@ -280,23 +323,19 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
         title={translations.flattenModel}
         onClick={onFlatten}
       />
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-      <IconButton
-        icon={ShareAndroidIcon}
-        size="small"
-        variant="invisible"
-        aria-label={translations.shareModel}
-        ref={shareButtonRef}
-        onClick={() => setShareDialogOpen(!isShareDialogOpen)}
-      />
-      <IconButton
-        icon={SponsorTiersIcon}
-        size="small"
-        variant="invisible"
-        aria-label={translations.sponsorMe}
-        title={translations.sponsorMe}
-        onClick={() => window.open("https://github.com/sponsors/nachawati", "_blank")}
-      />
+      {!isPlaygroundRoute && (
+        <>
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={ShareAndroidIcon}
+            size="small"
+            variant="invisible"
+            aria-label={translations.shareModel}
+            ref={shareButtonRef}
+            onClick={() => setShareDialogOpen(!isShareDialogOpen)}
+          />
+        </>
+      )}
       <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
       {availableLanguages.length > 0 && (
         <>

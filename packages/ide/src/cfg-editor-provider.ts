@@ -582,17 +582,29 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
               resultsLoaded = true;
               try {
                 const meshPayload = await cloudClient.fetchMeshPayload(jobId);
+                const rawFields = meshPayload.fields as {
+                  velocityMagnitude?: number[] | undefined;
+                  pressure?: number[] | undefined;
+                  displacements?: number[] | undefined;
+                  vonMisesStress?: number[] | undefined;
+                };
+                const rawStats = (meshPayload.stats ?? {}) as {
+                  maxVelocity?: number | undefined;
+                  pressureDrop?: number | undefined;
+                  maxDisplacement?: number | undefined;
+                  maxStress?: number | undefined;
+                };
                 const cfdPayload = {
                   type: "cfd-mesh",
                   time: 0,
                   geometry: meshPayload.geometry,
                   fields: {
-                    velocityMagnitude: meshPayload.fields.displacements ?? [],
-                    pressure: meshPayload.fields.vonMisesStress ?? [],
+                    velocityMagnitude: rawFields.velocityMagnitude ?? meshPayload.fields.displacements ?? [],
+                    pressure: rawFields.pressure ?? meshPayload.fields.vonMisesStress ?? [],
                   },
                   metadata: {
-                    maxVelocity: meshPayload.stats?.maxDisplacement ?? 100,
-                    pressureDrop: meshPayload.stats?.maxStress ?? 101325,
+                    maxVelocity: rawStats.maxVelocity ?? meshPayload.stats?.maxDisplacement ?? 100,
+                    pressureDrop: rawStats.pressureDrop ?? meshPayload.stats?.maxStress ?? 101325,
                   },
                 };
                 if (!disposed) {
@@ -784,9 +796,12 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
                   },
                 });
 
-                const _baselineEval = surrogate.evaluate({ velocity: baseVel, angle_of_attack_deg: 2.5 });
-                void _baselineEval;
-                const predictedCd = 0.0285;
+                const baselineEval = surrogate.evaluate({ velocity: baseVel, angle_of_attack_deg: 2.5 });
+                const rawEvalCd = baselineEval.scalarOutputs?.["dragCoefficient"] ?? baselineEval.scalarOutputs?.["Cd"];
+                const predictedCd =
+                  typeof rawEvalCd === "number" && Number.isFinite(rawEvalCd) && rawEvalCd > 0
+                    ? Math.round(rawEvalCd * 10000) / 10000
+                    : 0.0285;
                 const thresholdCd = 0.035;
                 const isSatisfied = predictedCd <= thresholdCd;
                 const marginPercent = ((thresholdCd - predictedCd) / thresholdCd) * 100;
@@ -826,8 +841,18 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
         }
 
         case "openRequirement": {
-          const reqId = message.data;
-          vscode.window.showInformationMessage(`Navigating to requirement: ${reqId}`);
+          const reqId = String(message.data || "");
+          const leafId = reqId.split("::").pop() || reqId;
+          const reqDoc = vscode.workspace.textDocuments.find(
+            (d) =>
+              (d.fileName.endsWith(".sysml") || d.fileName.endsWith(".sysml2") || d.fileName.endsWith(".reqif")) &&
+              (d.getText().includes(leafId) || d.getText().includes(reqId)),
+          );
+          if (reqDoc) {
+            await vscode.window.showTextDocument(reqDoc, vscode.ViewColumn.Beside);
+          } else {
+            vscode.window.showInformationMessage(`Requirement target: ${reqId}`);
+          }
           break;
         }
 
@@ -837,15 +862,24 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
             `Launching DoE Sweep: ${sweepCfg.title || "SU2 CFD Sweep"} (${sweepCfg.sampleCount || 10} runs)...`,
           );
 
+          const parsedCfg = parseSu2Config(document.getText());
+          const baseMach = Number(parsedCfg.rawDirectives.get("MACH_NUMBER")) || 0.2;
+          const baseRefArea = Number(parsedCfg.rawDirectives.get("REF_AREA")) || 0.03;
+          const baseRefLen = Number(parsedCfg.rawDirectives.get("REF_LENGTH")) || 0.36;
+          const aspectRatio = Math.max(1.5, Math.min(14.0, (baseRefLen * baseRefLen) / Math.max(1e-4, baseRefArea)));
+
           let completed = 0;
           const total = sweepCfg.sampleCount || 10;
           const sweepId = `sweep_${Date.now()}`;
           const runs: any[] = [];
           for (let i = 0; i < total; i++) {
+            const frac = total > 1 ? i / (total - 1) : 0;
+            const aoaDeg = -2.0 + frac * 14.0;
+            const vInlet = 15.0 + frac * 25.0;
             runs.push({
               runIndex: i,
               status: "pending",
-              parameters: { aoa: i * 1.5, v_inlet: 25.0 },
+              parameters: { aoa: Math.round(aoaDeg * 100) / 100, v_inlet: Math.round(vInlet * 10) / 10 },
             });
           }
 
@@ -868,10 +902,18 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
               return;
             }
             if (completed < total) {
-              runs[completed].status = "completed";
-              runs[completed].scalars = {
-                liftCoefficient: 0.15 + completed * 0.08,
-                dragCoefficient: 0.015 + completed * 0.005,
+              const run = runs[completed];
+              const aoaRad = ((run.parameters?.aoa ?? completed * 1.5) * Math.PI) / 180;
+              const vRatio = (run.parameters?.v_inlet ?? 25.0) / 25.0;
+              const prandtlGlauert = 1 / Math.sqrt(Math.max(0.2, 1 - Math.min(0.85, baseMach * vRatio) ** 2));
+              const cl = ((2 * Math.PI * aoaRad) / (1 + 2 / aspectRatio)) * prandtlGlauert;
+              const cd0 = 0.014 + 0.002 * vRatio;
+              const cd = cd0 + (cl * cl) / (Math.PI * 0.82 * aspectRatio);
+
+              run.status = "completed";
+              run.scalars = {
+                liftCoefficient: Math.round(cl * 10000) / 10000,
+                dragCoefficient: Math.round(cd * 10000) / 10000,
               };
               completed++;
               const percent = Number(((completed / total) * 100).toFixed(1));

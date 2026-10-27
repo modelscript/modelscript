@@ -89,3 +89,24 @@ The `@modelscript/owl2` MCP server (`languages/owl2/src/mcp/server.ts`) exposes 
 | `OWL2ObjectPropertyToSysML2Port`     | `Declaration` (`ObjectProperty`) | `sysml2`        | `PortUsage`                 |
 | `OWL2DataPropertyToSysML2Attribute`  | `Declaration` (`DataProperty`)   | `sysml2`        | `AttributeUsage`            |
 | `OWL2ClassToModelicaModel`           | `Declaration` (`Class`)          | `modelica`      | `ClassDefinition` (`model`) |
+
+## Command Line Interface (`msx polyglot`)
+
+OWL2 ontologies can be queried, projected, and validated using ModelScript's polyglot digital thread commands:
+
+```bash
+# Project OWL 2 DL class hierarchies and axioms into formal SysML v2 part definitions
+msx polyglot project SpacecraftOntology.ofn --target=sysml2 -o Spacecraft.sysml
+
+# Cross-query ontology symbols and digital thread twins in the unified Salsa index
+msx polyglot query Spacecraft::ReactionControlPod --domain=owl2
+
+# Verify losslessness and critical pair confluence across OWL 2 TGG synchronization rules
+msx polyglot verify --strict
+```
+
+---
+
+## Diagnostic Rules
+
+<LintRules lang="owl2" />

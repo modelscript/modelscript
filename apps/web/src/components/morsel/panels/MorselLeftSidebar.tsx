@@ -228,7 +228,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
             />
           ) : (
             <VariablesTree
-              variables={simulationVariables}
+              variables={simulationVariables ?? []}
               selectedVariables={selectedSimulationVariables}
               onToggleVariable={onToggleSimulationVariable}
             />

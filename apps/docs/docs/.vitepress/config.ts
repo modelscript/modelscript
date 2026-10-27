@@ -116,7 +116,9 @@ export default defineConfig({
   },
   title: "ModelScript",
   description: SITE_DESCRIPTION,
+  lastUpdated: true,
   appearance: "dark",
+  cleanUrls: true,
   sitemap: { hostname: "https://modelscript.org" },
   transformPageData(pageData) {
     const params = pageData.params as { title?: string; description?: string } | undefined;
@@ -130,10 +132,14 @@ export default defineConfig({
     }
   },
   transformHead({ pageData, title, description }) {
-    const route = pageData.relativePath.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, ".html");
-    const url = `https://modelscript.org/${route}`;
+    const rawPath = pageData.relativePath
+      .replace(/(^|\/)index\.md$/, "$1")
+      .replace(/\.md$/, "")
+      .replace(/\/+$/, "");
+    const cleanRoute = rawPath ? rawPath.replace(/^\/+/, "") : "";
+    const url = cleanRoute ? `https://modelscript.org/${cleanRoute}` : "https://modelscript.org/";
     const desc = description || SITE_DESCRIPTION;
-    return [
+    const tags: ([string, Record<string, string>] | [string, Record<string, string>, string])[] = [
       ["link", { rel: "canonical", href: url }],
       ["meta", { property: "og:url", content: url }],
       ["meta", { property: "og:title", content: title }],
@@ -141,6 +147,65 @@ export default defineConfig({
       ["meta", { name: "twitter:title", content: title }],
       ["meta", { name: "twitter:description", content: desc }],
     ];
+
+    if (cleanRoute) {
+      const parts = cleanRoute.split("/");
+      const section = parts[0];
+      const sectionLabels: Record<string, { name: string; link: string }> = {
+        guide: { name: "Guide", link: "https://modelscript.org/guide/introduction" },
+        architecture: { name: "Architecture", link: "https://modelscript.org/architecture/overview" },
+        algorithms: { name: "Algorithms", link: "https://modelscript.org/algorithms/overview" },
+        cli: { name: "CLI Reference", link: "https://modelscript.org/cli/overview" },
+        languages: { name: "Languages", link: "https://modelscript.org/languages/overview" },
+        industries: { name: "Industries", link: "https://modelscript.org/industries" },
+        reference: { name: "Reference", link: "https://modelscript.org/reference/linter-rules" },
+      };
+
+      const items: { "@type": string; position: number; name: string; item: string }[] = [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: "https://modelscript.org/",
+        },
+      ];
+
+      if (section && sectionLabels[section]) {
+        items.push({
+          "@type": "ListItem",
+          position: 2,
+          name: sectionLabels[section].name,
+          item: sectionLabels[section].link,
+        });
+        if (parts.length > 1 && url !== sectionLabels[section].link) {
+          items.push({
+            "@type": "ListItem",
+            position: 3,
+            name: title || parts[parts.length - 1]!,
+            item: url,
+          });
+        }
+      } else {
+        items.push({
+          "@type": "ListItem",
+          position: 2,
+          name: title || cleanRoute,
+          item: url,
+        });
+      }
+
+      tags.push([
+        "script",
+        { type: "application/ld+json" },
+        JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: items,
+        }),
+      ]);
+    }
+
+    return tags;
   },
   head: [
     ["link", { rel: "icon", href: "/favicon.ico" }],
@@ -204,67 +269,67 @@ export default defineConfig({
     search: {
       provider: "local",
     },
+    editLink: {
+      pattern: "https://github.com/modelscript/modelscript/edit/main/apps/docs/docs/:path",
+      text: "Edit this page on GitHub",
+    },
+    lastUpdated: {
+      text: "Last updated",
+      formatOptions: { dateStyle: "medium" },
+    },
+    outline: { level: [2, 3], label: "On this page" },
     nav: [
       { component: "IndustriesMegaMenu" },
-      {
-        text: "Docs",
-        activeMatch: "^/(guide|architecture|algorithms|cli|reference)/",
-        items: [
-          {
-            text: "Learn",
-            items: [
-              { text: "Introduction", link: "/guide/introduction" },
-              { text: "Installation", link: "/guide/installation" },
-              { text: "Getting Started", link: "/guide/getting-started" },
-            ],
-          },
-          {
-            text: "Deep Dive",
-            items: [
-              { text: "Compiler Architecture", link: "/architecture/overview" },
-              { text: "Algorithms Catalog", link: "/algorithms/overview" },
-            ],
-          },
-          {
-            text: "Reference",
-            items: [
-              { text: "CLI Commands", link: "/cli/commands" },
-              { text: "Linter Rules", link: "/reference/linter-rules" },
-              { text: "Standards & Export Formats", link: "/reference/export-formats" },
-              { text: "MCP Server & IDE", link: "/reference/mcp-and-ide" },
-            ],
-          },
-        ],
-      },
-      { text: "Languages", link: "/languages/overview", activeMatch: "^/languages/" },
-      {
-        text: "Ecosystem",
-        items: [
-          { text: "Playground", link: "https://modelscript.org/playground" },
-          { text: "Web IDE", link: "https://ide.modelscript.org" },
-          { text: "Native Desktop App", link: "https://github.com/modelscript/modelscript/releases" },
-          {
-            text: "VS Code Extension",
-            link: "https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript",
-          },
-          { text: "PDF Reference Manual", link: "/modelscript-reference-manual.pdf", target: "_blank" },
-        ],
-      },
+      { component: "PlatformMegaMenu" },
+      { component: "LanguagesMegaMenu" },
+      { component: "DocsMegaMenu" },
+      { text: "Playground", link: "https://modelscript.org/playground" },
     ],
-    sidebar: {
-      "/guide/": [
+    sidebar: (() => {
+      const docsSidebar: DefaultTheme.SidebarItem[] = [
         {
           text: "Getting Started",
           items: [
             { text: "Introduction", link: "/guide/introduction" },
             { text: "Installation", link: "/guide/installation" },
             { text: "Getting Started", link: "/guide/getting-started" },
-            { text: "Embedding Artifacts", link: "/guide/embedding" },
-            { text: "Administration", link: "/guide/administration" },
           ],
         },
-      ],
-      "/algorithms/": [
+        {
+          text: "Guides & Operations",
+          items: [
+            { text: "AI Agents & MCP Workflows", link: "/guide/ai-agents" },
+            { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
+            { text: "Embedding Artifacts", link: "/guide/embedding" },
+            { text: "Enterprise Administration", link: "/guide/administration" },
+          ],
+        },
+        {
+          text: "Toolchain Reference",
+          items: [
+            { text: "CLI Overview", link: "/cli/overview" },
+            { text: "CLI Command Reference", link: "/cli/commands" },
+            { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
+            { text: "Standards & Export Formats", link: "/reference/export-formats" },
+            { text: "MCP Server & IDE Workbench", link: "/reference/mcp-and-ide" },
+          ],
+        },
+      ];
+
+      const engineSidebar: DefaultTheme.SidebarItem[] = [
+        {
+          text: "Compiler Architecture",
+          items: [
+            { text: "Overview & Pipeline", link: "/architecture/overview" },
+            { text: "WASM GLR Parser", link: "/architecture/glr-parser" },
+            { text: "Salsa Query Engine", link: "/architecture/salsa-queries" },
+            { text: "Linear DAE Arena", link: "/architecture/dae-arena" },
+            { text: "Triple Graph Grammars", link: "/architecture/tgg" },
+            { text: "Nelson-Oppen Coordinator", link: "/architecture/theory-coordinator" },
+            { text: "Simulation Solvers", link: "/architecture/simulation-solvers" },
+            { text: "SIL & Real-Time HIL", link: "/architecture/hil-wasm-runtime" },
+          ],
+        },
         {
           text: "Algorithms Catalog",
           items: [
@@ -286,43 +351,17 @@ export default defineConfig({
             { text: "Diagram Layout & Routing", link: "/algorithms/diagram-layout" },
           ],
         },
-      ],
-      "/architecture/": [
-        {
-          text: "Compiler Architecture",
-          items: [
-            { text: "Overview & Pipeline", link: "/architecture/overview" },
-            { text: "WASM GLR Parser", link: "/architecture/glr-parser" },
-            { text: "Salsa Query Engine", link: "/architecture/salsa-queries" },
-            { text: "Linear DAE Arena", link: "/architecture/dae-arena" },
-            { text: "Triple Graph Grammars", link: "/architecture/tgg" },
-            { text: "Nelson-Oppen Coordinator", link: "/architecture/theory-coordinator" },
-            { text: "Simulation Solvers", link: "/architecture/simulation-solvers" },
-            { text: "SIL & Real-Time HIL", link: "/architecture/hil-wasm-runtime" },
-          ],
-        },
-      ],
-      "/languages/": languagesSidebar(),
-      "/cli/": [
-        {
-          text: "CLI Toolchain",
-          items: [
-            { text: "CLI Overview", link: "/cli/overview" },
-            { text: "Command Reference", link: "/cli/commands" },
-          ],
-        },
-      ],
-      "/reference/": [
-        {
-          text: "Reference & Diagnostics",
-          items: [
-            { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
-            { text: "Standards & Export Formats", link: "/reference/export-formats" },
-            { text: "MCP Server & IDE Workbench", link: "/reference/mcp-and-ide" },
-          ],
-        },
-      ],
-    },
+      ];
+
+      return {
+        "/guide/": docsSidebar,
+        "/cli/": docsSidebar,
+        "/reference/": docsSidebar,
+        "/architecture/": engineSidebar,
+        "/algorithms/": engineSidebar,
+        "/languages/": languagesSidebar(),
+      };
+    })(),
     socialLinks: [
       { icon: "github", link: "https://github.com/modelscript/modelscript" },
       { icon: "npm", link: "https://www.npmjs.com/org/modelscript" },

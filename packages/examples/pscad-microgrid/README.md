@@ -1,3 +1,6 @@
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
 # PSCAD Microgrid & Inverter-Based Resource (IBR) Verification Workspace
 
 A reference electromagnetic transients (EMT) power systems engineering workspace demonstrating how ModelScript unifies **PSCAD v4/v5** schematic simulation (`.pscx`, `.pslx`, `.pswx`), **Dommel companion-circuit & Bergeron traveling-wave** numerical solvers, **IEEE 2800-2022 / NERC PRC-029-1** automated grid-code compliance auditing, **IEEE C37.111 COMTRADE** transient waveform recording, **Single-Line Diagram (SLD)** synthesis, and polyglot projections to **Modelica** and **FMI/SSP Co-Simulation**.

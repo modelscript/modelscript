@@ -45,7 +45,7 @@
 ### 3. Direct DAE Lowering
 
 - Lowers state variables ($u, v, w, p, q, r, \phi, \theta, \psi, h$) and aero force equations into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation between aerodynamic airframes, onboard flight control computers ([`@modelscript/simulink`](file:///home/omar/git3/modelscript/languages/simulink)), and satellite navigation systems ([`@modelscript/ccsds`](file:///home/omar/git3/modelscript/languages/ccsds)).
+- Enables co-simulation between aerodynamic airframes, onboard flight control computers ([`@modelscript/simulink`](./simulink.md)), and satellite navigation systems ([`@modelscript/ccsds`](./ccsds.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -53,18 +53,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8901`–`M8910`)
+## Pre-Flight Diagnostics
 
 The JSBSim linter validates aircraft geometry, mass distributions, and inertia tensors:
 
-| Code    | Severity  | Rule Identifier             | Condition Checked                                                                       |
-| :------ | :-------- | :-------------------------- | :-------------------------------------------------------------------------------------- |
-| `M8901` | `error`   | `missing-aircraft-name`     | Aircraft configuration does not declare a valid aircraft name.                          |
-| `M8902` | `error`   | `non-positive-wing-area`    | Wing reference area is non-positive ($S_{\text{ref}} \le 0\text{ ft}^2$).               |
-| `M8903` | `error`   | `non-positive-wingspan`     | Wingspan or aerodynamic chord is non-positive ($b \le 0$ or $\bar{c} \le 0$).           |
-| `M8904` | `error`   | `negative-empty-weight`     | Aircraft empty weight $W_{\text{empty}} \le 0\text{ lbs}$.                              |
-| `M8905` | `error`   | `invalid-inertia-tensor`    | Moments of inertia violate rigid-body triangle inequality ($I_{xx} + I_{yy} < I_{zz}$). |
-| `M8908` | `warning` | `missing-aerodynamics-axis` | Aerodynamics definition lacks standard lift, drag, or pitch moment axes.                |
+<LintRules lang="jsbsim" />
 
 ---
 

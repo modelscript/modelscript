@@ -1,0 +1,7 @@
+# ModelScript Security Disclosure
+# https://modelscript.org/.well-known/security.txt
+Contact: mailto:omar@modelscript.org
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://modelscript.org/.well-known/security.txt
+Policy: https://github.com/modelscript/modelscript/blob/main/SECURITY.md

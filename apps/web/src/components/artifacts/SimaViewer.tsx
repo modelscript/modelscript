@@ -7,18 +7,24 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface SimaViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
     vesselName?: string | undefined;
     waterDepthM?: number | undefined;
+    waterDepthMeters?: number | undefined;
     lineCount?: number | undefined;
+    mooringLinesCount?: number | undefined;
     maxTensionKn?: number | undefined;
     watchCircleRadiusM?: number | undefined;
+    watchCircleRadiusMeters?: number | undefined;
     dnvCompliant?: boolean | undefined;
     [key: string]: unknown;
   };
@@ -142,7 +148,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"spread" | "catenary">("spread");
+  const [viewMode, setViewMode] = useState<"spread" | "catenary" | "code">("spread");
   const title = viewConfig.title || viewConfig.vesselName || "SIMA Mooring & Hydrodynamics (.sima)";
 
   useEffect(() => {
@@ -157,81 +163,57 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
+        .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => setRawText(txt))
         .catch((err) => console.warn("[SimaViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedSima = useMemo(() => {
+    const depthMatch = rawText.match(/\b(?:water_depth|waterDepth|depth)\s*[=:]?\s*([0-9.]+)/i);
+    const lineMatches = rawText ? Array.from(rawText.matchAll(/\b(?:MOORING_LINE|LINE|mooringLine)\b/gi)) : [];
+    const tensionMatch = rawText.match(/\b(?:pretension|max_tension|tension)\s*[=:]?\s*([0-9.]+)/i);
+    return {
+      waterDepthM:
+        viewConfig.waterDepthM ?? viewConfig.waterDepthMeters ?? (depthMatch ? Number(depthMatch[1]) : undefined),
+      lineCount: viewConfig.lineCount ?? viewConfig.mooringLinesCount ?? lineMatches.length,
+      maxTensionKn: viewConfig.maxTensionKn ?? (tensionMatch ? Number(tensionMatch[1]) : undefined),
+      watchCircleRadiusM: viewConfig.watchCircleRadiusM ?? viewConfig.watchCircleRadiusMeters,
+    };
+  }, [rawText, viewConfig]);
+
   const sanitizedSvg = useMemo(() => {
-    if (viewConfig.svg) {
-      return DOMPurify.sanitize(viewConfig.svg);
-    }
     if (viewMode === "catenary") {
-      // 2D Catenary line elevation curvature
+      const depthLabel = parsedSima.waterDepthM !== undefined ? `-${parsedSima.waterDepthM}m` : "Seabed";
+      const tensionLabel = parsedSima.maxTensionKn !== undefined ? ` (${parsedSima.maxTensionKn} kN)` : "";
       return DOMPurify.sanitize(`
         <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
           <line x1="50" y1="60" x2="600" y2="60" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="6 3" />
           <text x="60" y="52" fill="#38bdf8" font-size="10" font-family="sans-serif">Mean Water Level (0m)</text>
-
-          <!-- Seabed -->
           <line x1="50" y1="280" x2="600" y2="280" stroke="#475569" stroke-width="2" />
-          <text x="60" y="272" fill="#94a3b8" font-size="10" font-family="sans-serif">Seabed (-800m)</text>
-
-          <!-- Catenary line -->
+          <text x="60" y="272" fill="#94a3b8" font-size="10" font-family="sans-serif">Seabed (${depthLabel})</text>
           <path d="M 520 70 Q 300 278 120 280" fill="none" stroke="#22d3ee" stroke-width="3" />
-          
           <circle cx="520" cy="70" r="6" fill="#f59e0b" />
-          <text x="520" y="95" fill="#fde68a" font-size="10" font-family="sans-serif" text-anchor="middle">Fairlead</text>
-
+          <text x="520" y="95" fill="#fde68a" font-size="10" font-family="sans-serif" text-anchor="middle">Fairlead${tensionLabel}</text>
           <circle cx="120" cy="280" r="6" fill="#ef4444" />
-          <text x="120" y="305" fill="#fca5a5" font-size="10" font-family="sans-serif" text-anchor="middle">Suction Anchor</text>
+          <text x="120" y="305" fill="#fca5a5" font-size="10" font-family="sans-serif" text-anchor="middle">Anchor</text>
         </svg>
       `);
     }
 
-    // Overhead 8-line mooring spread and watch circle
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 600 360" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="600" height="360" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Polar range rings -->
-        <circle cx="300" cy="180" r="130" fill="none" stroke="#1e293b" stroke-width="1.5" />
-        <circle cx="300" cy="180" r="85" fill="none" stroke="#1e293b" stroke-width="1.5" />
-        <circle cx="300" cy="180" r="40" fill="none" stroke="#334155" stroke-dasharray="4 4" />
-        <text x="300" y="135" fill="#64748b" font-size="9" font-family="monospace" text-anchor="middle">Watch Circle (R = 25m)</text>
+    if (viewConfig.svg) {
+      return DOMPurify.sanitize(viewConfig.svg);
+    }
 
-        <!-- 8 Mooring Lines -->
-        <g stroke="#22d3ee" stroke-width="2" fill="none" opacity="0.85">
-          <line x1="285" y1="165" x2="180" y2="70" />
-          <line x1="295" y1="165" x2="220" y2="60" />
-          <line x1="305" y1="165" x2="380" y2="60" />
-          <line x1="315" y1="165" x2="420" y2="70" />
-          
-          <line x1="285" y1="195" x2="180" y2="290" />
-          <line x1="295" y1="195" x2="220" y2="300" />
-          <line x1="305" y1="195" x2="380" y2="300" />
-          <line x1="315" y1="195" x2="420" y2="290" />
-        </g>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "sima", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, viewMode, rawText, parsedSima, title]);
 
-        <!-- Anchors -->
-        <circle cx="180" cy="70" r="4" fill="#0284c7" />
-        <circle cx="220" cy="60" r="4" fill="#0284c7" />
-        <circle cx="380" cy="60" r="4" fill="#0284c7" />
-        <circle cx="420" cy="70" r="4" fill="#0284c7" />
-        <circle cx="180" cy="290" r="4" fill="#0284c7" />
-        <circle cx="220" cy="300" r="4" fill="#0284c7" />
-        <circle cx="380" cy="300" r="4" fill="#0284c7" />
-        <circle cx="420" cy="290" r="4" fill="#0284c7" />
-
-        <!-- Vessel Floater (Semi-Submersible / FPSO) -->
-        <rect x="280" y="160" width="40" height="40" rx="4" fill="#0f172a" stroke="#f59e0b" stroke-width="2" />
-        <text x="300" y="184" fill="#fbbf24" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">FPSO</text>
-      </svg>
-    `);
-  }, [viewConfig.svg, viewMode]);
+  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -240,14 +222,14 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
           <ShieldCheckIcon size={16} fill="#22d3ee" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>SIMA Marine</PillBadge>
-          {viewConfig.dnvCompliant !== false && (
+          {viewConfig.dnvCompliant === true && (
             <PillBadge $variant="dnv">
               <CheckCircleIcon size={12} /> DNV-OS-E301 Verified
             </PillBadge>
           )}
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
+        <Box display="flex" alignItems="center" gap={2}>
           <SegmentedControl size="small" aria-label="SIMA View Selector">
             <SegmentedControl.Button selected={viewMode === "spread"} onClick={() => setViewMode("spread")}>
               Mooring Spread
@@ -255,15 +237,30 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
             <SegmentedControl.Button selected={viewMode === "catenary"} onClick={() => setViewMode("catenary")}>
               Catenary Curve
             </SegmentedControl.Button>
+            <SegmentedControl.Button selected={viewMode === "code"} onClick={() => setViewMode("code")}>
+              Source
+            </SegmentedControl.Button>
           </SegmentedControl>
 
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Studio
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "sima" as any,
+                  code: rawText || `# ${title}\n`,
+                  title,
+                });
+                const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -272,36 +269,71 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : (
+        ) : viewMode !== "code" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+        ) : (
+          <Box
+            flex={1}
+            py={2}
+            overflow="auto"
+            bg="var(--color-canvas-inset, #010409)"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "sima")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={4} color="var(--color-fg-muted)" textAlign="center">
+                No SIMA mooring source available.
+              </Box>
+            )}
+          </Box>
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Hydrodynamic Telemetry
           </Text>
           <StatItem>
-            <span>Water Depth</span>
-            <strong>{viewConfig.waterDepthM ? `${viewConfig.waterDepthM} m` : "800 m"}</strong>
-          </StatItem>
-          <StatItem>
             <span>Mooring Lines</span>
-            <strong>{viewConfig.lineCount ?? 8} (4x2 Symmetric)</strong>
+            <strong>{parsedSima.lineCount}</strong>
           </StatItem>
-          <StatItem>
-            <span>Max Line Tension</span>
-            <strong style={{ color: "#34d399" }}>
-              {viewConfig.maxTensionKn ? `${viewConfig.maxTensionKn} kN` : "1,840 kN"}
-            </strong>
-          </StatItem>
-          <StatItem>
-            <span>Watch Circle</span>
-            <strong>{viewConfig.watchCircleRadiusM ? `${viewConfig.watchCircleRadiusM} m` : "24.5 m"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Safety Factor</span>
-            <strong style={{ color: "#34d399" }}>1.94 (Req: &gt;1.67)</strong>
-          </StatItem>
+          {parsedSima.waterDepthM !== undefined && (
+            <StatItem>
+              <span>Water Depth</span>
+              <strong>{parsedSima.waterDepthM} m</strong>
+            </StatItem>
+          )}
+          {parsedSima.maxTensionKn !== undefined && (
+            <StatItem>
+              <span>Max Line Tension</span>
+              <strong style={{ color: "#34d399" }}>{parsedSima.maxTensionKn} kN</strong>
+            </StatItem>
+          )}
+          {parsedSima.watchCircleRadiusM !== undefined && (
+            <StatItem>
+              <span>Watch Circle</span>
+              <strong>{parsedSima.watchCircleRadiusM} m</strong>
+            </StatItem>
+          )}
         </InspectorSidebar>
       </ContentArea>
     </CardWrapper>

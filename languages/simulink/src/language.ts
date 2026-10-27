@@ -15,6 +15,7 @@ import { synchronizeModelicaToSimulink } from "./tgg/simulink-sync.js";
 export const simulinkLanguage = language({
   name: "simulink",
   fileExtensions: [".slx", ".mdl"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".slx", ".mdl"],
   },

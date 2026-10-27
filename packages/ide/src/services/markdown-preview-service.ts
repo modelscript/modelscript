@@ -6,7 +6,7 @@ import { type MarkdownResolver, createMarkdownItPlugin } from "../markdown-it-pl
 
 export class MarkdownPreviewService implements vscode.Disposable {
   private _disposables: vscode.Disposable[] = [];
-  private readonly markdownVarCache: Record<string, string> = {};
+  public readonly markdownVarCache: Record<string, string> = {};
   private readonly markdownDiagramCache: Record<string, string> = {};
   private readonly markdownRequirementsCache: Record<
     string,

@@ -1,9 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# @modelscript/modelscript (`@modelscript/lang`)
+# @modelscript/modelscript
 
-Native ModelScript (`.msx`, `.modelscript`) systems programming and polyglot query language compiler. Combines low-level `@unmanaged struct` WebAssembly linear memory layouts, XQuery-style FLWOR relational queries, Salsa type/layout inference, static linting (`MSX1001`–`MSX5002`), and multi-target code generation (JavaScript, WebAssembly binary/WAT, and native C/binary).
+Native ModelScript (`.msx`, `.modelscript`, alias `@modelscript/lang`) systems programming and polyglot query language compiler. Combines low-level `@unmanaged struct` WebAssembly linear memory layouts, XQuery-style FLWOR relational queries, Salsa type/layout inference, static linting (`MSX1001`–`MSX5002`), and multi-target code generation (JavaScript, WebAssembly binary/WAT, and native C/binary).
 
 ---
 

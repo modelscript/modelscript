@@ -18,6 +18,7 @@ import { solveHydraulics } from "./solver/todini-ggm.js";
 export const epanetLanguage = language({
   name: "epanet",
   fileExtensions: [".inp"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".inp"],
   },

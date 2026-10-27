@@ -24,6 +24,7 @@ import { parseRaw } from "./parser/raw-parser.js";
 export const psseLanguage = language({
   name: "psse",
   fileExtensions: [".raw"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".raw"],
     icons: {

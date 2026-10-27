@@ -16,11 +16,16 @@ scratch*
 # Build artifacts (rebuilt inside container in standalone mode)
 node_modules
 coverage
+**/coverage
 ctrf
+**/ctrf
+**/.cache
 data
 uploads
 
 # Large testsuites & validation artifacts not needed in builds
+testsuite
+**/testsuite
 languages/modelica/testsuite
 packages/exchange/validation/fmi/exported_fmus
 packages/exchange/validation/fmi/reference_fmus

@@ -62,7 +62,95 @@ export interface LanguagePlugin {
   annotationEvaluator?: any;
   /** Bi-directional parameter writeback handler or configuration */
   writeback?: WritebackConfig | WritebackHandler | undefined;
+  /** Language maturity tier */
+  maturity?: "stable" | "beta" | "experimental" | undefined;
 }
+
+export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "experimental"> = {
+  // Stable (Tier 1)
+  modelica: "stable",
+  sysml2: "stable",
+  sysml: "stable",
+  step: "stable",
+  scad: "stable",
+  owl2: "stable",
+  csv: "stable",
+  pscad: "stable",
+  ssp: "stable",
+
+  // Beta (Tier 2)
+  cfd: "beta",
+  fea: "beta",
+  simpack: "beta",
+  gensys: "beta",
+  spice: "beta",
+  openfoam: "beta",
+  olga: "beta",
+  vhdlams: "beta",
+  verilogams: "beta",
+  bondgraph: "beta",
+  smv: "beta",
+  reqif: "beta",
+  sima: "beta",
+  lps: "beta",
+  gtsuite: "beta",
+  modelscript: "beta",
+
+  // Experimental (Tier 3)
+  aacl: "experimental",
+  autosar: "experimental",
+  canary: "experimental",
+  capella: "experimental",
+  comsol: "experimental",
+  dsd: "experimental",
+  dymola: "experimental",
+  dwsim: "experimental",
+  epanet: "experimental",
+  fluent: "experimental",
+  gproms: "experimental",
+  htri: "experimental",
+  if97: "experimental",
+  jsbsim: "experimental",
+  kratos: "experimental",
+  maap: "experimental",
+  magicdraw: "experimental",
+  matpower: "experimental",
+  modflow: "experimental",
+  nastran: "experimental",
+  omnetpp: "experimental",
+  opendrive: "experimental",
+  openscenario: "experimental",
+  pandapower: "experimental",
+  patran: "experimental",
+  Petrel: "experimental",
+  petrel: "experimental",
+  phreeqc: "experimental",
+  plantuml: "experimental",
+  plaxis: "experimental",
+  process: "experimental",
+  prometheus: "experimental",
+  ptolemy: "experimental",
+  relap5: "experimental",
+  ros2: "experimental",
+  sbml: "experimental",
+  scade: "experimental",
+  simscape: "experimental",
+  simulink: "experimental",
+  structural: "experimental",
+  swmm: "experimental",
+  thermoflow: "experimental",
+  touchstone: "experimental",
+  trace32: "experimental",
+  trnsys: "experimental",
+  urbansim: "experimental",
+  yys: "experimental",
+};
+
+const MATURITY_RANK: Record<"stable" | "beta" | "experimental", number> = {
+  stable: 3,
+  beta: 2,
+  experimental: 1,
+};
 
 /**
  * High-performance, thread-safe Language Registry for the ModelScript Polyglot LSP.
@@ -71,12 +159,87 @@ export interface LanguagePlugin {
 export class LanguageRegistry {
   private plugins = new Map<string, LanguagePlugin>();
   private extMap = new Map<string, LanguagePlugin>();
+  private extCandidates = new Map<string, LanguagePlugin[]>();
+  private maturityTier: "stable" | "beta" | "experimental" = "experimental";
+  private enabledOverrides = new Map<string, boolean>();
+
+  /**
+   * Configures active language maturity tier and per-language enable/disable overrides.
+   */
+  setLanguageConfig(config: {
+    maturityTier?: "all" | "betaAndStable" | "stableOnly" | "stable" | "beta" | "experimental" | undefined;
+    enabledOverrides?: Record<string, boolean> | undefined;
+  }): void {
+    if (config.maturityTier) {
+      if (config.maturityTier === "stableOnly" || config.maturityTier === "stable") {
+        this.maturityTier = "stable";
+      } else if (config.maturityTier === "betaAndStable" || config.maturityTier === "beta") {
+        this.maturityTier = "beta";
+      } else {
+        this.maturityTier = "experimental";
+      }
+    }
+    if (config.enabledOverrides) {
+      this.enabledOverrides.clear();
+      for (const [k, v] of Object.entries(config.enabledOverrides)) {
+        this.enabledOverrides.set(k.toLowerCase(), Boolean(v));
+      }
+    }
+    this.rebuildExtensionRoutes();
+  }
+
+  /**
+   * Checks whether a given language ID is currently enabled according to user settings.
+   */
+  isLanguageEnabled(id: string): boolean {
+    const norm = id.toLowerCase();
+    if (this.enabledOverrides.has(norm)) {
+      return this.enabledOverrides.get(norm)!;
+    }
+    const plugin = this.plugins.get(norm);
+    const maturity = plugin?.maturity ?? DEFAULT_LANGUAGE_MATURITY[norm] ?? "experimental";
+    return MATURITY_RANK[maturity] >= MATURITY_RANK[this.maturityTier];
+  }
+
+  private pickBestCandidate(candidates: LanguagePlugin[]): LanguagePlugin | undefined {
+    if (candidates.length === 0) return undefined;
+    const enabled = candidates.filter((p) => this.isLanguageEnabled(p.id));
+    const pool = enabled.length > 0 ? enabled : candidates;
+    let best = pool[0]!;
+    let bestRank = MATURITY_RANK[best.maturity ?? DEFAULT_LANGUAGE_MATURITY[best.id.toLowerCase()] ?? "experimental"];
+    for (let i = 1; i < pool.length; i++) {
+      const candidate = pool[i]!;
+      const rank =
+        MATURITY_RANK[candidate.maturity ?? DEFAULT_LANGUAGE_MATURITY[candidate.id.toLowerCase()] ?? "experimental"];
+      if (rank > bestRank) {
+        best = candidate;
+        bestRank = rank;
+      }
+    }
+    return best;
+  }
+
+  private rebuildExtensionRoutes(): void {
+    this.extMap.clear();
+    for (const [ext, candidates] of this.extCandidates.entries()) {
+      const best = this.pickBestCandidate(candidates);
+      if (best) {
+        this.extMap.set(ext, best);
+      }
+    }
+  }
 
   /**
    * Registers a new language plugin or updates an existing one in-place.
    */
   register(plugin: LanguagePlugin): void {
     const id = plugin.id.toLowerCase();
+    if (!plugin.maturity) {
+      plugin.maturity =
+        (plugin.languageDef?.maturity as "stable" | "beta" | "experimental" | undefined) ??
+        DEFAULT_LANGUAGE_MATURITY[id] ??
+        "experimental";
+    }
     const existing = this.plugins.get(id);
     if (existing) {
       if (!plugin.disposables) {
@@ -111,7 +274,20 @@ export class LanguageRegistry {
 
     for (const ext of plugin.extensions) {
       const normalizedExt = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
-      this.extMap.set(normalizedExt, plugin);
+      // Never allow domain plugins to hijack TypeScript (.ts)
+      if (normalizedExt === ".ts") continue;
+      const list = this.extCandidates.get(normalizedExt) ?? [];
+      const existingIdx = list.findIndex((p) => p.id.toLowerCase() === id);
+      if (existingIdx >= 0) {
+        list[existingIdx] = plugin;
+      } else {
+        list.push(plugin);
+      }
+      this.extCandidates.set(normalizedExt, list);
+      const best = this.pickBestCandidate(list);
+      if (best) {
+        this.extMap.set(normalizedExt, best);
+      }
     }
 
     if (!plugin.writeback && plugin.languageDef?.writeback) {
@@ -140,7 +316,18 @@ export class LanguageRegistry {
     // 2. Remove extension mappings
     for (const ext of plugin.extensions) {
       const normalizedExt = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
-      if (this.extMap.get(normalizedExt) === plugin) {
+      const list = this.extCandidates.get(normalizedExt);
+      if (list) {
+        const filtered = list.filter((p) => p.id.toLowerCase() !== normId);
+        if (filtered.length === 0) {
+          this.extCandidates.delete(normalizedExt);
+          this.extMap.delete(normalizedExt);
+        } else {
+          this.extCandidates.set(normalizedExt, filtered);
+          const best = this.pickBestCandidate(filtered);
+          if (best) this.extMap.set(normalizedExt, best);
+        }
+      } else if (this.extMap.get(normalizedExt) === plugin) {
         this.extMap.delete(normalizedExt);
       }
     }
@@ -185,24 +372,24 @@ export class LanguageRegistry {
   /**
    * Resolves a language plugin by either languageId or file URI extension.
    */
-  getPluginForLanguageIdOrUri(languageId?: string, uri?: string): LanguagePlugin | undefined {
+  getPluginForLanguageIdOrUri(languageId?: string, uri?: string, text?: string): LanguagePlugin | undefined {
     if (languageId) {
       const byId = this.getPluginById(languageId);
       if (byId) return byId;
       if (!uri && (languageId.includes("/") || languageId.includes("."))) {
-        return this.getPluginForUri(languageId);
+        return this.getPluginForUri(languageId, text);
       }
     }
     if (uri) {
-      return this.getPluginForUri(uri);
+      return this.getPluginForUri(uri, text);
     }
     return undefined;
   }
 
   /**
-   * Resolves a language plugin by file URI extension.
+   * Resolves a language plugin by file URI extension (with optional content disambiguation for shared extensions).
    */
-  getPluginForUri(uri: string): LanguagePlugin | undefined {
+  getPluginForUri(uri: string, text?: string): LanguagePlugin | undefined {
     let cleanUri = uri;
     const qIdx = cleanUri.indexOf("?");
     if (qIdx !== -1) cleanUri = cleanUri.slice(0, qIdx);
@@ -211,6 +398,29 @@ export class LanguageRegistry {
     const dotIdx = cleanUri.lastIndexOf(".");
     if (dotIdx === -1) return undefined;
     const ext = cleanUri.slice(dotIdx).toLowerCase();
+
+    if (text && (ext === ".inp" || ext === ".xml")) {
+      const header = text.slice(0, 2048);
+      if (ext === ".inp") {
+        if (/^\s*\[(?:SUBCATCHMENTS|RAINGAGES|INFILTRATION)\]/im.test(header)) {
+          return this.getPluginById("swmm") ?? this.extMap.get(ext);
+        }
+        if (/^\s*\[(?:JUNCTIONS|PIPES|RESERVOIRS|TANKS)\]/im.test(header)) {
+          return this.getPluginById("epanet") ?? this.extMap.get(ext);
+        }
+        if (/^\s*\*(?:HEADING|NODE|ELEMENT|MATERIAL|STEP|SOLID SECTION)/im.test(header)) {
+          return this.getPluginById("fea") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".xml") {
+        if (/<REQ-IF\b/i.test(header)) return this.getPluginById("reqif") ?? this.extMap.get(ext);
+        if (/<AUTOSAR\b/i.test(header)) return this.getPluginById("autosar") ?? this.extMap.get(ext);
+        if (/<OpenDRIVE\b/i.test(header)) return this.getPluginById("opendrive") ?? this.extMap.get(ext);
+        if (/<OpenSCENARIO\b/i.test(header)) return this.getPluginById("openscenario") ?? this.extMap.get(ext);
+        if (/<sbml\b/i.test(header)) return this.getPluginById("sbml") ?? this.extMap.get(ext);
+        if (/<fdm_config\b/i.test(header)) return this.getPluginById("jsbsim") ?? this.extMap.get(ext);
+      }
+    }
+
     return this.extMap.get(ext);
   }
 

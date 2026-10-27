@@ -19,6 +19,8 @@ export interface AasPackageViewerProps {
       | {
           serialNumber: string;
           variant?: string | undefined;
+          status?: string | undefined;
+          complianceStatus?: string | undefined;
           birthData?: Record<string, any> | undefined;
         }[]
       | undefined;
@@ -352,19 +354,21 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
                         Variant: {inst.variant || "Standard"}
                       </Text>
                     </Box>
-                    <Box display="flex" gap={2}>
-                      <span
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: "6px",
-                          fontSize: "11px",
-                          background: "rgba(46, 160, 67, 0.15)",
-                          color: "#2ea043",
-                          fontWeight: "bold",
-                        }}
-                      >
-                        ✓ Hipot Passed
-                      </span>
+                    <Box display="flex" gap={2} alignItems="center">
+                      {(inst.status || inst.complianceStatus) && (
+                        <span
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            fontSize: "11px",
+                            background: "rgba(46, 160, 67, 0.15)",
+                            color: "#2ea043",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {inst.status || inst.complianceStatus}
+                        </span>
+                      )}
                       <Button
                         size="small"
                         as="a"

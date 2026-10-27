@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/api",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "REST API for ModelScript",
   "keywords": [
     "modelscript"
@@ -16,6 +16,13 @@
   "license": "AGPL-3.0-or-later",
   "author": "Mohamad Omar Nachawati <omar@modelscript.org>",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    }
+  },
+  "main": "./dist/main.js",
   "files": [
     "package.json",
     "README.md",

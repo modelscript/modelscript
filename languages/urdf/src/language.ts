@@ -8,6 +8,7 @@ import { choice, language, repeat, seq } from "@modelscript/dsl";
 export const urdfLanguage = language({
   name: "urdf",
   fileExtensions: [".urdf", ".sdf", ".xacro"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".urdf", ".sdf", ".xacro"],
   },

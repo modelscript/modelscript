@@ -8,14 +8,19 @@ import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface Easy5ViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
     modelName?: string | undefined;
+    componentCount?: number | undefined;
+    connectionCount?: number | undefined;
     stateCount?: number | undefined;
     inputCount?: number | undefined;
     outputCount?: number | undefined;
@@ -140,7 +145,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "bode">("diagram");
+  const [viewMode, setViewMode] = useState<"diagram" | "bode" | "code">("diagram");
   const title = viewConfig.title || viewConfig.modelName || "EASY5 Control Model (.ez5)";
 
   useEffect(() => {
@@ -155,72 +160,68 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
+        .then((r) => (r.ok ? r.text() : ""))
         .then((txt) => setRawText(txt))
         .catch((err) => console.warn("[Easy5Viewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedModel = useMemo(() => {
+    let compCount = 0;
+    let connCount = 0;
+    let stateCount = 0;
+    let wn = 0;
+    let zeta = 0.7;
+    for (const rawLine of rawText.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (/^(COMPONENT|BLOCK)\b/i.test(line)) {
+        compCount++;
+        if (/\b(IN|INTEGRATOR|LAG|POLE|TF|SECOND_ORDER)\b/i.test(line)) stateCount++;
+      } else if (/^CONNECT\b/i.test(line) || line.includes("->")) {
+        connCount++;
+      }
+      const wnMatch = line.match(/\b(?:WN|OMEGA_N)\s*=\s*([0-9.eE+-]+)/i);
+      if (wnMatch) wn = Number(wnMatch[1]) || wn;
+      const tauMatch = line.match(/\bTAU\s*=\s*([0-9.eE+-]+)/i);
+      if (tauMatch && Number(tauMatch[1]) > 0) wn = 1 / Number(tauMatch[1]);
+      const zetaMatch = line.match(/\bZETA\s*=\s*([0-9.eE+-]+)/i);
+      if (zetaMatch) zeta = Number(zetaMatch[1]) || zeta;
+    }
+    return {
+      componentCount: viewConfig.componentCount ?? compCount,
+      connectionCount: viewConfig.connectionCount ?? connCount,
+      stateCount: viewConfig.stateCount ?? stateCount,
+      inputCount: viewConfig.inputCount,
+      outputCount: viewConfig.outputCount,
+      wn: wn > 0 ? wn : compCount > 0 ? 5.0 : 0,
+      zeta,
+    };
+  }, [rawText, viewConfig]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean control block diagram schematic
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Summing Junction -->
-        <circle cx="100" cy="170" r="16" fill="#1e293b" stroke="#f59e0b" stroke-width="2" />
-        <text x="100" y="174" fill="#fbbf24" font-size="14" font-family="sans-serif" text-anchor="middle" font-weight="bold">∑</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "easy5", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-        <!-- Controller Block (PID) -->
-        <rect x="180" y="140" width="90" height="60" rx="6" fill="#172554" stroke="#3b82f6" stroke-width="2" />
-        <text x="225" y="168" fill="#93c5fd" font-size="12" font-family="sans-serif" text-anchor="middle" font-weight="bold">PID (K_p)</text>
-        <text x="225" y="185" fill="#60a5fa" font-size="10" font-family="monospace" text-anchor="middle">Controller</text>
-
-        <!-- Plant Dynamic System Block -->
-        <rect x="340" y="140" width="110" height="60" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="2" />
-        <text x="395" y="168" fill="#6ee7b7" font-size="12" font-family="sans-serif" text-anchor="middle" font-weight="bold">G(s) Plant</text>
-        <text x="395" y="185" fill="#34d399" font-size="10" font-family="monospace" text-anchor="middle">2nd-Order Sys</text>
-
-        <!-- Feedback Loop & Arrows -->
-        <g stroke="#94a3b8" stroke-width="2" fill="none">
-          <line x1="40" y1="170" x2="84" y2="170" marker-end="url(#arrow)" />
-          <line x1="116" y1="170" x2="180" y2="170" />
-          <line x1="270" y1="170" x2="340" y2="170" />
-          <line x1="450" y1="170" x2="560" y2="170" />
-          <!-- Feedback branch -->
-          <line x1="500" y1="170" x2="500" y2="250" />
-          <line x1="500" y1="250" x2="100" y2="250" />
-          <line x1="100" y1="250" x2="100" y2="186" />
-        </g>
-
-        <!-- Sensor Block in feedback -->
-        <rect x="250" y="230" width="80" height="40" rx="4" fill="#312e81" stroke="#818cf8" stroke-width="1.5" />
-        <text x="290" y="255" fill="#c7d2fe" font-size="10" font-family="sans-serif" text-anchor="middle">H(s) Sensor</text>
-
-        <text x="40" y="155" fill="#cbd5e1" font-size="11" font-family="sans-serif">r(t)</text>
-        <text x="540" y="155" fill="#cbd5e1" font-size="11" font-family="sans-serif">y(t)</text>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
-
-  const defaultBodeData = useMemo(() => {
+  const bodeData = useMemo(() => {
     if (viewConfig.bodeData && Array.isArray(viewConfig.bodeData)) {
       return viewConfig.bodeData;
     }
+    if (parsedModel.wn <= 0) return [];
     const points = [];
+    const wn = parsedModel.wn;
+    const zeta = parsedModel.zeta;
     for (let f = 0.1; f <= 100; f *= 1.25) {
-      // 2nd order lowpass filter response
-      const wn = 5.0; // rad/s
-      const zeta = 0.4;
       const w = 2 * Math.PI * f;
       const mag = 1.0 / Math.sqrt(Math.pow(1 - Math.pow(w / wn, 2), 2) + Math.pow(2 * zeta * (w / wn), 2));
       const magDb = 20 * Math.log10(mag);
       const phase = (-Math.atan2(2 * zeta * (w / wn), 1 - Math.pow(w / wn, 2)) * 180) / Math.PI;
-
       points.push({
         freq: Number(f.toFixed(2)),
         magnitudeDb: Number(magDb.toFixed(1)),
@@ -228,7 +229,9 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
       });
     }
     return points;
-  }, [viewConfig.bodeData]);
+  }, [viewConfig.bodeData, parsedModel.wn, parsedModel.zeta]);
+
+  const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -239,7 +242,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           <PillBadge>EASY5 Dynamic Control</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
+        <Box display="flex" alignItems="center" gap={2}>
           <SegmentedControl size="small" aria-label="Easy5 View Selector">
             <SegmentedControl.Button selected={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
               Block Diagram
@@ -247,15 +250,30 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
             <SegmentedControl.Button selected={viewMode === "bode"} onClick={() => setViewMode("bode")}>
               Bode Response
             </SegmentedControl.Button>
+            <SegmentedControl.Button selected={viewMode === "code"} onClick={() => setViewMode("code")}>
+              Source
+            </SegmentedControl.Button>
           </SegmentedControl>
 
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Studio
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={() => {
+                const hash = compressMorselPayload({
+                  v: 1,
+                  lang: "easy5" as any,
+                  code: rawText || `* ${title}\n`,
+                  title,
+                });
+                const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+                navigate(`/playground${fromArtifact}#m=${hash}`);
+              }}
+            >
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -264,12 +282,12 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "diagram" ? (
+        ) : viewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
-        ) : (
+        ) : viewMode === "bode" && bodeData.length > 0 ? (
           <ChartCanvas>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={defaultBodeData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+              <LineChart data={bodeData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                 <XAxis dataKey="freq" stroke="#8b949e" tick={{ fontSize: 11 }} scale="log" unit="Hz" />
                 <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} />
@@ -301,40 +319,83 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
               </LineChart>
             </ResponsiveContainer>
           </ChartCanvas>
+        ) : (
+          <Box
+            flex={1}
+            py={2}
+            overflow="auto"
+            bg="var(--color-canvas-inset, #010409)"
+            style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
+          >
+            {codeLines.length > 0 ? (
+              codeLines.map((line, idx) => (
+                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: "36px",
+                      minWidth: "36px",
+                      textAlign: "right",
+                      paddingRight: "12px",
+                      color: "var(--color-fg-subtle)",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                    {highlightPolyglotLine(line, "easy5")}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <Box p={4} color="var(--color-fg-muted)" textAlign="center">
+                No EASY5 model source available.
+              </Box>
+            )}
+          </Box>
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
-            Linear System Metrics
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+            Control System Telemetry
           </Text>
           <StatItem>
+            <span>Components</span>
+            <strong>{parsedModel.componentCount}</strong>
+          </StatItem>
+          <StatItem>
+            <span>Connections</span>
+            <strong>{parsedModel.connectionCount}</strong>
+          </StatItem>
+          <StatItem>
             <span>States (n)</span>
-            <strong>{viewConfig.stateCount ?? 4}</strong>
+            <strong>{parsedModel.stateCount}</strong>
           </StatItem>
-          <StatItem>
-            <span>Inputs (m)</span>
-            <strong>{viewConfig.inputCount ?? 1}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Outputs (p)</span>
-            <strong>{viewConfig.outputCount ?? 1}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Gain Margin</span>
-            <strong style={{ color: "#34d399" }}>
-              {viewConfig.gainMarginDb ? `${viewConfig.gainMarginDb} dB` : "14.2 dB"}
-            </strong>
-          </StatItem>
-          <StatItem>
-            <span>Phase Margin</span>
-            <strong style={{ color: "#34d399" }}>
-              {viewConfig.phaseMarginDeg ? `${viewConfig.phaseMarginDeg}°` : "52.4°"}
-            </strong>
-          </StatItem>
-          <StatItem>
-            <span>Stability</span>
-            <strong style={{ color: "#34d399" }}>Asymptotically Stable</strong>
-          </StatItem>
+          {parsedModel.inputCount !== undefined && (
+            <StatItem>
+              <span>Inputs (m)</span>
+              <strong>{parsedModel.inputCount}</strong>
+            </StatItem>
+          )}
+          {parsedModel.outputCount !== undefined && (
+            <StatItem>
+              <span>Outputs (p)</span>
+              <strong>{parsedModel.outputCount}</strong>
+            </StatItem>
+          )}
+          {viewConfig.gainMarginDb !== undefined && (
+            <StatItem>
+              <span>Gain Margin</span>
+              <strong style={{ color: "#34d399" }}>{viewConfig.gainMarginDb} dB</strong>
+            </StatItem>
+          )}
+          {viewConfig.phaseMarginDeg !== undefined && (
+            <StatItem>
+              <span>Phase Margin</span>
+              <strong style={{ color: "#34d399" }}>{viewConfig.phaseMarginDeg}°</strong>
+            </StatItem>
+          )}
         </InspectorSidebar>
       </ContentArea>
     </CardWrapper>

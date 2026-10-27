@@ -42,10 +42,21 @@ import MsIcon from "./MsIcon.vue";
   position: absolute;
   inset: 0;
   background-image:
+    radial-gradient(ellipse 55% 60% at 70% 35%, var(--ms-glow-cyan), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 25% 25%, var(--ms-glow-indigo), transparent 70%),
     linear-gradient(var(--ms-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 70% 80% at 50% 0%, #000 30%, transparent 75%);
+    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--ms-grid-sub) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-sub) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    64px 64px,
+    64px 64px,
+    16px 16px,
+    16px 16px;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 25%, #000 35%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 25%, #000 35%, transparent 78%);
   pointer-events: none;
 }
 

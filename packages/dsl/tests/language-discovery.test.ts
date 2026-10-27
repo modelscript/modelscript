@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { generatePackageJson } from "../src/codegen/ide/extension-generator.js";
 import { discoverWorkspaceLanguages } from "../src/codegen/ide/language-discovery.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,54 @@ describe("Workspace Language Discovery & Extension Generator", () => {
       assert.ok(manifestModelica);
       assert.strictEqual(manifestModelica.wasm, "modelica.wasm");
     }
+
+    // Verify generated VS Code extension manifest
+    const pkg = generatePackageJson(result.languages, {
+      name: "modelscript-ide",
+      displayName: "ModelScript",
+      version: "0.1.0",
+      publisher: "modelscript",
+    });
+
+    // 1. Never hijack .ts (TypeScript)
+    for (const lang of pkg.contributes.languages) {
+      assert.ok(!lang.extensions.includes(".ts"), `Language '${lang.id}' must not claim TypeScript extension '.ts'`);
+    }
+
+    // 2. Submenu for overflow editor title actions exists
+    assert.ok(
+      pkg.contributes.submenus?.some((s: any) => s.id === "modelscript.editorTitle.moreActions"),
+      "Should contribute modelscript.editorTitle.moreActions submenu",
+    );
+
+    // 3. Diagram editors only contributed for supported languages + custom editors for lps/sima/gtsuite
+    const customEditorTypes = new Set(pkg.contributes.customEditors.map((ce: any) => ce.viewType));
+    assert.ok(customEditorTypes.has("modelica.diagramEditor"));
+    assert.ok(customEditorTypes.has("sysml2.diagramEditor"));
+    assert.ok(customEditorTypes.has("modelscript.lpsEditor"));
+    assert.ok(customEditorTypes.has("modelscript.simaEditor"));
+    assert.ok(customEditorTypes.has("modelscript.gtsuiteEditor"));
+    assert.ok(!customEditorTypes.has("touchstone.diagramEditor"));
+    assert.ok(!customEditorTypes.has("smv.diagramEditor"));
+
+    // 4. Categorized configuration with per-language maturity labels and toggles
+    const configSections = pkg.contributes.configuration as any[];
+    assert.ok(Array.isArray(configSections) && configSections.length >= 7);
+    const langProps = configSections[0].properties;
+    assert.ok(langProps["modelscript.languages.maturityTier"]);
+    assert.ok(langProps["modelscript.languages.modelica.enabled"]);
+    assert.ok(
+      langProps["modelscript.languages.modelica.enabled"].markdownDescription.includes("🟢 Stable"),
+      "Modelica should be labeled 🟢 Stable",
+    );
+    assert.ok(
+      langProps["modelscript.languages.fea.enabled"].markdownDescription.includes("🟡 Beta"),
+      "FEA should be labeled 🟡 Beta",
+    );
+    assert.ok(
+      langProps["modelscript.languages.touchstone.enabled"].markdownDescription.includes("🧪 Experimental"),
+      "Touchstone should be labeled 🧪 Experimental",
+    );
   });
 
   it("should handle empty or nonexistent directory gracefully", async () => {

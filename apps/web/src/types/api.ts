@@ -47,6 +47,7 @@ export interface ArtifactViewDTO {
   id: number;
   view_type: string;
   config: Record<string, unknown> | string;
+  view_config?: Record<string, unknown> | string | undefined;
   title?: string | undefined;
   description?: string | undefined;
   author_id?: number | undefined;

@@ -121,7 +121,7 @@ function App() {
         setIsLoading(false);
       } else if (msg.type === "setLoading") {
         setIsLoading(msg.data);
-      } else if (msg.type === "configData") {
+      } else if (msg.type === "configData" || msg.type === "studyData") {
         setConfig(msg.data || {});
         configRef.current = msg.data || {};
       }

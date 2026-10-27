@@ -3,7 +3,7 @@
 
 # @modelscript/pscad
 
-PSCAD v4/v5 electromagnetic transients (EMT) and power systems engineering package (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.cfg`, `.dat`) for ModelScript. Features multi-file workspace indexing (`PscadWorkspaceIndex`), Dommel companion-circuit & Bergeron traveling-wave EMT netlist extraction, IEEE 2800-2022 & NERC PRC-029-1 grid-code compliance verification, IEEE C37.111 COMTRADE waveform I/O, 11 pre-flight electrical lint rules (`M6001`–`M6011`), Single-Line Diagram (SLD) synthesis, and Modelica/SSP co-simulation projections.
+PSCAD v4/v5 electromagnetic transients (EMT) and power systems engineering package (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`) for ModelScript. Features multi-file workspace indexing (`PscadWorkspaceIndex`), Dommel companion-circuit & Bergeron traveling-wave EMT netlist extraction, IEEE 2800-2022 & NERC PRC-029-1 grid-code compliance verification, IEEE C37.111 COMTRADE & PSCAD V5 `.psout` waveform I/O, 17 pre-flight electrical & control lint rules (`M6001`–`M6017`), Single-Line Diagram (SLD) synthesis, and Modelica/SSP co-simulation projections.
 
 ---
 
@@ -29,7 +29,7 @@ PSCAD v4/v5 electromagnetic transients (EMT) and power systems engineering packa
   - **Clause 7.3.2**: Frequency, RoCoF ($\ge 5\text{ Hz/s}$), and Instantaneous Phase-Angle Jump Ride-Through
 - **IEEE C37.111-1999/2013 & IEC 60255-24 COMTRADE Reader/Writer (`readComtrade`, `writeComtrade`, `emtResultToComtrade`)**: Full parser and serializer for `.cfg`, ASCII/Binary `.dat` (`ASCII`, `BINARY`, `BINARY32`, `FLOAT32`), and single-file `.cff` transient fault records.
 - **PSCAD V5+ Binary Waveform Container Codec (`readPscadPsout`, `writePscadPsout`, `@modelscript/pscad/psout`)**: In-WASM AssemblyScript (`assembly/psout.ts` → `dist/psout.wasm`) codec for PSCAD `.psout` slotted paged waveform files. Reads and writes 160-byte headers, Call hierarchies, property bags, trace maps, and float64 trace arrays with 100% numerical parity against official PSCAD V5 benchmark fixtures. Includes an inlined fallback for zero-I/O execution in browsers and Web Workers.
-- **17 Pre-Flight Electrical & Control Lint Rules (`M6001`–`M6017`, `lintPscx`)**: Static electrical topology, impedance hierarchy, Bergeron travel-time, control algebraic loops (`M6012`), parallel source singularities (`M6013`/`M6014`), control limiter saturation interval analysis (`M6015`), and weak-grid Short-Circuit Ratio (SCR) diagnostics with 1-click LSP Quick-Fix code actions.
+- **17 Pre-Flight Electrical & Control Lint Rules (`M6001`–`M6017`, `lintPscx`)**: Static electrical topology, impedance hierarchy, Bergeron travel-time, control algebraic loops (`M6012`), parallel source singularities (`M6013`/`M6014`), control limiter saturation interval analysis (`M6015`), component check assertions (`M6016`/`M6017`), and weak-grid Short-Circuit Ratio (SCR) diagnostics with 1-click LSP Quick-Fix code actions.
 - **Single-Line Diagram (SLD) Layout & Master Library Catalog (`MASTER_LIBRARY_SCHEMAS`, `PscadDiagramBuilder`)**: Rich multi-tab component schemas, topological wire-to-wire T-junction and cross-junction snapping, interactive SLD visualization (`inspect_pscad_schematic`), engineering hover cards with computed ohmic/per-unit impedances, and XML component synthesis.
 - **Modelica & SSP Co-Simulation Projections (`pscadToModelica`, `pscadToSsd`) & 15 TGG Rules**: Translates PSCAD networks into native `Modelica.Electrical.Analog` models or standardized `SystemStructure.ssd` multi-FMU co-simulation architectures, backed by 15 bidirectional Triple Graph Grammar (TGG) rules bridging PSCAD components, buses, transformers, transmission lines, machines, converters, and CSMF blocks with Modelica and SSP.
 
@@ -44,7 +44,7 @@ PSCAD v4/v5 electromagnetic transients (EMT) and power systems engineering packa
 | `src/parser/pscx-parser.ts`             | `parsePscx` XML parser for `.pscx`, `.pslx`, `.pswx`, and `.psmx` files                                                                            |
 | `src/workspace-index.ts`                | `PscadWorkspaceIndex` multi-file symbol indexer for PSCAD libraries and cases                                                                      |
 | `src/netlist/emt-netlist.ts`            | `extractEmtNetlist` and `netlistToEmtCircuit` lowering schematics to Dommel/Bergeron EMT circuits                                                  |
-| `src/lints/index.ts`                    | `lintPscx` and `PscadErrorCode` (`M6001`–`M6011`) pre-flight electrical diagnostic engine                                                          |
+| `src/lints/index.ts`                    | `lintPscx` and `PscadErrorCode` (`M6001`–`M6017`) pre-flight electrical & control diagnostic engine                                                |
 | `src/verification/ieee2800.ts`          | `verifyIeee2800Compliance` and `extractSequencePhasors` grid-code verification engine                                                              |
 | `src/comtrade/comtrade-reader.ts`       | `readComtrade` IEEE C37.111 `.cfg` / `.dat` / `.cff` parser                                                                                        |
 | `src/comtrade/comtrade-writer.ts`       | `writeComtrade` and `emtResultToComtrade` waveform exporters                                                                                       |
@@ -56,21 +56,27 @@ PSCAD v4/v5 electromagnetic transients (EMT) and power systems engineering packa
 
 ---
 
-## Pre-Flight Electrical Lint Rules (`M6001`–`M6011`)
+## Pre-Flight Electrical & Control Lint Rules (`M6001`–`M6017`)
 
-| Code    | Rule                           | Severity  | Description                                                                                                  |
-| ------- | ------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------ |
-| `M6001` | `floating-electrical-node`     | `error`   | Electrical bus or node is floating with no closed branch connections                                         |
-| `M6002` | `transformer-winding-mismatch` | `warning` | Transformer primary or secondary kV rating differs from connected bus base voltage by $> 5\%$                |
-| `M6003` | `invalid-parameter-bounds`     | `error`   | Non-physical component parameter ($R < 0$, $L \le 0$, $C \le 0$, or $\text{MVA} \le 0$)                      |
-| `M6004` | `weak-grid-warning`            | `warning` | Point of Interconnection (POI) has low Short-Circuit Ratio ($\text{SCR} < 1.5$), risking IBR PLL instability |
-| `M6005` | `csmf-unresolved-input`        | `error`   | CSMF control block references an unresolved upstream signal block ID                                         |
-| `M6006` | `line-travel-time-underflow`   | `error`   | Bergeron/FDPM transmission line wave propagation delay ($\tau = \ell\sqrt{LC}$) is smaller than $\Delta t$   |
-| `M6007` | `sync-machine-reactance-order` | `error`   | Synchronous machine violates physical $d$-axis reactance hierarchy ($X_d \ge X_d' \ge X_d'' > 0$)            |
-| `M6008` | `mov-arrester-under-rated`     | `warning` | MOV surge arrester reference voltage $V_{\text{ref}}$ is below connected bus phase-to-ground peak voltage    |
-| `M6009` | `duplicate-component-id`       | `error`   | Duplicate component or bus ID declared within the same schematic module                                      |
-| `M6010` | `bus-voltage-conflict`         | `error`   | Conductive wire net directly shorts two buses with conflicting nominal base voltages without a transformer   |
-| `M6011` | `port-domain-mismatch`         | `error`   | Wire connects a CSMF control signal port directly to a 3-phase electrical port or bus                        |
+| Code    | Rule                             | Severity  | Description                                                                                                   |
+| ------- | -------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------- |
+| `M6001` | `floating-electrical-node`       | `error`   | Electrical bus or node is floating with no closed branch connections                                          |
+| `M6002` | `transformer-winding-mismatch`   | `warning` | Transformer primary or secondary kV rating differs from connected bus base voltage by $> 5\%$                 |
+| `M6003` | `invalid-parameter-bounds`       | `error`   | Non-physical component parameter ($R < 0$, $L \le 0$, $C \le 0$, or $\text{MVA} \le 0$)                       |
+| `M6004` | `weak-grid-warning`              | `warning` | Point of Interconnection (POI) has low Short-Circuit Ratio ($\text{SCR} < 1.5$), risking IBR PLL instability  |
+| `M6005` | `csmf-unresolved-input`          | `error`   | CSMF control block references an unresolved upstream signal block ID                                          |
+| `M6006` | `line-travel-time-underflow`     | `error`   | Bergeron/FDPM transmission line wave propagation delay ($\tau = \ell\sqrt{LC}$) is smaller than $\Delta t$    |
+| `M6007` | `sync-machine-reactance-order`   | `error`   | Synchronous machine violates physical $d$-axis reactance hierarchy ($X_d \ge X_d' \ge X_d'' > 0$)             |
+| `M6008` | `mov-arrester-under-rated`       | `warning` | MOV surge arrester reference voltage $V_{\text{ref}}$ is below connected bus phase-to-ground peak voltage     |
+| `M6009` | `duplicate-component-id`         | `error`   | Duplicate component or bus ID declared within the same schematic module                                       |
+| `M6010` | `bus-voltage-conflict`           | `error`   | Conductive wire net directly shorts two buses with conflicting nominal base voltages without a transformer    |
+| `M6011` | `port-domain-mismatch`           | `error`   | Wire connects a CSMF control signal port directly to a 3-phase electrical port or bus                         |
+| `M6012` | `csmf-algebraic-loop`            | `error`   | CSMF control blocks form a feedback cycle with no state (integrator, lag, or delay) element                   |
+| `M6013` | `parallel-ideal-sources`         | `error`   | Two or more voltage sources with explicit zero source impedance share a bus, making the nodal matrix singular |
+| `M6014` | `parallel-low-impedance-sources` | `warning` | Two or more voltage sources with no declared source impedance share a bus, risking large circulating currents |
+| `M6015` | `limiter-permanently-saturated`  | `warning` | Limiter block input interval lies entirely outside its output limits, causing permanent saturation            |
+| `M6016` | `component-check-failed`         | `error`   | Parameter validation check assertion failed in component `<segment name="Checks">`                            |
+| `M6017` | `component-check-warning`        | `warning` | Parameter validation check warning triggered in component `<segment name="Checks">`                           |
 
 ---
 
@@ -99,7 +105,7 @@ import {
   runPscadSimulationPipeline,
 } from "@modelscript/pscad";
 
-// 1. Parse PSCAD project (.pscx), extract EMT netlist, and run M6001-M6011 linter
+// 1. Parse PSCAD project (.pscx), extract EMT netlist, and run M6001-M6017 linter
 const project = parsePscx(pscxXmlText);
 const netlist = extractEmtNetlist(project);
 const diagnostics = lintPscx(project);

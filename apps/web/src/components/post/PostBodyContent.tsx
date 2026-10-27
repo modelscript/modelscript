@@ -4,26 +4,25 @@
 import { PinIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../util/editor-routing";
 import { safeJsonParse } from "../../util/json";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
-import type { SpatialPin } from "../artifacts/spatial-pin";
 import Box from "../Box";
 import { PostMarkdownContent } from "./PostMarkdownContent";
 import { PostNotebookHeader } from "./PostNotebookHeader";
-import { AiInsightRibbon } from "./styles";
 
 export interface PostBodyContentProps {
   displayPost: any;
   isDetailView: boolean;
   isNotebook: boolean;
   notebookData?: any;
-  notebookHeadings: { slug: string; level: number; text: string }[];
+  notebookHeadings: { id?: string; slug?: string; level: number; text: string }[];
   readTimeMinutes: number;
   canEditPost: boolean;
   onOpenEditModal: () => void;
-  onPinCreated: (pin: SpatialPin) => void;
-  showAiDetails: boolean;
-  setShowAiDetails: (show: boolean) => void;
+  onPinCreated: (pin: any) => void;
+  showAiDetails?: boolean | undefined;
+  setShowAiDetails?: ((show: boolean) => void) | undefined;
 }
 
 export const PostBodyContent: React.FC<PostBodyContentProps> = ({
@@ -36,8 +35,6 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   canEditPost,
   onOpenEditModal,
   onPinCreated,
-  showAiDetails,
-  setShowAiDetails,
 }) => {
   const navigate = useNavigate();
   const [isNotebookExpanded, setIsNotebookExpanded] = useState(false);
@@ -68,6 +65,18 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
       return { cell, figureNum: 0 };
     });
 
+    const primaryArtifactId = displayPost.artifact_view_id ?? notebookData.artifactIds?.[0];
+    const primaryArtifactView =
+      (primaryArtifactId ? displayPost.artifact_views?.[primaryArtifactId] : undefined) || displayPost.artifact_view;
+    const isMultiFileTutorial = Boolean(
+      primaryArtifactView &&
+      isMultiFileArtifact({
+        ...primaryArtifactView,
+        view_type:
+          primaryArtifactView.view_type || primaryArtifactView.artifact_type || (displayPost as any).artifact_type,
+      }),
+    );
+
     return (
       <Box display="flex" flexDirection="column" gap={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
         {/* Baeldung-style Tutorial Hero Banner */}
@@ -79,7 +88,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           canEditPost={canEditPost}
           onOpenEditModal={onOpenEditModal}
           isDetailView={isDetailView}
-          notebookHeadings={notebookHeadings}
+          notebookHeadings={notebookHeadings.map((h) => ({ slug: h.slug || h.id || "", level: h.level, text: h.text }))}
           onHeadingClick={(slug) => {
             if (!isDetailView) {
               setIsNotebookExpanded(true);
@@ -92,7 +101,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           }}
         />
 
-        {cellsWithFig.map(({ cell, figureNum }) => {
+        {cellsWithFig.map(({ cell, figureNum }: { cell: any; figureNum: number }) => {
           if (cell.type === "markdown") {
             const shouldTruncateMd =
               !isDetailView && !isNotebookExpanded && cell.content.length > 520 && notebookData.cells.length === 1;
@@ -137,7 +146,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 forkedFromId={
                   (displayPost as any)?.forked_from_post_id ||
                   (displayPost as any)?.forked_from_artifact_id ||
-                  safeJsonParse((displayPost as any)?.metadata, {})?.forkedFromArtifactId
+                  safeJsonParse<Record<string, any>>((displayPost as any)?.metadata, {})?.["forkedFromArtifactId"]
                 }
                 onPinCreated={onPinCreated}
               />
@@ -186,7 +195,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 padding: "9px 14px",
                 borderRadius: "10px",
                 border: "1px solid rgba(6, 182, 212, 0.32)",
-                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 246, 0.1))",
+                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 216, 0.1))",
                 color: "var(--color-accent-cyan)",
                 fontFamily: "var(--font-mono, monospace)",
                 fontSize: "12px",
@@ -278,8 +287,8 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               </span>
               <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
                 {notebookData.companionRepo
-                  ? `Full source available in ${notebookData.companionRepo} — or launch directly in the WebAssembly IDE.`
-                  : "All code snippets and equations in this tutorial can be compiled and simulated directly in the ModelScript Web IDE."}
+                  ? `Full source available in ${notebookData.companionRepo} — or launch directly in the WebAssembly Playground / IDE.`
+                  : "All code snippets and equations in this tutorial can be compiled and simulated directly in the ModelScript Playground."}
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -316,15 +325,24 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  const codeBlocks = Array.from(
-                    (displayPost.content || "").matchAll(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g),
-                  )
-                    .map((m: any) => m[1]?.trim())
-                    .filter(Boolean);
-                  const combinedSource = codeBlocks.join("\n\n");
-                  navigate(
-                    `/ide?source=${encodeURIComponent(combinedSource || displayPost.content || "")}&title=${encodeURIComponent(notebookData.title || `Tutorial-${displayPost.id}`)}`,
+                  const matches = Array.from(
+                    String(displayPost.content || "").matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g),
                   );
+                  const firstFenceLang = matches[0]?.[1]?.trim();
+                  const codeBlocks = matches.map((m) => m[2]?.trim()).filter(Boolean);
+                  const combinedSource = codeBlocks.join("\n\n");
+                  const targetUrl = buildEditorUrlForArtifact({
+                    artifactId: primaryArtifactId,
+                    viewType:
+                      primaryArtifactView?.view_type ||
+                      primaryArtifactView?.artifact_type ||
+                      (displayPost as any).artifact_type,
+                    viewConfig: primaryArtifactView?.view_config || (displayPost as any).artifact_config,
+                    code: combinedSource || (!primaryArtifactId ? displayPost.content || "" : undefined),
+                    title: notebookData.title || `Tutorial-${displayPost.id}`,
+                    dialect: notebookData.dialect || firstFenceLang || undefined,
+                  });
+                  navigate(targetUrl);
                 }}
                 style={{
                   padding: "6px 12px",
@@ -338,56 +356,10 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                   cursor: "pointer",
                 }}
               >
-                ▶ Open Tutorial in Web IDE
+                {isMultiFileTutorial ? "▶ Open Tutorial in Web IDE" : "▶ Open Tutorial in Playground"}
               </button>
             </div>
           </div>
-        )}
-
-        {notebookData.artifactIds.length > 0 && (
-          <AiInsightRibbon
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAiDetails(!showAiDetails);
-            }}
-            style={{ cursor: "pointer", marginTop: "4px" }}
-          >
-            <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
-              <Box display="flex" alignItems="center" gap={2}>
-                <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
-                <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
-                  AI Verified · Linear DAE Arena ({notebookData.artifactIds.length}{" "}
-                  {notebookData.artifactIds.length === 1 ? "Artifact" : "Artifacts"})
-                </span>
-              </Box>
-              <span
-                style={{
-                  fontSize: "10.5px",
-                  color: "var(--color-status-verified)",
-                  fontFamily: "var(--font-mono)",
-                  background: "rgba(16, 185, 129, 0.12)",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                }}
-              >
-                ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
-              </span>
-            </Box>
-            {showAiDetails && (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "var(--color-text-muted)",
-                  borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                  paddingTop: "6px",
-                  marginTop: "4px",
-                }}
-              >
-                Verified AST and differential equations across all embedded notebook artifacts in linear DAE arena.
-                Numerical convergence guaranteed with SUNDIALS CVODE integrator.
-              </div>
-            )}
-          </AiInsightRibbon>
         )}
       </Box>
     );
@@ -429,7 +401,9 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               gap: "4px",
             }}
           >
-            <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
+            <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+              <PinIcon size={12} />
+            </span>
             <span>
               View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
               {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
@@ -446,52 +420,10 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
             forkedFromId={
               (displayPost as any)?.forked_from_post_id ||
               (displayPost as any)?.forked_from_artifact_id ||
-              safeJsonParse((displayPost as any)?.metadata, {})?.forkedFromArtifactId
+              safeJsonParse<Record<string, any>>((displayPost as any)?.metadata, {})?.["forkedFromArtifactId"]
             }
             onPinCreated={onPinCreated}
           />
-          <AiInsightRibbon
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAiDetails(!showAiDetails);
-            }}
-            style={{ cursor: "pointer", marginTop: "8px" }}
-          >
-            <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
-              <Box display="flex" alignItems="center" gap={2}>
-                <span style={{ fontSize: "14px", color: "var(--color-accent-purple)" }}>✨</span>
-                <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
-                  AI Verified · Linear DAE Arena
-                </span>
-              </Box>
-              <span
-                style={{
-                  fontSize: "10.5px",
-                  color: "var(--color-status-verified)",
-                  fontFamily: "var(--font-mono)",
-                  background: "rgba(16, 185, 129, 0.12)",
-                  padding: "2px 6px",
-                  borderRadius: "4px",
-                }}
-              >
-                ● CVODE GUARANTEED {showAiDetails ? "▲" : "▼"}
-              </span>
-            </Box>
-            {showAiDetails && (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "var(--color-text-muted)",
-                  borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                  paddingTop: "6px",
-                  marginTop: "4px",
-                }}
-              >
-                Verified AST and differential equations in linear DAE arena. No algebraic loops detected. Numerical
-                convergence guaranteed with CVODE integrator.
-              </div>
-            )}
-          </AiInsightRibbon>
         </Box>
       )}
     </>

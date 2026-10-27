@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { SyncIcon } from "@primer/octicons-react";
-import { Dialog, Heading, Text } from "@primer/react";
+import { Dialog } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  type ArtifactViewerInfo,
+  type ClassDetail,
+  type ClassSummary,
   type ThreadAuditLogDto,
   type ThreadProposalDto,
   createThreadProposal,
@@ -21,23 +23,37 @@ import {
 } from "../util/digitalThread";
 import { CreateSemanticLinkModal } from "./CreateSemanticLinkModal";
 import CadStepViewer from "./artifacts/CadStepViewer";
+import { DigitalThreadExplorerViewer } from "./artifacts/DigitalThreadExplorerViewer";
 import {
   DigitalThreadControlsBar,
-  type DigitalThreadExplorerProps,
   DigitalThreadMetricsGrid,
-  DigitalThreadTwinCard,
   ExplorerContainer,
-  MetricCard,
   ThreadGovernanceModal,
   ThreadProposalModal,
   ThreadReviewModal,
 } from "./digital-thread";
 
-export type { DigitalThreadExplorerProps, DigitalThreadMetrics, DigitalThreadTwin, DomainType };
+export interface DigitalThreadExplorerProps {
+  packageName: string;
+  packageVersion?: string | undefined;
+  version?: string | undefined;
+  files?: (string | { path: string; type?: string | undefined; displayName?: string | undefined })[] | undefined;
+  onNavigateToFile?: ((filePath: string) => void) | undefined;
+  classes?: ClassSummary[] | undefined;
+  rootClass?: ClassDetail | null | undefined;
+  artifactViewers?: ArtifactViewerInfo[] | undefined;
+  onNavigateToArtifact?: ((artifactPath: string) => void) | undefined;
+  onNavigateToClass?: ((className: string) => void) | undefined;
+}
+
+export type { DigitalThreadMetrics, DigitalThreadTwin, DomainType };
 
 export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
   packageName,
   packageVersion,
+  version,
+  files = [],
+  onNavigateToFile,
   classes = [],
   rootClass = null,
   artifactViewers = [],
@@ -45,6 +61,32 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
   onNavigateToClass,
 }) => {
   const navigate = useNavigate();
+  const resolvedVersion = packageVersion ?? version ?? "1.0.0";
+
+  const resolvedArtifactViewers = useMemo<ArtifactViewerInfo[]>(() => {
+    if (artifactViewers.length > 0) return artifactViewers;
+    if (!files || files.length === 0) return [];
+    return files.map((f, idx) => {
+      const filePath = typeof f === "string" ? f : f.path;
+      const ext = filePath.split(".").pop()?.toLowerCase() || "";
+      const fileType =
+        typeof f === "object" && f.type
+          ? f.type
+          : ext === "step" || ext === "stp"
+            ? "cad"
+            : ext === "sysml" || ext === "kerml"
+              ? "sysml2"
+              : ext === "csv"
+                ? "dataset"
+                : "artifact";
+      return {
+        id: idx + 1,
+        path: filePath,
+        type: fileType,
+        displayName: (typeof f === "object" && f.displayName) || filePath.split("/").pop() || filePath,
+      } as ArtifactViewerInfo;
+    });
+  }, [artifactViewers, files]);
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,65 +129,68 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
     let active = true;
     let evtSource: EventSource | null = null;
 
-    try {
-      evtSource = new EventSource("/api/v1/threads/stream");
-      evtSource.addEventListener("init", () => {
-        if (active) setLiveStreamConnected(true);
-      });
-      evtSource.addEventListener("thread_updated", (e) => {
-        if (!active) return;
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.status === "resolved") {
-            setCustomTwins((prev) =>
-              prev.map((t) =>
-                t.id === payload.conflictId || t.name === payload.conflictId
-                  ? {
-                      ...t,
-                      parity: {
-                        ...t.parity,
-                        status: "compatible",
-                        deviationPercent: 0,
-                      },
-                    }
-                  : t,
-              ),
-            );
+    if (typeof EventSource !== "undefined") {
+      try {
+        evtSource = new EventSource("/api/v1/threads/stream");
+        evtSource.addEventListener("init", () => {
+          if (active) setLiveStreamConnected(true);
+        });
+        evtSource.addEventListener("thread_updated", (e) => {
+          if (!active) return;
+          try {
+            const payload = JSON.parse((e as MessageEvent).data);
+            if (payload.status === "resolved") {
+              setCustomTwins((prev) =>
+                prev.map((t) =>
+                  t.id === payload.conflictId ||
+                  t.source.name === payload.conflictId ||
+                  t.target.name === payload.conflictId
+                    ? {
+                        ...t,
+                        parity: {
+                          ...t.parity,
+                          status: "compatible",
+                        },
+                      }
+                    : t,
+                ),
+              );
+            }
+          } catch {
+            // Ignore parse errors
           }
-        } catch {
-          // Ignore parse errors
-        }
-      });
+        });
 
-      evtSource.addEventListener("proposal_created", (e) => {
-        if (!active) return;
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.proposal) {
-            setProposals((prev) => [payload.proposal, ...prev.filter((p) => p.id !== payload.proposal.id)]);
+        evtSource.addEventListener("proposal_created", (e) => {
+          if (!active) return;
+          try {
+            const payload = JSON.parse((e as MessageEvent).data);
+            if (payload.proposal) {
+              setProposals((prev) => [payload.proposal, ...prev.filter((p) => p.id !== payload.proposal.id)]);
+            }
+          } catch {
+            // Ignore parse errors
           }
-        } catch {
-          // Ignore parse errors
-        }
-      });
+        });
 
-      evtSource.addEventListener("proposal_reviewed", (e) => {
-        if (!active) return;
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.proposal) {
-            setProposals((prev) => prev.map((p) => (p.id === payload.proposal.id ? payload.proposal : p)));
+        evtSource.addEventListener("proposal_reviewed", (e) => {
+          if (!active) return;
+          try {
+            const payload = JSON.parse((e as MessageEvent).data);
+            if (payload.proposal) {
+              setProposals((prev) => prev.map((p) => (p.id === payload.proposal.id ? payload.proposal : p)));
+            }
+          } catch {
+            // Ignore parse errors
           }
-        } catch {
-          // Ignore parse errors
-        }
-      });
+        });
 
-      evtSource.onerror = () => {
-        if (active) setLiveStreamConnected(false);
-      };
-    } catch {
-      // EventSource not supported in environment
+        evtSource.onerror = () => {
+          if (active) setLiveStreamConnected(false);
+        };
+      } catch {
+        // EventSource not supported in environment
+      }
     }
 
     return () => {
@@ -171,7 +216,7 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
   };
 
   useEffect(() => {
-    loadGovernanceData();
+    void loadGovernanceData();
   }, []);
 
   const handleCreateProposal = async (e: React.FormEvent) => {
@@ -183,10 +228,10 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
       const newProp = await createThreadProposal({
         threadId: proposalTargetTwin.id,
         title: propTitle.trim(),
-        description: propDesc.trim() || undefined,
+        ...(propDesc.trim() ? { description: propDesc.trim() } : {}),
         safetyStandard: propSafetyStandard,
         diffSummary: {
-          twinName: proposalTargetTwin.name,
+          twinName: `${proposalTargetTwin.source.name} ↔ ${proposalTargetTwin.target.name}`,
           source: proposalTargetTwin.source,
           target: proposalTargetTwin.target,
           proposedValue: propValue,
@@ -211,13 +256,13 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
     try {
       const updated = await reviewThreadProposal(reviewDialogProposal.id, {
         status: reviewAction,
-        comment: reviewComment.trim() || undefined,
+        ...(reviewComment.trim() ? { comment: reviewComment.trim() } : {}),
         safetyStandard: "ISO-26262",
       });
       setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setReviewDialogProposal(null);
       setReviewComment("");
-      loadGovernanceData();
+      void loadGovernanceData();
     } catch (err) {
       console.error("Failed to review proposal:", err);
     } finally {
@@ -227,8 +272,8 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
 
   // Synthesize digital thread twins
   const synthesizedTwins = useMemo(() => {
-    return extractDigitalThreadTwins(packageName, packageVersion, classes, rootClass, artifactViewers);
-  }, [packageName, packageVersion, classes, rootClass, artifactViewers]);
+    return extractDigitalThreadTwins(packageName, resolvedVersion, classes, rootClass, resolvedArtifactViewers);
+  }, [packageName, resolvedVersion, classes, rootClass, resolvedArtifactViewers]);
 
   const twins = useMemo(() => {
     return [...customTwins, ...synthesizedTwins];
@@ -300,13 +345,15 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
     if (onNavigateToClass) {
       onNavigateToClass(className);
     } else {
-      navigate(`/packages/${packageName}/${packageVersion}/classes/${className}`);
+      navigate(`/packages/${packageName}/${resolvedVersion}/classes/${className}`);
     }
   };
 
   const handleJumpToArtifact = (artifactPath: string) => {
     if (onNavigateToArtifact) {
       onNavigateToArtifact(artifactPath);
+    } else if (onNavigateToFile) {
+      onNavigateToFile(artifactPath);
     }
   };
 
@@ -324,7 +371,7 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
         onOpenGovernance={() => {
           setIsGovernanceOpen(true);
-          loadGovernanceData();
+          void loadGovernanceData();
         }}
         openProposalsCount={proposals.filter((p) => p.status === "open").length}
         parityFilter={parityFilter}
@@ -335,37 +382,33 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
         onSearchQueryChange={setSearchQuery}
       />
 
-      {/* ── Twin Cards List ── */}
-      {filteredTwins.length > 0 ? (
-        filteredTwins.map((twin) => (
-          <DigitalThreadTwinCard
-            key={twin.id}
-            twin={twin}
-            onJumpToClass={handleJumpToClass}
-            onJumpToArtifact={handleJumpToArtifact}
-            onLaunchCad={handleLaunchCad}
-            onProposeResolution={(targetTwin) => {
-              setProposalTargetTwin(targetTwin);
-              setPropTitle(`Reconcile ${targetTwin.source.name} ↔ ${targetTwin.target.name}`);
-              setPropDesc(
-                `Proposal to reconcile parameters between ${targetTwin.source.domain} and ${targetTwin.target.domain}. Current deviation: ${targetTwin.parity.deviationPercent ?? 0}%.`,
-              );
-              setPropValue(String(targetTwin.parity.sourceValue ?? ""));
-              setIsProposeModalOpen(true);
-            }}
-          />
-        ))
-      ) : (
-        <MetricCard style={{ padding: 40, textAlign: "center", alignItems: "center" }}>
-          <SyncIcon size={36} fill="var(--color-fg-muted)" />
-          <Heading as="h4" style={{ fontSize: 16, marginTop: 8 }}>
-            No Matching Digital Thread Twins
-          </Heading>
-          <Text style={{ fontSize: 13, color: "var(--color-fg-muted)" }}>
-            Try adjusting search keywords or domain filters to inspect cross-language twin bindings.
-          </Text>
-        </MetricCard>
-      )}
+      {/* ── Unified Twin Cards & Hypergraph View via DigitalThreadExplorerViewer ── */}
+      <DigitalThreadExplorerViewer
+        twins={filteredTwins}
+        onJumpToClass={handleJumpToClass}
+        onJumpToArtifact={handleJumpToArtifact}
+        onLaunchCad={handleLaunchCad}
+        onNodeSelected={(node) => {
+          if (node.uri) {
+            handleJumpToArtifact(node.uri);
+          } else if (node.domain === "modelica") {
+            handleJumpToClass(node.name);
+          }
+        }}
+        onProposeResolution={(targetTwin) => {
+          const parityExtra = targetTwin.parity as DigitalThreadTwin["parity"] & {
+            deviationPercent?: number | undefined;
+            sourceValue?: string | number | undefined;
+          };
+          setProposalTargetTwin(targetTwin);
+          setPropTitle(`Reconcile ${targetTwin.source.name} ↔ ${targetTwin.target.name}`);
+          setPropDesc(
+            `Proposal to reconcile parameters between ${targetTwin.source.domain} and ${targetTwin.target.domain}. Current deviation: ${parityExtra.deviationPercent ?? 0}%.`,
+          );
+          setPropValue(String(parityExtra.sourceValue ?? ""));
+          setIsProposeModalOpen(true);
+        }}
+      />
 
       {/* ── 3D CAD Preview Dialog ── */}
       {activeCadPreview && (
@@ -389,10 +432,10 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
           setIsCreateModalOpen(false);
         }}
         packageName={packageName}
-        packageVersion={packageVersion}
+        packageVersion={resolvedVersion}
         classes={classes}
         rootClass={rootClass}
-        artifactViewers={artifactViewers}
+        artifactViewers={resolvedArtifactViewers}
       />
 
       {/* ── Propose Digital Twin Resolution (Merge Request) Modal ── */}

@@ -67,25 +67,9 @@ flowchart TD
 
 ---
 
-## Pre-Flight Marine Linter Rules (`M7001`–`M7015`)
+## Pre-Flight Marine Linter Rules
 
-| Code    | Identifier                    | Severity  | Description                                                                                      |
-| :------ | :---------------------------- | :-------- | :----------------------------------------------------------------------------------------------- |
-| `M7001` | `negative-metacentric-height` | `error`   | Floater hydrostatic instability ($GM_t < 0$ or $GM_l < 0$).                                      |
-| `M7002` | `line-length-underflow`       | `error`   | Total unstretched line length is shorter than water depth at fairlead position.                  |
-| `M7003` | `acoustic-courant-violation`  | `error`   | Dynamic time step exceeds line axial acoustic travel time ($\Delta t > \Delta L / \sqrt{EA/m}$). |
-| `M7004` | `unconnected-attachment-node` | `error`   | Line end references a non-existent floater body attachment node or anchor.                       |
-| `M7005` | `rao-frequency-extrapolation` | `warning` | Wave peak period $T_p$ falls outside tabulated `.hyd` RAO frequency range.                       |
-| `M7006` | `invalid-stiffness-hierarchy` | `error`   | Non-physical cross-sectional axial ($EA \le 0$) or bending ($EI \le 0$) stiffness.               |
-| `M7007` | `unphysical-seabed-friction`  | `warning` | Seabed friction coefficient $\mu < 0$ or $\mu > 2.0$.                                            |
-| `M7008` | `missing-hydrostatic-matrix`  | `error`   | 6-DOF floater defined without waterplane area or restoring matrix $C$.                           |
-| `M7009` | `duplicate-line-identifier`   | `error`   | Duplicate line or segment name declared in the slender system.                                   |
-| `M7010` | `slack-compression-hazard`    | `warning` | Segment pre-tension is near zero with high wave excitation, risking snap loads.                  |
-| `M7011` | `morison-drag-unspecified`    | `warning` | Slender member in wave active zone has zero Morison drag coefficient ($C_d = 0$).                |
-| `M7012` | `anchor-uplift-warning`       | `warning` | Catenary anchor subject to vertical uplift angle where drag-embedment anchor is specified.       |
-| `M7013` | `mass-matrix-asymmetric`      | `error`   | Floater structural mass/inertia matrix $M$ is not positive-definite or symmetric.                |
-| `M7014` | `qtf-symmetry-violation`      | `warning` | Quadratic Transfer Function (QTF) matrix does not satisfy conjugate symmetry.                    |
-| `M7015` | `exceeds-minimum-bend-radius` | `error`   | Flexible riser or dynamic cable nominal minimum bending radius (MBR) violated.                   |
+<LintRules lang="sima" />
 
 ---
 

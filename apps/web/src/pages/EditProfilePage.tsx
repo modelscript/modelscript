@@ -33,9 +33,10 @@ const EditProfilePage: React.FC = () => {
       return;
     }
 
+    const username = user.username;
     async function loadCurrentProfile() {
       try {
-        const data = await getUserProfile(user.username);
+        const data = await getUserProfile(username);
         const p = data.profile;
         if (p) {
           setDisplayName(p.display_name || "");

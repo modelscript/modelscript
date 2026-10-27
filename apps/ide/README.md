@@ -10,23 +10,24 @@ Browser-based VS Code Web engineering environment for polyglot systems modeling,
 ## Features
 
 - **Full VS Code Web Workbench**: Complete browser-based editor experience with incremental WASM GLR parsing, semantic diagnostics, auto-completions, and AST-aware structural Git diffs.
-- **Polyglot Engineering Support**: Native editing, visualization, and verification for ModelScript (`.msx`), Modelica (`.mo`), SysML v2 (`.sysml`), STEP CAD (`.step`/`.stp`), OpenSCAD (`.scad`), OWL 2 (`.owl`/`.ofn`), CSV (`.csv`), CFD (`.cfg`/`.cfgt`), FEA (`.inp`/`.inpt`), SSP (`.ssp`), PSCAD (`.pscx`/`.pslx`), PSS/E (`.raw`), OLGA (`.opi`), GT-SUITE (`.gtm`), SIMA (`.sima`), EASY5 (`.ez5`), ROCETS (`.roc`), LPS (`.lps`), and Fortran (`.f`).
+- **Polyglot Engineering Support (All 44 Languages)**: Native editing, visualization, and verification across all 44 ModelScript languages and industrial formats — including ModelScript (`.msx`), Modelica (`.mo`), SysML v2 (`.sysml`), STEP CAD (`.step`/`.stp`), OpenSCAD (`.scad`), OWL 2 (`.owl`/`.ofn`), ReqIF (`.reqif`), CSV (`.csv`), CFD (`.cfg`/`.su2`/`.foam`), FEA (`.inp`/`.bdf`), SSP (`.ssp`), PSCAD (`.pscx`/`.pslx`), PSS/E (`.raw`), OpenDSS (`.dss`), SPICE (`.cir`), Verilog-A (`.va`), IBIS (`.ibs`), Touchstone (`.s*p`/`.ts2`), OLGA (`.opi`), PipelineStudio (`.lps`), Aspen Plus (`.inp`), ECLIPSE (`.data`), EPANET (`.inp`), SWMM (`.inp`), RELAP5 (`.r5`), EnergyPlus (`.idf`), ADAMS (`.adm`/`.cmd`), SIMPACK (`.spck`/`.sim`), GENSYS (`.calc`/`.run`), GT-SUITE (`.gtm`), SIMA (`.sima`), URDF (`.urdf`), OpenDRIVE (`.xodr`), OpenSCENARIO (`.xosc`), AUTOSAR (`.arxml`), Simulink (`.slx`), EASY5 (`.ez5`), JSBSim (`.xml`), ROCETS (`.roc`), CCSDS (`.oem`/`.xtce`), PLCopen (`.st`/`.plcxml`), SBML (`.sbml`), Fortran (`.f90`), and C (`.c`).
 - **DAP Simulation Debugger**: Built-in Debug Adapter Protocol (`ModelScriptDebugSession`) supporting breakpoints on equations and algorithm statements, single-stepping across solver time steps, and live inspection of state, derivative, and algebraic variables.
 - **3-Tier AI Assistant**:
   1. **Browser-Local WebGPU**: Privacy-preserving `Qwen3-0.6B` powered by WebLLM running directly on client WebGPU with zero external network calls.
   2. **Local Ollama**: Connects to a local workstation Ollama instance (`localhost:11434`) for larger local foundation models.
-  3. **Hosted MCP SSE**: Connects to the ModelScript Cloud MCP SSE gateway (`/api/v1/mcp`) with full tool-calling access to flattening, simulation, verification, symbol search, and live editor code patching.
+  3. **Hosted MCP SSE**: Connects to the ModelScript Cloud MCP SSE gateway (`/api/v1/mcp`) with full tool-calling access to all 47 MCP tools (flattening, simulation, verification, ontology queries, TGG reconciliation, and live editor code patching).
 - **Interactive `.monb` Notebooks**: Native notebook serializer (`ModelicaNotebookSerializer`) and execution controller (`ModelicaNotebookController`) for literate engineering documents mixing Markdown, executable Modelica/SysML cells, and interactive plots.
 - **`github://` Virtual Filesystem**: Direct repository exploration via the GitHub REST API (`github://` scheme), alongside `memfs://` for in-browser workspaces and `modelica://` for the read-only Modelica Standard Library (MSL) virtual filesystem.
 - **Zero-Backend Static Deployment**: Can be compiled into a fully static distribution (`npm run build-static`) hosted on GitHub Pages or any static CDN.
 
 ---
 
-## 17 Custom Editors
+## 18 Custom Editors
 
 | Custom Editor              | View Type                        | Supported Formats & Capabilities                                                                                   |
 | -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | **Polyglot Diagram**       | `modelscript.diagram`            | Interactive schematic & block diagram editor for `.mo`, `.sysml`, `.pscx`, `.pslx`, `.owl`, `.step`, `.scad`, etc. |
+| **Interactive Notebook**   | `modelscript.notebook`           | Literate multi-domain `.monb` engineering notebooks with Markdown, KaTeX, and executable simulation cells          |
 | **FMU Inspector**          | `modelscript.fmuViewer`          | Inspect `modelDescription.xml`, causal ports, and run in-browser simulations of `.fmu` (FMI 2.0/3.0) archives      |
 | **SSP Topology Editor**    | `modelscript.sspViewer`          | Visual architecture and signal wiring editor for `.ssp` System Structure & Parameterization containers             |
 | **3D STEP CAD Viewer**     | `modelscript.stepEditor`         | Interactive 3D B-Rep solid, assembly tree, cross-section, and GD&T viewer for `.step` / `.stp` files               |

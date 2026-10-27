@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CheckIcon, PlusIcon, RocketIcon } from "@primer/octicons-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getUserSuggestions } from "../../../api";
+import { getAvatarUrl } from "../../../util/avatar";
 import { DISCIPLINES } from "../constants";
 import {
   DisciplineFollowsSection,
@@ -23,6 +26,17 @@ export interface FeedQuickstartStudioProps {
 export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ followedHandles, onToggleFollow }) => {
   const navigate = useNavigate();
   const [selectedDiscipline, setSelectedDiscipline] = useState<string>("aerospace");
+  const [suggestedUsers, setSuggestedUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    getUserSuggestions(6)
+      .then((res) => {
+        if (res?.suggestions) {
+          setSuggestedUsers(res.suggestions);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <QuickstartContainer>
@@ -116,10 +130,10 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-text-heading)" }}>
-              Engineering Disciplines &amp; Suggested Follows
+              Engineering Disciplines &amp; Libraries
             </div>
             <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-              Follow domain specialists and packages across key cyber-physical engineering sectors.
+              Explore domain libraries and reference models across cyber-physical engineering sectors.
             </div>
           </div>
         </div>
@@ -195,7 +209,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
                       textOverflow: "ellipsis",
                     }}
                   >
-                    @{item.handle} • {item.description}
+                    #{item.handle} • {item.description}
                   </div>
                 </div>
               </div>
@@ -203,7 +217,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                 <button
                   type="button"
-                  onClick={() => onToggleFollow(item.handle)}
+                  onClick={() => navigate(item.exploreUrl)}
                   style={{
                     padding: "5px 12px",
                     borderRadius: "16px",
@@ -214,50 +228,112 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
                     alignItems: "center",
                     gap: "4px",
                     transition: "all 0.2s ease",
-                    background: followedHandles[item.handle]
-                      ? "var(--color-canvas-subtle, rgba(255, 255, 255, 0.08))"
-                      : "var(--color-accent-emphasis, #8b5cf6)",
-                    color: followedHandles[item.handle] ? "var(--color-text-primary, #ffffff)" : "#ffffff",
-                    border: followedHandles[item.handle]
-                      ? "1px solid var(--color-border-default, rgba(255, 255, 255, 0.2))"
-                      : "none",
+                    background: "var(--color-accent-emphasis, #8b5cf6)",
+                    color: "#ffffff",
+                    border: "none",
                   }}
                 >
-                  {followedHandles[item.handle] ? (
-                    <>
-                      <CheckIcon size={12} />
-                      <span>Following</span>
-                    </>
-                  ) : (
-                    <>
-                      <PlusIcon size={12} />
-                      <span>Follow</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate(item.exploreUrl)}
-                  style={{
-                    padding: "5px 8px",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    background: "none",
-                    border: "1px solid var(--color-border-muted, rgba(255, 255, 255, 0.12))",
-                    color: "var(--color-text-muted)",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                  }}
-                  title="Explore library"
-                >
-                  ↗
+                  <span>Explore ↗</span>
                 </button>
               </div>
             </SuggestedFollowCard>
           ))}
         </SuggestedFollowsGrid>
+
+        {suggestedUsers.length > 0 && (
+          <div style={{ marginTop: "12px" }}>
+            <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--color-text-heading)", marginBottom: "8px" }}>
+              Suggested Engineers to Follow
+            </div>
+            <SuggestedFollowsGrid>
+              {suggestedUsers.map((u) => (
+                <SuggestedFollowCard key={u.username}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      flex: 1,
+                      minWidth: 0,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => navigate(`/${u.username}`)}
+                  >
+                    <img
+                      src={getAvatarUrl(u.username, u.avatar_url)}
+                      alt={u.username}
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          color: "var(--color-text-heading)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {u.display_name || u.username}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "var(--color-text-muted)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        @{u.username}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onToggleFollow(u.username)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: "16px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      background: followedHandles[u.username]
+                        ? "var(--color-canvas-subtle, rgba(255, 255, 255, 0.08))"
+                        : "var(--color-accent-emphasis, #8b5cf6)",
+                      color: followedHandles[u.username] ? "var(--color-text-primary, #ffffff)" : "#ffffff",
+                      border: followedHandles[u.username]
+                        ? "1px solid var(--color-border-default, rgba(255, 255, 255, 0.2))"
+                        : "none",
+                    }}
+                  >
+                    {followedHandles[u.username] ? (
+                      <>
+                        <CheckIcon size={12} />
+                        <span>Following</span>
+                      </>
+                    ) : (
+                      <>
+                        <PlusIcon size={12} />
+                        <span>Follow</span>
+                      </>
+                    )}
+                  </button>
+                </SuggestedFollowCard>
+              ))}
+            </SuggestedFollowsGrid>
+          </div>
+        )}
       </DisciplineFollowsSection>
     </QuickstartContainer>
   );

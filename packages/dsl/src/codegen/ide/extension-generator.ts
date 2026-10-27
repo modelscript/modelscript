@@ -1,8 +1,87 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ActionCategory, LanguageAction, LanguageOptions } from "../../dsl/language.js";
+import type { ActionCategory, LanguageAction, LanguageMaturity, LanguageOptions } from "../../dsl/language.js";
 import { generateTextMate } from "../parser/textmate.js";
+import {
+  BROWSER_BUFFER_AND_PROCESS_BANNER,
+  BROWSER_BUFFER_BANNER,
+  BROWSER_PROCESS_BANNER,
+  createNodeBuiltinsIgnorePlugin,
+} from "./esbuild-browser-plugin.js";
 import { discoverWorkspaceLanguages } from "./language-discovery.js";
+
+/**
+ * Canonical maturity classification across all 44 ModelScript languages.
+ */
+export const DEFAULT_LANGUAGE_MATURITY: Record<string, LanguageMaturity> = {
+  // Tier 1: Stable (Production-grade native WASM GLR parser, Salsa queries, simulation/verification)
+  modelica: "stable",
+  sysml2: "stable",
+  step: "stable",
+  owl2: "stable",
+  scad: "stable",
+  csv: "stable",
+  ssp: "stable",
+  pscad: "stable",
+
+  // Tier 2: Beta (Domain-complete parser, lowering, and custom IDE editor/diagram integration)
+  modelscript: "beta",
+  cfd: "beta",
+  fea: "beta",
+  c: "beta",
+  fortran: "beta",
+  gensys: "beta",
+  simpack: "beta",
+  psse: "beta",
+  olga: "beta",
+  lps: "beta",
+  easy5: "beta",
+  rocets: "beta",
+  sima: "beta",
+  spice: "beta",
+  reqif: "beta",
+  simulink: "beta",
+
+  // Tier 3: Experimental (Early-stage domain parser, DAE/Modelica projection, or experimental support)
+  adams: "experimental",
+  aspen: "experimental",
+  autosar: "experimental",
+  ccsds: "experimental",
+  eclipse: "experimental",
+  energyplus: "experimental",
+  epanet: "experimental",
+  gtsuite: "experimental",
+  ibis: "experimental",
+  jsbsim: "experimental",
+  opendrive: "experimental",
+  opendss: "experimental",
+  openscenario: "experimental",
+  plcopen: "experimental",
+  relap5: "experimental",
+  sbml: "experimental",
+  swmm: "experimental",
+  touchstone: "experimental",
+  urdf: "experimental",
+  "verilog-a": "experimental",
+};
+
+/**
+ * Languages that have a registered 2D diagram editor provider in @modelscript/ide-client.
+ */
+export const DIAGRAM_EDITOR_SUPPORTED_LANGS = new Set<string>([
+  "modelica",
+  "sysml2",
+  "sysml",
+  "step",
+  "scad",
+  "owl2",
+  "csv",
+  "pscad",
+  "cfd",
+  "fea",
+  "ssp",
+  "modelscript",
+]);
 
 /**
  * Configuration options for generating a VS Code extension.
@@ -51,6 +130,7 @@ export interface NormalizedLanguage {
   id: string;
   name: string;
   displayName: string;
+  maturity: LanguageMaturity;
   fileExtensions: string[];
   primaryExtension: string;
   options: LanguageOptions;
@@ -67,6 +147,7 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
     const rawName = lang.name || "dsl";
     const id = rawName.toLowerCase().replace(/[^a-z0-9_-]/g, "");
     const displayName = lang.displayName || rawName.charAt(0).toUpperCase() + rawName.slice(1);
+    const maturity: LanguageMaturity = lang.maturity || DEFAULT_LANGUAGE_MATURITY[id] || "experimental";
 
     // Extract file extensions
     let extensions: string[] = [];
@@ -89,6 +170,9 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
       extensions = [`.${id}`];
     }
 
+    // Never allow .ts (TypeScript) to be hijacked by a domain language
+    extensions = extensions.map((ext) => (ext.toLowerCase() === ".ts" ? ".ts2" : ext));
+
     // Extract comment delimiters
     const lineComment = lang.primitives?.lineComment || "//";
     const blockComment = lang.primitives?.nestedComment || { open: "/*", close: "*/" };
@@ -97,6 +181,7 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
       id,
       name: rawName,
       displayName,
+      maturity,
       fileExtensions: extensions,
       primaryExtension: extensions[0] || `.${id}`,
       options: lang,
@@ -179,7 +264,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       });
     }
 
-    if (options?.features?.diagramEditor !== false) {
+    if (options?.features?.diagramEditor !== false && DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id)) {
       customEditors.push({
         viewType: `${lang.id}.diagramEditor`,
         displayName: `${lang.displayName} 2D Diagram`,
@@ -270,6 +355,36 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     });
   }
 
+  // LPS Pipeline Hydraulic Studio
+  if (languages.some((l) => l.id === "lps")) {
+    customEditors.push({
+      viewType: "modelscript.lpsEditor",
+      displayName: "LPS Pipeline Hydraulic Studio",
+      selector: [{ filenamePattern: "*.lps" }, { filenamePattern: "*.lpsx" }],
+      priority: "option",
+    });
+  }
+
+  // SIMA Offshore Marine Operations Studio
+  if (languages.some((l) => l.id === "sima")) {
+    customEditors.push({
+      viewType: "modelscript.simaEditor",
+      displayName: "SIMA Offshore Marine Operations Studio",
+      selector: [{ filenamePattern: "*.sima" }, { filenamePattern: "*.stask" }],
+      priority: "option",
+    });
+  }
+
+  // GT-SUITE Multi-Physics Powertrain & Thermal Studio
+  if (languages.some((l) => l.id === "gtsuite")) {
+    customEditors.push({
+      viewType: "modelscript.gtsuiteEditor",
+      displayName: "GT-SUITE Powertrain & Thermal Studio",
+      selector: [{ filenamePattern: "*.gtm" }, { filenamePattern: "*.gtp" }],
+      priority: "option",
+    });
+  }
+
   // SysML Requirements Matrix & Element Table Custom Editors
   if (languages.some((l) => l.id === "sysml2" || l.id === "sysml")) {
     customEditors.push({
@@ -335,6 +450,12 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: any[] = [
+    {
+      command: "modelscript.configureLanguages",
+      title: "ModelScript: Configure Languages & Maturity Tiers...",
+      category: "ModelScript",
+      icon: "$(settings-gear)",
+    },
     {
       command: "modelscript.openDiagram",
       title: "ModelScript: Open Diagram",
@@ -487,28 +608,76 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
   ];
 
-  const editorTitleMenus: any[] = [
+  const submenus: any[] = [
+    {
+      id: "modelscript.editorTitle.moreActions",
+      label: "ModelScript Actions",
+      icon: "$(ellipsis)",
+    },
+    {
+      id: "modelscript.context.simulate",
+      label: "ModelScript: Simulate & Solve",
+      icon: "$(play)",
+    },
+    {
+      id: "modelscript.context.verify",
+      label: "ModelScript: Verify & Analyze",
+      icon: "$(shield)",
+    },
+    {
+      id: "modelscript.context.convert",
+      label: "ModelScript: Convert & Project",
+      icon: "$(arrow-swap)",
+    },
+  ];
+
+  // Secondary actions are folded into the ModelScript Actions overflow menu by default (when editorTitleActions == 'compact')
+  const editorMoreActionsMenus: any[] = [
     {
       command: "modelscript.openDroneReachabilityDemo",
       when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml",
-      group: "navigation@0",
+      group: "1_verify@1",
     },
     {
       command: "modelscript.syncDigitalThreadParams",
       when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd",
-      group: "navigation@1",
+      group: "2_thread@1",
     },
     {
       command: "modelscript.generateFeaMesh",
       when: "activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad",
-      group: "navigation@2",
+      group: "3_cae@1",
     },
     {
       command: "modelscript.generateCfdMesh",
       when: "activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad",
-      group: "navigation@3",
+      group: "3_cae@2",
     },
   ];
+
+  const editorTitleMenus: any[] = [
+    {
+      command: "modelscript.openDroneReachabilityDemo",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && config.modelscript.ui.editorTitleActions == 'all'",
+      group: "navigation@10",
+    },
+    {
+      command: "modelscript.syncDigitalThreadParams",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd) && config.modelscript.ui.editorTitleActions == 'all'",
+      group: "navigation@11",
+    },
+    {
+      command: "modelscript.generateFeaMesh",
+      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && config.modelscript.ui.editorTitleActions == 'all'",
+      group: "navigation@12",
+    },
+    {
+      command: "modelscript.generateCfdMesh",
+      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && config.modelscript.ui.editorTitleActions == 'all'",
+      group: "navigation@13",
+    },
+  ];
+
   const editorContextMenus: any[] = [
     {
       command: "modelscript.generateFeaMesh",
@@ -563,10 +732,11 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const languageModelTools: any[] = [];
   const keybindings: any[] = [];
 
-  // Automatically contribute diagram open/source buttons to editor/title (Method 1)
+  // Automatically contribute diagram open/source buttons to editor/title for supported diagram languages
   if (options?.features?.diagramEditor !== false) {
     const diagramLangIds = new Set<string>();
     for (const lang of languages) {
+      if (!DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id)) continue;
       // Check if language explicitly defined its own custom diagram action (Method 2)
       const hasCustomDiagramAction = (lang.options.actions || []).some(
         (a: any) => (a.id === "open_diagram" || a.id === "diagram" || a.id === "openDiagram") && a.ui?.editorTitle,
@@ -586,14 +756,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
       editorTitleMenus.push({
         command: "modelscript.openDiagram",
-        when: editorWhen,
+        when: `(${editorWhen}) && config.modelscript.ui.editorTitleActions != 'none'`,
         group: "navigation@0",
       });
     }
 
     const diagramViewTypes = [
       "modelscript.diagram",
-      ...languages.map((l) => `${l.id}.diagramEditor`),
+      ...languages.filter((l) => DIAGRAM_EDITOR_SUPPORTED_LANGS.has(l.id)).map((l) => `${l.id}.diagramEditor`),
       ...(languages.some((l) => l.id === "sysml2") ? ["sysml.diagramEditor"] : []),
     ];
     if (options?.features?.cad3dViewer || languages.some((l) => l.id === "step")) {
@@ -618,6 +788,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   }
 
   const registeredToolNames = new Set<string>();
+  const moreActionsLangIds = new Set<string>(["modelica", "sysml2", "sysml", "fea", "cfd", "scad"]);
 
   for (const lang of languages) {
     const actions: LanguageAction[] = [...(lang.options.actions || [])];
@@ -653,6 +824,13 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       }
     }
 
+    // Identify the single primary editorTitle action per language (preferring category === 'simulate' or @0)
+    const editorTitleActions = actions.filter((a) => Boolean(a.ui?.editorTitle));
+    const primaryTitleAction =
+      editorTitleActions.find((a) => a.category === "simulate") ??
+      editorTitleActions.find((a) => a.ui?.editorTitle?.group?.endsWith("@0")) ??
+      editorTitleActions[0];
+
     for (const action of actions) {
       const commandId = `modelscript.${lang.id}.${action.id}`;
       const category = action.ui?.commandPalette?.category || lang.displayName;
@@ -667,13 +845,30 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       }
       commands.push(cmdEntry);
 
-      // 1. Editor title toolbar menu
+      // 1. Editor title toolbar menu (cap top-level icons to 1 primary action per language in 'compact' mode)
       if (action.ui?.editorTitle) {
-        editorTitleMenus.push({
-          command: commandId,
-          when: action.ui.editorTitle.when || `editorLangId == ${lang.id} || resourceLangId == ${lang.id}`,
-          group: action.ui.editorTitle.group || "navigation",
-        });
+        const baseWhen = action.ui.editorTitle.when || `editorLangId == ${lang.id} || resourceLangId == ${lang.id}`;
+        if (action === primaryTitleAction) {
+          editorTitleMenus.push({
+            command: commandId,
+            when: `(${baseWhen}) && config.modelscript.ui.editorTitleActions != 'none'`,
+            group: "navigation@1",
+          });
+        } else {
+          moreActionsLangIds.add(lang.id);
+          if (lang.id === "sysml2") moreActionsLangIds.add("sysml");
+          editorMoreActionsMenus.push({
+            command: commandId,
+            when: baseWhen,
+            group:
+              action.category === "verify" ? "1_verify" : action.category === "transform" ? "2_transform" : "3_other",
+          });
+          editorTitleMenus.push({
+            command: commandId,
+            when: `(${baseWhen}) && config.modelscript.ui.editorTitleActions == 'all'`,
+            group: action.ui.editorTitle.group || "navigation@5",
+          });
+        }
       }
 
       // 2. Editor context menu
@@ -747,6 +942,18 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         });
       }
     }
+  }
+
+  if (moreActionsLangIds.size > 0) {
+    const moreWhen = [
+      ...Array.from(moreActionsLangIds).map((id) => `editorLangId == ${id} || resourceLangId == ${id}`),
+      "activeCustomEditorId == modelscript.stepEditor",
+    ].join(" || ");
+    editorTitleMenus.push({
+      submenu: "modelscript.editorTitle.moreActions",
+      when: `(${moreWhen}) && config.modelscript.ui.editorTitleActions == 'compact'`,
+      group: "navigation@99",
+    });
   }
 
   // Defensively ensure standard built-in modelscript LM tools are always contributed
@@ -860,10 +1067,12 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     grammars: contributesGrammars,
     customEditors,
     commands,
+    submenus,
     "markdown.markdownItPlugins": true,
     "markdown.previewScripts": ["./dist/markdownPreview.js"],
     menus: {
       "editor/title": editorTitleMenus,
+      "modelscript.editorTitle.moreActions": editorMoreActionsMenus,
       "editor/context": editorContextMenus,
       "explorer/context": explorerContextMenus,
       "view/item/context": [
@@ -952,30 +1161,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   contributes["views"] = {
     explorer: [
       {
-        id: "modelscript.libraryTree",
-        name: "Library",
-      },
-      {
-        id: "modelscript.mqttTree",
-        name: "MQTT Participants",
-      },
-      {
-        id: "modelscript.experimentsView",
-        name: "Experiments",
-      },
-      {
-        id: "modelscript.registryView",
-        name: "ModelScript Packages",
-      },
-      {
         id: "modelscript.owl2ClassHierarchy",
         name: "OWL2 Class Hierarchy",
-        when: "modelscript.owl2Active",
+        when: "modelscript.owl2Active && config.modelscript.languages.owl2.enabled",
       },
       {
         id: "modelscript.owl2PropertyHierarchy",
         name: "OWL2 Property Hierarchy",
-        when: "modelscript.owl2Active",
+        when: "modelscript.owl2Active && config.modelscript.languages.owl2.enabled",
       },
     ],
     "modelscript-sidebar": [
@@ -985,9 +1178,26 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         type: "webview",
       },
       {
+        id: "modelscript.libraryTree",
+        name: "Standard Libraries",
+      },
+      {
+        id: "modelscript.registryView",
+        name: "Package Registry",
+        type: "webview",
+      },
+      {
+        id: "modelscript.experimentsView",
+        name: "Experiments & Studies",
+      },
+      {
         id: "modelscript.cosimPanel",
         name: "Co-Simulation Orchestrator",
         type: "webview",
+      },
+      {
+        id: "modelscript.mqttTree",
+        name: "MQTT Participants",
       },
     ],
     scm: [
@@ -997,57 +1207,350 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     ],
   };
-  contributes["configuration"] = {
-    title: "ModelScript",
-    properties: {
-      "modelscript.registryUrl": {
-        type: "string",
-        default: "https://api.modelscript.org",
-        description: "Base URL for the ModelScript package registry and backend API.",
-      },
-      "modelscript.library.useApiRegistry": {
-        type: "boolean",
-        default: false,
-        description: "Fetch standard library packages from the remote API registry instead of bundled local snapshots.",
-      },
-      "modelscript.llm.provider": {
-        type: "string",
-        enum: ["webllm", "ollama", "openai", "anthropic", "gemini"],
-        default: "webllm",
-        description: "AI language model provider for ModelScript chat and code synthesis.",
-      },
-      "modelscript.llm.apiKey": {
-        type: "string",
-        default: "",
-        description: "API key for cloud LLM providers (OpenAI, Anthropic, Gemini).",
-      },
-      "modelscript.llm.endpoint": {
-        type: "string",
-        default: "http://localhost:11434",
-        description: "Custom endpoint URL for local or self-hosted LLM providers (e.g. Ollama).",
-      },
-      "modelscript.llm.model": {
-        type: "string",
-        default: "",
-        description: "Model identifier override for the configured LLM provider.",
-      },
-      "modelscript.mqtt.brokerUrl": {
-        type: "string",
-        default: "ws://localhost:9001",
-        description: "WebSocket MQTT broker URL for live digital twin and hardware-in-the-loop streaming.",
-      },
-      "modelscript.cloud.apiUrl": {
-        type: "string",
-        default: "https://api.modelscript.org",
-        description: "Endpoint URL for ModelScript Cloud HPC simulation jobs.",
-      },
-      "modelscript.cloud.apiKey": {
-        type: "string",
-        default: "",
-        description: "Authentication API key for ModelScript Cloud simulation services.",
-      },
+
+  // Build per-language enable/disable settings with maturity badges
+  const languageToggleProperties: Record<string, any> = {
+    "modelscript.languages.maturityTier": {
+      type: "string",
+      enum: ["stable", "beta", "experimental"],
+      default: "beta",
+      enumDescriptions: [
+        "Enable only Tier 1 Stable languages (Modelica, SysML v2, STEP, OWL2, OpenSCAD, CSV, SSP, PSCAD).",
+        "Enable Tier 1 Stable and Tier 2 Beta languages (recommended; avoids experimental extension collisions).",
+        "Enable all 44 languages including Tier 3 Experimental domain dialects.",
+      ],
+      markdownDescription:
+        "Minimum language maturity tier enabled by default across the workspace (`🟢 Stable`, `🟡 Beta`, or `🧪 Experimental`). Individual languages can also be toggled below.",
+    },
+    "modelscript.languages.showMaturityBadges": {
+      type: "boolean",
+      default: true,
+      description:
+        "Display language maturity tier badges (Stable, Beta, Experimental) in the status bar and language picker.",
     },
   };
+
+  const maturityBadges: Record<LanguageMaturity, string> = {
+    stable: "🟢 Stable",
+    beta: "🟡 Beta",
+    experimental: "🧪 Experimental",
+  };
+
+  const sortedLangs = [...languages].sort((a, b) => {
+    const order: Record<LanguageMaturity, number> = { stable: 0, beta: 1, experimental: 2 };
+    if (order[a.maturity] !== order[b.maturity]) return order[a.maturity] - order[b.maturity];
+    return a.displayName.localeCompare(b.displayName);
+  });
+
+  for (const lang of sortedLangs) {
+    const badge = maturityBadges[lang.maturity];
+    const exts = lang.fileExtensions.map((e) => `\`${e}\``).join(", ");
+    languageToggleProperties[`modelscript.languages.${lang.id}.enabled`] = {
+      type: "boolean",
+      default: lang.maturity !== "experimental",
+      markdownDescription: `**[${badge}]** Enable **${lang.displayName}** (${exts}) language server indexing, diagnostics, actions, and custom views.`,
+    };
+  }
+
+  contributes["configuration"] = [
+    {
+      title: "ModelScript: Languages & Maturity",
+      properties: languageToggleProperties,
+    },
+    {
+      title: "ModelScript: UI & Editor",
+      properties: {
+        "modelscript.ui.editorTitleActions": {
+          type: "string",
+          enum: ["compact", "all", "none"],
+          default: "compact",
+          enumDescriptions: [
+            "Show at most 2 primary buttons (Run/Simulate & Open Diagram) and fold secondary actions into the 'ModelScript Actions' menu.",
+            "Show all language actions directly in the editor title bar.",
+            "Hide all ModelScript buttons from the editor title bar.",
+          ],
+          description: "Controls how ModelScript toolbar buttons are displayed in the editor title bar.",
+        },
+        "modelscript.ui.contextMenuSubmenus": {
+          type: "boolean",
+          default: true,
+          description: "Group ModelScript actions into submenus in the editor and file explorer context menus.",
+        },
+        "modelscript.ui.statusBar.visibility": {
+          type: "string",
+          enum: ["relevantOnly", "always", "hidden"],
+          default: "relevantOnly",
+          description: "Controls when the ModelScript LSP status bar item is visible.",
+        },
+        "modelscript.ui.statusBar.showSocialFeed": {
+          type: "boolean",
+          default: false,
+          description: "Show the 'Share to Feed' button in the VS Code status bar.",
+        },
+        "modelscript.ui.statusBar.showCollaboration": {
+          type: "boolean",
+          default: false,
+          description: "Show the live peer collaboration presence indicator in the status bar.",
+        },
+        "modelscript.ui.statusBar.showCloudStatus": {
+          type: "boolean",
+          default: false,
+          description: "Show the ModelScript Cloud HPC balance & job status indicator in the status bar.",
+        },
+        "modelscript.ui.sidebar.combineWithMainView": {
+          type: "boolean",
+          default: true,
+          description: "Consolidate ModelScript auxiliary tree views inside the ModelScript activity bar sidebar.",
+        },
+      },
+    },
+    {
+      title: "ModelScript: CodeLens & Inlay Hints",
+      properties: {
+        "modelscript.codeLens.enabled": {
+          type: "boolean",
+          default: true,
+          description: "Master switch for all ModelScript CodeLens annotations.",
+        },
+        "modelscript.codeLens.simulate": {
+          type: "boolean",
+          default: true,
+          description: "Show '▶ Simulate' / '▶ Run Study' CodeLens above model and study declarations.",
+        },
+        "modelscript.codeLens.verification": {
+          type: "string",
+          enum: ["all", "problemsOnly", "off"],
+          default: "all",
+          enumDescriptions: [
+            "Show formal verification, DAE singularity, and MC/DC badges on all declarations.",
+            "Show formal verification badges only when potential or definite defects exist.",
+            "Hide all formal verification CodeLenses.",
+          ],
+          description: "Controls when formal proof and DAE verification CodeLens badges are shown.",
+        },
+        "modelscript.codeLens.polyglotLinks": {
+          type: "boolean",
+          default: true,
+          description: "Show Digital Thread cross-domain alignment and parameter twin CodeLenses.",
+        },
+        "modelscript.codeLens.cadMetrics": {
+          type: "boolean",
+          default: true,
+          description: "Show 3D CAD / CAE geometry and mesh metrics CodeLenses.",
+        },
+        "modelscript.codeLens.fileConversions": {
+          type: "boolean",
+          default: true,
+          description: "Show file-level CAD/CAE discretization and STEP export CodeLenses.",
+        },
+        "modelscript.inlayHints.enabled": {
+          type: "boolean",
+          default: true,
+          description: "Enable inline ModelScript inlay hints in the editor.",
+        },
+        "modelscript.inlayHints.units": {
+          type: "boolean",
+          default: true,
+          description: "Show physical unit inlay hints (e.g. [kg], [Pa]) next to declarations and literals.",
+        },
+        "modelscript.inlayHints.evaluatedConstants": {
+          type: "boolean",
+          default: true,
+          description: "Show evaluated constant/parameter binding values inline.",
+        },
+        "modelscript.inlayHints.salsaTypes": {
+          type: "boolean",
+          default: false,
+          description: "Show resolved Salsa type and variability annotations inline.",
+        },
+        "modelscript.inlayHints.crossFileBindings": {
+          type: "boolean",
+          default: true,
+          description: "Show cross-file Digital Thread parameter binding values inline.",
+        },
+      },
+    },
+    {
+      title: "ModelScript: Compiler & Diagnostics",
+      properties: {
+        "modelscript.compiler.flattenerBackend": {
+          type: "string",
+          enum: ["hybrid", "wasm", "ts"],
+          default: "hybrid",
+          description: "Modelica DAE flattener execution backend.",
+        },
+        "modelscript.diagnostics.enableCfa": {
+          type: "boolean",
+          default: true,
+          description: "Enable abstract interpretation & control-flow analysis (CFA) formal verification lints.",
+        },
+        "modelscript.diagnostics.crossDomainConsistency": {
+          type: "boolean",
+          default: true,
+          description: "Enable cross-domain Digital Thread parameter drift and contract consistency diagnostics.",
+        },
+        "modelscript.diagnostics.severityOverrides": {
+          type: "object",
+          default: {},
+          description: 'Override diagnostic severity by error code (e.g. { "M3001": "warning", "M4002": "off" }).',
+        },
+        "modelscript.diagnostics.maxNumberOfProblems": {
+          type: "number",
+          default: 250,
+          description: "Maximum number of diagnostics reported per file.",
+        },
+      },
+    },
+    {
+      title: "ModelScript: Simulation & Solvers",
+      properties: {
+        "modelscript.simulation.defaultStopTime": {
+          type: "number",
+          default: 10.0,
+          description: "Default simulation stop time in seconds when not specified by an experiment annotation.",
+        },
+        "modelscript.simulation.defaultIntervals": {
+          type: "number",
+          default: 500,
+          description: "Default number of output intervals for time-domain simulations.",
+        },
+        "modelscript.simulation.defaultTolerance": {
+          type: "number",
+          default: 1e-6,
+          description: "Default relative integration error tolerance.",
+        },
+        "modelscript.simulation.defaultSolver": {
+          type: "string",
+          enum: ["rk4", "dopri5", "bdf", "cvode", "ida", "radau5"],
+          default: "dopri5",
+          description: "Default numerical ODE/DAE solver.",
+        },
+        "modelscript.simulation.executionTarget": {
+          type: "string",
+          enum: ["wasm-cpu", "webgpu", "cloud"],
+          default: "wasm-cpu",
+          description: "Default execution target for simulations and parameter sweeps.",
+        },
+        "modelscript.simulation.autoOpenPlotPanel": {
+          type: "boolean",
+          default: true,
+          description: "Automatically open the interactive plot panel when a simulation finishes.",
+        },
+      },
+    },
+    {
+      title: "ModelScript: Diagrams & CAD",
+      properties: {
+        "modelscript.diagram.autoLayoutEngine": {
+          type: "string",
+          enum: ["elk-layered", "dagre", "force"],
+          default: "elk-layered",
+          description: "Auto-layout algorithm for 2D schematic and SysML diagrams.",
+        },
+        "modelscript.diagram.routingStyle": {
+          type: "string",
+          enum: ["orthogonal", "bezier", "straight"],
+          default: "orthogonal",
+          description: "Connection line routing style in 2D diagrams.",
+        },
+        "modelscript.diagram.invertColorsInDarkMode": {
+          type: "boolean",
+          default: true,
+          description: "Adapt Modelica icon and diagram colors for dark editor themes.",
+        },
+        "modelscript.cad.meshDeflection": {
+          type: "number",
+          default: 0.1,
+          description: "Linear deflection tolerance for 3D STEP/CSG surface triangulation.",
+        },
+        "modelscript.cad.autoEvaluateCsgInCodeLens": {
+          type: "boolean",
+          default: true,
+          description: "Automatically evaluate OpenSCAD CSG volume and frontal area metrics for CodeLens.",
+        },
+      },
+    },
+    {
+      title: "ModelScript: Cloud, Registry & AI",
+      properties: {
+        "modelscript.apiUrl": {
+          type: "string",
+          default: "http://localhost:3000/api/v1",
+          description: "Base URL for the ModelScript backend API server.",
+        },
+        "modelscript.registry.url": {
+          type: "string",
+          default: "https://api.modelscript.org",
+          description: "Base URL for the ModelScript package registry.",
+        },
+        "modelscript.registryUrl": {
+          type: "string",
+          default: "https://api.modelscript.org",
+          markdownDeprecationMessage: "Use `#modelscript.registry.url#` instead.",
+          description: "Base URL for the ModelScript package registry and backend API.",
+        },
+        "modelscript.library.useApiRegistry": {
+          type: "boolean",
+          default: false,
+          description:
+            "Fetch standard library packages from the remote API registry instead of bundled local snapshots.",
+        },
+        "modelscript.llm.provider": {
+          type: "string",
+          enum: ["webllm", "ollama", "openai", "anthropic", "gemini"],
+          default: "webllm",
+          description: "AI language model provider for ModelScript chat and code synthesis.",
+        },
+        "modelscript.llm.apiKey": {
+          type: "string",
+          default: "",
+          description: "API key for cloud LLM providers (OpenAI, Anthropic, Gemini).",
+        },
+        "modelscript.llm.endpoint": {
+          type: "string",
+          default: "http://localhost:11434",
+          description: "Custom endpoint URL for local or self-hosted LLM providers (e.g. Ollama).",
+        },
+        "modelscript.llm.model": {
+          type: "string",
+          default: "",
+          description: "Model identifier override for the configured LLM provider.",
+        },
+        "modelscript.cosim.brokerUrl": {
+          type: "string",
+          default: "ws://localhost:9001",
+          description: "WebSocket MQTT broker URL for live digital twin and co-simulation streaming.",
+        },
+        "modelscript.mqtt.brokerUrl": {
+          type: "string",
+          default: "ws://localhost:9001",
+          markdownDeprecationMessage: "Use `#modelscript.cosim.brokerUrl#` instead.",
+          description: "WebSocket MQTT broker URL for live digital twin and hardware-in-the-loop streaming.",
+        },
+        "modelscript.collab.signalingUrl": {
+          type: "string",
+          default: "ws://localhost:3000/collab",
+          description: "WebSocket signaling URL for live multi-user collaborative editing.",
+        },
+        "modelscript.cloud.apiUrl": {
+          type: "string",
+          default: "https://api.modelscript.org",
+          description: "Endpoint URL for ModelScript Cloud HPC simulation jobs.",
+        },
+        "modelscript.cloud.apiKey": {
+          type: "string",
+          default: "",
+          description: "Authentication API key for ModelScript Cloud simulation services.",
+        },
+        "modelscript.cloud.pollIntervalMs": {
+          type: "number",
+          default: 30000,
+          description:
+            "Polling interval in milliseconds for ModelScript Cloud job status (set to 0 to disable background polling).",
+        },
+      },
+    },
+  ];
 
   const manifest: Record<string, any> = {
     name,
@@ -1480,11 +1983,20 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   // 1. Locate repository root and discover workspace languages
   const currentDir = path.dirname(new URL(import.meta.url).pathname);
   let repoRoot = currentDir;
+  let workspaceVersion = "0.0.18";
   while (repoRoot !== path.dirname(repoRoot)) {
     if (fs.existsSync(path.join(repoRoot, "package.json"))) {
       try {
         const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-        if (pkg.name === "modelscript") break;
+        if (pkg.name === "modelscript") {
+          if (pkg.version && pkg.version !== "0.0.0") {
+            workspaceVersion = pkg.version;
+          } else if (fs.existsSync(path.join(repoRoot, "packages/runtime/package.json"))) {
+            const rtPkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "packages/runtime/package.json"), "utf8"));
+            if (rtPkg.version) workspaceVersion = rtPkg.version;
+          }
+          break;
+        }
       } catch {}
     }
     repoRoot = path.dirname(repoRoot);
@@ -1510,7 +2022,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     displayName: "ModelScript — Modelica & Polyglot Systems IDE",
     description:
       "Complete Modelica, SysML, STEP, and OWL2 development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL.",
-    version: options?.version || "0.0.10",
+    version: options?.version || workspaceVersion,
     ...options,
     features: {
       diagramEditor: true,
@@ -1584,374 +2096,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       path.resolve(currentDir, "../ide"),
     ].find((p) => fs.existsSync(p)) ?? path.resolve(repoRoot, "packages/ide/src");
 
-  const builtins = [
-    "assert",
-    "buffer",
-    "child_process",
-    "crypto",
-    "diagnostics_channel",
-    "events",
-    "fs",
-    "fs/promises",
-    "http",
-    "https",
-    "module",
-    "net",
-    "os",
-    "path",
-    "process",
-    "readline",
-    "stream",
-    "string_decoder",
-    "tls",
-    "url",
-    "util",
-    "worker_threads",
-    "zlib",
-    "tty",
-    "esbuild",
-    "assemblyscript",
-    "assemblyscript/asc",
-    "assemblyscript/dist/asc.js",
-    "binaryen",
-  ];
-  const filter = new RegExp(`^(node:)?(?:${builtins.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`);
-  const ignorePlugin = {
-    name: "node-builtins-ignore",
-    setup(build: any) {
-      build.onResolve({ filter }, (args: any) => ({ path: args.path, namespace: "ignore" }));
-      build.onLoad({ filter: /.*/, namespace: "ignore" }, (args: any) => {
-        const mod = args.path.replace(/^node:/, "");
-        if (mod === "events") {
-          return {
-            contents: `
-class EventEmitter {
-  constructor() { this._events = Object.create(null); this._eventsCount = 0; }
-  static EventEmitter = EventEmitter;
-  static defaultMaxListeners = 10;
-  eventNames() { return Object.keys(this._events); }
-  setMaxListeners(n) { this._maxListeners = n; return this; }
-  getMaxListeners() { return this._maxListeners || EventEmitter.defaultMaxListeners; }
-  emit(type, ...args) {
-    const handler = this._events[type];
-    if (!handler) return false;
-    if (typeof handler === "function") { handler.apply(this, args); return true; }
-    const listeners = handler.slice();
-    for (let i = 0; i < listeners.length; ++i) listeners[i].apply(this, args);
-    return true;
-  }
-  addListener(type, listener) { return this.on(type, listener); }
-  on(type, listener) {
-    if (typeof listener !== "function") return this;
-    this._events = this._events || Object.create(null);
-    if (!this._events[type]) { this._events[type] = listener; this._eventsCount++; }
-    else if (typeof this._events[type] === "function") { this._events[type] = [this._events[type], listener]; }
-    else { this._events[type].push(listener); }
-    return this;
-  }
-  prependListener(type, listener) { return this.on(type, listener); }
-  once(type, listener) {
-    const g = (...args) => { this.removeListener(type, g); listener.apply(this, args); };
-    g.listener = listener;
-    return this.on(type, g);
-  }
-  prependOnceListener(type, listener) { return this.once(type, listener); }
-  removeListener(type, listener) {
-    if (!this._events || !this._events[type]) return this;
-    const list = this._events[type];
-    if (list === listener || (list.listener && list.listener === listener)) {
-      if (--this._eventsCount === 0) this._events = Object.create(null);
-      else delete this._events[type];
-    } else if (Array.isArray(list)) {
-      const idx = list.findIndex(l => l === listener || (l.listener && l.listener === listener));
-      if (idx !== -1) {
-        list.splice(idx, 1);
-        if (list.length === 1) this._events[type] = list[0];
-      }
-    }
-    return this;
-  }
-  off(type, listener) { return this.removeListener(type, listener); }
-  removeAllListeners(type) {
-    if (!this._events) return this;
-    if (!type) { this._events = Object.create(null); this._eventsCount = 0; return this; }
-    if (this._events[type]) {
-      if (--this._eventsCount === 0) this._events = Object.create(null);
-      else delete this._events[type];
-    }
-    return this;
-  }
-  listeners(type) {
-    const ev = this._events && this._events[type];
-    if (!ev) return [];
-    return typeof ev === "function" ? [ev] : ev.slice();
-  }
-  rawListeners(type) { return this.listeners(type); }
-  listenerCount(type) {
-    const ev = this._events && this._events[type];
-    if (!ev) return 0;
-    return typeof ev === "function" ? 1 : ev.length;
-  }
-}
-EventEmitter.EventEmitter = EventEmitter;
-module.exports = EventEmitter;
-module.exports.EventEmitter = EventEmitter;
-module.exports.default = EventEmitter;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "path") {
-          return {
-            contents: `
-const path = {
-  resolve(...args) { return path.normalize(path.join(...args)); },
-  normalize(p) {
-    const parts = (p || '').split('/').filter(Boolean);
-    const res = [];
-    for (const part of parts) {
-      if (part === '.') continue;
-      if (part === '..') res.pop();
-      else res.push(part);
-    }
-    return (p.startsWith('/') ? '/' : '') + res.join('/') || (p.startsWith('/') ? '/' : '.');
-  },
-  isAbsolute(p) { return (p || '').startsWith('/'); },
-  join(...args) { return path.normalize(args.filter(Boolean).join('/')); },
-  relative(from, to) { return to; },
-  dirname(p) {
-    const parts = (p || '').replace(/\\/+/g, '/').replace(/\\/+$/, '').split('/');
-    parts.pop();
-    return parts.join('/') || (p.startsWith('/') ? '/' : '.');
-  },
-  basename(p, ext) {
-    let f = (p || '').split('/').filter(Boolean).pop() || '';
-    if (ext && f.endsWith(ext)) f = f.slice(0, -ext.length);
-    return f;
-  },
-  extname(p) {
-    const b = path.basename(p);
-    const i = b.lastIndexOf('.');
-    return i > 0 ? b.slice(i) : '';
-  },
-  sep: '/',
-  delimiter: ':',
-};
-path.posix = path;
-path.win32 = path;
-module.exports = path;
-module.exports.default = path;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "buffer") {
-          return {
-            contents: `
-class Buffer extends Uint8Array {
-  static from(val) {
-    if (typeof val === 'string') return new TextEncoder().encode(val);
-    if (ArrayBuffer.isView(val)) return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
-    if (val instanceof ArrayBuffer) return new Uint8Array(val);
-    return new Uint8Array(val);
-  }
-  static alloc(size) { return new Uint8Array(size); }
-  static isBuffer(val) { return val instanceof Uint8Array; }
-  toString(enc) { return new TextDecoder().decode(this); }
-}
-module.exports = { Buffer };
-module.exports.Buffer = Buffer;
-module.exports.default = { Buffer };
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "util") {
-          return {
-            contents: `
-module.exports = {
-  inherits: function(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor;
-      Object.setPrototypeOf(ctor.prototype, superCtor.prototype);
-    }
-  },
-  promisify: function(fn) {
-    return function(...args) {
-      return new Promise((resolve, reject) => {
-        fn(...args, (err, res) => err ? reject(err) : resolve(res));
-      });
-    };
-  },
-  format: function(...args) { return args.join(' '); },
-  types: {},
-};
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "url") {
-          return {
-            contents: `
-function fileURLToPath(u) {
-  if (!u) return '';
-  const str = typeof u === 'string' ? u : (u.href || u.toString());
-  return str.replace(/^file:\\/\\//, '');
-}
-function pathToFileURL(filepath) {
-  return new URL('file://' + filepath);
-}
-module.exports = {
-  fileURLToPath,
-  pathToFileURL,
-  URL: typeof URL !== 'undefined' ? URL : class {},
-  URLSearchParams: typeof URLSearchParams !== 'undefined' ? URLSearchParams : class {},
-};
-module.exports.fileURLToPath = fileURLToPath;
-module.exports.pathToFileURL = pathToFileURL;
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "fs" || mod === "fs/promises") {
-          return {
-            contents: `
-const noop = () => {};
-const asyncNoop = async () => {};
-const statObj = { isFile: () => false, isDirectory: () => false, size: 0, mtime: new Date() };
-const promises = {
-  readFile: async () => '',
-  writeFile: asyncNoop,
-  mkdir: asyncNoop,
-  readdir: async () => [],
-  stat: async () => statObj,
-  lstat: async () => statObj,
-  unlink: asyncNoop,
-  rm: asyncNoop,
-  access: asyncNoop,
-};
-module.exports = {
-  existsSync: () => false,
-  readFileSync: () => '',
-  writeFileSync: noop,
-  mkdirSync: noop,
-  readdirSync: () => [],
-  rmSync: noop,
-  unlinkSync: noop,
-  statSync: () => statObj,
-  lstatSync: () => statObj,
-  accessSync: noop,
-  promises,
-  ...promises,
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "os") {
-          return {
-            contents: `
-module.exports = {
-  tmpdir: () => '/tmp',
-  homedir: () => '/home',
-  platform: () => 'browser',
-  arch: () => 'wasm',
-  release: () => '1.0.0',
-  type: () => 'Browser',
-  cpus: () => [],
-  totalmem: () => 1024 * 1024 * 1024,
-  freemem: () => 1024 * 1024 * 1024,
-  EOL: '\\n',
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "child_process") {
-          return {
-            contents: `
-module.exports = {
-  spawn: () => ({ on: () => {}, stdout: { on: () => {} }, stderr: { on: () => {} }, kill: () => {} }),
-  exec: (cmd, cb) => cb && cb(new Error("Not supported in browser")),
-  execSync: () => '',
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "net") {
-          return {
-            contents: `
-module.exports = {
-  createConnection: () => ({ on: () => {}, write: () => {}, end: () => {}, destroy: () => {} }),
-  connect: () => ({ on: () => {}, write: () => {}, end: () => {}, destroy: () => {} }),
-  createServer: () => ({ listen: () => {}, on: () => {}, close: () => {} }),
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "readline") {
-          return {
-            contents: `
-module.exports = {
-  createInterface: () => ({ on: () => {}, close: () => {} }),
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "zlib") {
-          return {
-            contents: `
-module.exports = {
-  inflateRawSync: (b) => b,
-  deflateRawSync: (b) => b,
-  gzipSync: (b) => b,
-  gunzipSync: (b) => b,
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "crypto") {
-          return {
-            contents: `
-const webCrypto = typeof crypto !== 'undefined' ? crypto : {};
-module.exports = {
-  randomUUID: () => (webCrypto.randomUUID ? webCrypto.randomUUID() : '00000000-0000-0000-0000-000000000000'),
-  randomBytes: (n) => new Uint8Array(n),
-  createHash: () => ({ update: () => {}, digest: () => '' }),
-};
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        if (mod === "module") {
-          return {
-            contents: `
-function createRequire() {
-  return function() { return {}; };
-}
-module.exports = { createRequire };
-module.exports.createRequire = createRequire;
-module.exports.default = module.exports;
-`,
-            loader: "js",
-          };
-        }
-        return { contents: "", loader: "js" };
-      });
-    },
-  };
+  const ignorePlugin = createNodeBuiltinsIgnorePlugin();
 
   // Build browser client
   const clientMainPath = fs.existsSync(path.join(ideDir, "browser-client-main.ts"))
@@ -1971,35 +2116,7 @@ module.exports.default = module.exports;
         "process.browser": "true",
       },
       banner: {
-        js: `if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = class Buffer extends Uint8Array {
-    static from(val) {
-      if (typeof val === "string") return new TextEncoder().encode(val);
-      if (ArrayBuffer.isView(val)) return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
-      if (val instanceof ArrayBuffer) return new Uint8Array(val);
-      return new Uint8Array(val);
-    }
-    static alloc(size) { return new Uint8Array(size); }
-    static isBuffer(val) { return val instanceof Uint8Array; }
-    toString(enc) { return new TextDecoder().decode(this); }
-  };
-}
-if (typeof globalThis.process === "undefined") {
-  globalThis.process = {
-    env: {},
-    cwd: () => "/",
-    platform: "browser",
-    pid: 1,
-    version: "v18.0.0",
-    argv: ["node", "script"],
-    nextTick: (cb) => setTimeout(cb, 0),
-    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
-    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
-  };
-}
-if (typeof self !== "undefined" && typeof self.process === "undefined") {
-  self.process = globalThis.process;
-}`,
+        js: BROWSER_BUFFER_AND_PROCESS_BANNER,
       },
       plugins: [ignorePlugin],
       logOverride: {
@@ -2048,19 +2165,7 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
         "empty-import-meta": "silent",
       },
       banner: {
-        js: `if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = class Buffer extends Uint8Array {
-    static from(val) {
-      if (typeof val === "string") return new TextEncoder().encode(val);
-      if (ArrayBuffer.isView(val)) return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
-      if (val instanceof ArrayBuffer) return new Uint8Array(val);
-      return new Uint8Array(val);
-    }
-    static alloc(size) { return new Uint8Array(size); }
-    static isBuffer(val) { return val instanceof Uint8Array; }
-    toString(enc) { return new TextDecoder().decode(this); }
-  };
-}`,
+        js: BROWSER_BUFFER_BANNER,
       },
       plugins: [ignorePlugin],
     });
@@ -2156,24 +2261,7 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
       keepNames: true,
       sourcemap: "linked",
       banner: {
-        js: `if (typeof globalThis.process === "undefined") {
-  globalThis.process = {
-    env: {},
-    cwd: () => "/",
-    platform: "browser",
-    pid: 1,
-    version: "v18.0.0",
-    argv: ["node", "script"],
-    nextTick: (cb) => setTimeout(cb, 0),
-    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
-    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
-  };
-}
-if (typeof self !== "undefined" && typeof self.process === "undefined") {
-  self.process = globalThis.process;
-}
-var process = globalThis.process;
-`,
+        js: `${BROWSER_PROCESS_BANNER}\nvar process = globalThis.process;\n`,
       },
       define: {
         "process.env": "{}",
@@ -2200,24 +2288,7 @@ var process = globalThis.process;
         keepNames: true,
         sourcemap: "linked",
         banner: {
-          js: `if (typeof globalThis.process === "undefined") {
-  globalThis.process = {
-    env: {},
-    cwd: () => "/",
-    platform: "browser",
-    pid: 1,
-    version: "v18.0.0",
-    argv: ["node", "script"],
-    nextTick: (cb) => setTimeout(cb, 0),
-    memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
-    hrtime: Object.assign((prev) => [0, 0], { bigint: () => BigInt(0) }),
-  };
-}
-if (typeof self !== "undefined" && typeof self.process === "undefined") {
-  self.process = globalThis.process;
-}
-var process = globalThis.process;
-`,
+          js: `${BROWSER_PROCESS_BANNER}\nvar process = globalThis.process;\n`,
         },
         define: {
           "process.env": "{}",

@@ -1309,7 +1309,7 @@ export function startNodeServer(input?: any, output?: any) {
         ".s16p",
         ".s24p",
         ".s32p",
-        ".ts",
+        ".ts2",
       ],
       languageDef: touchstoneLanguage,
       workspaceIndex: new TouchstoneWorkspaceIndex(),
@@ -2740,12 +2740,26 @@ export function startNodeServer(input?: any, output?: any) {
         },
       },
       actionHandlers: {
+        ccsds_lint: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { lintCcsds, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          return lintCcsds(doc);
+        },
         lint_ccsds: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return [];
           const { lintCcsds, parseCcsds } = await import("@modelscript/ccsds");
           const doc = parseCcsds(text);
           return lintCcsds(doc);
+        },
+        ccsds_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { ccsdsToModelica, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          return ccsdsToModelica(doc);
         },
         export_ccsds_modelica: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
@@ -2754,12 +2768,30 @@ export function startNodeServer(input?: any, output?: any) {
           const doc = parseCcsds(text);
           return ccsdsToModelica(doc);
         },
+        ccsds_to_sysml: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { ccsdsToSysml, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          return ccsdsToSysml(doc);
+        },
         export_ccsds_sysml: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return "";
           const { ccsdsToSysml, parseCcsds } = await import("@modelscript/ccsds");
           const doc = parseCcsds(text);
           return ccsdsToSysml(doc);
+        },
+        ccsds_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerCcsdsToDae, parseCcsds } = await import("@modelscript/ccsds");
+          const doc = parseCcsds(text);
+          const arena = lowerCcsdsToDae(doc);
+          return {
+            variableCount: arena.getVarCount(),
+            equationCount: arena.getEqCount(),
+          };
         },
         export_ccsds_dae: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
@@ -2805,6 +2837,13 @@ export function startNodeServer(input?: any, output?: any) {
         },
       },
       actionHandlers: {
+        simulink_lint: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return [];
+          const { parseSimulink, lintSimulinkModel } = await import("@modelscript/simulink");
+          const model = parseSimulink(text);
+          return lintSimulinkModel(model);
+        },
         lint_simulink_model: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return [];
@@ -2812,12 +2851,30 @@ export function startNodeServer(input?: any, output?: any) {
           const model = parseSimulink(text);
           return lintSimulinkModel(model);
         },
+        simulink_to_modelica: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return "";
+          const { parseSimulink, simulinkToModelica } = await import("@modelscript/simulink");
+          const model = parseSimulink(text);
+          return simulinkToModelica(model);
+        },
         export_simulink_modelica: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return "";
           const { parseSimulink, simulinkToModelica } = await import("@modelscript/simulink");
           const model = parseSimulink(text);
           return simulinkToModelica(model);
+        },
+        simulink_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseSimulink, lowerSimulinkToDae } = await import("@modelscript/simulink");
+          const model = parseSimulink(text);
+          const dae = lowerSimulinkToDae(model);
+          return {
+            varCount: dae.varCount,
+            eqCount: dae.eqCount,
+          };
         },
         export_simulink_dae: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;

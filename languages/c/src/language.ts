@@ -30,6 +30,7 @@ export const C_PREC = {
 export const cLanguage = language({
   name: "c",
   fileExtensions: [".c", ".h"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".c", ".h"],
     icons: {

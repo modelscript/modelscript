@@ -11,10 +11,12 @@
  */
 
 import { AlertIcon, CheckCircleIcon, ClockIcon, GitBranchIcon, PlayIcon, SyncIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import { Button, Heading, Spinner, Text } from "@primer/react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../api";
+import type { DigitalThreadTwin } from "../../util/digitalThread";
 import Box from "../Box";
+import { DigitalThreadTwinCard, MetricCard } from "../digital-thread";
 
 export interface ThreadNode {
   domain: string;
@@ -57,10 +59,15 @@ export interface ConflictDiagnostic {
   recommendation: string;
 }
 
-interface DigitalThreadExplorerViewerProps {
+export interface DigitalThreadExplorerViewerProps {
   viewConfig?: any;
   isFullScreen?: boolean | undefined;
   onNodeSelected?: ((node: ThreadNode) => void) | undefined;
+  twins?: DigitalThreadTwin[] | undefined;
+  onJumpToClass?: ((className: string) => void) | undefined;
+  onJumpToArtifact?: ((artifactPath: string) => void) | undefined;
+  onLaunchCad?: ((url: string, title: string) => void) | undefined;
+  onProposeResolution?: ((twin: DigitalThreadTwin) => void) | undefined;
 }
 
 const DOMAIN_COLORS: Record<string, string> = {
@@ -75,39 +82,106 @@ const DOMAIN_COLORS: Record<string, string> = {
   verification: "#4caf50",
 };
 
+function convertTwinsToGraphData(twins: DigitalThreadTwin[]): ThreadGraphData {
+  const threads: ThreadItem[] = twins.map((twin, idx) => {
+    const status: ThreadItem["status"] =
+      twin.parity.status === "compatible" ? "synced" : twin.parity.status === "warning" ? "stale" : "conflict";
+    return {
+      threadId: twin.id || `twin-${idx + 1}`,
+      revision: 1,
+      status,
+      nodes: [
+        {
+          domain: twin.source.domain,
+          domainIndex: 0,
+          nodeId: idx * 2 + 1,
+          name: twin.source.name,
+          status,
+          properties: {
+            ...(twin.source.variable ? { variable: twin.source.variable } : {}),
+            ...(twin.source.unit ? { unit: twin.source.unit } : {}),
+          },
+        },
+        {
+          domain: twin.target.domain,
+          domainIndex: 1,
+          nodeId: idx * 2 + 2,
+          name: twin.target.name,
+          status,
+          uri: twin.target.resourcePath,
+          properties: {
+            ...(twin.target.attribute ? { attribute: twin.target.attribute } : {}),
+            ...(twin.target.unit ? { unit: twin.target.unit } : {}),
+          },
+        },
+      ],
+    };
+  });
+
+  return {
+    threads,
+    domains: ["requirements", "sysml2", "modelica", "cad", "fea", "cfd", "bom"],
+    summary: {
+      totalThreads: threads.length,
+      synced: threads.filter((t) => t.status === "synced").length,
+      stale: threads.filter((t) => t.status === "stale").length,
+      conflict: threads.filter((t) => t.status === "conflict").length,
+    },
+  };
+}
+
 export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerProps> = ({
+  viewConfig,
   isFullScreen,
   onNodeSelected,
+  twins: propTwins,
+  onJumpToClass,
+  onJumpToArtifact,
+  onLaunchCad,
+  onProposeResolution,
 }) => {
+  const effectiveTwins =
+    propTwins ?? (Array.isArray(viewConfig?.twins) ? (viewConfig.twins as DigitalThreadTwin[]) : undefined);
+  const [viewMode, setViewMode] = useState<"cards" | "hypergraph">(() =>
+    effectiveTwins !== undefined ? "cards" : "hypergraph",
+  );
   const [data, setData] = useState<ThreadGraphData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(effectiveTwins === undefined);
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [activeConflict, setActiveConflict] = useState<ConflictDiagnostic | null>(null);
   const [reconciling, setReconciling] = useState<boolean>(false);
   const [blastRadius, setBlastRadius] = useState<{ rootNode: string; impacted: Set<string> } | null>(null);
   const [customValueInput, setCustomValueInput] = useState<string>("");
 
-  const loadGraph = async () => {
+  const loadGraph = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/threads/graph");
-      setData(data);
-    } catch (e) {
-      console.error("Failed to load thread graph", e);
+      const { data: resData } = await api.get("/threads/graph");
+      setData(resData);
+    } catch {
+      if (effectiveTwins) {
+        setData(convertTwinsToGraphData(effectiveTwins));
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [effectiveTwins]);
 
   useEffect(() => {
-    loadGraph();
-  }, []);
+    void loadGraph();
+  }, [loadGraph]);
+
+  const resolvedGraphData = useMemo<ThreadGraphData | null>(() => {
+    if (data && data.threads && data.threads.length > 0) return data;
+    if (effectiveTwins) return convertTwinsToGraphData(effectiveTwins);
+    return data;
+  }, [data, effectiveTwins]);
 
   const handleDiagnoseConflict = async (conflictId: string) => {
     try {
-      const { data } = await api.post("/threads/conflicts/diagnose", { conflictId });
-      setActiveConflict(data);
-      setCustomValueInput(String(data.simplexConsensus ?? 18.0));
+      const { data: conflictData } = await api.post("/threads/conflicts/diagnose", { conflictId });
+      setActiveConflict(conflictData);
+      setCustomValueInput(String(conflictData.simplexConsensus ?? 18.0));
     } catch (e) {
       console.error("Failed to diagnose conflict", e);
     }
@@ -133,9 +207,9 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
 
   const handleComputeBlastRadius = async (domain: string, nodeId: number) => {
     try {
-      const { data } = await api.get("/threads/blast-radius", { params: { domain, nodeId } });
+      const { data: blastData } = await api.get("/threads/blast-radius", { params: { domain, nodeId } });
       const set = new Set<string>();
-      for (const item of data.impactedNodes || []) {
+      for (const item of blastData.impactedNodes || []) {
         set.add(`${item.domain}:${item.nodeId}`);
       }
       setBlastRadius({
@@ -148,20 +222,57 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
   };
 
   const filteredThreads = useMemo(() => {
-    if (!data) return [];
-    if (selectedFilter === "all") return data.threads;
-    return data.threads.filter((t) => t.status === selectedFilter);
-  }, [data, selectedFilter]);
+    if (!resolvedGraphData) return [];
+    if (selectedFilter === "all") return resolvedGraphData.threads;
+    return resolvedGraphData.threads.filter((t) => t.status === selectedFilter);
+  }, [resolvedGraphData, selectedFilter]);
 
   const displayDomains = useMemo(() => {
     return ["requirements", "sysml2", "modelica", "cad", "fea", "cfd", "bom"];
   }, []);
 
-  if (loading && !data) {
+  if (loading && !resolvedGraphData && effectiveTwins === undefined) {
     return (
       <Box p={4} display="flex" justifyContent="center" alignItems="center" minHeight="200px">
         <Spinner size="medium" />
         <Text ml={3}>Loading Digital Thread Hypergraph...</Text>
+      </Box>
+    );
+  }
+
+  if (effectiveTwins !== undefined && viewMode === "cards") {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <Box display="flex" justifyContent="flex-end" gap={2}>
+          <Button size="small" variant="primary" onClick={() => setViewMode("cards")}>
+            Twin Cards ({effectiveTwins.length})
+          </Button>
+          <Button size="small" variant="invisible" onClick={() => setViewMode("hypergraph")}>
+            <GitBranchIcon size={14} /> Hypergraph Swimlanes
+          </Button>
+        </Box>
+        {effectiveTwins.length > 0 ? (
+          effectiveTwins.map((twin) => (
+            <DigitalThreadTwinCard
+              key={twin.id}
+              twin={twin}
+              onJumpToClass={(cls) => onJumpToClass?.(cls)}
+              onJumpToArtifact={(path) => onJumpToArtifact?.(path)}
+              onLaunchCad={(url, title) => onLaunchCad?.(url, title)}
+              onProposeResolution={(targetTwin) => onProposeResolution?.(targetTwin)}
+            />
+          ))
+        ) : (
+          <MetricCard style={{ padding: 40, textAlign: "center", alignItems: "center" }}>
+            <SyncIcon size={36} fill="var(--color-fg-muted)" />
+            <Heading as="h4" style={{ fontSize: 16, marginTop: 8 }}>
+              No Matching Digital Thread Twins
+            </Heading>
+            <Text style={{ fontSize: 13, color: "var(--color-fg-muted)" }}>
+              Try adjusting search keywords or domain filters to inspect cross-language twin bindings.
+            </Text>
+          </MetricCard>
+        )}
       </Box>
     );
   }
@@ -188,33 +299,38 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
         </Box>
 
         <Box display="flex" alignItems="center" gap={2}>
+          {effectiveTwins !== undefined && (
+            <Button size="small" variant="invisible" onClick={() => setViewMode("cards")}>
+              Twin Cards ({effectiveTwins.length})
+            </Button>
+          )}
           <Button
             size="small"
             variant={selectedFilter === "all" ? "primary" : "invisible"}
             onClick={() => setSelectedFilter("all")}
           >
-            All ({data?.summary?.totalThreads ?? 0})
+            All ({resolvedGraphData?.summary?.totalThreads ?? 0})
           </Button>
           <Button
             size="small"
             variant={selectedFilter === "synced" ? "primary" : "invisible"}
             onClick={() => setSelectedFilter("synced")}
           >
-            <CheckCircleIcon fill="#4caf50" /> Synced ({data?.summary?.synced ?? 0})
+            <CheckCircleIcon fill="#4caf50" /> Synced ({resolvedGraphData?.summary?.synced ?? 0})
           </Button>
           <Button
             size="small"
             variant={selectedFilter === "stale" ? "primary" : "invisible"}
             onClick={() => setSelectedFilter("stale")}
           >
-            <ClockIcon fill="#ff9800" /> Stale ({data?.summary?.stale ?? 0})
+            <ClockIcon fill="#ff9800" /> Stale ({resolvedGraphData?.summary?.stale ?? 0})
           </Button>
           <Button
             size="small"
             variant={selectedFilter === "conflict" ? "primary" : "invisible"}
             onClick={() => setSelectedFilter("conflict")}
           >
-            <AlertIcon fill="#f44336" /> Conflicted ({data?.summary?.conflict ?? 0})
+            <AlertIcon fill="#f44336" /> Conflicted ({resolvedGraphData?.summary?.conflict ?? 0})
           </Button>
           <Button size="small" onClick={loadGraph}>
             <SyncIcon /> Refresh

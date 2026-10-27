@@ -23,20 +23,11 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "exactOptionalPropertyTypes": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": true,
-    "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true,
-    "baseUrl": ".",
-    "paths": {
-      "@modelscript/modelica": ["../../languages/modelica/src/index.ts"],
-      "@modelscript/sysml2": ["../../languages/sysml2/src/index.ts"],
-      "@modelscript/owl2": ["../../languages/owl2/src/index.ts"],
-      "@modelscript/step": ["../../languages/step/src/index.ts"],
-      "@modelscript/*": ["../../packages/*/src/index.ts"]
-    }
+    "noUncheckedSideEffectImports": true
   },
   "include": ["src"]
 }

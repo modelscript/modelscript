@@ -2070,6 +2070,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         let times: number[];
         let variableNames: string[];
         let tubes: { lo: number; hi: number }[][];
+        let usedNumericalFallback = false;
 
         if (fpDetails?.steps && Array.isArray(fpDetails.steps) && fpDetails.steps.length > 0) {
           times = fpDetails.steps.map((s: any) => s.tEnd ?? s.t ?? 0);
@@ -2078,6 +2079,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
             (s.xEnclosure || []).map((iv: any) => ({ lo: iv.lo ?? -1, hi: iv.hi ?? 1 })),
           );
         } else {
+          usedNumericalFallback = true;
           try {
             const simRes = simulateArena(arena as any, {
               startTime: tSpan[0],
@@ -2105,20 +2107,28 @@ export function registerAnalysisEndpoints(context: LspContext) {
           times,
           variableNames,
           tubes,
-          propertyName: "ContinuousReachabilityEnvelope",
+          propertyName: usedNumericalFallback ? "NumericalTrajectorySensitivityTube" : "ContinuousReachabilityEnvelope",
         });
 
         return {
           success: true,
-          status: fpStage?.certified ? "CERTIFIED_SAFE" : fpStage?.passed === false ? "VIOLATED" : "VERIFIED_ENVELOPE",
-          method: "TaylorModelPicardFlowpipe",
+          status: fpStage?.certified
+            ? "CERTIFIED_SAFE"
+            : fpStage?.passed === false
+              ? "VIOLATED"
+              : usedNumericalFallback
+                ? "ESTIMATED_ENVELOPE"
+                : "VERIFIED_ENVELOPE",
+          method: usedNumericalFallback ? "DOPRI5_SensitivityTube (Non-Rigorous)" : "TaylorModelPicardFlowpipe",
           timeHorizon: tSpan,
           stepSize: dt,
           numVariables: arena.varCount,
           canonicalTrace,
           summary:
             fpStage?.summary ??
-            `Formal reachability flowpipe evaluated for ${target.name} over t=[${tSpan[0]}, ${tSpan[1]}].`,
+            (usedNumericalFallback
+              ? `Formal Picard flowpipe unavailable for ${target.name}; returning numerical sensitivity tube over t=[${tSpan[0]}, ${tSpan[1]}].`
+              : `Formal reachability flowpipe evaluated for ${target.name} over t=[${tSpan[0]}, ${tSpan[1]}].`),
         };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : String(e) };
@@ -2658,6 +2668,27 @@ export function registerAnalysisEndpoints(context: LspContext) {
               return {
                 success: true,
                 hierarchy: extracted,
+              };
+            }
+            const isPowertrainDemo =
+              Boolean(params.uri && /powertrain/i.test(params.uri)) || /Powertrain/i.test(docText);
+            if (!isPowertrainDemo) {
+              return {
+                success: true,
+                hierarchy: {
+                  system: {
+                    name: params.systemContractName || "SystemContract",
+                    assumptions: [],
+                    guarantees: [],
+                  },
+                  components: [],
+                  isCompatible: true,
+                  isRefined: true,
+                  compatibilityViolations: [],
+                  refinementViolations: [],
+                  traces: [],
+                  summary: "No assume-guarantee contracts or requirement constraints found in this document.",
+                },
               };
             }
           }

@@ -360,7 +360,13 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
 
             <Box>
               <Text
-                style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", display: "block", mb: 1 }}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--color-text-muted)",
+                  display: "block",
+                  marginBottom: 4,
+                }}
               >
                 1. Authenticate with the Registry
               </Text>
@@ -393,7 +399,13 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
 
             <Box>
               <Text
-                style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-muted)", display: "block", mb: 1 }}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--color-text-muted)",
+                  display: "block",
+                  marginBottom: 4,
+                }}
               >
                 2. Pack &amp; Publish from Your Project Directory
               </Text>

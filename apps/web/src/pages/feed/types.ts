@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type React from "react";
 
 export interface FilterChip {
   id: string;
   label: string;
-  icon: React.ComponentType<{
-    size?: number | undefined;
-    className?: string | undefined;
-    style?: React.CSSProperties | undefined;
-  }>;
+  icon: React.ComponentType<any>;
   emoji?: string | undefined;
   artifactType?: string | undefined;
   description: string;

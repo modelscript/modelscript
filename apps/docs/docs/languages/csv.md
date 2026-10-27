@@ -45,3 +45,15 @@
 | :--------------------------------------- | :-------------------- | :----------------------------------- | :--------------------------------------------------------------------------------- |
 | `CsvDocumentToModelicaPackage`           | `CSVDocument`         | `ClassDefinition` (`package`)        | Projects a CSV file into a Modelica data package with `values[numRows, numCols]`   |
 | `CsvVirtualComponentToModelicaComponent` | `CSVVirtualComponent` | `ComponentClause` (`parameter Real`) | Binds a typed CSV column to a Modelica parameter vector or `CombiTimeTable` source |
+
+---
+
+## Command Line Interface
+
+```bash
+# Lint CSV datasets for column mismatches, unclosed quotes, and non-monotonic time
+msx lint trajectory_data.csv
+
+# Output simulation trajectories directly to standard CSV format
+msx simulate CircuitModel.mo --stop-time=1.0 --step-size=0.001 --format=csv -o sim_results.csv
+```

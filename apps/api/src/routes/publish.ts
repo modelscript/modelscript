@@ -162,8 +162,11 @@ export function publishRouter(
       const signature = (req.body?.signature || req.headers["x-package-signature"]) as string | undefined;
 
       try {
-        // 3. Extract manifest (package.json or package.mo) from the zip
-        const manifestResult = await extractManifestFromZip(req.file.buffer);
+        // 3. Extract manifest (package.json, package.mo, or adapted native manifest) from the zip
+        const manifestResult = await extractManifestFromZip(req.file.buffer, {
+          fallbackName: name,
+          fallbackVersion: version,
+        });
         let parsedName: string | null = null;
         let parsedVersion: string | null = null;
 

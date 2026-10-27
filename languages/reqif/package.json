@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/reqif",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "OMG ReqIF 1.2 (Requirements Interchange Format) engineering language package for ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",

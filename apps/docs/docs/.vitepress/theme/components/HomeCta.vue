@@ -1,11 +1,12 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import type { IconName } from "../data/icons";
 import MsIcon from "./MsIcon.vue";
 
-const pillars = [
-  { title: "Open source", body: "AGPL-3.0. Read, audit, and extend every line." },
-  { title: "No license server", body: "Run on laptops, clusters, CI, and air-gapped networks." },
-  { title: "Standards first", body: "FMI, SSP, SysML v2, STEP, and ReqIF interchange." },
+const pillars: { icon: IconName; title: string; body: string }[] = [
+  { icon: "code", title: "Open source", body: "AGPL-3.0. Read, audit, and extend every line." },
+  { icon: "cpu", title: "No license server", body: "Run on laptops, clusters, CI, and air-gapped networks." },
+  { icon: "layers", title: "Standards first", body: "FMI, SSP, SysML v2, STEP, and ReqIF interchange." },
 ];
 </script>
 
@@ -14,7 +15,7 @@ const pillars = [
     <div class="ms-container">
       <div class="pillars">
         <div v-for="p in pillars" :key="p.title" class="pillar">
-          <span class="pillar-check"><MsIcon name="check" :size="16" :stroke="2.25" /></span>
+          <span class="pillar-icon"><MsIcon :name="p.icon" :size="22" :duotone="true" /></span>
           <div>
             <h3>{{ p.title }}</h3>
             <p>{{ p.body }}</p>
@@ -49,24 +50,37 @@ const pillars = [
 .pillars {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
+  gap: 18px;
   margin-bottom: 48px;
 }
 
 .pillar {
   display: flex;
-  gap: 14px;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--vp-c-divider);
+  background: linear-gradient(180deg, var(--vp-c-bg-soft), var(--vp-c-bg));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.pillar-check {
+.pillar-icon {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
   color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
+  background:
+    radial-gradient(circle at 25% 20%, rgba(34, 211, 238, 0.24), transparent 68%),
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.18), transparent 68%),
+    var(--vp-c-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 34%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 18px -8px rgba(6, 182, 212, 0.4);
 }
 
 .pillar h3 {

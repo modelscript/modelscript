@@ -6,12 +6,14 @@ import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme as useSiteTheme } from "../../theme";
 import type { CodeEditorHandle } from "./Code";
+import { MORSEL_LANGUAGES, getLanguageExtension, getLanguageInfo } from "./constants";
 import type { DiagramEditorHandle } from "./Diagram";
 import "./morsel.css";
 import { getTranslations, uiLanguages } from "./util/i18n";
 import {
   applyDiagramEdits,
   applyLspEdits,
+  didClose,
   didOpen,
   getComponentProperties,
   getDiagramData,
@@ -34,18 +36,24 @@ import ParameterSliderRibbon from "./ParameterSliderRibbon";
 
 const CodeEditor = React.lazy(() => import("./Code"));
 
-/** URI used for the open document — must match the URI in CodeEditor and TreeWidget. */
-const DOCUMENT_URI = "file:///document.mo";
-
 export interface MorselEditorProps {
   dataUrl?: DataUrl | null | undefined;
   initialCode?: string | undefined;
   embed?: boolean | undefined;
   initialDialect?: string | undefined;
-  initialView?: "split-columns" | "split-rows" | "code-only" | "diagram-only" | "cad-only" | "plot-only" | undefined;
-  initialAnchor?: { elementId: string; kind?: string; line?: number; column?: number } | undefined;
+  initialView?: string | undefined;
+  initialAnchor?:
+    | {
+        elementId?: string | undefined;
+        kind?: string | undefined;
+        line?: number | undefined;
+        column?: number | undefined;
+      }
+    | undefined;
   showParameterRibbon?: boolean | undefined;
+  hideFloatingDock?: boolean | undefined;
   onCodeChange?: ((code: string) => void) | undefined;
+  onDialectChange?: ((dialect: string) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
 }
 
@@ -53,6 +61,14 @@ const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
 
 export default function MorselEditor(props: MorselEditorProps) {
   const toast = useToast();
+  const initialLangInfo = getLanguageInfo(props.initialDialect);
+  const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
+  const [diagramType, setDiagramType] = useState<string>(initialLangInfo.diagramTypes?.[0]?.id ?? "diagram");
+  const [sidecarContent, setSidecarContent] = useState<string | undefined>(undefined);
+  const documentUri = useMemo(() => `file:///document.${getLanguageExtension(dialect)}`, [dialect]);
+  const documentUriRef = useRef(documentUri);
+  documentUriRef.current = documentUri;
+
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [isAddLibraryOpen, setIsAddLibraryOpen] = useState(false);
@@ -64,7 +80,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
-  const content = props.initialCode ?? decodedContent ?? "model Example\n\nend Example;";
+  const content = props.initialCode ?? decodedContent ?? initialLangInfo.defaultCode;
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
 
   useEffect(() => {
@@ -74,7 +90,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [props.initialCode, editor]);
 
   const initialIsCad =
-    props.initialView === "cad-only" || props.initialDialect === "step" || props.initialDialect === "scad";
+    props.initialView === "cad-only" || (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
   const initialIsPlot = props.initialView === "plot-only";
   const initialViewMode =
     props.initialView === "code-only"
@@ -91,7 +107,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [mobileTab, setMobileTab] = useState<MobileTab>(
     initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
   );
-  const cachedSimulatorRef = useRef<any | null>(null);
   const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string | null>(props.initialAnchor?.elementId ?? null);
@@ -102,6 +117,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(null);
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [documentModels, setDocumentModels] = useState<{ name: string; kind: string }[]>([]);
+  const [drillDownPath, setDrillDownPath] = useState<string[]>([]);
   const isSpatialEditPending = useRef(false);
   const diagramEditorRef = useRef<DiagramEditorHandle>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -110,6 +126,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [treeVisible, setTreeVisible] = useState(true);
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   const [splitRatio, setSplitRatio] = useState(0.5);
+  const [contextVersion, setContextVersion] = useState(0);
+
+  const NARROW_BREAKPOINT = 768;
+  const isNarrow = windowWidth < NARROW_BREAKPOINT;
 
   const handleSelectComponent = useCallback(
     (name: string | null) => {
@@ -126,7 +146,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setSelectedComponentProperties(initialProps);
       setIsPropertiesLoading(true);
 
-      getComponentProperties(DOCUMENT_URI, selectedTreeClassName || undefined, name)
+      getComponentProperties(documentUri, selectedTreeClassName || undefined, name)
         .then((props) => {
           if (props) {
             setSelectedComponentProperties(props);
@@ -139,7 +159,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           setIsPropertiesLoading(false);
         });
     },
-    [diagramData, selectedTreeClassName],
+    [diagramData, documentUri, selectedTreeClassName],
   );
 
   const {
@@ -163,6 +183,8 @@ export default function MorselEditor(props: MorselEditorProps) {
     localSimulationData,
     setLocalSimulationData,
     cadComponents,
+    vtkBuffer,
+    editorValue,
     animationControllerRef,
     animationMode,
     cosimDataSource,
@@ -174,7 +196,8 @@ export default function MorselEditor(props: MorselEditorProps) {
     handleSaveCadBindings,
     handleSimulate,
   } = useMorselEngine({
-    documentUri: DOCUMENT_URI,
+    dialect,
+    documentUri,
     selectedTreeClassName,
     contextVersion,
     content,
@@ -194,17 +217,13 @@ export default function MorselEditor(props: MorselEditorProps) {
   const { theme, toggleTheme } = useSiteTheme();
   const isDark = theme === "dark";
   const colorMode = isDark ? "dark" : "light";
-  const resolvedColorMode: "night" | "day" = isDark ? "night" : "day";
   const [libraryFilter, setLibraryFilter] = useState("");
   const [debouncedFilter, setDebouncedFilter] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [contextVersion, setContextVersion] = useState(0);
   const expectedComponentNameRef = useRef<string | null>(null);
   const pendingModelNameRef = useRef<string | null>(null);
-  const [isSplashVisible, setSplashVisible] = useState(!props.dataUrl && !props.initialCode && !props.embed);
-  const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
   const isInitialized = useRef(false);
   const [language, setLanguage] = useState<string | null>(null);
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
@@ -230,7 +249,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (actions.length > 0) {
         diagramEditQueueRef.current = diagramEditQueueRef.current
           .then(async () => {
-            const response = await applyDiagramEdits(DOCUMENT_URI, actions, 1);
+            const response = await applyDiagramEdits(documentUriRef.current, actions, 1);
+            if (response?.sidecarContent !== undefined) {
+              setSidecarContent(response.sidecarContent);
+            }
             if (response && response.edits && response.edits.length > 0 && editorRef.current) {
               if (response.renderHint === "none") {
                 isSpatialEditPending.current = true;
@@ -240,6 +262,9 @@ export default function MorselEditor(props: MorselEditorProps) {
               applyLspEdits(editorRef.current, response.edits, actions[0].type);
               // Yield to event loop to ensure didChange is sent to LSP before next edit is computed
               await new Promise((resolve) => setTimeout(resolve, 50));
+            } else if (response?.sidecarContent !== undefined) {
+              setIsDiagramLoading(false);
+              setContextVersion((v) => v + 1);
             }
           })
           .catch((err) => {
@@ -249,11 +274,154 @@ export default function MorselEditor(props: MorselEditorProps) {
     }, delay);
   }, []);
 
+  const handleRevealLine = useCallback((line: number, identifier?: string) => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const model = ed.getModel();
+    if (!model) return;
+    const safeLine = Math.max(1, Math.min(model.getLineCount(), line));
+    const lineText = model.getLineContent(safeLine);
+    let startCol = 1;
+    let endCol = lineText.length + 1;
+    if (identifier) {
+      const idx = lineText.indexOf(identifier);
+      if (idx !== -1) {
+        startCol = idx + 1;
+        endCol = idx + 1 + identifier.length;
+      }
+    }
+    ed.revealLineInCenter(safeLine);
+    ed.setSelection({
+      startLineNumber: safeLine,
+      startColumn: startCol,
+      endLineNumber: safeLine,
+      endColumn: endCol,
+    });
+    ed.focus();
+  }, []);
+
+  const handleNodeDoubleClick = useCallback(
+    (nodeId: string, nodeData?: any) => {
+      if (!nodeId || nodeId === "__diagram_background__" || nodeId === "__diagram_axes__") return;
+      const shortName = nodeId.split(".").pop() || nodeId;
+
+      // 1. Reveal source line in Monaco editor
+      const ed = editorRef.current;
+      if (ed) {
+        const model = ed.getModel();
+        if (model) {
+          const lines = model.getLinesContent();
+          const escaped = shortName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const wordRe = new RegExp(`\\b${escaped}\\b`);
+          let foundLine = -1;
+          for (let i = 0; i < lines.length; i++) {
+            if (wordRe.test(lines[i]!)) {
+              foundLine = i + 1;
+              break;
+            }
+          }
+          if (foundLine !== -1) {
+            handleRevealLine(foundLine, shortName);
+          }
+        }
+      }
+
+      // 2. Drill down into subsystem/class if applicable and update breadcrumbs
+      const nodeEntry = diagramData?.nodes?.find((n: any) => n.id === nodeId);
+      const candidateType =
+        nodeEntry?.type ||
+        nodeEntry?.className ||
+        nodeEntry?.properties?.typeName ||
+        nodeData?.type ||
+        nodeData?.className;
+      const matchedModel = documentModels.find(
+        (m) =>
+          m.name === candidateType ||
+          m.name === shortName ||
+          (typeof candidateType === "string" && candidateType.endsWith(`.${m.name}`)),
+      );
+      if (matchedModel) {
+        setDrillDownPath((prev) => {
+          const rootName = selectedTreeClassName || documentModels[0]?.name || dialect;
+          const base = prev.length === 0 ? [rootName] : prev;
+          if (base[base.length - 1] === matchedModel.name) return base;
+          return [...base, matchedModel.name];
+        });
+        setSelectedTreeClassName(matchedModel.name);
+      } else {
+        setDrillDownPath((prev) => {
+          const rootName = selectedTreeClassName || documentModels[0]?.name || dialect;
+          const base = prev.length === 0 ? [rootName] : prev;
+          if (base[base.length - 1] === shortName) return base;
+          return [...base, shortName];
+        });
+      }
+    },
+    [diagramData, documentModels, selectedTreeClassName, dialect, handleRevealLine],
+  );
+
+  const handleDrillRoot = useCallback(() => {
+    if (drillDownPath.length > 0) {
+      const rootModel = documentModels.find((m) => m.name === drillDownPath[0]);
+      if (rootModel) {
+        setSelectedTreeClassName(rootModel.name);
+      }
+    }
+    setDrillDownPath([]);
+  }, [drillDownPath, documentModels]);
+
+  const handleDrillUp = useCallback(
+    (index: number) => {
+      const targetName = drillDownPath[index];
+      if (!targetName) return;
+      const matched = documentModels.find((m) => m.name === targetName);
+      if (matched) {
+        setSelectedTreeClassName(matched.name);
+      }
+      setDrillDownPath((prev) => prev.slice(0, index + 1));
+    },
+    [drillDownPath, documentModels],
+  );
+
+  const handleInsertStencilSnippet = useCallback(
+    (snippet: string, className?: string) => {
+      if ((dialect === "modelica" || dialect === "modelscript") && className && editorRef.current) {
+        enqueueDiagramAction({ type: "addComponent", className, x: 0, y: 0 });
+        return;
+      }
+      const ed = editorRef.current;
+      if (!ed) return;
+      const currentText = ed.getValue();
+      let nextText = currentText;
+      if (dialect === "sysml2" && currentText.lastIndexOf("}") !== -1) {
+        const idx = currentText.lastIndexOf("}");
+        nextText = `${currentText.slice(0, idx)}${snippet}${currentText.slice(idx)}`;
+      } else if (dialect === "owl2" && currentText.lastIndexOf(")") !== -1) {
+        const idx = currentText.lastIndexOf(")");
+        nextText = `${currentText.slice(0, idx)}  ${snippet}${currentText.slice(idx)}`;
+      } else if (dialect === "urdf" && currentText.includes("</robot>")) {
+        const idx = currentText.lastIndexOf("</robot>");
+        nextText = `${currentText.slice(0, idx)}${snippet}${currentText.slice(idx)}`;
+      } else {
+        nextText = `${currentText.trimEnd()}\n${snippet}`;
+      }
+      ed.setValue(nextText);
+      didOpen(documentUriRef.current, nextText, dialect);
+      setContextVersion((v) => v + 1);
+    },
+    [dialect, enqueueDiagramAction],
+  );
+
   // Collect all displayable models/blocks defined in current document
   const nestedModels = documentModels;
 
   // Extract models/blocks defined in the current document for model tabs
   useEffect(() => {
+    if (dialect !== "modelica" && dialect !== "modelscript") {
+      setDocumentModels([]);
+      setSelectedTreeClassName(null);
+      return;
+    }
     let cancelled = false;
     const updateDocumentModels = async () => {
       try {
@@ -278,7 +446,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [contextVersion, content]);
+  }, [contextVersion, content, dialect]);
 
   // Keep selectedModelIndex in sync with selectedTreeClassName
   useEffect(() => {
@@ -308,7 +476,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingMessage("Starting language server…");
 
       try {
-        const conn = await startLsp();
+        const conn = await startLsp(dialect);
         conn.onNotification("modelscript/projectTreeChanged", () => {
           console.log("[Morsel] Received modelscript/projectTreeChanged");
           if (isSpatialEditPending.current) {
@@ -332,79 +500,12 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingMessage("Loading workspace…");
 
       // Notify LSP of the initial file content
-      didOpen(DOCUMENT_URI, content);
+      didOpen(documentUri, content, dialect);
 
       // Force tree update by bumping version now that LSP is ready
       setContextVersion((v) => v + 1);
 
       setAvailableLanguages(uiLanguages);
-
-      setExampleModels([
-        {
-          id: "injection-molding-cosim",
-          name: "Injection Molding Co-Simulation",
-          content: `package Manufacturing
-  import Modelica.Fluid.Interfaces.FluidPort_a;
-  import Modelica.Fluid.Sources.MassFlowSource_T;
-  import ModelScript.Geometry;
-  
-  // 1. Define the 3D CAD Geometry
-  shape SnesTopShell extends Geometry.Box
-    parameter Real width = 150;
-    parameter Real height = 60;
-    parameter Real depth = 20;
-    // ... CSG operations for buttons omitted for brevity
-  end SnesTopShell;
-
-  // 2. Define the 3D CFD Interface Block using a new 'field' class kind
-  field InjectionCavity "A boundary node that proxies the 3D OpenFOAM solver"
-    parameter Geometry.Shape geometry;
-    parameter String material = "ABS";
-    parameter Real moldTemp = 40.0;
-    
-    // The 1D port that connects to the rest of the Modelica system
-    FluidPort_a gateInlet;
-  equation
-    // The pressure and flow equations are NOT defined here algebraically.
-    // They are satisfied by the external OpenFOAM orchestrator.
-  end InjectionCavity;
-
-  // 3. Define the 1D System Dynamics (The Machine) using the 'model' class kind
-  model HydraulicInjectionUnit "1D Lumped parameter model of the injection machine"
-    parameter Real targetPressure = 150e6;
-    parameter Real barrelTemp = 493.15;
-    
-    // Internal 1D physics components
-    Modelica.Fluid.Sources.MassFlowSource_T ram(
-      nPorts = 1,
-      m_flow = 0.05,
-      T = barrelTemp
-    );
-    
-    // Expose the fluid port to the outside
-    FluidPort_a fluidOut;
-  equation
-    connect(ram.ports[1], fluidOut);
-  end HydraulicInjectionUnit;
-
-  // 4. The Full System Orchestration using the 'process' class kind
-  process SnesMoldProcess
-    // Instantiate the 1D Machine (model)
-    HydraulicInjectionUnit injectionMachine(targetPressure = 150e6);
-    
-    // Instantiate the 3D CFD Domain (field)
-    InjectionCavity mold(
-      geometry = SnesTopShell(), // Instantiate the 3D CAD (shape)
-      material = "ABS",
-      moldTemp = 40.0
-    );
-  equation
-    // The crucial connection: 1D mass flow couples to the 3D boundary patch
-    connect(injectionMachine.fluidOut, mold.gateInlet);
-  end SnesMoldProcess;
-end Manufacturing;`,
-        },
-      ]);
 
       // Defer hiding the loading screen until the browser is idle
       const hideLoading = () => {
@@ -418,7 +519,7 @@ end Manufacturing;`,
       }
     };
     init();
-  }, [content]);
+  }, [content, dialect, documentUri]);
 
   useEffect(() => {
     setIsSearching(true);
@@ -431,9 +532,6 @@ end Manufacturing;`,
       clearTimeout(handler);
     };
   }, [libraryFilter]);
-
-  const NARROW_BREAKPOINT = 768;
-  const isNarrow = windowWidth < NARROW_BREAKPOINT;
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -465,16 +563,58 @@ end Manufacturing;`,
   }, [content]);
 
   useEffect(() => {
-    // LSP handles class instance sync
-  }, []);
-
-  useEffect(() => {
     if (view === View.DIAGRAM || isSplit(view)) {
       setTimeout(() => {
         diagramEditorRef.current?.fitContent();
       }, 100);
     }
   }, [view, treeVisible]);
+
+  const handleSelectDialect = useCallback(
+    (newDialectId: string) => {
+      const nextInfo = getLanguageInfo(newDialectId);
+      const prevInfo = getLanguageInfo(dialect);
+      if (nextInfo.id === dialect) return;
+
+      const prevUri = `file:///document.${getLanguageExtension(dialect)}`;
+      const nextUri = `file:///document.${getLanguageExtension(nextInfo.id)}`;
+
+      didClose(prevUri);
+      setDialectState(nextInfo.id);
+      setSidecarContent(undefined);
+      setDrillDownPath([]);
+      setDiagramType(nextInfo.diagramTypes?.[0]?.id ?? "diagram");
+
+      if (nextInfo.supports3d && !nextInfo.supportsDiagram) {
+        setShowCadView(true);
+        setShowResultsView(false);
+      } else if (nextInfo.supportsDiagram) {
+        setShowCadView(false);
+      }
+
+      const currentVal = editorRef.current?.getValue() ?? "";
+      const isDefaultOrEmpty =
+        !currentVal.trim() ||
+        currentVal === prevInfo.defaultCode ||
+        MORSEL_LANGUAGES.some((l) => l.defaultCode === currentVal);
+      const nextCode = isDefaultOrEmpty ? nextInfo.defaultCode : currentVal;
+
+      if (editorRef.current && nextCode !== currentVal) {
+        editorRef.current.setValue(nextCode);
+      }
+      setLastLoadedContent(nextCode);
+      didOpen(nextUri, nextCode, nextInfo.id);
+      setContextVersion((v) => v + 1);
+      props.onDialectChange?.(nextInfo.id);
+    },
+    [dialect, props.onDialectChange],
+  );
+
+  useEffect(() => {
+    if (props.initialDialect && props.initialDialect !== dialect) {
+      handleSelectDialect(props.initialDialect);
+    }
+  }, [props.initialDialect, dialect, handleSelectDialect]);
 
   const loadClass = async (className: string, kind?: string) => {
     // Store the name so the diagram tab auto-selects if it's a model/block
@@ -492,10 +632,19 @@ end Manufacturing;`,
 
     try {
       const { getClassSource } = await import("./util/lsp-bridge");
-      const { content, error } = await getClassSource(className);
-      if (content && editorRef.current) {
-        editorRef.current.setValue(content);
+      const { content: fetchedContent, error } = await getClassSource(className);
+      if (fetchedContent && editorRef.current) {
+        if (dialect !== "modelica") {
+          didClose(documentUriRef.current);
+          setDialectState("modelica");
+          setSidecarContent(undefined);
+          setDiagramType("diagram");
+        }
+        editorRef.current.setValue(fetchedContent);
+        setLastLoadedContent(fetchedContent);
+        didOpen("file:///document.mo", fetchedContent, "modelica");
         codeEditorRef.current?.sync();
+        setContextVersion((v) => v + 1);
       } else if (error) {
         console.warn(`Failed to fetch source for ${className}:`, error);
       }
@@ -512,7 +661,7 @@ end Manufacturing;`,
   loadClassRef.current = loadClass;
 
   const handleTreeSelect = useCallback(
-    (className: string, kind: string) => {
+    (className: string, kind?: string) => {
       if (editorRef.current?.getValue() !== lastLoadedContentRef.current && pendingSelection !== className) {
         setPendingSelection(className);
         setDirtyDialogOpen(true);
@@ -522,6 +671,8 @@ end Manufacturing;`,
     },
     [pendingSelection],
   );
+
+  const handleTreeHighlight = useCallback((_name: string | null) => {}, []);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -534,9 +685,11 @@ end Manufacturing;`,
     };
   }, []);
 
-  // Fetch diagram data via LSP when selected component or file changes
+  // Fetch diagram data via LSP when selected component, diagram type, or file changes
   useEffect(() => {
-    if (!selectedTreeClassName) {
+    const langInfo = getLanguageInfo(dialect);
+    const requiresClassName = dialect === "modelica" || dialect === "modelscript";
+    if (!langInfo.supportsDiagram || (requiresClassName && !selectedTreeClassName)) {
       setDiagramData(null);
       setIsDiagramLoading(false);
       return;
@@ -545,7 +698,7 @@ end Manufacturing;`,
     let cancelled = false;
     setIsDiagramLoading(true);
 
-    getDiagramData(DOCUMENT_URI, selectedTreeClassName, "diagram")
+    getDiagramData(documentUri, selectedTreeClassName || undefined, diagramType, sidecarContent)
       .then((data) => {
         if (cancelled) return;
         setDiagramData(data);
@@ -560,11 +713,11 @@ end Manufacturing;`,
     return () => {
       cancelled = true;
     };
-  }, [selectedTreeClassName, contextVersion]);
+  }, [documentUri, dialect, selectedTreeClassName, diagramType, sidecarContent, contextVersion]);
 
   const handleFlatten = async () => {
     try {
-      const result = await (await import("./util/lsp-bridge")).flatten(selectedTreeClassName ?? "", DOCUMENT_URI);
+      const result = await (await import("./util/lsp-bridge")).flatten(selectedTreeClassName ?? "", documentUri);
       if (result.text) {
         setFlattenedCode(result.text);
         setFlattenDialogOpen(true);
@@ -632,7 +785,7 @@ end Manufacturing;`,
             inputRef={inputRef}
             addLibraryButtonRef={addLibraryButtonRef}
             onOpenAddLibrary={() => setIsAddLibraryOpen(true)}
-            documentUri={DOCUMENT_URI}
+            documentUri={documentUri}
             debouncedFilter={debouncedFilter}
             onTreeSelect={handleTreeSelect}
             onTreeHighlight={handleTreeHighlight}
@@ -684,6 +837,17 @@ end Manufacturing;`,
               setSelectedTreeClassName={setSelectedTreeClassName}
               colorMode={colorMode}
               translations={translations}
+              dialect={dialect}
+              diagramType={diagramType}
+              setDiagramType={setDiagramType}
+              vtkBuffer={vtkBuffer}
+              editorValue={editorValue}
+              drillDownPath={drillDownPath}
+              onDrillUp={handleDrillUp}
+              onDrillRoot={handleDrillRoot}
+              onNodeDoubleClick={handleNodeDoubleClick}
+              onRevealLine={handleRevealLine}
+              onInsertStencilSnippet={handleInsertStencilSnippet}
               showResultsView={showResultsView}
               setShowResultsView={setShowResultsView}
               showCadView={showCadView}
@@ -800,7 +964,8 @@ end Manufacturing;`,
             >
               <Suspense fallback={null}>
                 <CodeEditor
-                  uri={DOCUMENT_URI}
+                  uri={documentUri}
+                  languageId={dialect}
                   ref={codeEditorRef}
                   embed={props.embed ?? false}
                   setEditor={setEditor}
@@ -817,63 +982,70 @@ end Manufacturing;`,
         </div>
 
         {/* Floating dock */}
-        <MorselFloatingDock
-          colorMode={colorMode}
-          treeVisible={treeVisible}
-          setTreeVisible={setTreeVisible}
-          translations={translations}
-          onNewModel={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (editorRef.current?.getValue() !== lastLoadedContentRef.current) {
-              setPendingSplashVisible(true);
-              setDirtyDialogOpen(true);
-            } else {
-              setSplashVisible(true);
-            }
-          }}
-          openFileButtonRef={openFileButtonRef}
-          onOpenFile={() => setIsOpenFileDialogOpen(true)}
-          onSaveModel={async () => {
-            const content = editor?.getValue() || "";
-            let filename = "model.mo";
-            if (codeEditorRef.current) {
-              const synced = await codeEditorRef.current.sync();
-              if ((synced as any)?.[0]?.name) {
-                filename = `${(synced as any)[0].name}.mo`;
+        {!props.embed && !props.hideFloatingDock && (
+          <MorselFloatingDock
+            colorMode={colorMode}
+            treeVisible={treeVisible}
+            setTreeVisible={setTreeVisible}
+            translations={translations}
+            dialect={dialect}
+            onSelectDialect={handleSelectDialect}
+            onNewModel={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const defaultCode = getLanguageInfo(dialect).defaultCode;
+              if (editorRef.current) {
+                editorRef.current.setValue(defaultCode);
               }
-            }
-            const blob = new Blob([content], { type: "text/plain" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          }}
-          onAutoLayout={() => {
-            if (confirm(translations.autoLayoutConfirm)) {
-              diagramEditorRef.current?.layout();
-            }
-          }}
-          view={view}
-          setView={setView}
-          isNarrow={isNarrow}
-          onSimulate={handleSimulate}
-          onOpenCloudModal={() => setIsCloudModalOpen(true)}
-          onFlatten={handleFlatten}
-          shareButtonRef={shareButtonRef}
-          isShareDialogOpen={isShareDialogOpen}
-          setShareDialogOpen={setShareDialogOpen}
-          availableLanguages={availableLanguages}
-          language={language}
-          setLanguage={setLanguage}
-          setContextVersion={setContextVersion}
-          isDark={isDark}
-          toggleTheme={toggleTheme}
-        />
+              setLastLoadedContent(defaultCode);
+              setSidecarContent(undefined);
+              didOpen(documentUri, defaultCode, dialect);
+              setContextVersion((v) => v + 1);
+            }}
+            openFileButtonRef={openFileButtonRef}
+            onOpenFile={() => setIsOpenFileDialogOpen(true)}
+            onSaveModel={async () => {
+              const currentContent = editor?.getValue() || "";
+              const ext = getLanguageExtension(dialect);
+              let filename = `model.${ext}`;
+              if ((dialect === "modelica" || dialect === "modelscript") && codeEditorRef.current) {
+                const synced = await codeEditorRef.current.sync();
+                if ((synced as any)?.[0]?.name) {
+                  filename = `${(synced as any)[0].name}.${ext}`;
+                }
+              }
+              const blob = new Blob([currentContent], { type: "text/plain" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+            onAutoLayout={() => {
+              if (confirm(translations.autoLayoutConfirm)) {
+                diagramEditorRef.current?.layout();
+              }
+            }}
+            view={view}
+            setView={setView}
+            isNarrow={isNarrow}
+            onSimulate={handleSimulate}
+            onOpenCloudModal={() => setIsCloudModalOpen(true)}
+            onFlatten={handleFlatten}
+            shareButtonRef={shareButtonRef}
+            isShareDialogOpen={isShareDialogOpen}
+            setShareDialogOpen={setShareDialogOpen}
+            availableLanguages={availableLanguages}
+            language={language}
+            setLanguage={setLanguage}
+            setContextVersion={setContextVersion}
+            isDark={isDark}
+            toggleTheme={toggleTheme}
+          />
+        )}
 
         {/* Modals & Dialogs */}
         <MorselModals
@@ -887,14 +1059,13 @@ end Manufacturing;`,
           translations={translations}
           toast={toast}
           colorMode={colorMode}
+          dialect={dialect}
+          onSelectDialect={handleSelectDialect}
           isDirtyDialogOpen={isDirtyDialogOpen}
           setDirtyDialogOpen={setDirtyDialogOpen}
           pendingSelection={pendingSelection}
           setPendingSelection={setPendingSelection}
-          pendingSplashVisible={pendingSplashVisible}
-          setPendingSplashVisible={setPendingSplashVisible}
           loadClass={loadClass}
-          setSplashVisible={setSplashVisible}
           isOpenFileDialogOpen={isOpenFileDialogOpen}
           setIsOpenFileDialogOpen={setIsOpenFileDialogOpen}
           openFileButtonRef={openFileButtonRef}
@@ -920,7 +1091,7 @@ end Manufacturing;`,
 
         {(props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && (
           <ParameterSliderRibbon
-            parameters={ribbonParams}
+            parameters={ribbonParams as any}
             overrides={parameterOverrides}
             onChange={handleRibbonParamChange}
             onReset={handleRibbonParamReset}

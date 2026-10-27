@@ -284,6 +284,7 @@ export interface PscadSimulationReport {
 export const pscadLanguage = language({
   name: "pscad",
   fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx", ".psout"],
+  maturity: "stable",
   lsp: {
     fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx", ".psout"],
     icons: {

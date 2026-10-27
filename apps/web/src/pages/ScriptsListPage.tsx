@@ -65,8 +65,7 @@ const ScriptsListPage: React.FC = () => {
         for (const uj of unifiedJobsRes.value) {
           const norm = normalizeStatus(uj.status);
           const isDone = norm === "SUCCESS";
-          const isRunning = norm === "RUNNING";
-          const prog = uj.progress != null ? uj.progress : isDone ? 100 : isRunning ? 60 : 0;
+          const prog = isDone ? 100 : (uj.progress ?? 0);
 
           mergedMap.set(String(uj.id), {
             id: uj.id,
@@ -103,7 +102,7 @@ const ScriptsListPage: React.FC = () => {
               (meta.solver?.includes("cfd") ? "cfd" : meta.solver?.includes("fea") ? "fea" : "simulation"),
             solver: meta.solver || existing?.solver || dj.type || "Parametric Pipeline",
             profile: meta.profile || existing?.profile || "hpc-partition",
-            progress: norm === "SUCCESS" ? 100 : norm === "RUNNING" ? 65 : 0,
+            progress: norm === "SUCCESS" ? 100 : (existing?.progress ?? 0),
             costCredits: existing?.costCredits,
             started_at: dj.started_at,
             completed_at: dj.completed_at,

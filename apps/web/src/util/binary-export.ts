@@ -335,7 +335,7 @@ export function downloadParquetFile(
   columns?: string[],
 ): void {
   const buf = generateParquetBuffer(records, columns);
-  const blob = new Blob([buf], { type: "application/vnd.apache.parquet" });
+  const blob = new Blob([buf as unknown as BlobPart], { type: "application/vnd.apache.parquet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

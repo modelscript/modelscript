@@ -1,11 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleFillIcon, CheckIcon, CpuIcon, FlameIcon, PulseIcon, XIcon } from "@primer/octicons-react";
+import { CheckCircleFillIcon, CheckIcon, CpuIcon, FlameIcon, PlayIcon, PulseIcon, XIcon } from "@primer/octicons-react";
 import { Button, Flash, Heading, Label, Spinner, Text } from "@primer/react";
 import axios from "axios";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import api from "../../api";
+import { useAuth } from "../../AuthContext";
+import { extractDigitalThreadTwins } from "../../util/digitalThread";
 import Box from "../Box";
+
+export interface TelemetryPoint {
+  t: number;
+  meas: number;
+  baseline: number;
+  twin: number;
+}
+
+export interface DigitalTwinHotspot {
+  id: string;
+  name: string;
+  domain: string;
+  coords: [number, number, number];
+  value: number;
+  nominal: number;
+  unit: string;
+  deltaPct: number;
+  severity: "normal" | "warning" | "critical";
+}
 
 export interface DigitalTwinViewerConfig {
   twinId?: number | undefined;
@@ -37,6 +58,9 @@ export interface DigitalTwinViewerConfig {
     | undefined;
   calibratedParameters?: Record<string, number> | undefined;
   alertTime?: string | undefined;
+  telemetry?: TelemetryPoint[] | undefined;
+  initialSeries?: TelemetryPoint[] | undefined;
+  hotspots?: Partial<DigitalTwinHotspot>[] | undefined;
 }
 
 interface DigitalTwinDashboardViewerProps {
@@ -50,42 +74,63 @@ interface LoadedTwinData {
 }
 
 export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProps> = ({ viewConfig }) => {
+  let user: { id: number } | null = null;
+  try {
+    const auth = useAuth();
+    user = auth.user;
+  } catch {
+    user = null;
+  }
+
   const twinId = viewConfig.twinId ?? 1;
   const [twinData, setTwinData] = useState<LoadedTwinData | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [proposalStatus, setProposalStatus] = useState<"open" | "approved" | "rejected">("open");
   const [activeTab, setActiveTab] = useState<"telemetry" | "hotspots" | "proposals">("telemetry");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
 
-  // Synthetic or live stream points for curve visualization
-  const [telemetryHistory, setTelemetryHistory] = useState<
-    { t: number; meas: number; baseline: number; twin: number }[]
-  >([]);
+  // Initialize telemetry from viewConfig.telemetry or viewConfig.initialSeries (or empty array waiting for live MQTT/WebSocket stream)
+  const [telemetry, setTelemetry] = useState<TelemetryPoint[]>(
+    () => viewConfig.telemetry ?? viewConfig.initialSeries ?? [],
+  );
 
   useEffect(() => {
-    // Generate synthetic time series around the drift event
-    const points: { t: number; meas: number; baseline: number; twin: number }[] = [];
-    const tStart = 0;
-    const tEnd = 20;
-    const n = 40;
-    const dt = (tEnd - tStart) / (n - 1);
+    const initial = viewConfig.telemetry ?? viewConfig.initialSeries;
+    setTelemetry(Array.isArray(initial) ? initial : []);
+  }, [viewConfig.telemetry, viewConfig.initialSeries]);
 
-    const rThNominal = 0.12;
-    const rThDegraded = viewConfig.calibratedParameters?.["R_th"] ?? 0.187;
-
-    for (let i = 0; i < n; i++) {
-      const t = tStart + i * dt;
-      // Step degradation at t = 10s
-      const trueRth = t < 10.0 ? rThNominal : rThDegraded;
-      const noise = (Math.sin(t * 7.3) + Math.cos(t * 11.2)) * 0.4;
-      const meas = 25.0 + 100.0 * trueRth * (1.0 - Math.exp(-t / 8.0)) + (t >= 10.0 ? noise : noise * 0.3);
-      const baseline = 25.0 + 100.0 * rThNominal * (1.0 - Math.exp(-t / 8.0));
-      const twin = t < 10.0 ? baseline : 25.0 + 100.0 * rThDegraded * (1.0 - Math.exp(-t / 8.0));
-
-      points.push({ t, meas, baseline, twin });
+  // Subscribe to live twin SSE / WebSocket stream when available
+  useEffect(() => {
+    if (!twinId || typeof EventSource === "undefined") return;
+    let evtSource: EventSource | null = null;
+    try {
+      evtSource = new EventSource(`/api/v1/twins/${twinId}/stream`);
+      evtSource.onmessage = (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload && typeof payload.t === "number" && typeof payload.meas === "number") {
+            setTelemetry((prev) => [
+              ...prev.slice(-199),
+              {
+                t: payload.t,
+                meas: payload.meas,
+                baseline: typeof payload.baseline === "number" ? payload.baseline : payload.meas,
+                twin: typeof payload.twin === "number" ? payload.twin : payload.meas,
+              },
+            ]);
+          }
+        } catch {
+          // Ignore malformed stream frame
+        }
+      };
+    } catch {
+      // Ignore stream connection errors in offline mode
     }
-    setTelemetryHistory(points);
-  }, [viewConfig]);
+    return () => {
+      evtSource?.close();
+    };
+  }, [twinId]);
 
   useEffect(() => {
     async function loadTwinDetails() {
@@ -103,15 +148,57 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     loadTwinDetails();
   }, [twinId]);
 
+  const deltas = viewConfig.parameterDeltas ?? {};
+
+  const handleInjectTestStep = () => {
+    const firstDelta = Object.values(deltas)[0];
+    const firstCalibrated = viewConfig.calibratedParameters
+      ? Object.values(viewConfig.calibratedParameters)[0]
+      : undefined;
+    const rThNominal = deltas["R_th"]?.prior ?? firstDelta?.prior ?? 0.12;
+    const rThDegraded =
+      viewConfig.calibratedParameters?.["R_th"] ??
+      deltas["R_th"]?.calibrated ??
+      firstCalibrated ??
+      firstDelta?.calibrated ??
+      rThNominal;
+    setTelemetry((prev) => {
+      const nextIndex = prev.length;
+      if (nextIndex === 0) {
+        const stepSeries: TelemetryPoint[] = [];
+        for (let i = 0; i < 12; i++) {
+          const t = i * 2.0;
+          const activeRth = t < 10.0 ? rThNominal : rThDegraded;
+          const baseline = 25.0 + 100.0 * rThNominal * (1.0 - Math.exp(-t / 8.0));
+          const twin = 25.0 + 100.0 * activeRth * (1.0 - Math.exp(-t / 8.0));
+          const meas = twin + (t >= 10.0 ? 0.35 : 0.1);
+          stepSeries.push({ t, meas, baseline, twin });
+        }
+        return stepSeries;
+      }
+      const lastPoint = prev[prev.length - 1]!;
+      const t = Number((lastPoint.t + 1.0).toFixed(1));
+      const activeRth = t < 10.0 ? rThNominal : rThDegraded;
+      const baseline = 25.0 + 100.0 * rThNominal * (1.0 - Math.exp(-t / 8.0));
+      const twin = 25.0 + 100.0 * activeRth * (1.0 - Math.exp(-t / 8.0));
+      const meas = twin + (t >= 10.0 ? 0.3 : 0.08);
+      return [...prev, { t, meas, baseline, twin }];
+    });
+  };
+
+  const reviewGovernanceProposal = async (action: "approve" | "reject", notes: string) => {
+    const proposalId = viewConfig.proposalId ?? twinData?.proposals?.[0]?.id ?? 1;
+    await api.post(`/twins/${twinId}/proposals/${proposalId}/${action}`, {
+      reviewerId: user?.id ?? 0,
+      notes,
+    });
+  };
+
   const handleApproveProposal = async () => {
     setActionLoading(true);
     setActionMessage(null);
     try {
-      const proposalId = viewConfig.proposalId ?? twinData?.proposals?.[0]?.id ?? 1;
-      await api.post(`/twins/${twinId}/proposals/${proposalId}/approve`, {
-        reviewerId: 1,
-        notes: "Approved based on CUSUM telemetry verification.",
-      });
+      await reviewGovernanceProposal("approve", "Approved based on CUSUM telemetry verification.");
       setProposalStatus("approved");
       setActionMessage("Physics Pull Request approved! Active model baseline updated.");
     } catch (err: unknown) {
@@ -128,11 +215,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     setActionLoading(true);
     setActionMessage(null);
     try {
-      const proposalId = viewConfig.proposalId ?? twinData?.proposals?.[0]?.id ?? 1;
-      await api.post(`/twins/${twinId}/proposals/${proposalId}/reject`, {
-        reviewerId: 1,
-        notes: "Rejected by engineer.",
-      });
+      await reviewGovernanceProposal("reject", "Rejected by engineer.");
       setProposalStatus("rejected");
       setActionMessage("Proposal rejected.");
     } catch (err: unknown) {
@@ -146,8 +229,65 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
   };
 
   const healthScore = viewConfig.healthScore ?? twinData?.activeSession?.healthScore ?? 85.0;
-  const rulHours = viewConfig.rulHours ?? 340.0;
-  const deltas = viewConfig.parameterDeltas ?? {};
+  const rulHours = viewConfig.rulHours;
+
+  // Compute spatial hotspots from viewConfig.hotspots or extracted digital thread twins
+  const computedHotspots = useMemo<DigitalTwinHotspot[]>(() => {
+    if (Array.isArray(viewConfig.hotspots) && viewConfig.hotspots.length > 0) {
+      return viewConfig.hotspots.map((h, idx) => {
+        const nominal = h.nominal ?? 50.0;
+        const value = h.value ?? nominal;
+        const deltaPct = h.deltaPct ?? (nominal !== 0 ? ((value - nominal) / Math.abs(nominal)) * 100 : 0);
+        const severity: DigitalTwinHotspot["severity"] =
+          h.severity ?? (Math.abs(deltaPct) > 25 ? "critical" : Math.abs(deltaPct) > 10 ? "warning" : "normal");
+        return {
+          id: h.id || `hotspot-${idx}`,
+          name: h.name || `Node #${idx + 1}`,
+          domain: h.domain || "modelica",
+          coords: h.coords || [120 + idx * 140, 110 + (idx % 2) * 35, idx * 15],
+          value,
+          nominal,
+          unit: h.unit || "°C",
+          deltaPct,
+          severity,
+        };
+      });
+    }
+
+    const pkgName = (viewConfig.modelicaClass || viewConfig.twinName || "").split(".")[0];
+    if (!pkgName) {
+      return [];
+    }
+
+    const extractedTwins = extractDigitalThreadTwins(pkgName, "1.0.0", [
+      {
+        id: 1,
+        class_name: viewConfig.modelicaClass || pkgName,
+        class_kind: "model",
+      } as any,
+    ]);
+
+    if (extractedTwins.length === 0) {
+      return [];
+    }
+
+    return extractedTwins.map((twin, idx) => ({
+      id: twin.id || `twin-hs-${idx}`,
+      name: `${twin.source.name} ↔ ${twin.target.name}`,
+      domain: twin.target.domain,
+      coords: [180 + ((idx * 130) % 320), 65 + ((idx * 55) % 110), 10 + idx * 5],
+      value: twin.parity.status === "compatible" ? 52.0 : 81.5,
+      nominal: 50.0,
+      unit: twin.parity.sourceUnit || "°C",
+      deltaPct: twin.parity.status === "compatible" ? 4.0 : 63.0,
+      severity: twin.parity.status === "compatible" ? "normal" : "critical",
+    }));
+  }, [viewConfig.hotspots, viewConfig.modelicaClass, viewConfig.twinName]);
+
+  const activeHotspot = useMemo(
+    () => computedHotspots.find((h) => h.id === selectedHotspotId) ?? computedHotspots[0] ?? null,
+    [computedHotspots, selectedHotspotId],
+  );
 
   // Render SVG Sparkline
   const minVal = 20.0;
@@ -155,19 +295,20 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
   const width = 640;
   const height = 180;
   const pad = 24;
+  const maxTime = useMemo(() => Math.max(20.0, ...telemetry.map((p) => (Number.isFinite(p.t) ? p.t : 0))), [telemetry]);
 
-  const toX = (t: number) => pad + (t / 20.0) * (width - 2 * pad);
+  const toX = (t: number) => pad + (t / maxTime) * (width - 2 * pad);
   const toY = (val: number) => height - pad - ((val - minVal) / (maxVal - minVal)) * (height - 2 * pad);
 
-  const measPath = telemetryHistory
+  const measPath = telemetry
     .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.meas).toFixed(1)}`)
     .join(" ");
 
-  const baselinePath = telemetryHistory
+  const baselinePath = telemetry
     .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.baseline).toFixed(1)}`)
     .join(" ");
 
-  const twinPath = telemetryHistory
+  const twinPath = telemetry
     .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.twin).toFixed(1)}`)
     .join(" ");
 
@@ -199,7 +340,9 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
           <Heading sx={{ fontSize: 2, fontWeight: "bold" }}>
             {viewConfig.twinName || "Operational Digital Twin"}
           </Heading>
-          <Label variant="accent">#{viewConfig.instanceSerial || "SN-84920"}</Label>
+          <Label variant="accent">
+            {viewConfig.instanceSerial ? `#${viewConfig.instanceSerial.replace(/^#/, "")}` : "—"}
+          </Label>
           <Label variant={healthScore < 80 ? "attention" : "success"}>Health: {healthScore.toFixed(0)}%</Label>
         </Box>
 
@@ -247,9 +390,9 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               >
                 <Text sx={{ color: "fg.muted", fontSize: 0 }}>CUSUM Residual Shift</Text>
                 <Heading sx={{ fontSize: 3, color: "danger.fg", mt: 1 }}>
-                  +{viewConfig.driftMetrics?.score ? viewConfig.driftMetrics.score.toFixed(1) : "4.2"}σ
+                  {viewConfig.driftMetrics?.score !== undefined ? `+${viewConfig.driftMetrics.score.toFixed(1)}σ` : "—"}
                 </Heading>
-                <Text sx={{ fontSize: 0, color: "fg.muted" }}>Channel: {viewConfig.channel || "Coolant Temp (T)"}</Text>
+                <Text sx={{ fontSize: 0, color: "fg.muted" }}>Channel: {viewConfig.channel || "—"}</Text>
               </Box>
 
               <Box
@@ -264,12 +407,20 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               >
                 <Text sx={{ color: "fg.muted", fontSize: 0 }}>Calibrated R_th</Text>
                 <Heading sx={{ fontSize: 3, color: "accent.fg", mt: 1 }}>
-                  {viewConfig.calibratedParameters?.["R_th"]
-                    ? viewConfig.calibratedParameters["R_th"].toFixed(3)
-                    : "0.187"}{" "}
-                  <Text sx={{ fontSize: 1, fontWeight: "normal" }}>K/W</Text>
+                  {viewConfig.calibratedParameters?.["R_th"] !== undefined ? (
+                    <>
+                      {viewConfig.calibratedParameters["R_th"].toFixed(3)}{" "}
+                      <Text sx={{ fontSize: 1, fontWeight: "normal" }}>K/W</Text>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </Heading>
-                <Text sx={{ fontSize: 0, color: "danger.fg" }}>+55.8% Degradation</Text>
+                <Text sx={{ fontSize: 0, color: deltas["R_th"]?.deltaPct !== undefined ? "danger.fg" : "fg.muted" }}>
+                  {deltas["R_th"]?.deltaPct !== undefined
+                    ? `${deltas["R_th"].deltaPct >= 0 ? "+" : ""}${deltas["R_th"].deltaPct.toFixed(1)}% Degradation`
+                    : "—"}
+                </Text>
               </Box>
 
               <Box
@@ -284,7 +435,13 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               >
                 <Text sx={{ color: "fg.muted", fontSize: 0 }}>Projected RUL</Text>
                 <Heading sx={{ fontSize: 3, color: "severe.fg", mt: 1 }}>
-                  {rulHours.toFixed(0)} <Text sx={{ fontSize: 1, fontWeight: "normal" }}>hours</Text>
+                  {rulHours !== undefined ? (
+                    <>
+                      {rulHours.toFixed(0)} <Text sx={{ fontSize: 1, fontWeight: "normal" }}>hours</Text>
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </Heading>
                 <Text sx={{ fontSize: 0, color: "fg.muted" }}>Confidence: P10-P90</Text>
               </Box>
@@ -301,11 +458,20 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                 mb: 2,
               }}
             >
-              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 2,
+                  flexWrap: "wrap",
+                  gap: 2,
+                }}
+              >
                 <Text sx={{ fontWeight: "bold", fontSize: 1 }}>
                   Innovation Residual Tracking: Sensor vs Twin vs Nominal Design
                 </Text>
-                <Box sx={{ display: "flex", gap: 3, fontSize: 0 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 3, fontSize: 0 }}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <span
                       style={{
@@ -325,83 +491,273 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                     <span style={{ width: 14, height: 2, borderTop: "2px dashed #cf222e" }} />
                     <Text>Nominal Baseline (y_nominal)</Text>
                   </Box>
+                  <Button size="small" leadingVisual={PlayIcon} onClick={handleInjectTestStep}>
+                    Inject Test Step
+                  </Button>
                 </Box>
               </Box>
 
-              <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-                {/* Horizontal gridlines */}
-                {[25, 35, 45].map((val) => (
-                  <g key={val}>
-                    <line
-                      x1={pad}
-                      y1={toY(val)}
-                      x2={width - pad}
-                      y2={toY(val)}
-                      stroke="#484f58"
-                      strokeDasharray="2 4"
-                      strokeWidth="0.5"
-                    />
-                    <text x={pad - 4} y={toY(val) + 4} fill="#8b949e" fontSize="9" textAnchor="end">
-                      {val}°C
-                    </text>
-                  </g>
-                ))}
+              {telemetry.length === 0 ? (
+                <Box
+                  sx={{
+                    py: 4,
+                    px: 3,
+                    textAlign: "center",
+                    border: "1px dashed",
+                    borderColor: "border.subtle",
+                    borderRadius: 2,
+                  }}
+                >
+                  <Text sx={{ color: "fg.muted", display: "block", mb: 2, fontSize: 1 }}>
+                    Waiting for live MQTT / WebSocket telemetry stream on channel{" "}
+                    <strong>{viewConfig.channel || "—"}</strong>...
+                  </Text>
+                  <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={handleInjectTestStep}>
+                    Inject Test Step
+                  </Button>
+                </Box>
+              ) : (
+                <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+                  {/* Horizontal gridlines */}
+                  {[25, 35, 45].map((val) => (
+                    <g key={val}>
+                      <line
+                        x1={pad}
+                        y1={toY(val)}
+                        x2={width - pad}
+                        y2={toY(val)}
+                        stroke="#484f58"
+                        strokeDasharray="2 4"
+                        strokeWidth="0.5"
+                      />
+                      <text x={pad - 4} y={toY(val) + 4} fill="#8b949e" fontSize="9" textAnchor="end">
+                        {val}°C
+                      </text>
+                    </g>
+                  ))}
 
-                {/* Vertical drift detection boundary */}
-                <line
-                  x1={toX(10)}
-                  y1={pad}
-                  x2={toX(10)}
-                  y2={height - pad}
-                  stroke="#f85149"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                />
-                <text x={toX(10) + 4} y={pad + 12} fill="#f85149" fontSize="10" fontWeight="bold">
-                  CUSUM Drift Event (t = 10s)
-                </text>
+                  {/* Vertical drift detection boundary */}
+                  <line
+                    x1={toX(10)}
+                    y1={pad}
+                    x2={toX(10)}
+                    y2={height - pad}
+                    stroke="#f85149"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
+                  />
+                  <text x={toX(10) + 4} y={pad + 12} fill="#f85149" fontSize="10" fontWeight="bold">
+                    CUSUM Drift Event (t = 10s)
+                  </text>
 
-                {/* Trajectories */}
-                <path d={baselinePath} fill="none" stroke="#cf222e" strokeWidth="1.5" strokeDasharray="4 3" />
-                <path d={twinPath} fill="none" stroke="var(--color-accent-purple, #8b5cf6)" strokeWidth="2.5" />
-                <path
-                  d={measPath}
-                  fill="none"
-                  stroke="var(--color-accent-cyan, #06b6d4)"
-                  strokeWidth="1.5"
-                  opacity="0.9"
-                />
-              </svg>
+                  {/* Trajectories */}
+                  <path d={baselinePath} fill="none" stroke="#cf222e" strokeWidth="1.5" strokeDasharray="4 3" />
+                  <path d={twinPath} fill="none" stroke="var(--color-accent-purple, #8b5cf6)" strokeWidth="2.5" />
+                  <path
+                    d={measPath}
+                    fill="none"
+                    stroke="var(--color-accent-cyan, #06b6d4)"
+                    strokeWidth="1.5"
+                    opacity="0.9"
+                  />
+                </svg>
+              )}
             </Box>
           </Box>
         )}
 
         {activeTab === "hotspots" && (
-          <Box sx={{ textAlign: "center", p: 4, backgroundColor: "canvas.inset", borderRadius: 2 }}>
-            <FlameIcon size={32} fill="#d29922" />
-            <Heading sx={{ fontSize: 2, mt: 2 }}>3D Spatial Hotspot Reconstruction</Heading>
-            <Text sx={{ color: "fg.muted", fontSize: 1, display: "block", mt: 1 }}>
-              Internal thermal resistance mapped to Power MOSFET Die junction (T_junction = 78.4°C)
-            </Text>
-            <Box
-              sx={{
-                mt: 3,
-                p: 3,
-                backgroundColor: "canvas.default",
-                border: "1px solid",
-                borderColor: "border.default",
-                borderRadius: 2,
-                display: "inline-block",
-                textAlign: "left",
-              }}
-            >
-              <Text sx={{ fontWeight: "bold" }}>Virtual Sensor Telemetry:</Text>
-              <ul style={{ margin: "8px 0 0 16px", padding: 0 }}>
-                <li>Stator Hotspot: 68.2°C (nominal: 54.0°C)</li>
-                <li>Thermal Interface Degradation: +55.8%</li>
-                <li>Coolant Delta-T: 4.8 K across manifold</li>
-              </ul>
+          <Box
+            sx={{
+              p: 3,
+              backgroundColor: "canvas.inset",
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "border.default",
+            }}
+          >
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <FlameIcon size={20} fill="#d29922" />
+                <Box>
+                  <Heading sx={{ fontSize: 2 }}>3D Spatial Thermal &amp; Stress Hotspot Map</Heading>
+                  <Text sx={{ color: "fg.muted", fontSize: 0 }}>
+                    Reconstructed from Reduced-Order FEA/CFD &amp; Digital Thread Twin Bindings
+                  </Text>
+                </Box>
+              </Box>
+              {activeHotspot && (
+                <Label
+                  variant={
+                    activeHotspot.severity === "critical"
+                      ? "danger"
+                      : activeHotspot.severity === "warning"
+                        ? "attention"
+                        : "success"
+                  }
+                >
+                  Active Node: {activeHotspot.name} ({activeHotspot.value.toFixed(1)} {activeHotspot.unit})
+                </Label>
+              )}
             </Box>
+
+            {computedHotspots.length === 0 ? (
+              <Box
+                sx={{
+                  py: 4,
+                  px: 3,
+                  textAlign: "center",
+                  border: "1px dashed",
+                  borderColor: "border.subtle",
+                  borderRadius: 2,
+                }}
+              >
+                <Text sx={{ color: "fg.muted", fontSize: 1 }}>No 3D thermal or stress hotspots available.</Text>
+              </Box>
+            ) : (
+              <>
+                {/* Interactive SVG Spatial Thermal/Stress Map */}
+                <Box
+                  sx={{
+                    mb: 3,
+                    p: 2,
+                    backgroundColor: "canvas.default",
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "border.subtle",
+                  }}
+                >
+                  <svg width="100%" height={220} viewBox="0 0 600 220">
+                    <defs>
+                      <radialGradient id="hotspot-critical" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stopColor="#f85149" stopOpacity="0.65" />
+                        <stop offset="60%" stopColor="#d29922" stopOpacity="0.25" />
+                        <stop offset="100%" stopColor="#f85149" stopOpacity="0" />
+                      </radialGradient>
+                      <radialGradient id="hotspot-warning" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stopColor="#d29922" stopOpacity="0.55" />
+                        <stop offset="100%" stopColor="#d29922" stopOpacity="0" />
+                      </radialGradient>
+                      <radialGradient id="hotspot-normal" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
+                        <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
+
+                    {/* Isometric wireframe chassis envelope */}
+                    <rect
+                      x={40}
+                      y={24}
+                      width={520}
+                      height={172}
+                      rx={10}
+                      fill="rgba(13, 17, 23, 0.55)"
+                      stroke="#30363d"
+                      strokeWidth="1.5"
+                    />
+                    <line x1={40} y1={110} x2={560} y2={110} stroke="#21262d" strokeDasharray="4 4" />
+                    <line x1={300} y1={24} x2={300} y2={196} stroke="#21262d" strokeDasharray="4 4" />
+
+                    {/* Thermal / stress contour overlays */}
+                    {computedHotspots.map((hs) => {
+                      const [x, y, z] = hs.coords;
+                      const isSelected = activeHotspot?.id === hs.id;
+                      const gradId =
+                        hs.severity === "critical"
+                          ? "url(#hotspot-critical)"
+                          : hs.severity === "warning"
+                            ? "url(#hotspot-warning)"
+                            : "url(#hotspot-normal)";
+                      const strokeColor =
+                        hs.severity === "critical" ? "#f85149" : hs.severity === "warning" ? "#d29922" : "#06b6d4";
+
+                      return (
+                        <g key={hs.id} style={{ cursor: "pointer" }} onClick={() => setSelectedHotspotId(hs.id)}>
+                          <circle cx={x} cy={y} r={38} fill={gradId} />
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r={isSelected ? 9 : 6}
+                            fill={strokeColor}
+                            stroke="#ffffff"
+                            strokeWidth={isSelected ? 2.5 : 1}
+                          />
+                          <text x={x} y={y - 12} fill="#e6edf3" fontSize="10" fontWeight="bold" textAnchor="middle">
+                            {hs.value.toFixed(1)}
+                            {hs.unit}
+                          </text>
+                          <text x={x} y={y + 20} fill="#8b949e" fontSize="9" textAnchor="middle">
+                            ({x}, {y}, {z})
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </Box>
+
+                {/* Hotspot Table */}
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #30363d", textAlign: "left", color: "#8b949e" }}>
+                      <th style={{ padding: "6px 8px" }}>Hotspot Node</th>
+                      <th style={{ padding: "6px 8px" }}>Domain</th>
+                      <th style={{ padding: "6px 8px" }}>Spatial Coords (mm)</th>
+                      <th style={{ padding: "6px 8px" }}>Reconstructed Field</th>
+                      <th style={{ padding: "6px 8px" }}>Nominal</th>
+                      <th style={{ padding: "6px 8px" }}>Delta</th>
+                      <th style={{ padding: "6px 8px" }}>Severity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {computedHotspots.map((hs) => {
+                      const isSelected = activeHotspot?.id === hs.id;
+                      return (
+                        <tr
+                          key={hs.id}
+                          onClick={() => setSelectedHotspotId(hs.id)}
+                          style={{
+                            borderBottom: "1px solid #21262d",
+                            cursor: "pointer",
+                            backgroundColor: isSelected ? "rgba(56, 139, 253, 0.1)" : "transparent",
+                          }}
+                        >
+                          <td style={{ padding: "8px", fontWeight: "bold" }}>{hs.name}</td>
+                          <td style={{ padding: "8px", textTransform: "uppercase", color: "#8b949e" }}>{hs.domain}</td>
+                          <td style={{ padding: "8px", fontFamily: "monospace" }}>
+                            ({hs.coords[0]}, {hs.coords[1]}, {hs.coords[2]})
+                          </td>
+                          <td
+                            style={{ padding: "8px", fontWeight: "bold", color: "var(--color-accent-cyan, #06b6d4)" }}
+                          >
+                            {hs.value.toFixed(1)} {hs.unit}
+                          </td>
+                          <td style={{ padding: "8px" }}>
+                            {hs.nominal.toFixed(1)} {hs.unit}
+                          </td>
+                          <td style={{ padding: "8px", color: hs.deltaPct > 10 ? "#f85149" : "#3fb950" }}>
+                            {hs.deltaPct >= 0 ? "+" : ""}
+                            {hs.deltaPct.toFixed(1)}%
+                          </td>
+                          <td style={{ padding: "8px" }}>
+                            <Label
+                              variant={
+                                hs.severity === "critical"
+                                  ? "danger"
+                                  : hs.severity === "warning"
+                                    ? "attention"
+                                    : "success"
+                              }
+                            >
+                              {hs.severity.toUpperCase()}
+                            </Label>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </>
+            )}
           </Box>
         )}
 
@@ -420,7 +776,8 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                 <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                   <CpuIcon size={18} />
                   <Text sx={{ fontWeight: "bold", fontSize: 2 }}>
-                    Physics Pull Request #{viewConfig.proposalId ?? 14}: Parameter Recalibration
+                    Physics Pull Request {viewConfig.proposalId !== undefined ? `#${viewConfig.proposalId}` : "—"}:
+                    Parameter Recalibration
                   </Text>
                 </Box>
                 <Label
@@ -468,12 +825,8 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                     ))
                   ) : (
                     <tr style={{ borderBottom: "1px solid #21262d" }}>
-                      <td style={{ padding: "8px", fontWeight: "bold" }}>`R_th` (Thermal Resistance)</td>
-                      <td style={{ padding: "8px" }}>0.1200 K/W</td>
-                      <td style={{ padding: "8px", color: "var(--color-accent-cyan, #06b6d4)" }}>0.1870 K/W</td>
-                      <td style={{ padding: "8px", color: "#f85149" }}>+55.8%</td>
-                      <td style={{ padding: "8px" }}>
-                        <Label variant="severe">Degraded</Label>
+                      <td colSpan={5} style={{ padding: "12px 8px", textAlign: "center", color: "#8b949e" }}>
+                        —
                       </td>
                     </tr>
                   )}

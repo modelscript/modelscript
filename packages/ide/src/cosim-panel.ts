@@ -1183,7 +1183,12 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   private localDeleteSession(sessionId: string): void {
     const timer = this.localSimTimers.get(sessionId);
     if (timer) {
-      clearInterval(timer);
+      const abortRef = (timer as unknown as { abortRef?: { aborted: boolean } | undefined }).abortRef;
+      if (abortRef) {
+        abortRef.aborted = true;
+      } else {
+        clearInterval(timer);
+      }
       this.localSimTimers.delete(sessionId);
     }
 

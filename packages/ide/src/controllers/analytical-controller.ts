@@ -109,11 +109,13 @@ export function registerAnalyticalCommands(
         let cd = 0.8;
         let area = 0.03;
         let rho = 1.225;
+        let filesReadOrUpdated = 0;
 
         // 1. Read FEA deck
         try {
           const rawInp = await vscode.workspace.fs.readFile(inpUri);
           const inpText = new TextDecoder().decode(rawInp);
+          filesReadOrUpdated++;
           const massMatch = inpText.match(/\bmass\s*=\s*([\d.]+)/i);
           if (massMatch) mass = parseFloat(massMatch[1]!);
           const misesMatch = inpText.match(/\bmax_von_mises\s*=\s*([\d.]+)/i);
@@ -124,6 +126,7 @@ export function registerAnalyticalCommands(
         try {
           const rawCfg = await vscode.workspace.fs.readFile(cfgUri);
           const cfgText = new TextDecoder().decode(rawCfg);
+          filesReadOrUpdated++;
           const cdMatch = cfgText.match(/\bCd_total\s*=\s*([\d.]+)/i) || cfgText.match(/\bCD\s*=\s*([\d.]+)/i);
           if (cdMatch) cd = parseFloat(cdMatch[1]!);
           const areaMatch = cfgText.match(/REF_AREA\s*=\s*([\d.]+)/i);
@@ -136,6 +139,7 @@ export function registerAnalyticalCommands(
         try {
           const moDoc = await vscode.workspace.openTextDocument(moUri);
           const moText = moDoc.getText();
+          filesReadOrUpdated++;
           const updatedMoText = moText
             .replace(/\bparameter\s+Real\s+m\s*=\s*[\d.]+/g, `parameter Real m = ${mass}`)
             .replace(/\bparameter\s+Real\s+A\s*=\s*[\d.]+/g, `parameter Real A = ${area}`)
@@ -153,6 +157,7 @@ export function registerAnalyticalCommands(
         try {
           const sysmlDoc = await vscode.workspace.openTextDocument(sysmlUri);
           const sysmlText = sysmlDoc.getText();
+          filesReadOrUpdated++;
           const updatedSysml = sysmlText
             .replace(/\battribute\s+totalMass\s*:\s*Real\s*=\s*[\d.]+/g, `attribute totalMass : Real = ${mass}`)
             .replace(
@@ -174,6 +179,13 @@ export function registerAnalyticalCommands(
             await vscode.workspace.applyEdit(edit);
           }
         } catch {}
+
+        if (filesReadOrUpdated === 0) {
+          vscode.window.showWarningMessage(
+            "No linked CAE (.inp, .cfg), Modelica (.mo), or SysML v2 (.sysml) files were found in the workspace to synchronize.",
+          );
+          return;
+        }
 
         vscode.window.showInformationMessage(
           `✔ Digital Thread Synchronized: FEA mass (m = ${mass} kg, σ = ${(maxVonMisesPa / 1e6).toFixed(1)} MPa), CFD drag (Cd = ${cd.toFixed(2)}), and CAD area (A = ${area} m²) aligned with Modelica DAE & SysML v2.`,

@@ -7,8 +7,9 @@ import { DOMAIN_INDEX_TO_NAME } from "@modelscript/runtime";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import path from "node:path";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { LspContext } from "../lsp-context.js";
+import { LspContext, type ModelScriptLspSettings } from "../lsp-context.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getTraceabilityMatrix } from "../requirements.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { loadDependencyFromRegistry, type RegistryPackageInfo } from "../vfs/library-loader.js";
@@ -78,6 +79,28 @@ function isValueCarryingEntry(entry: any, slice?: string): boolean {
 }
 
 export function registerMiscEndpoints(context: LspContext) {
+  // ── Live VS Code Settings Synchronization ────────────────────────────
+  context.connection.onNotification("modelscript/updateSettings", (params: ModelScriptLspSettings) => {
+    context.settings = {
+      ...context.settings,
+      ...params,
+    };
+    if (params?.languages) {
+      globalLanguageRegistry.setLanguageConfig(params.languages);
+    }
+    if (params?.diagnostics && context.validationService) {
+      context.validationService.diagnosticsConfig = {
+        ...context.validationService.diagnosticsConfig,
+        ...params.diagnostics,
+      };
+    }
+    if (context.documents && context.validationService) {
+      for (const doc of context.documents.all()) {
+        context.validationService.validateTextDocument(doc);
+      }
+    }
+  });
+
   // ── Viewport tracking for prioritized linting ────────────────────────
   // Client sends visible line ranges on scroll/edit. We convert to byte
   // ranges and store in ValidationService for viewport-aware linting.

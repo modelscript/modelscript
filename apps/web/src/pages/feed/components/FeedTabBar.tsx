@@ -51,59 +51,60 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
       >
         <TabText $active={activeTab === "forYou"}>For you</TabText>
       </Tab>
-      <Tab
-        id="feed-tab-following"
-        role="tab"
-        aria-selected={activeTab === "following"}
-        aria-controls="feed-tabpanel"
-        tabIndex={activeTab === "following" ? 0 : -1}
-        $active={activeTab === "following"}
-        className="sort-menu-container"
-        onClick={() => {
-          if (activeTab === "following") {
-            setShowSortMenu(!showSortMenu);
-          } else {
-            setActiveTab("following");
-          }
-        }}
-        onKeyDown={(e) => handleKeyDownTab(e, "following")}
-      >
-        <TabText $active={activeTab === "following"}>
-          Following
-          {activeTab === "following" && (
-            <div style={{ position: "relative" }}>
+      <div className="sort-menu-container" style={{ position: "relative", flex: 1, display: "flex" }}>
+        <Tab
+          id="feed-tab-following"
+          role="tab"
+          aria-selected={activeTab === "following"}
+          aria-controls="feed-tabpanel"
+          tabIndex={activeTab === "following" ? 0 : -1}
+          $active={activeTab === "following"}
+          onClick={() => {
+            if (activeTab === "following") {
+              setShowSortMenu(!showSortMenu);
+            } else {
+              setActiveTab("following");
+            }
+          }}
+          onKeyDown={(e) => handleKeyDownTab(e, "following")}
+        >
+          <TabText $active={activeTab === "following"}>
+            Following
+            {activeTab === "following" && (
               <span style={{ marginLeft: "4px", padding: "2px", display: "inline-flex", alignItems: "center" }}>
                 <ChevronDownIcon size={16} />
               </span>
-              {showSortMenu && (
-                <SortMenu role="menu" aria-label="Sort following feed">
-                  <div className="menu-header">Sort by</div>
-                  <button
-                    role="menuitem"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFollowingSort("popular");
-                      setShowSortMenu(false);
-                    }}
-                  >
-                    Popular {followingSort === "popular" && <CheckIcon size={16} fill="var(--color-accent-cyan)" />}
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFollowingSort("recent");
-                      setShowSortMenu(false);
-                    }}
-                  >
-                    Recent {followingSort === "recent" && <CheckIcon size={16} fill="var(--color-accent-cyan)" />}
-                  </button>
-                </SortMenu>
-              )}
-            </div>
-          )}
-        </TabText>
-      </Tab>
+            )}
+          </TabText>
+        </Tab>
+        {activeTab === "following" && showSortMenu && (
+          <SortMenu role="menu" aria-label="Sort following feed">
+            <div className="menu-header">Sort by</div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFollowingSort("popular");
+                setShowSortMenu(false);
+              }}
+            >
+              Popular {followingSort === "popular" && <CheckIcon size={16} fill="var(--color-accent-cyan)" />}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFollowingSort("recent");
+                setShowSortMenu(false);
+              }}
+            >
+              Recent {followingSort === "recent" && <CheckIcon size={16} fill="var(--color-accent-cyan)" />}
+            </button>
+          </SortMenu>
+        )}
+      </div>
       <Tab
         id="feed-tab-federated"
         role="tab"

@@ -9,6 +9,7 @@ import yazl from "yazl";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import type { LibraryStorage } from "../storage.js";
+import { indexSysmlFiles } from "./polyglot-doc-indexer.js";
 
 function zipFolderToBuffer(dir: string, ignorePatterns: string[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -67,7 +68,13 @@ function zipSysmlStdlibToBuffer(stdlibDir: string, version: string): Promise<Buf
 
     if (fs.existsSync(stdlibDir)) {
       for (const entry of fs.readdirSync(stdlibDir, { withFileTypes: true })) {
-        if (entry.isFile() && (entry.name.endsWith(".sysml") || entry.name.endsWith(".kerml"))) {
+        if (
+          entry.isFile() &&
+          (entry.name.endsWith(".sysml") ||
+            entry.name.endsWith(".kerml") ||
+            entry.name === "README.md" ||
+            entry.name === ".meta.json")
+        ) {
           zipfile.addFile(path.join(stdlibDir, entry.name), entry.name);
         }
       }
@@ -242,12 +249,72 @@ export async function seedPrepackagedLibraries(
           publishedBy: null,
         });
 
-        const classes = database.getClasses(pkg.name, pkg.version);
-        if (classes.length > 0 || pkg.name !== "Modelica") {
-          continue; // Already seeded and processed
+        // Backfill missing Modelica root README from indexed Modelica root class documentation if needed
+        if (pkg.name === "Modelica" && !existingPkg.readme) {
+          const rootModelica = database.getClass("Modelica", pkg.version, "Modelica");
+          if (rootModelica?.documentation) {
+            database.updatePackageMeta(existingPkg.id, {
+              description: rootModelica.description ?? pkg.description,
+              readme: rootModelica.documentation,
+              license: pkg.license,
+            });
+          }
         }
 
-        // If package and version exist but classes are empty (e.g. failed/interrupted processing), re-enqueue job
+        const classes = database.getClasses(pkg.name, pkg.version);
+        const minExpectedClasses = pkg.name === "Modelica" ? 6000 : 40;
+        const hasSysmlRoot =
+          pkg.name !== "SysML" ||
+          (classes.some((c) => c.class_name === "SysML") &&
+            classes.some((c) => c.class_name === "Parts.Part") &&
+            Boolean(existingPkg.readme));
+        if (classes.length >= minExpectedClasses && hasSysmlRoot) {
+          continue; // Already seeded and fully processed
+        }
+
+        // For SysML stdlib, refresh the zip/extracted dir from languages/sysml2/stdlib if incomplete
+        if (pkg.name === "SysML") {
+          const stdlibDir = path.resolve(repoRoot, "languages/sysml2/stdlib");
+          if (fs.existsSync(stdlibDir)) {
+            try {
+              const zipBuf = await zipSysmlStdlibToBuffer(stdlibDir, pkg.version);
+              const targetZipPath = path.join(storage.dataDir, "SysML", `${pkg.version}.zip`);
+              fs.mkdirSync(path.dirname(targetZipPath), { recursive: true });
+              fs.writeFileSync(targetZipPath, zipBuf);
+              const extractedPath = storage.getExtractedPath(pkg.name, pkg.version);
+              if (fs.existsSync(extractedPath)) {
+                fs.rmSync(extractedPath, { recursive: true, force: true });
+              }
+              const libPath = await storage.extractLibrary(pkg.name, pkg.version);
+              const readmePath = path.join(stdlibDir, "README.md");
+              const readmeText = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, "utf-8") : null;
+              database.updatePackageMeta(existingPkg.id, {
+                description: pkg.description,
+                readme: readmeText,
+                license: pkg.license,
+              });
+              const indexed = await indexSysmlFiles({
+                extractedDir: libPath,
+                packageName: pkg.name,
+                version: pkg.version,
+              });
+              for (const item of indexed) {
+                storage.storeSvg(pkg.name, pkg.version, item.metadata.className, item.iconSvg, item.diagramSvg);
+              }
+              if (indexed.length > 0) {
+                database.storeClassBatch(
+                  pkg.name,
+                  pkg.version,
+                  indexed.map((i) => i.metadata),
+                );
+              }
+            } catch (err) {
+              console.warn(`[Seed] Failed to refresh SysML stdlib:`, err);
+            }
+          }
+        }
+
+        // If package and version exist but classes are incomplete, re-enqueue job
         let libraryPath = storage.getExtractedPath(pkg.name, pkg.version);
         if (!fs.existsSync(libraryPath)) {
           try {
@@ -257,7 +324,7 @@ export async function seedPrepackagedLibraries(
           }
         }
         if (fs.existsSync(libraryPath)) {
-          console.log(`[Seed] Re-enqueuing processing for unindexed prepackaged library: ${pkg.name}@${pkg.version}`);
+          console.log(`[Seed] Re-enqueuing processing for prepackaged library: ${pkg.name}@${pkg.version}`);
           const jobKey = `${pkg.name}@${pkg.version}`;
           jobQueue.enqueueProcess(jobKey, workerScript, {
             name: pkg.name,
@@ -273,13 +340,11 @@ export async function seedPrepackagedLibraries(
 
     const zipPath = path.resolve(repoRoot, "scripts", pkg.filename);
     let zipBuffer: Buffer | null = null;
-    if (fs.existsSync(zipPath)) {
+    const stdlibDir = path.resolve(repoRoot, "languages/sysml2/stdlib");
+    if (pkg.name === "SysML" && fs.existsSync(stdlibDir)) {
+      zipBuffer = await zipSysmlStdlibToBuffer(stdlibDir, pkg.version);
+    } else if (fs.existsSync(zipPath)) {
       zipBuffer = fs.readFileSync(zipPath);
-    } else if (pkg.name === "SysML") {
-      const stdlibDir = path.resolve(repoRoot, "languages/sysml2/stdlib");
-      if (fs.existsSync(stdlibDir)) {
-        zipBuffer = await zipSysmlStdlibToBuffer(stdlibDir, pkg.version);
-      }
     }
 
     if (!zipBuffer) {
@@ -289,18 +354,57 @@ export async function seedPrepackagedLibraries(
 
     console.log(`[Seed] Loading prepackaged library: ${pkg.name}@${pkg.version}`);
 
-    try {
-      await storage.store(pkg.name, pkg.version, zipBuffer);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
-        throw err;
+    if (pkg.name === "SysML") {
+      // Ensure stale extracted directory without SysML.sysml is replaced
+      const existingExtracted = storage.getExtractedPath(pkg.name, pkg.version);
+      if (fs.existsSync(existingExtracted) && !fs.existsSync(path.join(existingExtracted, "SysML.sysml"))) {
+        fs.rmSync(existingExtracted, { recursive: true, force: true });
+      }
+      const targetZipPath = path.join(storage.dataDir, "SysML", `${pkg.version}.zip`);
+      fs.mkdirSync(path.dirname(targetZipPath), { recursive: true });
+      fs.writeFileSync(targetZipPath, zipBuffer);
+    } else {
+      try {
+        await storage.store(pkg.name, pkg.version, zipBuffer);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
+          throw err;
+        }
       }
     }
     const libraryPath = await storage.extractLibrary(pkg.name, pkg.version);
 
     const { id: packageId } = database.getOrCreatePackage(pkg.name);
-    database.updatePackageMeta(packageId, { description: pkg.description, license: pkg.license });
+    const readmeCandidate = path.join(libraryPath, "README.md");
+    const readmeText = fs.existsSync(readmeCandidate) ? fs.readFileSync(readmeCandidate, "utf-8") : null;
+    database.updatePackageMeta(packageId, {
+      description: pkg.description,
+      readme: readmeText,
+      license: pkg.license,
+    });
+
+    if (pkg.name === "SysML") {
+      try {
+        const indexed = await indexSysmlFiles({
+          extractedDir: libraryPath,
+          packageName: pkg.name,
+          version: pkg.version,
+        });
+        for (const item of indexed) {
+          storage.storeSvg(pkg.name, pkg.version, item.metadata.className, item.iconSvg, item.diagramSvg);
+        }
+        if (indexed.length > 0) {
+          database.storeClassBatch(
+            pkg.name,
+            pkg.version,
+            indexed.map((i) => i.metadata),
+          );
+        }
+      } catch (err) {
+        console.warn(`[Seed] Synchronous SysML indexing warning:`, err);
+      }
+    }
 
     const shasum = crypto.createHash("sha1").update(zipBuffer).digest("hex");
     const sha256 = crypto.createHash("sha256").update(zipBuffer).digest("hex");

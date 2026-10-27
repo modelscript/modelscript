@@ -63,7 +63,7 @@ const HomeFeedPage: React.FC = () => {
     if (listRef.current) {
       setScrollMargin(listRef.current.offsetTop);
     }
-  }, []);
+  }, [loading]);
 
   const rowVirtualizer = useWindowVirtualizer({
     count: posts.length,

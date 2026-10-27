@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/energyplus",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "US DOE EnergyPlus building energy performance and thermal simulation language package for ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",

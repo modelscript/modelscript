@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import Box from "../../components/Box";
 import Post from "../../components/Post";
 import type { PostData, TopicData } from "./constants";
-import { CURATED_ENGINEERING_DOMAINS, STARTER_TEMPLATES } from "./constants";
+import { CURATED_ENGINEERING_DOMAINS } from "./constants";
 import { MobileSearchWrapper } from "./styles";
 
 export interface ExploreLandingViewProps {
@@ -94,7 +94,7 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                   <RocketIcon size={18} /> Engineering Workspaces
                 </Heading>
                 <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                  Start clean with the recommended blank workspace, or open deprecated legacy example projects.
+                  Start clean with the recommended blank workspace or launch an interactive physical simulation.
                 </Text>
               </Box>
               <Box display="flex" alignItems="center" gap="10px">
@@ -364,109 +364,6 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                   <CodeIcon size={12} /> Launch Bouncing Ball
                 </Link>
               </Box>
-
-              {STARTER_TEMPLATES.filter((tmpl) => tmpl.id !== "bouncing-ball").map((tmpl) => (
-                <Box
-                  key={tmpl.id}
-                  bg="var(--color-bg-card)"
-                  border="1px solid var(--color-border-glass)"
-                  borderRadius="10px"
-                  p="14px"
-                  minWidth="240px"
-                  maxWidth="260px"
-                  display="flex"
-                  flexDirection="column"
-                  justifyContent="space-between"
-                  style={{
-                    flexShrink: 0,
-                    scrollSnapAlign: "start",
-                  }}
-                  sx={{
-                    flexShrink: 0,
-                    transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-                    "&:hover": {
-                      borderColor: "rgba(210, 153, 34, 0.5)",
-                      transform: "translateY(-2px)",
-                      boxShadow: "0 0 16px rgba(210, 153, 34, 0.1)",
-                    },
-                  }}
-                >
-                  <Box>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <span style={{ fontSize: "20px" }}>{tmpl.icon}</span>
-                      <Box display="flex" gap="4px" alignItems="center">
-                        <span
-                          style={{
-                            fontSize: "9px",
-                            fontFamily: "var(--font-mono)",
-                            padding: "1px 5px",
-                            borderRadius: "4px",
-                            backgroundColor: "rgba(210, 153, 34, 0.15)",
-                            color: "#d29922",
-                            border: "1px solid rgba(210, 153, 34, 0.3)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Deprecated
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            fontFamily: "var(--font-mono)",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            backgroundColor: "var(--color-accent-blue-bg)",
-                            color: "var(--color-accent-cyan)",
-                            border: "1px solid var(--color-accent-blue-border)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {tmpl.badge}
-                        </span>
-                      </Box>
-                    </Box>
-                    <div
-                      style={{
-                        fontWeight: "bold",
-                        fontSize: "14px",
-                        color: "var(--color-text-heading)",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {tmpl.title}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--color-text-muted)",
-                        lineHeight: 1.4,
-                        marginBottom: "12px",
-                      }}
-                    >
-                      {tmpl.description}
-                    </div>
-                  </Box>
-                  <Link
-                    to={`/ide/${tmpl.id}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                      padding: "6px 12px",
-                      borderRadius: "6px",
-                      background: "rgba(255, 255, 255, 0.05)",
-                      border: "1px solid var(--color-border-glass)",
-                      color: "var(--color-text-muted)",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      textDecoration: "none",
-                    }}
-                  >
-                    <CodeIcon size={12} /> Launch Legacy
-                  </Link>
-                </Box>
-              ))}
             </Box>
           </Box>
 

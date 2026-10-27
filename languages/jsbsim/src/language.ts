@@ -14,6 +14,7 @@ import { solveFlightDynamics } from "./solvers/flight-solver.js";
 export const jsbsimLanguage = language({
   name: "jsbsim",
   fileExtensions: [".xml"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".xml"],
     icons: {

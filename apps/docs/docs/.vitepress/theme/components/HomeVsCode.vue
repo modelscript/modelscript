@@ -8,7 +8,7 @@ const features = [
   {
     icon: "⚡",
     title: "Diagnostics & Linting",
-    description: "Sub-millisecond diagnostics with 200+ compiler lint rules and inline quick-fixes.",
+    description: "Incremental diagnostics with 770+ compiler lint rules and inline quick-fixes.",
   },
   {
     icon: "📊",
@@ -39,9 +39,7 @@ const features = [
       <div class="section-header">
         <span class="section-badge">Editor Tooling</span>
         <h2 class="section-title">VS Code Extension</h2>
-        <p class="section-subtitle">
-          Turn VS Code into a comprehensive physical modeling and simulation IDE.
-        </p>
+        <p class="section-subtitle">Turn VS Code into a comprehensive physical modeling and simulation IDE.</p>
       </div>
 
       <div class="vscode-grid">
@@ -132,7 +130,9 @@ const features = [
   border: 1px solid var(--vp-c-border);
   border-radius: 12px;
   padding: 20px;
-  transition: border-color 0.25s ease, transform 0.25s ease;
+  transition:
+    border-color 0.25s ease,
+    transform 0.25s ease;
 }
 
 .vscode-feat-card:hover {
@@ -177,7 +177,9 @@ const features = [
   font-weight: 600;
   border-radius: 8px;
   text-decoration: none;
-  transition: background 0.2s, transform 0.2s;
+  transition:
+    background 0.2s,
+    transform 0.2s;
   box-shadow: 0 4px 14px var(--vp-c-brand-soft);
 }
 
@@ -196,7 +198,9 @@ const features = [
   font-weight: 600;
   border-radius: 8px;
   text-decoration: none;
-  transition: border-color 0.2s, background 0.2s;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
 .btn-secondary:hover {

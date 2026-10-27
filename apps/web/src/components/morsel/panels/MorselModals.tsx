@@ -6,12 +6,15 @@ import type { editor } from "monaco-editor";
 import React, { Suspense } from "react";
 import AddLibraryModal from "../AddLibraryModal";
 import { CloudDispatchModal } from "../CloudDispatchModal";
+import { detectLanguageFromFilename } from "../constants";
 import OpenFileDropzone from "../OpenFileDropzone";
-import { installDependency } from "../util/lsp-bridge";
+import { installDependency, loadLibraryFromBuffer } from "../util/lsp-bridge";
 
 const CodeEditor = React.lazy(() => import("../Code"));
 
 export interface MorselModalsProps {
+  dialect?: string | undefined;
+  onSelectDialect?: ((dialect: string) => void) | undefined;
   isShareDialogOpen: boolean;
   setShareDialogOpen: (v: boolean) => void;
   shareButtonRef: React.RefObject<HTMLButtonElement | null>;
@@ -26,10 +29,7 @@ export interface MorselModalsProps {
   setDirtyDialogOpen: (v: boolean) => void;
   pendingSelection: string | null;
   setPendingSelection: (v: string | null) => void;
-  pendingSplashVisible: boolean;
-  setPendingSplashVisible: (v: boolean) => void;
   loadClass: (name: string) => void;
-  setSplashVisible: (v: boolean) => void;
   isOpenFileDialogOpen: boolean;
   setIsOpenFileDialogOpen: (v: boolean) => void;
   openFileButtonRef: React.RefObject<HTMLButtonElement | null>;
@@ -49,6 +49,8 @@ export interface MorselModalsProps {
 }
 
 export const MorselModals: React.FC<MorselModalsProps> = ({
+  dialect = "modelica",
+  onSelectDialect,
   isShareDialogOpen,
   setShareDialogOpen,
   shareButtonRef,
@@ -63,10 +65,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
   setDirtyDialogOpen,
   pendingSelection,
   setPendingSelection,
-  pendingSplashVisible,
-  setPendingSplashVisible,
   loadClass,
-  setSplashVisible,
   isOpenFileDialogOpen,
   setIsOpenFileDialogOpen,
   openFileButtonRef,
@@ -97,7 +96,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
               content: "Publish to Feed",
               onClick: () => {
                 const code = editor?.getValue() ?? "";
-                const title = documentModels[selectedModelIndex]?.name || selectedTreeClassName || "ModelicaModel";
+                const title = documentModels[selectedModelIndex]?.name || selectedTreeClassName || "ModelScriptModel";
                 window.dispatchEvent(
                   new CustomEvent("modelscript:open-compose", {
                     detail: {
@@ -105,7 +104,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                       morselPayload: {
                         code,
                         title,
-                        dialect: "modelica",
+                        dialect,
                       },
                     },
                   }),
@@ -117,7 +116,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                       payload: {
                         title,
                         content: `Interactive physical schematic: **${title}** ⚡`,
-                        morselPayload: { code, title, dialect: "modelica" },
+                        morselPayload: { code, title, dialect },
                       },
                     },
                     window.location.origin,
@@ -131,7 +130,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
               content: translations.copyToClipboard,
               onClick: async () => {
                 await navigator.clipboard.writeText(
-                  `${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`,
+                  `${window.location.protocol}//${window.location.host}/#${dialect}=${encodeURIComponent(editor?.getValue() ?? "")}`,
                 );
                 toast.success(translations.copiedToClipboard);
                 setShareDialogOpen(false);
@@ -141,7 +140,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
         >
           <div
             style={{ wordBreak: "break-all" }}
-          >{`${window.location.protocol}//${window.location.host}/#modelica=${encodeURIComponent(editor?.getValue() ?? "")}`}</div>
+          >{`${window.location.protocol}//${window.location.host}/#${dialect}=${encodeURIComponent(editor?.getValue() ?? "")}`}</div>
         </Dialog>
       )}
 
@@ -156,7 +155,6 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
               onClick: () => {
                 setDirtyDialogOpen(false);
                 setPendingSelection(null);
-                setPendingSplashVisible(false);
               },
             },
             {
@@ -167,10 +165,6 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                 if (pendingSelection) {
                   loadClass(pendingSelection);
                   setPendingSelection(null);
-                }
-                if (pendingSplashVisible) {
-                  setSplashVisible(true);
-                  setPendingSplashVisible(false);
                 }
               },
             },
@@ -188,7 +182,13 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
         >
           <OpenFileDropzone
             translations={translations}
-            onFileContent={(newContent) => {
+            onFileContent={(newContent, filename) => {
+              if (filename) {
+                const detected = detectLanguageFromFilename(filename);
+                if (detected && detected !== dialect) {
+                  onSelectDialect?.(detected);
+                }
+              }
               editor?.setValue(newContent);
               setIsOpenFileDialogOpen(false);
             }}
@@ -259,6 +259,8 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
           onAddLibrary={async (item, type) => {
             try {
               if (type === "file" && item instanceof File) {
+                const buf = new Uint8Array(await item.arrayBuffer());
+                await loadLibraryFromBuffer(buf, item.name);
                 setContextVersion((v) => v + 1);
               }
             } catch (error) {
@@ -314,9 +316,6 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
           startTime: experimentOverrides.startTime,
           stopTime: experimentOverrides.stopTime,
           interval: experimentOverrides.interval,
-          solver: experimentOverrides.solver!,
-          numberOfIntervals: experimentOverrides.numberOfIntervals,
-          tolerance: experimentOverrides.tolerance,
         }}
         onResultLoaded={onCloudResultLoaded}
       />

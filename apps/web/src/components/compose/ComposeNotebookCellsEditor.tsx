@@ -7,7 +7,6 @@ import {
   PaperclipIcon,
   PlusIcon,
   PulseIcon,
-  SlidersIcon,
   TrashIcon,
 } from "@primer/octicons-react";
 import React from "react";
@@ -29,19 +28,18 @@ export interface ComposeNotebookCellsEditorProps {
   setActiveCellId: (id: string | null) => void;
   insertMarkdownSnippet: (cellId: string, snippet: string) => void;
   moveCell: (cellId: string, direction: -1 | 1) => void;
-  addMarkdownCellAfter: (cellId?: string) => void;
+  addMarkdownCellAfter: (cellId?: string | undefined) => void;
   removeCell: (cellId: string) => void;
   updateMarkdownCell: (cellId: string, content: string) => void;
   updateArtifactCellCaption: (cellId: string, caption: string) => void;
   updateTokenState: (value: string, cursorPosition: number) => void;
-  handleInteraction: () => void;
+  handleInteraction: (e: React.SyntheticEvent<HTMLTextAreaElement>) => void;
   handleSubmit: () => void;
-  setMentionQuery: (q: string | null) => void;
-  setHashtagQuery: (q: string | null) => void;
+  setMentionQuery: (q: { query: string; index: number } | null) => void;
+  setHashtagQuery: (q: { query: string; index: number } | null) => void;
   setPendingInsertAfterCellId: (id: string | null) => void;
   setShowCodeSnippetModal: (show: boolean) => void;
   setShowMorselModal: (show: boolean) => void;
-  createDummyArtifact: (type: string) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -63,7 +61,6 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   setPendingInsertAfterCellId,
   setShowCodeSnippetModal,
   setShowMorselModal,
-  createDummyArtifact,
   fileInputRef,
 }) => {
   return (
@@ -287,7 +284,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
         );
       })}
 
-      <Box display="flex" gap={2} flexWrap="wrap" alignItems="center" pt={1}>
+      <Box display="flex" gap={2} style={{ flexWrap: "wrap", paddingTop: "4px" }} alignItems="center">
         <CommandPill type="button" onClick={() => addMarkdownCellAfter(notebookCells[notebookCells.length - 1]?.id)}>
           <span className="pill-icon">
             <PlusIcon size={11} />
@@ -316,18 +313,6 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
             <PulseIcon size={11} />
           </span>
           <span>Insert Morsel Cell</span>
-        </CommandPill>
-        <CommandPill
-          type="button"
-          onClick={() => {
-            setPendingInsertAfterCellId(notebookCells[notebookCells.length - 1]?.id || null);
-            createDummyArtifact("simulation-plot");
-          }}
-        >
-          <span className="pill-icon">
-            <SlidersIcon size={11} />
-          </span>
-          <span>Insert Plot Cell</span>
         </CommandPill>
         <CommandPill
           type="button"

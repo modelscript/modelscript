@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Heading, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getArtifactView, getPost, getPostParents, getPostReplies, recordPostView } from "../api";
+import { getPost, getPostParents, getPostReplies, recordPostView } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-import type { ArtifactViewDTO, PostItem } from "../types/api";
+import type { PostItem } from "../types/api";
 import {
   estimateReadingTimeMinutes,
   extractNotebookHeadings,
@@ -16,30 +17,19 @@ import {
   parseNotebookFromContent,
 } from "../util/notebook";
 import { useOembedDiscovery, usePageTitle } from "../util/title";
-import type { ActiveBotTypingState, MoldSimulationPoint, MoldSimulationResult } from "./post-detail";
-import {
-  InjectionMoldDockPane,
-  OscillatorSandboxDockPane,
-  PostDetailThreadView,
-  runMoldSimulation,
-  runWasmSimulation,
-  SplitContainer,
-  TutorialGuideDockPane,
-} from "./post-detail";
-
-export type { MoldSimulationPoint, MoldSimulationResult };
+import type { ActiveBotTypingState } from "./post-detail";
+import { PostDetailThreadView, SplitContainer, TutorialGuideDockPane } from "./post-detail";
 
 const PostDetailPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const [post, setPost] = useState<PostItem | null>(null);
-  const [artifactView, setArtifactView] = useState<ArtifactViewDTO | null>(null);
   const isNotebook = useMemo(() => (post ? isNotebookPost(post) : false), [post]);
   const notebookData = useMemo(
     () =>
       post && isNotebook
-        ? parseNotebookFromContent(post.content, post.artifact_view_id, post.metadata?.notebook)
+        ? parseNotebookFromContent(post.content, (post as any).artifact_view_id, (post as any).metadata?.notebook)
         : null,
     [post, isNotebook],
   );
@@ -52,7 +42,6 @@ const PostDetailPage: React.FC = () => {
     [notebookData],
   );
   const [activeHeadingSlug, setActiveHeadingSlug] = useState<string>("");
-  const [rightDockTab, setRightDockTab] = useState<"guide" | "solver">("guide");
 
   usePageTitle(
     notebookData?.title
@@ -63,10 +52,15 @@ const PostDetailPage: React.FC = () => {
   );
   useOembedDiscovery(
     typeof window !== "undefined" ? window.location.href : undefined,
-    notebookData?.title || post?.title || (post?.content ? post.content.slice(0, 60) : undefined),
+    notebookData?.title || (post as any)?.title || (post?.content ? post.content.slice(0, 60) : undefined),
   );
   const [parents, setParents] = useState<PostItem[]>([]);
   const [replies, setReplies] = useState<PostItem[]>([]);
+  const repliesRef = useRef<PostItem[]>(replies);
+  useEffect(() => {
+    repliesRef.current = replies;
+  }, [replies]);
+
   const [loading, setLoading] = useState(true);
   const [activeBotTyping, setActiveBotTyping] = useState<ActiveBotTypingState | null>(null);
 
@@ -88,7 +82,7 @@ const PostDetailPage: React.FC = () => {
             const msg = JSON.parse(String(event.data));
             if (msg.type === "bot_typing") {
               const currentPostId = post?.id ?? Number(id);
-              const isRelevant = msg.postId === currentPostId || replies.some((r) => r.id === msg.postId);
+              const isRelevant = msg.postId === currentPostId || repliesRef.current.some((r) => r.id === msg.postId);
 
               if (isRelevant) {
                 if (msg.status === "thinking" || msg.status === "simulating") {
@@ -145,7 +139,7 @@ const PostDetailPage: React.FC = () => {
         ws?.close();
       } catch {}
     };
-  }, [id, post?.id, replies]);
+  }, [id, post?.id]);
 
   useEffect(() => {
     if (!activeBotTyping) return;
@@ -157,15 +151,15 @@ const PostDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (notebookHeadings.length === 0) return;
-    setActiveHeadingSlug(notebookHeadings[0]?.slug || "");
+    setActiveHeadingSlug(notebookHeadings[0]?.id || "");
     const handleScroll = () => {
-      let current = notebookHeadings[0]?.slug || "";
+      let current = notebookHeadings[0]?.id || "";
       for (const h of notebookHeadings) {
-        const el = document.getElementById(h.slug);
+        const el = document.getElementById(h.id);
         if (el) {
           const rect = el.getBoundingClientRect();
           if (rect.top <= 140) {
-            current = h.slug;
+            current = h.id;
           }
         }
       }
@@ -174,45 +168,6 @@ const PostDetailPage: React.FC = () => {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, [notebookHeadings]);
-
-  // General Oscillator parameters
-  const [dampingVal, setDampingVal] = useState("0.18");
-  const [stiffnessVal, setStiffnessVal] = useState("64");
-  const [tolVal, setTolVal] = useState("6");
-
-  // Injection Molding CFD parameters (ABS cavity fill)
-  const [meltTempVal, setMeltTempVal] = useState("235");
-  const [injPressureVal, setInjPressureVal] = useState("85");
-  const [gateVelVal, setGateVelVal] = useState("0.75");
-
-  const [isSimulating, setIsSimulating] = useState(false);
-
-  // Determine domain context from post content and artifact metadata
-  const isInjectionMoldingOrCfd = useMemo(() => {
-    const content = (post?.content || "").toLowerCase();
-    const title = (artifactView?.title || "").toLowerCase();
-    const viewType = (artifactView?.view_type || "").toLowerCase();
-    return (
-      viewType === "cfd-animation" ||
-      viewType === "cfd" ||
-      content.includes("injection") ||
-      content.includes("mold") ||
-      content.includes("melt front") ||
-      title.includes("mold") ||
-      title.includes("injection") ||
-      title.includes("cfd")
-    );
-  }, [post?.content, artifactView?.title, artifactView?.view_type]);
-
-  const simResult = useMemo(
-    () => runWasmSimulation(dampingVal, stiffnessVal, tolVal),
-    [dampingVal, stiffnessVal, tolVal],
-  );
-
-  const moldSimResult = useMemo(
-    () => runMoldSimulation(meltTempVal, injPressureVal, gateVelVal),
-    [meltTempVal, injPressureVal, gateVelVal],
-  );
 
   const viewTrackedRef = useRef<Set<string>>(new Set());
   const mainPostRef = useRef<HTMLDivElement>(null);
@@ -246,18 +201,6 @@ const PostDetailPage: React.FC = () => {
         setPost(postData.post);
         setReplies(repliesData.posts || []);
         setParents(parentsData.posts || []);
-
-        if (postData.post?.artifact_view_id) {
-          getArtifactView(postData.post.artifact_view_id)
-            .then((art) => {
-              if (art?.artifactView) {
-                setArtifactView(art.artifactView);
-              }
-            })
-            .catch((err) => {
-              console.warn("[PostDetailPage] Could not load artifactView metadata:", err);
-            });
-        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -266,13 +209,6 @@ const PostDetailPage: React.FC = () => {
     }
     fetchPost();
   }, [id, token]);
-
-  const handleReSimulate = () => {
-    setIsSimulating(true);
-    setTimeout(() => {
-      setIsSimulating(false);
-    }, 280);
-  };
 
   if (loading) {
     return (
@@ -309,11 +245,11 @@ const PostDetailPage: React.FC = () => {
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         <Heading as="h2" style={{ fontSize: "18px", margin: 0, fontWeight: 700, color: "var(--color-text-heading)" }}>
-          {isNotebook ? "Engineering Tutorial" : post.artifact_view_id ? "Engineering Inspector" : "Thread"}
+          {isNotebook ? "Engineering Tutorial" : (post as any).artifact_view_id ? "Engineering Inspector" : "Thread"}
         </Heading>
       </StickyHeader>
 
-      {isNotebook || post.artifact_view_id ? (
+      {isNotebook && notebookData ? (
         <SplitContainer>
           <Box display="flex" flexDirection="column">
             {threadContent}
@@ -325,93 +261,14 @@ const PostDetailPage: React.FC = () => {
             gap={2}
             style={{ position: "sticky", top: "70px", height: "fit-content" }}
           >
-            {isNotebook && post.artifact_view_id && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "6px",
-                  padding: "4px",
-                  borderRadius: "12px",
-                  background: "var(--color-bg-card, rgba(15, 23, 42, 0.65))",
-                  border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setRightDockTab("guide")}
-                  style={{
-                    flex: 1,
-                    padding: "7px 12px",
-                    borderRadius: "8px",
-                    border: rightDockTab === "guide" ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
-                    background:
-                      rightDockTab === "guide"
-                        ? "linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(139, 92, 246, 0.14))"
-                        : "transparent",
-                    color: rightDockTab === "guide" ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "11.5px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  📚 Tutorial Guide &amp; TOC
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRightDockTab("solver")}
-                  style={{
-                    flex: 1,
-                    padding: "7px 12px",
-                    borderRadius: "8px",
-                    border: rightDockTab === "solver" ? "1px solid rgba(139, 92, 246, 0.45)" : "1px solid transparent",
-                    background: rightDockTab === "solver" ? "rgba(139, 92, 246, 0.18)" : "transparent",
-                    color: rightDockTab === "solver" ? "var(--color-text-heading)" : "var(--color-text-muted)",
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "11.5px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  ⚡ Live Solver
-                </button>
-              </div>
-            )}
-
-            {isNotebook && notebookData && (!post.artifact_view_id || rightDockTab === "guide") ? (
-              <TutorialGuideDockPane
-                post={post}
-                notebookData={notebookData}
-                notebookHeadings={notebookHeadings}
-                readTimeMinutes={readTimeMinutes}
-                activeHeadingSlug={activeHeadingSlug}
-                setActiveHeadingSlug={setActiveHeadingSlug}
-              />
-            ) : isInjectionMoldingOrCfd ? (
-              <InjectionMoldDockPane
-                moldSimResult={moldSimResult}
-                meltTempVal={meltTempVal}
-                setMeltTempVal={setMeltTempVal}
-                injPressureVal={injPressureVal}
-                setInjPressureVal={setInjPressureVal}
-                gateVelVal={gateVelVal}
-                setGateVelVal={setGateVelVal}
-                isSimulating={isSimulating}
-                onReSimulate={handleReSimulate}
-              />
-            ) : (
-              <OscillatorSandboxDockPane
-                simResult={simResult}
-                dampingVal={dampingVal}
-                setDampingVal={setDampingVal}
-                stiffnessVal={stiffnessVal}
-                setStiffnessVal={setStiffnessVal}
-                tolVal={tolVal}
-                setTolVal={setTolVal}
-                isSimulating={isSimulating}
-                onReSimulate={handleReSimulate}
-              />
-            )}
+            <TutorialGuideDockPane
+              post={post}
+              notebookData={notebookData}
+              notebookHeadings={notebookHeadings}
+              readTimeMinutes={readTimeMinutes}
+              activeHeadingSlug={activeHeadingSlug}
+              setActiveHeadingSlug={setActiveHeadingSlug}
+            />
           </Box>
         </SplitContainer>
       ) : (

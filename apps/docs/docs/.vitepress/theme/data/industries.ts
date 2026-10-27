@@ -113,7 +113,7 @@ export const INDUSTRIES: Industry[] = [
     cli: [
       "msx rocets simulate engine.roc",
       "msx render SpacecraftPower spacecraft.sysml --view IBD -o ibd.svg",
-      "msx verify BrakingController brake.mo --engine kind --format sarif",
+      "msx verify BrakingController brake.mo --format sarif",
     ],
   },
   {
@@ -229,9 +229,9 @@ export const INDUSTRIES: Industry[] = [
       { label: "Certify", detail: "EN 14363 homologation report" },
     ],
     cli: [
-      "msx gensys inspect ManchesterBenchmark.calc",
-      "msx gensys verify-en14363 ManchesterBenchmark.calc --out=homologation.html",
-      "msx gensys comfort HighSpeedTrain.calc --speed=250",
+      "msx gensys lint ManchesterBenchmark.calc",
+      "msx gensys verify --y-force 40 --q-force 80 --axle-load 160",
+      "msx gensys report ManchesterBenchmark.calc --format html --out homologation.html",
     ],
   },
   {
@@ -272,7 +272,7 @@ export const INDUSTRIES: Industry[] = [
       { label: "Simulate", detail: "Time-domain DAE" },
       { label: "Check", detail: "DNV code compliance" },
     ],
-    cli: ["msx sima lint mooring.sima", "msx sima simulate mooring.sima", "msx sima verify-dnv mooring.sima"],
+    cli: ["msx sima lint mooring.sima", "msx sima verify mooring.sima", "msx sima offset mooring.sima"],
   },
 
   // ─────────────────────────── Energy & Infrastructure ───────────────────────────
@@ -331,8 +331,8 @@ export const INDUSTRIES: Industry[] = [
     ],
     cli: [
       "msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o report.json",
-      "msx psse powerflow case.raw",
-      "msx psse to-pscad case.raw",
+      "msx psse solve case.raw",
+      "msx psse diagram case.raw",
     ],
   },
   {
@@ -495,9 +495,9 @@ export const INDUSTRIES: Industry[] = [
       { label: "Integrate", detail: "Modelica / FMU export" },
     ],
     cli: [
-      "msx spice op LowPassFilter.cir",
-      "msx spice tran PowerSupply.cir --stop=0.02 --step=1e-6 --out=transient.csv",
-      "msx spice ac AudioAmplifier.sp --fstart=10 --fstop=1e5 --points=100",
+      "msx spice simulate LowPassFilter.cir --analysis op",
+      "msx spice simulate PowerSupply.cir --analysis tran --tstep 1e-6 --tstop 0.02 --out transient.csv",
+      "msx spice simulate AudioAmplifier.sp --analysis ac --format csv --out bode.csv",
     ],
   },
   {

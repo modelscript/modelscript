@@ -18,6 +18,8 @@ export interface ModelingPreferences {
   // Numerical Simulation
   defaultSolver: "cvode" | "ida" | "dopri5" | "rk4";
   defaultRelativeTolerance: number;
+  solverTolerance: number;
+  defaultNumberOfIntervals: number;
   diagramAutoLayout: boolean;
 }
 
@@ -34,6 +36,8 @@ export const DEFAULT_MODELING_PREFERENCES: ModelingPreferences = {
 
   defaultSolver: "cvode",
   defaultRelativeTolerance: 1e-4,
+  solverTolerance: 1e-4,
+  defaultNumberOfIntervals: 500,
   diagramAutoLayout: true,
 };
 

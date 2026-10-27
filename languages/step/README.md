@@ -3,7 +3,7 @@
 
 # @modelscript/step
 
-ISO 10303-21 STEP Clear Text Encoding (`AP214` / `AP242`) CAD/CAE language package (`.step`, `.stp`, `.p21`) for ModelScript. Features a native WebAssembly GLR parser, `StepWorkspaceIndex` cross-file external reference resolver, B-Rep solid tessellation, assembly hierarchy & PMI/GD&T tolerance extraction (`extractStepAssembly`), automated Modelica MultiBody kinematic joint synthesis (`mapStepToMultiBody`), FEA/CFD mesh & study generation actions, `step-mcp` server tools, and 5 polyglot TGG rules.
+ISO 10303-21 STEP Clear Text Encoding (`AP214` / `AP242`) CAD/CAE language package (`.step`, `.stp`, `.p21`) for ModelScript. Features a native WebAssembly GLR parser, `StepWorkspaceIndex` cross-file external reference resolver, B-Rep solid tessellation, assembly hierarchy & PMI/GD&T tolerance extraction (`extractStepAssembly`), pre-flight STEP exchange file linting (`T1001`–`T1008`), automated Modelica MultiBody kinematic joint synthesis (`mapStepToMultiBody`), FEA/CFD mesh & study generation actions, `step-mcp` server tools, and 5 polyglot TGG rules.
 
 ---
 
@@ -16,6 +16,7 @@ ISO 10303-21 STEP Clear Text Encoding (`AP214` / `AP242`) CAD/CAE language packa
   - **Kinematic Joints**: `REVOLUTE_PAIR`, `PRISMATIC_PAIR`, `CYLINDRICAL_PAIR`, `SPHERICAL_PAIR`, `PLANAR_PAIR`, and `FIXED_PAIR` joint axes, origins, and travel limits (`StepKinematicJoint`).
   - **Physical Mass & Inertia Properties**: Volume, surface area, mass, center of mass ($\mathbf{r}_{\text{CM}}$), and 3D inertia tensor ($I_{11}, I_{22}, I_{33}, I_{21}, I_{31}, I_{32}$).
   - **3D PMI & GD&T Tolerances**: AP242 geometric tolerances (`FLATNESS_TOLERANCE`, `CYLINDRICITY_TOLERANCE`, `POSITION_TOLERANCE`, `PERPENDICULARITY_TOLERANCE`, `PARALLELISM_TOLERANCE`, `CONCENTRICITY_TOLERANCE`, `RUNOUT_TOLERANCE`), datum features (`DATUM`), and datum reference frames (`DATUM_SYSTEM`).
+- **Pre-Flight STEP Exchange Linter (`lintStepContent`, `StepErrorCode`)**: Validates ISO 10303-21 framing (`ISO-10303-21;` / `END-ISO-10303-21;`), mandatory `HEADER;` and `DATA;` sections, `FILE_SCHEMA` declarations (`AP203`, `AP214`, `AP242`), duplicate `#id` entity declarations, and dangling `#id` entity references (`T1001`–`T1008`).
 - **Modelica MultiBody Kinematic Synthesis (`mapStepToMultiBody`)**: Maps extracted `StepAssemblyModel` parts, mass/inertia tensors, coordinate frame offsets, and kinematic pairs directly into `MultiBodyAssembly` descriptors (`Parts.BodyShape`, `Joints.Revolute`, `Joints.Prismatic`, `Joints.Cylindrical`, `Joints.Spherical`, `Joints.Planar`, `Parts.FixedTranslation`) for `@modelscript/modelica`'s `generateMultiBodyModelica`.
 - **Interactive CAD Viewer & FEA/CFD Mesh/Study Generation Actions**:
   - `open_cad_viewer`: Opens the 3D WebGL assembly and solid B-Rep geometry viewer.
@@ -31,14 +32,31 @@ ISO 10303-21 STEP Clear Text Encoding (`AP214` / `AP242`) CAD/CAE language packa
 
 | Path                        | Description                                                                                                                   |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`              | Public exports (`stepLanguage`, `extractStepAssembly`, `StepWorkspaceIndex`, `physical-data`, `schema`)                       |
+| `src/index.ts`              | Public exports (`stepLanguage`, `extractStepAssembly`, `StepWorkspaceIndex`, `lintStepContent`, `physical-data`, `schema`)    |
 | `src/language.ts`           | ISO 10303-21 grammar, writeback handler, 6 CAE/MultiBody actions, `step-mcp` server, LSP handlers, and 5 TGG rules            |
 | `src/assembly-extractor.ts` | `extractStepAssembly` parser for AP214/AP242 parts, placements, kinematic pairs, mass properties, and PMI/GD&T                |
 | `src/workspace-index.ts`    | `StepWorkspaceIndex` multi-file symbol indexer, external reference resolver, and OpenCascade B-Rep mesh cache                 |
 | `src/physical-data.ts`      | Data structures for `StepAssemblyModel`, `StepPart`, `StepKinematicJoint`, `StepMassProperties`, and `StepGeometricTolerance` |
 | `src/schema.ts`             | STEP AP214/AP242 entity schema definitions and attribute descriptors                                                          |
+| `src/errors.ts`             | `StepErrorCode` diagnostic registry (`T1001`–`T1008` / numeric `1001`–`1008`)                                                 |
+| `src/lints/step-linter.ts`  | `lintStepContent` pre-flight static linter for ISO 10303-21 STEP exchange files                                               |
 | `step-multibody-mapper.ts`  | `mapStepToMultiBody` converter from `StepAssemblyModel` to Modelica `MultiBodyAssembly`                                       |
 | `build.js`                  | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                                  |
+
+---
+
+## Semantic / Pre-Flight Lint Rules (`StepErrorCode`, `T1001`–`T1008`)
+
+| Code (`Txxxx` / `code`) | Rule                          | Severity  | Description                                                                                 |
+| :---------------------- | :---------------------------- | :-------- | :------------------------------------------------------------------------------------------ |
+| `T1001` (`1001`)        | `step-syntax-error`           | `error`   | STEP file syntax or framing error (missing `ISO-10303-21;` or `END-ISO-10303-21;`).         |
+| `T1002` (`1002`)        | `missing-header-section`      | `error`   | STEP exchange file is missing mandatory `HEADER;` section.                                  |
+| `T1003` (`1003`)        | `missing-schema-declaration`  | `warning` | STEP header lacks a recognized `FILE_SCHEMA` declaration (e.g., `AP203`, `AP214`, `AP242`). |
+| `T1004` (`1004`)        | `missing-data-section`        | `error`   | STEP exchange file is missing mandatory `DATA;` section.                                    |
+| `T1005` (`1005`)        | `unresolved-entity-reference` | `error`   | Referenced STEP entity `#id` is not defined in the `DATA` section.                          |
+| `T1006` (`1006`)        | `duplicate-entity-id`         | `error`   | Entity ID `#id` is declared more than once in the `DATA` section.                           |
+| `T1007` (`1007`)        | `empty-data-section`          | `warning` | STEP `DATA` section contains no entity records.                                             |
+| `T1008` (`1008`)        | `unsupported-ap-schema`       | `warning` | Application Protocol schema may not support complete PMI or B-Rep extraction.               |
 
 ---
 

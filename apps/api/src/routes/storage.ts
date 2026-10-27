@@ -51,14 +51,31 @@ export function storageRouter(): Router {
     const checkExt = (exts: string[]) => exts.some((e) => lowerFilename.endsWith(e) || originalExt === e);
     let viewType = "other";
 
+    const safeFilename = path.basename(req.file.path);
+    const safeFilePath = path.resolve(uploadDir, safeFilename);
+    let headerSnippet = "";
+    if (safeFilePath.startsWith(uploadDir + path.sep)) {
+      try {
+        const fd = fs.openSync(safeFilePath, "r");
+        const buf = Buffer.alloc(4096);
+        const bytesRead = fs.readSync(fd, buf, 0, 4096, 0);
+        fs.closeSync(fd);
+        headerSnippet = buf.toString("utf8", 0, bytesRead);
+      } catch {
+        // Ignore read error for header snippet
+      }
+    }
+
     if (mimeType.startsWith("image/")) viewType = "picture";
     else if (mimeType.startsWith("video/")) viewType = "video";
     else if (mimeType.startsWith("audio/")) viewType = "audio";
     else if (mimeType === "application/pdf") viewType = "pdf";
     else if (checkExt([".step", ".stp", ".p21"])) viewType = "cad-step";
+    else if (checkExt([".scad", ".csg"])) viewType = "scad";
     else if (checkExt([".usdz", ".usd", ".usda", ".gltf", ".glb"])) viewType = "3d-model";
-    else if (checkExt([".csv", ".tsv"])) viewType = "simulation-plot";
-    else if (checkExt([".mo", ".mos", ".msim"])) viewType = "modelica-code";
+    else if (checkExt([".csv", ".tsv"])) viewType = "csv";
+    else if (checkExt([".mo", ".mos", ".msim"])) viewType = "modelica-diagram";
+    else if (checkExt([".msx"])) viewType = "modelscript";
     else if (checkExt([".sysml", ".sysml2", ".kerml"])) viewType = "sysml";
     else if (checkExt([".pscx", ".pslx", ".pswx", ".psmx"])) viewType = "pscad";
     else if (checkExt([".psout"])) viewType = "psout";
@@ -69,13 +86,45 @@ export function storageRouter(): Router {
     else if (checkExt([".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"])) viewType = "lps";
     else if (checkExt([".sima", ".sys", ".hyd"])) viewType = "sima";
     else if (checkExt([".gtm", ".gtd", ".gtx", ".gt"])) viewType = "gtsuite";
-    else if (checkExt([".inp", ".inpt", ".bdf"])) viewType = "fea-deck";
+    else if (checkExt([".tsimf", ".runf", ".gpf", ".fresf", ".gendyn", ".calc", ".sub", ".run"])) viewType = "gensys";
+    else if (checkExt([".spck", ".sbr", ".spckx", ".fbi", ".mbs"])) viewType = "simpack";
+    else if (checkExt([".sim"])) {
+      viewType = /\b(coupl|wheelset|kpf|func)\b/i.test(headerSnippet) ? "gensys" : "simpack";
+    } else if (checkExt([".adm", ".acf", ".cmd"])) viewType = "adams";
+    else if (checkExt([".arxml"])) viewType = "autosar";
+    else if (checkExt([".oem", ".omm", ".opm", ".ocm", ".tdm", ".cdm"])) viewType = "ccsds";
+    else if (checkExt([".idf", ".epjson"])) viewType = "energyplus";
+    else if (checkExt([".epanet", ".net"])) viewType = "epanet";
+    else if (checkExt([".xodr"])) viewType = "opendrive";
+    else if (checkExt([".plcopen", ".st", ".iec", ".pou"])) viewType = "plcopen";
+    else if (checkExt([".reqif", ".reqifz"])) viewType = "reqif";
+    else if (checkExt([".slx", ".mdl"])) viewType = "simulink";
+    else if (checkExt([".sp", ".cir", ".spice", ".lib"])) viewType = "spice";
+    else if (checkExt([".urdf", ".sdf", ".xacro"])) viewType = "urdf";
+    else if (checkExt([".va", ".vams"])) viewType = "verilog-a";
+    else if (checkExt([".c", ".h"])) viewType = "c";
+    else if (checkExt([".f90", ".f", ".for", ".f77", ".f95"])) viewType = "fortran";
+    else if (checkExt([".inp"])) {
+      if (/\[(SUBCATCHMENTS|RAINGAGES|CONDUITS|OUTFALLS)\]/i.test(headerSnippet)) {
+        viewType = "swmm";
+      } else if (/\[(JUNCTIONS|PIPES|RESERVOIRS|TANKS|PUMPS)\]/i.test(headerSnippet)) {
+        viewType = "epanet";
+      } else if (/\*(HEADING|NODE|ELEMENT|MATERIAL|STEP|BOUNDARY)/i.test(headerSnippet)) {
+        viewType = "fea-deck";
+      } else if (/\b(IN-UNITS|FLOWSHEET|BLOCKS|DEF-STREAMS)\b/i.test(headerSnippet)) {
+        viewType = "aspen";
+      } else if (/\b(CHAMBER|TURBOPUMP|NOZZLE|PROPELLANT)\b/i.test(headerSnippet)) {
+        viewType = "rocets";
+      } else {
+        viewType = "fea-deck";
+      }
+    } else if (checkExt([".inpt", ".bdf"])) viewType = "fea-deck";
     else if (checkExt([".cfg", ".cfgt", ".su2"])) viewType = "cfd-config";
     else if (checkExt([".fmu"])) viewType = "fmu";
     else if (checkExt([".ssp", ".ssd"])) viewType = "ssp";
     else if (checkExt([".gcode", ".nc"])) viewType = "gcode";
     else if (checkExt([".owl", ".owl2", ".ofn", ".ttl"])) viewType = "owl2";
-    else if (checkExt([".aspen", ".in"])) viewType = "aspen";
+    else if (checkExt([".aspen", ".bkp", ".in"])) viewType = "aspen";
     else if (checkExt([".swmm"])) viewType = "swmm";
     else if (checkExt([".s1p", ".s2p", ".s3p", ".s4p", ".s5p", ".s6p", ".s8p", ".s12p", ".s16p", ".ts"]))
       viewType = "touchstone";
@@ -86,6 +135,17 @@ export function storageRouter(): Router {
     else if (checkExt([".data", ".eclipse", ".inc"])) viewType = "eclipse";
     else if (checkExt([".sbml"])) viewType = "sbml";
     else if (checkExt([".jsbsim"])) viewType = "jsbsim";
+    else if (checkExt([".xml"])) {
+      if (/<REQ-IF\b/i.test(headerSnippet)) viewType = "reqif";
+      else if (/<AUTOSAR\b/i.test(headerSnippet)) viewType = "autosar";
+      else if (/<OpenDRIVE\b/i.test(headerSnippet)) viewType = "opendrive";
+      else if (/<OpenSCENARIO\b/i.test(headerSnippet)) viewType = "openscenario";
+      else if (/<sbml\b/i.test(headerSnippet)) viewType = "sbml";
+      else if (/<fdm_config\b/i.test(headerSnippet)) viewType = "jsbsim";
+      else if (/<(robot|sdf)\b/i.test(headerSnippet)) viewType = "urdf";
+      else if (/plcopen\.org/i.test(headerSnippet)) viewType = "plcopen";
+      else if (/Simpack/i.test(headerSnippet)) viewType = "simpack";
+    }
 
     let preprocessed: {
       svg?: string;
@@ -93,8 +153,6 @@ export function storageRouter(): Router {
       metadata?: Record<string, unknown>;
       viewConfigAdditions?: Record<string, unknown>;
     } = {};
-    const safeFilename = path.basename(req.file.path);
-    const safeFilePath = path.resolve(uploadDir, safeFilename);
     if (safeFilePath.startsWith(uploadDir + path.sep)) {
       try {
         preprocessed = await pregenerateServerSvgThumbnail(safeFilePath, viewType, req.file.originalname, uploadDir);

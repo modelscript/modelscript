@@ -3,9 +3,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { KebabHorizontalIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "../../Box";
+import { useToast } from "../../ToastContext";
 import { Card, KebabButton, ShowMoreLink, TrendingItem } from "../styles";
 
 export interface TrendingTopicsCardProps {
@@ -20,6 +21,10 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
   setActiveTrendMenu,
 }) => {
   const navigate = useNavigate();
+  const toast = useToast();
+  const [dismissedIds, setDismissedIds] = useState<Set<number | string>>(new Set());
+
+  const visibleTrending = trending.filter((t) => !dismissedIds.has(t.id ?? t.concept));
 
   return (
     <Card>
@@ -37,18 +42,14 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
         Trending Models & Topics
       </Heading>
       <Box display="flex" flexDirection="column">
-        {trending.length > 0 ? (
-          trending.map((topic) => (
-            <TrendingItem key={topic.id}>
+        {visibleTrending.length > 0 ? (
+          visibleTrending.map((topic) => (
+            <TrendingItem key={topic.id ?? topic.concept}>
               <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
                 <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
                   {topic.location ? `Trending in ${topic.location}` : "Trending"}
                 </div>
-                <Text
-                  as="div"
-                  fontWeight="bold"
-                  style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}
-                >
+                <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
                   {topic.display_name}
                 </Text>
               </Box>
@@ -88,18 +89,20 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                       gap={1}
                     >
                       {[
-                        "The associated content is not relevant",
-                        "This trend is spam",
-                        "This trend is abusive or harmful",
                         "Not interested in this",
+                        "The associated content is not relevant",
                         "This trend is a duplicate",
-                        "This trend is harmful or spammy",
+                        "This trend is abusive or harmful",
+                        "This trend is spam",
                       ].map((label, i) => (
                         <button
                           key={i}
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setDismissedIds((prev) => new Set(prev).add(topic.id ?? topic.concept));
                             setActiveTrendMenu(null);
+                            toast.info("Thanks for your feedback — trend hidden.");
                           }}
                           style={{
                             padding: "10px 12px",

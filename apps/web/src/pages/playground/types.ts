@@ -11,7 +11,7 @@ export interface MorselAnchor {
 
 export interface MorselDecodedPayload {
   v?: number;
-  lang?: "modelica" | "sysml2" | "owl2";
+  lang?: string;
   code?: string;
   title?: string;
   view?: string;

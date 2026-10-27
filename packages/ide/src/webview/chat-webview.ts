@@ -11,6 +11,8 @@ import { CreateMLCEngine, prebuiltAppConfig } from "@mlc-ai/web-llm";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const acquireVsCodeApi: () => { postMessage(msg: unknown): void; getState(): any; setState(s: any): void };
 declare const MODEL_BASE_URL: string;
+declare const OLLAMA_BASE_URL: string | undefined;
+declare const OLLAMA_MODEL: string | undefined;
 const vscode = acquireVsCodeApi();
 
 // ── DOM Elements ──
@@ -619,11 +621,15 @@ async function* streamChatCompletion(
       };
     }
   } else if (currentProvider === "ollama") {
-    const res = await fetch("http://localhost:11434/v1/chat/completions", {
+    const baseUrl =
+      typeof OLLAMA_BASE_URL === "string" && OLLAMA_BASE_URL.length > 0 ? OLLAMA_BASE_URL : "http://localhost:11434";
+    const targetModel =
+      typeof OLLAMA_MODEL === "string" && OLLAMA_MODEL.length > 0 ? OLLAMA_MODEL : "qwen2.5-coder:latest";
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "qwen2.5-coder:latest",
+        model: targetModel,
         messages,
         tools,
         stream: true,
@@ -632,7 +638,7 @@ async function* streamChatCompletion(
     });
     if (!res.ok) {
       throw new Error(
-        `Ollama request failed: ${res.statusText} (${res.status}). Verify Ollama is running at http://localhost:11434 with 'qwen2.5-coder' or another model.`,
+        `Ollama request failed: ${res.statusText} (${res.status}). Verify Ollama is running at ${baseUrl} with '${targetModel}' or configure 'modelscript.llm.endpoint'.`,
       );
     }
     const reader = res.body?.getReader();

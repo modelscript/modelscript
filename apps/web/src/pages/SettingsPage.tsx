@@ -29,7 +29,7 @@ const SettingsContainer = styled.div`
   min-height: calc(100vh - var(--dev-header-height, 0px));
 `;
 
-const MenuColumn = styled.div`
+const MenuColumn = styled.div<{ $hideOnMobile: boolean }>`
   flex: 0 0 350px;
   border-right: 1px solid var(--color-border-default);
   display: flex;
@@ -37,18 +37,18 @@ const MenuColumn = styled.div`
 
   @media (max-width: 900px) {
     flex: 1;
-    display: ${(props: { $hideOnMobile: boolean }) => (props.$hideOnMobile ? "none" : "flex")};
+    display: ${(props) => (props.$hideOnMobile ? "none" : "flex")};
     border-right: none;
   }
 `;
 
-const DetailColumn = styled.div`
+const DetailColumn = styled.div<{ $hideOnMobile: boolean }>`
   flex: 1;
   display: flex;
   flex-direction: column;
 
   @media (max-width: 900px) {
-    display: ${(props: { $hideOnMobile: boolean }) => (props.$hideOnMobile ? "none" : "flex")};
+    display: ${(props) => (props.$hideOnMobile ? "none" : "flex")};
   }
 `;
 
@@ -150,7 +150,11 @@ const SettingsPage: React.FC = () => {
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
     setMobileShowMenu(false);
-    setSearchParams({ tab });
+    if (pathTab) {
+      navigate(`/settings?tab=${encodeURIComponent(tab)}`);
+    } else {
+      setSearchParams({ tab });
+    }
   };
 
   return (

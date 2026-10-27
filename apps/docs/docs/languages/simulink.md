@@ -70,18 +70,7 @@ msx simulink to-dae FlightGuidance.mdl
 
 ## Control-Theoretic Linters & Diagnostic Rules
 
-| Code        | Identifier                             | Severity | Description                                                                       |
-| :---------- | :------------------------------------- | :------- | :-------------------------------------------------------------------------------- |
-| **`M7201`** | `unconnected-input-port`               | Error    | Input port on block has no driving line or signal source.                         |
-| **`M7202`** | `direct-feedthrough-algebraic-loop`    | Error    | Direct-feedthrough feedback cycle detected with no state storage or unit delay.   |
-| **`M7203`** | `unresolved-subsystem-link`            | Error    | Subsystem reference cannot be resolved in current file or workspace.              |
-| **`M7204`** | `port-index-out-of-bounds`             | Error    | Connection line references a port number exceeding block configuration.           |
-| **`M7205`** | `multirate-sample-time-conflict`       | Warning  | Direct connection between blocks with differing, unsynchronized sample rates.     |
-| **`M7206`** | `non-numeric-parameter`                | Warning  | Block parameter string cannot be evaluated to a finite numeric scalar or vector.  |
-| **`M7207`** | `invalid-bus-selector`                 | Error    | BusSelector references a signal name absent from the incoming bus schema.         |
-| **`M7208`** | `duplicate-block-name`                 | Warning  | Multiple blocks in the same subsystem share an identical name identifier.         |
-| **`M7209`** | `divide-by-zero-risk`                  | Warning  | Product block with division operator has constant zero divisor or no lower bound. |
-| **`M7210`** | `missing-integrator-initial-condition` | Info     | Continuous integrator does not specify an explicit `InitialCondition` parameter.  |
+<LintRules lang="simulink" />
 
 > [!TIP]
 > Algebraic loops detected by `M7202` can often be broken without physical fidelity loss by inserting a `UnitDelay` (discrete) or by modeling small actuator/sensor inertia via a first-order lag `TransferFcn` (continuous).

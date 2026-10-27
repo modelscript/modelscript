@@ -486,6 +486,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     const serverOrigin = new URL(scriptUri.toString()).origin;
     const modelBaseUrl = `${serverOrigin}/api/models`;
+    const cfg = vscode.workspace.getConfiguration("modelscript");
+    const ollamaEndpoint = (cfg.get<string>("llm.endpoint") || "http://localhost:11434").replace(/\/+$/, "");
+    const ollamaModel = cfg.get<string>("llm.model") || "qwen2.5-coder:latest";
 
     const csp = [
       "default-src 'none'",
@@ -786,7 +789,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </button>
     </div>
   </div>
-  <script nonce="${nonce}">var MODEL_BASE_URL = "${modelBaseUrl}";</script>
+  <script nonce="${nonce}">var MODEL_BASE_URL = "${modelBaseUrl}"; var OLLAMA_BASE_URL = "${ollamaEndpoint}"; var OLLAMA_MODEL = "${ollamaModel}";</script>
   <script nonce="${nonce}" src="${scriptUri}?t=${Date.now()}"></script>
 </body>
 </html>`;

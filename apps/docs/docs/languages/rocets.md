@@ -88,24 +88,9 @@ The `@modelscript/rocets` thermo engine provides:
 
 ---
 
-## Pre-Flight Diagnostic Rules (`M8001`–`M8014`)
+## Pre-Flight Diagnostic Rules
 
-| Code        | Identifier                     | Severity  | Verification Rule                                                                                        |
-| :---------- | :----------------------------- | :-------- | :------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------- |
-| **`M8001`** | `unconnected-fluid-port`       | `error`   | Fluid port is declared but not connected in the propellant flow circuit                                  |
-| **`M8002`** | `fluid-type-mismatch`          | `error`   | Incompatible propellant mixing (e.g. LOX into LH2) outside of a combustion chamber                       |
-| **`M8003`** | `shaft-power-imbalance`        | `error`   | Turbopump shaft torque or power mismatch exceeds tolerance ($P_{\text{turb}} \neq \sum P_{\text{pump}}$) |
-| **`M8004`** | `unbalanced-flow-split`        | `error`   | Mass conservation violation at piping junction ($                                                        | \sum \dot{m}_{\text{in}} - \sum \dot{m}_{\text{out}} | > \varepsilon$) |
-| **`M8005`** | `pump-cavitation-risk`         | `warning` | Pump inlet suction pressure is below required Net Positive Suction Head (NPSH) margin                    |
-| **`M8006`** | `negative-chamber-pressure`    | `error`   | Non-physical combustion chamber or line pressure ($P \le 0$)                                             |
-| **`M8007`** | `combustion-temperature-limit` | `warning` | Combustion gas temperature exceeds throat material structural limit ($T > 3800\text{ K}$)                |
-| **`M8008`** | `invalid-valve-schedule`       | `error`   | Valve stroke position is outside allowable $[0.0, 1.0]$ range                                            |
-| **`M8009`** | `choked-flow-inconsistency`    | `warning` | Nozzle expansion is unchoked ($P_c / P_a < 1.89$)                                                        |
-| **`M8010`** | `user-fortran-routine-error`   | `error`   | Syntax or semantic error detected in embedded Fortran user routine                                       |
-| **`M8011`** | `extreme-mixture-ratio`        | `warning` | Mixture ratio ($O/F$) is outside stable combustion limits ($0.3 < O/F < 15.0$)                           |
-| **`M8012`** | `missing-fluid-table`          | `error`   | Propellant fluid property table is not loaded                                                            |
-| **`M8013`** | `turbine-overspeed-hazard`     | `warning` | Turbopump shaft RPM exceeds mechanical burst limit                                                       |
-| **`M8014`** | `closed-flow-circuit`          | `error`   | Pump discharge is dead-headed with no open flow or recirculation path                                    |
+<LintRules lang="rocets" />
 
 ---
 
@@ -188,4 +173,4 @@ The `@modelscript/ide-client` package provides a dedicated dual-mode custom edit
 - **Start Transient Viewer**: Ignition ODE trajectory table and graphs ($P_c(t)$, $\text{RPM}(t)$, $F(t)$, $T_w(t)$).
 - **Module Netlist**: Filterable tabular listing of modules, parameters, and ports.
 - **Pre-Flight Diagnostics**: Live diagnostic warnings and error badges with click-to-line navigation.
-- **Instant Projections**: Side-by-side Modelica and FMI SSP code viewers with one-click export.
+- **Projections**: Side-by-side Modelica and FMI SSP code viewers with one-click export.

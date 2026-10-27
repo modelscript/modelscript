@@ -23,14 +23,15 @@ const touchstoneExtensions = [
   ".s16p",
   ".s24p",
   ".s32p",
-  ".ts",
+  ".ts2",
 ];
 
 /**
- * ModelScript Touchstone N-Port (.sNp, .ts) Language Definition.
+ * ModelScript Touchstone N-Port (.sNp, .ts2) Language Definition.
  */
 export const touchstoneLanguage = language({
   name: "touchstone",
+  maturity: "experimental",
   fileExtensions: touchstoneExtensions,
   lsp: {
     fileExtensions: touchstoneExtensions,

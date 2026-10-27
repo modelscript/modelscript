@@ -26,6 +26,7 @@ export const FORTRAN_PREC = {
 export const fortranLanguage = language({
   name: "fortran",
   fileExtensions: [".f", ".for", ".f77", ".f90"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".f", ".for", ".f77", ".f90"],
     icons: {

@@ -2,7 +2,6 @@
 
 export * from "./ComposeAttachedArtifact";
 export * from "./ComposeCodeSnippetModal";
-export * from "./ComposeLazyModals";
 export * from "./ComposeMentionHashtagPopups";
 export * from "./ComposeNotebookCellsEditor";
 export * from "./ComposeQuoteAndPin";

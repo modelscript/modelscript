@@ -15,6 +15,9 @@ export interface LibraryVersion {
   description: string | null;
   modelicaVersion: string | null;
   size: number;
+  license?: string | null | undefined;
+  author?: string | undefined;
+  salsaIndexed?: boolean | undefined;
   contentHash?: string | undefined;
   signature?: string | undefined;
   publishedAt?: string | undefined;
@@ -25,6 +28,8 @@ export interface LibraryVersion {
   yankedAt?: string | null | undefined;
   canManage?: boolean | undefined;
 }
+
+export type LibraryDetail = LibraryVersion;
 
 export type CollaboratorPermission = "admin" | "write" | "read";
 
@@ -70,19 +75,22 @@ export interface Component {
   modifiers: { modifier_name: string; modifier_value: string | null }[];
 }
 
-export type JobStatus = "pending" | "processing" | "completed" | "failed";
+export type JobStatus = "pending" | "processing" | "running" | "completed" | "failed";
 
 export interface JobInfo {
+  id?: string | number | undefined;
   status: JobStatus;
   error?: string | undefined;
   logs?: string[] | undefined;
 }
 
 export interface ClassDetail {
+  className?: string | undefined;
   classKind: string;
   description: string | null;
   documentation: string | null;
   extends: string[];
+  baseClasses?: string[] | undefined;
   components: Component[];
   sourceFile?: string | null | undefined;
   sourceCode?: string | null | undefined;
@@ -114,6 +122,7 @@ export interface LibraryListItem {
       }
     | null
     | undefined;
+  [key: string]: any;
 }
 
 export const getLibraries = async (q?: string) => {
@@ -240,12 +249,14 @@ export const transferPackageOwnership = async (name: string, targetUsername: str
   return data;
 };
 
-export const acceptPackageTransfer = async (transferId: number) => {
+export const acceptPackageTransfer = async (transferIdOrName: number | string, maybeTransferId?: number) => {
+  const transferId = typeof transferIdOrName === "number" ? transferIdOrName : maybeTransferId;
   const { data } = await api.post(`/libraries/transfers/${transferId}/accept`);
   return data;
 };
 
-export const cancelPackageTransfer = async (transferId: number) => {
+export const cancelPackageTransfer = async (transferIdOrName: number | string, maybeTransferId?: number) => {
+  const transferId = typeof transferIdOrName === "number" ? transferIdOrName : maybeTransferId;
   const { data } = await api.post(`/libraries/transfers/${transferId}/cancel`);
   return data;
 };
@@ -278,15 +289,27 @@ export const addPackageCollaborator = async (
   return data;
 };
 
-export const removePackageCollaborator = async (name: string, userId: number) => {
-  const { data } = await api.delete(`/libraries/${encodePackagePath(name)}/collaborators/${userId}`);
+export const removePackageCollaborator = async (name: string, userId: number | string) => {
+  const { data } = await api.delete(
+    `/libraries/${encodePackagePath(name)}/collaborators/${encodeURIComponent(String(userId))}`,
+  );
   return data;
 };
 
+export interface PublishPackageArchiveParams {
+  name: string;
+  version: string;
+  file: File | Blob;
+  tag?: string | undefined;
+  description?: string | undefined;
+  license?: string | undefined;
+  contentHash?: string | undefined;
+}
+
 export const publishPackageArchive = async (
-  name: string,
-  version: string,
-  file: File | Blob,
+  nameOrParams: string | PublishPackageArchiveParams,
+  version?: string,
+  file?: File | Blob,
   options?: {
     tag?: string | undefined;
     description?: string | undefined;
@@ -294,21 +317,30 @@ export const publishPackageArchive = async (
     contentHash?: string | undefined;
   },
 ) => {
+  const resolvedName = typeof nameOrParams === "string" ? nameOrParams : nameOrParams.name;
+  const resolvedVersion = typeof nameOrParams === "string" ? (version ?? "") : nameOrParams.version;
+  const resolvedFile = typeof nameOrParams === "string" ? file! : nameOrParams.file;
+  const resolvedOptions = typeof nameOrParams === "string" ? options : nameOrParams;
+
   const formData = new FormData();
-  formData.append("file", file);
-  if (options?.tag) formData.append("tag", options.tag);
-  if (options?.description) formData.append("description", options.description);
-  if (options?.license) formData.append("license", options.license);
-  if (options?.contentHash) formData.append("contentHash", options.contentHash);
+  formData.append("file", resolvedFile);
+  if (resolvedOptions?.tag) formData.append("tag", resolvedOptions.tag);
+  if (resolvedOptions?.description) formData.append("description", resolvedOptions.description);
+  if (resolvedOptions?.license) formData.append("license", resolvedOptions.license);
+  if (resolvedOptions?.contentHash) formData.append("contentHash", resolvedOptions.contentHash);
 
   const headers: Record<string, string> = {};
-  if (options?.contentHash) {
-    headers["X-Content-SHA256"] = options.contentHash;
+  if (resolvedOptions?.contentHash) {
+    headers["X-Content-SHA256"] = resolvedOptions.contentHash;
   }
 
-  const { data } = await api.post(`/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}`, formData, {
-    headers,
-  });
+  const { data } = await api.post(
+    `/libraries/${encodePackagePath(resolvedName)}/${encodeURIComponent(resolvedVersion)}`,
+    formData,
+    {
+      headers,
+    },
+  );
   return data;
 };
 

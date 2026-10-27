@@ -146,6 +146,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIMA Offshore Custom Editor</title>
   <style>
@@ -1092,30 +1093,37 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
 
     function initFloaterBuffers() {
       var parts = [];
-      var outerAngles = [0, 2 * Math.PI / 3, 4 * Math.PI / 3];
-      var rOuter = 40.0;
+      var numCols = (simVessel && simVessel.fairleads && simVessel.fairleads.length >= 3)
+        ? simVessel.fairleads.length
+        : 3;
+      var draftM = (simVessel && simVessel.draft > 2) ? simVessel.draft : 20.0;
+      var rOuter = (simVessel && simVessel.lengthBetweenPerpendiculars > 20)
+        ? Math.min(70.0, Math.max(25.0, simVessel.lengthBetweenPerpendiculars * 0.45))
+        : 40.0;
+      var colRadius = Math.max(3.5, Math.min(9.0, rOuter * 0.15));
       var outerCols = [];
 
-      for (var i = 0; i < 3; i++) {
-        var ang = outerAngles[i];
-        var cx = rOuter * Math.cos(ang);
-        var cy = rOuter * Math.sin(ang);
+      for (var i = 0; i < numCols; i++) {
+        var fl = (simVessel && simVessel.fairleads && simVessel.fairleads[i]) ? simVessel.fairleads[i] : null;
+        var ang = (2 * Math.PI * i) / numCols;
+        var cx = (fl && typeof fl.x === 'number' && (Math.abs(fl.x) > 5 || Math.abs(fl.y) > 5)) ? fl.x : rOuter * Math.cos(ang);
+        var cy = (fl && typeof fl.y === 'number' && (Math.abs(fl.x) > 5 || Math.abs(fl.y) > 5)) ? fl.y : rOuter * Math.sin(ang);
         outerCols.push({ x: cx, y: cy });
 
         // Submerged column hull (dark marine blue/slate)
-        parts.push(createPrism(cx, cy, -20, 0, 6.0, 12, 0.16, 0.22, 0.32));
+        parts.push(createPrism(cx, cy, -draftM, 0, colRadius, 12, 0.16, 0.22, 0.32));
         // Topside column (canary yellow)
-        parts.push(createPrism(cx, cy, 0, 12, 6.0, 12, 0.96, 0.72, 0.12));
+        parts.push(createPrism(cx, cy, 0, 12, colRadius, 12, 0.96, 0.72, 0.12));
       }
 
       // Center Column
-      parts.push(createPrism(0, 0, -15, 0, 5.0, 12, 0.16, 0.22, 0.32));
-      parts.push(createPrism(0, 0, 0, 12, 5.0, 12, 0.96, 0.72, 0.12));
+      parts.push(createPrism(0, 0, -draftM * 0.75, 0, colRadius * 0.85, 12, 0.16, 0.22, 0.32));
+      parts.push(createPrism(0, 0, 0, 12, colRadius * 0.85, 12, 0.96, 0.72, 0.12));
 
       // Keel pontoons between outer columns
-      for (var i = 0; i < 3; i++) {
+      for (var i = 0; i < numCols; i++) {
         var c1 = outerCols[i];
-        var c2 = outerCols[(i + 1) % 3];
+        var c2 = outerCols[(i + 1) % numCols];
         parts.push(createBox(c1.x, c1.y, -16, c2.x, c2.y, -16, 5.5, 4.5, 0.16, 0.22, 0.32));
         // Radial braces to center
         parts.push(createBox(0, 0, -16, c1.x, c1.y, -16, 4.0, 4.0, 0.16, 0.22, 0.32));
@@ -1385,38 +1393,52 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
     }
 
     function updateAndDrawMooringLines(mFloater, depth) {
-      var linesAngles = [0.0, 2.0 * Math.PI / 3.0, 4.0 * Math.PI / 3.0];
-      var rFairlead = 40.0;
-      var zFairlead = -14.0;
-      var rAnchor = 260.0;
+      var numLines = (simLines && simLines.length > 0) ? simLines.length : 3;
+      var rFairlead = (simVessel && simVessel.lengthBetweenPerpendiculars > 20)
+        ? Math.min(70.0, Math.max(25.0, simVessel.lengthBetweenPerpendiculars * 0.45))
+        : 40.0;
+      var zFairlead = (simVessel && simVessel.draft > 2) ? -simVessel.draft * 0.7 : -14.0;
+      var rAnchorDefault = Math.max(180.0, depth * 2.2);
       var maxTen = 0.0;
 
       var lineVerts = [];
       var lineCols = [];
 
-      for (var i = 0; i < 3; i++) {
-        var ang = linesAngles[i];
-        var fbx = rFairlead * Math.cos(ang);
-        var fby = rFairlead * Math.sin(ang);
-        var fbz = zFairlead;
+      for (var i = 0; i < numLines; i++) {
+        var lineObj = (simLines && simLines[i]) ? simLines[i] : null;
+        var fl = (simVessel && simVessel.fairleads && simVessel.fairleads[i]) ? simVessel.fairleads[i] : null;
+        var ang = (lineObj && typeof lineObj.azimuthDeg === 'number')
+          ? (lineObj.azimuthDeg * Math.PI) / 180.0
+          : (2.0 * Math.PI * i) / numLines;
+        var fbx = (fl && typeof fl.x === 'number' && (Math.abs(fl.x) > 5 || Math.abs(fl.y) > 5)) ? fl.x : rFairlead * Math.cos(ang);
+        var fby = (fl && typeof fl.y === 'number' && (Math.abs(fl.x) > 5 || Math.abs(fl.y) > 5)) ? fl.y : rFairlead * Math.sin(ang);
+        var fbz = (fl && typeof fl.z === 'number') ? fl.z : zFairlead;
 
         var fwx = mFloater[0] * fbx + mFloater[4] * fby + mFloater[8] * fbz + mFloater[12];
         var fwy = mFloater[1] * fbx + mFloater[5] * fby + mFloater[9] * fbz + mFloater[13];
         var fwz = mFloater[2] * fbx + mFloater[6] * fby + mFloater[10] * fbz + mFloater[14];
 
-        var ax = rAnchor * Math.cos(ang);
-        var ay = rAnchor * Math.sin(ang);
+        var rAnchor = (lineObj && lineObj.anchorRadius > 50) ? lineObj.anchorRadius : rAnchorDefault;
+        var ax = (lineObj && lineObj.anchorPosition && typeof lineObj.anchorPosition.x === 'number')
+          ? lineObj.anchorPosition.x
+          : rAnchor * Math.cos(ang);
+        var ay = (lineObj && lineObj.anchorPosition && typeof lineObj.anchorPosition.y === 'number')
+          ? lineObj.anchorPosition.y
+          : rAnchor * Math.sin(ang);
         var az = -depth;
 
         var horizDist = Math.sqrt((fwx - ax) * (fwx - ax) + (fwy - ay) * (fwy - ay));
-        var deltaExcursion = horizDist - (rAnchor - rFairlead);
-        var tension = 1250.0 + deltaExcursion * 38.5;
+        var nomSpan = Math.max(40.0, Math.sqrt(ax * ax + ay * ay) - Math.sqrt(fbx * fbx + fby * fby));
+        var deltaExcursion = horizDist - nomSpan;
+        var basePretension = (lineObj && lineObj.pretensionKn > 0) ? lineObj.pretensionKn : 1250.0;
+        var tension = Math.max(50.0, basePretension + deltaExcursion * 38.5);
         if (tension > maxTen) maxTen = tension;
 
+        var mblLimit = (lineObj && lineObj.mblKn > 0) ? lineObj.mblKn * 0.6 : 2400.0;
         var cr = 0.13, cg = 0.77, cb = 0.37;
-        if (tension >= 2400.0) {
+        if (tension >= mblLimit) {
           cr = 0.94; cg = 0.27; cb = 0.27;
-        } else if (tension >= 1800.0) {
+        } else if (tension >= mblLimit * 0.75) {
           cr = 0.96; cg = 0.62; cb = 0.04;
         }
 
@@ -1616,7 +1638,10 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
           if (glInitialized) initSeabedBuffers();
         }
         if (msg.lines) simLines = msg.lines;
-        if (msg.vessel) simVessel = msg.vessel;
+        if (msg.vessel) {
+          simVessel = msg.vessel;
+          if (glInitialized) initFloaterBuffers();
+        }
 
         // Projections
         if (msg.modelicaCode) document.getElementById('codeModelica').textContent = msg.modelicaCode;

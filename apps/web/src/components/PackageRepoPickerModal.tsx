@@ -4,7 +4,7 @@ import { GitBranchIcon, MarkGithubIcon, PackageIcon, RepoIcon, SearchIcon, XIcon
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
-import { createArtifactView, getLibraries, getRepos, type LibrarySummary } from "../api";
+import { createArtifactView, getLibraries, getRepos, type LibraryListItem } from "../api";
 import Box from "./Box";
 
 const ModalOverlay = styled.div`
@@ -123,13 +123,13 @@ const ItemCard = styled.div`
 interface PackageRepoPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (result: { artifactId: number; title: string; type: "package" | "repository" }) => void;
+  onSelect: (result: { id: number; artifactId: number; title: string; type: "package" | "repository" }) => void;
 }
 
 export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ isOpen, onClose, onSelect }) => {
   const [activeTab, setActiveTab] = useState<"packages" | "repositories">("packages");
   const [searchQuery, setSearchQuery] = useState("");
-  const [packages, setPackages] = useState<LibrarySummary[]>([]);
+  const [packages, setPackages] = useState<LibraryListItem[]>([]);
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -178,22 +178,24 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
 
   if (!isOpen) return null;
 
-  const handleSelectPackage = async (pkg: LibrarySummary) => {
+  const handleSelectPackage = async (pkg: LibraryListItem) => {
     setAttaching(true);
     try {
+      const pkgVersion = (pkg as any).version || pkg.versions?.[0] || "latest";
       const data = await createArtifactView({
         artifact_type: "package",
         source_type: "registry",
-        title: `${pkg.name}@${pkg.version}`,
+        title: `${pkg.name}@${pkgVersion}`,
         view_config: JSON.stringify({
           name: pkg.name,
-          version: pkg.version,
+          version: pkgVersion,
           description: pkg.description,
           license: pkg.license,
-          dialect: pkg.dialect || "modelica",
+          dialect: (pkg as any).dialect || "modelica",
         }),
       });
       onSelect({
+        id: data.id,
         artifactId: data.id,
         title: pkg.name,
         type: "package",
@@ -223,6 +225,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
         }),
       });
       onSelect({
+        id: data.id,
         artifactId: data.id,
         title: fullName,
         type: "repository",
@@ -241,9 +244,13 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
         <ModalHeader>
           <Box display="flex" alignItems="center" gap={2}>
             {activeTab === "packages" ? (
-              <PackageIcon size={20} style={{ color: "var(--color-accent-purple, #a855f7)" }} />
+              <span style={{ color: "var(--color-accent-purple, #a855f7)", display: "inline-flex" }}>
+                <PackageIcon size={20} />
+              </span>
             ) : (
-              <RepoIcon size={20} style={{ color: "var(--color-accent-cyan, #06b6d4)" }} />
+              <span style={{ color: "var(--color-accent-cyan, #06b6d4)", display: "inline-flex" }}>
+                <RepoIcon size={20} />
+              </span>
             )}
             <Text style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-fg-default)" }}>
               Attach Engineering Resource
@@ -263,7 +270,9 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
         </ModalHeader>
 
         <SearchInputWrapper>
-          <SearchIcon size={16} style={{ color: "var(--color-text-muted)" }} />
+          <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
+            <SearchIcon size={16} />
+          </span>
           <StyledInput
             placeholder={
               activeTab === "packages" ? "Search packages (e.g. Modelica, Buildings)..." : "Search repositories..."
@@ -294,42 +303,45 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
                 No packages found.
               </Box>
             ) : (
-              packages.map((pkg) => (
-                <ItemCard key={`${pkg.name}-${pkg.version}`} onClick={() => !attaching && handleSelectPackage(pkg)}>
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-fg-default)" }}>
-                        {pkg.name}
-                      </span>
+              packages.map((pkg) => {
+                const pkgVersion = (pkg as any).version || pkg.versions?.[0] || "latest";
+                return (
+                  <ItemCard key={`${pkg.name}-${pkgVersion}`} onClick={() => !attaching && handleSelectPackage(pkg)}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-fg-default)" }}>
+                          {pkg.name}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontFamily: "var(--font-mono)",
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            background: "rgba(255, 255, 255, 0.08)",
+                            color: "var(--color-text-muted)",
+                          }}
+                        >
+                          v{pkgVersion}
+                        </span>
+                      </Box>
                       <span
                         style={{
-                          fontSize: "11px",
+                          fontSize: "10px",
                           fontFamily: "var(--font-mono)",
-                          padding: "1px 6px",
-                          borderRadius: "4px",
-                          background: "rgba(255, 255, 255, 0.08)",
-                          color: "var(--color-text-muted)",
+                          color: "var(--color-accent-cyan)",
+                          fontWeight: 600,
                         }}
                       >
-                        v{pkg.version}
+                        ⚡ {((pkg as any).dialect || "modelica").toUpperCase()}
                       </span>
                     </Box>
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontFamily: "var(--font-mono)",
-                        color: "var(--color-accent-cyan)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      ⚡ {(pkg.dialect || "modelica").toUpperCase()}
-                    </span>
-                  </Box>
-                  {pkg.description && (
-                    <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>{pkg.description}</Text>
-                  )}
-                </ItemCard>
-              ))
+                    {pkg.description && (
+                      <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>{pkg.description}</Text>
+                    )}
+                  </ItemCard>
+                );
+              })
             )
           ) : filteredRepos.length === 0 ? (
             <Box textAlign="center" p={6} color="var(--color-text-muted)">

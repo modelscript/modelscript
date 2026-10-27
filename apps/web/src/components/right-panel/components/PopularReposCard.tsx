@@ -18,7 +18,9 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
   return (
     <Card>
       <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <RepoIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
+        <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+          <RepoIcon size={14} />
+        </span>
         <Text
           style={{
             fontSize: "12px",

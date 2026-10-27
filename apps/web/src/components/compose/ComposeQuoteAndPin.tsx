@@ -32,7 +32,9 @@ export const ComposeQuoteAndPin: React.FC<ComposeQuoteAndPinProps> = ({ pendingP
               gap: "4px",
             }}
           >
-            <PinIcon size={12} style={{ color: "var(--color-accent-cyan)" }} />
+            <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+              <PinIcon size={12} />
+            </span>
             <span>
               Pinned to <b>{pendingPin.fieldName}</b> = {pendingPin.scalarValue.toFixed(2)}
             </span>

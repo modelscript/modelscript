@@ -10,6 +10,7 @@ import { easy5PolyglotConfig } from "./tgg/index.js";
 export const easy5Language = language({
   name: "easy5",
   fileExtensions: [".ez5", ".ezm", ".ezd", ".eas"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".ez5", ".ezm", ".ezd", ".eas"],
   },

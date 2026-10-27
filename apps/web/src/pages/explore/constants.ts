@@ -188,37 +188,4 @@ export const BASE_RELATED_TAGS = [
   "Modelica",
 ];
 
-export const CURATED_REPOS: RepoData[] = [
-  {
-    id: "curated-msl",
-    provider: "github",
-    namespace: "modelica",
-    project: "Modelica-Standard-Library",
-    description: "The official Modelica Standard Library",
-    avatar_url: "",
-  },
-  {
-    id: "curated-compiler",
-    provider: "gitlab",
-    namespace: "modelscript",
-    project: "compiler",
-    description: "Salsa-powered Modelica compiler and simulation engine",
-    avatar_url: "",
-  },
-  {
-    id: "curated-web",
-    provider: "github",
-    namespace: "modelscript",
-    project: "web",
-    description: "Frontend social workspace for ModelScript",
-    avatar_url: "",
-  },
-  {
-    id: "curated-fmi",
-    provider: "github",
-    namespace: "modelica-association",
-    project: "FMI-Standard",
-    description: "Functional Mock-up Interface standard definitions",
-    avatar_url: "",
-  },
-];
+export const CURATED_REPOS: RepoData[] = [];

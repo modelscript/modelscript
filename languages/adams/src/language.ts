@@ -8,6 +8,7 @@ import { choice, field, language, repeat, seq } from "@modelscript/dsl";
 export const adamsLanguage = language({
   name: "adams",
   fileExtensions: [".adm", ".cmd", ".acf"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".adm", ".cmd", ".acf"],
   },

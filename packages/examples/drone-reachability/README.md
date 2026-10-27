@@ -1,3 +1,6 @@
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
 # Polyglot Drone Reachability Verification Workspace
 
 This workspace demonstrates an end-to-end, zero-glue cyber-physical verification pipeline running entirely in-browser and WebAssembly.

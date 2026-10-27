@@ -266,6 +266,7 @@ const ClassDetailPage: React.FC = () => {
                 className={className!}
                 libraryName={name!}
                 version={version!}
+                allClasses={allClasses}
                 diagramLoaded={diagramLoaded}
                 setDiagramLoaded={setDiagramLoaded}
                 diagramError={diagramError}

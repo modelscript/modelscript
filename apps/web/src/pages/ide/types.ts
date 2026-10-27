@@ -4,7 +4,8 @@ export interface IdeArtifactMetadata {
   id: string | number;
   title: string;
   viewType: string;
-  viewConfig: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  viewConfig: any;
 }
 
 export interface LspStatusState {

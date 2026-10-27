@@ -41,7 +41,7 @@
 ### 3. Direct DAE Lowering
 
 - Lowers reservoir grid pore volumes, multi-phase flow equations, and well drawdown constraints into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation between subterranean porous media flow and surface transient multiphase gathering pipelines ([`@modelscript/olga`](file:///home/omar/git3/modelscript/languages/olga)) and process facilities ([`@modelscript/aspen`](file:///home/omar/git3/modelscript/languages/aspen)).
+- Enables co-simulation between subterranean porous media flow and surface transient multiphase gathering pipelines ([`@modelscript/olga`](./olga.md)) and process facilities ([`@modelscript/aspen`](./aspen.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -49,18 +49,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8701`–`M8710`)
+## Pre-Flight Diagnostics
 
 The ECLIPSE validator inspects grid bounds, PVT table monotonicity, and well completions:
 
-| Code    | Severity  | Rule Identifier                 | Condition Checked                                                               |
-| :------ | :-------- | :------------------------------ | :------------------------------------------------------------------------------ |
-| `M8701` | `error`   | `invalid-grid-dimensions`       | Grid cell count $N_x, N_y, N_z \le 0$.                                          |
-| `M8702` | `error`   | `negative-porosity`             | Porosity outside physical bounds ($\phi < 0$ or $\phi > 1.0$).                  |
-| `M8703` | `error`   | `negative-permeability`         | Absolute rock permeability $k \le 0\text{ mD}$.                                 |
-| `M8704` | `error`   | `non-monotonic-pvt`             | Formation volume factor $B_o(P)$ or gas-oil ratio $R_s(P)$ non-monotonic.       |
-| `M8705` | `error`   | `out-of-bounds-well-completion` | Well completion coordinate $(I, J, K)$ exceeds declared grid dimensions.        |
-| `M8707` | `warning` | `voidage-replacement-deficit`   | Water injection volume is significantly less than reservoir production voidage. |
+<LintRules lang="eclipse" />
 
 ---
 
@@ -74,7 +67,7 @@ msx eclipse inspect NorthSeaReservoir.data
 msx eclipse lint NorthSeaReservoir.data
 
 # Solve reservoir depletion trajectory and compute STOIIP / GIIP
-msx eclipse solve NorthSeaReservoir.data --duration=365.0
+msx eclipse solve NorthSeaReservoir.data --days 365
 
 # Lower reservoir material balance to ModelScript linear DAE arena
 msx eclipse to-dae NorthSeaReservoir.data

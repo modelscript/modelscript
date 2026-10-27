@@ -14,6 +14,7 @@ import { solveFlashRachfordRice } from "./solvers/flash-solver.js";
 export const aspenLanguage = language({
   name: "aspen",
   fileExtensions: [".in", ".inp", ".bkp"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".in", ".inp", ".bkp"],
     icons: {

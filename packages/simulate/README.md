@@ -1,4 +1,7 @@
-# `@modelscript/simulate`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
+# @modelscript/simulate
 
 ModelScript Numerical Simulation, Continuum Physics, Surrogate Modeling & Operational Digital Twin Engine — explicit and stiff implicit ODE/DAE integrators, SUNDIALS (`cvode`/`ida`) WASM solvers, WebGPU batched WGSL compute execution, hybrid adjoint sensitivity with saltation matrices, 3D continuum FEA & Lattice Boltzmann CFD solvers, reduced-order surrogate modeling, Monte Carlo / Sobol uncertainty quantification, and real-time state estimation.
 

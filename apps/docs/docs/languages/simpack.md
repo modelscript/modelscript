@@ -63,3 +63,7 @@ AI agents interacting via the ModelScript MCP server have access to:
 
 - `simpack_lint`: Checks marker references, parent bodies, and joint validity.
 - `simpack_mobility`: Evaluates Grübler-Kutzbach spatial degrees of freedom and overconstraint status.
+
+## Diagnostic Rules
+
+<LintRules lang="simpack" />

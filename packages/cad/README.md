@@ -1,4 +1,7 @@
-# `@modelscript/cad`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
+# @modelscript/cad
 
 ModelScript 3D Mechanical CAD (MCAD) and Electronic CAD (ECAD) engine — parametric Constructive Solid Geometry (CSG), OpenCascade (`opencascade.js`) and Manifold B-Rep kernel integration, ISO 10303-21 STEP AP214/AP242 serialization and import, static and reachability-certified dynamic clearance verification, GD&T tolerance stack-up analysis, parameter inversion, and full PCB Gerber/Autorouter/DRC workflows.
 

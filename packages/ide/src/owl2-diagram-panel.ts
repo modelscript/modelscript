@@ -116,6 +116,7 @@ export class OWL2DiagramPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
   <style>
     body { background: #1e1e1e; color: #ccc; font-family: 'Segoe UI', sans-serif;
            display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
@@ -129,16 +130,18 @@ export class OWL2DiagramPanel {
   }
 
   private getErrorHtml(error: string): string {
+    const safeErr = error.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
   <style>
     body { background: #1e1e1e; color: #f48771; font-family: 'Segoe UI', sans-serif;
            padding: 24px; }
   </style>
 </head>
-<body><h3>⚠ Error loading ontology diagram</h3><pre>${error}</pre></body>
+<body><h3>⚠ Error loading ontology diagram</h3><pre>${safeErr}</pre></body>
 </html>`;
   }
 
@@ -150,6 +153,7 @@ export class OWL2DiagramPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #1a1a2e; color: #e0e0e0; font-family: 'Inter', 'Segoe UI', sans-serif;

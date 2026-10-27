@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { EXTENSION_TO_LANGUAGE_ID } from "@modelscript/exchange";
 import type { QueryEngine } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
@@ -57,7 +58,7 @@ export async function exportLspBundle(
     const iconsJson = JSON.stringify(svgs);
     zipfile.addBuffer(Buffer.from(iconsJson, "utf-8"), "icons.json");
 
-    // 3. Add source files
+    // 3. Add source files across all 44 languages
     function walkDir(dir: string, relPrefix = "sources/") {
       if (!fs.existsSync(dir)) {
         return;
@@ -71,12 +72,17 @@ export async function exportLspBundle(
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
           const isIncluded =
+            Boolean(EXTENSION_TO_LANGUAGE_ID[ext]) ||
             ext === ".mo" ||
+            ext === ".sysml" ||
+            ext === ".kerml" ||
             ext === ".msim" ||
             ext === ".csv" ||
             ext === ".mat" ||
             ext === ".txt" ||
-            entry.name === "package.order";
+            entry.name === "package.order" ||
+            entry.name === ".meta.json" ||
+            entry.name === ".Index.json";
           if (isIncluded) {
             zipfile.addFile(fullPath, relPath);
           }

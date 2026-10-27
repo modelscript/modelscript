@@ -22,6 +22,7 @@ export const owl2Language = language({
   name: "owl2",
   displayName: "OWL 2",
   fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
+  maturity: "stable",
   lsp: {
     fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
     icons: {

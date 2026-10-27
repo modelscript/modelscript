@@ -53,11 +53,19 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
       <Box display="flex" flexDirection="column" gap={3} sx={{ height: "100%", overflowY: "auto", pr: 1 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
           <SegmentedControl aria-label="Governance Views">
-            <SegmentedControl.Button selected={governanceTab === "proposals"} onClick={() => onTabChange("proposals")}>
-              <GitPullRequestIcon size={14} /> Merge Proposals ({proposals.length})
+            <SegmentedControl.Button
+              leadingIcon={GitPullRequestIcon}
+              selected={governanceTab === "proposals"}
+              onClick={() => onTabChange("proposals")}
+            >
+              {`Merge Proposals (${proposals.length})`}
             </SegmentedControl.Button>
-            <SegmentedControl.Button selected={governanceTab === "audit"} onClick={() => onTabChange("audit")}>
-              <HistoryIcon size={14} /> Cryptographic Audit Trail ({auditLogs.length})
+            <SegmentedControl.Button
+              leadingIcon={HistoryIcon}
+              selected={governanceTab === "audit"}
+              onClick={() => onTabChange("audit")}
+            >
+              {`Cryptographic Audit Trail (${auditLogs.length})`}
             </SegmentedControl.Button>
           </SegmentedControl>
 

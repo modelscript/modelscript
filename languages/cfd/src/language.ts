@@ -40,6 +40,7 @@ const PREC = {
 export const cfdLanguage = language({
   name: "cfd",
   fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
     icons: {

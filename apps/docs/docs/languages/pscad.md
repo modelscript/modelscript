@@ -55,7 +55,7 @@ flowchart LR
 PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`User` component instances and orthogonal `Wire` segments) rather than an explicit netlist. `@modelscript/pscad` reconstructs the electrical topology deterministically:
 
 1. **Local `master.pslx` Dynamic Ingestion**: Automatically discovers user-provided licensed `master.pslx` files via `PSCAD_MASTER_LIB_PATH` or workspace roots (`master.pslx`, `.pscad/master.pslx`, `.cache/pscad-corpus/`). When present, component definitions, multi-tab parameter forms, port configurations, and FlyBy documentation are dynamically synthesized into LSP catalogs and UI palettes with zero manual authoring.
-2. **Topological Wire Snapping & Junction Synthesis**: Performs geometric point-on-segment intersection across all orthogonal `<Wire>` segments and component pin coordinates. Seamlessly synthesizes topological junction nodes (`junc_${x}_${y}`) at wire-to-wire T-junctions and crossings, eliminating unattached dangling edges and reaching over 94% wire attachment on complex multi-layer industrial benchmarks.
+2. **Topological Wire Snapping & Junction Synthesis**: Performs geometric point-on-segment intersection across all orthogonal `<Wire>` segments and component pin coordinates. Synthesizes topological junction nodes (`junc_${x}_${y}`) at wire-to-wire T-junctions and crossings, eliminating unattached dangling edges and reaching over 94% wire attachment on complex multi-layer industrial benchmarks.
 3. **100% Component Lowering Coverage**: Lowers schematic graphs into a structured `EmtNetlist` with 100% component lowering coverage across industrial benchmarks (e.g. `DC_EMT_compare.pscx` with 1433/1433 lowered components and `DC_EMT_demo.pscx` with 597/597 lowered components):
    - AC/DC Thévenin sources, battery energy storage systems (`battery`), controlled current sources (`src_ccin_1`)
    - 6th-order synchronous machines, 5th-order induction/DFIG wind machines, and wound-rotor induction machines (`wound_rotor`)
@@ -66,29 +66,11 @@ PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`U
 
 ---
 
-## 2. Pre-Flight Electrical Lint Rules (`M6001`–`M6017`)
+## 2. Pre-Flight Electrical Lint Rules
 
 `@modelscript/pscad` enforces 17 electromagnetic transient modeling best practices before simulation starts, providing 1-click LSP Quick-Fix actions:
 
-| Code    | Severity | Rule Description                                                                                                  |
-| :------ | :------- | :---------------------------------------------------------------------------------------------------------------- |
-| `M6001` | Error    | **Floating Electrical Node**: Electrical bus or node is floating with no closed branch connections                |
-| `M6002` | Warning  | **Transformer Winding Mismatch**: Primary or secondary kV rating differs from connected bus kV by > 5%            |
-| `M6003` | Error    | **Invalid Parameter Bounds**: Non-physical parameter ($R < 0$, $L \le 0$, $C \le 0$, or $\text{MVA} \le 0$)       |
-| `M6004` | Warning  | **Weak Grid Warning**: Short-Circuit Ratio ($\text{SCR} < 1.5$) at POI risks IBR PLL instability                  |
-| `M6005` | Error    | **CSMF Unresolved Input**: CSMF control block references an unresolved upstream signal block ID                   |
-| `M6006` | Error    | **Bergeron Travel Time Underflow**: Distributed line wave delay $\tau = \ell\sqrt{LC}$ is smaller than $\Delta t$ |
-| `M6007` | Error    | **Machine Reactance Hierarchy**: Synchronous machine violates physical $X_d \ge X_d' \ge X_d'' > 0$               |
-| `M6008` | Warning  | **MOV Arrester Under-Rated**: Surge arrester $V_{\text{ref}}$ is below connected bus peak voltage                 |
-| `M6009` | Error    | **Duplicate Component ID**: Duplicate component or bus identifier declared within same module                     |
-| `M6010` | Error    | **Bus Voltage Conflict**: Direct conductive wire shorts two buses with different base voltages                    |
-| `M6011` | Error    | **Port Domain Mismatch**: Wire connects a control signal port directly to a 3-phase electrical port               |
-| `M6012` | Error    | **CSMF Algebraic Loop**: Zero-delay feedthrough cycle in control block wiring without state integrator            |
-| `M6013` | Error    | **Parallel Ideal Sources**: Multiple zero-impedance voltage sources connected directly to the same bus            |
-| `M6014` | Warning  | **Parallel Unspecified Sources**: Multiple sources with unspecified internal impedance on the same bus            |
-| `M6015` | Warning  | **Control Limiter Saturation**: CSMF hard limiter outputs continuously pinned to saturation boundaries            |
-| `M6016` | Warning  | **Harmonic Resonance Risk**: Passive shunt bank resonant frequency coincides with characteristic harmonic         |
-| `M6017` | Info     | **Unused Signal Tag**: CSMF signal label or wireless data link declared but never read                            |
+<LintRules lang="pscad" />
 
 ---
 

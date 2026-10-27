@@ -74,8 +74,9 @@ const App = () => {
       reader,
     };
 
-    // Initialize MQTT subscription
-    const client = mqtt.connect("ws://localhost:1892"); // Use WebSocket port
+    // Initialize MQTT subscription using configured broker URL (default ws://localhost:1892)
+    const brokerUrl = (window as unknown as { MQTT_BROKER_URL?: string }).MQTT_BROKER_URL || "ws://localhost:1892";
+    const client = mqtt.connect(brokerUrl); // Use WebSocket port
     mqttClient.current = client;
 
     client.on("connect", () => {

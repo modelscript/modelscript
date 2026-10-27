@@ -13,6 +13,7 @@ import {
   type UnifiedJob,
 } from "../api";
 import { useAuth } from "../AuthContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import CloudSimulationModal from "./CloudSimulationModal";
 import {
   AiSearchHeader,
@@ -34,6 +35,8 @@ export interface RightPanelProps {
 
 export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, onOpenCommandPalette }) => {
   const { token, user, creditBalance } = useAuth();
+  const hasBilling = useFeatureFlag("billing_stripe_live");
+  const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [popularRepos, setPopularRepos] = useState<any[]>([]);
@@ -78,6 +81,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   }, []);
 
   const fetchJobsAndCluster = React.useCallback(async () => {
+    if (!hasCloudSolver) return;
     if (!token && propClusterInfo !== undefined) return;
     setIsHpcLoading(true);
     try {
@@ -94,9 +98,10 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     } finally {
       setIsHpcLoading(false);
     }
-  }, [token, propClusterInfo]);
+  }, [token, propClusterInfo, hasCloudSolver]);
 
   useEffect(() => {
+    if (!hasCloudSolver) return;
     const poll = () => {
       if (document.visibilityState === "visible") {
         fetchJobsAndCluster();
@@ -105,7 +110,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     poll();
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
-  }, [fetchJobsAndCluster]);
+  }, [fetchJobsAndCluster, hasCloudSolver]);
 
   useEffect(() => {
     async function fetchSuggestions() {
@@ -157,9 +162,9 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
 
       {!user && <AuthPromptCard />}
 
-      {user && <WalletCard creditBalance={creditBalance} />}
+      {user && hasBilling && <WalletCard creditBalance={creditBalance} />}
 
-      {user && (
+      {user && hasCloudSolver && (
         <ClusterQueueCard
           clusterInfo={clusterInfo}
           hpcJobs={hpcJobs}

@@ -42,6 +42,7 @@ export interface UseComposeSubmitParams {
   quotePost?: any;
   replyToPost?: any;
   editPostId?: string | number | null | undefined;
+  forkedFromArtifactId?: number | null | undefined;
   pendingPin?: SpatialPin | undefined;
   onPostCreated?: ((post: any) => void) | undefined;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -75,6 +76,7 @@ export function useComposeSubmit({
   quotePost,
   replyToPost,
   editPostId,
+  forkedFromArtifactId,
   pendingPin,
   onPostCreated,
   fileInputRef,
@@ -110,56 +112,6 @@ export function useComposeSubmit({
     } finally {
       setUploadingFile(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
-  const createDummyArtifact = async (type: string) => {
-    if (!token) return;
-    try {
-      let view_config = "{}";
-      if (type === "modelica-code") {
-        view_config = JSON.stringify({ code: "model BouncingBall\n  Real h(start=1);\n  Real v;\nend BouncingBall;" });
-      } else if (type === "simulation-plot") {
-        view_config = JSON.stringify({
-          model: "BouncingBall",
-          overrides: { "h(start)": 10, e: 0.8 },
-          variables: ["h", "v"],
-          timeRange: [0, 5],
-        });
-      } else if (type === "tei-document") {
-        view_config = JSON.stringify({
-          data: `<?xml version="1.0" encoding="UTF-8"?>
-<TEI xmlns="http://www.tei-c.org/ns/1.0">
-  <teiHeader>
-    <fileDesc>
-      <titleStmt><title>Example TEI Document</title><author>Jane Doe</author></titleStmt>
-      <publicationStmt><p>Published by ModelScript</p></publicationStmt>
-      <sourceDesc><p>Born digital</p></sourceDesc>
-    </fileDesc>
-  </teiHeader>
-  <text>
-    <body>
-      <head>Chapter 1</head>
-      <p>This is a paragraph in a Text Encoding Initiative document.</p>
-      <lg>
-        <l>A stanza has lines,</l>
-        <l>And this is one of them.</l>
-      </lg>
-    </body>
-  </text>
-</TEI>`,
-        });
-      }
-
-      const title = `Example ${type}`;
-      const data = await createArtifactView({
-        artifact_type: type,
-        view_config,
-        title,
-      });
-      attachArtifactToComposer(data.id, title);
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -238,6 +190,7 @@ export function useComposeSubmit({
           ...(pendingPin ? { spatialPin: pendingPin } : {}),
           ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
           ...(notebookPayload ? { notebook: notebookPayload } : {}),
+          ...(forkedFromArtifactId ? { forkedFromArtifactId } : {}),
         },
       };
 
@@ -271,6 +224,5 @@ export function useComposeSubmit({
     hasNotebookContent,
     handleSubmit,
     handleFileUpload,
-    createDummyArtifact,
   };
 }

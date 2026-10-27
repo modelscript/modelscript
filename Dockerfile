@@ -20,6 +20,7 @@ COPY package.json package-lock.json ./
 # Apps manifests
 COPY apps/api/package.json apps/api/
 COPY apps/cli/package.json apps/cli/
+COPY apps/desktop/package.json apps/desktop/
 COPY apps/docs/package.json apps/docs/
 COPY apps/ide/package.json apps/ide/
 COPY apps/ide/github-fs/package.json apps/ide/github-fs/
@@ -42,28 +43,37 @@ COPY packages/simulate/package.json packages/simulate/
 
 # Languages manifests
 COPY languages/adams/package.json languages/adams/
+COPY languages/aspen/package.json languages/aspen/
 COPY languages/autosar/package.json languages/autosar/
+COPY languages/c/package.json languages/c/
 COPY languages/ccsds/package.json languages/ccsds/
 COPY languages/cfd/package.json languages/cfd/
 COPY languages/csv/package.json languages/csv/
 COPY languages/easy5/package.json languages/easy5/
+COPY languages/eclipse/package.json languages/eclipse/
 COPY languages/energyplus/package.json languages/energyplus/
 COPY languages/epanet/package.json languages/epanet/
 COPY languages/fea/package.json languages/fea/
 COPY languages/fortran/package.json languages/fortran/
 COPY languages/gensys/package.json languages/gensys/
 COPY languages/gtsuite/package.json languages/gtsuite/
+COPY languages/ibis/package.json languages/ibis/
+COPY languages/jsbsim/package.json languages/jsbsim/
 COPY languages/lps/package.json languages/lps/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelscript/package.json languages/modelscript/
 COPY languages/olga/package.json languages/olga/
 COPY languages/opendrive/package.json languages/opendrive/
+COPY languages/opendss/package.json languages/opendss/
+COPY languages/openscenario/package.json languages/openscenario/
 COPY languages/owl2/package.json languages/owl2/
 COPY languages/plcopen/package.json languages/plcopen/
 COPY languages/pscad/package.json languages/pscad/
 COPY languages/psse/package.json languages/psse/
+COPY languages/relap5/package.json languages/relap5/
 COPY languages/reqif/package.json languages/reqif/
 COPY languages/rocets/package.json languages/rocets/
+COPY languages/sbml/package.json languages/sbml/
 COPY languages/scad/package.json languages/scad/
 COPY languages/sima/package.json languages/sima/
 COPY languages/simpack/package.json languages/simpack/
@@ -71,7 +81,9 @@ COPY languages/simulink/package.json languages/simulink/
 COPY languages/spice/package.json languages/spice/
 COPY languages/ssp/package.json languages/ssp/
 COPY languages/step/package.json languages/step/
+COPY languages/swmm/package.json languages/swmm/
 COPY languages/sysml2/package.json languages/sysml2/
+COPY languages/touchstone/package.json languages/touchstone/
 COPY languages/urdf/package.json languages/urdf/
 COPY languages/verilog-a/package.json languages/verilog-a/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
@@ -96,11 +108,14 @@ FROM build-api-${PREBUILT} AS build-api
 
 FROM node:24-alpine AS api
 WORKDIR /app
-COPY --from=deps /app/package.json /app/package-lock.json ./
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build-api /app/packages packages
-COPY --from=build-api /app/languages languages
-COPY --from=build-api /app/apps/api apps/api
+RUN mkdir -p /app/apps/api/data /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
+  && chown -R node:node /app
+COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build-api --chown=node:node /app/packages packages
+COPY --from=build-api --chown=node:node /app/languages languages
+COPY --from=build-api --chown=node:node /app/apps/api apps/api
+USER node
 EXPOSE 3000
 ENV NODE_ENV=production
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
@@ -159,14 +174,16 @@ FROM build-ide-${PREBUILT} AS build-ide
 
 FROM node:24-alpine AS ide
 WORKDIR /app
-COPY --from=deps /app/package.json /app/package-lock.json ./
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build-ide /app/packages packages
-COPY --from=build-ide /app/languages languages
-COPY --from=build-ide /app/apps/ide/dist apps/ide/dist
-COPY --from=build-ide /app/apps/ide/vscode-web apps/ide/vscode-web
-COPY --from=build-ide /app/apps/ide/github-fs/dist apps/ide/github-fs/dist
-COPY --from=download-model /app/apps/ide/models apps/ide/models
+RUN chown -R node:node /app
+COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build-ide --chown=node:node /app/packages packages
+COPY --from=build-ide --chown=node:node /app/languages languages
+COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
+COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
+COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs/dist apps/ide/github-fs/dist
+COPY --from=download-model --chown=node:node /app/apps/ide/models apps/ide/models
+USER node
 EXPOSE 3003
 ENV NODE_ENV=production
 ENV PORT=3003

@@ -20,16 +20,66 @@ import { SimulationResultsView } from "./SimulationResultsView";
 import { ModalBody, ModalCard, ModalHeader, ModalOverlay } from "./styles";
 import type { CloudSimulationModalProps, ParsedCsvData, SimPhase } from "./types";
 
-export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
+export interface ExtendedCloudSimulationModalProps extends CloudSimulationModalProps {
+  modelName?: string | undefined;
+  experimentConfig?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+      }
+    | undefined;
+  onResultLoaded?: ((data: { t: number[]; y: number[][]; states: string[] }) => void) | undefined;
+  onResultsLoaded?: ((data: { t: number[]; y: number[][]; states: string[] }) => void) | undefined;
+}
+
+export function parseSimulationCsvTrajectory(csvText: string): { t: number[]; y: number[][]; states: string[] } | null {
+  const lines = csvText
+    .trim()
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return null;
+  const header = (lines[0]?.split(",") || []).map((h) => h.replace(/^["']|["']$/g, "").trim());
+  const timeIdx = header.findIndex((h) => h.toLowerCase() === "time");
+  const validTimeIdx = timeIdx >= 0 ? timeIdx : 0;
+
+  const t: number[] = [];
+  const states = header.filter((_, idx) => idx !== validTimeIdx);
+  const y: number[][] = states.map(() => []);
+
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i]?.split(",").map((c) => Number(c.replace(/^["']|["']$/g, "").trim())) || [];
+    if (parts.length === header.length) {
+      t.push(parts[validTimeIdx] ?? 0);
+      let varCounter = 0;
+      for (let j = 0; j < parts.length; j++) {
+        if (j !== validTimeIdx) {
+          y[varCounter]?.push(parts[j] ?? 0);
+          varCounter++;
+        }
+      }
+    }
+  }
+  return { t, y, states };
+}
+
+export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> = ({
   isOpen,
   onClose,
   fileName = "",
   fileContent = "",
   libraryName,
   libraryVersion,
+  modelName: explicitModelName,
+  experimentConfig,
+  onResultLoaded,
+  onResultsLoaded,
 }) => {
-  // Infer model name from content or filename
+  // Infer model name from explicit prop, content, or filename
   const initialModelName = useMemo(() => {
+    if (explicitModelName && explicitModelName.trim().length > 0) {
+      return explicitModelName.trim();
+    }
     if (fileContent) {
       const modelMatch = fileContent.match(/^\s*(?:model|class|block|package)\s+([a-zA-Z0-9_]+)/m);
       if (modelMatch?.[1]) return modelMatch[1];
@@ -38,10 +88,19 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
       return fileName.replace(/\.[^/.]+$/, "");
     }
     return "Model";
-  }, [fileContent, fileName]);
+  }, [explicitModelName, fileContent, fileName]);
+
+  const initialIntervals = useMemo(() => {
+    if (experimentConfig?.interval && experimentConfig.interval > 0) {
+      const startTime = experimentConfig.startTime ?? 0;
+      const stopTime = experimentConfig.stopTime ?? 10;
+      return Math.max(10, Math.round((stopTime - startTime) / experimentConfig.interval));
+    }
+    return 500;
+  }, [experimentConfig]);
 
   const [modelName, setModelName] = useState(initialModelName);
-  const [numberOfIntervals, setNumberOfIntervals] = useState<number>(500);
+  const [numberOfIntervals, setNumberOfIntervals] = useState<number>(initialIntervals);
   const [selectedProfile, setSelectedProfile] = useState<string>("standard");
 
   const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
@@ -57,10 +116,14 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
   // Result data
   const [csvContent, setCsvContent] = useState<string | null>(null);
 
-  // Sync initial model name when content changes
+  // Sync initial model name and intervals when props change
   useEffect(() => {
     setModelName(initialModelName);
   }, [initialModelName]);
+
+  useEffect(() => {
+    setNumberOfIntervals(initialIntervals);
+  }, [initialIntervals]);
 
   // Load profiles and wallet on open
   useEffect(() => {
@@ -98,10 +161,15 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
           try {
             const csv = await getCloudSimulationResultCsv(jobId);
             setCsvContent(csv);
+            const parsedTrajectory = parseSimulationCsvTrajectory(csv);
+            if (parsedTrajectory) {
+              onResultLoaded?.(parsedTrajectory);
+              onResultsLoaded?.(parsedTrajectory);
+            }
           } catch (e) {
             console.error("Failed to retrieve simulation CSV:", e);
           }
-        } else if (s === "failed") {
+        } else if (s === "failed" || s === "cancelled") {
           setPhase("failed");
           setErrorMessage(status.error || "Simulation run failed on cluster.");
         }
@@ -116,7 +184,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
       active = false;
       clearInterval(interval);
     };
-  }, [jobId, phase]);
+  }, [jobId, phase, onResultLoaded, onResultsLoaded]);
 
   // CSV parsing for preview
   const parsedCsv = useMemo<ParsedCsvData | null>(() => {
@@ -134,7 +202,7 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentProfile = profiles.find((p) => p.id === selectedProfile) || profiles[0]!;
+  const currentProfile = profiles.find((p) => p.id === selectedProfile) || profiles[0];
 
   const handleLaunch = async () => {
     setPhase("submitting");
@@ -149,6 +217,8 @@ export const CloudSimulationModal: React.FC<CloudSimulationModalProps> = ({
         libraryName,
         libraryVersion,
         profile: selectedProfile,
+        startTime: experimentConfig?.startTime,
+        stopTime: experimentConfig?.stopTime,
         numberOfIntervals,
       });
 

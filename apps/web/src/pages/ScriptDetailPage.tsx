@@ -6,21 +6,37 @@ import {
   CircleIcon,
   ClockIcon,
   DownloadIcon,
+  SyncIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Label, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { cancelDbJob, getJobDetails, getJobLogs } from "../api";
+import { cancelJob, getJob, getJobLogs, retryJob, type ComputeJob, type ComputeJobStep } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
 import { usePageTitle } from "../util/title";
 
-interface JobStep {
-  id: number;
-  name: string;
-  status: string;
+function normalizeJobStatus(status: unknown): string {
+  const s = String(status || "").toUpperCase();
+  if (s === "SUCCESS" || s === "COMPLETED") return "SUCCESS";
+  if (s === "FAILED" || s === "ERROR") return "FAILED";
+  if (s === "CANCELLED" || s === "CANCELED") return "CANCELLED";
+  if (s === "RUNNING" || s === "PROCESSING" || s === "IN_PROGRESS") return "RUNNING";
+  if (s === "QUEUED" || s === "PENDING") return "QUEUED";
+  return s || "QUEUED";
+}
+
+function formatLogsText(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  if (payload && typeof payload === "object") {
+    const rec = payload as { logs?: unknown };
+    if (Array.isArray(rec.logs)) {
+      return rec.logs.map((line) => String(line)).join("\n");
+    }
+  }
+  return JSON.stringify(payload, null, 2);
 }
 
 const ScriptDetailPage: React.FC = () => {
@@ -28,38 +44,91 @@ const ScriptDetailPage: React.FC = () => {
   usePageTitle(id ? `Job #${id}` : "Job Details");
   const navigate = useNavigate();
   const { token } = useAuth();
-  const [job, setJob] = useState<Record<string, unknown> | null>(null);
-  const [steps, setSteps] = useState<JobStep[]>([]);
+  const [job, setJob] = useState<ComputeJob | null>(null);
+  const [steps, setSteps] = useState<ComputeJobStep[]>([]);
   const [logs, setLogs] = useState<string>("");
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
+    let active = true;
 
-    // Fetch initial details immediately
-    getJobDetails(id)
-      .then((res) => {
-        if (res?.job) {
-          setJob(res.job);
-          if (res.steps) setSteps(res.steps);
-          if (res.job.status === "SUCCESS" || res.job.status === "FAILED" || res.job.status === "CANCELLED") {
-            getJobLogs(id)
-              .then((text) => setLogs(typeof text === "string" ? text : JSON.stringify(text, null, 2)))
-              .catch(console.error);
-          }
-        }
-      })
-      .catch(console.error);
+    const loadInitial = async () => {
+      try {
+        const res = await getJob(id);
+        if (!active) return;
+        const resolvedJob = res.job ?? res;
+        const normStatus = normalizeJobStatus(resolvedJob.status);
+        setJob({ ...resolvedJob, status: normStatus });
+        if (res.steps) setSteps(res.steps);
 
-    const streamUrl = token
-      ? `/api/v1/jobs/${id}/stream?token=${encodeURIComponent(token)}`
-      : `/api/v1/jobs/${id}/stream`;
+        getJobLogs(id)
+          .then((text) => {
+            if (active && text) setLogs(formatLogsText(text));
+          })
+          .catch(() => {
+            /* ignore log fetch fallback */
+          });
+      } catch {
+        if (!active) return;
+        setJob(null);
+      }
+    };
+
+    void loadInitial();
+
+    if (typeof EventSource === "undefined") {
+      return () => {
+        active = false;
+      };
+    }
+
+    const strId = String(id);
+    const rawId = strId.startsWith("cloud-")
+      ? strId.slice("cloud-".length)
+      : strId.startsWith("cae-")
+        ? strId.slice("cae-".length)
+        : strId;
+
+    const baseStreamPath = strId.startsWith("cloud-")
+      ? `/api/v1/cloud/jobs/${rawId}/events`
+      : strId.startsWith("cae-")
+        ? `/api/v1/cae/jobs/${rawId}/events`
+        : `/api/v1/jobs/${rawId}/stream`;
+
+    const streamUrl = token ? `${baseStreamPath}?token=${encodeURIComponent(token)}` : baseStreamPath;
     const evtSource = new EventSource(streamUrl);
+
+    evtSource.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === "init") {
+          if (Array.isArray(payload.logs) && payload.logs.length > 0) {
+            setLogs(payload.logs.join("\n"));
+          }
+          if (payload.status) {
+            setJob((prev) => (prev ? { ...prev, status: normalizeJobStatus(payload.status) } : prev));
+          }
+        } else if (payload.type === "log" && payload.data) {
+          setLogs((prev) => (prev ? `${prev}\n${String(payload.data)}` : String(payload.data)));
+        } else if (payload.type === "status" && payload.data) {
+          const nextStatus = normalizeJobStatus(payload.data.status);
+          setJob((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+        }
+      } catch {
+        /* ignore */
+      }
+    };
 
     evtSource.addEventListener("status", (e) => {
       try {
-        const data = JSON.parse(e.data);
-        if (data.job) setJob(data.job);
+        const data = JSON.parse((e as MessageEvent).data);
+        if (data.job) {
+          setJob({
+            ...data.job,
+            status: normalizeJobStatus(data.job.status),
+          });
+        }
         if (data.steps) setSteps(data.steps);
       } catch {
         /* ignore */
@@ -68,8 +137,8 @@ const ScriptDetailPage: React.FC = () => {
 
     evtSource.addEventListener("log", (e) => {
       try {
-        const text = JSON.parse(e.data);
-        setLogs((prev) => prev + text);
+        const text = JSON.parse((e as MessageEvent).data);
+        setLogs((prev) => prev + String(text));
       } catch {
         /* ignore */
       }
@@ -78,11 +147,20 @@ const ScriptDetailPage: React.FC = () => {
     evtSource.addEventListener("complete", () => {
       evtSource.close();
       getJobLogs(id)
-        .then((text) => setLogs(typeof text === "string" ? text : JSON.stringify(text, null, 2)))
-        .catch(console.error);
+        .then((text) => {
+          if (active) setLogs(formatLogsText(text));
+        })
+        .catch(() => {
+          /* ignore */
+        });
     });
 
+    evtSource.onerror = () => {
+      evtSource.close();
+    };
+
     return () => {
+      active = false;
       evtSource.close();
     };
   }, [id, token]);
@@ -94,23 +172,36 @@ const ScriptDetailPage: React.FC = () => {
   }, [logs]);
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (normalizeJobStatus(status)) {
       case "SUCCESS":
-        return <CheckCircleFillIcon color="var(--color-success-fg)" />;
+        return <CheckCircleFillIcon fill="var(--color-success-fg)" />;
       case "FAILED":
-        return <XCircleFillIcon color="var(--color-danger-fg)" />;
+        return <XCircleFillIcon fill="var(--color-danger-fg)" />;
       case "RUNNING":
-        return <CircleIcon color="var(--color-attention-fg)" />;
+        return <CircleIcon fill="var(--color-attention-fg)" />;
       default:
-        return <ClockIcon color="var(--color-fg-muted)" />;
+        return <ClockIcon fill="var(--color-fg-muted)" />;
     }
   };
 
   const handleDownloadResult = () => {
     if (!id) return;
-    const url = `/api/v1/jobs/${id}/result${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    const strId = String(id);
+    const rawId = strId.startsWith("cloud-")
+      ? strId.slice("cloud-".length)
+      : strId.startsWith("cae-")
+        ? strId.slice("cae-".length)
+        : strId;
+    const baseResultPath = strId.startsWith("cloud-")
+      ? `/api/v1/cloud/jobs/${rawId}/result`
+      : strId.startsWith("cae-")
+        ? `/api/v1/cae/jobs/${rawId}/results`
+        : `/api/v1/jobs/${rawId}/result`;
+    const url = `${baseResultPath}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
     window.open(url, "_blank");
   };
+
+  const normalizedStatus = job ? normalizeJobStatus(job.status) : "QUEUED";
 
   return (
     <Box display="flex" flexDirection="column" style={{ minHeight: "100%", height: "100%" }}>
@@ -127,12 +218,12 @@ const ScriptDetailPage: React.FC = () => {
         </CircleIconButton>
         <Box flex={1}>
           <Heading as="h2" style={{ fontSize: "20px", fontWeight: 800, margin: 0, color: "var(--color-fg-default)" }}>
-            {job ? (job.name as string) : `Job #${id}`}
+            {job ? job.name : `Job #${id}`}
           </Heading>
           {job && (job.started_at || job.type) && (
             <Text fontSize="12px" color="var(--color-fg-muted)">
               {job.type ? `${job.type} • ` : ""}
-              Started: {job.started_at ? new Date(job.started_at as string).toLocaleString() : "N/A"}
+              Started: {job.started_at ? new Date(job.started_at).toLocaleString() : "N/A"}
             </Text>
           )}
         </Box>
@@ -140,28 +231,46 @@ const ScriptDetailPage: React.FC = () => {
           <Box display="flex" alignItems="center" gap={2}>
             <Label
               variant={
-                job.status === "SUCCESS"
+                normalizedStatus === "SUCCESS"
                   ? "success"
-                  : job.status === "FAILED" || job.status === "CANCELLED"
+                  : normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED"
                     ? "danger"
                     : "attention"
               }
             >
-              {job.status as string}
+              {normalizedStatus}
             </Label>
-            {job.status === "SUCCESS" && (
+            {normalizedStatus === "SUCCESS" && (
               <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadResult}>
                 Download Result
               </Button>
             )}
-            {(job.status === "RUNNING" || job.status === "QUEUED") && (
+            {(normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED") && (
+              <Button
+                size="small"
+                leadingVisual={SyncIcon}
+                onClick={async () => {
+                  if (!id) return;
+                  try {
+                    const retried = await retryJob(id);
+                    const nextJob = retried.job ?? retried;
+                    setJob({ ...nextJob, status: normalizeJobStatus(nextJob.status) });
+                  } catch (err) {
+                    console.error("Failed to retry job:", err);
+                  }
+                }}
+              >
+                Retry Run
+              </Button>
+            )}
+            {(normalizedStatus === "RUNNING" || normalizedStatus === "QUEUED") && (
               <Button
                 variant="danger"
                 size="small"
                 onClick={async () => {
                   if (!id) return;
                   try {
-                    await cancelDbJob(id);
+                    await cancelJob(id);
                     setJob((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
                   } catch (err) {
                     console.error("Failed to cancel job:", err);

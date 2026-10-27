@@ -20,6 +20,7 @@ import { PipelineVerifier } from "./verification/pipeline-verifier.js";
 export const lpsLanguage = language({
   name: "lps",
   fileExtensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
     icons: {

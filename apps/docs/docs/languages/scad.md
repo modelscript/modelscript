@@ -43,17 +43,7 @@ tag_port("base_mount", "frame", [0, 0, -1])
 
 `lintScadCst(sourceText)` (`languages/scad/src/linter.ts`) performs static scope resolution, constant folding, and geometric validity checking across 9 diagnostic rules:
 
-| Code                         | Severity  | Condition Checked                                                                                                                                                 |
-| :--------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SCAD_DUPLICATE_DECLARATION` | `warning` | Variable, `module`, `function`, or parameter is declared multiple times in the same scope                                                                         |
-| `SCAD_INVALID_DIMENSION`     | `error`   | Primitive dimension (`size`, `r`, `r1`, `r2`, `d`, `d1`, `d2`, `h`, `height`), `.fillet(r)`, or `.chamfer(d)` is $\le 0$, or a vector argument has invalid length |
-| `SCAD_UNDEFINED_VARIABLE`    | `error`   | Reference to an undeclared variable identifier (excluding `$fn`, `$fa`, `$fs`, `$t`, `$vpr`, `$vpt`, `$vpd`, `$vpf`, `$children`, `$preview`, `PI`, `undef`)      |
-| `SCAD_UNDEFINED_FUNCTION`    | `error`   | Call to an undeclared function not in the OpenSCAD built-in math/vector library                                                                                   |
-| `SCAD_UNDEFINED_MODULE`      | `error`   | Instantiation of an undeclared module not in the OpenSCAD built-in primitive/transform library                                                                    |
-| `SCAD_UNKNOWN_METHOD`        | `error`   | Chained method call outside `{ translate, rotate, scale, mirror, color, fillet, chamfer }`                                                                        |
-| `SCAD_DIVISION_BY_ZERO`      | `error`   | Binary `/` or `%` expression where the divisor constant-folds to `0`                                                                                              |
-| `SCAD_ARGUMENT_COUNT`        | `error`   | Function or module call provides more positional arguments than parameters or omits a required parameter                                                          |
-| `SCAD_UNKNOWN_PARAMETER`     | `warning` | Named argument (`name=val`) does not match any parameter of the target user-defined module or function                                                            |
+<LintRules lang="scad" />
 
 ---
 

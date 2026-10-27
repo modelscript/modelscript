@@ -47,6 +47,7 @@ export const DraftsView: React.FC<DraftsViewProps> = ({ draftsList, onBack, onSe
                   icon={TrashIcon}
                   variant="invisible"
                   size="small"
+                  aria-label="Delete draft"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteDraft(draft.id);

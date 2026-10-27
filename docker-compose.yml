@@ -134,6 +134,37 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  cli:
+    image: ghcr.io/modelscript/cli:latest
+    profiles: ["cli"]
+    build:
+      context: .
+      target: cli
+
+  appliance:
+    image: ghcr.io/modelscript/appliance:latest
+    profiles: ["appliance"]
+    build:
+      context: .
+      target: appliance
+    ports:
+      - "8080:8080"
+    volumes:
+      - api-data:/app/apps/api/data
+      - api-uploads:/app/apps/api/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - ENTERPRISE_APPLIANCE=true
+      - AIRGAP_ENFORCED=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
   api-data:
   api-uploads:

@@ -39,7 +39,7 @@
 ### 3. Direct DAE Lowering
 
 - Compiles hydrodynamic volumes, inter-volume junctions, and heat structures into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
-- Enables co-simulation between nuclear primary coolant loops, secondary steam turbine power plants, and electrical generator controls ([`@modelscript/psse`](file:///home/omar/git3/modelscript/languages/psse)).
+- Enables co-simulation between nuclear primary coolant loops, secondary steam turbine power plants, and electrical generator controls ([`@modelscript/psse`](./psse.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -47,20 +47,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8601`–`M8610`)
+## Pre-Flight Diagnostics
 
 The RELAP5 parser and validator enforce card syntax, hydrodynamic connectivity, and trip cutset safety:
 
-| Code    | Severity  | Rule Identifier                   | Condition Checked                                                                         |
-| :------ | :-------- | :-------------------------------- | :---------------------------------------------------------------------------------------- | -------- | ------ |
-| `M8601` | `error`   | `dangling-volume-connection`      | Junction references a volume component not declared in the card deck.                     |
-| `M8602` | `error`   | `unclosed-trip-cutset`            | Reactor trip logic references an unclosed or undefined trip variable.                     |
-| `M8603` | `error`   | `negative-heat-capacity`          | Heat structure material volumetric heat capacity $C_p \le 0\text{ J/(m}^3\cdot\text{K)}$. |
-| `M8605` | `error`   | `missing-kinetics-delayed-groups` | Reactor kinetics card declared without required 6 delayed neutron groups.                 |
-| `M8606` | `error`   | `invalid-prompt-lifetime`         | Prompt neutron generation time non-positive ($\Lambda \le 0\text{ s}$).                   |
-| `M8607` | `warning` | `adverse-volume-elevation`        | Volume vertical elevation change conflicts with geometric height ($                       | \Delta z | > L$). |
-| `M8608` | `error`   | `negative-form-loss`              | Junction forward/reverse form loss coefficient $K_{\text{loss}} < 0$.                     |
-| `M8610` | `error`   | `negative-pressure`               | Hydrodynamic volume static pressure non-positive ($P \le 0\text{ Pa}$).                   |
+<LintRules lang="relap5" />
 
 ---
 

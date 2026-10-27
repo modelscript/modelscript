@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/spice",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "SPICE netlist (.cir, .sp, .net, .lib) analog & mixed-signal simulation language package for ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",

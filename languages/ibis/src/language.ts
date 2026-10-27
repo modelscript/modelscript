@@ -14,6 +14,7 @@ import { calculateOutputResistance, evaluateBufferCurrent } from "./solvers/buff
 export const ibisLanguage = language({
   name: "ibis",
   fileExtensions: [".ibs"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".ibs"],
     icons: {

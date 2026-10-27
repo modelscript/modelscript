@@ -3,7 +3,7 @@
 
 # @modelscript/modelica
 
-Flagship Modelica physical modeling and simulation compiler for ModelScript. Features a custom WebAssembly GLR incremental parser, high-performance AssemblyScript flattening kernel, direct DAE arena lowering, port balancing, unit verification, and bidirectional Triple Graph Grammar (TGG) rules for cross-domain synchronization.
+Flagship Modelica 3.x physical modeling and simulation compiler (`.mo`) for ModelScript. Features a custom WebAssembly GLR incremental parser, high-performance AssemblyScript flattening kernel, direct DAE arena lowering, port balancing, unit verification, 70+ compiler lint rules (`M1xxx`–`M6xxx`), and bidirectional Triple Graph Grammar (TGG) rules for cross-domain synchronization.
 
 ---
 
@@ -30,11 +30,37 @@ Flagship Modelica physical modeling and simulation compiler for ModelScript. Fea
 | `src/queries.ts`                 | Salsa `QueryEngine` semantic queries (`instantiate`, `classInstance`, `resolveSimpleName`, `variability`, `causality`)   |
 | `src/connections.ts`             | `ModelicaPortBalancer` for standard, stream, and expandable connector topological balancing                              |
 | `src/units.ts`                   | Physical dimension inference and SI unit consistency verification                                                        |
+| `src/errors.ts`                  | `ModelicaErrorCode` diagnostic registry (`M1001`–`M6xxx`)                                                                |
 | `src/lints/`                     | Linear CST and semantic `CompilerLint` diagnostic rules (`M1xxx`–`M6xxx`)                                                |
 | `src/extensions/`                | Embedded multi-physics extensions: CSG (`csg.ts`), shapes (`shape-flattener.ts`), FEA/CFD studies (`study-flattener.ts`) |
 | `transformers/`                  | Bidirectional Triple Graph Grammar (TGG) transformers for SysML v2, OWL 2, and CSV                                       |
 | `tests/testsuite-runner.ts`      | OpenModelica (`omc`) conformance testsuite runner                                                                        |
 | `tests/msl-comparison-runner.ts` | On-the-fly Modelica Standard Library (MSL) verification and benchmark runner                                             |
+
+---
+
+## Semantic / Compiler Lint Rules (`M1xxx`–`M6xxx`)
+
+| Range / Code | Rule / Category              | Severity            | Description                                                                           |
+| :----------- | :--------------------------- | :------------------ | :------------------------------------------------------------------------------------ |
+| `M1001`      | `parse-error`                | `error`             | Syntax errors detected by the native WebAssembly GLR parser.                          |
+| `M1002`      | `parse-missing`              | `error`             | Expected token missing in Modelica declaration, equation, or statement.               |
+| `M1003`      | `empty-array-constructor`    | `error`             | Empty array constructor `[]` or `{}` is not valid in Modelica.                        |
+| `M2001`      | `duplicate-element`          | `error`             | Element already declared in the current class or component scope.                     |
+| `M2002`      | `variable-not-found`         | `error`             | Variable or component reference not found in scope.                                   |
+| `M2003`      | `class-not-found`            | `error`             | Type or class specifier not found in scope.                                           |
+| `M2004`      | `modifier-not-found`         | `error`             | Modified element not found in target class hierarchy.                                 |
+| `M2005`      | `identifier-mismatch`        | `error`             | Class begin and `end` identifiers do not match.                                       |
+| `M3001`      | `type-mismatch-binding`      | `error`             | Type mismatch in variable binding expression.                                         |
+| `M3002`      | `type-mismatch-modifier`     | `error`             | Type mismatch in component or class modifier expression.                              |
+| `M3003`      | `not-plug-compatible`        | `error`             | Connectors in `connect(...)` clause are not plug-compatible.                          |
+| `M3004`      | `not-a-connector`            | `error`             | Referenced element in `connect(...)` clause is not a `connector`.                     |
+| `M3006`      | `function-arg-type-mismatch` | `error`             | Function call argument type does not match formal parameter type.                     |
+| `M4001`      | `extends-cycle`              | `error`             | Circular `extends` inheritance chain detected.                                        |
+| `M4002`      | `duplicate-modification`     | `error`             | Same element modified multiple times in a modification clause.                        |
+| `M4005`      | `protected-modification`     | `error`             | Protected element modified from outside its enclosing class.                          |
+| `M5001`      | `equation-type-mismatch`     | `error`             | Left-hand and right-hand sides of an equation have incompatible types or dimensions.  |
+| `M6xxx`      | `synchronous-clocks`         | `error` / `warning` | Synchronous clock partitioning, sub-sampling/super-sampling, and state machine rules. |
 
 ---
 
@@ -60,6 +86,24 @@ Flagship Modelica physical modeling and simulation compiler for ModelScript. Fea
 | `npm run test:latex`   | Generate formal CTRF LaTeX reports from test results                      |
 | `npm run lint`         | Run ESLint across `src/` and `transformers/`                              |
 | `npm run clean`        | Remove compiled build artifacts, `.wasm` binaries, and `dist/`            |
+
+---
+
+## CLI Usage (`msx`)
+
+```bash
+# Flatten a Modelica model to flat DAE representation
+msx flatten BouncingBall BouncingBall.mo
+
+# Lint a Modelica file or package directory
+msx lint BouncingBall.mo
+
+# Simulate a Modelica model and export trajectory results
+msx simulate BouncingBall BouncingBall.mo --stop-time=5.0
+
+# Render schematic diagram or component icon to SVG
+msx render BouncingBall BouncingBall.mo --out=diagram.svg
+```
 
 ---
 

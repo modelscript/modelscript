@@ -14,6 +14,7 @@ import { solveReactions } from "./solvers/reaction-solver.js";
 export const sbmlLanguage = language({
   name: "sbml",
   fileExtensions: [".sbml", ".xml"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".sbml", ".xml"],
     icons: {

@@ -143,7 +143,7 @@ The official ModelScript extension (`modelscript.modelscript`, source in `apps/i
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
-A single unified Language Server Protocol instance provides sub-millisecond incremental intelligence across all 12 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.pscx`, `.pswx`, `.scad`, `.stp`, `.step`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.inp`, `.gbr`):
+A single unified Language Server Protocol instance provides incremental language intelligence across the registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.pscx`, `.pswx`, `.scad`, `.stp`, `.step`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.inp`, `.gbr`):
 
 - **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking.
 - **Navigation & Refactoring**: Go-to-Definition, Find All References (across `.sysml` $\leftrightarrow$ `.mo` $\leftrightarrow$ `.msx` boundaries), Workspace Symbol Search, Rename Symbol, and Document Outline.

@@ -3,7 +3,7 @@
 
 # @modelscript/lps
 
-High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`.lps`, `.tgx`, `.tlx`, `.tgn`, `.tln`) for ModelScript. Features zero-GC in-WASM 1D transient gas Euler dynamics lowered to `DAEBuilder`, high-accuracy AGA-8 (ISO 20765-1) and Peng-Robinson equations of state, line pack storage analytics, multi-product liquid batch tracking, water hammer surge evaluation, formal SysML v2 requirements & operational state machine projections, and pre-flight safety linting (`M8001`–`M8012`).
+High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`.lps`, `.tgx`, `.tlx`, `.tgn`, `.tln`, `.psg`, `.psl`) for ModelScript. Features zero-GC in-WASM 1D transient gas Euler dynamics lowered to `DAEBuilder`, high-accuracy AGA-8 (ISO 20765-1), GERG-2008, and Peng-Robinson equations of state, line pack storage analytics, multi-product liquid batch tracking, water hammer surge evaluation, formal SysML v2 & Modelica projections, and 12 pre-flight safety lint rules (`M8001`–`M8012`).
 
 ---
 
@@ -13,8 +13,8 @@ High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`
   - High-performance XML parser built on `@modelscript/dsl/xml` for `.lps`, `.tgx`, and `.tlx` studies.
   - Full keyword parser and serializer for legacy TGNET and TLNET ASCII input decks (`.tgn`, `.tln`, `.psg`, `.psl`).
   - Automatic extraction of supply sources, delivery city gates, pipes, multi-stage compressor stations, pumps, regulators, and valves.
-- **High-Accuracy Real-Gas Thermodynamics (`Aga8Eos`, `PengRobinsonEos`)**:
-  - Detailed Characterization AGA-8 (ISO 20765-1) calculating compressibility $Z(P, T)$, molar density, mass density, speed of sound, and Joule-Thomson coefficients.
+- **High-Accuracy Real-Gas Thermodynamics (`Aga8Eos`, `Gerg2008Eos`, `PengRobinsonEos`)**:
+  - Detailed Characterization AGA-8 (ISO 20765-1) and GERG-2008 calculating compressibility $Z(P, T)$, molar density, mass density, speed of sound, and Joule-Thomson coefficients.
   - Native support for **Hydrogen Blending** ($H_2$ in natural gas from 0% to 100%).
   - Peng-Robinson cubic equation of state for heavier hydrocarbons and dense-phase supercritical $CO_2$ transport.
 - **Steady-State Nodal Network Solver (`SteadyNetworkSolver`)**:
@@ -34,13 +34,44 @@ High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`
 - **Multi-Product Liquid Batch Tracking (`BatchTracker`)**:
   - Propagates discrete fuel batches (Diesel, Jet-A, Regular Gasoline) along pipeline lines.
   - Solves Austin-Palfrey interface mixing length and transmix volume at delivery manifolds.
-- **SysML v2 Polyglot Projections (`lpsToSysml2`)**:
-  - Translates pipeline network models into formal SysML v2 textual architecture:
+- **SysML v2 & Modelica Polyglot Projections (`lpsToSysml2`, `lpsToModelica`)**:
+  - Translates pipeline network models into formal SysML v2 textual architecture and Modelica fluid network models:
     - Structural parts (`part def PipeSegment`, `port def PipelineFluidPort`).
     - Formal safety requirements (`PipelineMaopIntegrityRequirement`, `MinimumCityGateDeliveryRequirement`, `HydrogenBlendingLimitRequirement`).
     - Operational state machines (`PipelineOperationalProcedure`: SteadyTransmission, LinePacking, PeakDemandDrafting, ControlledCurtailment, EmergencySectionalizing).
 - **Formal Verification Engine (`PipelineVerifier`)**:
   - Automated ASME B31.8 / B31.4 MAOP verification, contractual delivery pressure checks, and API RP 14E erosional velocity validation.
+
+---
+
+## Package Structure
+
+| Path                                         | Description                                                                                     |
+| :------------------------------------------- | :---------------------------------------------------------------------------------------------- |
+| `src/index.ts`                               | Public package exports                                                                          |
+| `src/language.ts`                            | `lpsLanguage` definition, file extensions, and LSP actions                                      |
+| `src/types.ts`                               | Core TypeScript interfaces (`LpsModel`, `LpsPipe`, `LpsNode`, `LpsCompressor`, `LpsPump`, etc.) |
+| `src/errors.ts`                              | `LpsErrorCode` diagnostic registry (`M8001`–`M8012`)                                            |
+| `src/parser/index.ts`                        | Unified `parseLps`, XML (`.lps`, `.tgx`, `.tlx`), and ASCII keyword (`.tgn`, `.tln`) parsers    |
+| `src/lints/index.ts`                         | `lintLpsModel` pre-flight pipeline safety diagnostic engine (`M8001`–`M8012`)                   |
+| `src/solver/eos/aga8-detailed.ts`            | Detailed Characterization AGA-8 (ISO 20765-1) equation of state                                 |
+| `src/solver/eos/gerg2008.ts`                 | GERG-2008 wide-range reference equation of state                                                |
+| `src/solver/eos/cubic-eos.ts`                | Peng-Robinson / SRK cubic equation of state                                                     |
+| `src/solver/steady/steady-network-solver.ts` | `SteadyNetworkSolver` nodal hydraulic solver                                                    |
+| `src/solver/line-pack/line-pack-engine.ts`   | `LinePackEngine` inventory and deliverability reserve analyzer                                  |
+| `src/solver/transient/gas-euler-dae.ts`      | `GasEulerDaeSolver` 1D transient compressible Euler DAE solver                                  |
+| `src/solver/transient/liquid-surge-dae.ts`   | `LiquidSurgeSolver` water hammer and acoustic transient solver                                  |
+| `src/solver/transient/batch-tracker.ts`      | `BatchTracker` multi-product liquid interface and transmix tracker                              |
+| `src/solver/transient/slack-line-solver.ts`  | `SlackLineSolver` column separation and open-channel slack flow solver                          |
+| `src/solver/thermal/soil-diffusion.ts`       | `SoilThermalEngine` 1D radial cylindrical soil heat conduction solver                           |
+| `src/solver/machinery/`                      | `compressor-map.ts` and `pump-curve.ts` turbomachinery performance maps                         |
+| `src/checkpoint/checkpoint-engine.ts`        | `CheckpointEngine` `.sav` state snapshot serialization and warm restart                         |
+| `src/projections/lps-to-sysml2.ts`           | `lpsToSysml2` formal SysML v2 architecture and state machine projection                         |
+| `src/projections/lps-to-modelica.ts`         | `lpsToModelica` Modelica fluid pipeline projection                                              |
+| `src/dae/index.ts`                           | `lowerLpsToDae` DAE arena lowering                                                              |
+| `src/verification/pipeline-verifier.ts`      | `PipelineVerifier` ASME B31.8 / B31.4 and API RP 14E formal safety verifier                     |
+| `src/workspace-index.ts`                     | Multi-file workspace symbol indexer                                                             |
+| `src/lsp.ts`                                 | LSP diagnostics, hover tooltips, and document symbols                                           |
 
 ---
 
@@ -60,6 +91,46 @@ High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`
 | `M8010` | `joule-thomson-freezing`      | `warning` | Pressure drop across regulator exceeds 25 bar without preheater, risking ice/hydrates.   |
 | `M8011` | `pump-npsh-deficit`           | `error`   | Available Net Positive Suction Head is below required NPSH ($NPSHA < NPSHR$).            |
 | `M8012` | `line-pack-depletion-risk`    | `warning` | Total continuous delivery demand exceeds supply; line pack storage buffer will deplete.  |
+
+---
+
+## Scripts
+
+| Command             | Description                                                           |
+| :------------------ | :-------------------------------------------------------------------- |
+| `npm run build`     | Compile TypeScript to `dist/`                                         |
+| `npm test`          | Run parser, EOS, steady/transient solver, line pack, and linter tests |
+| `npm run lint`      | Run ESLint across `src/` and `tests/`                                 |
+| `npm run typecheck` | Run `tsc --noEmit` type verification                                  |
+| `npm run clean`     | Remove `dist/` build artifacts                                        |
+
+---
+
+## CLI Usage (`msx lps`)
+
+```bash
+# Inspect pipeline network topology, compressors, pumps, and boundary nodes
+msx lps inspect ContinentalGasGrid.lps
+
+# Run pre-flight safety lint checks (M8001–M8012)
+msx lps lint ContinentalGasGrid.lps
+
+# Solve steady-state nodal hydraulics and compressor duties
+msx lps solve ContinentalGasGrid.lps --eos=AGA8
+
+# Analyze line pack inventory and deliverable energy reserves
+msx lps linepack ContinentalGasGrid.lps
+
+# Simulate 1D transient gas Euler dynamics with checkpoint export
+msx lps simulate ContinentalGasGrid.lps --duration=7200 --step=10 --save-checkpoint=grid.sav
+
+# Verify ASME B31.8 / B31.4 MAOP and contractual delivery pressure compliance
+msx lps verify ContinentalGasGrid.lps
+
+# Project pipeline network to SysML v2, Modelica, or DAE JSON
+msx lps sysml ContinentalGasGrid.lps --out=ContinentalGasGrid.sysml
+msx lps to-modelica ContinentalGasGrid.lps --out=ContinentalGasGrid.mo
+```
 
 ---
 

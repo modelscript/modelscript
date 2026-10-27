@@ -37,7 +37,7 @@
 ### 3. Direct DAE Lowering
 
 - Compiles the entire stormwater collection network into `@modelscript/runtime`'s `DAEBuilder` struct-of-arrays linear memory arena.
-- Enables co-simulation of municipal drinking water networks ([`@modelscript/epanet`](file:///home/omar/git3/modelscript/languages/epanet)) and drainage networks within the same computational arena.
+- Enables co-simulation of municipal drinking water networks ([`@modelscript/epanet`](./epanet.md)) and drainage networks within the same computational arena.
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -45,18 +45,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8201`–`M8220`)
+## Pre-Flight Diagnostics
 
 The SWMM linter verifies network graph integrity and hydraulic feasibility before simulation:
 
-| Code    | Severity  | Rule Identifier           | Condition Checked                                                                              |
-| :------ | :-------- | :------------------------ | :--------------------------------------------------------------------------------------------- |
-| `M8201` | `error`   | `dangling-node-reference` | Conduit or link references a junction/outfall not defined in network.                          |
-| `M8202` | `warning` | `adverse-conduit-slope`   | Conduit inlet invert elevation is lower than outlet invert ($z_{\text{in}} < z_{\text{out}}$). |
-| `M8203` | `error`   | `missing-cross-section`   | Conduit declared without corresponding `[XSECTIONS]` geometry definition.                      |
-| `M8208` | `error`   | `negative-roughness`      | Manning roughness coefficient $n \le 0$.                                                       |
-| `M8209` | `error`   | `zero-conduit-length`     | Conduit length is non-positive ($L \le 0\text{ m}$ / $\text{ft}$).                             |
-| `M8210` | `warning` | `isolated-junction`       | Junction has no incoming or outgoing links attached.                                           |
+<LintRules lang="swmm" />
 
 ---
 

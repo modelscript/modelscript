@@ -2,15 +2,25 @@
 
 import { CheckIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
-import React, { Suspense, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
 
 interface ModelicaDiagramViewerProps {
-  viewConfig: Record<string, unknown>;
+  viewConfig: {
+    code?: string | undefined;
+    content?: string | undefined;
+    url?: string | undefined;
+    dialect?: string | undefined;
+    title?: string | undefined;
+    thumbnail_url?: string | undefined;
+    artifactId?: string | number | undefined;
+    [key: string]: unknown;
+  };
   isFullScreen?: boolean | undefined;
 }
 
@@ -73,7 +83,21 @@ const EditorContainer = styled.div`
 `;
 
 export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ viewConfig, isFullScreen = false }) => {
-  const code = (viewConfig.code as string) || "model Example\n\nend Example;";
+  const inlineCode = (viewConfig.code as string) || (viewConfig.content as string) || "";
+  const [fetchedCode, setFetchedCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!inlineCode && typeof viewConfig.url === "string") {
+      fetch(viewConfig.url)
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setFetchedCode(txt);
+        })
+        .catch(() => {});
+    }
+  }, [inlineCode, viewConfig.url]);
+
+  const code = inlineCode || fetchedCode || "model Example\n\nend Example;";
   const dialect = (viewConfig.dialect as string) || "modelica";
   const title = (viewConfig.title as string) || "Interactive System";
   const [interactive, setInteractive] = useState(!viewConfig.thumbnail_url);
@@ -114,7 +138,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
   const getForkUrl = () => {
     const hash = compressMorselPayload({
       v: 1,
-      lang: dialect,
+      lang: dialect as any,
       code,
       title,
     });
@@ -125,6 +149,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
   const handleFork = () => {
     window.open(getForkUrl(), "_blank", "noopener,noreferrer");
   };
+
+  const codeLines = code.split(/\r?\n/);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -194,27 +220,47 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
               Interact
             </Button>
           )}
-          <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={handleFork}>
-            Playground
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={handleFork}>
+              Playground
+            </Button>
+          )}
         </ToolbarRight>
       </CardToolbar>
 
       <EditorContainer ref={containerRef}>
         {viewMode === "code" ? (
-          <Box p={3} height="100%" overflow="auto" bg="var(--color-canvas-default)">
-            <pre
-              style={{
-                margin: 0,
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: "12px",
-                lineHeight: "1.6",
-                color: "var(--color-fg-default)",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              <code>{code}</code>
-            </pre>
+          <Box
+            py={2}
+            height="100%"
+            overflow="auto"
+            bg="var(--color-canvas-default)"
+            style={{
+              fontFamily: '"JetBrains Mono", "Fira Code", var(--font-mono, monospace)',
+              fontSize: "12px",
+              lineHeight: 1.55,
+            }}
+          >
+            {codeLines.map((line, idx) => (
+              <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                <span
+                  style={{
+                    userSelect: "none",
+                    width: "36px",
+                    minWidth: "36px",
+                    textAlign: "right",
+                    paddingRight: "12px",
+                    color: "var(--color-fg-subtle)",
+                    fontSize: "11px",
+                  }}
+                >
+                  {idx + 1}
+                </span>
+                <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                  {highlightPolyglotLine(line, dialect)}
+                </span>
+              </div>
+            ))}
           </Box>
         ) : interactive || !viewConfig.thumbnail_url ? (
           <Suspense
@@ -224,7 +270,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
               </Box>
             }
           >
-            <MorselEditorLazy dataUrl={null} initialCode={code} embed={true} />
+            <MorselEditorLazy dataUrl={null} initialCode={code} initialDialect={dialect} embed={true} />
           </Suspense>
         ) : (
           <Box

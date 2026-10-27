@@ -1,4 +1,7 @@
-# `@modelscript/diagram`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
+# @modelscript/diagram
 
 ModelScript polyglot diagramming and visual schematic engine — AntV X6 interactive graph canvas, headless SVG schematic and icon renderer, declarative `PolyglotDiagramBuilder`, Sugiyama layered auto-layout, Topology-Shape-Metrics (TSM) and Manhattan A\* port routing, specialized domain layouts, perceptual dark-mode color inversion, semantic visual diffing, and real-time multi-user collaboration.
 

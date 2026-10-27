@@ -88,10 +88,9 @@ const ClassTreeNode: React.FC<{
       <TreeItem
         to={`/packages/${libraryName}/${version}/classes/${node.fullName}`}
         $depth={depth}
-        onClick={(e) => {
-          if (hasChildren) {
-            e.preventDefault();
-            setExpanded(!expanded);
+        onClick={() => {
+          if (hasChildren && !expanded) {
+            setExpanded(true);
           }
         }}
       >

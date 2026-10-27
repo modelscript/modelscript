@@ -14,6 +14,7 @@ import { simulateScenario } from "./solvers/scenario-orchestrator.js";
 export const openScenarioLanguage = language({
   name: "openscenario",
   fileExtensions: [".xosc", ".osc"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".xosc", ".osc"],
     icons: {

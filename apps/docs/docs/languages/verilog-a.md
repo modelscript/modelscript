@@ -46,12 +46,7 @@
 
 The Verilog-A linter detects compact modeling bugs and numerical convergence pitfalls:
 
-| Rule Identifier                 | Severity  | Condition Checked                                                                                      |
-| :------------------------------ | :-------- | :----------------------------------------------------------------------------------------------------- |
-| `invalid-discipline-assignment` | `error`   | Port or net lacks a valid physical discipline (`electrical`, `thermal`, etc.).                         |
-| `unassigned-contribution`       | `error`   | Conservative branch declared but lacks any governing potential or flow contribution statement.         |
-| `singular-jacobian-risk`        | `warning` | Nonlinear expression contains unprotected $\ln(x)$, $\sqrt{x}$, or $1/x$ without limiting or bounding. |
-| `floating-analog-port`          | `warning` | Internal analog node has only a single branch connection, causing an indeterminate floating potential. |
+<LintRules lang="verilog-a" />
 
 ---
 

@@ -33,7 +33,7 @@ const related = computed(() => {
             <span>{{ industry.name }}</span>
           </nav>
           <span class="ind-eyebrow">
-            <span class="ind-eyebrow-icon"><MsIcon :name="industry.icon" :size="16" /></span>
+            <span class="ind-eyebrow-icon"><MsIcon :name="industry.icon" :size="16" :duotone="true" /></span>
             {{ industry.name }}
           </span>
           <h1 class="ind-title">{{ industry.headline }}</h1>
@@ -104,7 +104,7 @@ const related = computed(() => {
         </header>
         <div class="cap-grid">
           <article v-for="c in industry.capabilities" :key="c.title" class="cap-card">
-            <span class="cap-check"><MsIcon name="check" :size="16" :stroke="2.25" /></span>
+            <span class="cap-check"><MsIcon name="check" :size="18" :stroke="2.25" /></span>
             <div>
               <h3>{{ c.title }}</h3>
               <p>{{ c.body }}</p>
@@ -131,7 +131,7 @@ const related = computed(() => {
           </div>
         </div>
         <aside class="std-card">
-          <h3><MsIcon name="shield" :size="18" /> Standards &amp; interchange</h3>
+          <h3><MsIcon name="shield" :size="20" :duotone="true" /> Standards &amp; interchange</h3>
           <ul>
             <li v-for="s in industry.standards" :key="s"><MsIcon name="check" :size="14" :stroke="2.25" /> {{ s }}</li>
           </ul>
@@ -155,7 +155,7 @@ const related = computed(() => {
               class="related-card"
               :style="{ '--accent': r.accent }"
             >
-              <span class="related-icon"><MsIcon :name="r.icon" :size="18" /></span>
+              <span class="related-icon"><MsIcon :name="r.icon" :size="22" :duotone="true" /></span>
               <span>
                 <strong>{{ r.name }}</strong>
                 <small>{{ r.tagline }}</small>
@@ -204,9 +204,16 @@ const related = computed(() => {
   inset: 0;
   background-image:
     linear-gradient(var(--ms-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, #000 30%, transparent 75%);
+    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--ms-grid-sub) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-sub) 1px, transparent 1px);
+  background-size:
+    64px 64px,
+    64px 64px,
+    16px 16px,
+    16px 16px;
+  mask-image: radial-gradient(ellipse 85% 75% at 50% 25%, #000 30%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 25%, #000 30%, transparent 78%);
   pointer-events: none;
 }
 
@@ -263,8 +270,8 @@ const related = computed(() => {
 .ind-eyebrow-icon {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 999px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
   background: color-mix(in srgb, var(--accent) 18%, transparent);
@@ -351,23 +358,43 @@ const related = computed(() => {
 }
 
 .pain-card {
+  position: relative;
   padding: 28px;
   border-radius: 16px;
-  background: var(--vp-c-bg-soft);
+  background: linear-gradient(180deg, var(--vp-c-bg-soft), var(--vp-c-bg));
   border: 1px solid var(--vp-c-divider);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.pain-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 50%, transparent), transparent);
+  opacity: 0.6;
 }
 
 .pain-num {
+  display: inline-grid;
+  place-items: center;
+  padding: 3px 9px;
+  border-radius: 8px;
   font-family: var(--vp-font-family-mono);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 650;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .pain-card h3,
 .cap-card h3,
 .flow-step h3 {
-  margin: 10px 0 8px;
+  margin: 12px 0 8px;
   font-size: 1.05rem;
   font-weight: 650;
   color: var(--vp-c-text-1);
@@ -399,6 +426,7 @@ const related = computed(() => {
   border-radius: 16px;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .flow-step:not(:last-child)::after {
@@ -414,15 +442,19 @@ const related = computed(() => {
 .flow-idx {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
   font-family: var(--vp-font-family-mono);
   font-weight: 700;
   font-size: 14px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background:
+    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 68%),
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.15), transparent 68%),
+    color-mix(in srgb, var(--accent) 12%, var(--vp-c-bg-soft));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 /* ── Capabilities ── */
@@ -437,6 +469,7 @@ const related = computed(() => {
   gap: 16px;
   padding: 24px;
   border-radius: 16px;
+  background: linear-gradient(180deg, var(--vp-c-bg-soft), var(--vp-c-bg));
   border: 1px solid var(--vp-c-divider);
   transition:
     border-color 0.25s,
@@ -456,11 +489,15 @@ const related = computed(() => {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
+    color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 /* ── Formats ── */
@@ -526,6 +563,7 @@ const related = computed(() => {
   border-radius: 16px;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .std-card h3 {
@@ -591,18 +629,21 @@ const related = computed(() => {
   align-items: center;
   gap: 14px;
   padding: 18px;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid var(--vp-c-divider);
+  background: linear-gradient(180deg, var(--vp-c-bg-soft), var(--vp-c-bg));
   text-decoration: none;
   color: var(--vp-c-text-1);
   transition:
-    border-color 0.2s,
-    background 0.2s;
+    border-color 0.25s ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .related-card:hover {
-  border-color: var(--accent);
-  background: var(--vp-c-bg-soft);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 18px 36px -22px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .related-card strong {
@@ -621,11 +662,18 @@ const related = computed(() => {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background:
+    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 68%),
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.15), transparent 68%),
+    color-mix(in srgb, var(--accent) 12%, var(--vp-c-bg-soft));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 18px -8px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 .related-arrow {

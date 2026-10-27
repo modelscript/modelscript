@@ -10,6 +10,16 @@ export function registerCodeLensProvider(context: LspContext) {
     const uri = params.textDocument.uri;
     const lenses: CodeLens[] = [];
 
+    const codeLensCfg = (context as any).settings?.codeLens;
+    if (codeLensCfg?.enabled === false) {
+      return lenses;
+    }
+    const showSimulate = codeLensCfg?.simulate ?? true;
+    const showVerification = codeLensCfg?.verification ?? true;
+    const showPolyglotLinks = codeLensCfg?.polyglotLinks ?? true;
+    const showCadMetrics = codeLensCfg?.cadMetrics ?? true;
+    const showFileConversions = codeLensCfg?.fileConversions ?? true;
+
     // 1. Modelica files (.mo)
     if (uri.endsWith(".mo")) {
       const doc = context.documents.get(uri);
@@ -36,16 +46,21 @@ export function registerCodeLensProvider(context: LspContext) {
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
             const rawKind = classMatch[0].trim().split(/\s+/)[0]!;
-            if (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process") {
+            if (
+              showSimulate &&
+              (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process")
+            ) {
               if (name === "DroneSimulation" || uri.includes("DroneSimulation") || uri.includes("drone-reachability")) {
-                lenses.push({
-                  range,
-                  command: {
-                    title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
-                    command: "modelscript.openDroneReachabilityDemo",
-                    arguments: [uri],
-                  },
-                });
+                if (showVerification) {
+                  lenses.push({
+                    range,
+                    command: {
+                      title: "▶ Estimate Reachability Envelope (linearized zonotope, non-rigorous)",
+                      command: "modelscript.openDroneReachabilityDemo",
+                      arguments: [uri],
+                    },
+                  });
+                }
                 lenses.push({
                   range,
                   command: {
@@ -54,14 +69,16 @@ export function registerCodeLensProvider(context: LspContext) {
                     arguments: [uri, name],
                   },
                 });
-                lenses.push({
-                  range,
-                  command: {
-                    title: "🌐 Digital Thread Explorer",
-                    command: "modelscript.openThreadExplorer",
-                    arguments: [uri],
-                  },
-                });
+                if (showPolyglotLinks) {
+                  lenses.push({
+                    range,
+                    command: {
+                      title: "🌐 Digital Thread Explorer",
+                      command: "modelscript.openThreadExplorer",
+                      arguments: [uri],
+                    },
+                  });
+                }
               } else {
                 const title = rawKind === "study" ? "▶ Run Study" : `▶ Simulate ${rawKind}`;
                 lenses.push({
@@ -76,7 +93,7 @@ export function registerCodeLensProvider(context: LspContext) {
             }
 
             // Formal proof badge for this model/class/function on this exact declaration line
-            const proof = proofMap?.get(name);
+            const proof = showVerification ? proofMap?.get(name) : undefined;
             if (proof) {
               emittedProofClasses.add(name);
               let proofTitle = "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
@@ -102,7 +119,7 @@ export function registerCodeLensProvider(context: LspContext) {
             }
 
             // DAE BLT verification badge for this model/class on this exact declaration line
-            const daeProof = daeMap?.get(name);
+            const daeProof = showVerification ? daeMap?.get(name) : undefined;
             if (daeProof) {
               emittedDaeClasses.add(name);
               let daeTitle =
@@ -136,7 +153,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // For loop formal verification lens (positioned above the loop)
           const forMatch = /^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^\s]+)\s+loop\b/.exec(line);
-          if (forMatch && currentClassName) {
+          if (showVerification && forMatch && currentClassName) {
             const proof = proofMap?.get(currentClassName);
             if (proof) {
               const col = line.indexOf("for");
@@ -174,9 +191,9 @@ export function registerCodeLensProvider(context: LspContext) {
             }
           }
 
-          // Twin / Digital Thread Parameter inspection
+          // Twin / Digital Thread Parameter inspection (only when parameter has an explicit twin/counterpart annotation)
           const paramMatch = /^\s*parameter\s+Real\s+([A-Za-z0-9_]+)\s*=\s*([0-9.eE+-]+)/.exec(line);
-          if (paramMatch) {
+          if (showPolyglotLinks && paramMatch) {
             const param = paramMatch[1]!;
             const val = paramMatch[2]!;
             const col = line.indexOf(param);
@@ -194,47 +211,54 @@ export function registerCodeLensProvider(context: LspContext) {
               twinTarget = twinMatch[1];
             }
 
-            if (param === "m") {
-              const numVal = parseFloat(val);
-              const isParity = Math.abs(numVal - 1.2) < 0.01;
-              const title = isParity
-                ? `🔗 Digital Thread Parity: m = ${numVal.toFixed(2)} kg [Aligned with FEA drone_chassis.inp & SysML DroneAssembly]`
-                : `⚠ Digital Thread Drift: m = ${val} kg (FEA Structural Mass: 1.20 kg) | Reconcile`;
-              lenses.push({
-                range,
-                command: {
-                  title,
-                  command: "modelscript.syncDigitalThreadParams",
-                  arguments: [uri],
-                },
-              });
-            } else if (param === "Cd") {
-              lenses.push({
-                range,
-                command: {
-                  title: `🔗 Aerodynamic Twin: Cd = ${val} [Aligned with CFD drone_aero.cfg RANS Polar]`,
-                  command: "modelscript.syncDigitalThreadParams",
-                  arguments: [uri],
-                },
-              });
-            } else if (param === "A") {
-              lenses.push({
-                range,
-                command: {
-                  title: `🔗 Frontal Area Twin: A = ${val} m² [Aligned with OpenSCAD CAD Projection]`,
-                  command: "modelscript.syncDigitalThreadParams",
-                  arguments: [uri],
-                },
-              });
-            } else if (twinTarget) {
-              lenses.push({
-                range,
-                command: {
-                  title: `🔗 Digital Twin: ${param} = ${val} [Linked to ${twinTarget}]`,
-                  command: "modelscript.syncDigitalThreadParams",
-                  arguments: [uri],
-                },
-              });
+            if (twinTarget) {
+              const isDroneContext =
+                currentClassName === "DroneSimulation" ||
+                uri.includes("DroneSimulation") ||
+                uri.includes("drone-reachability") ||
+                twinTarget.includes("drone_");
+              if (isDroneContext && param === "m") {
+                const numVal = parseFloat(val);
+                const isParity = Math.abs(numVal - 1.2) < 0.01;
+                const title = isParity
+                  ? `🔗 Digital Thread Parity: m = ${numVal.toFixed(2)} kg [Aligned with FEA drone_chassis.inp & SysML DroneAssembly]`
+                  : `⚠ Digital Thread Drift: m = ${val} kg (FEA Structural Mass: 1.20 kg) | Reconcile`;
+                lenses.push({
+                  range,
+                  command: {
+                    title,
+                    command: "modelscript.syncDigitalThreadParams",
+                    arguments: [uri],
+                  },
+                });
+              } else if (isDroneContext && param === "Cd") {
+                lenses.push({
+                  range,
+                  command: {
+                    title: `🔗 Aerodynamic Twin: Cd = ${val} [Aligned with CFD drone_aero.cfg RANS Polar]`,
+                    command: "modelscript.syncDigitalThreadParams",
+                    arguments: [uri],
+                  },
+                });
+              } else if (isDroneContext && param === "A") {
+                lenses.push({
+                  range,
+                  command: {
+                    title: `🔗 Frontal Area Twin: A = ${val} m² [Aligned with OpenSCAD CAD Projection]`,
+                    command: "modelscript.syncDigitalThreadParams",
+                    arguments: [uri],
+                  },
+                });
+              } else {
+                lenses.push({
+                  range,
+                  command: {
+                    title: `🔗 Digital Twin: ${param} = ${val} [Linked to ${twinTarget}]`,
+                    command: "modelscript.syncDigitalThreadParams",
+                    arguments: [uri],
+                  },
+                });
+              }
             }
           }
         }
@@ -544,85 +568,91 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = document?.getText();
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        let metricsTitle = "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg";
-        const treeEntry = (context as any).documentManager?.documentTrees?.get(uri);
-        const rootNode = treeEntry?.tree?.rootNode;
-        if (rootNode && !text.includes("rotor_stream")) {
-          try {
-            const evaluator = new ScadEvaluator();
-            const solid = evaluator.evaluate(rootNode);
-            if (solid) {
-              const mesh = ManifoldWorker.evaluateSolid(solid);
-              const { volume } = computeMeshVolumeAndArea(mesh);
-              const frontalAreaMm2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
-              const frontalAreaM2 = frontalAreaMm2 * 1e-6;
-              const densityMatch = /\/\/\s*@density\s*:\s*([0-9.eE+-]+)/i.exec(text);
-              const densityKgM3 = densityMatch ? parseFloat(densityMatch[1]!) : 2700;
-              const massKg = volume * 1e-9 * densityKgM3;
-              metricsTitle = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
+        if (showCadMetrics) {
+          let metricsTitle = "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg";
+          const treeEntry = (context as any).documentManager?.documentTrees?.get(uri);
+          const rootNode = treeEntry?.tree?.rootNode;
+          if (rootNode && !text.includes("rotor_stream")) {
+            try {
+              const evaluator = new ScadEvaluator();
+              const solid = evaluator.evaluate(rootNode);
+              if (solid) {
+                const mesh = ManifoldWorker.evaluateSolid(solid);
+                const { volume } = computeMeshVolumeAndArea(mesh);
+                const frontalAreaMm2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
+                const frontalAreaM2 = frontalAreaMm2 * 1e-6;
+                const densityMatch = /\/\/\s*@density\s*:\s*([0-9.eE+-]+)/i.exec(text);
+                const densityKgM3 = densityMatch ? parseFloat(densityMatch[1]!) : 2700;
+                const massKg = volume * 1e-9 * densityKgM3;
+                metricsTitle = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
+              }
+            } catch {
+              // Fall back to default metrics lens if live CSG evaluation fails
             }
-          } catch {
-            // Fall back to default metrics lens if live CSG evaluation fails
           }
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: metricsTitle,
+              command: "modelscript.openThreadExplorer",
+              arguments: [uri],
+            },
+          });
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "🎯 Open Interactive 3D CAD Editor (Gizmo Manipulation)",
+              command: "modelscript.openCadViewer",
+              arguments: [uri],
+            },
+          });
         }
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: metricsTitle,
-            command: "modelscript.openThreadExplorer",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🎯 Open Interactive 3D CAD Editor (Gizmo Manipulation)",
-            command: "modelscript.openCadViewer",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "⚡ Compile to STEP CAD (.step)",
-            command: "modelscript.scad.export_step",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🕸️ Discretize CAD to FEA Mesh (.inp)",
-            command: "modelscript.generateFeaMesh",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🌪️ Discretize CAD to CFD Mesh (.su2)",
-            command: "modelscript.generateCfdMesh",
-            arguments: [uri],
-          },
-        });
+        if (showFileConversions) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "⚡ Compile to STEP CAD (.step)",
+              command: "modelscript.scad.export_step",
+              arguments: [uri],
+            },
+          });
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "🕸️ Discretize CAD to FEA Mesh (.inp)",
+              command: "modelscript.generateFeaMesh",
+              arguments: [uri],
+            },
+          });
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "🌪️ Discretize CAD to CFD Mesh (.su2)",
+              command: "modelscript.generateCfdMesh",
+              arguments: [uri],
+            },
+          });
+        }
 
-        const lines = text.split(/\r?\n/);
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx]!;
-          const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(line);
-          if (tagMatch) {
-            const portName = tagMatch[1]!;
-            const portType = tagMatch[2];
-            const col = line.indexOf(portName);
-            const range = Range.create(lineIdx, col, lineIdx, col + portName.length);
-            lenses.push({
-              range,
-              command: {
-                title: `🔗 Boundary Coupling Port: [${portName} (${portType})] -> Boundary Condition`,
-                command: "modelscript.openPolyglotVisualizer",
-                arguments: [uri, portName],
-              },
-            });
+        if (showPolyglotLinks) {
+          const lines = text.split(/\r?\n/);
+          for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx]!;
+            const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(line);
+            if (tagMatch) {
+              const portName = tagMatch[1]!;
+              const portType = tagMatch[2];
+              const col = line.indexOf(portName);
+              const range = Range.create(lineIdx, col, lineIdx, col + portName.length);
+              lenses.push({
+                range,
+                command: {
+                  title: `🔗 Boundary Coupling Port: [${portName} (${portType})] -> Boundary Condition`,
+                  command: "modelscript.openPolyglotVisualizer",
+                  arguments: [uri, portName],
+                },
+              });
+            }
           }
         }
       }
@@ -635,45 +665,74 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = document?.getText();
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🔬 FEA Structural Invariant: σ_max = 172.4 MPa ≤ 180.0 MPa (Safety Factor: 1.04)",
-            command: "modelscript.openThreadExplorer",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "⚖️ Calibrated Mass: m = 1.20 kg (Transferred to Modelica & SysML)",
-            command: "modelscript.syncDigitalThreadParams",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🕸️ Open 3D CAE Mesh Viewer",
-            command: "modelscript.openStepViewer",
-            arguments: [uri],
-          },
-        });
+        const isDroneFea = uri.includes("drone_chassis") || text.includes("Drone Chassis") || text.includes("ECHASSIS");
+
+        if (isDroneFea) {
+          if (showVerification) {
+            lenses.push({
+              range: headerRange,
+              command: {
+                title: "🔬 FEA Structural Invariant: σ_max = 172.4 MPa ≤ 180.0 MPa (Safety Factor: 1.04)",
+                command: "modelscript.openThreadExplorer",
+                arguments: [uri],
+              },
+            });
+          }
+          if (showPolyglotLinks) {
+            lenses.push({
+              range: headerRange,
+              command: {
+                title: "⚖️ Calibrated Mass: m = 1.20 kg (Transferred to Modelica & SysML)",
+                command: "modelscript.syncDigitalThreadParams",
+                arguments: [uri],
+              },
+            });
+          }
+        }
 
         const lines = text.split(/\r?\n/);
+        let nodeCount = 0;
+        let elemCount = 0;
+        let sectionMode: "none" | "node" | "element" = "none";
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
           const line = lines[lineIdx]!;
-          if (/^\*SOLID SECTION/i.test(line)) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("*")) {
+            if (/^\*NODE\b/i.test(trimmed)) sectionMode = "node";
+            else if (/^\*ELEMENT\b/i.test(trimmed)) sectionMode = "element";
+            else sectionMode = "none";
+          } else if (trimmed && !trimmed.startsWith("$") && !trimmed.startsWith("#")) {
+            if (sectionMode === "node" || /^GRID\b/i.test(trimmed)) nodeCount++;
+            else if (sectionMode === "element" || /^(?:CTETRA|CHEXA|CPENTA|CQUAD4|CTRIA3)\b/i.test(trimmed))
+              elemCount++;
+          }
+
+          if (showCadMetrics && /^\*SOLID SECTION/i.test(line)) {
+            const matMatch = /MATERIAL\s*=\s*([^,\s]+)/i.exec(line);
+            const matLabel = isDroneFea ? "Carbon/Epoxy Quasi-Isotropic" : (matMatch?.[1] ?? "Solid Section");
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({
               range,
               command: {
-                title: "📐 Composite Section Envelope: Carbon/Epoxy Quasi-Isotropic",
+                title: `📐 Composite Section Envelope: ${matLabel}`,
                 command: "modelscript.openStepViewer",
                 arguments: [uri],
               },
             });
           }
+        }
+
+        if (showCadMetrics) {
+          const meshSummary =
+            !isDroneFea && (nodeCount > 0 || elemCount > 0) ? ` (${nodeCount} Nodes, ${elemCount} Elements)` : "";
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: `🕸️ Open 3D CAE Mesh Viewer${meshSummary}`,
+              command: "modelscript.openStepViewer",
+              arguments: [uri],
+            },
+          });
         }
       }
       return lenses;
@@ -685,27 +744,47 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = document?.getText();
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🌪️ CFD Aerodynamics: Cd = 0.80, A_ref = 0.030 m² | Cruise Airspeed = 10.0 m/s",
-            command: "modelscript.openThreadExplorer",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "🔗 Transfer Aerodynamic Drag to Modelica DroneSimulation.Cd",
-            command: "modelscript.syncDigitalThreadParams",
-            arguments: [uri],
-          },
-        });
+        const isDroneCfd = uri.includes("drone_aero") || text.includes("rotor_stream");
+        if (isDroneCfd) {
+          if (showCadMetrics) {
+            lenses.push({
+              range: headerRange,
+              command: {
+                title: "🌪️ CFD Aerodynamics: Cd = 0.80, A_ref = 0.030 m² | Cruise Airspeed = 10.0 m/s",
+                command: "modelscript.openThreadExplorer",
+                arguments: [uri],
+              },
+            });
+          }
+          if (showPolyglotLinks) {
+            lenses.push({
+              range: headerRange,
+              command: {
+                title: "🔗 Transfer Aerodynamic Drag to Modelica DroneSimulation.Cd",
+                command: "modelscript.syncDigitalThreadParams",
+                arguments: [uri],
+              },
+            });
+          }
+        } else if (showCadMetrics) {
+          const solverMatch = /^\s*SOLVER\s*=\s*([^\r\n]+)/im.exec(text);
+          const refAreaMatch = /^\s*REF_AREA\s*=\s*([^\r\n]+)/im.exec(text);
+          const solver = solverMatch?.[1]?.trim() ?? "CFD";
+          const refArea = refAreaMatch?.[1]?.trim();
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: `🌪️ CFD Configuration: ${solver}${refArea ? ` | A_ref = ${refArea} m²` : ""}`,
+              command: "modelscript.openThreadExplorer",
+              arguments: [uri],
+            },
+          });
+        }
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
           const line = lines[lineIdx]!;
-          if (/^\s*REF_AREA\s*=/i.test(line)) {
+          if (showPolyglotLinks && isDroneCfd && /^\s*REF_AREA\s*=/i.test(line)) {
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({
               range,
@@ -724,30 +803,41 @@ export function registerCodeLensProvider(context: LspContext) {
     // 6. STEP CAD files (.step, .stp)
     if (/\.(step|stp|p21)($|\?|#)/i.test(uri)) {
       const headerRange = Range.create(0, 0, 0, 0);
-      lenses.push({
-        range: headerRange,
-        command: {
-          title: "📐 3D B-Rep Solid Geometry: 1,083 Nodes, 3,240 Elements",
-          command: "modelscript.openStepViewer",
-          arguments: [uri],
-        },
-      });
-      lenses.push({
-        range: headerRange,
-        command: {
-          title: "🕸️ Discretize CAD to FEA Mesh (.inp)",
-          command: "modelscript.generateFeaMesh",
-          arguments: [uri],
-        },
-      });
-      lenses.push({
-        range: headerRange,
-        command: {
-          title: "🌪️ Discretize CAD to CFD Mesh (.su2)",
-          command: "modelscript.generateCfdMesh",
-          arguments: [uri],
-        },
-      });
+      const document = context.documents.get(uri);
+      const text = document?.getText() ?? "";
+      const isDroneStep = uri.includes("drone") || text.includes("ModelScript B-Rep Solid");
+      if (showCadMetrics) {
+        const entityCount = (text.match(/#\d+\s*=/g) || []).length;
+        const stepTitle = isDroneStep
+          ? "📐 3D B-Rep Solid Geometry: 1,083 Nodes, 3,240 Elements"
+          : `📐 3D B-Rep Solid Geometry (${entityCount} STEP Entities)`;
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: stepTitle,
+            command: "modelscript.openStepViewer",
+            arguments: [uri],
+          },
+        });
+      }
+      if (showFileConversions) {
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "🕸️ Discretize CAD to FEA Mesh (.inp)",
+            command: "modelscript.generateFeaMesh",
+            arguments: [uri],
+          },
+        });
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "🌪️ Discretize CAD to CFD Mesh (.su2)",
+            command: "modelscript.generateCfdMesh",
+            arguments: [uri],
+          },
+        });
+      }
       return lenses;
     }
 

@@ -40,6 +40,7 @@ const PREC = {
 export const feaLanguage = language({
   name: "fea",
   fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
     icons: {

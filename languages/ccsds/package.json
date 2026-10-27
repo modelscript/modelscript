@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/ccsds",
-  "version": "0.0.0",
+  "version": "0.0.18",
   "description": "CCSDS space mission astrodynamics, orbit ephemeris, and OMG XTCE satellite telemetry language package for ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",

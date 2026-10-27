@@ -19,6 +19,8 @@ export interface IdeToolbarProps {
   packageNameFromHash: string | null;
   isDeprecated: boolean;
   lspStatus: LspStatusState | null;
+  shareLabel?: string | undefined;
+  onOpenInPlayground?: (() => void) | undefined;
   onRestartLsp: () => void;
   onShare: () => void;
   onReload: () => void;
@@ -37,6 +39,8 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
   packageNameFromHash,
   isDeprecated,
   lspStatus,
+  shareLabel,
+  onOpenInPlayground,
   onRestartLsp,
   onShare,
   onReload,
@@ -147,8 +151,14 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
           </span>
         )}
 
-        <Button size="small" variant="default" leadingVisual={ShareIcon} onClick={onShare}>
-          Share to Feed
+        {onOpenInPlayground && (
+          <Button size="small" variant="default" leadingVisual={CodeIcon} onClick={onOpenInPlayground}>
+            Open in Playground
+          </Button>
+        )}
+
+        <Button size="small" variant="primary" leadingVisual={ShareIcon} onClick={onShare}>
+          {shareLabel || "Share to Feed"}
         </Button>
 
         <IconButton

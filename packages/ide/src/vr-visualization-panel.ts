@@ -39,9 +39,16 @@ export class VrVisualizationPanel extends BaseWebviewPanel {
       rootId: "container",
     });
 
+    const mqttWsUrl =
+      vscode.workspace.getConfiguration("modelscript").get<string>("mqtt.brokerUrl") || "ws://localhost:1892";
+    this._panel.webview.postMessage({ command: "config", mqttWsUrl });
+
     this._panel.webview.onDidReceiveMessage(
       (message) => {
         switch (message.command) {
+          case "ready":
+            this._panel.webview.postMessage({ command: "config", mqttWsUrl });
+            return;
           case "alert":
             vscode.window.showErrorMessage(message.text);
             return;

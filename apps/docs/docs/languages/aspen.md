@@ -35,7 +35,7 @@
 ### 3. Direct Linear-Memory DAE Lowering
 
 - Compiles flowsheet topology, stream molar balances, and component enthalpies directly into `@modelscript/runtime`'s `DAEBuilder` struct-of-arrays linear memory arena without intermediary AST allocations.
-- Emits continuous DAE systems with algebraic stream constraints for joint dynamic simulation with pipeline networks ([`@modelscript/lps`](file:///home/omar/git3/modelscript/languages/lps)) and multiphase transient pipelines ([`@modelscript/olga`](file:///home/omar/git3/modelscript/languages/olga)).
+- Emits continuous DAE systems with algebraic stream constraints for joint dynamic simulation with pipeline networks ([`@modelscript/lps`](./lps.md)) and multiphase transient pipelines ([`@modelscript/olga`](./olga.md)).
 
 ### 4. Bidirectional Modelica 3.x Projection
 
@@ -43,20 +43,11 @@
 
 ---
 
-## Pre-Flight Diagnostics (`M8101`–`M8120`)
+## Pre-Flight Diagnostics
 
 The Aspen analyzer inspects flowsheet connectivity, phase equilibria, and thermodynamic consistency:
 
-| Code    | Severity  | Rule Identifier                   | Condition Checked                                                                |
-| :------ | :-------- | :-------------------------------- | :------------------------------------------------------------------------------- |
-| `M8101` | `error`   | `unconnected-stream`              | Stream references non-existent unit operation block or unconnected port.         |
-| `M8102` | `warning` | `circular-flowsheet-recycle`      | Closed recycle loop detected without an explicit tear stream declaration.        |
-| `M8103` | `error`   | `duplicate-block-id`              | Unit operation block identifier declared multiple times in flowsheet.            |
-| `M8104` | `error`   | `negative-component-fraction`     | Component mole/mass fraction $z_i < 0$.                                          |
-| `M8108` | `error`   | `component-fractions-sum-invalid` | Component fractions in feed stream do not sum to unity ($\sum z_i \ne 1.0$).     |
-| `M8109` | `error`   | `radfrac-stage-out-of-bounds`     | Feed or sidestream stage outside column range ($1 \le s \le N_{\text{stages}}$). |
-| `M8112` | `error`   | `negative-absolute-temperature`   | Stream temperature is below absolute zero ($T < 0\text{ K}$).                    |
-| `M8113` | `error`   | `non-positive-pressure`           | Stream pressure is non-positive ($P \le 0\text{ bar}$).                          |
+<LintRules lang="aspen" />
 
 ---
 
@@ -69,8 +60,8 @@ msx aspen inspect MethanolWaterPlant.inp
 # Run pre-flight semantic diagnostics
 msx aspen lint MethanolWaterPlant.inp
 
-# Solve isothermal flash VLE for feed streams
-msx aspen solve-flash MethanolWaterPlant.inp --temp=350 --pres=1.013
+# Solve isothermal flash VLE for a feed stream
+msx aspen solve-flash MethanolWaterPlant.inp --stream FEED
 
 # Lower flowsheet to ModelScript linear DAE arena
 msx aspen to-dae MethanolWaterPlant.inp

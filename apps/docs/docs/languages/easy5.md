@@ -85,20 +85,7 @@ flowchart TD
 
 ModelScript evaluates 12 formal pre-flight diagnostic rules before simulation, linearization, or projection:
 
-| Code        | Severity    | Rule Identifier              | Description & Engineering Remediation                                                                                                                                                              |
-| :---------- | :---------- | :--------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`M7001`** | **Warning** | `unconnected-input-port`     | **Floating Input**: Component input port is not connected in the netlist. Remediation: connect the port or provide a default bias in `XP`.                                                         |
-| **`M7002`** | **Error**   | `algebraic-loop`             | **Direct Feedthrough Loop**: Unbroken algebraic loop detected in direct feedthrough path via Tarjan's SCC algorithm. Remediation: insert an integrator (`IN`), delay (`TD`), or lag filter (`LA`). |
-| **`M7003`** | **Error**   | `undefined-component`        | **Invalid Connection Target**: Connection references a non-existent component identifier. Remediation: declare component or fix typo.                                                              |
-| **`M7004`** | **Error**   | `invalid-port-reference`     | **Invalid Port**: Connection references an unknown port name on the target component. Remediation: check GP block port names (`IN`, `OUT`, `IN1`, `IN2`).                                          |
-| **`M7005`** | **Error**   | `improper-transfer-function` | **Improper Transfer Function**: Transfer function degree($\text{NUM}$) > degree($\text{DEN}$). Remediation: ensure degree($\text{DEN}$) $\ge$ degree($\text{NUM}$) for causality.                  |
-| **`M7006`** | **Error**   | `invalid-limiter-bounds`     | **Inverted Bounds**: Limiter lower limit (`LL`) exceeds upper limit (`UL`). Remediation: ensure `LL < UL`.                                                                                         |
-| **`M7007`** | **Warning** | `missing-required-param`     | **Missing Parameter**: GP component is missing standard required parameter (e.g. gain `K`).                                                                                                        |
-| **`M7008`** | **Error**   | `duplicate-component-id`     | **Duplicate Identifier**: Two or more components declare the same identifier. Remediation: ensure component IDs are unique.                                                                        |
-| **`M7009`** | **Error**   | `undefined-table-reference`  | **Missing Lookup Table**: Function generator references a table name not declared in the model or `.tab` file.                                                                                     |
-| **`M7010`** | **Error**   | `user-code-syntax-error`     | **Fortran User Code Error**: Embedded Fortran in `UG`/`UX` component has syntax or semantic violations verified via `@modelscript/fortran`.                                                        |
-| **`M7011`** | **Warning** | `non-positive-time-constant` | **Non-Positive Time Constant**: Filter time constant $\tau \le 0$. Remediation: specify $\tau > 0$ for stability.                                                                                  |
-| **`M7012`** | **Warning** | `invalid-switch-threshold`   | **Non-Finite Switch Threshold**: Switch threshold is NaN or infinite.                                                                                                                              |
+<LintRules lang="easy5" />
 
 ---
 

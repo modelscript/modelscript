@@ -52,6 +52,7 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
       scrollEl.addEventListener("scroll", handleScroll);
       return () => scrollEl.removeEventListener("scroll", handleScroll);
     }
+    return undefined;
   }, [activeCategory]);
 
   const filteredCategories = EMOJI_CATEGORIES.map((category) => {

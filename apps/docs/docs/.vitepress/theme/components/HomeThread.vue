@@ -2,7 +2,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { IconName } from "../data/icons";
+import lintRules from "../data/lint-rules.generated.json";
 import MsIcon from "./MsIcon.vue";
+
+const totalLintRules = lintRules.reduce((sum, lang) => sum + lang.rules.length, 0);
 
 interface ThreadStep {
   id: string;
@@ -32,7 +35,7 @@ const steps: ThreadStep[] = [
     id: "analyze",
     icon: "search",
     title: "Analyze",
-    body: "Over 250 lint rules catch unresolved references, type and unit mismatches, and unbalanced equations as you type.",
+    body: `${totalLintRules} lint rules across ${lintRules.length} languages catch unresolved references, type and unit mismatches, and unbalanced equations as you type.`,
     lines: [
       { kind: "comment", text: "# Lint an entire polyglot workspace for CI" },
       { kind: "cmd", text: "msx lint ./models ./requirements --format json" },
@@ -61,17 +64,17 @@ const steps: ThreadStep[] = [
     id: "verify",
     icon: "shield",
     title: "Verify",
-    body: "Prove safety properties with k-induction and SMT, falsify requirements, and emit SARIF evidence for code scanning.",
+    body: "Check contracts, decision tables and state machines, falsify temporal-logic requirements, and emit SARIF evidence for code scanning.",
     lines: [
-      { kind: "comment", text: "# k-induction proof with a SARIF report" },
+      { kind: "comment", text: "# Contract verification with a SARIF report" },
       {
         kind: "cmd",
-        text: "msx verify BrakingController brake.mo --engine kind --bound 50 --format sarif --report results.sarif",
+        text: "msx verify BrakingController brake.mo --format sarif --report results.sarif",
       },
       { kind: "comment", text: "# Grid-code compliance from a PSCAD project" },
       { kind: "cmd", text: "msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us" },
     ],
-    artifacts: ["SARIF", "IEEE 2800", "EN 14363", "KeYmaera X"],
+    artifacts: ["SARIF", "IEEE 2800", "EN 14363", "nuXmv / SMT-LIB2"],
   },
   {
     id: "deliver",
@@ -142,7 +145,7 @@ onBeforeUnmount(() => timer && clearInterval(timer));
               :aria-controls="`thread-panel-${s.id}`"
               @click="select(i)"
             >
-              <span class="step-icon"><MsIcon :name="s.icon" :size="18" /></span>
+              <span class="step-icon"><MsIcon :name="s.icon" :size="22" :duotone="true" /></span>
               <span class="step-text">
                 <span class="step-title"
                   ><span class="step-num">0{{ i + 1 }}</span
@@ -236,21 +239,31 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   color: var(--vp-c-text-2);
   background: var(--vp-c-bg-soft);
   border: 1px solid var(--vp-c-divider);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
-    color 0.25s,
-    background 0.25s;
+    color 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
 }
 
 .thread-step.active .step-icon {
   color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
-  border-color: transparent;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(34, 211, 238, 0.24), transparent 68%),
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.18), transparent 68%),
+    var(--vp-c-brand-soft);
+  border-color: color-mix(in srgb, var(--vp-c-brand-1) 42%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 20px -8px rgba(6, 182, 212, 0.45);
 }
 
 .step-text {

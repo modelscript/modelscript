@@ -27,6 +27,79 @@ const DEFAULT_RANGE: SourceRange = {
   endColumn: 1,
 };
 
+export const SimulinkErrorCode = {
+  UNCONNECTED_INPUT_PORT: {
+    code: "M7201",
+    rule: "unconnected-input-port",
+    severity: "error" as const,
+    message: (portNumber: number, blockName: string, blockType: string) =>
+      `Input port ${portNumber} on block '${blockName}' (${blockType}) is unconnected. All input ports must be driven or terminated with a Ground block.`,
+  },
+  DIRECT_FEEDTHROUGH_ALGEBRAIC_LOOP: {
+    code: "M7202",
+    rule: "direct-feedthrough-algebraic-loop",
+    severity: "error" as const,
+    message: (loopNames: string) =>
+      `Direct-feedthrough algebraic loop detected across blocks: [${loopNames}]. Control loops with direct algebraic feedthrough must contain at least one state delay (Integrator or UnitDelay) or will require an iterative non-linear solver.`,
+  },
+  UNRESOLVED_SUBSYSTEM_LINK: {
+    code: "M7203",
+    rule: "unresolved-subsystem-link",
+    severity: "error" as const,
+    message: (blockName: string) =>
+      `SubSystem block '${blockName}' has no defined sub-diagram or unresolved library reference.`,
+  },
+  PORT_INDEX_OUT_OF_BOUNDS: {
+    code: "M7204",
+    rule: "port-index-out-of-bounds",
+    severity: "error" as const,
+    message: (blockName: string, portNumber: number) =>
+      `Block '${blockName}' has invalid port index ${portNumber}. Port numbers must be positive integers (1, 2, ...).`,
+  },
+  MULTIRATE_SAMPLE_TIME_CONFLICT: {
+    code: "M7205",
+    rule: "multirate-sample-time-conflict",
+    severity: "warning" as const,
+    message: (blockName: string, sampleTime: number) =>
+      `Block '${blockName}' has invalid SampleTime ${sampleTime}. SampleTime must be >= 0 (discrete) or -1 (inherited).`,
+  },
+  NON_NUMERIC_PARAMETER: {
+    code: "M7206",
+    rule: "non-numeric-parameter",
+    severity: "error" as const,
+    message: (blockName: string, paramName: string, value: string) =>
+      `Block '${blockName}' parameter '${paramName}' contains non-finite value ${value}. Parameters must evaluate to finite Real numbers.`,
+  },
+  INVALID_BUS_SELECTOR: {
+    code: "M7207",
+    rule: "invalid-bus-selector",
+    severity: "error" as const,
+    message: (blockName: string, signalName: string, sourceBlock: string) =>
+      `BusSelector block '${blockName}' references signal '${signalName}' absent from the incoming bus schema from '${sourceBlock}'.`,
+  },
+  DUPLICATE_BLOCK_NAME: {
+    code: "M7208",
+    rule: "duplicate-block-name",
+    severity: "error" as const,
+    message: (blockName: string, systemName: string) =>
+      `Duplicate block name '${blockName}' found in subsystem scope '${systemName}'. Block names within a system must be unique.`,
+  },
+  DIVIDE_BY_ZERO_RISK: {
+    code: "M7209",
+    rule: "divide-by-zero-risk",
+    severity: "warning" as const,
+    message: (blockName: string, inputs: string) =>
+      `Product/Divide block '${blockName}' performs division operations with inputs '${inputs}'; ensure denominator signal is protected against division by zero.`,
+  },
+  MISSING_INTEGRATOR_INITIAL_CONDITION: {
+    code: "M7210",
+    rule: "missing-integrator-initial-condition",
+    severity: "info" as const,
+    message: (blockName: string) =>
+      `Integrator block '${blockName}' does not specify an explicit 'InitialCondition'; defaulting to 0.0.`,
+  },
+};
+
 /**
  * Returns true if the block type has direct feedthrough (output depends immediately on input).
  * E.g. Gain, Sum, Product, Math, Saturation, SubSystem have direct feedthrough.

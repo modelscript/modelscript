@@ -6,12 +6,13 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "../../../components/Box";
 import type { PostItem } from "../../../types/api";
-import type { NotebookData, NotebookHeading } from "../../../util/notebook";
+import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
+import type { NotebookHeading, NotebookMetadata } from "../../../util/notebook";
 import { ActionDockBtn, DockTitle, SimulationDockPane, TelemetryCard, TelemetryGrid } from "../styles";
 
 export interface TutorialGuideDockPaneProps {
   post: PostItem;
-  notebookData: NotebookData;
+  notebookData: NotebookMetadata;
   notebookHeadings: NotebookHeading[];
   readTimeMinutes: number;
   activeHeadingSlug: string;
@@ -27,6 +28,19 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
   setActiveHeadingSlug,
 }) => {
   const navigate = useNavigate();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const postAny = post as any;
+  const primaryArtifactId = postAny.artifact_view_id ?? post.artifact_id ?? notebookData.artifactIds?.[0];
+  const primaryArtifactView =
+    (primaryArtifactId ? postAny.artifact_views?.[primaryArtifactId] : undefined) || postAny.artifact_view;
+  const isMultiFileTutorial = Boolean(
+    primaryArtifactView &&
+    isMultiFileArtifact({
+      ...primaryArtifactView,
+      view_type: primaryArtifactView.view_type || primaryArtifactView.artifact_type || postAny.artifact_type,
+    }),
+  );
 
   return (
     <SimulationDockPane style={{ position: "static" }}>
@@ -63,15 +77,15 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
           }}
         >
           {notebookHeadings.map((h, i) => {
-            const isActive = activeHeadingSlug === h.slug;
+            const isActive = activeHeadingSlug === h.id;
             return (
               <a
-                key={`${h.slug}-${i}`}
-                href={`#${h.slug}`}
+                key={`${h.id}-${i}`}
+                href={`#${h.id}`}
                 onClick={(e) => {
                   e.preventDefault();
-                  setActiveHeadingSlug(h.slug);
-                  document.getElementById(h.slug)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  setActiveHeadingSlug(h.id);
+                  document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
                 }}
                 style={{
                   padding: "4px 8px",
@@ -179,17 +193,23 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
           $primary
           style={{ flex: 1.3 }}
           onClick={() => {
-            const codeBlocks = Array.from((post.content || "").matchAll(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g))
-              .map((m) => m[1]?.trim())
-              .filter(Boolean);
+            const matches = Array.from((post.content || "").matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g));
+            const firstFenceLang = matches[0]?.[1]?.trim();
+            const codeBlocks = matches.map((m) => m[2]?.trim()).filter(Boolean);
             const combinedSource = codeBlocks.join("\n\n");
-            navigate(
-              `/ide?source=${encodeURIComponent(combinedSource || post.content || "")}&title=${encodeURIComponent(notebookData.title || `Tutorial-${post.id}`)}`,
-            );
+            const targetUrl = buildEditorUrlForArtifact({
+              artifactId: primaryArtifactId,
+              viewType: primaryArtifactView?.view_type || primaryArtifactView?.artifact_type || postAny.artifact_type,
+              viewConfig: primaryArtifactView?.view_config || postAny.artifact_config,
+              code: combinedSource || (!primaryArtifactId ? post.content || "" : undefined),
+              title: notebookData.title || `Tutorial-${post.id}`,
+              dialect: notebookData.dialect || firstFenceLang || undefined,
+            });
+            navigate(targetUrl);
           }}
         >
           <ZapIcon />
-          Open in Web IDE
+          {isMultiFileTutorial ? "Open in Web IDE" : "Open in Playground"}
         </ActionDockBtn>
         <ActionDockBtn
           style={{ flex: 1 }}

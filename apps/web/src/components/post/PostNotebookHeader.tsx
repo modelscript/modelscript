@@ -209,8 +209,8 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
         </div>
       )}
 
-      {/* Collapsible In-Article Table of Contents */}
-      {notebookHeadings.length > 0 && (
+      {/* Collapsible In-Article Table of Contents (Feed View only; Detail View uses TutorialGuideDockPane) */}
+      {!isDetailView && notebookHeadings.length > 0 && (
         <div style={{ marginTop: "2px" }}>
           <button
             type="button"

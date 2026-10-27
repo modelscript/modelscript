@@ -8,6 +8,7 @@ import { choice, field, language, repeat, seq } from "@modelscript/dsl";
 export const gensysLanguage = language({
   name: "gensys",
   fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
   },

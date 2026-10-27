@@ -14,6 +14,7 @@ import { solveDistributionPowerFlow } from "./solvers/power-flow-solver.js";
 export const openDssLanguage = language({
   name: "opendss",
   fileExtensions: [".dss"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".dss"],
     icons: {

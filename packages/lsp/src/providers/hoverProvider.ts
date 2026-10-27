@@ -223,50 +223,43 @@ function enhanceWithCadLink(hoverContent: string, token: string, text: string, o
   const lineText = text.slice(lineStart, lineEnd);
 
   let coupledPartName: string | null = null;
+  let isBiomedical = false;
   const cadMatch =
     lineText.match(/CAD(?:Port)?\([^)]*?(?:feature|part)\s*=\s*"([^"]+)"/i) ||
     lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i);
 
   if (cadMatch) {
     coupledPartName = cadMatch[1]!;
+    isBiomedical = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
   } else {
     const lowerToken = token.toLowerCase();
-    const bioCadKeywords = [
-      "lead",
-      "cannula",
-      "ventricle",
-      "atrium",
-      "myocardium",
-      "valve",
-      "leaflet",
-      "anchor",
-      "housing",
-      "impeller",
-      "patch",
-      "catheter",
-      "stent",
-      "sensor",
-      "motor",
-      "rotor",
-      "electrode",
-      "apex",
-    ];
+    const strictBioKeywords = ["cannula", "ventricle", "atrium", "myocardium", "leaflet", "catheter", "stent"];
+    const hasBioContext = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
+    const contextualBioKeywords = ["lead", "electrode", "apex", "patch"];
+
     if (
-      bioCadKeywords.some((k) => lowerToken.includes(k)) ||
+      strictBioKeywords.some((k) => lowerToken.includes(k)) ||
+      (hasBioContext && contextualBioKeywords.some((k) => lowerToken.includes(k)))
+    ) {
+      coupledPartName = token;
+      isBiomedical = true;
+    } else if (
       lowerToken.endsWith("_anchor") ||
       lowerToken.endsWith("_cad") ||
       lowerToken.endsWith("_part") ||
       lowerToken.startsWith("cad_")
     ) {
       coupledPartName = token;
+      isBiomedical = hasBioContext;
     }
   }
 
   if (coupledPartName) {
     const commandArg = encodeURIComponent(JSON.stringify({ partName: coupledPartName }));
+    const canvasLabel = isBiomedical ? "Inspect in 3D Anatomy Canvas" : "Inspect in 3D CAD Viewer";
     return (
       hoverContent +
-      `\n\n---\n**Coupled 3D CAD Anchor:**\n[🔍 Inspect in 3D Anatomy Canvas](command:modelscript.focusCadPart?${commandArg})`
+      `\n\n---\n**Coupled 3D CAD Anchor:**\n[🔍 ${canvasLabel}](command:modelscript.focusCadPart?${commandArg})`
     );
   }
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PackageIcon, PlugIcon, SlidersIcon } from "@primer/octicons-react";
-import { Label, Text } from "@primer/react";
-import React from "react";
+import { PackageIcon, PlugIcon, SearchIcon, SlidersIcon, XIcon } from "@primer/octicons-react";
+import { Label, Text, TextInput } from "@primer/react";
+import React, { useMemo, useState } from "react";
 import { getIconUrl } from "../../../api";
 import Box from "../../../components/Box";
 import type { EnrichedComponent } from "../../../components/classTreeUtils";
@@ -26,12 +26,58 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
   libraryName,
   version,
 }) => {
+  const [memberFilter, setMemberFilter] = useState("");
+  const totalCount = parameters.length + connectors.length + submodels.length;
+
+  const { filteredParams, filteredConnectors, filteredSubmodels } = useMemo(() => {
+    const q = memberFilter.trim().toLowerCase();
+    if (!q) {
+      return {
+        filteredParams: parameters,
+        filteredConnectors: connectors,
+        filteredSubmodels: submodels,
+      };
+    }
+    const matches = (c: EnrichedComponent) =>
+      c.component_name.toLowerCase().includes(q) ||
+      c.type_name.toLowerCase().includes(q) ||
+      Boolean(c.description && c.description.toLowerCase().includes(q));
+    return {
+      filteredParams: parameters.filter(matches),
+      filteredConnectors: connectors.filter(matches),
+      filteredSubmodels: submodels.filter(matches),
+    };
+  }, [memberFilter, parameters, connectors, submodels]);
+
   return (
     <>
-      {parameters.length > 0 && (
+      {totalCount > 5 && (
+        <Box mb={3} style={{ maxWidth: 360 }}>
+          <TextInput
+            leadingVisual={SearchIcon}
+            trailingAction={
+              memberFilter ? (
+                <TextInput.Action onClick={() => setMemberFilter("")} icon={XIcon} aria-label="Clear member filter" />
+              ) : undefined
+            }
+            placeholder={`Filter ${totalCount} declared members, ports, or parameters…`}
+            value={memberFilter}
+            onChange={(e) => setMemberFilter(e.target.value)}
+            size="small"
+            block
+            style={{
+              background: "var(--color-glass-bg)",
+              border: "1px solid var(--color-border)",
+              fontSize: 12,
+            }}
+          />
+        </Box>
+      )}
+
+      {filteredParams.length > 0 && (
         <JavadocSection>
           <SectionTitle as="h3">
-            <SlidersIcon size={14} /> Parameters &amp; Constants ({parameters.length})
+            <SlidersIcon size={14} /> Parameters, Attributes &amp; Constants ({filteredParams.length})
           </SectionTitle>
           <JavadocTableWrap>
             <JavadocTable>
@@ -46,7 +92,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {parameters.map((param) => (
+                {filteredParams.map((param) => (
                   <tr key={param.component_name}>
                     <td>
                       <Text
@@ -86,10 +132,10 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
         </JavadocSection>
       )}
 
-      {connectors.length > 0 && (
+      {filteredConnectors.length > 0 && (
         <JavadocSection>
           <SectionTitle as="h3">
-            <PlugIcon size={14} /> Connectors &amp; Ports ({connectors.length})
+            <PlugIcon size={14} /> Connectors, Ports &amp; Terminals ({filteredConnectors.length})
           </SectionTitle>
           <JavadocTableWrap>
             <JavadocTable>
@@ -102,7 +148,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {connectors.map((conn) => (
+                {filteredConnectors.map((conn) => (
                   <tr key={conn.component_name}>
                     <td>
                       <Box display="flex" alignItems="center" gap="8px">
@@ -144,10 +190,10 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
         </JavadocSection>
       )}
 
-      {submodels.length > 0 && (
+      {filteredSubmodels.length > 0 && (
         <JavadocSection>
           <SectionTitle as="h3">
-            <PackageIcon size={14} /> Components &amp; Submodels ({submodels.length})
+            <PackageIcon size={14} /> Components, Parts &amp; Submodels ({filteredSubmodels.length})
           </SectionTitle>
           <JavadocTableWrap>
             <JavadocTable>
@@ -160,7 +206,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {submodels.map((sub) => {
+                {filteredSubmodels.map((sub) => {
                   const allMods = [
                     ...(sub.defaultValue ? [{ modifier_name: "value", modifier_value: sub.defaultValue }] : []),
                     ...(sub.unit ? [{ modifier_name: "unit", modifier_value: sub.unit }] : []),

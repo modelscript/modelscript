@@ -29,6 +29,7 @@ import { verifyFlowAssuranceTrajectory } from "./verification/flow-assurance-ver
 export const olgaLanguage = language({
   name: "olga",
   fileExtensions: [".opi", ".olga", ".key", ".genkey", ".inp"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".opi", ".olga", ".key", ".genkey", ".inp"],
     icons: {

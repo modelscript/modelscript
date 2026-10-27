@@ -1,4 +1,7 @@
-# `@modelscript/dsl`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
+# @modelscript/dsl
 
 ModelScript Grammar Workbench, native WebAssembly GLR parser compiler, linear-memory CST accessors, declarative static analysis & linter engine, Triple Graph Grammar (TGG) bidirectional transformation compiler, Critical Pair Analysis (CPA), E-graph equality saturation, and surgical CST unparser.
 
@@ -8,7 +11,7 @@ ModelScript Grammar Workbench, native WebAssembly GLR parser compiler, linear-me
 
 ### 1. Declarative Language Workbench DSL (`@modelscript/dsl/dsl`)
 
-Every polyglot language in ModelScript (`modelica`, `sysml2`, `modelscript`, `pscad`, `step`, `owl2`, `scad`, `cfd`, `fea`, `ssp`, `csv`) is defined via a single declarative `defineLanguage({...})` specification (`src/dsl/language.ts`):
+Every polyglot language across all **44 engineering domains** in ModelScript (`modelica`, `sysml2`, `modelscript`, `pscad`, `psse`, `opendss`, `spice`, `verilog-a`, `ibis`, `touchstone`, `olga`, `lps`, `aspen`, `eclipse`, `epanet`, `swmm`, `relap5`, `energyplus`, `adams`, `simpack`, `gensys`, `gtsuite`, `sima`, `urdf`, `opendrive`, `openscenario`, `autosar`, `simulink`, `easy5`, `jsbsim`, `rocets`, `ccsds`, `plcopen`, `step`, `scad`, `cfd`, `fea`, `ssp`, `reqif`, `owl2`, `csv`, `sbml`, `fortran`, `c`) is defined via a single declarative `defineLanguage({...})` specification (`src/dsl/language.ts`):
 
 - **Grammar Combinators (`src/dsl/combinators.ts`, `src/dsl/grammar.ts`)**: `seq`, `choice`, `repeat`, `repeat1`, `optional`, `prec`, `prec.left`, `prec.right`, `prec.dynamic`, `field`, `token`, `alias`, and external scanner hooks (`src/dsl/scanner-types.ts`).
 - **Unified Language Facets**: A `LanguageDefinition` co-locates grammar rules with scope/symbol indexing (`scopes`), Salsa semantic queries (`queries`), static lints (`lints`), graphical diagram mappings (`diagram`), DAE lowering rules (`dae`), 3D CAD bindings (`cad`), bidirectional writeback rules (`writeback`), and MCP tool declarations (`mcp`).

@@ -38,7 +38,9 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
             gap: "6px",
           }}
         >
-          <ServerIcon size={14} style={{ color: "var(--color-accent-cyan)" }} />
+          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+            <ServerIcon size={14} />
+          </span>
           <Text
             style={{
               fontSize: "12px",
@@ -51,7 +53,9 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
           >
             Cloud &amp; HPC Queue
           </Text>
-          <ArrowRightIcon size={11} style={{ color: "var(--color-text-muted)" }} />
+          <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
+            <ArrowRightIcon size={11} />
+          </span>
         </Link>
         <Box display="flex" alignItems="center" gap={2}>
           <span
@@ -99,11 +103,19 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
             const isDone = job.status === "completed" || job.status === "SUCCESS";
             const isFailed = job.status === "failed" || job.status === "FAILED";
             const progress = Math.min(100, Math.max(0, job.progress || (isDone ? 100 : isRunning ? 55 : 0)));
+            const strId = String(job.id);
+            const routeId =
+              strId.startsWith("cloud-") || strId.startsWith("cae-")
+                ? strId
+                : job.domain === "cfd" || job.domain === "fea"
+                  ? `cae-${strId}`
+                  : `cloud-${strId}`;
+            const displayId = strId.replace(/^(cloud[-_]|cae[-_])+/, "").slice(0, 6);
 
             return (
               <div
                 key={job.id}
-                onClick={() => navigate(`/jobs/${job.id}`)}
+                onClick={() => navigate(`/jobs/${routeId}`)}
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -128,7 +140,7 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
                     }}
                     title={job.name}
                   >
-                    #{String(job.id).slice(0, 6)} {job.name}
+                    #{displayId} {job.name}
                   </span>
                   <span
                     style={{
@@ -220,9 +232,8 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
         )}
 
         <Box
-          pt={2}
           mt={1}
-          borderTop="1px solid var(--color-border-subtle)"
+          style={{ paddingTop: "8px", borderTop: "1px solid var(--color-border-subtle)" }}
           display="flex"
           justifyContent="space-between"
           alignItems="center"

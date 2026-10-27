@@ -5,7 +5,9 @@ import { Button, Heading, Spinner, Text, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import api from "../../api";
 import Box from "../Box";
+import { compressMorselPayload } from "../morsel/util/permalink";
 
 export interface FmuScalarVariable {
   name: string;
@@ -15,11 +17,14 @@ export interface FmuScalarVariable {
   description?: string | undefined;
   type: "Real" | "Integer" | "Boolean" | "String" | string;
   start?: string | number | undefined;
+  derivative?: number | undefined;
   unit?: string | undefined;
 }
 
 export interface FmuViewerProps {
   viewConfig: {
+    artifactId?: string | number | undefined;
+    code?: string | undefined;
     fmiVersion?: string | undefined;
     modelName?: string | undefined;
     modelDescription?: string | undefined;
@@ -288,57 +293,6 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     addVars(viewConfig.outputs);
     addVars(viewConfig.parameters);
 
-    // Fallback sample variables if empty
-    if (list.length === 0) {
-      list.push(
-        {
-          name: "time",
-          valueReference: 0,
-          causality: "independent",
-          variability: "continuous",
-          type: "Real",
-          unit: "s",
-        },
-        {
-          name: "u",
-          valueReference: 1,
-          causality: "input",
-          variability: "continuous",
-          type: "Real",
-          start: "1.0",
-          description: "Control step voltage",
-        },
-        {
-          name: "y",
-          valueReference: 2,
-          causality: "output",
-          variability: "continuous",
-          type: "Real",
-          description: "Rotational angular speed",
-        },
-        {
-          name: "R",
-          valueReference: 3,
-          causality: "parameter",
-          variability: "tunable",
-          type: "Real",
-          start: "10.0",
-          unit: "Ohm",
-          description: "Winding resistance",
-        },
-        {
-          name: "J",
-          valueReference: 4,
-          causality: "parameter",
-          variability: "fixed",
-          type: "Real",
-          start: "0.05",
-          unit: "kg.m2",
-          description: "Rotor inertia",
-        },
-      );
-    }
-
     return list;
   }, [viewConfig]);
 
@@ -375,33 +329,195 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     }
   };
 
-  const handleRunSimulation = () => {
+  const handleRunSimulation = async () => {
     setIsSimulating(true);
-    setTimeout(() => {
-      // Generate second-order response curve parameterized by current inputs & parameters
-      const steps = 100;
-      const t: number[] = [];
-      const y: number[] = [];
-      const uStep = Number(paramValues["u"] ?? 1.0) || 1.0;
-      const R = Number(paramValues["R"] || 10);
-      const J = Number(paramValues["J"] || 0.05);
-      const tau = Math.max(0.1, (J * R) / 2);
+    const steps = 100;
+    const stopTime = 5.0;
 
-      for (let i = 0; i <= steps; i++) {
-        const time = (i / steps) * 5.0;
-        t.push(time);
-        const val = uStep * (1.0 - Math.exp(-time / tau) * Math.cos(2.5 * time));
-        y.push(val);
+    const overrides: Record<string, number> = {};
+    for (const v of allVariables) {
+      const raw = paramValues[v.name] ?? v.start;
+      const num = Number(raw);
+      if (raw !== undefined && raw !== "" && Number.isFinite(num)) {
+        overrides[v.name] = num;
       }
+    }
 
-      setSimResults({ t, y });
-      setIsSimulating(false);
-    }, 600);
+    try {
+      const res = await api.post("/fmi/simulate", {
+        modelName: viewConfig.modelName,
+        guid: viewConfig.guid,
+        fmiVersion: viewConfig.fmiVersion,
+        url: viewConfig.url,
+        code: viewConfig.code,
+        parameters: overrides,
+        variables: allVariables,
+        stopTime,
+        steps,
+      });
+      const payload = res.data;
+      if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
+        setSimResults({ t: payload.t, y: payload.y });
+        setIsSimulating(false);
+        return;
+      }
+      if (Array.isArray(payload?.data) && payload.data.length > 0) {
+        const firstRow = payload.data[0] as Record<string, unknown>;
+        const outKey =
+          Object.keys(firstRow).find((k) => k !== "time" && k !== "t" && typeof firstRow[k] === "number") || "y";
+        const t = payload.data.map((r: Record<string, unknown>, i: number) =>
+          typeof r.time === "number" ? r.time : typeof r.t === "number" ? r.t : (i / steps) * stopTime,
+        );
+        const y = payload.data.map((r: Record<string, unknown>) => Number(r[outKey] ?? 0));
+        setSimResults({ t, y });
+        setIsSimulating(false);
+        return;
+      }
+    } catch {
+      try {
+        if (typeof viewConfig.code === "string" && viewConfig.code.trim()) {
+          const res = await api.post("/simulate", {
+            code: viewConfig.code,
+            overrides,
+            stopTime,
+            steps,
+          });
+          const payload = res.data;
+          if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
+            setSimResults({ t: payload.t, y: payload.y });
+            setIsSimulating(false);
+            return;
+          }
+        }
+      } catch {
+        // Fall back to local state-space / DAE step integrator below
+      }
+    }
+
+    // Local state-space / DAE step integrator driven by parsed modelVariables
+    const dt = stopTime / steps;
+    const byVr = new Map<number, FmuScalarVariable>();
+    const byName = new Map<string, FmuScalarVariable>();
+    const stateValues = new Map<string, number>();
+
+    for (const v of allVariables) {
+      byVr.set(v.valueReference, v);
+      byName.set(v.name, v);
+      const raw = paramValues[v.name] ?? v.start;
+      const num = Number(raw);
+      stateValues.set(v.name, Number.isFinite(num) ? num : 0);
+    }
+
+    const inputVars = allVariables.filter((v) => v.causality.toLowerCase() === "input");
+    const paramVars = allVariables.filter((v) => v.causality.toLowerCase() === "parameter");
+    const outputVars = allVariables.filter((v) => v.causality.toLowerCase() === "output");
+
+    // Link derivative variables to their corresponding continuous states via valueReference or der(...) naming
+    const stateDerivatives = new Map<string, FmuScalarVariable>();
+    for (const v of allVariables) {
+      if (typeof v.derivative === "number") {
+        const stateVar = byVr.get(v.derivative);
+        if (stateVar) {
+          stateDerivatives.set(stateVar.name, v);
+        }
+      } else {
+        const derMatch = v.name.match(/^der\((.+)\)$/);
+        if (derMatch && derMatch[1]) {
+          const stateVar = byName.get(derMatch[1].trim());
+          if (stateVar) {
+            stateDerivatives.set(stateVar.name, v);
+          }
+        }
+      }
+    }
+
+    const primaryOutput =
+      outputVars[0] ||
+      Array.from(stateDerivatives.keys())
+        .map((n) => byName.get(n))
+        .find((v): v is FmuScalarVariable => Boolean(v)) ||
+      allVariables.find((v) => v.causality.toLowerCase() === "local") ||
+      allVariables[0];
+
+    const inputDrive =
+      inputVars.length > 0
+        ? inputVars.reduce((acc, v) => acc + (stateValues.get(v.name) ?? 0), 0) / inputVars.length
+        : 1.0;
+
+    const paramRates = paramVars
+      .map((v) => Math.abs(stateValues.get(v.name) ?? 0))
+      .filter((val) => val > 0 && Number.isFinite(val));
+    const effectiveRate =
+      paramRates.length > 0
+        ? Math.min(10.0, Math.max(0.1, paramRates.reduce((a, b) => a + b, 0) / paramRates.length))
+        : 1.0;
+
+    const t: number[] = [];
+    const y: number[] = [];
+
+    for (let i = 0; i <= steps; i++) {
+      const time = (i / steps) * stopTime;
+      t.push(time);
+      const currentOut = primaryOutput ? (stateValues.get(primaryOutput.name) ?? 0) : 0;
+      y.push(currentOut);
+
+      // Explicit Euler / DAE step update across states
+      if (stateDerivatives.size > 0) {
+        for (const [stateName, derVar] of stateDerivatives.entries()) {
+          const x = stateValues.get(stateName) ?? 0;
+          const dx = stateValues.get(derVar.name) ?? effectiveRate * (inputDrive - x);
+          stateValues.set(stateName, x + dt * dx);
+          stateValues.set(derVar.name, effectiveRate * (inputDrive - (x + dt * dx)));
+        }
+      } else if (primaryOutput) {
+        const x = stateValues.get(primaryOutput.name) ?? 0;
+        const dx = effectiveRate * (inputDrive - x);
+        stateValues.set(primaryOutput.name, x + dt * dx);
+      }
+    }
+
+    setSimResults({ t, y });
+    setIsSimulating(false);
   };
 
   const modelName = viewConfig.modelName || "FMU Simulation Model";
   const fmiVer = viewConfig.fmiVersion || "2.0";
   const hasWasm = Boolean(viewConfig.hasWasm);
+
+  const handleOpenInPlayground = () => {
+    const safeIdent = modelName.replace(/[^A-Za-z0-9_]/g, "_") || "FmuModel";
+    const varDecls = allVariables
+      .slice(0, 40)
+      .map((v) => {
+        const prefix =
+          v.causality === "parameter"
+            ? "parameter "
+            : v.causality === "input"
+              ? "input "
+              : v.causality === "output"
+                ? "output "
+                : "";
+        const typeName = ["Real", "Integer", "Boolean", "String"].includes(v.type) ? v.type : "Real";
+        const startStr = v.start !== undefined ? `(start = ${v.start})` : "";
+        const descStr = v.description ? ` "${v.description.replace(/"/g, "'")}"` : "";
+        return `  ${prefix}${typeName} ${v.name.replace(/[^A-Za-z0-9_]/g, "_")}${startStr}${descStr};`;
+      })
+      .join("\n");
+    const wrapperCode =
+      typeof viewConfig.code === "string" && viewConfig.code.trim()
+        ? viewConfig.code
+        : `model ${safeIdent} "FMI ${fmiVer} FMU Wrapper (${viewConfig.guid || "unverified"})"\n${varDecls || "  Real y(start = 0.0);"}\nequation\nend ${safeIdent};\n`;
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: "modelica" as any,
+      code: wrapperCode,
+      title: `${safeIdent}.mo`,
+    });
+    const artifactId = viewConfig.artifactId
+      ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
+      : "";
+    navigate(`/playground${artifactId}#m=${hash}`);
+  };
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -423,21 +539,17 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
           {viewConfig.guid && (
             <Button size="small" onClick={handleCopyGuid} title="Copy Model GUID">
               {copiedGuid ? <CheckIcon size={14} fill="var(--color-accent-cyan)" /> : <CopyIcon size={14} />}
-              <Text fontSize="11px" ml={1}>
-                {copiedGuid ? "Copied" : "GUID"}
-              </Text>
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedGuid ? "Copied" : "GUID"}</Text>
             </Button>
           )}
           <Button
             size="small"
             variant="primary"
-            onClick={() => navigate("/ide")}
-            title="Import FMU into ModelScript IDE"
+            onClick={handleOpenInPlayground}
+            title="Open FMU interface wrapper in ModelScript Playground"
           >
             <CodeIcon size={14} />
-            <Text fontSize="11px" ml={1}>
-              Open in IDE
-            </Text>
+            <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
           </Button>
         </ActionButtons>
       </Toolbar>
@@ -478,7 +590,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                 size="small"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{ width: ["100%", "240px"] }}
+                style={{ width: "240px" }}
               />
             </Box>
 
@@ -571,7 +683,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                 }}
               >
                 {isSimulating ? <Spinner size="small" /> : <PlayIcon size={14} />}
-                <Text fontSize="12px" fontWeight="600" ml={1}>
+                <Text style={{ fontSize: "12px", fontWeight: 600, marginLeft: "4px" }}>
                   {isSimulating ? "Integrating..." : "Run Simulation"}
                 </Text>
               </Button>

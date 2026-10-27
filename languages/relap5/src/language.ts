@@ -14,6 +14,7 @@ import { solvePointKinetics } from "./solvers/point-kinetics-solver.js";
 export const relap5Language = language({
   name: "relap5",
   fileExtensions: [".i", ".inp", ".r5"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".i", ".inp", ".r5"],
     icons: {

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { CodeIcon, ScreenFullIcon } from "@primer/octicons-react";
+import { CodeIcon, PlayIcon, ScreenFullIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
 import Box from "../../Box";
 
 export interface CardFooterProps {
@@ -24,6 +25,23 @@ export const CardFooter: React.FC<CardFooterProps> = ({
 }) => {
   const navigate = useNavigate();
 
+  const isMultiFile = isMultiFileArtifact({
+    view_type: artifact?.view_type,
+    view_config: viewConfig,
+  });
+
+  const handleOpenEditor = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(
+      buildEditorUrlForArtifact({
+        artifactId,
+        viewType: artifact?.view_type,
+        viewConfig,
+        title: artifact?.title || artifact?.name || viewConfig?.title,
+      }),
+    );
+  };
+
   return (
     <Box
       p={2}
@@ -34,9 +52,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
       alignItems="center"
     >
       <Box display="flex" alignItems="center" gap={2}>
-        <Text fontSize="12px" fontWeight="bold">
-          {artifact.title || ""}
-        </Text>
+        <Text style={{ fontSize: "12px", fontWeight: "bold" }}>{artifact.title || ""}</Text>
         {viewConfig.provenance && (
           <span
             style={{
@@ -86,10 +102,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
           </button>
         )}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/ide#memfs:artifact-${artifactId}`);
-          }}
+          onClick={handleOpenEditor}
           style={{
             background: "linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15))",
             color: "var(--color-accent-cyan)",
@@ -104,9 +117,10 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             alignItems: "center",
             gap: "4px",
           }}
-          title="Open and run in ModelScript IDE workbench"
+          title={isMultiFile ? "Open project workspace in VS Code IDE" : "Open model in interactive Playground"}
         >
-          <CodeIcon size={12} /> Run in IDE
+          {isMultiFile ? <CodeIcon size={12} /> : <PlayIcon size={12} />}{" "}
+          {isMultiFile ? "Open in VS Code" : "Open in Playground"}
         </button>
         {isLoaded && (
           <button

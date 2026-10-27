@@ -9,6 +9,7 @@ import { RocetsErrorCode } from "./lints/index.js";
 export const rocetsLanguage = language({
   name: "rocets",
   fileExtensions: [".roc", ".rct", ".inp"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".roc", ".rct", ".inp"],
   },

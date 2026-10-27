@@ -1,0 +1,5216 @@
+[
+  {
+    "slug": "modelscript",
+    "name": "ModelScript",
+    "packageName": "@modelscript/modelscript",
+    "sources": [
+      "languages/modelscript/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "parse-error",
+        "severity": "error",
+        "message": "Parse error."
+      },
+      {
+        "code": "M2001",
+        "rule": "undefined-variable",
+        "severity": "error",
+        "message": "Variable '<name>' is not declared in current scope."
+      },
+      {
+        "code": "M2002",
+        "rule": "duplicate-declaration",
+        "severity": "error",
+        "message": "Identifier '<name>' is already declared in this scope."
+      },
+      {
+        "code": "M2003",
+        "rule": "unknown-type",
+        "severity": "error",
+        "message": "Type '<typeName>' is not recognized."
+      },
+      {
+        "code": "M3001",
+        "rule": "type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch: cannot assign '<sourceType>' to '<targetType>'."
+      },
+      {
+        "code": "M3002",
+        "rule": "invalid-binary-operand",
+        "severity": "error",
+        "message": "Operator '<op>' cannot be applied to operands of type '<type>'."
+      },
+      {
+        "code": "M4001",
+        "rule": "non-iterable-collection",
+        "severity": "error",
+        "message": "Expression '<expr>' in 'for' clause is not iterable."
+      },
+      {
+        "code": "M4002",
+        "rule": "flwor-unbound-variable",
+        "severity": "error",
+        "message": "Variable '<varName>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses."
+      },
+      {
+        "code": "M5001",
+        "rule": "argument-count-mismatch",
+        "severity": "error",
+        "message": "Function '<fnName>' expects <expected> arguments, but got <actual>."
+      },
+      {
+        "code": "M5002",
+        "rule": "unknown-struct-field",
+        "severity": "error",
+        "message": "Struct '<structName>' has no field named '<fieldName>'."
+      }
+    ]
+  },
+  {
+    "slug": "modelica",
+    "name": "Modelica",
+    "packageName": "@modelscript/modelica",
+    "sources": [
+      "languages/modelica/src/errors.ts",
+      "languages/modelica/src/lints/index.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1000",
+        "rule": "identity-arg-count",
+        "severity": "error",
+        "message": "Wrong number of arguments to identity."
+      },
+      {
+        "code": "M1001",
+        "rule": "parse-error",
+        "severity": "error",
+        "message": "Parse error."
+      },
+      {
+        "code": "M1002",
+        "rule": "parse-missing",
+        "severity": "error",
+        "message": "Parse error: '<expected>' expected."
+      },
+      {
+        "code": "M1003",
+        "rule": "empty-array-constructor",
+        "severity": "error",
+        "message": "Parse error: Empty array constructors are not valid in Modelica."
+      },
+      {
+        "code": "M1003",
+        "rule": "emptyarrayconstructor",
+        "severity": "error",
+        "message": "Empty array constructor '<target>' is not valid in Modelica."
+      },
+      {
+        "code": "M1004",
+        "rule": "identity-first-arg-integer",
+        "severity": "error",
+        "message": "First argument to identity in component <compName> must be Integer expression."
+      },
+      {
+        "code": "M1005",
+        "rule": "subscripted-modifier",
+        "severity": "error",
+        "message": "Subscripting modifiers is not allowed. Apply the modification on the whole identifier using an array-expression or an each-modifier."
+      },
+      {
+        "code": "M1099",
+        "rule": "wasm-flattener-unsupported",
+        "severity": "error",
+        "message": "[ModelicaFlattener] Model '<rootName>' could not be flattened using strict WASM backend."
+      },
+      {
+        "code": "M2001",
+        "rule": "duplicate-element",
+        "severity": "error",
+        "message": "An element with name <name> is already declared in this scope."
+      },
+      {
+        "code": "M2002",
+        "rule": "variable-not-found",
+        "severity": "error",
+        "message": "Variable <name> not found in scope <scope>."
+      },
+      {
+        "code": "M2002",
+        "rule": "variablenotfound",
+        "severity": "error",
+        "message": "Variable <vName> not found in scope <className>."
+      },
+      {
+        "code": "M2003",
+        "rule": "class-not-found",
+        "severity": "error",
+        "message": "Class <className> not found in scope <scope> (looking for a function or record)."
+      },
+      {
+        "code": "M2003",
+        "rule": "typenotfound",
+        "severity": "error",
+        "message": "Class or type '<fullType>' not found in scope."
+      },
+      {
+        "code": "M2004",
+        "rule": "modifier-not-found",
+        "severity": "error",
+        "message": "In modifier of '<componentName>', class or component '<modName>' not found in '<className>'."
+      },
+      {
+        "code": "M2005",
+        "rule": "identifier-mismatch",
+        "severity": "error",
+        "message": "The identifier at start and end are different."
+      },
+      {
+        "code": "M2005",
+        "rule": "identifiermismatch",
+        "severity": "error",
+        "message": "Parse error: The identifier at start and end are different"
+      },
+      {
+        "code": "M2006",
+        "rule": "modified-element-not-found",
+        "severity": "error",
+        "message": "Modified element <modName> not found in class <className>."
+      },
+      {
+        "code": "M2007",
+        "rule": "modifier-class-not-found",
+        "severity": "error",
+        "message": "In modifier (<modText>), class or component <modName> not found in <<className>>."
+      },
+      {
+        "code": "M2011",
+        "rule": "same-name-type-shadowing",
+        "severity": "error",
+        "message": "Found a component with same name when looking for type <typeSpec>."
+      },
+      {
+        "code": "M2012",
+        "rule": "class-not-found-in-scope",
+        "severity": "error",
+        "message": "Class <className> not found in scope <scope>."
+      },
+      {
+        "code": "M2013",
+        "rule": "base-class-not-found-in-scope",
+        "severity": "error",
+        "message": "Base class <className> not found in scope <scope>."
+      },
+      {
+        "code": "M2014",
+        "rule": "partial-base-class",
+        "severity": "error",
+        "message": "Part <partName> of base class name <extName> is not a class."
+      },
+      {
+        "code": "M2015",
+        "rule": "base-class-ambiguous",
+        "severity": "error",
+        "message": "The base class name <partName> was found in one or more base classes: <candidateNames>."
+      },
+      {
+        "code": "M2016",
+        "rule": "base-class-found-in",
+        "severity": "error",
+        "message": "<partName> was found in base class <baseName>."
+      },
+      {
+        "code": "M2038",
+        "rule": "partial-lookup-disallowed",
+        "severity": "error",
+        "message": "<className> is partial, name lookup is not allowed in partial classes."
+      },
+      {
+        "code": "M2090",
+        "rule": "finaloverridenotification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2090",
+        "rule": "from-here",
+        "severity": "notification",
+        "message": "From here:"
+      },
+      {
+        "code": "M2091",
+        "rule": "redeclare-final-component-notification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2091",
+        "rule": "redeclarefinalcomponentnotification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2092",
+        "rule": "redeclare-constant-component-notification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2092",
+        "rule": "redeclareconstantcomponentnotification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2093",
+        "rule": "duplicate-modification-notification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2093",
+        "rule": "duplicatemodificationnotification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2094",
+        "rule": "missing-inner",
+        "severity": "warning",
+        "message": "No corresponding 'inner' declaration found for component .<typeName> <componentName> declared as 'outer'. The existing 'inner' components are: <inners> Check if you have not misspelled the 'outer' component name. Please declare an 'inner' component with the same name in the top scope. Continuing flattening by only considering the 'outer' component declaration."
+      },
+      {
+        "code": "M2094",
+        "rule": "missinginner",
+        "severity": "warning",
+        "message": "No corresponding 'inner' declaration found in scope for outer component '<target>'."
+      },
+      {
+        "code": "M2095",
+        "rule": "from-here-trace",
+        "severity": "notification",
+        "message": "From here:"
+      },
+      {
+        "code": "M2096",
+        "rule": "redeclare-non-replaceable-notification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2096",
+        "rule": "redeclarenonreplaceablenotification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2097",
+        "rule": "protected-modification-notification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M2097",
+        "rule": "protectedmodificationnotification",
+        "severity": "info",
+        "message": "From here:"
+      },
+      {
+        "code": "M3001",
+        "rule": "type-mismatch-binding",
+        "severity": "error",
+        "message": "Type mismatch in binding <componentName> = <actualExpr>, expected subtype of <expectedType>, got type <actualType>."
+      },
+      {
+        "code": "M3001",
+        "rule": "typemismatchbinding",
+        "severity": "error",
+        "message": "Type mismatch in binding <target>, expected subtype of <expName>, got type <actName>."
+      },
+      {
+        "code": "M3002",
+        "rule": "type-mismatch-modifier",
+        "severity": "error",
+        "message": "Type mismatch: '<modName>' expects type '<expectedType>' but got '<actualType>'."
+      },
+      {
+        "code": "M3002",
+        "rule": "typemismatchmodification",
+        "severity": "error",
+        "message": "Type mismatch in binding or modification expression '<target>'."
+      },
+      {
+        "code": "M3003",
+        "rule": "not-plug-compatible",
+        "severity": "error",
+        "message": "The connectors in connect(<ref1>, <ref2>) are not type compatible."
+      },
+      {
+        "code": "M3004",
+        "rule": "not-a-connector",
+        "severity": "error",
+        "message": "<which> is not a valid connector."
+      },
+      {
+        "code": "M3005",
+        "rule": "redeclare-type-mismatch",
+        "severity": "error",
+        "message": "Redeclare of '<redeclaredName>': type '<newType>' is not compatible with constraining type '<constrainingType>'."
+      },
+      {
+        "code": "M3006",
+        "rule": "function-arg-type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch for positional argument <argPosition> in <callExpr>. The argument has type: <argTypeSignature> expected type: <expectedTypeSignature>"
+      },
+      {
+        "code": "M3007",
+        "rule": "connect-invalid-form",
+        "severity": "error",
+        "message": "<ref> is not a valid form for a connector, connectors must be either c1.c2...cn or m.c (where c is a connector and m is a non-connector)."
+      },
+      {
+        "code": "M3008",
+        "rule": "extends-type-mismatch",
+        "severity": "error",
+        "message": "In extends of '<className>': redeclared '<redeclaredName>' of type '<newType>' is not compatible with original type '<originalType>'."
+      },
+      {
+        "code": "M3009",
+        "rule": "array-index-type-mismatch",
+        "severity": "error",
+        "message": "Array index type mismatch: expected Integer or Boolean, but got '<actualType>'."
+      },
+      {
+        "code": "M3009",
+        "rule": "arrayindextypemismatch",
+        "severity": "error",
+        "message": "Array index '<target>' has invalid type: expected Integer or Boolean."
+      },
+      {
+        "code": "M3010",
+        "rule": "unit-mismatch",
+        "severity": "warning",
+        "message": "Unit mismatch: Left-hand side has unit '<lhsUnit>' but right-hand side has incompatible unit '<rhsUnit>'."
+      },
+      {
+        "code": "M3010",
+        "rule": "unitmismatchbinding",
+        "severity": "warning",
+        "message": "Unit mismatch in equation '<target>'."
+      },
+      {
+        "code": "M3010",
+        "rule": "unitmismatchequation",
+        "severity": "warning",
+        "message": "Unit mismatch in equation '<target>'."
+      },
+      {
+        "code": "M3011",
+        "rule": "binary-op-type-mismatch",
+        "severity": "error",
+        "message": "Cannot resolve type of expression <expr>. The operands have types <type1>, <type2> in component <NO_COMPONENT>."
+      },
+      {
+        "code": "M3012",
+        "rule": "optimization-objective-type",
+        "severity": "error",
+        "message": "Optimization objective must be a scalar Real, but got type '<typeStr>'."
+      },
+      {
+        "code": "M3013",
+        "rule": "optimization-constraint-type",
+        "severity": "error",
+        "message": "Optimization constraints must evaluate to scalar Real or Boolean expressions, but got type '<typeStr>'."
+      },
+      {
+        "code": "M3014",
+        "rule": "builtin-attribute-type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch in binding <attrName> = <bindingText>, expected subtype of <expectedType>, got type <actualType>."
+      },
+      {
+        "code": "M3015",
+        "rule": "attribute-type-mismatch",
+        "severity": "error",
+        "message": "Variable <varName>: Wrong type on builtin attribute <attrName> (type was: <actualType>, expected: <expectedType>)."
+      },
+      {
+        "code": "M3016",
+        "rule": "conditional-type-mismatch",
+        "severity": "error",
+        "message": "Type error in conditional '<condExpr>'. Expected Boolean, got <actualType>."
+      },
+      {
+        "code": "M3017",
+        "rule": "connect-types-inconsistent",
+        "severity": "error",
+        "message": "The type of variables <r0Raw> type: <type0> and <r1Raw> type: <type1> are inconsistent in connect equations."
+      },
+      {
+        "code": "M3018",
+        "rule": "array-element-type-mismatch",
+        "severity": "error",
+        "message": "Array constructor elements have inconsistent types in '<exprText>'."
+      },
+      {
+        "code": "M3018",
+        "rule": "arrayelementtypemismatch",
+        "severity": "error",
+        "message": "Array element type mismatch in '<target>'."
+      },
+      {
+        "code": "M3019",
+        "rule": "no-matching-function",
+        "severity": "error",
+        "message": "No matching function found for <callExpr> of type <callSig> candidates are <candidateSig>"
+      },
+      {
+        "code": "M3020",
+        "rule": "type-mismatch-modifier-binding",
+        "severity": "error",
+        "message": "Type mismatch in modifier of component <compName>, expected type <expectedType>, got modifier <exprText> of type <actualType>."
+      },
+      {
+        "code": "M3021",
+        "rule": "function-return-type-mismatch",
+        "severity": "error",
+        "message": "Function '<funcName>' returns type '<actualType>' but '<expectedType>' expected."
+      },
+      {
+        "code": "M4000",
+        "rule": "dimension-not-parameter",
+        "severity": "error",
+        "message": "Expression '<exprName>' that determines the size of dimension '<dim>' of '<callText>' is not an evaluable parameter expression."
+      },
+      {
+        "code": "M4001",
+        "rule": "extends-cycle",
+        "severity": "error",
+        "message": "extends <baseName> causes an instantiation loop."
+      },
+      {
+        "code": "M4001",
+        "rule": "extendscycle",
+        "severity": "error",
+        "message": "Extends cycle detected for '<target>'."
+      },
+      {
+        "code": "M4002",
+        "rule": "duplicate-modification",
+        "severity": "error",
+        "message": "Duplicate modification of element <elementName> on <kind> <componentName>."
+      },
+      {
+        "code": "M4002",
+        "rule": "duplicatemodification",
+        "severity": "error",
+        "message": "<outerName>.<innerOrKind>"
+      },
+      {
+        "code": "M4003",
+        "rule": "array-dimension-mismatch",
+        "severity": "error",
+        "message": "Type mismatch in binding '<componentName> = <exprText>', expected array dimensions [<expectedShape>], got [<actualShape>]."
+      },
+      {
+        "code": "M4003",
+        "rule": "arrayshapemismatch",
+        "severity": "error",
+        "message": "Array shape mismatch: declared dimension does not match initializer element count in '<target>'."
+      },
+      {
+        "code": "M4004",
+        "rule": "unbalanced-model",
+        "severity": "warning",
+        "message": "The <classKind> '<name>' is not balanced: <nEquations> equation(s) and <nVariables> variable(s)."
+      },
+      {
+        "code": "M4004",
+        "rule": "unbalancedmodel",
+        "severity": "warning",
+        "message": "Model '<target>' is not balanced: <value> equations for <value> variables."
+      },
+      {
+        "code": "M4005",
+        "rule": "protected-modification",
+        "severity": "error",
+        "message": "Protected element '<elementName>' may not be modified, got '<modText>'."
+      },
+      {
+        "code": "M4005",
+        "rule": "protectedmodification",
+        "severity": "error",
+        "message": "Protected element '<eName>' may not be modified, got '<mText>'."
+      },
+      {
+        "code": "M4006",
+        "rule": "external-with-algorithm",
+        "severity": "error",
+        "message": "Element is not allowed in function context: algorithm"
+      },
+      {
+        "code": "M4006",
+        "rule": "externalwithalgorithm",
+        "severity": "error",
+        "message": "Element '<target>' is not allowed in function context with algorithm section."
+      },
+      {
+        "code": "M4007",
+        "rule": "function-public-variable",
+        "severity": "error",
+        "message": "Invalid public variable <varName>, function variables that are not input/output must be protected."
+      },
+      {
+        "code": "M4007",
+        "rule": "functionpublicvariable",
+        "severity": "error",
+        "message": "Invalid public variable <varName>, function variables that are not input/output must be protected."
+      },
+      {
+        "code": "M4008",
+        "rule": "array-subscript-count-mismatch",
+        "severity": "error",
+        "message": "Wrong number of subscripts in <refStr> (<actualCount> subscripts for <expectedCount> dimensions)."
+      },
+      {
+        "code": "M4009",
+        "rule": "function-default-arg-cycle",
+        "severity": "error",
+        "message": "The default value of <paramName> causes a cyclic dependency."
+      },
+      {
+        "code": "M4010",
+        "rule": "function-invalid-var-type",
+        "severity": "error",
+        "message": "Invalid type <typeName> for function component <varName>."
+      },
+      {
+        "code": "M4011",
+        "rule": "function-protected-io",
+        "severity": "error",
+        "message": "Invalid protected variable <varName>, function variables that are input/output must be public."
+      },
+      {
+        "code": "M4011",
+        "rule": "functionprotectedio",
+        "severity": "error",
+        "message": "Invalid protected variable <varName>, function variables that are input/output must be public."
+      },
+      {
+        "code": "M4012",
+        "rule": "function-arg-variability",
+        "severity": "error",
+        "message": "Function argument <paramName>=<argExpr> in call to <funcName> has variability <actualVariability> which is not a <requiredVariability> expression."
+      },
+      {
+        "code": "M4013",
+        "rule": "nested-when-statement",
+        "severity": "error",
+        "message": "Nested when statements are not allowed."
+      },
+      {
+        "code": "M4013",
+        "rule": "nestedwhen",
+        "severity": "error",
+        "message": "Nested when statements are not allowed."
+      },
+      {
+        "code": "M4014",
+        "rule": "tuple-expression-context",
+        "severity": "error",
+        "message": "Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side. Got the following expression: <exprText>."
+      },
+      {
+        "code": "M4014",
+        "rule": "tupleexpressioncontext",
+        "severity": "error",
+        "message": "Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side."
+      },
+      {
+        "code": "M4015",
+        "rule": "within-in-script",
+        "severity": "error",
+        "message": "The within directive is not allowed in script mode."
+      },
+      {
+        "code": "M4016",
+        "rule": "statement-in-standard-mode",
+        "severity": "error",
+        "message": "Top-level statements are not allowed in standard Modelica mode."
+      },
+      {
+        "code": "M4017",
+        "rule": "restriction-violation",
+        "severity": "error",
+        "message": "<what> are not allowed in <classKind>."
+      },
+      {
+        "code": "M4017",
+        "rule": "restrictionviolation",
+        "severity": "error",
+        "message": "Algorithm sections are not allowed in <kindStr>."
+      },
+      {
+        "code": "M4018",
+        "rule": "partial-instantiation",
+        "severity": "error",
+        "message": "Illegal to instantiate partial class <className>."
+      },
+      {
+        "code": "M4019",
+        "rule": "redeclare-non-replaceable",
+        "severity": "error",
+        "message": "Redeclaration with a new type requires '<elementName>' to be replaceable."
+      },
+      {
+        "code": "M4019",
+        "rule": "redeclarenonreplaceable",
+        "severity": "error",
+        "message": "Redeclaration with a new type requires '<eName>' to be replaceable."
+      },
+      {
+        "code": "M4020",
+        "rule": "builtin-time-invalid",
+        "severity": "error",
+        "message": "time is not allowed in a function."
+      },
+      {
+        "code": "M4020",
+        "rule": "reservedbuiltintime",
+        "severity": "error",
+        "message": "Identifier time is reserved for the built-in element with the same name."
+      },
+      {
+        "code": "M4020",
+        "rule": "timeinfunction",
+        "severity": "error",
+        "message": "time is not allowed in a function."
+      },
+      {
+        "code": "M4021",
+        "rule": "range-step-too-small",
+        "severity": "error",
+        "message": "Step size <stepSize> in range is too small."
+      },
+      {
+        "code": "M4022",
+        "rule": "enum-range-with-step",
+        "severity": "error",
+        "message": "Range of type enumeration <enumType> may not specify a step size."
+      },
+      {
+        "code": "M4022",
+        "rule": "enumrangewithstep",
+        "severity": "error",
+        "message": "Range of type enumeration '<target>' may not specify a step size."
+      },
+      {
+        "code": "M4023",
+        "rule": "connect-in-when",
+        "severity": "error",
+        "message": "connect may not be used inside when-equations (found <connectExpr>)."
+      },
+      {
+        "code": "M4023",
+        "rule": "connectinwhen",
+        "severity": "error",
+        "message": "connect may not be used inside when-equations (found <target>)."
+      },
+      {
+        "code": "M4024",
+        "rule": "connect-in-initial",
+        "severity": "error",
+        "message": "Connect equations are not allowed in initial equation sections."
+      },
+      {
+        "code": "M4024",
+        "rule": "connectininitial",
+        "severity": "error",
+        "message": "Connect equations are not allowed in initial equation sections."
+      },
+      {
+        "code": "M4025",
+        "rule": "connect-in-non-param-if",
+        "severity": "error",
+        "message": "connect may not be used inside if-equations with non-parametric conditions (found <connectExpr>)."
+      },
+      {
+        "code": "M4025",
+        "rule": "connectinnonparamif",
+        "severity": "error",
+        "message": "connect may not be used inside if-equations with non-parametric conditions (found <target>)."
+      },
+      {
+        "code": "M4026",
+        "rule": "final-override",
+        "severity": "error",
+        "message": "Trying to override final element <elementName> with modifier '<modText>'."
+      },
+      {
+        "code": "M4026",
+        "rule": "finaloverride",
+        "severity": "error",
+        "message": "Trying to override final element <eName> with modifier '<mText>'."
+      },
+      {
+        "code": "M4027",
+        "rule": "variability-binding-mismatch",
+        "severity": "error",
+        "message": "Component <componentName> of variability <compVariability> has binding '<bindingExpr>' of higher variability <bindingVariability>."
+      },
+      {
+        "code": "M4027",
+        "rule": "variabilitybindingmismatch",
+        "severity": "error",
+        "message": "Component <compName> of variability parameter has binding '<target>' of higher variability continuous."
+      },
+      {
+        "code": "M4028",
+        "rule": "partial-type-component",
+        "severity": "error",
+        "message": "Component '<componentName>' has partial type '<typeName>'."
+      },
+      {
+        "code": "M4028",
+        "rule": "partialtypecomponent",
+        "severity": "error",
+        "message": "Component '<target>' has partial type."
+      },
+      {
+        "code": "M4029",
+        "rule": "component-binding-restriction",
+        "severity": "error",
+        "message": "Component '<componentName>' may not have a binding equation due to class specialization '<classKind>'."
+      },
+      {
+        "code": "M4030",
+        "rule": "outer-modifier",
+        "severity": "error",
+        "message": "Modifier '<modText>' found on outer element <elementName>."
+      },
+      {
+        "code": "M4030",
+        "rule": "outermodifier",
+        "severity": "error",
+        "message": "Modifier '<modNode>' found on outer element <nameNode>."
+      },
+      {
+        "code": "M4031",
+        "rule": "array-index-out-of-bounds",
+        "severity": "error",
+        "message": "Subscript '<index>' for dimension <dimensionIndex> (size = <dimensionSize>) of <arrayName> is out of bounds."
+      },
+      {
+        "code": "M4031",
+        "rule": "arrayindexoutofbounds",
+        "severity": "error",
+        "message": "Subscript 'index' for dimension <dimIndex> (size = <dimSize>) of array is out of bounds."
+      },
+      {
+        "code": "M4032",
+        "rule": "function-invalid-prefix",
+        "severity": "error",
+        "message": "Invalid prefix <prefix> on formal parameter <varName>."
+      },
+      {
+        "code": "M4032",
+        "rule": "functioninvalidprefix",
+        "severity": "error",
+        "message": "Invalid prefix '<target>' on formal parameter in function."
+      },
+      {
+        "code": "M4033",
+        "rule": "function-multiple-algorithm",
+        "severity": "error",
+        "message": "Function <funcName> has more than one algorithm section or external declaration."
+      },
+      {
+        "code": "M4033",
+        "rule": "functionmultiplealgorithm",
+        "severity": "error",
+        "message": "Function <name> has more than one algorithm section or external declaration."
+      },
+      {
+        "code": "M4034",
+        "rule": "replaceable-base-class",
+        "severity": "error",
+        "message": "Class '<className>' in 'extends <extendsText>' is replaceable, the base class name must be transitively non-replaceable."
+      },
+      {
+        "code": "M4034",
+        "rule": "replaceablebaseclass",
+        "severity": "error",
+        "message": "Class '<target>' in 'extends <target>' is replaceable, the base class name must be transitively non-replaceable."
+      },
+      {
+        "code": "M4035",
+        "rule": "cyclic-dimension-dependency",
+        "severity": "error",
+        "message": "Dimension <dimNum> of <varName>, '<exprText>', could not be evaluated due to a cyclic dependency."
+      },
+      {
+        "code": "M4036",
+        "rule": "package-variable-not-constant",
+        "severity": "error",
+        "message": "Variable <varName> in package <packageName> is not constant."
+      },
+      {
+        "code": "M4037",
+        "rule": "connector-variability",
+        "severity": "error",
+        "message": "Invalid variability <variability> on connector '<connectorName>'."
+      },
+      {
+        "code": "M4037",
+        "rule": "connectorvariability",
+        "severity": "error",
+        "message": "Invalid variability <pfx> on connector '<compName>'."
+      },
+      {
+        "code": "M4038",
+        "rule": "flow-outside-connector",
+        "severity": "warning",
+        "message": "Prefix 'flow' used outside connector declaration."
+      },
+      {
+        "code": "M4038",
+        "rule": "flowoutsideconnector",
+        "severity": "warning",
+        "message": "Prefix '<target>' used outside connector declaration."
+      },
+      {
+        "code": "M4039",
+        "rule": "discrete-not-on-lhs",
+        "severity": "error",
+        "message": "Following variable is discrete, but does not appear on the LHS of a when-statement: '<varName>'."
+      },
+      {
+        "code": "M4039",
+        "rule": "discretenotonlhs",
+        "severity": "error",
+        "message": "Following variable is discrete, but does not appear on the LHS of a when-statement: '<target>'."
+      },
+      {
+        "code": "M4040",
+        "rule": "protected-element-modification",
+        "severity": "error",
+        "message": "Protected element '<varName>' may not be modified, got '<modText>'."
+      },
+      {
+        "code": "M4041",
+        "rule": "negative-dimension",
+        "severity": "error",
+        "message": "Negative dimension index (<dim>) for component <varName>."
+      },
+      {
+        "code": "M4041",
+        "rule": "negativedimension",
+        "severity": "error",
+        "message": "Negative dimension index (-1) for component component."
+      },
+      {
+        "code": "M4042",
+        "rule": "constant-has-no-value",
+        "severity": "error",
+        "message": "Constant '<qualifiedName>' has no value."
+      },
+      {
+        "code": "M4042",
+        "rule": "constanthasnovalue",
+        "severity": "error",
+        "message": "Constant '<target>' has no value."
+      },
+      {
+        "code": "M4043",
+        "rule": "constant-variability-violation",
+        "severity": "error",
+        "message": "Component <componentName> of variability constant has binding '<bindingText>' of higher variability <bindingVariability>."
+      },
+      {
+        "code": "M4043",
+        "rule": "constantvariabilityviolation",
+        "severity": "error",
+        "message": "Component <compName> of variability constant has binding '<target>' of higher variability <varbNode>."
+      },
+      {
+        "code": "M4044",
+        "rule": "non-array-modification",
+        "severity": "error",
+        "message": "Non-array modification '<modText>' for array component '<componentName>', possibly due to missing 'each'."
+      },
+      {
+        "code": "M4044",
+        "rule": "nonarraymodification",
+        "severity": "error",
+        "message": "Non-array modification '<fullMod>' for array component, possibly due to missing 'each'."
+      },
+      {
+        "code": "M4045",
+        "rule": "modified-element-not-found-cst",
+        "severity": "error",
+        "message": "Modified element <modName> not found in class <className>."
+      },
+      {
+        "code": "M4045",
+        "rule": "modifiedelementnotfound",
+        "severity": "error",
+        "message": "Modified element <eText> not found in class <tText>."
+      },
+      {
+        "code": "M4046",
+        "rule": "constant-not-fixed",
+        "severity": "error",
+        "message": "Constant '<componentName>' must be fixed but has 'fixed = false'"
+      },
+      {
+        "code": "M4046",
+        "rule": "constantnotfixed",
+        "severity": "error",
+        "message": "Constant declaration '<target>' must be fixed."
+      },
+      {
+        "code": "M4047",
+        "rule": "cardinality-invalid-context",
+        "severity": "error",
+        "message": "cardinality may only be used in the condition of an if-statement/equation or an assert."
+      },
+      {
+        "code": "M4047",
+        "rule": "cardinalityinvalidcontext",
+        "severity": "error",
+        "message": "Operator '<target>' may only be used in the condition of an if-statement/equation or an assert."
+      },
+      {
+        "code": "M4048",
+        "rule": "cardinality-expected-component",
+        "severity": "error",
+        "message": "Expected <name> to be a component, but found class instead."
+      },
+      {
+        "code": "M4048",
+        "rule": "cardinalityexpectedcomponent",
+        "severity": "error",
+        "message": "Expected <target> to be a component, but found class instead."
+      },
+      {
+        "code": "M4049",
+        "rule": "break-on-non-component",
+        "severity": "error",
+        "message": "Invalid use of break on non-component '<name>'."
+      },
+      {
+        "code": "M4049",
+        "rule": "breakonnoncomponent",
+        "severity": "error",
+        "message": "Invalid use of break on non-component '<ident>'."
+      },
+      {
+        "code": "M4050",
+        "rule": "break-component-invalid-type",
+        "severity": "error",
+        "message": "Invalid use of break on component '<name>', component must be a model, block, or connector."
+      },
+      {
+        "code": "M4050",
+        "rule": "breakcomponentinvalidtype",
+        "severity": "error",
+        "message": "Invalid use of break on component '<ident>', component must be a model, block, or connector."
+      },
+      {
+        "code": "M4051",
+        "rule": "break-connect-not-found",
+        "severity": "error",
+        "message": "No matching element found for '<connText>'."
+      },
+      {
+        "code": "M4051",
+        "rule": "breakconnectnotfound",
+        "severity": "error",
+        "message": "No matching element found for '<target>'."
+      },
+      {
+        "code": "M4052",
+        "rule": "redeclare-final-component",
+        "severity": "error",
+        "message": "Redeclaration of final component <name> is not allowed."
+      },
+      {
+        "code": "M4052",
+        "rule": "redeclarefinalcomponent",
+        "severity": "error",
+        "message": "Redeclaration of final component <eName> is not allowed."
+      },
+      {
+        "code": "M4053",
+        "rule": "redeclare-constant-component",
+        "severity": "error",
+        "message": "Redeclaration of constant component <name> is not allowed."
+      },
+      {
+        "code": "M4053",
+        "rule": "redeclareconstantcomponent",
+        "severity": "error",
+        "message": "Redeclaration of constant component <eName> is not allowed."
+      },
+      {
+        "code": "M4054",
+        "rule": "stream-unbalanced-connector",
+        "severity": "error",
+        "message": "Invalid stream connector <connectorName>: A stream connector must have exactly one flow variable, this connector has <flowCount> flow variables."
+      },
+      {
+        "code": "M4054",
+        "rule": "streamunbalancedconnector",
+        "severity": "error",
+        "message": "Invalid stream connector .<cName>: A stream connector must have exactly one flow variable, this connector has <fCount> flow variables."
+      },
+      {
+        "code": "M4055",
+        "rule": "cannot-connect-expandable-with-non-expandable",
+        "severity": "error",
+        "message": "Cannot connect expandable connector <expName> with non-expandable connector <nonExpName>."
+      },
+      {
+        "code": "M4055",
+        "rule": "cannotconnectexpandablewithnonexpandable",
+        "severity": "error",
+        "message": "Cannot connect expandable connector <expRef> with non-expandable connector <nonExpRef>."
+      },
+      {
+        "code": "M4056",
+        "rule": "duplicate-inherited-element-not-identical",
+        "severity": "error",
+        "message": "Duplicate elements (due to inherited elements) not identical: first element is: <currText> second element is: <prevText>"
+      },
+      {
+        "code": "M4057",
+        "rule": "expandable-connector-flow-element",
+        "severity": "error",
+        "message": "Prefix 'flow' on component '<compName>' not allowed in class specialization 'expandable connector'."
+      },
+      {
+        "code": "M4057",
+        "rule": "expandableconnectorflowelement",
+        "severity": "error",
+        "message": "Prefix 'flow' on component '<compName>' not allowed in class specialization 'expandable connector'."
+      },
+      {
+        "code": "M4058",
+        "rule": "recursive-definition",
+        "severity": "error",
+        "message": "Declaration of element <elemName> causes recursive definition of class <className>."
+      },
+      {
+        "code": "M4059",
+        "rule": "max-recursion-depth-exceeded",
+        "severity": "error",
+        "message": "The maximum recursion depth of <depth> was reached, probably due to mutually recursive definitions."
+      },
+      {
+        "code": "M4061",
+        "rule": "redeclare-non-inherited",
+        "severity": "error",
+        "message": "Illegal redeclare of element <elementName>, no inherited element with that name exists."
+      },
+      {
+        "code": "M4061",
+        "rule": "redeclarenoninherited",
+        "severity": "error",
+        "message": "Illegal redeclare of element <eName>, no inherited element with that name exists."
+      },
+      {
+        "code": "M4062",
+        "rule": "invalid-external-object",
+        "severity": "error",
+        "message": "External object <className> contains invalid element '<elemName>'."
+      },
+      {
+        "code": "M4063",
+        "rule": "class-extends-non-inherited",
+        "severity": "error",
+        "message": "Base class targeted by class extends <className> not found in the inherited classes."
+      },
+      {
+        "code": "M4063",
+        "rule": "classextendsnoninherited",
+        "severity": "error",
+        "message": "Invalid redeclaration of class <eName>, class extends only allowed on inherited classes."
+      },
+      {
+        "code": "M4064",
+        "rule": "protected-in-connector",
+        "severity": "error",
+        "message": "Protected sections are not allowed in connector."
+      },
+      {
+        "code": "M4064",
+        "rule": "protectedinconnector",
+        "severity": "error",
+        "message": "Protected sections are not allowed in <kindStr>."
+      },
+      {
+        "code": "M4065",
+        "rule": "equationinconnector",
+        "severity": "error",
+        "message": "Equations are not allowed in connector."
+      },
+      {
+        "code": "M4065",
+        "rule": "equations-in-connector",
+        "severity": "error",
+        "message": "Equations are not allowed in connector."
+      },
+      {
+        "code": "M4066",
+        "rule": "algorithm-in-connector",
+        "severity": "error",
+        "message": "Algorithm sections are not allowed in connector."
+      },
+      {
+        "code": "M4066",
+        "rule": "algorithminconnector",
+        "severity": "error",
+        "message": "Algorithm sections are not allowed in connector."
+      },
+      {
+        "code": "M4067",
+        "rule": "external-object-missing-constructor",
+        "severity": "error",
+        "message": "External object <className> is missing a constructor."
+      },
+      {
+        "code": "M4068",
+        "rule": "redeclare-condition-attribute",
+        "severity": "error",
+        "message": "Invalid redeclaration of <elementName>, a redeclare may not have a condition attribute."
+      },
+      {
+        "code": "M4068",
+        "rule": "redeclareconditionattribute",
+        "severity": "error",
+        "message": "Invalid redeclaration of <eName>, a redeclare may not have a condition attribute."
+      },
+      {
+        "code": "M4069",
+        "rule": "external-object-return-restriction",
+        "severity": "error",
+        "message": "Function <fnName> returns an external object, but the only function allowed to return this object is <extObjName>.constructor."
+      },
+      {
+        "code": "M4070",
+        "rule": "external-non-function",
+        "severity": "error",
+        "message": "Class specialization violation: <className> is a <specialization>, which may not contain an external declaration."
+      },
+      {
+        "code": "M4070",
+        "rule": "externalnonfunction",
+        "severity": "error",
+        "message": "Class specialization violation: <name> is a <kindStr>, which may not contain an external declaration."
+      },
+      {
+        "code": "M4071",
+        "rule": "external-invalid-language",
+        "severity": "error",
+        "message": "'<lang>' is not a valid language for an external function."
+      },
+      {
+        "code": "M4072",
+        "rule": "external-invalid-arg-expr",
+        "severity": "error",
+        "message": "Expression <expr> cannot be an external argument. Only identifiers, scalar constants, and size-expressions are allowed."
+      },
+      {
+        "code": "M4073",
+        "rule": "external-invalid-arg-size-const",
+        "severity": "error",
+        "message": "Invalid external argument '<expr>', the dimension index must be a constant expression."
+      },
+      {
+        "code": "M4074",
+        "rule": "external-array-return-not-allowed",
+        "severity": "error",
+        "message": "The lhs (result) of the external function declaration has array type (<typeStr>), but this is not allowed in the specification. You need to pass it as an input to the function (preferably also with a size()-expression to avoid out-of-bounds errors in the external call)."
+      },
+      {
+        "code": "M4075",
+        "rule": "invalid-type-prefix-flow-nested",
+        "severity": "error",
+        "message": "Invalid type prefix 'flow' on variable <varName>, due to existing type prefix 'flow'."
+      },
+      {
+        "code": "M4076",
+        "rule": "parameter-bound-contradiction",
+        "severity": "error",
+        "message": "Contradictory bounds for parameter '<paramName>': lower bound '<lower>' exceeds upper bound '<upper>'."
+      },
+      {
+        "code": "M4076",
+        "rule": "parameterboundcontradiction",
+        "severity": "error",
+        "message": "Contradictory bounds for parameter 'parameter': lower bound 'min' exceeds upper bound 'max'."
+      },
+      {
+        "code": "M4077",
+        "rule": "loop-termination-inconclusive",
+        "severity": "error",
+        "message": "Loop over '<loopVar>' with condition '<condition>' cannot be proven to terminate."
+      },
+      {
+        "code": "M4078",
+        "rule": "terminate-in-function",
+        "severity": "error",
+        "message": "terminate is not allowed in a function."
+      },
+      {
+        "code": "M4078",
+        "rule": "terminateinfunction",
+        "severity": "error",
+        "message": "terminate is not allowed in a function."
+      },
+      {
+        "code": "M4079",
+        "rule": "return-outside-function",
+        "severity": "error",
+        "message": "'return' may not be used outside function."
+      },
+      {
+        "code": "M4079",
+        "rule": "returnoutsidefunction",
+        "severity": "error",
+        "message": "'return' may not be used outside function."
+      },
+      {
+        "code": "M4080",
+        "rule": "cyclic-constants-or-parameters",
+        "severity": "error",
+        "message": "Cyclically dependent constants or parameters found in scope <scopeName>: {<cycleList>} (ignore with -d=ignoreCycles)."
+      },
+      {
+        "code": "M4081",
+        "rule": "cyclic-function-components",
+        "severity": "error",
+        "message": "Cyclically dependent function components found: {<cycleList>}"
+      },
+      {
+        "code": "M4082",
+        "rule": "connector-non-parameter-subscript",
+        "severity": "error",
+        "message": "Connector '<connRef>' has non-parameter subscript '<subscriptText>'."
+      },
+      {
+        "code": "M4083",
+        "rule": "enum-duplicate-literal",
+        "severity": "error",
+        "message": "Enumeration has duplicate names: <dup> in list of names <list>."
+      },
+      {
+        "code": "M4084",
+        "rule": "enum-reserved-attribute-literal",
+        "severity": "error",
+        "message": "Invalid use of reserved attribute name <name> as enumeration literal."
+      },
+      {
+        "code": "M4091",
+        "rule": "break-outside-loop",
+        "severity": "error",
+        "message": "'break' must be inside a for or while loop, or enclose a connect equation."
+      },
+      {
+        "code": "M4091",
+        "rule": "breakoutsideloop",
+        "severity": "error",
+        "message": "'break' may only be used in a while- or for-loop."
+      },
+      {
+        "code": "M4092",
+        "rule": "binding-dimension-mismatch",
+        "severity": "error",
+        "message": "Type mismatch in binding '<componentName> = <bindingText>', expected array dimensions [<expectedDims>], got [<actualDims>]."
+      },
+      {
+        "code": "M4093",
+        "rule": "unused-input-variable",
+        "severity": "warning",
+        "message": "Unused input variable <varName> in function <funcName>."
+      },
+      {
+        "code": "M4094",
+        "rule": "cardinality-in-condition-only",
+        "severity": "error",
+        "message": "cardinality may only be used in the condition of an if-statement or if-equation."
+      },
+      {
+        "code": "M4095",
+        "rule": "conditional-expression-not-evaluated",
+        "severity": "error",
+        "message": "The conditional expression <condText> could not be evaluated."
+      },
+      {
+        "code": "M4096",
+        "rule": "dimensions-must-be-parameter",
+        "severity": "error",
+        "message": "Dimensions must be parameter or constant expression (in <callStr>)."
+      },
+      {
+        "code": "M4097",
+        "rule": "called-function-partial",
+        "severity": "error",
+        "message": "Called function '<fnName>' is partial."
+      },
+      {
+        "code": "M4098",
+        "rule": "class-specialization-violation",
+        "severity": "error",
+        "message": "Class specialization violation: <className> <errorDetail>."
+      },
+      {
+        "code": "M4099",
+        "rule": "cannot-connect-undeclared-expandable-connectors",
+        "severity": "error",
+        "message": "Cannot connect undeclared connectors <c1> with <c2>. At least one of them must be declared."
+      },
+      {
+        "code": "M4101",
+        "rule": "top-level-outer-element",
+        "severity": "error",
+        "message": "The model can't be instantiated due to top-level outer element '<elementName>', it may only be used as part of a simulation model."
+      },
+      {
+        "code": "M4102",
+        "rule": "inner-not-found-existing-decl",
+        "severity": "error",
+        "message": "An inner declaration for outer element '<elementName>' could not be found, and could not be automatically generated due to an existing declaration of that name."
+      },
+      {
+        "code": "M4103",
+        "rule": "missing-redeclare-keyword",
+        "severity": "error",
+        "message": "Missing redeclare keyword on attempted redeclaration of class <className>."
+      },
+      {
+        "code": "M4104",
+        "rule": "invalid-redeclaration-class-as-component",
+        "severity": "error",
+        "message": "Invalid redeclaration of class <className> as component."
+      },
+      {
+        "code": "M4105",
+        "rule": "duplicate-redeclare",
+        "severity": "error",
+        "message": "<name> is already redeclared in this scope."
+      },
+      {
+        "code": "M4106",
+        "rule": "invalid-redeclaration-prefix",
+        "severity": "error",
+        "message": "Invalid redeclaration '<newPrefix> <name>', original element is declared '<origPrefix>'."
+      },
+      {
+        "code": "M4107",
+        "rule": "invalid-redeclaration-component-as-class",
+        "severity": "error",
+        "message": "Invalid redeclaration of component <compName> as class."
+      },
+      {
+        "code": "M4108",
+        "rule": "redeclare-enum-not-subtype-generic",
+        "severity": "error",
+        "message": "Redeclaration of enumeration '<name>' is not a subtype of the redeclared element (use enumeration(:) for a generic replaceable enumeration)."
+      },
+      {
+        "code": "M4109",
+        "rule": "redeclare-enum-not-subtype",
+        "severity": "error",
+        "message": "Redeclaration of enumeration '<name>' is not a subtype of the redeclared element."
+      },
+      {
+        "code": "M4110",
+        "rule": "invalid-type-prefix-conflict",
+        "severity": "error",
+        "message": "Invalid type prefix '<newPrefix>' on component <compName>, due to existing type prefix '<existingPrefix>'."
+      },
+      {
+        "code": "M4111",
+        "rule": "invalid-redeclaration-basic-type-attribute",
+        "severity": "error",
+        "message": "Invalid redeclaration of <attrName>, attributes of basic types may not be redeclared."
+      },
+      {
+        "code": "M4112",
+        "rule": "extends-other-base-class",
+        "severity": "error",
+        "message": "Found other base class for extends <baseName> after instantiating extends."
+      },
+      {
+        "code": "M4113",
+        "rule": "external-object-missing-destructor",
+        "severity": "error",
+        "message": "External object <className> is missing a destructor."
+      },
+      {
+        "code": "M4114",
+        "rule": "invalid-connector-variability",
+        "severity": "error",
+        "message": "Invalid variability <variability> on connector '<compName>'."
+      },
+      {
+        "code": "M4115",
+        "rule": "external-object-not-replaceable",
+        "severity": "error",
+        "message": "'<elemName>' may not be replaceable."
+      },
+      {
+        "code": "M4116",
+        "rule": "operator-encapsulation",
+        "severity": "error",
+        "message": "Operator <recordName>.'<opName>' is not encapsulated."
+      },
+      {
+        "code": "M4117",
+        "rule": "operator-constructor-outputs",
+        "severity": "error",
+        "message": "Operator <recordName>.'constructor' must have exactly one output."
+      },
+      {
+        "code": "M4118",
+        "rule": "operator-constructor-output-type",
+        "severity": "error",
+        "message": "Output '<outputName>' in operator <recordName>.'constructor' must be of type <recordName>, got type <actualType>."
+      },
+      {
+        "code": "M4119",
+        "rule": "variable-in-package-not-constant",
+        "severity": "error",
+        "message": "Variable <varName> in package <pkgName> is not constant."
+      },
+      {
+        "code": "M4120",
+        "rule": "ambiguous-operator-overload",
+        "severity": "error",
+        "message": "Ambiguous matching overloaded operator functions found for <exprText>. Candidates are: <candidatesText>"
+      },
+      {
+        "code": "M4121",
+        "rule": "no-matching-operator-function",
+        "severity": "error",
+        "message": "No matching function found for <callExprText>. Candidates are: <candidatesText>"
+      },
+      {
+        "code": "M4122",
+        "rule": "cannot-resolve-operator-type",
+        "severity": "error",
+        "message": "Cannot resolve type of expression <exprText>. The operands have types <leftType>, <rightType> in component <NO_COMPONENT>."
+      },
+      {
+        "code": "M5001",
+        "rule": "equation-type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch in equation <lhsExpanded>=<rhsExpanded> of type <lhsType>=<rhsType>."
+      },
+      {
+        "code": "M5001",
+        "rule": "equationtypemismatch",
+        "severity": "error",
+        "message": "Type mismatch in equation <eqText2> of type <lName>=<rName>."
+      },
+      {
+        "code": "M5002",
+        "rule": "constrainedby-type-mismatch",
+        "severity": "error",
+        "message": "Replaceable '<componentName>': default type '<defaultType>' is not compatible with constraining type '<constrainingType>'."
+      },
+      {
+        "code": "M5003",
+        "rule": "if-branch-type-mismatch",
+        "severity": "error",
+        "message": "If-equation branch type mismatch: '<varName>' assigned type '<branchType>' but expected '<expectedType>'."
+      },
+      {
+        "code": "M5004",
+        "rule": "connect-flow-mismatch",
+        "severity": "error",
+        "message": "Cannot connect flow component <flowComp> to non-flow component <nonFlowComp>."
+      },
+      {
+        "code": "M5004",
+        "rule": "connectflowmismatch",
+        "severity": "error",
+        "message": "Cannot connect flow component <flowRef>.<elemIdent> to non-flow component <nonFlowRef>.<elemIdent>."
+      },
+      {
+        "code": "M5005",
+        "rule": "division-by-zero",
+        "severity": "error",
+        "message": "Division by zero: <lhs> / 0."
+      },
+      {
+        "code": "M5005",
+        "rule": "divisionbyzero",
+        "severity": "error",
+        "message": "Division by literal zero in '<target>'."
+      },
+      {
+        "code": "M5006",
+        "rule": "assignment-type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch in assignment in <target> := <source> of <targetType> := <sourceType>"
+      },
+      {
+        "code": "M5006",
+        "rule": "assignmenttypemismatch",
+        "severity": "error",
+        "message": "Type mismatch in assignment in <target> of <tName> := <vName>"
+      },
+      {
+        "code": "M5007",
+        "rule": "for-iterator-not-1d",
+        "severity": "error",
+        "message": "Iterator <iteratorName>, has type <shape>, but expected a 1D array expression."
+      },
+      {
+        "code": "M5007",
+        "rule": "foriteratornot1d",
+        "severity": "error",
+        "message": "Iterator iterator, has type Real, but expected a 1D array expression."
+      },
+      {
+        "code": "M5008",
+        "rule": "assignment-to-constant",
+        "severity": "error",
+        "message": "Trying to assign to constant component in <componentName> := <exprText>"
+      },
+      {
+        "code": "M5008",
+        "rule": "assignmenttoconstant",
+        "severity": "error",
+        "message": "Trying to assign to constant component <idNode>."
+      },
+      {
+        "code": "M5009",
+        "rule": "assignment-to-input",
+        "severity": "error",
+        "message": "Trying to assign to input component '<componentName>'."
+      },
+      {
+        "code": "M5009",
+        "rule": "assignmenttoinput",
+        "severity": "error",
+        "message": "Trying to assign to input component <idNode>."
+      },
+      {
+        "code": "M5010",
+        "rule": "homotopy-recommended",
+        "severity": "info",
+        "message": "Equation contains steep nonlinearity '<term>' without homotopy. Consider wrapping with homotopy(actual, simplified)."
+      },
+      {
+        "code": "M5011",
+        "rule": "assignment-to-parameter",
+        "severity": "error",
+        "message": "Trying to assign to parameter component in <componentName> := <exprText>"
+      },
+      {
+        "code": "M5012",
+        "rule": "assignment-to-iterator",
+        "severity": "error",
+        "message": "Assignment to iterator '<iteratorName>'."
+      },
+      {
+        "code": "M5013",
+        "rule": "not-a-stream-variable",
+        "severity": "error",
+        "message": "Operand '<operand>' to operator '<operator>' is not a stream variable."
+      },
+      {
+        "code": "M5013",
+        "rule": "notastreamvariable",
+        "severity": "error",
+        "message": "Operand '<aText>' to operator '<fText>' is not a stream variable."
+      },
+      {
+        "code": "M5014",
+        "rule": "assignment-to-non-variable",
+        "severity": "error",
+        "message": "Component '<componentName>' may not be assigned to due to class specialization '<specialization>'."
+      },
+      {
+        "code": "M5015",
+        "rule": "function-call-contains-subscripts",
+        "severity": "error",
+        "message": "Function call <cref> contains subscripts."
+      },
+      {
+        "code": "M5016",
+        "rule": "tuple-subscript-not-allowed",
+        "severity": "error",
+        "message": "Tuple expression can not be subscripted."
+      },
+      {
+        "code": "M5017",
+        "rule": "when-illegal-context",
+        "severity": "error",
+        "message": "A when-statement may not be used inside a function or a while, if, or for-clause."
+      },
+      {
+        "code": "M5017",
+        "rule": "whenillegalcontext",
+        "severity": "error",
+        "message": "A when-statement may not be used inside a function or a while, if, or for-clause."
+      },
+      {
+        "code": "M5018",
+        "rule": "reduction-invalid-expr-type",
+        "severity": "error",
+        "message": "Invalid expression '<exprText>' of type <actualType> in <op> reduction, expected <expectedText>."
+      },
+      {
+        "code": "M5019",
+        "rule": "failed-to-deduce-dimension",
+        "severity": "error",
+        "message": "Failed to deduce dimension <dimIdx> of <varName> due to missing binding equation."
+      },
+      {
+        "code": "M5020",
+        "rule": "output-not-definitely-assigned",
+        "severity": "error",
+        "message": "Output variable '<varName>' in function '<funcName>' is not definitely assigned on all control flow paths."
+      },
+      {
+        "code": "M5021",
+        "rule": "uninitialized-variable-read",
+        "severity": "warning",
+        "message": "Variable '<varName>' is read before being definitely assigned."
+      },
+      {
+        "code": "M5022",
+        "rule": "unreachable-statement",
+        "severity": "warning",
+        "message": "Unreachable statement detected."
+      },
+      {
+        "code": "M5023",
+        "rule": "elsewhen-variable-mismatch",
+        "severity": "error",
+        "message": "The same variables must be solved in elsewhen clause as in the when clause."
+      },
+      {
+        "code": "M5023",
+        "rule": "elsewhenvariablemismatch",
+        "severity": "error",
+        "message": "The same variables must be solved in elsewhen clause as in the when clause."
+      },
+      {
+        "code": "M5024",
+        "rule": "reinit-type-mismatch",
+        "severity": "error",
+        "message": "The first argument to reinit must be a subtype of Real, but <varName> has type <actualType>."
+      },
+      {
+        "code": "M5025",
+        "rule": "implicit-iterator-subscript-missing",
+        "severity": "error",
+        "message": "Identifier <iterName> of implicit for iterator must be present as array subscript in the loop body."
+      },
+      {
+        "code": "M5026",
+        "rule": "implicit-iteration-dim-mismatch",
+        "severity": "error",
+        "message": "Dimension <dim1> of <name1> and <dim2> of <name2> differs when trying to deduce implicit iteration range."
+      },
+      {
+        "code": "M5027",
+        "rule": "when-condition-not-discrete",
+        "severity": "error",
+        "message": "When-condition '<condText>' is not a discrete-time expression."
+      },
+      {
+        "code": "M5028",
+        "rule": "when-if-branch-lhs-mismatch",
+        "severity": "error",
+        "message": "The branches of an if-equation inside a when-equation must have the same set of component references on the left-hand side."
+      },
+      {
+        "code": "M5029",
+        "rule": "clocked-when-has-elsewhen",
+        "severity": "error",
+        "message": "Clocked when equation can not contain elsewhen part."
+      },
+      {
+        "code": "M5030",
+        "rule": "clocked-when-branch-in-when",
+        "severity": "error",
+        "message": "Clocked when branch in when equation."
+      },
+      {
+        "code": "M5031",
+        "rule": "invalid-when-lhs",
+        "severity": "error",
+        "message": "Invalid left-hand side of when-equation: <lhsStr>."
+      },
+      {
+        "code": "M5032",
+        "rule": "when-conditional-expected-boolean",
+        "severity": "error",
+        "message": "Type error in when conditional '<condStr>'. Expected Boolean scalar or vector, got Clock."
+      },
+      {
+        "code": "M5033",
+        "rule": "reinit-not-continuous",
+        "severity": "error",
+        "message": "The first argument to reinit must be a continuous time variable, but <varName> is <variability>."
+      },
+      {
+        "code": "M5034",
+        "rule": "eval-external-builtin",
+        "severity": "error",
+        "message": "Internal error NFCeval.evalBuiltinCall: unimplemented case for <funcName>"
+      },
+      {
+        "code": "M5035",
+        "rule": "argument-not-differentiable",
+        "severity": "error",
+        "message": "Argument '<argName>' of der is not differentiable."
+      },
+      {
+        "code": "M5036",
+        "rule": "invalid-size-index",
+        "severity": "error",
+        "message": "Invalid index <dim> in call to size of <arrName>, valid index interval is [1,<maxDim>]."
+      },
+      {
+        "code": "M5037",
+        "rule": "function-no-named-parameter",
+        "severity": "error",
+        "message": "Function <funcName> has no input parameter named <paramName>."
+      },
+      {
+        "code": "M5038",
+        "rule": "when-in-initial-equation",
+        "severity": "error",
+        "message": "when-clause is not allowed in initial section."
+      },
+      {
+        "code": "M5039",
+        "rule": "size-first-arg-not-array",
+        "severity": "error",
+        "message": "The first argument of size(<argText>) must be an array expression."
+      },
+      {
+        "code": "M5040",
+        "rule": "reinit-outside-when",
+        "severity": "error",
+        "message": "Operator reinit may only be used in the body of a when equation."
+      },
+      {
+        "code": "M5041",
+        "rule": "reinit-in-algorithm",
+        "severity": "error",
+        "message": "Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore)."
+      },
+      {
+        "code": "M5042",
+        "rule": "reinit-arg1-not-variable",
+        "severity": "error",
+        "message": "The first argument to reinit must be a variable of type Real or an array of such variables."
+      },
+      {
+        "code": "M5043",
+        "rule": "illegal-end-usage",
+        "severity": "error",
+        "message": "'end' can not be used outside array subscripts."
+      },
+      {
+        "code": "M5044",
+        "rule": "reinit-arg2-type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch for positional argument 2 in reinit(=<argText>). The argument has type: <actualType> expected type: <expectedType>"
+      },
+      {
+        "code": "M6001",
+        "rule": "mixed-clock-domains",
+        "severity": "error",
+        "message": "Clocked expression '<exprText>' mixes signals from different clock domains."
+      },
+      {
+        "code": "M6001",
+        "rule": "mixedclockdomains",
+        "severity": "error",
+        "message": "Mixed clock domains in expression '<target>' without explicit conversion operator."
+      },
+      {
+        "code": "M6002",
+        "rule": "sample-factor-not-positive",
+        "severity": "error",
+        "message": "Sub-clock factor must be a positive integer."
+      },
+      {
+        "code": "M6002",
+        "rule": "samplefactornotpositive",
+        "severity": "error",
+        "message": "Sample factor '<target>' must be a positive non-zero integer."
+      },
+      {
+        "code": "M6003",
+        "rule": "previous-outside-clocked",
+        "severity": "error",
+        "message": "Operator 'previous()' may only be applied to clocked discrete-time variables in '<exprText>'."
+      },
+      {
+        "code": "M6003",
+        "rule": "previousoutsideclocked",
+        "severity": "error",
+        "message": "previous() can only be called on clocked discrete variables, but '<target>' is unclocked."
+      },
+      {
+        "code": "M6004",
+        "rule": "hold-in-continuous",
+        "severity": "error",
+        "message": "Operator 'hold()' converts a clocked signal to continuous-time and cannot be used inside a clocked partition: '<exprText>'."
+      },
+      {
+        "code": "M6004",
+        "rule": "holdincontinuous",
+        "severity": "error",
+        "message": "hold() operator cannot be called in continuous equation section without boundary causality."
+      },
+      {
+        "code": "M6010",
+        "rule": "duplicate-initial-state",
+        "severity": "error",
+        "message": "A state machine partition must have at most one initialState() call."
+      },
+      {
+        "code": "M6010",
+        "rule": "duplicateinitialstate",
+        "severity": "error",
+        "message": "More than one state marked as initialState in state machine '<target>'."
+      },
+      {
+        "code": "M6020",
+        "rule": "impure-called-in-pure",
+        "severity": "error",
+        "message": "Impure function '<callText>' cannot be called inside a pure function."
+      },
+      {
+        "code": "M6020",
+        "rule": "impurecalledinpure",
+        "severity": "error",
+        "message": "Pure function cannot call impure function '<target>'."
+      },
+      {
+        "code": "M6021",
+        "rule": "impure-in-equation-section",
+        "severity": "error",
+        "message": "Impure function '<callText>' may only be called inside a when-equation or when-statement."
+      },
+      {
+        "code": "M6021",
+        "rule": "impureinequationsection",
+        "severity": "error",
+        "message": "Impure function '<target>' may only be called in algorithm sections or when equations."
+      },
+      {
+        "code": "M6040",
+        "rule": "break-connection-not-found",
+        "severity": "error",
+        "message": "Connection '<connText>' in 'break' modifier does not exist in base class."
+      }
+    ]
+  },
+  {
+    "slug": "sysml2",
+    "name": "SysML v2 / KerML",
+    "packageName": "@modelscript/sysml2",
+    "sources": [
+      "languages/sysml2/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "S1001",
+        "rule": "parse-error",
+        "severity": "error",
+        "message": "Parse error: <detail>."
+      },
+      {
+        "code": "S1002",
+        "rule": "parse-missing",
+        "severity": "error",
+        "message": "Expected token missing: '<expected>'."
+      },
+      {
+        "code": "S1003",
+        "rule": "definition-naming",
+        "severity": "warning",
+        "message": "Definition '<name>' should start with an uppercase letter"
+      },
+      {
+        "code": "S1004",
+        "rule": "usage-naming",
+        "severity": "warning",
+        "message": "Usage '<name>' should start with a lowercase letter"
+      },
+      {
+        "code": "S1005",
+        "rule": "package-naming",
+        "severity": "warning",
+        "message": "Package '<name>' should start with an uppercase letter"
+      },
+      {
+        "code": "S2001",
+        "rule": "duplicate-member",
+        "severity": "warning",
+        "message": "Duplicate member '<name>' in '<scope>'"
+      },
+      {
+        "code": "S2002",
+        "rule": "symbol-not-found",
+        "severity": "error",
+        "message": "Symbol '<name>' not found in scope."
+      },
+      {
+        "code": "S2003",
+        "rule": "allocation-target-unresolved",
+        "severity": "error",
+        "message": "Allocation target '<target>' could not be resolved"
+      },
+      {
+        "code": "S2003",
+        "rule": "unresolved-target",
+        "severity": "error",
+        "message": "Allocation target '<target>' could not be resolved"
+      },
+      {
+        "code": "S2004",
+        "rule": "allocation-source-unresolved",
+        "severity": "error",
+        "message": "Allocation source '<source>' could not be resolved"
+      },
+      {
+        "code": "S2004",
+        "rule": "unresolved-source",
+        "severity": "error",
+        "message": "Allocation source '<source>' could not be resolved"
+      },
+      {
+        "code": "S2005",
+        "rule": "unresolved-import",
+        "severity": "error",
+        "message": "Import '<pkg>' could not be resolved."
+      },
+      {
+        "code": "S2006",
+        "rule": "unresolved-transition-state",
+        "severity": "error",
+        "message": "Transition state '<stateName>' could not be resolved in enclosing state machine."
+      },
+      {
+        "code": "S3001",
+        "rule": "type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch: cannot assign value of type '<actualType>' to feature '<featureName>' with declared type '<declaredType>'."
+      },
+      {
+        "code": "S3002",
+        "rule": "incompatible-port-connection",
+        "severity": "error",
+        "message": "Incompatible port connection between '<p1>' (<t1>) and '<p2>' (<t2>)."
+      },
+      {
+        "code": "S3003",
+        "rule": "dimensional-mismatch",
+        "severity": "error",
+        "message": "Dimensional mismatch: cannot assign value of dimension '<actualDim>' to feature '<featureName>' with declared dimension '<targetDim>'."
+      },
+      {
+        "code": "S3004",
+        "rule": "invalid-multiplicity-bounds",
+        "severity": "error",
+        "message": "Invalid multiplicity bounds: lower bound (<lower>) cannot be greater than upper bound (<upper>)."
+      },
+      {
+        "code": "S3005",
+        "rule": "target-not-requirement",
+        "severity": "error",
+        "message": "Target '<target>' is not a Requirement"
+      },
+      {
+        "code": "S3006",
+        "rule": "verify-target-not-a-requirement",
+        "severity": "error",
+        "message": "Verify target '<target>' is not a Requirement"
+      },
+      {
+        "code": "S3007",
+        "rule": "dimensional-connection-mismatch",
+        "severity": "error",
+        "message": "Dimensional mismatch in connection between '<sourceName>' (<sourceDim>) and '<targetName>' (<targetDim>)."
+      },
+      {
+        "code": "S4001",
+        "rule": "circular-specialization",
+        "severity": "error",
+        "message": "Circular specialization: '<name>' transitively specializes itself"
+      },
+      {
+        "code": "S4002",
+        "rule": "circular-satisfaction",
+        "severity": "error",
+        "message": "Circular satisfaction: '<name>' transitively satisfies itself"
+      },
+      {
+        "code": "S4003",
+        "rule": "empty-definition",
+        "severity": "info",
+        "message": "Definition '<name>' has no members"
+      },
+      {
+        "code": "S4004",
+        "rule": "abstract-requirement-violation",
+        "severity": "error",
+        "message": "Cannot make an existing concrete requirement abstract."
+      },
+      {
+        "code": "S4005",
+        "rule": "ontological-inconsistency",
+        "severity": "error",
+        "message": "Ontological inconsistency detected in '<name>'<detail>"
+      },
+      {
+        "code": "S4006",
+        "rule": "missing-subject",
+        "severity": "info",
+        "message": "Requirement '<name>' should have a specified subject or satisfy relation"
+      },
+      {
+        "code": "S4007",
+        "rule": "empty-package",
+        "severity": "info",
+        "message": "Package '<name>' has no members"
+      },
+      {
+        "code": "S4008",
+        "rule": "requirement-without-constraint",
+        "severity": "info",
+        "message": "Requirement '<name>' has no constraints or textual documentation"
+      },
+      {
+        "code": "S4009",
+        "rule": "empty-verification-case",
+        "severity": "info",
+        "message": "Verification case '<name>' has no verify requirements or sub-actions"
+      },
+      {
+        "code": "S4010",
+        "rule": "missing-verification-objective",
+        "severity": "warning",
+        "message": "Verification case '<name>' has no verification objective or verify statement"
+      },
+      {
+        "code": "S4011",
+        "rule": "unverified-requirement",
+        "severity": "warning",
+        "message": "Requirement '<name>' is not verified by any verification case in package '<pkgName>'"
+      },
+      {
+        "code": "S5001",
+        "rule": "constraint-violated",
+        "severity": "error",
+        "message": "Constraint '<name>' evaluates to false"
+      },
+      {
+        "code": "S5002",
+        "rule": "requirement-failed",
+        "severity": "error",
+        "message": "Requirement '<name>' has constraint(s) that evaluate to false"
+      },
+      {
+        "code": "S5003",
+        "rule": "broken-interface-contract",
+        "severity": "error",
+        "message": "Broken interface contract on '<name>': <reason>"
+      },
+      {
+        "code": "S5003",
+        "rule": "interface-contract-broken",
+        "severity": "error",
+        "message": "Broken interface contract on '<name>': <reason>"
+      },
+      {
+        "code": "S5004",
+        "rule": "activity-cfa-unreachable",
+        "severity": "warning",
+        "message": "<detail>"
+      },
+      {
+        "code": "S5005",
+        "rule": "activity-soundness-violation",
+        "severity": "error",
+        "message": "<detail>"
+      },
+      {
+        "code": "S5006",
+        "rule": "definite-assignment-violation",
+        "severity": "error",
+        "message": "Variable '<name>' may be used before definite assignment"
+      },
+      {
+        "code": "S5007",
+        "rule": "statemachine-nondeterministic",
+        "severity": "error",
+        "message": "Non-deterministic guards detected: <detail>"
+      },
+      {
+        "code": "S5008",
+        "rule": "statemachine-deadlock",
+        "severity": "error",
+        "message": "Deadlock gap detected in transition guards: <detail>"
+      },
+      {
+        "code": "S5009",
+        "rule": "satisfying-violated-requirement",
+        "severity": "error",
+        "message": "Part '<partName>' cannot satisfy requirement '<reqName>': <violations>"
+      },
+      {
+        "code": "S5010",
+        "rule": "conflicting-requirements",
+        "severity": "error",
+        "message": "Conflicting requirements in '<pkgName>': <conflictNames> cannot be simultaneously satisfied.<witnessStr>"
+      },
+      {
+        "code": "S5011",
+        "rule": "interprocedural-contract-violation",
+        "severity": "error",
+        "message": "<detail>"
+      },
+      {
+        "code": "S5012",
+        "rule": "loop-non-terminating",
+        "severity": "warning",
+        "message": "<detail>"
+      },
+      {
+        "code": "S5013",
+        "rule": "decision-table-non-exhaustive",
+        "severity": "warning",
+        "message": "Decision node '<decideName>' is not exhaustive: <detail>"
+      },
+      {
+        "code": "S5014",
+        "rule": "decision-table-nondeterministic",
+        "severity": "error",
+        "message": "Decision node '<decideName>' has overlapping branch guards: <detail>"
+      },
+      {
+        "code": "S5015",
+        "rule": "decision-table-dead-branch",
+        "severity": "warning",
+        "message": "Decision node '<decideName>' has dead branch(es): <detail>"
+      },
+      {
+        "code": "S5016",
+        "rule": "activity-safety-violation",
+        "severity": "error",
+        "message": "<detail>"
+      }
+    ]
+  },
+  {
+    "slug": "reqif",
+    "name": "ReqIF",
+    "packageName": "@modelscript/reqif",
+    "sources": [
+      "languages/reqif/src/lints/rules.ts"
+    ],
+    "cli": "msx reqif lint",
+    "rules": [
+      {
+        "code": "M7001",
+        "rule": "dangling-requirement-relation",
+        "severity": "error",
+        "message": "Requirement relation '<relId>' references missing <role> requirement '<missingId>'."
+      },
+      {
+        "code": "M7002",
+        "rule": "type-attribute-mismatch",
+        "severity": "error",
+        "message": "Attribute '<attrName>' expected type '<expectedType>', but got value '<actualValue>'."
+      },
+      {
+        "code": "M7003",
+        "rule": "circular-requirement-hierarchy",
+        "severity": "error",
+        "message": "Circular requirement hierarchy detected at '<reqId>' along cycle path [<cyclePath>]."
+      },
+      {
+        "code": "M7004",
+        "rule": "unverified-leaf-requirement",
+        "severity": "warning",
+        "message": "Leaf requirement '<reqId>' has no outgoing 'verifies' or 'satisfies' relation."
+      },
+      {
+        "code": "M7005",
+        "rule": "unbounded-formal-contract",
+        "severity": "warning",
+        "message": "Requirement '<reqId>' is marked safety/functional but lacks a bounded mathematical contract."
+      },
+      {
+        "code": "M7006",
+        "rule": "duplicate-spec-object-id",
+        "severity": "error",
+        "message": "Duplicate requirement identifier '<reqId>' declared in specification."
+      },
+      {
+        "code": "M7007",
+        "rule": "missing-mandatory-attribute",
+        "severity": "error",
+        "message": "Requirement '<reqId>' is missing mandatory attribute '<attrName>'."
+      },
+      {
+        "code": "M7008",
+        "rule": "empty-specification",
+        "severity": "warning",
+        "message": "Specification '<specId>' contains no requirement hierarchies."
+      },
+      {
+        "code": "M7009",
+        "rule": "unresolved-type-reference",
+        "severity": "error",
+        "message": "Element '<elementId>' references undefined type '<typeRef>'."
+      },
+      {
+        "code": "M7010",
+        "rule": "invalid-contract-comparator",
+        "severity": "error",
+        "message": "Requirement '<reqId>' specifies invalid contract comparator '<comp>'."
+      }
+    ]
+  },
+  {
+    "slug": "ssp",
+    "name": "SSP",
+    "packageName": "@modelscript/ssp",
+    "sources": [
+      "languages/ssp/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "S7001",
+        "rule": "SSP_EMPTY_CONNECTOR_NAME",
+        "severity": "error",
+        "message": "Connector in <owner> has an empty name."
+      },
+      {
+        "code": "S7002",
+        "rule": "SSP_DUPLICATE_CONNECTOR",
+        "severity": "error",
+        "message": "Duplicate connector '<name>' declared in <owner>."
+      },
+      {
+        "code": "S7003",
+        "rule": "SSP_INVALID_CONNECTOR_KIND",
+        "severity": "error",
+        "message": "Invalid connector kind '<kind>'. Must be input, output, inout, parameter, or calculatedParameter."
+      },
+      {
+        "code": "S7004",
+        "rule": "SSP_EMPTY_COMPONENT_NAME",
+        "severity": "error",
+        "message": "Component declared with an empty name attribute."
+      },
+      {
+        "code": "S7005",
+        "rule": "SSP_DUPLICATE_COMPONENT",
+        "severity": "error",
+        "message": "Duplicate component '<name>' in system."
+      },
+      {
+        "code": "S7006",
+        "rule": "SSP_EMPTY_SOURCE",
+        "severity": "error",
+        "message": "Component '<comp>' has an empty or missing source FMU URI."
+      },
+      {
+        "code": "S7007",
+        "rule": "SSP_UNDEFINED_COMPONENT",
+        "severity": "error",
+        "message": "Referenced component '<comp>' is not defined in system elements."
+      },
+      {
+        "code": "S7008",
+        "rule": "SSP_UNDEFINED_CONNECTOR",
+        "severity": "error",
+        "message": "Referenced connector '<conn>' not found on component '<comp>'."
+      },
+      {
+        "code": "S7009",
+        "rule": "SSP_CONNECTOR_TYPE_MISMATCH",
+        "severity": "error",
+        "message": "Connection type mismatch: '<startType>' cannot connect to '<endType>'."
+      },
+      {
+        "code": "S7010",
+        "rule": "SSP_CONNECTOR_CAUSALITY_CONFLICT",
+        "severity": "error",
+        "message": "Connection violates causal flow rules."
+      },
+      {
+        "code": "S7011",
+        "rule": "SSP_CYCLIC_CONNECTION",
+        "severity": "error",
+        "message": "Connection creates an algebraic loop or cyclic dependency without delay."
+      },
+      {
+        "code": "S7012",
+        "rule": "SSP_INVALID_EXPERIMENT_BOUNDS",
+        "severity": "error",
+        "message": "DefaultExperiment stopTime must be strictly greater than startTime."
+      }
+    ]
+  },
+  {
+    "slug": "owl2",
+    "name": "OWL2",
+    "packageName": "@modelscript/owl2",
+    "sources": [
+      "languages/owl2/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "O1001",
+        "rule": "parse-error",
+        "severity": "error",
+        "message": "Syntax error near '<snippet>'."
+      },
+      {
+        "code": "O1002",
+        "rule": "undeclared-prefix",
+        "severity": "error",
+        "message": "Prefix '<prefix>:' used in abbreviated IRI '<iri>' is not declared."
+      },
+      {
+        "code": "O1003",
+        "rule": "duplicate-prefix",
+        "severity": "warning",
+        "message": "Prefix '<prefix>:' is declared multiple times in the ontology header."
+      },
+      {
+        "code": "O1004",
+        "rule": "invalid-iri",
+        "severity": "error",
+        "message": "Invalid or malformed IRI '<iri>'."
+      },
+      {
+        "code": "O1005",
+        "rule": "insufficient-arity",
+        "severity": "error",
+        "message": "OWL 2 construct '<construct>' requires at least <minArity> arguments, but got <actualArity>."
+      },
+      {
+        "code": "O2001",
+        "rule": "undeclared-entity",
+        "severity": "warning",
+        "message": "Entity '<iri>' is used as a <role> without an explicit Declaration axiom."
+      },
+      {
+        "code": "O2002",
+        "rule": "duplicate-declaration",
+        "severity": "warning",
+        "message": "Duplicate Declaration(<kind>(<iri>)) in ontology."
+      },
+      {
+        "code": "O2003",
+        "rule": "reserved-vocabulary-declaration",
+        "severity": "error",
+        "message": "Cannot declare or redefine built-in OWL 2 / RDF / RDFS / XSD vocabulary IRI '<iri>'."
+      },
+      {
+        "code": "O3001",
+        "rule": "illegal-property-punning",
+        "severity": "error",
+        "message": "Illegal OWL 2 DL punning: '<iri>' is used as both '<kindA>' and '<kindB>' (ObjectProperty, DataProperty, and AnnotationProperty vocabularies must be disjoint)."
+      },
+      {
+        "code": "O3002",
+        "rule": "expected-object-property",
+        "severity": "error",
+        "message": "Expected an ObjectProperty in '<construct>', but '<iri>' is declared as a DataProperty."
+      },
+      {
+        "code": "O3003",
+        "rule": "expected-data-property",
+        "severity": "error",
+        "message": "Expected a DataProperty in '<construct>', but '<iri>' is declared as an ObjectProperty."
+      },
+      {
+        "code": "O3004",
+        "rule": "expected-class-expression",
+        "severity": "error",
+        "message": "Expected a Class expression in '<construct>', but '<iri>' is a Datatype."
+      },
+      {
+        "code": "O3005",
+        "rule": "invalid-datatype",
+        "severity": "warning",
+        "message": "Datatype '<datatypeIri>' is not in the standard OWL 2 datatype map."
+      },
+      {
+        "code": "O3006",
+        "rule": "datatype-literal-mismatch",
+        "severity": "error",
+        "message": "Lexical value '<literal>' is not a valid literal for datatype '<datatypeIri>'."
+      },
+      {
+        "code": "O4001",
+        "rule": "non-simple-property-restriction",
+        "severity": "error",
+        "message": "OWL 2 DL global restriction violation: non-simple (transitive or composite) property '<propertyIri>' cannot be used in '<construct>'."
+      },
+      {
+        "code": "O4002",
+        "rule": "contradictory-property-characteristics",
+        "severity": "error",
+        "message": "Object property '<propertyIri>' has contradictory characteristics '<charA>' and '<charB>'."
+      },
+      {
+        "code": "O4003",
+        "rule": "property-hierarchy-cycle",
+        "severity": "warning",
+        "message": "Cycle detected in property hierarchy: '<cycle>'."
+      },
+      {
+        "code": "O4004",
+        "rule": "class-hierarchy-cycle",
+        "severity": "info",
+        "message": "SubClassOf cycle detected (equivalent classes): '<cycle>'."
+      },
+      {
+        "code": "O4005",
+        "rule": "self-referential-axiom",
+        "severity": "warning",
+        "message": "Redundant or contradictory self-referential axiom '<axiomType>' on '<iri>'."
+      },
+      {
+        "code": "O5001",
+        "rule": "functional-property-clash",
+        "severity": "error",
+        "message": "Functional/InverseFunctional property '<propertyIri>' violation: <detail>."
+      },
+      {
+        "code": "O5002",
+        "rule": "negative-assertion-clash",
+        "severity": "error",
+        "message": "Negative property assertion on '<propertyIri>' for '<subjectIri>' clashes with asserted or inferred value '<target>'."
+      },
+      {
+        "code": "O5003",
+        "rule": "unsatisfiable-class",
+        "severity": "error",
+        "message": "Class '<classIri>' is unsatisfiable (equivalent to owl:Nothing): <reason>."
+      },
+      {
+        "code": "O5004",
+        "rule": "ontology-inconsistent",
+        "severity": "error",
+        "message": "Ontology is logically inconsistent: <explanation>"
+      },
+      {
+        "code": "O6001",
+        "rule": "profile-el-violation",
+        "severity": "warning",
+        "message": "Construct '<construct>' is outside the OWL 2 EL profile."
+      }
+    ]
+  },
+  {
+    "slug": "step",
+    "name": "STEP (ISO 10303)",
+    "packageName": "@modelscript/step",
+    "sources": [
+      "languages/step/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "step-syntax-error",
+        "severity": "error",
+        "message": "STEP file syntax error: <detail>."
+      },
+      {
+        "code": "M1002",
+        "rule": "missing-header-section",
+        "severity": "error",
+        "message": "STEP exchange file is missing mandatory 'HEADER;' section."
+      },
+      {
+        "code": "M1003",
+        "rule": "missing-schema-declaration",
+        "severity": "warning",
+        "message": "STEP header lacks a recognized 'FILE_SCHEMA' declaration (e.g. AP203, AP214, AP242)."
+      },
+      {
+        "code": "M1004",
+        "rule": "missing-data-section",
+        "severity": "error",
+        "message": "STEP exchange file is missing mandatory 'DATA;' section."
+      },
+      {
+        "code": "M1005",
+        "rule": "unresolved-entity-reference",
+        "severity": "error",
+        "message": "Referenced STEP entity '#<entityId>' is not defined in the DATA section."
+      },
+      {
+        "code": "M1006",
+        "rule": "duplicate-entity-id",
+        "severity": "error",
+        "message": "Entity ID '#<entityId>' is declared more than once in the DATA section."
+      },
+      {
+        "code": "M1007",
+        "rule": "empty-data-section",
+        "severity": "warning",
+        "message": "STEP DATA section contains no entity records."
+      },
+      {
+        "code": "M1008",
+        "rule": "unsupported-ap-schema",
+        "severity": "warning",
+        "message": "Application Protocol schema '<schema>' may not support complete PMI or B-Rep extraction."
+      }
+    ]
+  },
+  {
+    "slug": "scad",
+    "name": "OpenSCAD",
+    "packageName": "@modelscript/scad",
+    "sources": [
+      "languages/scad/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "K1001",
+        "rule": "SCAD_UNDEFINED_VARIABLE",
+        "severity": "error",
+        "message": "Undefined variable '<name>'."
+      },
+      {
+        "code": "K1002",
+        "rule": "SCAD_UNDEFINED_FUNCTION",
+        "severity": "error",
+        "message": "Undefined function '<name>'."
+      },
+      {
+        "code": "K1003",
+        "rule": "SCAD_UNDEFINED_MODULE",
+        "severity": "error",
+        "message": "Undefined module '<name>'."
+      },
+      {
+        "code": "K1004",
+        "rule": "SCAD_DIVISION_BY_ZERO",
+        "severity": "error",
+        "message": "Division by zero in expression."
+      },
+      {
+        "code": "K1005",
+        "rule": "SCAD_INVALID_DIMENSION",
+        "severity": "error",
+        "message": "Invalid non-positive dimension (<val>) in '<param>': dimensions must be > 0."
+      },
+      {
+        "code": "K1006",
+        "rule": "SCAD_ARGUMENT_COUNT",
+        "severity": "error",
+        "message": "Too many arguments to '<name>': expected at most <expected>, got <actual>."
+      },
+      {
+        "code": "K1007",
+        "rule": "SCAD_UNKNOWN_PARAMETER",
+        "severity": "error",
+        "message": "Unknown parameter '<param>' in call to '<callable>'."
+      },
+      {
+        "code": "K1008",
+        "rule": "SCAD_DUPLICATE_DECLARATION",
+        "severity": "warning",
+        "message": "Variable '<name>' is assigned multiple times in the same scope."
+      }
+    ]
+  },
+  {
+    "slug": "cfd",
+    "name": "CFD (SU2 / OpenFOAM)",
+    "packageName": "@modelscript/cfd",
+    "sources": [
+      "languages/cfd/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "C1001",
+        "rule": "cfl-stability-violation",
+        "severity": "warning",
+        "message": "Courant-Friedrichs-Lewy stability number '<cfl>' exceeds recommended maximum limit for explicit scheme."
+      },
+      {
+        "code": "C1002",
+        "rule": "unresolved-mesh-file",
+        "severity": "error",
+        "message": "Referenced grid mesh file '<mesh>' cannot be located or is invalid."
+      },
+      {
+        "code": "C1003",
+        "rule": "missing-inlet-boundary",
+        "severity": "warning",
+        "message": "CFD domain '<name>' lacks a declared inlet boundary condition or stagnation state."
+      },
+      {
+        "code": "C1004",
+        "rule": "missing-outlet-boundary",
+        "severity": "warning",
+        "message": "CFD domain '<name>' lacks a declared outlet boundary condition or pressure exit."
+      },
+      {
+        "code": "C1005",
+        "rule": "unphysical-freestream-mach",
+        "severity": "error",
+        "message": "Freestream Mach number '<mach>' is non-physical or outside valid range [0, 25]."
+      },
+      {
+        "code": "C1006",
+        "rule": "unphysical-reynolds-number",
+        "severity": "error",
+        "message": "Freestream Reynolds number '<re>' must be strictly positive."
+      },
+      {
+        "code": "C1007",
+        "rule": "negative-surface-area",
+        "severity": "error",
+        "message": "Aerodynamic reference area '<area>' must be strictly positive."
+      },
+      {
+        "code": "C1008",
+        "rule": "turbulent-viscosity-ratio",
+        "severity": "warning",
+        "message": "Turbulent eddy viscosity ratio '<ratio>' is non-physical."
+      }
+    ]
+  },
+  {
+    "slug": "fea",
+    "name": "FEA (CalculiX / Abaqus / NASTRAN)",
+    "packageName": "@modelscript/fea",
+    "sources": [
+      "languages/fea/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "F1001",
+        "rule": "zero-elastic-modulus",
+        "severity": "error",
+        "message": "Material '<mat>' has non-positive Young's modulus '<val>'."
+      },
+      {
+        "code": "F1002",
+        "rule": "poisson-ratio-limit",
+        "severity": "error",
+        "message": "Poisson's ratio '<val>' for material '<mat>' violates physical stability bounds (-1.0 < nu < 0.5)."
+      },
+      {
+        "code": "F1003",
+        "rule": "unconstrained-rigid-body",
+        "severity": "warning",
+        "message": "Structural mesh '<name>' has only '<count>' constrained boundary nodes; rigid-body motion may be unconstrained."
+      },
+      {
+        "code": "F1004",
+        "rule": "empty-mesh",
+        "severity": "error",
+        "message": "FEA deck '<name>' does not contain any defined finite elements."
+      },
+      {
+        "code": "F1005",
+        "rule": "missing-material-definition",
+        "severity": "error",
+        "message": "Element set '<elset>' lacks an assigned material specification or section."
+      },
+      {
+        "code": "F1006",
+        "rule": "degenerate-element-nodes",
+        "severity": "error",
+        "message": "Element '<elemId>' of type '<type>' contains duplicate or degenerate node references."
+      },
+      {
+        "code": "F1007",
+        "rule": "negative-yield-stress",
+        "severity": "error",
+        "message": "Plastic yield strength '<val>' for material '<mat>' must be strictly positive."
+      },
+      {
+        "code": "F1008",
+        "rule": "negative-density",
+        "severity": "warning",
+        "message": "Mass density '<val>' for material '<mat>' must be strictly positive for dynamic analysis."
+      }
+    ]
+  },
+  {
+    "slug": "c",
+    "name": "C",
+    "packageName": "@modelscript/c",
+    "sources": [
+      "languages/c/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M8401",
+        "rule": "uninitialized-variable",
+        "severity": "warning",
+        "message": "Local variable '<varName>' may be read before being initialized."
+      },
+      {
+        "code": "M8402",
+        "rule": "constant-division-by-zero",
+        "severity": "error",
+        "message": "Division or modulo by constant zero detected in arithmetic expression."
+      },
+      {
+        "code": "M8403",
+        "rule": "array-bounds-overflow",
+        "severity": "error",
+        "message": "Static array subscript '<arrName>[<index>]' exceeds declared dimension bound of <bound>."
+      },
+      {
+        "code": "M8404",
+        "rule": "unreachable-code",
+        "severity": "warning",
+        "message": "Unreachable statements detected following unconditional 'return', 'break', or 'goto'."
+      },
+      {
+        "code": "M8405",
+        "rule": "assignment-in-conditional",
+        "severity": "warning",
+        "message": "Assignment operator '=' used inside conditional expression; did you mean '=='?"
+      },
+      {
+        "code": "M8406",
+        "rule": "algebraic-dependency-cycle",
+        "severity": "error",
+        "message": "Procedural algebraic dependency cycle detected without state lag: '<cycle>'."
+      },
+      {
+        "code": "M8407",
+        "rule": "null-pointer-dereference",
+        "severity": "error",
+        "message": "Dereference of statically known NULL pointer in expression '<expr>'."
+      },
+      {
+        "code": "M8408",
+        "rule": "function-prototype-mismatch",
+        "severity": "error",
+        "message": "Function '<fnName>' signature conflicts with declaration: expected '<expected>', got '<actual>'."
+      },
+      {
+        "code": "M8409",
+        "rule": "missing-return-value",
+        "severity": "error",
+        "message": "Non-void function '<fnName>' with return type '<returnType>' reaches end of body without returning a value."
+      },
+      {
+        "code": "M8410",
+        "rule": "implicit-lossy-conversion",
+        "severity": "info",
+        "message": "Implicit floating-point to integer conversion from '<fromType>' to '<toType>' may cause lossy truncation."
+      }
+    ]
+  },
+  {
+    "slug": "fortran",
+    "name": "Fortran",
+    "packageName": "@modelscript/fortran",
+    "sources": [
+      "languages/fortran/src/lints/index.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M4070",
+        "rule": "undeclared-variable",
+        "severity": "error",
+        "message": "Variable '<varName>' referenced without declaration under strict typing."
+      },
+      {
+        "code": "M4071",
+        "rule": "uninitialized-variable",
+        "severity": "warning",
+        "message": "Variable '<varName>' may be used before being assigned a value."
+      },
+      {
+        "code": "M4072",
+        "rule": "constant-division-by-zero",
+        "severity": "error",
+        "message": "Division by constant zero detected in arithmetic expression."
+      },
+      {
+        "code": "M4073",
+        "rule": "storage-bounds-overflow",
+        "severity": "error",
+        "message": "Storage array index <arrayName>(<index>) exceeds allocated capacity of <maxCapacity>."
+      },
+      {
+        "code": "M4074",
+        "rule": "dead-code-after-return",
+        "severity": "warning",
+        "message": "Unreachable statements detected following unconditional RETURN."
+      },
+      {
+        "code": "M4075",
+        "rule": "do-loop-index-mutation",
+        "severity": "error",
+        "message": "DO-loop index variable '<indexVar>' is modified within its loop body."
+      },
+      {
+        "code": "M4076",
+        "rule": "procedural-algebraic-loop",
+        "severity": "warning",
+        "message": "Algebraic cycle detected among procedural assignments without time-step lag: <cycleStr>."
+      },
+      {
+        "code": "M4077",
+        "rule": "common-block-mismatch",
+        "severity": "error",
+        "message": "COMMON block '/<blockName>/' definition conflict: <reason>."
+      },
+      {
+        "code": "M4078",
+        "rule": "array-dimension-underflow",
+        "severity": "error",
+        "message": "Array '<arrName>' declared with non-positive dimension size (<dim> <= 0)."
+      },
+      {
+        "code": "M4079",
+        "rule": "obsolete-arithmetic-if",
+        "severity": "info",
+        "message": "Three-way arithmetic IF is obsolescent; prefer structured IF/THEN/ELSE."
+      }
+    ]
+  },
+  {
+    "slug": "jsbsim",
+    "name": "JSBSim",
+    "packageName": "@modelscript/jsbsim",
+    "sources": [
+      "languages/jsbsim/src/errors.ts"
+    ],
+    "cli": "msx jsbsim lint",
+    "rules": [
+      {
+        "code": "M8901",
+        "rule": "missing-aircraft-name",
+        "severity": "error",
+        "message": "JSBSim <fdm_config> element is missing required 'name' attribute."
+      },
+      {
+        "code": "M8902",
+        "rule": "non-positive-reference-area",
+        "severity": "error",
+        "message": "Wing reference area (<val>) must be strictly positive."
+      },
+      {
+        "code": "M8903",
+        "rule": "non-positive-wingspan-chord",
+        "severity": "error",
+        "message": "Wing metric '<param>' (<val>) must be strictly positive."
+      },
+      {
+        "code": "M8904",
+        "rule": "non-positive-empty-weight",
+        "severity": "error",
+        "message": "Aircraft empty weight (<val>) must be strictly positive."
+      },
+      {
+        "code": "M8905",
+        "rule": "invalid-inertia-tensor",
+        "severity": "error",
+        "message": "Moments of inertia tensor is invalid: <reason>."
+      },
+      {
+        "code": "M8906",
+        "rule": "missing-aerodynamics-section",
+        "severity": "error",
+        "message": "Aircraft model does not define any aerodynamic force/moment coefficients in <aerodynamics>."
+      },
+      {
+        "code": "M8907",
+        "rule": "missing-landing-gear",
+        "severity": "warning",
+        "message": "Aircraft model defines no landing gear bogies in <ground_reactions>; ground interaction is disabled."
+      },
+      {
+        "code": "M8908",
+        "rule": "negative-engine-thrust",
+        "severity": "error",
+        "message": "Engine '<engineName>' specifies negative maximum thrust (<val>)."
+      },
+      {
+        "code": "M8909",
+        "rule": "undefined-fcs-input",
+        "severity": "warning",
+        "message": "FCS channel '<channelName>' references input property '<inputProperty>' not bound in flight control."
+      },
+      {
+        "code": "M8910",
+        "rule": "unrealistic-cg-location",
+        "severity": "warning",
+        "message": "Center of gravity (<cgX>) is significantly far from aerodynamic center (<aeroX>); aircraft may have extreme pitch instability."
+      }
+    ]
+  },
+  {
+    "slug": "rocets",
+    "name": "NASA ROCETS",
+    "packageName": "@modelscript/rocets",
+    "sources": [
+      "languages/rocets/src/lints/index.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M8001",
+        "rule": "unconnected-fluid-port",
+        "severity": "error",
+        "message": "Fluid port '<comp>.<port>' is not connected in the propellant flow circuit."
+      },
+      {
+        "code": "M8002",
+        "rule": "fluid-type-mismatch",
+        "severity": "error",
+        "message": "Incompatible fluid stream connection '<conn>': cannot mix '<fromFluid>' into '<toFluid>' without a combustion chamber."
+      },
+      {
+        "code": "M8003",
+        "rule": "shaft-power-imbalance",
+        "severity": "error",
+        "message": "Turbopump shaft '<shaftId>' power imbalance: <reason>."
+      },
+      {
+        "code": "M8004",
+        "rule": "unbalanced-flow-split",
+        "severity": "error",
+        "message": "Mass conservation failure at junction '<junct>': inlet and outlet flow mismatch exceeds tolerance (|\\u0394m| = <value> kg/s)."
+      },
+      {
+        "code": "M8005",
+        "rule": "pump-cavitation-risk",
+        "severity": "warning",
+        "message": "Pump '<pumpId>' inlet suction pressure is below required NPSH margin (margin: <value> kPa). Cavitation risk."
+      },
+      {
+        "code": "M8006",
+        "rule": "negative-chamber-pressure",
+        "severity": "error",
+        "message": "Non-physical pressure at '<comp>': computed pressure is <val> Pa (must be > 0)."
+      },
+      {
+        "code": "M8007",
+        "rule": "combustion-temperature-limit",
+        "severity": "warning",
+        "message": "Gas temperature at '<comp>' (<value> K) exceeds throat thermal structural limit (<limitK> K)."
+      },
+      {
+        "code": "M8008",
+        "rule": "invalid-valve-schedule",
+        "severity": "error",
+        "message": "Invalid valve actuation profile for '<valveId>': <reason>."
+      },
+      {
+        "code": "M8009",
+        "rule": "choked-flow-inconsistency",
+        "severity": "warning",
+        "message": "Supersonic nozzle expansion at '<comp>' is not choked (pressure ratio Pc/Pa = <value> < 1.89)."
+      },
+      {
+        "code": "M8010",
+        "rule": "user-fortran-routine-error",
+        "severity": "error",
+        "message": "Fortran user routine in component '<comp>' has syntax or semantic error: <msg>."
+      },
+      {
+        "code": "M8011",
+        "rule": "extreme-mixture-ratio",
+        "severity": "warning",
+        "message": "Engine mixture ratio (O/F = <value>) at '<comp>' is outside stable combustion limits."
+      },
+      {
+        "code": "M8012",
+        "rule": "missing-fluid-table",
+        "severity": "error",
+        "message": "Propellant fluid table for '<fluid>' is not loaded in the session."
+      },
+      {
+        "code": "M8013",
+        "rule": "turbine-overspeed-hazard",
+        "severity": "warning",
+        "message": "Turbopump shaft '<shaft>' speed (<value> RPM) exceeds maximum burst rating (<maxRpm> RPM)."
+      },
+      {
+        "code": "M8014",
+        "rule": "closed-flow-circuit",
+        "severity": "error",
+        "message": "Pump '<pumpId>' discharge is completely blocked with no open valve or recirculation path."
+      }
+    ]
+  },
+  {
+    "slug": "ccsds",
+    "name": "CCSDS",
+    "packageName": "@modelscript/ccsds",
+    "sources": [
+      "languages/ccsds/src/lints/rules.ts"
+    ],
+    "cli": "msx ccsds lint",
+    "rules": [
+      {
+        "code": "M8201",
+        "rule": "sub-orbital-impact-trajectory",
+        "severity": "error",
+        "message": "Sub-orbital pericenter radius <rp> km is below Earth radius <earthRadius> km, resulting in atmospheric re-entry or impact."
+      },
+      {
+        "code": "M8202",
+        "rule": "telemetry-bit-packing-overlap",
+        "severity": "error",
+        "message": "Telemetry bit packing overlap in container '<containerName>': entry '<entryName>' starts at bit <bitOffset> before previous entry '<prevEntry>' ends at bit <endBit>."
+      },
+      {
+        "code": "M8203",
+        "rule": "hyperbolic-unbounded-orbit",
+        "severity": "warning",
+        "message": "Orbit eccentricity <eccentricity> indicates a hyperbolic or parabolic trajectory."
+      },
+      {
+        "code": "M8204",
+        "rule": "unrecognized-reference-frame",
+        "severity": "error",
+        "message": "Unrecognized or non-inertial reference frame '<refFrame>'."
+      },
+      {
+        "code": "M8205",
+        "rule": "missing-epoch-timestamp",
+        "severity": "error",
+        "message": "Ephemeris point missing valid timestamp at index <index>."
+      },
+      {
+        "code": "M8206",
+        "rule": "non-monotonic-ephemeris-epochs",
+        "severity": "error",
+        "message": "Ephemeris timestamp '<epoch>' is not strictly greater than previous timestamp '<prevEpoch>'."
+      },
+      {
+        "code": "M8207",
+        "rule": "duplicate-parameter-name",
+        "severity": "error",
+        "message": "Duplicate telemetry parameter declaration for '<paramName>'."
+      },
+      {
+        "code": "M8208",
+        "rule": "negative-spacecraft-mass",
+        "severity": "error",
+        "message": "Spacecraft mass <massKg> kg must be strictly positive."
+      }
+    ]
+  },
+  {
+    "slug": "easy5",
+    "name": "EASY5",
+    "packageName": "@modelscript/easy5",
+    "sources": [
+      "languages/easy5/src/lints/index.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M7001",
+        "rule": "unconnected-input-port",
+        "severity": "warning",
+        "message": "Input port '<comp>.<port>' has no incoming connection."
+      },
+      {
+        "code": "M7002",
+        "rule": "csmf-algebraic-loop",
+        "severity": "error",
+        "message": "Direct feedthrough algebraic loop detected with no continuous state or delay: <value>."
+      },
+      {
+        "code": "M7003",
+        "rule": "duplicate-component-id",
+        "severity": "error",
+        "message": "Duplicate component identifier '<id>' in model."
+      },
+      {
+        "code": "M7004",
+        "rule": "uninitialized-state",
+        "severity": "info",
+        "message": "Continuous state in component '<comp>' defaults to 0.0 with no explicit S0 specified."
+      },
+      {
+        "code": "M7005",
+        "rule": "improper-transfer-function",
+        "severity": "error",
+        "message": "Transfer function in component '<comp>' is improper: numerator degree (<degNum>) exceeds denominator degree (<degDen>)."
+      },
+      {
+        "code": "M7006",
+        "rule": "parameter-out-of-bounds",
+        "severity": "error",
+        "message": "Parameter '<param>' in component '<comp>' is out of valid bounds: <reason>."
+      },
+      {
+        "code": "M7007",
+        "rule": "port-dimension-mismatch",
+        "severity": "error",
+        "message": "Connection width mismatch from '<from>' (dim <dim1>) to '<to>' (dim <dim2>)."
+      },
+      {
+        "code": "M7008",
+        "rule": "state-index-out-of-bounds",
+        "severity": "error",
+        "message": "State index S(<idx>) in component '<comp>' exceeds allocated continuous states (<max>)."
+      },
+      {
+        "code": "M7009",
+        "rule": "sample-rate-mismatch",
+        "severity": "warning",
+        "message": "Sample rate mismatch between '<from>' (<rate1>s) and '<to>' (<rate2>s) without rate transition block."
+      },
+      {
+        "code": "M7010",
+        "rule": "user-fortran-syntax-error",
+        "severity": "error",
+        "message": "User Fortran subroutine in '<comp>' has defect: <detail>"
+      },
+      {
+        "code": "M7011",
+        "rule": "unstable-linear-pole",
+        "severity": "warning",
+        "message": "Component '<comp>' has open-loop pole in right-half plane (Re = +<value>), indicating open-loop instability."
+      },
+      {
+        "code": "M7012",
+        "rule": "table-extrapolation-hazard",
+        "severity": "warning",
+        "message": "Component '<comp>' references table '<tableName>' without bounded extrapolation protection."
+      }
+    ]
+  },
+  {
+    "slug": "autosar",
+    "name": "AUTOSAR",
+    "packageName": "@modelscript/autosar",
+    "sources": [
+      "languages/autosar/src/errors.ts"
+    ],
+    "cli": "msx autosar lint",
+    "rules": [
+      {
+        "code": "M7401",
+        "rule": "unconnected-mandatory-port",
+        "severity": "warning",
+        "message": "Required port '<portName>' on component prototype '<compName>' is not connected by any assembly connector."
+      },
+      {
+        "code": "M7402",
+        "rule": "interface-mismatch",
+        "severity": "error",
+        "message": "Connector interface mismatch: provider port '<pPort>' uses interface '<pIf>', but requirer port '<rPort>' expects '<rIf>'."
+      },
+      {
+        "code": "M7403",
+        "rule": "invalid-runnable-period",
+        "severity": "error",
+        "message": "Timing event for runnable '<symbol>' defines non-positive period (<period> s)."
+      },
+      {
+        "code": "M7404",
+        "rule": "duplicate-short-name",
+        "severity": "error",
+        "message": "Duplicate SHORT-NAME '<name>' detected in package '<pkg>'."
+      },
+      {
+        "code": "M7405",
+        "rule": "invalid-data-type-mapping",
+        "severity": "error",
+        "message": "Invalid data type mapping for '<dtName>': <reason>."
+      },
+      {
+        "code": "M7406",
+        "rule": "circular-composition-dependency",
+        "severity": "error",
+        "message": "Circular software component composition dependency detected: <path>."
+      },
+      {
+        "code": "M7407",
+        "rule": "missing-software-address-method",
+        "severity": "warning",
+        "message": "Variable data prototype '<variable>' lacks a declared SwAddrMethod memory section mapping."
+      },
+      {
+        "code": "M7408",
+        "rule": "incompatible-port-interface-direction",
+        "severity": "error",
+        "message": "Port '<portName>' interface direction violation: <reason>."
+      }
+    ]
+  },
+  {
+    "slug": "simulink",
+    "name": "MATLAB Simulink",
+    "packageName": "@modelscript/simulink",
+    "sources": [
+      "languages/simulink/src/lints/rules.ts"
+    ],
+    "cli": "msx simulink lint",
+    "rules": [
+      {
+        "code": "M7201",
+        "rule": "unconnected-input-port",
+        "severity": "error",
+        "message": "Input port <portNumber> on block '<blockName>' (<blockType>) is unconnected. All input ports must be driven or terminated with a Ground block."
+      },
+      {
+        "code": "M7202",
+        "rule": "direct-feedthrough-algebraic-loop",
+        "severity": "error",
+        "message": "Direct-feedthrough algebraic loop detected across blocks: [<loopNames>]. Control loops with direct algebraic feedthrough must contain at least one state delay (Integrator or UnitDelay) or will require an iterative non-linear solver."
+      },
+      {
+        "code": "M7203",
+        "rule": "unresolved-subsystem-link",
+        "severity": "error",
+        "message": "SubSystem block '<blockName>' has no defined sub-diagram or unresolved library reference."
+      },
+      {
+        "code": "M7204",
+        "rule": "port-index-out-of-bounds",
+        "severity": "error",
+        "message": "Block '<blockName>' has invalid port index <portNumber>. Port numbers must be positive integers (1, 2, ...)."
+      },
+      {
+        "code": "M7205",
+        "rule": "multirate-sample-time-conflict",
+        "severity": "warning",
+        "message": "Block '<blockName>' has invalid SampleTime <sampleTime>. SampleTime must be >= 0 (discrete) or -1 (inherited)."
+      },
+      {
+        "code": "M7206",
+        "rule": "non-numeric-parameter",
+        "severity": "error",
+        "message": "Block '<blockName>' parameter '<paramName>' contains non-finite value <value>. Parameters must evaluate to finite Real numbers."
+      },
+      {
+        "code": "M7207",
+        "rule": "invalid-bus-selector",
+        "severity": "error",
+        "message": "BusSelector block '<blockName>' references signal '<signalName>' absent from the incoming bus schema from '<sourceBlock>'."
+      },
+      {
+        "code": "M7208",
+        "rule": "duplicate-block-name",
+        "severity": "error",
+        "message": "Duplicate block name '<blockName>' found in subsystem scope '<systemName>'. Block names within a system must be unique."
+      },
+      {
+        "code": "M7209",
+        "rule": "divide-by-zero-risk",
+        "severity": "warning",
+        "message": "Product/Divide block '<blockName>' performs division operations with inputs '<inputs>'; ensure denominator signal is protected against division by zero."
+      },
+      {
+        "code": "M7210",
+        "rule": "missing-integrator-initial-condition",
+        "severity": "info",
+        "message": "Integrator block '<blockName>' does not specify an explicit 'InitialCondition'; defaulting to 0.0."
+      }
+    ]
+  },
+  {
+    "slug": "gtsuite",
+    "name": "GT-SUITE",
+    "packageName": "@modelscript/gtsuite",
+    "sources": [
+      "languages/gtsuite/src/lints/index.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M9001",
+        "rule": "cfl-acoustic-violation",
+        "severity": "warning",
+        "message": "Pipe '<pipeId>' cell length violates acoustic CFL condition: simulation dt (<value> \\xB5s) exceeds stability limit (<value> \\xB5s)."
+      },
+      {
+        "code": "M9002",
+        "rule": "compressor-surge-hazard",
+        "severity": "warning",
+        "message": "Compressor '<compId>' operating point (PR = <value>, \\u1E41 = <value> kg/s) falls into the aerodynamic surge region."
+      },
+      {
+        "code": "M9003",
+        "rule": "compressor-choke-limit",
+        "severity": "warning",
+        "message": "Compressor '<compId>' mass flow (<value> kg/s) exceeds maximum choke/stonewall sonic flow capacity."
+      },
+      {
+        "code": "M9004",
+        "rule": "valve-profile-overlap-error",
+        "severity": "error",
+        "message": "Valve '<valveId>' kinematic profile defect: <reason>."
+      },
+      {
+        "code": "M9005",
+        "rule": "compression-ratio-invalid",
+        "severity": "error",
+        "message": "Cylinder '<cylId>' compression ratio (<value>) is physically unrealistic (must be between 6.0 and 26.0)."
+      },
+      {
+        "code": "M9006",
+        "rule": "unconnected-plenum-node",
+        "severity": "error",
+        "message": "Flow split or plenum '<plenumId>' has no connected flow paths or boundary conditions."
+      },
+      {
+        "code": "M9007",
+        "rule": "discharge-coefficient-out-of-bounds",
+        "severity": "warning",
+        "message": "Valve or orifice '<valveId>' discharge coefficient (<value>) is non-physical (must satisfy 0.0 < Cd <= 1.0)."
+      },
+      {
+        "code": "M9008",
+        "rule": "knock-margin-deficit",
+        "severity": "warning",
+        "message": "Cylinder '<cylId>' operates in severe autoignition/knock hazard (CR = <value>, ignition anchor = <value>\\xB0 CA BTDC)."
+      },
+      {
+        "code": "M9009",
+        "rule": "missing-boundary-pressure",
+        "severity": "error",
+        "message": "Environment node '<envId>' has invalid or uninitialized static pressure (<= 0 Pa)."
+      },
+      {
+        "code": "M9010",
+        "rule": "turbine-expansion-ratio-excess",
+        "severity": "warning",
+        "message": "Turbine '<turbId>' expansion ratio (<value>) exceeds single-stage choked limit (> 4.5)."
+      },
+      {
+        "code": "M9011",
+        "rule": "intercooler-effectiveness-invalid",
+        "severity": "warning",
+        "message": "Intercooler '<icId>' thermal effectiveness (<value>) violates 2nd Law of Thermodynamics (must satisfy 0.0 < eff <= 1.0)."
+      },
+      {
+        "code": "M9012",
+        "rule": "air-fuel-equivalence-out-of-bounds",
+        "severity": "error",
+        "message": "Air-fuel equivalence ratio lambda (<value>) is outside combustible flammability limits (0.50 <= lambda <= 2.50)."
+      },
+      {
+        "code": "M9013",
+        "rule": "negative-pipe-dimensions",
+        "severity": "error",
+        "message": "Pipe '<pipeId>' has non-positive <dim> (<value> m)."
+      },
+      {
+        "code": "M9014",
+        "rule": "injector-timing-conflict",
+        "severity": "error",
+        "message": "Injector '<injId>' start of injection (<value>\\xB0 CA) falls outside valid cycle window (-360\\xB0 to +720\\xB0)."
+      },
+      {
+        "code": "M9015",
+        "rule": "isolated-shaft-inertia",
+        "severity": "warning",
+        "message": "Turbocharger shaft '<shaftId>' has no linked compressor or turbine rotating components."
+      }
+    ]
+  },
+  {
+    "slug": "opendrive",
+    "name": "ASAM OpenDRIVE",
+    "packageName": "@modelscript/opendrive",
+    "sources": [
+      "languages/opendrive/src/lints/rules.ts"
+    ],
+    "cli": "msx opendrive lint",
+    "rules": [
+      {
+        "code": "M7801",
+        "rule": "road-tangency-discontinuity",
+        "severity": "error",
+        "message": "Tangency discontinuity between geometry segments in road '<roadId>' at s=<s>: position gap <value>m, heading gap <value>rad."
+      },
+      {
+        "code": "M7802",
+        "rule": "unlinked-lane-boundary",
+        "severity": "error",
+        "message": "Unlinked lane connection: lane '<laneId>' in road '<roadId>' links to non-existent <dir> lane '<targetId>'."
+      },
+      {
+        "code": "M7803",
+        "rule": "clothoid-curvature-divergence",
+        "severity": "error",
+        "message": "Clothoid curvature rate of change in road '<roadId>' at s=<s> diverges (<value> 1/m^2)."
+      },
+      {
+        "code": "M7804",
+        "rule": "overlapping-junction-paths",
+        "severity": "warning",
+        "message": "Connecting path in junction '<junctionId>' between road '<road1>' and '<road2>' conflicts without priority control."
+      },
+      {
+        "code": "M7805",
+        "rule": "elevation-gradient-extreme",
+        "severity": "warning",
+        "message": "Extreme elevation gradient in road '<roadId>' at s=<s>: slope <value>% exceeds standard 15% safety threshold."
+      },
+      {
+        "code": "M7806",
+        "rule": "negative-lane-width",
+        "severity": "error",
+        "message": "Negative or zero lane width in lane '<laneId>' of road '<roadId>' at sOffset=<sOffset>m."
+      },
+      {
+        "code": "M7807",
+        "rule": "duplicate-road-id",
+        "severity": "error",
+        "message": "Duplicate road ID '<roadId>' detected in roadway network."
+      },
+      {
+        "code": "M7808",
+        "rule": "missing-center-lane",
+        "severity": "error",
+        "message": "Lane section in road '<roadId>' at s=<s> is missing mandatory center lane (ID 0)."
+      }
+    ]
+  },
+  {
+    "slug": "openscenario",
+    "name": "ASAM OpenSCENARIO",
+    "packageName": "@modelscript/openscenario",
+    "sources": [
+      "languages/openscenario/src/errors.ts"
+    ],
+    "cli": "msx openscenario lint",
+    "rules": [
+      {
+        "code": "M8501",
+        "rule": "dangling-entity-reference",
+        "severity": "error",
+        "message": "Entity '<entityName>' referenced in '<contextName>' is not defined in Entities catalog."
+      },
+      {
+        "code": "M8502",
+        "rule": "unsatisfiable-trigger",
+        "severity": "warning",
+        "message": "Trigger condition '<conditionName>' is unsatisfiable: <reason>."
+      },
+      {
+        "code": "M8503",
+        "rule": "unreachable-road-position",
+        "severity": "error",
+        "message": "Road position specifies invalid road ID '<roadId>' or lane index '<laneId>'."
+      },
+      {
+        "code": "M8504",
+        "rule": "cyclic-event-trigger",
+        "severity": "error",
+        "message": "Circular trigger condition detected between event '<eventA>' and event '<eventB>'."
+      },
+      {
+        "code": "M8505",
+        "rule": "missing-ego-entity",
+        "severity": "error",
+        "message": "Scenario does not define an autonomous vehicle under test ('ego' vehicle)."
+      },
+      {
+        "code": "M8506",
+        "rule": "negative-speed-target",
+        "severity": "error",
+        "message": "Speed action '<actionName>' specifies negative target velocity '<speed>' m/s."
+      },
+      {
+        "code": "M8507",
+        "rule": "excessive-deceleration",
+        "severity": "warning",
+        "message": "Action demands deceleration '<decel>' m/s² for '<entityName>', exceeding vehicle limit '<limit>' m/s²."
+      },
+      {
+        "code": "M8508",
+        "rule": "imminent-collision-initial-state",
+        "severity": "error",
+        "message": "Initial positions for '<entityA>' and '<entityB>' violate collision envelope (distance: <value> m)."
+      },
+      {
+        "code": "M8509",
+        "rule": "empty-maneuver-group",
+        "severity": "warning",
+        "message": "Maneuver group '<groupName>' specifies no actors or no maneuvers."
+      },
+      {
+        "code": "M8510",
+        "rule": "invalid-condition-delay",
+        "severity": "error",
+        "message": "Trigger condition '<condName>' specifies negative activation delay '<delay>' s."
+      }
+    ]
+  },
+  {
+    "slug": "gensys",
+    "name": "GENSYS",
+    "packageName": "@modelscript/gensys",
+    "sources": [
+      "languages/gensys/src/errors.ts"
+    ],
+    "cli": "msx gensys lint",
+    "rules": [
+      {
+        "code": "G1001",
+        "rule": "invalid-body-mass",
+        "severity": "error",
+        "message": "Body '<name>' has non-positive mass (<mass> kg)."
+      },
+      {
+        "code": "G1002",
+        "rule": "non-positive-inertia",
+        "severity": "error",
+        "message": "Body '<name>' has non-positive principal inertia tensor components."
+      },
+      {
+        "code": "G1003",
+        "rule": "dangling-body1-reference",
+        "severity": "error",
+        "message": "Coupling '<name>' references unknown body1 '<body1>'."
+      },
+      {
+        "code": "G1004",
+        "rule": "dangling-body2-reference",
+        "severity": "error",
+        "message": "Coupling '<name>' references unknown body2 '<body2>'."
+      },
+      {
+        "code": "G1005",
+        "rule": "invalid-track-gauge",
+        "severity": "error",
+        "message": "Track specification defines non-positive or unphysical gauge (<gauge> m)."
+      },
+      {
+        "code": "G1006",
+        "rule": "unclosed-rail-profile",
+        "severity": "warning",
+        "message": "Wheel-rail contact profile '<profileName>' curve has discontinuous slope or is unclosed."
+      }
+    ]
+  },
+  {
+    "slug": "simpack",
+    "name": "SIMPACK",
+    "packageName": "@modelscript/simpack",
+    "sources": [
+      "languages/simpack/src/errors.ts"
+    ],
+    "cli": "msx simpack lint",
+    "rules": [
+      {
+        "code": "K7001",
+        "rule": "invalid-body-mass",
+        "severity": "error",
+        "message": "Body '<id>' has non-positive mass (<mass> kg)."
+      },
+      {
+        "code": "K7002",
+        "rule": "dangling-body-reference",
+        "severity": "error",
+        "message": "Marker '<markerId>' references unknown parent body '<bodyId>'."
+      },
+      {
+        "code": "K7003",
+        "rule": "unknown-from-marker",
+        "severity": "error",
+        "message": "Joint '<jointId>' references unknown from-marker '<marker>'."
+      },
+      {
+        "code": "K7004",
+        "rule": "unknown-to-marker",
+        "severity": "error",
+        "message": "Joint '<jointId>' references unknown to-marker '<marker>'."
+      },
+      {
+        "code": "K7005",
+        "rule": "overconstrained-mobility",
+        "severity": "warning",
+        "message": "Mechanism is overconstrained according to Grübler-Kutzbach criterion (Mobility = <mobility> < 0)."
+      },
+      {
+        "code": "K7006",
+        "rule": "baumgarte-divergence",
+        "severity": "warning",
+        "message": "Joint '<jointId>' Baumgarte stabilization parameter '<param>' is non-positive or divergent (<val>)."
+      }
+    ]
+  },
+  {
+    "slug": "pscad",
+    "name": "PSCAD / EMTDC",
+    "packageName": "@modelscript/pscad",
+    "sources": [
+      "languages/pscad/src/lints/index.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M6001",
+        "rule": "floating-electrical-node",
+        "severity": "error",
+        "message": "Electrical node '<nodeName>' is floating with no closed connections."
+      },
+      {
+        "code": "M6002",
+        "rule": "transformer-winding-mismatch",
+        "severity": "warning",
+        "message": "Transformer '<xfmrName>' <side> rating (<ratedKv> kV) does not match connected bus base (<busKv> kV)."
+      },
+      {
+        "code": "M6003",
+        "rule": "invalid-parameter-bounds",
+        "severity": "error",
+        "message": "Component '<elemName>' parameter '<paramName>' = <val> is invalid: <reason>."
+      },
+      {
+        "code": "M6004",
+        "rule": "weak-grid-warning",
+        "severity": "warning",
+        "message": "Point of Interconnection '<poiBus>' has low Short-Circuit Ratio (SCR = <value> < 1.5). IBR control stability risks detected."
+      },
+      {
+        "code": "M6005",
+        "rule": "csmf-unresolved-input",
+        "severity": "error",
+        "message": "CSMF control block '<blockId>' references unresolved upstream signal block '<missingInputId>'."
+      },
+      {
+        "code": "M6006",
+        "rule": "line-travel-time-underflow",
+        "severity": "error",
+        "message": "Transmission line '<lineId>' wave propagation delay (<value> us) is smaller than simulation time step (<value> us). Reduce time step or use a lumped pi-section model."
+      },
+      {
+        "code": "M6007",
+        "rule": "sync-machine-reactance-order",
+        "severity": "error",
+        "message": "Synchronous machine '<machineId>' violates physical d-axis reactance hierarchy (Xd=<xd> >= Xd'=<xdPrime> >= Xd''=<xdSub> pu required)."
+      },
+      {
+        "code": "M6008",
+        "rule": "mov-arrester-under-rated",
+        "severity": "warning",
+        "message": "MOV surge arrester '<arresterId>' reference voltage (<value> kV) is below connected bus '<busName>' nominal phase-to-ground peak voltage (<value> kV), causing continuous thermal conduction."
+      },
+      {
+        "code": "M6009",
+        "rule": "duplicate-component-id",
+        "severity": "error",
+        "message": "Duplicate component or bus ID '<id>' declared in schematic module '<modName>'."
+      },
+      {
+        "code": "M6010",
+        "rule": "bus-voltage-conflict",
+        "severity": "error",
+        "message": "Conductive net shorts bus '<busA>' (<kvA> kV) directly to bus '<busB>' (<kvB> kV) without an intervening transformer."
+      },
+      {
+        "code": "M6011",
+        "rule": "port-domain-mismatch",
+        "severity": "error",
+        "message": "Wire '<wireId>' connects control signal port '<sigPort>' directly to 3-phase electrical port '<elecPort>'."
+      },
+      {
+        "code": "M6012",
+        "rule": "csmf-algebraic-loop",
+        "severity": "error",
+        "message": "CSMF control blocks form an algebraic loop with no state or delay element: <cycle>."
+      },
+      {
+        "code": "M6013",
+        "rule": "parallel-ideal-sources",
+        "severity": "error",
+        "message": "Ideal voltage sources <sourceIds> are connected in parallel at bus '<busName>', making the nodal matrix singular."
+      },
+      {
+        "code": "M6014",
+        "rule": "parallel-low-impedance-sources",
+        "severity": "warning",
+        "message": "Voltage sources <sourceIds> are connected in parallel at bus '<busName>' with no declared source impedance; a stiff default impedance is assumed and large circulating currents may result."
+      },
+      {
+        "code": "M6015",
+        "rule": "limiter-permanently-saturated",
+        "severity": "warning",
+        "message": "Limiter '<blockId>' is permanently saturated: its input stays within [<inLo>, <inHi>] but its output limits are [<limLo>, <limHi>]."
+      },
+      {
+        "code": "M6016",
+        "rule": "component-check-failed",
+        "severity": "error",
+        "message": "Component '<cmpName>' check failed: <reason>."
+      },
+      {
+        "code": "M6017",
+        "rule": "component-check-warning",
+        "severity": "warning",
+        "message": "Component '<cmpName>' check warning: <reason>."
+      }
+    ]
+  },
+  {
+    "slug": "psse",
+    "name": "PSS/E",
+    "packageName": "@modelscript/psse",
+    "sources": [
+      "languages/psse/src/errors.ts"
+    ],
+    "cli": "msx psse lint",
+    "rules": [
+      {
+        "code": "P1001",
+        "rule": "generator-bus-not-found",
+        "severity": "error",
+        "message": "Generator '<genId>' references non-existent bus <busId>."
+      },
+      {
+        "code": "P1002",
+        "rule": "generator-negative-power",
+        "severity": "warning",
+        "message": "Generator '<genId>' at bus <busId> has negative active power output (<pg> MW)."
+      },
+      {
+        "code": "P1003",
+        "rule": "duplicate-generator-id",
+        "severity": "error",
+        "message": "Duplicate generator ID '<genId>' at bus <busId>."
+      },
+      {
+        "code": "P1004",
+        "rule": "generator-reactive-limits-inverted",
+        "severity": "error",
+        "message": "Generator '<genId>' at bus <busId> has inverted reactive limits (QB = <qMin> > QT = <qMax> Mvar)."
+      },
+      {
+        "code": "P1005",
+        "rule": "generator-power-limits-inverted",
+        "severity": "error",
+        "message": "Generator '<genId>' at bus <busId> has inverted active power limits (PB = <pMin> > PT = <pMax> MW)."
+      },
+      {
+        "code": "P2001",
+        "rule": "isolated-bus",
+        "severity": "warning",
+        "message": "Bus <busId> ('<busName>') has no connected branches or transformers (isolated bus)."
+      },
+      {
+        "code": "P2002",
+        "rule": "missing-slack-bus",
+        "severity": "error",
+        "message": "Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored."
+      },
+      {
+        "code": "P2003",
+        "rule": "multiple-slack-buses",
+        "severity": "warning",
+        "message": "Power network base case contains <count> swing buses without explicit multi-island partitioning."
+      },
+      {
+        "code": "P2004",
+        "rule": "voltage-out-of-bounds",
+        "severity": "warning",
+        "message": "Initial voltage magnitude at bus <busId> (<value> pu) is outside standard operational limits [0.8, 1.2 pu]."
+      },
+      {
+        "code": "P3001",
+        "rule": "branch-from-bus-not-found",
+        "severity": "error",
+        "message": "Branch from bus <fromBus> to bus <toBus> references non-existent FROM-bus <fromBus>."
+      },
+      {
+        "code": "P3002",
+        "rule": "branch-to-bus-not-found",
+        "severity": "error",
+        "message": "Branch from bus <fromBus> to bus <toBus> references non-existent TO-bus <toBus>."
+      },
+      {
+        "code": "P3003",
+        "rule": "branch-zero-impedance",
+        "severity": "error",
+        "message": "Branch between bus <fromBus> and bus <toBus> has zero impedance (R = 0, X = 0)."
+      },
+      {
+        "code": "P3004",
+        "rule": "branch-negative-resistance",
+        "severity": "warning",
+        "message": "Branch between bus <fromBus> and bus <toBus> defines negative resistance (<r> pu)."
+      },
+      {
+        "code": "P3005",
+        "rule": "transformer-invalid-ratio",
+        "severity": "error",
+        "message": "Transformer between bus <fromBus> and bus <toBus> has non-positive turns ratio (<ratio>)."
+      },
+      {
+        "code": "P4001",
+        "rule": "load-bus-not-found",
+        "severity": "error",
+        "message": "Load '<loadId>' references non-existent bus <busId>."
+      }
+    ]
+  },
+  {
+    "slug": "opendss",
+    "name": "OpenDSS",
+    "packageName": "@modelscript/opendss",
+    "sources": [
+      "languages/opendss/src/errors.ts"
+    ],
+    "cli": "msx opendss lint",
+    "rules": [
+      {
+        "code": "M8401",
+        "rule": "unconnected-bus-node",
+        "severity": "error",
+        "message": "<elemType> '<elemName>' references undefined bus node '<busName>'."
+      },
+      {
+        "code": "M8402",
+        "rule": "phase-count-mismatch",
+        "severity": "error",
+        "message": "Element '<elemName>' (<elemPhases> phases) connected to bus '<busName>' with different phase count (<busPhases>)."
+      },
+      {
+        "code": "M8403",
+        "rule": "transformer-voltage-mismatch",
+        "severity": "warning",
+        "message": "Transformer '<xfmrName>' winding <winding> rated voltage (<value> kV) differs from nominal bus voltage (<value> kV)."
+      },
+      {
+        "code": "M8404",
+        "rule": "reverse-power-hosting-risk",
+        "severity": "warning",
+        "message": "Total DER generation capacity on feeder '<feederName>' (<value> kW) exceeds upstream transformer thermal rating (<value> kVA)."
+      },
+      {
+        "code": "M8405",
+        "rule": "missing-circuit-definition",
+        "severity": "error",
+        "message": "OpenDSS script defines circuit elements without declaring a 'New Circuit' voltage source."
+      },
+      {
+        "code": "M8406",
+        "rule": "negative-load-power",
+        "severity": "error",
+        "message": "Load '<loadName>' specifies negative active power (<value> kW); use Generator or Storage for net generation."
+      },
+      {
+        "code": "M8407",
+        "rule": "zero-or-negative-line-length",
+        "severity": "error",
+        "message": "Line '<lineName>' specifies invalid non-positive length (<len>)."
+      },
+      {
+        "code": "M8408",
+        "rule": "missing-line-code",
+        "severity": "error",
+        "message": "Line '<lineName>' references undefined LineCode '<codeName>'."
+      }
+    ]
+  },
+  {
+    "slug": "olga",
+    "name": "OLGA",
+    "packageName": "@modelscript/olga",
+    "sources": [
+      "languages/olga/src/errors.ts"
+    ],
+    "cli": "msx olga lint",
+    "rules": [
+      {
+        "code": "M7001",
+        "rule": "cfl-condition-violation",
+        "severity": "error",
+        "message": "Simulation timestep maxDt (<maxDt> s) violates convective/acoustic CFL stability limit (<value> s)."
+      },
+      {
+        "code": "M7002",
+        "rule": "invalid-pipe-dimensions",
+        "severity": "error",
+        "message": "Pipe section '<sectionId>' has invalid geometry: <reason>."
+      },
+      {
+        "code": "M7003",
+        "rule": "missing-boundary-condition",
+        "severity": "error",
+        "message": "Flowpath '<flowpath>' has no defined <missing> boundary condition."
+      },
+      {
+        "code": "M7004",
+        "rule": "steep-elevation-warning",
+        "severity": "warning",
+        "message": "Pipe section '<sectionId>' has steep inclination (<value>\\xB0), risking hydrodynamic slugging."
+      },
+      {
+        "code": "M7005",
+        "rule": "fully-closed-choke-hazard",
+        "severity": "error",
+        "message": "Choke valve '<chokeName>' is fully closed (opening = 0) with no active bypass route."
+      },
+      {
+        "code": "M7006",
+        "rule": "severe-slugging-hazard",
+        "severity": "warning",
+        "message": "Severe slugging geometry detected on flowpath '<flowpath>' (seabed dip to steep riser)."
+      },
+      {
+        "code": "M7007",
+        "rule": "pig-stuck-hazard",
+        "severity": "error",
+        "message": "Pig '<pigName>' required differential pressure (<value> bar) exceeds maximum available (<value> bar)."
+      },
+      {
+        "code": "M7008",
+        "rule": "pvt-table-missing-or-invalid",
+        "severity": "error",
+        "message": "PVT fluid table validation error: <detail>."
+      },
+      {
+        "code": "M7009",
+        "rule": "wax-deposition-risk",
+        "severity": "warning",
+        "message": "Fluid temperature (<value>\\xB0C) on flowpath '<flowpath>' drops below Wax Appearance Temperature (<value>\\xB0C)."
+      },
+      {
+        "code": "M7010",
+        "rule": "sand-erosion-or-dropout-hazard",
+        "severity": "warning",
+        "message": "Sand transport issue on section '<sectionId>': <reason>."
+      },
+      {
+        "code": "M7011",
+        "rule": "sour-service-metallurgy-violation",
+        "severity": "error",
+        "message": "H2S partial pressure (<value> bar) on flowpath '<flowpath>' violates NACE MR0175 material limit (<value> bar)."
+      },
+      {
+        "code": "M7012",
+        "rule": "asphaltene-precipitation-hazard",
+        "severity": "warning",
+        "message": "Operating pressure (<value> bar) on flowpath '<flowpath>' enters Asphaltene Onset Pressure envelope (<value> bar)."
+      },
+      {
+        "code": "M7013",
+        "rule": "heatexchanger-parameter-violation",
+        "severity": "error",
+        "message": "Heat exchanger '<hxName>' parameter violation: <detail>."
+      }
+    ]
+  },
+  {
+    "slug": "lps",
+    "name": "PipelineStudio",
+    "packageName": "@modelscript/lps",
+    "sources": [
+      "languages/lps/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M8001",
+        "rule": "maop-exceeded",
+        "severity": "error",
+        "message": "Pipe '<pipeName>' operating pressure (<value> bar) exceeds Maximum Allowable Operating Pressure (<value> bar)."
+      },
+      {
+        "code": "M8002",
+        "rule": "compressor-surge-hazard",
+        "severity": "error",
+        "message": "Compressor '<compName>' operating flow (<value> m\\xB3/h) is below the aerodynamic surge limit (<value> m\\xB3/h)."
+      },
+      {
+        "code": "M8003",
+        "rule": "compressor-stonewall-limit",
+        "severity": "warning",
+        "message": "Compressor '<compName>' throughput (<value> m\\xB3/h) approaches sonic choke/stonewall limit (<value> m\\xB3/h)."
+      },
+      {
+        "code": "M8004",
+        "rule": "unconnected-pipeline-node",
+        "severity": "error",
+        "message": "Node '<nodeName>' is isolated and has no connecting pipes or equipment links."
+      },
+      {
+        "code": "M8005",
+        "rule": "delivery-pressure-deficit",
+        "severity": "error",
+        "message": "Delivery node '<nodeName>' is hydraulically unreachable from any supply or storage cavern."
+      },
+      {
+        "code": "M8006",
+        "rule": "erosional-velocity-hazard",
+        "severity": "warning",
+        "message": "Gas velocity in pipe '<pipeName>' (<value> m/s) exceeds API RP 14E erosional limit (<value> m/s)."
+      },
+      {
+        "code": "M8007",
+        "rule": "liquid-column-separation",
+        "severity": "error",
+        "message": "Transient pressure in pipe '<pipeName>' (<value> bar) drops below liquid vapor pressure (<value> bar), risking cavitation."
+      },
+      {
+        "code": "M8008",
+        "rule": "hydrogen-embrittlement-risk",
+        "severity": "warning",
+        "message": "Hydrogen blend fraction in pipe '<pipeName>' (<value>%) exceeds 10% on steel without fracture toughness certification."
+      },
+      {
+        "code": "M8009",
+        "rule": "batch-transmix-excess",
+        "severity": "warning",
+        "message": "Batch transmix interface on pipe '<pipeName>' exceeds allowable contamination threshold: <detail>."
+      },
+      {
+        "code": "M8010",
+        "rule": "joule-thomson-freezing",
+        "severity": "warning",
+        "message": "Joule-Thomson throttling across regulator '<regName>' reduces outlet temperature to <value>\\xB0C, risking ice/hydrate blockage."
+      },
+      {
+        "code": "M8011",
+        "rule": "pump-npsh-deficit",
+        "severity": "error",
+        "message": "Pump '<pumpName>' net positive suction head available (<value> m) is below required NPSHr (<value> m)."
+      },
+      {
+        "code": "M8012",
+        "rule": "line-pack-depletion-risk",
+        "severity": "warning",
+        "message": "Network total line pack is depleting rapidly: <detail>."
+      }
+    ]
+  },
+  {
+    "slug": "eclipse",
+    "name": "ECLIPSE",
+    "packageName": "@modelscript/eclipse",
+    "sources": [
+      "languages/eclipse/src/errors.ts"
+    ],
+    "cli": "msx eclipse lint",
+    "rules": [
+      {
+        "code": "M8701",
+        "rule": "missing-reservoir-phases",
+        "severity": "error",
+        "message": "RUNSPEC section does not specify any active fluid phases ('OIL', 'WATER', or 'GAS')."
+      },
+      {
+        "code": "M8702",
+        "rule": "invalid-grid-dimensions",
+        "severity": "error",
+        "message": "Reservoir grid dimensions must be strictly positive integers (got <nx> x <ny> x <nz>)."
+      },
+      {
+        "code": "M8703",
+        "rule": "porosity-out-of-range",
+        "severity": "error",
+        "message": "Reservoir porosity (<val>) must be strictly positive and less than 1.0."
+      },
+      {
+        "code": "M8704",
+        "rule": "negative-permeability",
+        "severity": "error",
+        "message": "Reservoir permeability '<prop>' (<val> mD) must be strictly positive."
+      },
+      {
+        "code": "M8705",
+        "rule": "non-monotonic-pvt-table",
+        "severity": "error",
+        "message": "PVT table '<table>' has non-monotonic pressure progression (<prevP> -> <curP>)."
+      },
+      {
+        "code": "M8706",
+        "rule": "dangling-well-completion",
+        "severity": "error",
+        "message": "Well completion for '<wellName>' at (<i>,<j>,<k>) exceeds grid boundary (<nx>,<ny>,<nz>)."
+      },
+      {
+        "code": "M8707",
+        "rule": "non-monotonic-saturation-table",
+        "severity": "error",
+        "message": "Relative permeability table '<table>' has non-monotonic saturation progression (<prevSat> -> <curSat>)."
+      },
+      {
+        "code": "M8708",
+        "rule": "undefined-well-reference",
+        "severity": "error",
+        "message": "Keyword '<contextKeyword>' references well '<wellName>' not defined in WELSPECS."
+      },
+      {
+        "code": "M8709",
+        "rule": "invalid-well-control-target",
+        "severity": "error",
+        "message": "Well '<wellName>' specifies invalid control target for '<mode>' (<val>)."
+      },
+      {
+        "code": "M8710",
+        "rule": "negative-formation-volume-factor",
+        "severity": "error",
+        "message": "PVT property specifies non-positive formation volume factor B_<phase> (<fvf>)."
+      }
+    ]
+  },
+  {
+    "slug": "relap5",
+    "name": "RELAP5-3D",
+    "packageName": "@modelscript/relap5",
+    "sources": [
+      "languages/relap5/src/errors.ts"
+    ],
+    "cli": "msx relap5 lint",
+    "rules": [
+      {
+        "code": "M8601",
+        "rule": "dangling-volume-connection",
+        "severity": "error",
+        "message": "Junction '<junctionId>' specifies undefined <end>-volume '<volId>'."
+      },
+      {
+        "code": "M8602",
+        "rule": "unclosed-trip-logic-cutset",
+        "severity": "error",
+        "message": "Trip logic '<parentTripId>' references undefined child trip ID '<childTripId>'."
+      },
+      {
+        "code": "M8603",
+        "rule": "negative-heat-capacity",
+        "severity": "error",
+        "message": "Heat structure '<hsId>' specifies non-positive conductivity (<k> W/m-K) or capacity (<cp> J/m³-K)."
+      },
+      {
+        "code": "M8604",
+        "rule": "sonic-choked-flow-singularity",
+        "severity": "warning",
+        "message": "Junction '<junctionId>' flagged for critical sonic choked flow transition."
+      },
+      {
+        "code": "M8605",
+        "rule": "missing-kinetics-delayed-groups",
+        "severity": "error",
+        "message": "Point kinetics model specifies <count> delayed groups; standard reactor kinetics requires 6 precursor groups."
+      },
+      {
+        "code": "M8606",
+        "rule": "negative-prompt-neutron-lifetime",
+        "severity": "error",
+        "message": "Prompt neutron generation time '<lambda>' s must be strictly positive."
+      },
+      {
+        "code": "M8607",
+        "rule": "adverse-volume-elevation",
+        "severity": "warning",
+        "message": "Volume '<volId>' elevation change dz (<dz> m) exceeds physical volume length (<length> m)."
+      },
+      {
+        "code": "M8608",
+        "rule": "negative-junction-loss-coefficient",
+        "severity": "error",
+        "message": "Junction '<junctionId>' specifies negative form loss coefficient (K_forw=<kForw>, K_rev=<kRev>)."
+      },
+      {
+        "code": "M8609",
+        "rule": "invalid-time-step-bounds",
+        "severity": "error",
+        "message": "Minimum time step (<minDt> s) exceeds maximum time step (<maxDt> s)."
+      },
+      {
+        "code": "M8610",
+        "rule": "negative-pressure-state",
+        "severity": "error",
+        "message": "Volume '<volId>' specifies non-positive thermodynamic pressure (<p> Pa)."
+      }
+    ]
+  },
+  {
+    "slug": "sima",
+    "name": "SIMA / SIMO / RIFLEX",
+    "packageName": "@modelscript/sima",
+    "sources": [
+      "languages/sima/src/lints/error-codes.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "M7001",
+        "rule": "negative-metacentric-height",
+        "severity": "error",
+        "message": "Hydrostatic instability on vessel '<vessel>': negative <gmType> metacentric height (GM = <value> m < 0)."
+      },
+      {
+        "code": "M7002",
+        "rule": "line-length-underflow",
+        "severity": "error",
+        "message": "Mooring line '<line>' total length (<value> m) is less than water depth (<value> m), causing immediate vertical anchor snap load."
+      },
+      {
+        "code": "M7003",
+        "rule": "acoustic-courant-violation",
+        "severity": "error",
+        "message": "Time step dt=<value>s exceeds Courant axial acoustic wave limit (<value>s) for segment '<seg>'."
+      },
+      {
+        "code": "M7004",
+        "rule": "unconnected-attachment-node",
+        "severity": "error",
+        "message": "Mooring line '<line>' references unresolved fairlead attachment '<fairleadId>' not found on any vessel."
+      },
+      {
+        "code": "M7005",
+        "rule": "rao-frequency-extrapolation",
+        "severity": "warning",
+        "message": "Environmental wave peak frequency (<value> rad/s) is outside hydrodynamic RAO table range [<value>, <value>] rad/s."
+      },
+      {
+        "code": "M7006",
+        "rule": "invalid-stiffness-hierarchy",
+        "severity": "error",
+        "message": "Non-physical cross-sectional stiffness on segment '<seg>': <prop> (<val>) must be strictly positive."
+      },
+      {
+        "code": "M7007",
+        "rule": "unphysical-seabed-friction",
+        "severity": "warning",
+        "message": "Unrealistic seabed friction coefficient (\\u03BC = <value>): expected value between 0.0 and 2.0."
+      },
+      {
+        "code": "M7008",
+        "rule": "missing-hydrostatic-matrix",
+        "severity": "error",
+        "message": "Vessel '<vessel>' has zero or missing hydrostatic restoring matrix C; floating body cannot equilibrate in heave/roll/pitch."
+      },
+      {
+        "code": "M7009",
+        "rule": "duplicate-line-identifier",
+        "severity": "error",
+        "message": "Duplicate line identifier '<id>' declared in the slender system."
+      },
+      {
+        "code": "M7010",
+        "rule": "slack-compression-hazard",
+        "severity": "warning",
+        "message": "Mooring line '<line>' has negligible pre-tension under severe sea state (Hs > 8m), risking compression slack-snap loading."
+      },
+      {
+        "code": "M7011",
+        "rule": "morison-drag-unspecified",
+        "severity": "warning",
+        "message": "Segment '<seg>' in wave zone has zero Morison drag coefficient (Cd = 0); hydrodynamic damping will be neglected."
+      },
+      {
+        "code": "M7012",
+        "rule": "anchor-uplift-warning",
+        "severity": "warning",
+        "message": "Catenary line '<line>' exhibits vertical uplift angle (<value>\\xB0) at anchor; drag-embedment anchors will pull out."
+      },
+      {
+        "code": "M7013",
+        "rule": "mass-matrix-asymmetric",
+        "severity": "error",
+        "message": "Vessel '<vessel>' structural mass matrix is asymmetric at index (<r>, <c>)."
+      },
+      {
+        "code": "M7014",
+        "rule": "qtf-symmetry-violation",
+        "severity": "warning",
+        "message": "Vessel '<vessel>' 2nd-order drift force QTF matrix violates conjugate symmetry."
+      },
+      {
+        "code": "M7015",
+        "rule": "exceeds-minimum-bend-radius",
+        "severity": "error",
+        "message": "Line '<line>' minimum radius of curvature (<value> m) is below allowable MBR (<value> m)."
+      }
+    ]
+  },
+  {
+    "slug": "spice",
+    "name": "SPICE",
+    "packageName": "@modelscript/spice",
+    "sources": [
+      "languages/spice/src/lints/rules.ts"
+    ],
+    "cli": "msx spice lint",
+    "rules": [
+      {
+        "code": "M7101",
+        "rule": "spice-floating-node",
+        "severity": "error",
+        "message": "Floating node '<nodeName>' has no DC reference path to ground."
+      },
+      {
+        "code": "M7102",
+        "rule": "spice-voltage-loop",
+        "severity": "error",
+        "message": "Voltage source '<vName>' forms a closed loop of ideal voltage sources without series resistance."
+      },
+      {
+        "code": "M7103",
+        "rule": "spice-current-cutset",
+        "severity": "error",
+        "message": "Node '<nodeName>' is connected strictly to ideal current sources (current cutset)."
+      },
+      {
+        "code": "M7104",
+        "rule": "spice-unresolved-subcircuit",
+        "severity": "error",
+        "message": "Subcircuit '<subName>' is referenced by '<compName>' but not defined."
+      },
+      {
+        "code": "M7105",
+        "rule": "spice-invalid-passive-value",
+        "severity": "error",
+        "message": "Passive component '<compName>' has invalid non-positive value <val>."
+      },
+      {
+        "code": "M7106",
+        "rule": "spice-timestep-violation",
+        "severity": "error",
+        "message": "Transient analysis directive specifies invalid timestep '<tstep>' or stop time '<tstop>'."
+      },
+      {
+        "code": "M7107",
+        "rule": "spice-duplicate-device",
+        "severity": "error",
+        "message": "Duplicate component name '<compName>' detected in circuit scope."
+      },
+      {
+        "code": "M7108",
+        "rule": "spice-missing-model",
+        "severity": "error",
+        "message": "Active device '<compName>' references undefined model '<modelName>'."
+      },
+      {
+        "code": "M7109",
+        "rule": "spice-pin-count-mismatch",
+        "severity": "error",
+        "message": "Subcircuit instance '<compName>' connects <nodeCount> pins but definition '<subName>' expects <portCount> ports."
+      },
+      {
+        "code": "M7110",
+        "rule": "spice-malformed-directive",
+        "severity": "warning",
+        "message": "Malformed or unsupported directive '<dirName>'."
+      }
+    ]
+  },
+  {
+    "slug": "verilog-a",
+    "name": "Verilog-A / AMS",
+    "packageName": "@modelscript/verilog-a",
+    "sources": [
+      "languages/verilog-a/src/lints/rules.ts"
+    ],
+    "cli": "msx verilog-a lint",
+    "rules": [
+      {
+        "code": "M7601",
+        "rule": "unassigned-analog-branch",
+        "severity": "error",
+        "message": "Electrical port pair '<p>' and '<n>' has no constitutive branch equation in analog block."
+      },
+      {
+        "code": "M7602",
+        "rule": "discontinuous-derivative-expression",
+        "severity": "warning",
+        "message": "Discontinuous time-derivative operator '<func>()' used inside conditional branch statement."
+      },
+      {
+        "code": "M7603",
+        "rule": "invalid-parameter-range",
+        "severity": "error",
+        "message": "Parameter '<name>' default value <val> violates declared range '<range>'."
+      },
+      {
+        "code": "M7604",
+        "rule": "unbounded-exponential-growth",
+        "severity": "warning",
+        "message": "Unbounded exponential function 'exp()' used instead of safe 'limexp()' in '<ctx>'."
+      },
+      {
+        "code": "M7605",
+        "rule": "port-discipline-mismatch",
+        "severity": "error",
+        "message": "Port '<port>' has no declared discipline or mismatch with module domain."
+      },
+      {
+        "code": "M7606",
+        "rule": "undefined-node-reference",
+        "severity": "error",
+        "message": "Branch access '<branch>' references undeclared node '<node>'."
+      },
+      {
+        "code": "M7607",
+        "rule": "duplicate-module-declaration",
+        "severity": "error",
+        "message": "Duplicate module declaration for '<name>'."
+      },
+      {
+        "code": "M7608",
+        "rule": "zero-resistance-branch",
+        "severity": "error",
+        "message": "Potential contribution '<branch>' forms an unconstrained ideal short-circuit."
+      },
+      {
+        "code": "M7609",
+        "rule": "floating-internal-node",
+        "severity": "warning",
+        "message": "Internal node '<node>' is declared but never referenced in any analog branch equation."
+      },
+      {
+        "code": "M7610",
+        "rule": "unsupported-analog-primitive",
+        "severity": "warning",
+        "message": "Unsupported or deprecated analog primitive '<primitive>'."
+      }
+    ]
+  },
+  {
+    "slug": "ibis",
+    "name": "IBIS",
+    "packageName": "@modelscript/ibis",
+    "sources": [
+      "languages/ibis/src/errors.ts"
+    ],
+    "cli": "msx ibis lint",
+    "rules": [
+      {
+        "code": "M8303",
+        "rule": "non-monotonic-iv-curve",
+        "severity": "warning",
+        "message": "IBIS model '<modelName>' contains non-monotonic slope in '<tableType>' table between <value>V and <value>V."
+      },
+      {
+        "code": "M8305",
+        "rule": "missing-pin-model-binding",
+        "severity": "error",
+        "message": "Component pin '<pinName>' references undefined model '<modelName>'."
+      },
+      {
+        "code": "M8316",
+        "rule": "missing-component-pins",
+        "severity": "error",
+        "message": "Component '<compName>' declaration has no defined pins in '[Pin]' section."
+      },
+      {
+        "code": "M8317",
+        "rule": "invalid-voltage-range",
+        "severity": "error",
+        "message": "IBIS model '<modelName>' has invalid [Voltage Range]: min (<value>V) is greater than max (<value>V)."
+      },
+      {
+        "code": "M8318",
+        "rule": "clamping-diode-divergence",
+        "severity": "warning",
+        "message": "Model '<modelName>' clamp table '<clampType>' diverges to excessive current (<value>A)."
+      },
+      {
+        "code": "M8319",
+        "rule": "missing-pullup-pulldown",
+        "severity": "error",
+        "message": "Driver model '<modelName>' of type '<modelType>' is missing both I/V tables ([Pullup]/[Pulldown]) and [Ramp] slew rates."
+      },
+      {
+        "code": "M8320",
+        "rule": "negative-die-capacitance",
+        "severity": "error",
+        "message": "IBIS model '<modelName>' specifies non-positive die capacitance C_comp '<val>'."
+      },
+      {
+        "code": "M8321",
+        "rule": "negative-package-parasitic",
+        "severity": "error",
+        "message": "Component '<compName>' package parasitic '<param>' has non-positive value '<val>'."
+      },
+      {
+        "code": "M8322",
+        "rule": "no-models-defined",
+        "severity": "error",
+        "message": "IBIS file contains no buffer [Model] definitions."
+      }
+    ]
+  },
+  {
+    "slug": "touchstone",
+    "name": "Touchstone",
+    "packageName": "@modelscript/touchstone",
+    "sources": [
+      "languages/touchstone/src/errors.ts"
+    ],
+    "cli": "msx touchstone lint",
+    "rules": [
+      {
+        "code": "M8301",
+        "rule": "passivity-violation",
+        "severity": "error",
+        "message": "N-port scattering matrix violates passivity criterion (spectral norm <norm> > 1.0) at frequency <freq>."
+      },
+      {
+        "code": "M8302",
+        "rule": "causality-violation",
+        "severity": "error",
+        "message": "Kramers-Kronig causality relation violated across frequency sweep: '<detail>'."
+      },
+      {
+        "code": "M8304",
+        "rule": "frequency-grid-non-monotonic",
+        "severity": "error",
+        "message": "Frequency grid is not monotonically increasing: step from <prevFreq> to <currFreq> is non-increasing."
+      },
+      {
+        "code": "M8306",
+        "rule": "missing-option-line",
+        "severity": "warning",
+        "message": "Missing '#' option line; defaulting to '# GHz S MA R 50'."
+      },
+      {
+        "code": "M8307",
+        "rule": "invalid-parameter-format",
+        "severity": "error",
+        "message": "Invalid Touchstone parameter token or format '<token>'."
+      },
+      {
+        "code": "M8308",
+        "rule": "incomplete-matrix-data",
+        "severity": "error",
+        "message": "Incomplete N-port matrix row: expected <expected> values, received <received>."
+      },
+      {
+        "code": "M8309",
+        "rule": "negative-reference-resistance",
+        "severity": "error",
+        "message": "Reference resistance '<r>' must be strictly positive."
+      },
+      {
+        "code": "M8310",
+        "rule": "asymmetric-reciprocal-network",
+        "severity": "warning",
+        "message": "Asymmetry in reciprocal S-parameter network: |S<i><j> - S<j><i>| = <diff> exceeds threshold."
+      },
+      {
+        "code": "M8311",
+        "rule": "no-frequency-points",
+        "severity": "error",
+        "message": "Touchstone file contains no valid frequency parameter points."
+      },
+      {
+        "code": "M8312",
+        "rule": "duplicate-frequency-point",
+        "severity": "error",
+        "message": "Duplicate frequency sample point '<freq>' encountered in sweep."
+      }
+    ]
+  },
+  {
+    "slug": "urdf",
+    "name": "URDF / Xacro",
+    "packageName": "@modelscript/urdf",
+    "sources": [
+      "languages/urdf/src/errors.ts"
+    ],
+    "cli": "msx urdf lint",
+    "rules": [
+      {
+        "code": "M7501",
+        "rule": "unresolved-parent-link",
+        "severity": "error",
+        "message": "Joint '<jointName>' references non-existent parent link '<linkName>'."
+      },
+      {
+        "code": "M7502",
+        "rule": "kinematic-loop",
+        "severity": "error",
+        "message": "Closed kinematic chain or duplicate parent detected at link '<linkName>' (URDF requires open tree)."
+      },
+      {
+        "code": "M7503",
+        "rule": "invalid-inertia-tensor",
+        "severity": "error",
+        "message": "Link '<linkName>' defines non-physical inertia tensor: <reason>."
+      },
+      {
+        "code": "M7504",
+        "rule": "invalid-joint-limits",
+        "severity": "error",
+        "message": "Joint '<jointName>' defines invalid limits (lower: <lower> >= upper: <upper>)."
+      },
+      {
+        "code": "M7505",
+        "rule": "missing-mesh-resource",
+        "severity": "warning",
+        "message": "Visual mesh URI '<uri>' on link '<linkName>' may not resolve at runtime."
+      },
+      {
+        "code": "M7506",
+        "rule": "massless-link",
+        "severity": "warning",
+        "message": "Link '<linkName>' has zero mass and no inertial specification."
+      },
+      {
+        "code": "M7507",
+        "rule": "zero-norm-joint-axis",
+        "severity": "error",
+        "message": "Joint '<jointName>' defines a zero-norm rotation/translation axis [0, 0, 0]."
+      },
+      {
+        "code": "M7508",
+        "rule": "continuous-joint-with-limits",
+        "severity": "warning",
+        "message": "Joint '<jointName>' is declared 'continuous' but specifies upper/lower limits."
+      }
+    ]
+  },
+  {
+    "slug": "plcopen",
+    "name": "PLCopen / IEC 61131-3",
+    "packageName": "@modelscript/plcopen",
+    "sources": [
+      "languages/plcopen/src/lints/rules.ts"
+    ],
+    "cli": "msx plcopen lint",
+    "rules": [
+      {
+        "code": "M7701",
+        "rule": "unassigned-variable-read",
+        "severity": "error",
+        "message": "Variable '<name>' is read before being assigned or initialized in POU '<pouName>'."
+      },
+      {
+        "code": "M7702",
+        "rule": "cyclic-task-overrun",
+        "severity": "warning",
+        "message": "Computational complexity in task '<taskName>' (<stmtCount> statements) may exceed cycle time '<interval>'."
+      },
+      {
+        "code": "M7703",
+        "rule": "recursive-pou-call",
+        "severity": "error",
+        "message": "Recursive invocation of POU '<calleeName>' detected in '<callerName>'. Recursion is prohibited in IEC 61131-3."
+      },
+      {
+        "code": "M7704",
+        "rule": "io-mapping-collision",
+        "severity": "error",
+        "message": "Hardware I/O address collision at '<address>': multiple variables ('<var1>', '<var2>') assigned to same output."
+      },
+      {
+        "code": "M7705",
+        "rule": "type-mismatch-assignment",
+        "severity": "error",
+        "message": "Type mismatch in assignment to '<varName>': expected '<expectedType>', got '<actualType>'."
+      },
+      {
+        "code": "M7706",
+        "rule": "timer-preset-negative",
+        "severity": "error",
+        "message": "Timer preset time '<value>' for '<timerName>' cannot be negative."
+      },
+      {
+        "code": "M7707",
+        "rule": "unbounded-loop-detected",
+        "severity": "warning",
+        "message": "Loop in POU '<pouName>' does not have a deterministic bounded termination condition."
+      },
+      {
+        "code": "M7708",
+        "rule": "unknown-pou-type",
+        "severity": "error",
+        "message": "Unknown or unresolvable POU or function block type '<typeName>' instantiated in '<instanceName>'."
+      },
+      {
+        "code": "M7709",
+        "rule": "unreachable-code",
+        "severity": "warning",
+        "message": "Unreachable code detected after '<stmtKind>' statement in POU '<pouName>'."
+      },
+      {
+        "code": "M7710",
+        "rule": "invalid-task-interval",
+        "severity": "error",
+        "message": "Task '<taskName>' specifies invalid or non-positive periodic interval '<interval>'."
+      }
+    ]
+  },
+  {
+    "slug": "adams",
+    "name": "MSC Adams",
+    "packageName": "@modelscript/adams",
+    "sources": [
+      "languages/adams/src/errors.ts"
+    ],
+    "cli": "msx adams lint",
+    "rules": [
+      {
+        "code": "M7301",
+        "rule": "overconstrained-mobility",
+        "severity": "error",
+        "message": "Mechanism is overconstrained according to Grübler-Kutzbach criterion (Mobility = <mobility> < 0)."
+      },
+      {
+        "code": "M7302",
+        "rule": "gimbal-lock-orientation",
+        "severity": "warning",
+        "message": "Euler orientation angles for marker '<markerId>' indicate near-gimbal-lock singularity (psi = <value>\\xB0)."
+      },
+      {
+        "code": "M7303",
+        "rule": "dangling-marker-reference",
+        "severity": "error",
+        "message": "<source> references non-existent marker '<targetId>'."
+      },
+      {
+        "code": "M7304",
+        "rule": "non-physical-inertia-tensor",
+        "severity": "error",
+        "message": "Part '<partId>' has non-physical inertia tensor: <reason>."
+      },
+      {
+        "code": "M7305",
+        "rule": "massless-part-floating",
+        "severity": "error",
+        "message": "Moving part '<partId>' has zero or negative mass without kinematic grounding."
+      },
+      {
+        "code": "M7307",
+        "rule": "coincident-joint-markers",
+        "severity": "warning",
+        "message": "Joint '<jointId>' uses identical I and J markers ('<iMarker>')."
+      },
+      {
+        "code": "M7308",
+        "rule": "negative-spring-damping",
+        "severity": "error",
+        "message": "Spring-damper '<springId>' defines non-physical negative <param> (<value>)."
+      },
+      {
+        "code": "M7309",
+        "rule": "missing-ground-part",
+        "severity": "error",
+        "message": "Dataset does not define a ground reference body ('PART/... GROUND')."
+      },
+      {
+        "code": "M7310",
+        "rule": "unconstrained-part",
+        "severity": "warning",
+        "message": "Part '<partId>' is completely disconnected from joints or force elements (floating rigid body)."
+      }
+    ]
+  },
+  {
+    "slug": "energyplus",
+    "name": "EnergyPlus",
+    "packageName": "@modelscript/energyplus",
+    "sources": [
+      "languages/energyplus/src/lints/rules.ts"
+    ],
+    "cli": "msx energyplus lint",
+    "rules": [
+      {
+        "code": "M7901",
+        "rule": "unmatched-interzone-surface",
+        "severity": "error",
+        "message": "Interzone surface '<surfName>' in zone '<zoneName>' specifies outside boundary object '<targetSurf>' which does not exist or has mismatched reciprocal boundary."
+      },
+      {
+        "code": "M7902",
+        "rule": "non-convex-surface-polygon",
+        "severity": "warning",
+        "message": "Surface polygon '<surfName>' in zone '<zoneName>' violates planar convexity, which may impair solar raytracing and view factor calculations."
+      },
+      {
+        "code": "M7903",
+        "rule": "missing-thermal-properties",
+        "severity": "error",
+        "message": "Material '<matName>' has non-positive thermal property '<prop>' (<val>), violating second law of thermodynamics."
+      },
+      {
+        "code": "M7904",
+        "rule": "unconnected-hvac-zone",
+        "severity": "error",
+        "message": "HVAC component '<hvacName>' references non-existent thermal zone '<zoneName>'."
+      },
+      {
+        "code": "M7905",
+        "rule": "excessive-surface-absorption",
+        "severity": "warning",
+        "message": "Material '<matName>' has solar absorptance coefficient <value>, which exceeds the physical maximum of 1.0."
+      },
+      {
+        "code": "M7906",
+        "rule": "duplicate-zone-name",
+        "severity": "error",
+        "message": "Duplicate thermal zone identifier '<zoneName>' detected in building model."
+      },
+      {
+        "code": "M7907",
+        "rule": "unreferenced-construction",
+        "severity": "error",
+        "message": "Building surface '<surfName>' references undefined construction '<constName>'."
+      },
+      {
+        "code": "M7908",
+        "rule": "zero-thickness-material",
+        "severity": "error",
+        "message": "Opaque material '<matName>' has invalid non-positive thickness (<value>m)."
+      }
+    ]
+  },
+  {
+    "slug": "epanet",
+    "name": "EPANET",
+    "packageName": "@modelscript/epanet",
+    "sources": [
+      "languages/epanet/src/lints/rules.ts"
+    ],
+    "cli": "msx epanet lint",
+    "rules": [
+      {
+        "code": "M8101",
+        "rule": "isolated-hydraulic-node",
+        "severity": "error",
+        "message": "Hydraulic node '<nodeId>' is isolated with no connecting pipes or pumps."
+      },
+      {
+        "code": "M8102",
+        "rule": "negative-pressure-risk",
+        "severity": "warning",
+        "message": "Junction '<nodeId>' elevation (<value>m) exceeds maximum network source head (<value>m), risking cavitation and dry-out."
+      },
+      {
+        "code": "M8103",
+        "rule": "non-monotonic-pump-curve",
+        "severity": "error",
+        "message": "Pump head curve '<curveId>' violates decreasing monotonicity: head increases from <value> to <value> between flow <value> and <value>."
+      },
+      {
+        "code": "M8104",
+        "rule": "zero-length-pipe",
+        "severity": "error",
+        "message": "Pipe link '<pipeId>' has non-positive physical length (<value>m)."
+      },
+      {
+        "code": "M8105",
+        "rule": "zero-diameter-pipe",
+        "severity": "error",
+        "message": "Pipe link '<pipeId>' has non-positive internal diameter (<value>mm)."
+      },
+      {
+        "code": "M8106",
+        "rule": "duplicate-node-id",
+        "severity": "error",
+        "message": "Duplicate node identifier '<nodeId>' detected in water network topology."
+      },
+      {
+        "code": "M8107",
+        "rule": "duplicate-link-id",
+        "severity": "error",
+        "message": "Duplicate link identifier '<linkId>' detected in water network topology."
+      },
+      {
+        "code": "M8108",
+        "rule": "unreferenced-node-in-link",
+        "severity": "error",
+        "message": "Link '<linkId>' references undefined endpoint node '<nodeId>'."
+      }
+    ]
+  },
+  {
+    "slug": "swmm",
+    "name": "EPA SWMM",
+    "packageName": "@modelscript/swmm",
+    "sources": [
+      "languages/swmm/src/errors.ts"
+    ],
+    "cli": "msx swmm lint",
+    "rules": [
+      {
+        "code": "M8201",
+        "rule": "dangling-node-reference",
+        "severity": "error",
+        "message": "Link '<linkId>' references undefined <role> node '<nodeId>'."
+      },
+      {
+        "code": "M8202",
+        "rule": "adverse-conduit-slope",
+        "severity": "warning",
+        "message": "Conduit '<conduitId>' has adverse slope: inlet elevation (<value>) is lower than outlet elevation (<value>)."
+      },
+      {
+        "code": "M8203",
+        "rule": "missing-cross-section",
+        "severity": "error",
+        "message": "Conduit '<conduitId>' has no hydraulic cross-section definition in '[XSECTIONS]'."
+      },
+      {
+        "code": "M8204",
+        "rule": "unsupported-outfall-type",
+        "severity": "error",
+        "message": "Outfall '<outfallId>' specifies unsupported boundary condition type '<type>'."
+      },
+      {
+        "code": "M8205",
+        "rule": "surcharge-overflow-risk",
+        "severity": "warning",
+        "message": "Junction '<junctionId>' rim elevation (<value>) is lower than connected conduit crown (<value>), creating surcharge overflow risk."
+      },
+      {
+        "code": "M8206",
+        "rule": "duplicate-node-id",
+        "severity": "error",
+        "message": "Duplicate node identifier '<nodeId>' declared in network."
+      },
+      {
+        "code": "M8207",
+        "rule": "duplicate-link-id",
+        "severity": "error",
+        "message": "Duplicate link identifier '<linkId>' declared in network."
+      },
+      {
+        "code": "M8208",
+        "rule": "negative-roughness",
+        "severity": "error",
+        "message": "Conduit '<conduitId>' specifies non-positive Manning's roughness coefficient (n = <n>)."
+      },
+      {
+        "code": "M8209",
+        "rule": "zero-length-conduit",
+        "severity": "error",
+        "message": "Conduit '<conduitId>' specifies non-positive length (<len>)."
+      },
+      {
+        "code": "M8210",
+        "rule": "isolated-network-node",
+        "severity": "warning",
+        "message": "Junction '<nodeId>' has no connected conduits or hydraulic links (isolated node)."
+      },
+      {
+        "code": "M8211",
+        "rule": "subcatchment-outlet-not-found",
+        "severity": "error",
+        "message": "Subcatchment '<subId>' references non-existent discharge outlet '<outletId>'."
+      },
+      {
+        "code": "M8212",
+        "rule": "weir-offset-negative",
+        "severity": "error",
+        "message": "Weir '<weirId>' specifies negative crest height offset (<offset>)."
+      },
+      {
+        "code": "M8213",
+        "rule": "invalid-discharge-coefficient",
+        "severity": "error",
+        "message": "Link '<linkId>' specifies non-positive discharge coefficient (Cd = <cd>)."
+      }
+    ]
+  },
+  {
+    "slug": "aspen",
+    "name": "Aspen Plus / HYSYS",
+    "packageName": "@modelscript/aspen",
+    "sources": [
+      "languages/aspen/src/errors.ts"
+    ],
+    "cli": "msx aspen lint",
+    "rules": [
+      {
+        "code": "M8101",
+        "rule": "unconnected-stream-port",
+        "severity": "error",
+        "message": "Stream '<streamName>' connected to block '<blockName>' inlet has no producing source block outlet."
+      },
+      {
+        "code": "M8102",
+        "rule": "tear-stream-unconverged",
+        "severity": "error",
+        "message": "Circular flowsheet loop detected involving block '<blockName>' without designated tear stream."
+      },
+      {
+        "code": "M8103",
+        "rule": "invalid-eos-parameter",
+        "severity": "error",
+        "message": "Component '<compName>' lacks critical properties for property method '<propertyMethod>'."
+      },
+      {
+        "code": "M8104",
+        "rule": "negative-component-fraction",
+        "severity": "error",
+        "message": "Stream '<streamName>' specifies negative component molar fraction for '<compName>' (<val>)."
+      },
+      {
+        "code": "M8105",
+        "rule": "column-reboiler-heat-deficit",
+        "severity": "warning",
+        "message": "Column '<blockName>' duty results in non-positive reboiler boil-up."
+      },
+      {
+        "code": "M8106",
+        "rule": "duplicate-block-id",
+        "severity": "error",
+        "message": "Duplicate block ID '<blockId>' declared in flowsheet."
+      },
+      {
+        "code": "M8107",
+        "rule": "duplicate-component-id",
+        "severity": "error",
+        "message": "Duplicate component ID '<compId>' declared in COMPONENTS."
+      },
+      {
+        "code": "M8108",
+        "rule": "fractions-sum-invalid",
+        "severity": "warning",
+        "message": "Component mole fractions in stream '<streamName>' sum to <value>, expected 1.0."
+      },
+      {
+        "code": "M8109",
+        "rule": "feed-stage-out-of-range",
+        "severity": "error",
+        "message": "Column '<blockName>' feed stage <stage> is out of bounds (1..<nStages>)."
+      },
+      {
+        "code": "M8110",
+        "rule": "product-stage-out-of-range",
+        "severity": "error",
+        "message": "Column '<blockName>' product stage <stage> is out of bounds (1..<nStages>)."
+      },
+      {
+        "code": "M8111",
+        "rule": "missing-flowsheet-entry",
+        "severity": "warning",
+        "message": "Block '<blockName>' has parameter declarations but is not connected in FLOWSHEET."
+      },
+      {
+        "code": "M8112",
+        "rule": "stream-temperature-negative",
+        "severity": "error",
+        "message": "Stream '<streamName>' specifies non-physical absolute temperature <temp> K."
+      },
+      {
+        "code": "M8113",
+        "rule": "stream-pressure-negative",
+        "severity": "error",
+        "message": "Stream '<streamName>' specifies non-positive pressure <pres> bar."
+      },
+      {
+        "code": "M8114",
+        "rule": "radfrac-stages-too-few",
+        "severity": "error",
+        "message": "RadFrac column '<blockName>' has fewer than 2 stages (<nStages>)."
+      },
+      {
+        "code": "M8115",
+        "rule": "reflux-ratio-negative",
+        "severity": "error",
+        "message": "Column '<blockName>' reflux ratio (<rr>) must be non-negative."
+      }
+    ]
+  },
+  {
+    "slug": "sbml",
+    "name": "SBML",
+    "packageName": "@modelscript/sbml",
+    "sources": [
+      "languages/sbml/src/errors.ts"
+    ],
+    "cli": "msx sbml lint",
+    "rules": [
+      {
+        "code": "M8801",
+        "rule": "missing-model-id",
+        "severity": "error",
+        "message": "SBML <model> element is missing required 'id' attribute."
+      },
+      {
+        "code": "M8802",
+        "rule": "undefined-compartment-reference",
+        "severity": "error",
+        "message": "Species '<speciesId>' references undefined compartment '<compartmentId>'."
+      },
+      {
+        "code": "M8803",
+        "rule": "undefined-species-reference",
+        "severity": "error",
+        "message": "Reaction '<reactionId>' references undefined <role> species '<speciesId>'."
+      },
+      {
+        "code": "M8804",
+        "rule": "negative-compartment-size",
+        "severity": "error",
+        "message": "Compartment '<compartmentId>' defines non-positive size (<size>)."
+      },
+      {
+        "code": "M8805",
+        "rule": "negative-initial-amount-concentration",
+        "severity": "error",
+        "message": "Species '<speciesId>' specifies negative initial amount/concentration (<val>)."
+      },
+      {
+        "code": "M8806",
+        "rule": "empty-reaction",
+        "severity": "error",
+        "message": "Reaction '<reactionId>' must define at least one reactant or product."
+      },
+      {
+        "code": "M8807",
+        "rule": "missing-kinetic-law",
+        "severity": "warning",
+        "message": "Reaction '<reactionId>' does not define a kineticLaw rate law equation."
+      },
+      {
+        "code": "M8808",
+        "rule": "negative-stoichiometry",
+        "severity": "error",
+        "message": "Species reference for '<speciesId>' in reaction '<reactionId>' specifies non-positive stoichiometry (<stoich>)."
+      },
+      {
+        "code": "M8809",
+        "rule": "undefined-kinetic-parameter",
+        "severity": "warning",
+        "message": "Kinetic law formula in reaction '<reactionId>' references identifier '<id>' not found in parameters or species."
+      },
+      {
+        "code": "M8810",
+        "rule": "circular-species-assignment",
+        "severity": "info",
+        "message": "Reaction '<reactionId>' lists '<speciesId>' as both reactant and product with identical stoichiometry; consider defining as modifier."
+      }
+    ]
+  }
+]

@@ -83,6 +83,7 @@ const PRECEDENCE = {
  */
 export const modelicaLanguage = language({
   name: "Modelica",
+  maturity: "stable",
 
   // ── AST-to-Source Writeback Rules ───────────────────────────────────────
   writeback: modelicaWriteback,

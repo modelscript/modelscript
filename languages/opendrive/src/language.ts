@@ -18,6 +18,7 @@ import { opendriveToGensys } from "./projections/opendrive-to-gensys.js";
 export const opendriveLanguage = language({
   name: "opendrive",
   fileExtensions: [".xodr", ".xml"],
+  maturity: "experimental",
   lsp: {
     fileExtensions: [".xodr", ".xml"],
   },

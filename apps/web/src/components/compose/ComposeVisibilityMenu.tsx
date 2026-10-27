@@ -29,9 +29,21 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
         style={{ cursor: "pointer", width: "fit-content" }}
         onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
       >
-        {replyVisibility === "everyone" && <GlobeIcon size={16} style={{ color: "var(--color-accent-cyan)" }} />}
-        {replyVisibility === "following" && <PersonIcon size={16} style={{ color: "var(--color-accent-cyan)" }} />}
-        {replyVisibility === "mentioned" && <MentionIcon size={16} style={{ color: "var(--color-accent-cyan)" }} />}
+        {replyVisibility === "everyone" && (
+          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+            <GlobeIcon size={16} />
+          </span>
+        )}
+        {replyVisibility === "following" && (
+          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+            <PersonIcon size={16} />
+          </span>
+        )}
+        {replyVisibility === "mentioned" && (
+          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+            <MentionIcon size={16} />
+          </span>
+        )}
         <span style={{ color: "var(--color-accent-cyan)", fontWeight: "bold", fontSize: "14px" }}>
           {replyVisibility === "everyone" && "Everyone can reply"}
           {replyVisibility === "following" && "Accounts you follow can reply"}
@@ -60,7 +72,7 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
             width="280px"
             py={2}
           >
-            <Box px={3} pb={2} borderBottom="1px solid var(--color-border)" mb={2}>
+            <Box px={3} style={{ paddingBottom: "8px" }} borderBottom="1px solid var(--color-border)" mb={2}>
               <Text style={{ fontWeight: "bold", fontSize: "15px" }}>Who can reply?</Text>
             </Box>
             <Box
@@ -70,7 +82,6 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
               px={3}
               py={2}
               style={{ cursor: "pointer" }}
-              sx={{ "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" } }}
               onClick={() => {
                 setReplyVisibility("everyone");
                 setShowVisibilityMenu(false);
@@ -88,13 +99,15 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
               >
                 <GlobeIcon size={20} />
               </Box>
-              <Text flex={1} style={{ fontWeight: "bold", fontSize: "15px" }}>
-                Everyone
-              </Text>
+              <Text style={{ flex: 1, fontWeight: "bold", fontSize: "15px" }}>Everyone</Text>
               {replyVisibility === "everyone" ? (
-                <CheckCircleIcon size={20} style={{ color: "var(--color-accent-cyan)" }} />
+                <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+                  <CheckCircleIcon size={20} />
+                </span>
               ) : (
-                <CircleIcon size={20} style={{ color: "var(--color-text-muted)" }} />
+                <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
+                  <CircleIcon size={20} />
+                </span>
               )}
             </Box>
             <Box
@@ -104,7 +117,6 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
               px={3}
               py={2}
               style={{ cursor: "pointer" }}
-              sx={{ "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" } }}
               onClick={() => {
                 setReplyVisibility("following");
                 setShowVisibilityMenu(false);
@@ -122,13 +134,15 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
               >
                 <PersonIcon size={20} />
               </Box>
-              <Text flex={1} style={{ fontWeight: "bold", fontSize: "15px" }}>
-                Accounts you follow
-              </Text>
+              <Text style={{ flex: 1, fontWeight: "bold", fontSize: "15px" }}>Accounts you follow</Text>
               {replyVisibility === "following" ? (
-                <CheckCircleIcon size={20} style={{ color: "var(--color-accent-cyan)" }} />
+                <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+                  <CheckCircleIcon size={20} />
+                </span>
               ) : (
-                <CircleIcon size={20} style={{ color: "var(--color-text-muted)" }} />
+                <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
+                  <CircleIcon size={20} />
+                </span>
               )}
             </Box>
             <Box
@@ -138,7 +152,6 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
               px={3}
               py={2}
               style={{ cursor: "pointer" }}
-              sx={{ "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" } }}
               onClick={() => {
                 setReplyVisibility("mentioned");
                 setShowVisibilityMenu(false);
@@ -156,13 +169,15 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
               >
                 <MentionIcon size={20} />
               </Box>
-              <Text flex={1} style={{ fontWeight: "bold", fontSize: "15px" }}>
-                Only accounts you mention
-              </Text>
+              <Text style={{ flex: 1, fontWeight: "bold", fontSize: "15px" }}>Only accounts you mention</Text>
               {replyVisibility === "mentioned" ? (
-                <CheckCircleIcon size={20} style={{ color: "var(--color-accent-cyan)" }} />
+                <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+                  <CheckCircleIcon size={20} />
+                </span>
               ) : (
-                <CircleIcon size={20} style={{ color: "var(--color-text-muted)" }} />
+                <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
+                  <CircleIcon size={20} />
+                </span>
               )}
             </Box>
           </Box>

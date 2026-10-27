@@ -39,14 +39,7 @@
 
 ## Static Analysis & Pre-Flight Linter Rules
 
-The EPANET linter inspects topological connectivity and hydraulic constraints:
-
-| Rule Identifier             | Severity  | Condition Checked                                                                           |
-| :-------------------------- | :-------- | :------------------------------------------------------------------------------------------ |
-| `isolated-junction-node`    | `error`   | Junction node has no connected pipes or is completely detached from a pressure supply.      |
-| `invalid-pipe-geometry`     | `error`   | Pipe length $\le 0$, diameter $\le 0$, or roughness coefficient $\le 0$.                    |
-| `non-monotonic-pump-curve`  | `warning` | Pump head curve does not decrease monotonically with increasing volumetric flow.            |
-| `negative-pressure-warning` | `warning` | Hydraulic solver predicts negative pressures (cavitation risk) under nominal design demand. |
+<LintRules lang="epanet" />
 
 ---
 

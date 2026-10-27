@@ -322,6 +322,7 @@ const PackageDetailPage: React.FC = () => {
                 rootClassName={pkg.rootClassName}
                 rootClass={pkg.rootClass}
                 packument={pkg.packument}
+                classes={pkg.classes}
                 availableDomains={pkg.availableDomains}
                 onNavigateToDigitalThread={() => setTab("digital-thread")}
                 jobStatus={pkg.jobStatus || undefined}

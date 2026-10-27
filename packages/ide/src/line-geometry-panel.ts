@@ -849,14 +849,56 @@ export class LineGeometryPanel {
       }
 
       // Kron reduction of shield wires (G1, G2) -> 3x3 Phase Matrix
-      const Zabc_re = Array.from({ length: 3 }, () => new Float64Array(3));
-      const Zabc_im = Array.from({ length: 3 }, () => new Float64Array(3));
-      for (let i = 0; i < 3; i++) {
-        for (let j = 0; j < 3; j++) {
-          Zabc_re[i][j] = Zp[i][j * 2];
-          Zabc_im[i][j] = Zp[i][j * 2 + 1];
+      // Eliminate shield conductors k = N-1 down to 3: Z_ij <- Z_ij - Z_ik * Z_kj / Z_kk
+      const Zred_re = Array.from({ length: N }, (_, i) =>
+        Float64Array.from({ length: N }, (__, j) => Zp[i][j * 2]),
+      );
+      const Zred_im = Array.from({ length: N }, (_, i) =>
+        Float64Array.from({ length: N }, (__, j) => Zp[i][j * 2 + 1]),
+      );
+      const Pred = Array.from({ length: N }, (_, i) => Float64Array.from(Pp[i]));
+
+      for (let k = N - 1; k >= 3; k--) {
+        const zkk_re = Zred_re[k][k];
+        const zkk_im = Zred_im[k][k];
+        const denom = zkk_re * zkk_re + zkk_im * zkk_im;
+        const pkk = Pred[k][k];
+        for (let i = 0; i < k; i++) {
+          for (let j = 0; j < k; j++) {
+            if (denom > 1e-18) {
+              // Complex product Z_ik * Z_kj
+              const prod_re = Zred_re[i][k] * Zred_re[k][j] - Zred_im[i][k] * Zred_im[k][j];
+              const prod_im = Zred_re[i][k] * Zred_im[k][j] + Zred_im[i][k] * Zred_re[k][j];
+              // Divide by Z_kk
+              const quot_re = (prod_re * zkk_re + prod_im * zkk_im) / denom;
+              const quot_im = (prod_im * zkk_re - prod_re * zkk_im) / denom;
+              Zred_re[i][j] -= quot_re;
+              Zred_im[i][j] -= quot_im;
+            }
+            if (Math.abs(pkk) > 1e-18) {
+              Pred[i][j] -= (Pred[i][k] * Pred[k][j]) / pkk;
+            }
+          }
         }
       }
+
+      const Zabc_re = Array.from({ length: 3 }, (_, i) => Zred_re[i].subarray(0, 3));
+      const Zabc_im = Array.from({ length: 3 }, (_, i) => Zred_im[i].subarray(0, 3));
+
+      // Invert 3x3 reduced Maxwell potential matrix Pred[0..2][0..2] to get C_abc (F/km)
+      const p00 = Pred[0][0], p01 = Pred[0][1], p02 = Pred[0][2];
+      const p10 = Pred[1][0], p11 = Pred[1][1], p12 = Pred[1][2];
+      const p20 = Pred[2][0], p21 = Pred[2][1], p22 = Pred[2][2];
+      const detP =
+        p00 * (p11 * p22 - p12 * p21) -
+        p01 * (p10 * p22 - p12 * p20) +
+        p02 * (p10 * p21 - p11 * p20);
+      const invDetP = Math.abs(detP) > 1e-18 ? 1.0 / detP : 0;
+      const Cabc_nF = [
+        [(p11 * p22 - p12 * p21) * invDetP * 1e9, (p02 * p21 - p01 * p22) * invDetP * 1e9, (p01 * p12 - p02 * p11) * invDetP * 1e9],
+        [(p12 * p20 - p10 * p22) * invDetP * 1e9, (p00 * p22 - p02 * p20) * invDetP * 1e9, (p02 * p10 - p00 * p12) * invDetP * 1e9],
+        [(p10 * p21 - p11 * p20) * invDetP * 1e9, (p01 * p20 - p00 * p21) * invDetP * 1e9, (p00 * p11 - p01 * p10) * invDetP * 1e9],
+      ];
 
       // Symmetrical components transformation
       const Zs_re = (Zabc_re[0][0] + Zabc_re[1][1] + Zabc_re[2][2]) / 3;
@@ -995,6 +1037,33 @@ export class LineGeometryPanel {
       document.getElementById("res-tau1").innerHTML = tau1Us.toFixed(1) + " <span>µs</span>";
       document.getElementById("res-vel").innerHTML = velRatio.toFixed(3) + " <span>c</span>";
       document.getElementById("res-zc0").innerHTML = Zc0.toFixed(1) + " <span>Ω</span>";
+
+      const phases = ["A", "B", "C"];
+      const zabcTbody = document.querySelector("#table-zabc tbody");
+      if (zabcTbody) {
+        let zHtml = "";
+        for (let i = 0; i < 3; i++) {
+          zHtml += "<tr><th>" + phases[i] + "</th>";
+          for (let j = 0; j < 3; j++) {
+            zHtml += "<td>" + Zabc_re[i][j].toFixed(3) + "+j" + Zabc_im[i][j].toFixed(3) + "</td>";
+          }
+          zHtml += "</tr>";
+        }
+        zabcTbody.innerHTML = zHtml;
+      }
+
+      const cabcTbody = document.querySelector("#table-cabc tbody");
+      if (cabcTbody) {
+        let cHtml = "";
+        for (let i = 0; i < 3; i++) {
+          cHtml += "<tr><th>" + phases[i] + "</th>";
+          for (let j = 0; j < 3; j++) {
+            cHtml += "<td>" + Cabc_nF[i][j].toFixed(2) + "</td>";
+          }
+          cHtml += "</tr>";
+        }
+        cabcTbody.innerHTML = cHtml;
+      }
 
       // Cache computed params for apply action
       window.__latestParams = {

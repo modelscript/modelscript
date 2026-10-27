@@ -384,6 +384,53 @@ const SPOTLIGHT_CATALOG = [
   { id: "master:rms3ph", name: "CSMF 3-Phase RMS Meter", category: "Control Blocks" },
   { id: "master:abcdq0", name: "CSMF Park dq0 Transformation", category: "Control Blocks" },
   { id: "master:datalabel", name: "Wireless Data Label Tag", category: "Meters & Buses" },
+  // Modelica Standard Library (MSL)
+  { id: "Modelica.Electrical.Analog.Basic.Resistor", name: "MSL Electrical Resistor", category: "Modelica Electrical" },
+  {
+    id: "Modelica.Electrical.Analog.Basic.Capacitor",
+    name: "MSL Electrical Capacitor",
+    category: "Modelica Electrical",
+  },
+  { id: "Modelica.Electrical.Analog.Basic.Inductor", name: "MSL Electrical Inductor", category: "Modelica Electrical" },
+  { id: "Modelica.Electrical.Analog.Basic.Ground", name: "MSL Electrical Ground", category: "Modelica Electrical" },
+  {
+    id: "Modelica.Electrical.Analog.Sources.ConstantVoltage",
+    name: "MSL Constant Voltage Source",
+    category: "Modelica Electrical",
+  },
+  {
+    id: "Modelica.Mechanics.Translational.Components.Mass",
+    name: "MSL Translational Mass",
+    category: "Modelica Mechanics",
+  },
+  {
+    id: "Modelica.Mechanics.Translational.Components.SpringDamper",
+    name: "MSL Spring-Damper",
+    category: "Modelica Mechanics",
+  },
+  {
+    id: "Modelica.Mechanics.Rotational.Components.Inertia",
+    name: "MSL Rotational Inertia",
+    category: "Modelica Mechanics",
+  },
+  { id: "Modelica.Blocks.Continuous.PID", name: "MSL Continuous PID Controller", category: "Modelica Blocks" },
+  { id: "Modelica.Blocks.Sources.Step", name: "MSL Step Signal Source", category: "Modelica Blocks" },
+  {
+    id: "Modelica.Thermal.HeatTransfer.Components.HeatCapacitor",
+    name: "MSL Thermal Heat Capacitor",
+    category: "Modelica Thermal",
+  },
+  {
+    id: "Modelica.Thermal.HeatTransfer.Components.ThermalConductor",
+    name: "MSL Thermal Conductor",
+    category: "Modelica Thermal",
+  },
+  // SysML v2
+  { id: "sysml:part", name: "SysML v2 Part Definition (part def)", category: "SysML v2" },
+  { id: "sysml:action", name: "SysML v2 Action Definition (action def)", category: "SysML v2" },
+  { id: "sysml:requirement", name: "SysML v2 Requirement Definition (requirement def)", category: "SysML v2" },
+  { id: "sysml:state", name: "SysML v2 State Definition (state def)", category: "SysML v2" },
+  { id: "sysml:port", name: "SysML v2 Port Definition (port def)", category: "SysML v2" },
 ];
 
 let isWireModeActive = false;

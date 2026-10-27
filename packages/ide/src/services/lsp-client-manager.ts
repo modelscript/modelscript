@@ -3,6 +3,13 @@
 import * as vscode from "vscode";
 import { Uri, workspace } from "vscode";
 import { LanguageClient, type LanguageClientOptions } from "vscode-languageclient/browser";
+import {
+  buildLspSettingsPayload,
+  getLanguageMaturityBadge,
+  getStatusBarConfig,
+  isLanguageEnabled,
+  shouldShowMaturityBadges,
+} from "../utils/config.js";
 
 export async function getProjectDependencies(
   workspaceFolders: readonly vscode.WorkspaceFolder[] | undefined = workspace.workspaceFolders,
@@ -90,10 +97,12 @@ export function buildDynamicDocumentSelector(
 
   if (contributedLanguages.length > 0) {
     for (const lang of contributedLanguages) {
+      if (!isLanguageEnabled(lang.id)) continue;
       dynamicLanguageSelectors.push({ language: lang.id });
       if (lang.extensions) {
         for (const ext of lang.extensions) {
           const cleanExt = ext.startsWith(".") ? ext.slice(1) : ext;
+          if (cleanExt.toLowerCase() === "ts") continue;
           if (!allExts.includes(cleanExt)) allExts.push(cleanExt);
         }
       }
@@ -113,7 +122,6 @@ export function buildDynamicDocumentSelector(
     );
   }
 
-  dynamicLanguageSelectors.push({ pattern: "**/*.{js,ts}" });
   dynamicLanguageSelectors.push({ pattern: `**/*.{${allExts.join(",")}}` });
   return dynamicLanguageSelectors;
 }
@@ -292,6 +300,41 @@ export class LspClientManager implements vscode.Disposable {
     return this._outputChannel;
   }
 
+  public updateActiveEditorStatusBar(languageId?: string): void {
+    const { visibility } = getStatusBarConfig();
+    if (visibility === "never") {
+      this._statusItem.hide();
+      return;
+    }
+
+    const contributedLanguages =
+      (this.context.extension?.packageJSON?.contributes?.languages as
+        | { id: string; aliases?: string[] | undefined }[]
+        | undefined) || [];
+    const matchedLang = languageId
+      ? contributedLanguages.find((l) => l.id.toLowerCase() === languageId.toLowerCase())
+      : undefined;
+
+    if (!matchedLang && visibility === "whenActive") {
+      this._statusItem.hide();
+      return;
+    }
+
+    if (matchedLang) {
+      const displayName = matchedLang.aliases?.[0] ?? matchedLang.id;
+      const badge = shouldShowMaturityBadges() ? ` (${getLanguageMaturityBadge(matchedLang.id)})` : "";
+      this._statusItem.text = `$(symbol-namespace) ${displayName}${badge}`;
+      this._statusItem.tooltip = `ModelScript Language: ${displayName}${badge} — Click to configure languages & maturity tiers`;
+      this._statusItem.command = "modelscript.configureLanguages";
+      this._statusItem.show();
+    } else if (visibility === "always") {
+      this._statusItem.text = "$(check) ModelScript Ready";
+      this._statusItem.tooltip = "ModelScript Polyglot Compiler & Simulation Engine — Click to configure languages";
+      this._statusItem.command = "modelscript.configureLanguages";
+      this._statusItem.show();
+    }
+  }
+
   onBindNotifications(listener: (client: LanguageClient) => void): vscode.Disposable {
     this._notificationListeners.push(listener);
     if (this._activeClient) {
@@ -358,6 +401,19 @@ export class LspClientManager implements vscode.Disposable {
     return new LanguageClient("modelscript", "ModelScript Language Server", this._clientOptions, worker);
   }
 
+  public syncSettingsToServer(): void {
+    if (!this._activeClient) return;
+    try {
+      const contributedLanguages =
+        (this.context.extension?.packageJSON?.contributes?.languages as { id: string }[] | undefined) || [];
+      const langIds = contributedLanguages.map((l) => l.id);
+      const payload = buildLspSettingsPayload(langIds.length > 0 ? langIds : undefined);
+      (this._activeClient as any).sendNotification("modelscript/updateSettings", payload);
+    } catch (e) {
+      console.warn("[lsp-client-manager] Failed to sync settings to LSP server:", e);
+    }
+  }
+
   async start(): Promise<void> {
     this._activeClient = await this.createWorkerClient();
     await this._activeClient.start();
@@ -365,6 +421,7 @@ export class LspClientManager implements vscode.Disposable {
     this._outputChannel.appendLine("[client] Language server started successfully");
 
     this._attachRegisteredHandlers(this._activeClient);
+    this.syncSettingsToServer();
 
     for (const listener of this._notificationListeners) {
       listener(this._activeClient);
@@ -397,6 +454,7 @@ export class LspClientManager implements vscode.Disposable {
       await this._activeClient.start();
 
       this._attachRegisteredHandlers(this._activeClient);
+      this.syncSettingsToServer();
 
       for (const listener of this._notificationListeners) {
         listener(this._activeClient);

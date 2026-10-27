@@ -125,12 +125,14 @@ run_task() {
 # 1. Lint Step
 if [ "$MODE_LINT" = true ]; then
   echo ""
-  log_info "Verifying package-lock.json sync, project graph cycles, file headers and filename conventions..."
+  log_info "Verifying package-lock.json sync, project graph cycles, file headers, filename conventions, and package manifests..."
   npm run lint:lockfile
   npm run lint:cycles
   npm run lint:headers
   npm run lint:filenames
+  npm run lint:manifests
   npm run lint:scripts
+  npm run check --workspace=@modelscript/docs
   npx tsc --noEmit
   run_task "lint" "ESLint checking"
   run_task "typecheck" "TypeScript type checking"

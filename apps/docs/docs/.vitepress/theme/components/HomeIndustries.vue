@@ -34,7 +34,10 @@ function formats(slugs: string[]): string[] {
           :style="{ '--accent': ind.accent }"
         >
           <span class="ind-glow" aria-hidden="true" />
-          <span class="ind-icon"><MsIcon :name="ind.icon" :size="20" /></span>
+          <div class="ind-head">
+            <span class="ind-icon"><MsIcon :name="ind.icon" :size="24" :duotone="true" /></span>
+            <span class="ind-count">{{ ind.languages.length }} formats</span>
+          </div>
           <h3 class="ind-name">{{ ind.name }}</h3>
           <p class="ind-tag">{{ ind.tagline }}</p>
           <span class="ind-formats">
@@ -61,7 +64,8 @@ function formats(slugs: string[]): string[] {
   padding: 24px;
   border-radius: 18px;
   border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg-soft);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--vp-c-bg-soft) 92%, transparent), var(--vp-c-bg));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   text-decoration: none;
   color: inherit;
   overflow: hidden;
@@ -70,6 +74,18 @@ function formats(slugs: string[]): string[] {
     transform 0.3s ease,
     border-color 0.3s ease,
     box-shadow 0.3s ease;
+}
+
+.ind-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
+  opacity: 0.45;
+  transition: opacity 0.3s ease;
 }
 
 .ind-glow {
@@ -87,27 +103,66 @@ function formats(slugs: string[]): string[] {
 .ind-card:hover {
   transform: translateY(-4px);
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  box-shadow: 0 24px 48px -24px color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow:
+    0 24px 48px -24px color-mix(in srgb, var(--accent) 50%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.ind-card:hover::before {
+  opacity: 1;
 }
 
 .ind-card:hover .ind-glow {
   opacity: 1;
 }
 
+.ind-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .ind-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background: color-mix(in srgb, var(--accent) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  background:
+    radial-gradient(circle at 25% 20%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 68%),
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.16), transparent 68%),
+    color-mix(in srgb, var(--accent) 10%, var(--vp-c-bg-soft));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 10px 22px -10px color-mix(in srgb, var(--accent) 55%, transparent);
+  transition:
+    transform 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.ind-card:hover .ind-icon {
+  transform: scale(1.06) translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.ind-count {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--vp-c-text-3);
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
 }
 
 .ind-name {
   margin: 18px 0 6px;
-  font-size: 1.02rem;
+  font-size: 1.04rem;
   font-weight: 680;
   line-height: 1.3;
   color: var(--vp-c-text-1);

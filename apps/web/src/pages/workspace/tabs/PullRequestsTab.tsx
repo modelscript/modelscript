@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { GitPullRequestIcon } from "@primer/octicons-react";
-import { Button, Dialog, Heading, Label, Spinner, Text, TextInput, Textarea } from "@primer/react";
+import { Button, Dialog, Flash, Heading, Label, Spinner, Text, TextInput, Textarea } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useState } from "react";
@@ -20,6 +20,7 @@ export interface PullRequestsTabProps {
 export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, provider, defaultBranch = "main" }) => {
   const [mrs, setMrs] = useState<GitlabMergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedMr, setSelectedMr] = useState<GitlabMergeRequest | null>(null);
   const [isNewMrDialogOpen, setIsNewMrDialogOpen] = useState(false);
   const [newMrTitle, setNewMrTitle] = useState("");
@@ -43,6 +44,7 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
   const handleCreateMr = async () => {
     if (!newMrTitle) return;
     const sourceBranch = newMrSource || "feature-branch";
+    setError(null);
     try {
       const created = await createGitlabMergeRequest(
         projectId,
@@ -55,25 +57,15 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
         provider,
       );
       setMrs([created, ...mrs]);
-    } catch {
-      const fallbackMr: GitlabMergeRequest = {
-        id: Date.now(),
-        iid: mrs.length + 1,
-        title: newMrTitle,
-        description: newMrDesc,
-        state: "opened",
-        created_at: new Date().toISOString(),
-        author: { id: 1, username: "current_user", name: "Current User" },
-        source_branch: sourceBranch,
-        target_branch: defaultBranch,
-        web_url: "#",
-      };
-      setMrs([fallbackMr, ...mrs]);
+      setIsNewMrDialogOpen(false);
+      setNewMrTitle("");
+      setNewMrDesc("");
+      setNewMrSource("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create pull request.";
+      setError(msg);
+      setIsNewMrDialogOpen(false);
     }
-    setIsNewMrDialogOpen(false);
-    setNewMrTitle("");
-    setNewMrDesc("");
-    setNewMrSource("");
   };
 
   return (
@@ -86,6 +78,12 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
           New pull request
         </Button>
       </Box>
+
+      {error && (
+        <Flash variant="danger" sx={{ mb: 3 }}>
+          {error}
+        </Flash>
+      )}
 
       <StyledBox>
         <Box

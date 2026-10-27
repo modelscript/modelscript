@@ -74,4 +74,4 @@ When editing code in the Language Server Protocol (LSP) or Web IDE, the GLR pars
 
 - Text edits pass line and character delta offsets.
 - Unaffected subtrees in linear memory remain unchanged and are spliced into the new parse tree.
-- Syntax diagnostics are generated instantly during parsing and stored in the diagnostics arena.
+- Syntax diagnostics are generated during parsing and stored in the diagnostics arena.

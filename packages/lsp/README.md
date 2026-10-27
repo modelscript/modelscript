@@ -1,26 +1,25 @@
-# `@modelscript/lsp`
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across all 11 ModelScript languages, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
+# @modelscript/lsp
+
+ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 44 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
 
 ---
 
 ## Architecture & Capabilities
 
-### 1. Unified Polyglot Language Support (All 11 Languages)
+### 1. Unified Polyglot Language Support (All 44 Languages)
 
-A single `@modelscript/lsp` server instance indexes and cross-references symbols across all 11 ModelScript languages in a shared workspace:
+A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **44 ModelScript engineering languages and formats** in a shared workspace:
 
-1. **Modelica 3.x** (`.mo`) — `@modelscript/modelica`
-2. **SysML v2 & KerML** (`.sysml`, `.kerml`) — `@modelscript/sysml2`
-3. **Native ModelScript** (`.msx`) — `@modelscript/modelscript`
-4. **PSCAD Power Systems** (`.pscx`, `.pslx`, `.pswx`) — `@modelscript/pscad`
-5. **ISO 10303-21 STEP CAD** (`.step`, `.stp`) — `@modelscript/step`
-6. **OpenSCAD CSG** (`.scad`) — `@modelscript/scad`
-7. **W3C OWL 2 Ontologies** (`.owl`) — `@modelscript/owl2`
-8. **CalculiX / Abaqus FEA** (`.inp`) — `@modelscript/fea`
-9. **SU2 CFD** (`.cfg`, `.su2`) — `@modelscript/cfd`
-10. **SSP 1.0 System Packaging** (`.ssp`, `.ssd`, `.ssv`, `.ssm`) — `@modelscript/ssp`
-11. **CSV Tabular Data** (`.csv`) — `@modelscript/csv`
+- **Native & Systems Engineering (7)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), OWL 2 Ontologies (`.owl`, `.ofn`), CSV Telemetry (`.csv`).
+- **Power Grids, RF & Electronics (7)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), Siemens PTI PSS/E (`.raw`), EPRI OpenDSS (`.dss`), SPICE (`.cir`, `.sp`, `.spice`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`).
+- **Fluid, Process, Subsurface, Civil Water & Nuclear (8)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus (`.in`, `.inp`, `.bkp`), ECLIPSE 100/300 (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`).
+- **Multibody, Automotive, Robotics, Marine & Rail (9)**: MSC ADAMS (`.adm`, `.cmd`, `.acf`), SIMPACK (`.spck`, `.sim`, `.fbi`), GENSYS (`.calc`, `.run`, `.trax`), GT-SUITE (`.gtm`, `.gtx`), SIMA (`.sima`, `.sys`), URDF/SDF (`.urdf`, `.sdf`), ASAM OpenDRIVE (`.xodr`), ASAM OpenSCENARIO (`.xosc`, `.osc`), AUTOSAR (`.arxml`).
+- **Aerospace, Flight Dynamics, Astrodynamics & Controls (6)**: Simulink (`.slx`, `.mdl`), Boeing/MSC EASY5 (`.ez5`, `.ezm`), JSBSim (`.xml`), NASA ROCETS (`.roc`), CCSDS / XTCE (`.oem`, `.opm`, `.omm`, `.xtce`), PLCopen IEC 61131-3 (`.st`, `.iec`, `.plcxml`).
+- **3D CAD & Continuum Physics (4)**: ISO 10303-21 STEP (`.step`, `.stp`), OpenSCAD CSG (`.scad`), CalculiX/Nastran FEA (`.fea`, `.inp`, `.bdf`), SU2/OpenFOAM CFD (`.cfd`, `.cfg`, `.su2`, `.foam`).
+- **Systems Biology & Scientific / Embedded Code (3)**: SBML (`.sbml`, `.xml`), Fortran 77/90/95 (`.f`, `.for`, `.f90`), ISO C99 (`.c`, `.h`).
 
 Supports both Node.js IPC/stdio (`src/nodeServerMain.ts`, `@modelscript/lsp/node`) and browser WebWorker (`src/browserServerMain.ts`, `@modelscript/lsp/server`) transports.
 

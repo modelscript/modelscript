@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { useTheme } from "../theme";
+import {
+  buildEditorUrlForArtifact,
+  getExtensionForDialect,
+  inferDialectFromArtifact,
+  inferDialectFromFilename,
+  isMultiFileArtifact,
+} from "../util/editor-routing";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 import {
@@ -35,15 +43,24 @@ export const IdeWorkspacePage: React.FC = () => {
 
   const sourceParam = searchParams.get("source");
   const titleParam = searchParams.get("title");
+  const langParam = searchParams.get("lang") || searchParams.get("dialect") || searchParams.get("language");
+  const fromArtifactParam = searchParams.get("fromArtifact");
+  const editPostIdParam = searchParams.get("editPostId");
+  const replyToPostIdParam = searchParams.get("replyToPostId");
+
+  const editPostId = editPostIdParam ? Number(editPostIdParam) : undefined;
+  const replyToPostId = replyToPostIdParam ? Number(replyToPostIdParam) : undefined;
 
   const [artifactMetadata, setArtifactMetadata] = useState<IdeArtifactMetadata | null>(null);
 
   const artifactIdFromHash = useMemo(() => {
     if (location.hash && location.hash.startsWith("#memfs:artifact-")) {
-      return location.hash.slice("#memfs:artifact-".length);
+      return location.hash.slice("#memfs:artifact-".length).split("&")[0] || null;
     }
     return null;
   }, [location.hash]);
+
+  const effectiveArtifactId = artifactIdFromHash || fromArtifactParam;
 
   const packageNameFromHash = useMemo(() => {
     if (location.hash && location.hash.startsWith("#memfs:package-")) {
@@ -54,16 +71,17 @@ export const IdeWorkspacePage: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    if (artifactIdFromHash) {
-      getArtifactView(artifactIdFromHash)
+    if (effectiveArtifactId && !sourceParam) {
+      getArtifactView(effectiveArtifactId)
         .then((data) => {
           if (!active) return;
-          const av = data?.artifactView;
+          const av = data?.artifactView || data;
           if (av) {
-            const config = safeJsonParse(av.view_config, {});
+            const config =
+              typeof av.view_config === "string" ? safeJsonParse(av.view_config, {}) : av.view_config || {};
             setArtifactMetadata({
-              id: av.id,
-              title: av.title || av.name || `Artifact #${av.id}`,
+              id: av.id ?? effectiveArtifactId,
+              title: titleParam || av.title || av.name || `Artifact #${av.id ?? effectiveArtifactId}`,
               viewType: av.view_type || "modelica-code",
               viewConfig: config,
             });
@@ -73,16 +91,20 @@ export const IdeWorkspacePage: React.FC = () => {
           console.warn("[IdeWorkspacePage] Failed to fetch artifact metadata:", err);
         });
     } else if (sourceParam) {
-      const decodedSource = decodeURIComponent(sourceParam);
-      const title = titleParam ? decodeURIComponent(titleParam) : "ScratchModel.mo";
-      const modelName = title.replace(/\.[^/.]+$/, "");
+      const dialect = langParam || inferDialectFromFilename(titleParam) || "modelica";
+      const ext = getExtensionForDialect(dialect);
+      const rawTitle = titleParam || `ScratchModel${ext}`;
+      const fileName = rawTitle.includes(".") ? rawTitle : `${rawTitle.replace(/\s+/g, "_")}${ext}`;
+      const modelName = rawTitle.replace(/\.[^/.]+$/, "");
       const meta: IdeArtifactMetadata = {
-        id: "scratch",
-        title,
-        viewType: "modelica-code",
+        id: fromArtifactParam || "scratch",
+        title: fileName,
+        viewType: dialect === "sysml2" ? "sysml" : "modelica-code",
         viewConfig: {
-          code: decodedSource,
+          code: sourceParam,
           model: modelName,
+          dialect,
+          primaryFile: fileName,
         },
       };
       setArtifactMetadata(meta);
@@ -97,7 +119,7 @@ export const IdeWorkspacePage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [artifactIdFromHash, sourceParam, titleParam]);
+  }, [effectiveArtifactId, fromArtifactParam, langParam, sourceParam, titleParam]);
 
   usePageTitle(
     project
@@ -110,6 +132,7 @@ export const IdeWorkspacePage: React.FC = () => {
   );
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const pendingShareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [showDeprecationNotice, setShowDeprecationNotice] = useState(true);
@@ -158,23 +181,24 @@ export const IdeWorkspacePage: React.FC = () => {
 
     // 3. Fallback: query param, source code handoff, artifact handoff, package, or blank project
     if (sourceParam) {
-      const title = titleParam ? decodeURIComponent(titleParam) : "ScratchModel.mo";
+      const title = titleParam || "ScratchModel.mo";
       return {
         folderHash: "#memfs:scratch",
         displayTitle: title,
-        backUrl: "/feed",
+        backUrl: "/home",
         branchName: undefined,
         isDeprecated: false,
       };
     }
 
-    const customHash = location.hash || "#memfs:empty";
+    const customHash =
+      location.hash || (effectiveArtifactId ? `#memfs:artifact-${effectiveArtifactId}` : "#memfs:empty");
     let title = "Blank Workspace";
     let back = "/home";
 
-    if (artifactIdFromHash) {
-      title = artifactMetadata?.title || `Artifact #${artifactIdFromHash}`;
-      back = "/feed";
+    if (effectiveArtifactId) {
+      title = artifactMetadata?.title || titleParam || `Artifact #${effectiveArtifactId}`;
+      back = "/home";
     } else if (packageNameFromHash) {
       title = `Package: ${packageNameFromHash}`;
       back = "/explore";
@@ -194,7 +218,7 @@ export const IdeWorkspacePage: React.FC = () => {
     searchParams,
     templateId,
     location.hash,
-    artifactIdFromHash,
+    effectiveArtifactId,
     packageNameFromHash,
     artifactMetadata,
     sourceParam,
@@ -285,9 +309,83 @@ export const IdeWorkspacePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artifactMetadata]);
 
+  const resolveForkedFromId = useCallback((): number | undefined => {
+    const raw = fromArtifactParam || artifactIdFromHash;
+    if (!raw) return undefined;
+    const num = Number(raw);
+    return Number.isNaN(num) ? undefined : num;
+  }, [fromArtifactParam, artifactIdFromHash]);
+
+  const openComposeWithEnrichedPayload = useCallback(
+    (incomingPayload?: any) => {
+      if (pendingShareTimeoutRef.current) {
+        clearTimeout(pendingShareTimeoutRef.current);
+        pendingShareTimeoutRef.current = null;
+      }
+
+      const forkedId = resolveForkedFromId();
+      const baseMorsel = incomingPayload?.morselPayload || {};
+      const filesMap = incomingPayload?.files || baseMorsel.files || artifactMetadata?.viewConfig?.files;
+      const isMulti =
+        incomingPayload?.isMultiFile ??
+        baseMorsel.isMultiFile ??
+        (filesMap && typeof filesMap === "object" && Object.keys(filesMap).length > 1) ??
+        isMultiFileArtifact(artifactMetadata);
+
+      const code =
+        incomingPayload?.codeSnippet ??
+        baseMorsel.code ??
+        (typeof artifactMetadata?.viewConfig?.code === "string" ? artifactMetadata.viewConfig.code : "");
+
+      const dialect =
+        incomingPayload?.dialect ||
+        baseMorsel.dialect ||
+        langParam ||
+        inferDialectFromArtifact(artifactMetadata, displayTitle);
+
+      const cleanTitle =
+        baseMorsel.title || incomingPayload?.title || displayTitle.replace(/\.[^/.]+$/, "") || "Workspace";
+
+      const defaultContent = editPostId
+        ? undefined
+        : replyToPostId
+          ? `Here is my updated **${cleanTitle}** workspace:`
+          : incomingPayload?.content ||
+            (forkedId
+              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in ModelScript IDE! 🚀`
+              : `Check out my workspace in the ModelScript IDE: **${cleanTitle}** 🚀`);
+
+      const composeInit: any = {
+        ...(defaultContent !== undefined ? { content: defaultContent } : {}),
+        morselPayload: {
+          title: cleanTitle,
+          code,
+          dialect,
+          isMultiFile: Boolean(isMulti),
+          ...(filesMap && typeof filesMap === "object" ? { files: filesMap } : {}),
+          ...(incomingPayload?.primaryFile || baseMorsel.primaryFile
+            ? { primaryFile: incomingPayload?.primaryFile || baseMorsel.primaryFile }
+            : {}),
+          ...(forkedId ? { forkedFromArtifactId: forkedId } : {}),
+        },
+        ...(forkedId ? { forkedFromArtifactId: forkedId } : {}),
+        ...(editPostId !== undefined && !Number.isNaN(editPostId) ? { editPostId } : {}),
+        ...(replyToPostId !== undefined && !Number.isNaN(replyToPostId)
+          ? { replyToPostId, replyToPost: { id: replyToPostId } }
+          : {}),
+      };
+
+      openCompose(composeInit);
+    },
+    [artifactMetadata, displayTitle, editPostId, langParam, openCompose, replyToPostId, resolveForkedFromId],
+  );
+
   // Listen to messages from child VS Code iframe via postMessage and BroadcastChannel
   useEffect(() => {
-    const processMessageData = (data: Record<string, unknown> | null | undefined) => {
+    let lastHandledShareTimestamp = 0;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processMessageData = (data: any) => {
       if (!data || typeof data !== "object") return;
 
       switch (data.type) {
@@ -295,13 +393,16 @@ export const IdeWorkspacePage: React.FC = () => {
           syncStateRef.current();
           break;
 
-        case "MODELSCRIPT_SHARE_TO_FEED":
-          if (data.payload) {
-            openCompose(data.payload as any);
-          } else {
-            openCompose();
+        case "MODELSCRIPT_WORKSPACE_SNAPSHOT":
+        case "MODELSCRIPT_SHARE_TO_FEED": {
+          const now = Date.now();
+          if (now - lastHandledShareTimestamp < 250) {
+            return;
           }
+          lastHandledShareTimestamp = now;
+          openComposeWithEnrichedPayload(data.payload as any);
           break;
+        }
 
         case "MODELSCRIPT_LSP_STATUS":
           if (data.status && typeof data.status === "string") {
@@ -340,8 +441,61 @@ export const IdeWorkspacePage: React.FC = () => {
     return () => {
       window.removeEventListener("message", handleMessage);
       channel?.close();
+      if (pendingShareTimeoutRef.current) {
+        clearTimeout(pendingShareTimeoutRef.current);
+      }
     };
-  }, [navigate, openCompose]);
+  }, [navigate, openComposeWithEnrichedPayload]);
+
+  const handleRequestShareSnapshot = () => {
+    const requestId = `snap-${Date.now()}`;
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "MODELSCRIPT_REQUEST_WORKSPACE_SNAPSHOT", requestId },
+        window.location.origin,
+      );
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage({ type: "MODELSCRIPT_REQUEST_WORKSPACE_SNAPSHOT", requestId });
+      channel.close();
+    } catch {
+      // ignore cross-origin or broadcast channel error
+    }
+
+    if (pendingShareTimeoutRef.current) {
+      clearTimeout(pendingShareTimeoutRef.current);
+    }
+    pendingShareTimeoutRef.current = setTimeout(() => {
+      pendingShareTimeoutRef.current = null;
+      openComposeWithEnrichedPayload(undefined);
+    }, 450);
+  };
+
+  const canOpenInPlayground = !namespace && !project && !isMultiFileArtifact(artifactMetadata);
+
+  const handleOpenInPlayground = () => {
+    const url = buildEditorUrlForArtifact({
+      artifactId: resolveForkedFromId(),
+      viewType: artifactMetadata?.viewType,
+      viewConfig: artifactMetadata?.viewConfig,
+      code:
+        typeof artifactMetadata?.viewConfig?.code === "string"
+          ? artifactMetadata.viewConfig.code
+          : sourceParam || undefined,
+      title: displayTitle,
+      dialect: langParam || inferDialectFromArtifact(artifactMetadata, displayTitle),
+      editPostId,
+      replyToPostId,
+    });
+    navigate(url);
+  };
+
+  const shareLabel = editPostId
+    ? "Save Post Edit"
+    : replyToPostId
+      ? "Reply to Post"
+      : effectiveArtifactId
+        ? "Fork to Feed"
+        : "Share to Feed";
 
   return (
     <PageContainer>
@@ -357,51 +511,10 @@ export const IdeWorkspacePage: React.FC = () => {
         packageNameFromHash={packageNameFromHash}
         isDeprecated={isDeprecated}
         lspStatus={lspStatus}
+        shareLabel={shareLabel}
+        onOpenInPlayground={canOpenInPlayground ? handleOpenInPlayground : undefined}
         onRestartLsp={handleRestartLsp}
-        onShare={() => {
-          const fromArtifactParam = searchParams.get("fromArtifact");
-          const forkedId = fromArtifactParam
-            ? Number(fromArtifactParam)
-            : artifactIdFromHash
-              ? Number(artifactIdFromHash)
-              : undefined;
-
-          if (artifactIdFromHash) {
-            openCompose({
-              content: `Sharing an update on **${displayTitle}**:`,
-              artifactId: Number(artifactIdFromHash),
-              forkedFromArtifactId: forkedId,
-            });
-            return;
-          }
-
-          if (artifactMetadata?.viewConfig?.code && typeof artifactMetadata.viewConfig.code === "string") {
-            openCompose({
-              content: `Check out my model in the ModelScript IDE: **${displayTitle}**`,
-              morselPayload: {
-                code: artifactMetadata.viewConfig.code,
-                title: displayTitle.replace(/\.[^/.]+$/, ""),
-                dialect: "modelica",
-              },
-              forkedFromArtifactId: forkedId,
-            });
-            return;
-          }
-
-          try {
-            iframeRef.current?.contentWindow?.postMessage(
-              { type: "MODELSCRIPT_REQUEST_ACTIVE_FILE" },
-              window.location.origin,
-            );
-          } catch {
-            // cross-origin fallback
-          }
-
-          openCompose({
-            content: `Check out my workspace in the ModelScript IDE: **${displayTitle}**`,
-            forkedFromArtifactId: forkedId,
-          });
-        }}
+        onShare={handleRequestShareSnapshot}
         onReload={() => {
           setIsLoading(true);
           setReloadKey((k) => k + 1);

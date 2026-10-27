@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon, PulseIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, PulseIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
+import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
 
 export interface PipelineLpsViewerProps {
   viewConfig: {
+    artifactId?: string | undefined;
     url?: string | undefined;
     code?: string | undefined;
     svg?: string | undefined;
@@ -84,6 +87,34 @@ const PillBadge = styled.span`
   border: 1px solid rgba(14, 165, 233, 0.35);
 `;
 
+const SegmentedControl = styled.div`
+  display: inline-flex;
+  background: var(--color-canvas-inset, #010409);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+`;
+
+const SegmentBtn = styled.button<{ $active: boolean }>`
+  border: none;
+  background: ${(p) => (p.$active ? "var(--color-accent-emphasis, #1f6feb)" : "transparent")};
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted, #8b949e)")};
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+
+  &:hover {
+    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default, #e6edf3)")};
+  }
+`;
+
 const ContentArea = styled.div`
   flex: 1;
   display: flex;
@@ -105,6 +136,35 @@ const SvgCanvas = styled.div`
     max-height: 100%;
     height: auto;
   }
+`;
+
+const CodePre = styled.pre`
+  flex: 1;
+  margin: 0;
+  padding: 14px 0;
+  overflow: auto;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-fg-default, #e6edf3);
+  background: var(--color-canvas-inset, #010409);
+`;
+
+const CodeLine = styled.div`
+  display: flex;
+  padding: 0 16px;
+  &:hover {
+    background: rgba(110, 118, 129, 0.08);
+  }
+`;
+
+const LineNo = styled.span`
+  width: 44px;
+  flex-shrink: 0;
+  color: var(--color-fg-subtle, #6e7681);
+  user-select: none;
+  text-align: right;
+  padding-right: 16px;
 `;
 
 const InspectorSidebar = styled.div`
@@ -129,10 +189,27 @@ const StatItem = styled.div`
   }
 `;
 
+function parsePipelineLpsClient(code: string) {
+  const maopMatch = code.match(/MAOP\s*=\s*([0-9.eE+-]+)/i);
+  const pInMatch = code.match(/(?:P_IN|INLET_PRESSURE)\s*=\s*([0-9.eE+-]+)/i);
+  const pOutMatch = code.match(/(?:P_OUT|OUTLET_PRESSURE)\s*=\s*([0-9.eE+-]+)/i);
+  const flowMatch = code.match(/(?:FLOW|THROUGHPUT)\s*=\s*([0-9.eE+-]+)/i);
+  const compCount = Array.from(code.matchAll(/\bCOMPRESSOR\b|\bCS[_-]\d+/gi)).length;
+  return {
+    maopBar: maopMatch?.[1] ? Number.parseFloat(maopMatch[1]) : undefined,
+    inletPressureBar: pInMatch?.[1] ? Number.parseFloat(pInMatch[1]) : undefined,
+    outletPressureBar: pOutMatch?.[1] ? Number.parseFloat(pOutMatch[1]) : undefined,
+    throughputMmsm3d: flowMatch?.[1] ? Number.parseFloat(flowMatch[1]) : undefined,
+    compressorCount: compCount > 0 ? compCount : undefined,
+  };
+}
+
 export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
   const title = viewConfig.title || viewConfig.networkName || "PipelineStudio Network (.lps)";
 
   useEffect(() => {
@@ -147,56 +224,65 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
           ? viewConfig.url
           : `/api${viewConfig.url}`;
       fetch(targetUrl)
-        .then((r) => r.text())
-        .then((txt) => setRawText(txt))
+        .then((r) => (r.ok ? r.text() : ""))
+        .then((txt) => {
+          if (txt) setRawText(txt);
+        })
         .catch((err) => console.warn("[PipelineLpsViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
   }, [viewConfig.code, viewConfig.url]);
 
+  const parsedClient = useMemo(() => (rawText ? parsePipelineLpsClient(rawText) : undefined), [rawText]);
+
   const sanitizedSvg = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    // High-contrast clean gas transmission network schematic
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        
-        <!-- Supply Wellhead -->
-        <circle cx="80" cy="170" r="16" fill="#0284c7" stroke="#38bdf8" stroke-width="2" />
-        <text x="80" y="174" fill="#ffffff" font-size="9" font-family="sans-serif" text-anchor="middle" font-weight="bold">SUPPLY</text>
+    if (rawText.trim()) {
+      return renderSourceToDiagramSvg(rawText, "lps", title, true).svg;
+    }
+    return "";
+  }, [viewConfig.svg, rawText, title]);
 
-        <!-- Main Trunkline Pipes -->
-        <g stroke="#38bdf8" stroke-width="3" fill="none">
-          <line x1="96" y1="170" x2="220" y2="170" />
-          <line x1="280" y1="170" x2="420" y2="170" />
-          <line x1="420" y1="170" x2="540" y2="120" />
-          <line x1="420" y1="170" x2="540" y2="220" />
-        </g>
+  const handleCopy = () => {
+    if (rawText) {
+      navigator.clipboard.writeText(rawText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-        <!-- Compressor Station 1 -->
-        <polygon points="220,150 280,170 220,190" fill="#1e293b" stroke="#f59e0b" stroke-width="2" />
-        <text x="240" y="174" fill="#fbbf24" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">CS-1</text>
-        <text x="250" y="210" fill="#fde68a" font-size="9" font-family="monospace" text-anchor="middle">Ratio: 1.42</text>
+  const handleExportSvg = () => {
+    if (!sanitizedSvg) return;
+    const blob = new Blob([sanitizedSvg], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.toLowerCase().replace(/[^a-z0-9]/g, "-")}-network.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
-        <!-- Flow arrows -->
-        <polygon points="160,165 170,170 160,175" fill="#38bdf8" />
-        <polygon points="350,165 360,170 350,175" fill="#38bdf8" />
+  const handleOpenInPlayground = () => {
+    navigate(
+      buildEditorUrlForArtifact({
+        artifactId: viewConfig.artifactId,
+        viewType: "lps",
+        dialect: "lps",
+        viewConfig,
+        code: rawText,
+        title,
+      }),
+    );
+  };
 
-        <!-- Offtake City Gate 1 -->
-        <rect x="540" y="100" width="70" height="40" rx="4" fill="#064e3b" stroke="#10b981" stroke-width="1.5" />
-        <text x="575" y="125" fill="#6ee7b7" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">City Gate A</text>
-
-        <!-- Industrial Customer 2 -->
-        <rect x="540" y="200" width="70" height="40" rx="4" fill="#312e81" stroke="#818cf8" stroke-width="1.5" />
-        <text x="575" y="225" fill="#c7d2fe" font-size="10" font-family="sans-serif" text-anchor="middle" font-weight="bold">Power Plant</text>
-
-        <text x="325" y="40" fill="#f0f6fc" font-size="13" font-weight="bold" font-family="sans-serif" text-anchor="middle">Trunkline Hydraulic Gradient</text>
-        <text x="325" y="60" fill="#64748b" font-size="10" font-family="monospace" text-anchor="middle">Steady-State Gas Network Model</text>
-      </svg>
-    `);
-  }, [viewConfig.svg]);
+  const maopBar = viewConfig.maopBar ?? parsedClient?.maopBar;
+  const inletPressureBar = viewConfig.inletPressureBar ?? parsedClient?.inletPressureBar;
+  const outletPressureBar = viewConfig.outletPressureBar ?? parsedClient?.outletPressureBar;
+  const throughputMmsm3d = viewConfig.throughputMmsm3d ?? parsedClient?.throughputMmsm3d;
+  const compressorCount = viewConfig.compressorCount ?? parsedClient?.compressorCount;
+  const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
@@ -207,14 +293,28 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
           <PillBadge>PipelineStudio (LPS)</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={3}>
-          <Button
-            size="small"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/ide?source=${encodeURIComponent(rawText)}&title=${encodeURIComponent(title)}`)}
-          >
-            Open in Studio
+        <Box display="flex" alignItems="center" gap={2}>
+          <SegmentedControl>
+            <SegmentBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
+              <PulseIcon size={12} /> Network
+            </SegmentBtn>
+            <SegmentBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
+              <CodeIcon size={12} /> Source
+            </SegmentBtn>
+          </SegmentedControl>
+          {sanitizedSvg && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
+              SVG
+            </Button>
+          )}
+          <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+            {copied ? "Copied" : "Copy"}
           </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
+              Open in Playground
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -223,37 +323,52 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
+        ) : viewMode === "code" || !sanitizedSvg ? (
+          <CodePre>
+            {lines.length > 0 ? (
+              lines.map((line, idx) => (
+                <CodeLine key={idx}>
+                  <LineNo>{idx + 1}</LineNo>
+                  <span>{highlightPolyglotLine(line, "lps")}</span>
+                </CodeLine>
+              ))
+            ) : (
+              <Box p={4} color="fg.muted">
+                No PipelineStudio network deck loaded.
+              </Box>
+            )}
+          </CodePre>
         ) : (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         )}
 
         <InspectorSidebar>
-          <Text fontWeight="bold" fontSize="12px" color="var(--color-fg-default)">
+          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
             Hydraulic Network Telemetry
           </Text>
           <StatItem>
             <span>Line Pack Inventory</span>
-            <strong>{viewConfig.linePackMm3 ? `${viewConfig.linePackMm3} Mm³` : "14.8 Mm³"}</strong>
+            <strong>{viewConfig.linePackMm3 !== undefined ? `${viewConfig.linePackMm3} Mm³` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>MAOP Limit</span>
-            <strong>{viewConfig.maopBar ? `${viewConfig.maopBar} bar` : "84.0 bar"}</strong>
+            <strong>{maopBar !== undefined ? `${maopBar} bar` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Inlet Pressure</span>
-            <strong>{viewConfig.inletPressureBar ? `${viewConfig.inletPressureBar} bar` : "76.2 bar"}</strong>
+            <strong>{inletPressureBar !== undefined ? `${inletPressureBar} bar` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Outlet Delivery</span>
-            <strong>{viewConfig.outletPressureBar ? `${viewConfig.outletPressureBar} bar` : "48.5 bar"}</strong>
+            <strong>{outletPressureBar !== undefined ? `${outletPressureBar} bar` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Throughput Rate</span>
-            <strong>{viewConfig.throughputMmsm3d ? `${viewConfig.throughputMmsm3d} MSm³/d` : "22.4 MSm³/d"}</strong>
+            <strong>{throughputMmsm3d !== undefined ? `${throughputMmsm3d} MSm³/d` : "—"}</strong>
           </StatItem>
           <StatItem>
             <span>Compressor Units</span>
-            <strong style={{ color: "#34d399" }}>{viewConfig.compressorCount ?? 2} Running</strong>
+            <strong style={{ color: "#34d399" }}>{compressorCount !== undefined ? compressorCount : "—"}</strong>
           </StatItem>
         </InspectorSidebar>
       </ContentArea>

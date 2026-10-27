@@ -89,7 +89,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         title: title || "Model",
       };
       if (initialState.forkedFromArtifactId) {
-        viewConfigObj.forkedFromArtifactId = initialState.forkedFromArtifactId;
+        viewConfigObj["forkedFromArtifactId"] = initialState.forkedFromArtifactId;
       }
       createArtifactView({
         artifact_type: "morsel",
@@ -269,7 +269,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
               variant="invisible"
               onClick={handleCloseClick}
               aria-label="Close"
-              sx={{
+              style={{
                 color: "var(--color-text-primary)",
                 borderRadius: "50%",
                 width: "36px",
@@ -277,7 +277,6 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                "&:hover": { backgroundColor: "rgba(255, 255, 255, 0.06)" },
               }}
             />
             {initialState?.editPostId && (
@@ -392,48 +391,62 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 alignItems: "start",
               }}
             >
-              {editorLayout !== "preview" && (
+              {editorLayout === "preview" && (
                 <div style={{ minWidth: 0, width: "100%" }}>
-                  <ComposeBox
-                    editPostId={initialState?.editPostId}
-                    content={content}
-                    setContent={setContent}
-                    artifactId={artifactId}
-                    setArtifactId={setArtifactId}
+                  <TutorialPreview
                     notebookMode={notebookMode}
-                    setNotebookMode={setNotebookMode}
                     notebookTitle={notebookTitle}
-                    setNotebookTitle={setNotebookTitle}
                     notebookSummary={notebookSummary}
-                    setNotebookSummary={setNotebookSummary}
                     notebookDifficulty={notebookDifficulty}
-                    setNotebookDifficulty={setNotebookDifficulty}
                     notebookSeries={notebookSeries}
-                    setNotebookSeries={setNotebookSeries}
                     notebookDialect={notebookDialect}
-                    setNotebookDialect={setNotebookDialect}
-                    notebookCompanionRepo={notebookCompanionRepo}
-                    setNotebookCompanionRepo={setNotebookCompanionRepo}
                     notebookCells={notebookCells}
-                    setNotebookCells={setNotebookCells}
-                    onPostCreated={(post) => {
-                      if (activeDraftId) {
-                        deleteDraft(activeDraftId);
-                        setActiveDraftId(null);
-                      }
-                      onPostCreated?.(post);
-                      onClose();
-                    }}
-                    quotePost={currentQuotePost}
-                    replyToPost={currentReplyToPost}
-                    pendingPin={currentPendingPin}
-                    minRows={1}
-                    autoFocus={true}
-                    isModal={true}
+                    content={content}
                   />
                 </div>
               )}
-              {(editorLayout === "split" || editorLayout === "preview") && (
+              <div style={{ minWidth: 0, width: "100%" }}>
+                <ComposeBox
+                  editPostId={initialState?.editPostId}
+                  forkedFromArtifactId={initialState?.forkedFromArtifactId}
+                  content={content}
+                  setContent={setContent}
+                  artifactId={artifactId}
+                  setArtifactId={setArtifactId}
+                  notebookMode={notebookMode}
+                  setNotebookMode={setNotebookMode}
+                  notebookTitle={notebookTitle}
+                  setNotebookTitle={setNotebookTitle}
+                  notebookSummary={notebookSummary}
+                  setNotebookSummary={setNotebookSummary}
+                  notebookDifficulty={notebookDifficulty}
+                  setNotebookDifficulty={setNotebookDifficulty}
+                  notebookSeries={notebookSeries}
+                  setNotebookSeries={setNotebookSeries}
+                  notebookDialect={notebookDialect}
+                  setNotebookDialect={setNotebookDialect}
+                  notebookCompanionRepo={notebookCompanionRepo}
+                  setNotebookCompanionRepo={setNotebookCompanionRepo}
+                  notebookCells={notebookCells}
+                  setNotebookCells={setNotebookCells}
+                  onPostCreated={(post) => {
+                    if (activeDraftId) {
+                      deleteDraft(activeDraftId);
+                      setActiveDraftId(null);
+                    }
+                    onPostCreated?.(post);
+                    onClose();
+                  }}
+                  quotePost={currentQuotePost}
+                  replyToPost={currentReplyToPost}
+                  pendingPin={currentPendingPin}
+                  minRows={1}
+                  autoFocus={true}
+                  isModal={true}
+                  hideInput={editorLayout === "preview"}
+                />
+              </div>
+              {editorLayout === "split" && (
                 <div style={{ minWidth: 0, width: "100%" }}>
                   <TutorialPreview
                     notebookMode={notebookMode}

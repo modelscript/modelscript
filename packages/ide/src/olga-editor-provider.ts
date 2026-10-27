@@ -928,6 +928,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OLGA Multiphase Flow Assurance Editor</title>
   <style>
@@ -1826,7 +1827,11 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       const csvEl = document.getElementById('telemetryInput');
       const csvText = csvEl ? csvEl.value.trim() : '';
       if (!csvText) {
-        alert("Please enter or paste field telemetry CSV observations.");
+        const statusBadge = document.getElementById('tuningStatusBadge');
+        if (statusBadge) {
+          statusBadge.textContent = 'Enter CSV Telemetry First';
+          statusBadge.className = 'header-badge badge-warn';
+        }
         return;
       }
       const params = [];
@@ -1890,43 +1895,45 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       toggleSurveyDrawer();
     }
 
+    function safePromptValue(label, fallback) {
+      try {
+        if (typeof prompt === 'function') {
+          const val = prompt(label, fallback);
+          if (val !== null && val !== undefined && String(val).trim() !== '') {
+            return String(val).trim();
+          }
+        }
+      } catch {
+        // Sandboxed VS Code webviews block window.prompt()
+      }
+      return fallback;
+    }
+
     function promptAddComponent(type) {
       let attrs = {};
       if (type === 'Pipe') {
-        const len = prompt("Pipe Section Length [m]:", "1000");
-        if (len === null) return;
-        const diam = prompt("Internal Diameter [m]:", "0.254");
-        if (diam === null) return;
+        const len = safePromptValue("Pipe Section Length [m]:", "1000");
+        const diam = safePromptValue("Internal Diameter [m]:", "0.254");
         attrs = { length: parseFloat(len), diameter: parseFloat(diam) };
       } else if (type === 'Valve') {
-        const pos = prompt("Valve Location along Flowpath [m]:", "500");
-        if (pos === null) return;
-        const open = prompt("Initial Valve Opening [0.0 - 1.0]:", "1.0");
-        if (open === null) return;
+        const pos = safePromptValue("Valve Location along Flowpath [m]:", "500");
+        const open = safePromptValue("Initial Valve Opening [0.0 - 1.0]:", "1.0");
         attrs = { position: parseFloat(pos), opening: parseFloat(open) };
       } else if (type === 'Pump') {
-        const pos = prompt("Pump Location along Flowpath [m]:", "250");
-        if (pos === null) return;
-        const dp = prompt("Pump Differential Pressure Delta-P [bar]:", "15");
-        if (dp === null) return;
+        const pos = safePromptValue("Pump Location along Flowpath [m]:", "250");
+        const dp = safePromptValue("Pump Differential Pressure Delta-P [bar]:", "15");
         attrs = { position: parseFloat(pos), deltaP: parseFloat(dp) * 1e5 };
       } else if (type === 'Source') {
-        const pos = prompt("Source Injection Location [m]:", "100");
-        if (pos === null) return;
-        const rate = prompt("Mass Flow Rate [kg/s]:", "10.0");
-        if (rate === null) return;
+        const pos = safePromptValue("Source Injection Location [m]:", "100");
+        const rate = safePromptValue("Mass Flow Rate [kg/s]:", "10.0");
         attrs = { position: parseFloat(pos), massRate: parseFloat(rate) };
       } else if (type === 'Well') {
-        const name = prompt("Wellhead Identifier:", "WELL_PROD_02");
-        if (name === null) return;
-        const p = prompt("Wellhead Flowing Pressure [bar]:", "140");
-        if (p === null) return;
+        const name = safePromptValue("Wellhead Identifier:", "WELL_PROD_02");
+        const p = safePromptValue("Wellhead Flowing Pressure [bar]:", "140");
         attrs = { name, pressure: parseFloat(p) * 1e5 };
       } else if (type === 'Separator') {
-        const name = prompt("Topside Separator Identifier:", "SEP_HP_02");
-        if (name === null) return;
-        const p = prompt("Operating Pressure [bar]:", "30");
-        if (p === null) return;
+        const name = safePromptValue("Topside Separator Identifier:", "SEP_HP_02");
+        const p = safePromptValue("Operating Pressure [bar]:", "30");
         attrs = { name, pressure: parseFloat(p) * 1e5 };
       }
 
@@ -2205,6 +2212,8 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       }
 
       if (!currentData.simulation) return;
+      const sim = currentData.simulation;
+      const whatIf = currentData.whatIfSimulation;
 
       const w = 860;
       const h = 420;

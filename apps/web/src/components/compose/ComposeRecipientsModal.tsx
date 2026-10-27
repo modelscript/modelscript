@@ -63,7 +63,7 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
             icon={() => <XIcon size={20} />}
             variant="invisible"
             onClick={onClose}
-            sx={{ color: "var(--color-fg-default)" }}
+            style={{ color: "var(--color-fg-default)" }}
             aria-label="Close"
           />
           <Box flex={1} ml={4}>
@@ -100,7 +100,7 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
           {allMentionedUsers.length > 1 && (
             <>
               <Box borderBottom="1px solid var(--color-border)" my={3} />
-              <Heading as="h3" sx={{ fontSize: "18px", mb: 3 }}>
+              <Heading as="h3" style={{ fontSize: "18px", marginBottom: "16px" }}>
                 Others in this conversation
               </Heading>
               {allMentionedUsers

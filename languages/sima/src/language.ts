@@ -9,6 +9,7 @@ import { SimaErrorCode } from "./lints/error-codes.js";
 export const simaLanguage = language({
   name: "sima",
   fileExtensions: [".inp", ".sima", ".sys", ".hyd"],
+  maturity: "beta",
   lsp: {
     fileExtensions: [".inp", ".sima", ".sys", ".hyd"],
   },

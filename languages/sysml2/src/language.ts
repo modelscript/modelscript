@@ -3092,6 +3092,7 @@ export const sysml2Language = language({
   name: "sysml2",
   displayName: "SysML v2",
   fileExtensions: [".sysml", ".sysml2", ".kerml"],
+  maturity: "stable",
 
   lsp: {
     fileExtensions: [".sysml", ".sysml2", ".kerml"],

@@ -1473,7 +1473,7 @@ export async function computeModelReachability(
           isViolation: res.intervalBreachTime !== undefined,
         },
         {
-          name: "Taylor Model (Order 4)",
+          name: "2nd-Order Taylor Sensitivity (non-rigorous)",
           kind: "affine" as const,
           color: "#8b5cf6",
           fillColor: "rgba(139, 92, 246, 0.18)",
@@ -1521,7 +1521,7 @@ export async function computeModelReachability(
           peakVal: parseFloat(Math.max(...zIntHi).toFixed(2)),
         },
         {
-          name: "Taylor Model (Order 4)",
+          name: "2nd-Order Taylor Sensitivity (non-rigorous)",
           kind: "affine" as const,
           color: "#8b5cf6",
           fillColor: "rgba(139, 92, 246, 0.18)",
@@ -1932,7 +1932,7 @@ export async function computeModelReachability(
             isViolation: intBreachTime !== undefined,
           },
           {
-            name: "Taylor Model (Order 4)",
+            name: "2nd-Order Taylor Sensitivity (non-rigorous)",
             kind: "affine" as const,
             color: "#8b5cf6",
             fillColor: "rgba(139, 92, 246, 0.18)",

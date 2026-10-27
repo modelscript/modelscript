@@ -1,6 +1,6 @@
 # PSS/E Transmission Power Flow (`.raw`)
 
-The `@modelscript/psse` language package (`languages/psse`) provides native support for **Siemens PSS®E RAW (`.raw`)** transmission grid power flow base cases (Revisions 30 through 35). It delivers streaming parsing, round-trip serialization, pre-flight topological linting (`P1001`–`P4002`), sparse nodal admittance matrix ($Y_{bus} = G + jB$) assembly, in-engine non-linear AC power flow solving (Newton-Raphson & Fast Decoupled), multi-domain projections to **Modelica** and **PSCAD/EMT**, interactive Single-Line Diagrams (SLD) via AntV X6, and a dual-mode VS Code custom webview editor.
+The `@modelscript/psse` language package (`languages/psse`) provides native support for **Siemens PSS®E RAW (`.raw`)** transmission grid power flow base cases (Revisions 30 through 35). It delivers streaming parsing, round-trip serialization, pre-flight topological linting (`P1001`–`P4001`), sparse nodal admittance matrix ($Y_{bus} = G + jB$) assembly, in-engine non-linear AC power flow solving (Newton-Raphson & Fast Decoupled), multi-domain projections to **Modelica** and **PSCAD/EMT**, interactive Single-Line Diagrams (SLD) via AntV X6, and a dual-mode VS Code custom webview editor.
 
 ---
 
@@ -55,23 +55,11 @@ flowchart TD
 
 ---
 
-## 1. Pre-Flight Electrical Diagnostic Rules (`lints/`)
+## 1. Pre-Flight Electrical Diagnostic Rules
 
 `@modelscript/psse` runs pre-flight static checks across electrical topology, connection consistency, and equipment parameter bounds before simulation or projection:
 
-| Code    | Severity    | Rule Description                                                                                    | Engineering Remediation                                                       |
-| :------ | :---------- | :-------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| `P1001` | **Error**   | **Missing Bus Reference**: Generator, Load, or Branch references a non-existent bus number          | Add the missing bus declaration or correct the bus index                      |
-| `P1002` | **Error**   | **Duplicate Bus Number**: Two or more buses declare identical bus IDs                               | Ensure all bus numbers are strictly unique across the network                 |
-| `P1003` | **Error**   | **No Swing/Slack Bus**: Case does not contain an active type 3 (Swing) generator bus                | Designate at least one generator bus with code `IDE = 3`                      |
-| `P1004` | **Warning** | **Multiple Swing Buses**: More than one bus is designated as Swing without distributed slack        | Consolidate slack designation or configure island area slack                  |
-| `P2001` | **Error**   | **Inverted Reactive Limits**: Generator $Q_{min} > Q_{max}$                                         | Correct generator capability curve bounds ($Q_b \le Q_t$)                     |
-| `P2002` | **Warning** | **Voltage Setpoint Out of Range**: Generator scheduled voltage $V_s < 0.8$ or $V_s > 1.2\text{ pu}$ | Re-center voltage setpoint to standard operating band ($0.95 \le V \le 1.05$) |
-| `P3001` | **Error**   | **Zero Series Impedance**: Branch series impedance $Z = \sqrt{R^2 + X^2} \le 10^{-6}\text{ pu}$     | Add minimal series reactance or model as zero-impedance breaker               |
-| `P3002` | **Warning** | **Negative Resistance**: Branch $R < 0$ without series capacitor compensation flag                  | Verify line parameters or confirm series compensation rating                  |
-| `P3003` | **Warning** | **High R/X Ratio**: Transmission line $R/X > 1.0$ at high voltage ($\ge 115\text{ kV}$)             | Check conductor sizing; high $R/X$ degrades AC power flow convergence         |
-| `P4001` | **Warning** | **Extreme Transformer Tap**: Off-nominal turns ratio $a < 0.8$ or $a > 1.2$                         | Verify transformer nominal tap and voltage base ratings                       |
-| `P4002` | **Warning** | **Large Phase Shift**: Phase shift angle $                                                          | \phi                                                                          | > 45^\circ$ on phase-shifting transformer | Check transformer angle configuration or phase-shift winding code |
+<LintRules lang="psse" />
 
 ---
 
@@ -183,6 +171,6 @@ msx psse netlist case.raw
 Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom dual-mode editor:
 
 - **Single-Line Diagram View**: Interactive pan/zoom SVG canvas with voltage-tier color coding (345 kV red, 138 kV blue, 69 kV green), power flow overlays, and generator/transformer glyphs.
-- **High-Density Tabular Grid**: Live-filterable tables for Buses, Generators, Branches, Transformers, and Loads with instant search.
+- **High-Density Tabular Grid**: Live-filterable tables for Buses, Generators, Branches, Transformers, and Loads with search.
 - **Overload & Violation Badges**: Automatic highlight of under-voltage ($V < 0.95\text{ pu}$), over-voltage ($V > 1.05\text{ pu}$), and thermal line overloads ($S_{ij} > \text{Rate A}$).
-- **Export Toolbar**: Instant export to SVG diagrams, Modelica `.mo` packages, and PSCAD/EMT netlists.
+- **Export Toolbar**: Export to SVG diagrams, Modelica `.mo` packages, and PSCAD/EMT netlists.

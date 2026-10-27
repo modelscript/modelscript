@@ -38,3 +38,97 @@ MARINTEK / SINTEF Ocean **SIMO** (Simulation of Marine Operations) and **RIFLEX*
 | `M7013` | `mass-matrix-asymmetric`      | `error`   | Floater structural mass/inertia matrix $M$ is not positive-definite or symmetric.                |
 | `M7014` | `qtf-symmetry-violation`      | `warning` | Quadratic Transfer Function (QTF) matrix does not satisfy conjugate symmetry.                    |
 | `M7015` | `exceeds-minimum-bend-radius` | `error`   | Flexible riser or dynamic cable nominal minimum bending radius (MBR) violated.                   |
+
+---
+
+## Package Structure
+
+| Path                        | Description                                                                                                                     |
+| :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| `src/index.ts`              | Public package exports (`simaLanguage`, `parseSimaFile`, `solveCatenary`, `lintSimaProject`, `verifyDnvMooringCompliance`)      |
+| `src/language.ts`           | `simaLanguage` grammar specification and file extension registration (`.inp`, `.sima`, `.sys`, `.hyd`)                          |
+| `src/types.ts`              | Core TypeScript interfaces (`SimaModel`, `Vessel`, `MooringLine`, `LineSegment`, `HydrodynamicData`, `EnvironmentalConditions`) |
+| `src/parser/index.ts`       | `parseCardDeck`, `parseSimaXml`, `parseHydFile`, and unified `parseSimaFile` parsers                                            |
+| `src/solver/index.ts`       | `solveCatenary`, `WasmCatenaryBridge`, `simulateCumminsDynamics`, `createRationalRealization`, and `lowerSimaToDae`             |
+| `assembly/`                 | In-WASM AssemblyScript catenary shooting and marine hydrodynamics kernel                                                        |
+| `src/verification/index.ts` | `verifyDnvMooringCompliance`, `evaluateOffsetLimits`, `rainflowCount`, and `computeFatigueDamage` (DNV-OS-E301 / DNV-RP-C203)   |
+| `src/lints/index.ts`        | `lintSimaProject` and `SimaErrorCode` (`M7001`–`M7015`) pre-flight marine diagnostic engine                                     |
+| `src/projections/index.ts`  | `simaToModelica`, `simaToSsp`, and `simaToSysml2` cross-domain projectors                                                       |
+| `src/dae/index.ts`          | `simaToDae` linear-memory `DAEBuilder` lowering                                                                                 |
+| `src/workspace-index.ts`    | `SimaWorkspaceIndex` multi-file symbol indexer                                                                                  |
+| `src/lsp.ts`                | LSP diagnostics (`validateSima`), hover cards (`getSimaHover`), and document symbols (`getSimaDocumentSymbols`)                 |
+
+---
+
+## Scripts
+
+| Command              | Description                                                                                 |
+| :------------------- | :------------------------------------------------------------------------------------------ |
+| `npm run build`      | Build WASM kernel (`npm run build:wasm`) and compile TypeScript to `dist/`                  |
+| `npm run build:wasm` | Compile AssemblyScript catenary kernel (`node scripts/build-wasm.js`)                       |
+| `npm test`           | Run card/XML/.hyd parser, catenary solver, Cummins dynamics, DNV verification, & lint tests |
+| `npm run lint`       | Run ESLint across `src/` and `tests/`                                                       |
+| `npm run typecheck`  | Run `tsc --noEmit` type verification                                                        |
+| `npm run clean`      | Remove `dist/` build artifacts                                                              |
+
+---
+
+## CLI Usage (`msx sima`)
+
+```bash
+# Inspect vessel hydrostatics, fairleads, mooring lines, and wave environment
+msx sima inspect SemiSub.sima
+
+# Run pre-flight marine lint rules (M7001–M7015)
+msx sima lint SemiSub.sima
+
+# Verify DNV-OS-E301 / DNV-ST-0119 mooring tension safety factors & anchor uplift
+msx sima verify SemiSub.sima --consequence-class=2
+
+# Evaluate vessel offset limits and damaged-line excursion envelopes
+msx sima offset SemiSub.sima
+
+# Project offshore model to Modelica MultiBody, SSP SystemStructure.ssd, SysML v2, or DAE
+msx sima to-modelica SemiSub.sima --out=SemiSub.mo
+msx sima to-ssp SemiSub.sima --out=SystemStructure.ssd
+msx sima to-sysml2 SemiSub.sima --out=SemiSub.sysml
+```
+
+---
+
+## Programmatic Usage
+
+```typescript
+import {
+  lintSimaProject,
+  parseSimaFile,
+  simaToModelica,
+  simaToSsp,
+  solveCatenary,
+  verifyDnvMooringCompliance,
+} from "@modelscript/sima";
+
+// 1. Parse SIMO/RIFLEX card deck (.inp / .sys) or .sima XML project
+const model = parseSimaFile(sourceText, "SemiSub.sima");
+
+// 2. Run pre-flight marine linter (M7001–M7015)
+const diagnostics = lintSimaProject(model);
+
+// 3. Solve elastic catenary equilibrium for a mooring line
+const catenary = solveCatenary({
+  horizontalSpan: 850,
+  verticalSpan: 320,
+  lineLength: 940,
+  submergedWeightPerMeter: 1250,
+  axialStiffnessEA: 8.5e8,
+});
+console.log(catenary.fairleadTension, catenary.horizontalTension, catenary.groundedLength);
+
+// 4. Verify DNV-OS-E301 / DNV-ST-0119 mooring safety factors (Consequence Class 2)
+const dnvReport = verifyDnvMooringCompliance(model, { consequenceClass: 2 });
+console.log("DNV compliance passed:", dnvReport.passed);
+
+// 5. Project to Modelica or SSP SystemStructure.ssd
+const modelicaSource = simaToModelica(model);
+const ssdXml = simaToSsp(model);
+```

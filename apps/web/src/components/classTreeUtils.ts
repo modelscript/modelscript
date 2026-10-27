@@ -8,20 +8,78 @@ export interface TreeNode {
   name: string;
   fullName: string;
   classKind: string;
+  description?: string | null | undefined;
   children: TreeNode[];
 }
+
+export type ClassTreeNode = TreeNode;
 
 export type ClassDomain = "modelica" | "sysml2" | "cad";
 
 export function classifyClassDomain(cls: { class_kind: string; class_name?: string | undefined }): ClassDomain {
   const kind = (cls.class_kind || "").toLowerCase();
-  if (kind.startsWith("sysml") || kind.startsWith("kerml")) {
+  if (
+    kind.startsWith("sysml") ||
+    kind.startsWith("kerml") ||
+    kind === "partdef" ||
+    kind === "attributedef" ||
+    kind === "portdef" ||
+    kind === "itemdef" ||
+    kind === "actiondef" ||
+    kind === "statedef" ||
+    kind === "constraintdef" ||
+    kind === "requirementdef" ||
+    kind === "calculationdef" ||
+    kind === "connectiondef" ||
+    kind === "interfacedef" ||
+    kind === "allocationdef" ||
+    kind === "analysisdef" ||
+    kind === "verificationdef" ||
+    kind === "usecasedef" ||
+    kind === "viewdef" ||
+    kind === "reqif_spec"
+  ) {
     return "sysml2";
   }
-  if (kind.startsWith("cad_") || kind === "product" || kind === "shape" || kind === "solid") {
+  if (
+    kind.startsWith("cad") ||
+    kind === "product" ||
+    kind === "shape" ||
+    kind === "solid" ||
+    kind === "scad_module" ||
+    kind === "urdf_robot"
+  ) {
     return "cad";
   }
   return "modelica";
+}
+
+export function formatFormalSignature(cls: {
+  className: string;
+  classKind: string;
+  baseClasses?: string[] | undefined;
+}): string {
+  const kind = (cls.classKind || "class").toLowerCase();
+  const bases = cls.baseClasses || [];
+  if (kind.startsWith("sysml_")) {
+    const sysmlKw = kind
+      .replace(/^sysml_/, "")
+      .replace(/def$/, " def")
+      .replace(/usage$/, "");
+    const spec = bases.length > 0 ? ` :> ${bases.join(", ")}` : "";
+    return `${sysmlKw} ${cls.className}${spec}`;
+  }
+  if (kind === "spice_subckt") {
+    return `.subckt ${cls.className}`;
+  }
+  if (kind === "scad_module") {
+    return `module ${cls.className}(...)`;
+  }
+  if (kind === "veriloga_module") {
+    return `module ${cls.className}(...);`;
+  }
+  const extClause = bases.length > 0 ? ` extends ${bases.join(", ")}` : "";
+  return `${kind.replace(/_/g, " ")} ${cls.className}${extClause}`;
 }
 
 export function buildClassTree(classes: ClassSummary[], rootName: string): TreeNode[] {
@@ -48,12 +106,14 @@ export function buildClassTree(classes: ClassSummary[], rootName: string): TreeN
           name: part,
           fullName: i === parts.length - 1 ? fullName : currentPath,
           classKind: i === parts.length - 1 ? cls.class_kind : "package",
+          description: i === parts.length - 1 ? cls.description : null,
           children: [],
         };
         parentNode.children.push(node);
       } else if (i === parts.length - 1) {
         node.classKind = cls.class_kind;
         node.fullName = fullName;
+        node.description = cls.description;
       }
       parentNode = node;
     }
@@ -94,6 +154,8 @@ export interface EnrichedComponent extends Component {
   unit: string | null;
   otherModifiers: { modifier_name: string; modifier_value: string | null }[];
 }
+
+export type CategorizedClassComponents = CategorizedComponents;
 
 export interface CategorizedComponents {
   parameters: EnrichedComponent[];
