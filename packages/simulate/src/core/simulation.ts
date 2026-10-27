@@ -20,6 +20,8 @@ export interface ArenaWhenAction {
   targetNameId: number;
   /** ExprId of the right-hand side expression. */
   exprId: number;
+  /** Optional special call type ("terminate" | "assert"). */
+  callType?: string | undefined;
 }
 
 /** An arena when-clause ready for evaluation during simulation. */
@@ -30,6 +32,8 @@ export interface ArenaWhenClause {
   actions: ArenaWhenAction[];
   /** Whether the condition was active at the previous time step. */
   wasActive: boolean;
+  /** Optional parent when-equation group index for mutually exclusive when/elsewhen branches. */
+  groupId?: number | undefined;
 }
 
 /** An arena assertion extracted from EqKind.FunctionCall assert(cond, msg). */
@@ -53,6 +57,8 @@ export interface ArenaEventIndicator {
    *   0 = both directions
    */
   direction: -1 | 0 | 1;
+  /** Optional indices into whenClauses that depend on this indicator. */
+  clauseIndices?: number[] | undefined;
 }
 
 /** Runtime state for a single state machine during arena simulation. */

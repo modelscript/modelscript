@@ -83,8 +83,8 @@ export class ChcLowering {
       types: allVars.map(() => "real"),
     });
 
-    // Fact: Init(x) => Contract(u, x, y)
-    sys.addFact(contract.name, allVars, contract.init);
+    // Fact: Init(x) & Assumption(u) => Contract(u, x, y)
+    sys.addFact(contract.name, allVars, [...contract.init, ...contract.assumptions]);
 
     // Step: Contract(u, x, y) & Assumption(u') & T(x, u, x', y') => Contract(u', x', y')
     const stepConstraints = [...contract.assumptions, ...contract.transition];
@@ -120,18 +120,21 @@ export class ChcLowering {
     systemOutputs: string[],
   ): ChcSystem {
     const sys = new ChcSystem();
+    const compVarSet = new Set<string>([...systemInputs, ...systemOutputs]);
 
     // Add each component contract's rules and facts
     const compPredApps = components.map((c) => {
       const allVars = [...c.inputs, ...c.states, ...c.outputs];
+      for (const v of allVars) compVarSet.add(v);
       sys.addPredicate({
         name: c.name,
         arity: allVars.length,
         varNames: allVars,
+        types: allVars.map(() => "real"),
       });
 
       // Fact
-      sys.addFact(c.name, allVars, c.init);
+      sys.addFact(c.name, allVars, [...c.init, ...c.assumptions]);
 
       // Step
       const primedVars = allVars.map((v) => toPrimedVar(v));
@@ -153,11 +156,12 @@ export class ChcLowering {
     });
 
     // Add System predicate
-    const allSysVars = Array.from(new Set([...systemInputs, ...systemOutputs]));
+    const allSysVars = Array.from(compVarSet);
     sys.addPredicate({
       name: systemName,
       arity: allSysVars.length,
       varNames: allSysVars,
+      types: allSysVars.map(() => "real"),
     });
 
     // Composition Rule: Comp1 & Comp2 & ... & Wiring => System

@@ -19,18 +19,25 @@ import {
   sysml2Views,
 } from "./views.js";
 
-const indexerHooks = extractIndexerHooks(sysml2Language) ?? (globalThis as any).__sysml2IndexerHooksFallback ?? [];
+interface GlobalSysml2Fallbacks {
+  __sysml2IndexerHooksFallback?: ReturnType<typeof extractIndexerHooks>;
+  __sysml2QueryHooksFallback?: ReturnType<typeof extractQueryHooksMap>;
+  __sysml2RefHooksFallback?: ReturnType<typeof extractRefHooks>;
+}
+const globalFallbacks = globalThis as unknown as GlobalSysml2Fallbacks;
+
+const indexerHooks = extractIndexerHooks(sysml2Language) ?? globalFallbacks.__sysml2IndexerHooksFallback ?? [];
 export const queryHooks =
-  extractQueryHooksMap(sysml2Language) ?? (globalThis as any).__sysml2QueryHooksFallback ?? new Map();
-const refHooks = extractRefHooks(sysml2Language) ?? (globalThis as any).__sysml2RefHooksFallback ?? [];
+  extractQueryHooksMap(sysml2Language) ?? globalFallbacks.__sysml2QueryHooksFallback ?? new Map();
+const refHooks = extractRefHooks(sysml2Language) ?? globalFallbacks.__sysml2RefHooksFallback ?? [];
 export const gfxConfig = extractGraphicsConfig(sysml2Language) ?? {};
 
 // Convert refHooks into indexerHooks so reference nodes get indexed too.
 // The resolver needs reference entries in the index to detect unresolved refs.
-const defRuleNames = new Set(indexerHooks.map((h: any) => h.ruleName));
+const defRuleNames = new Set(indexerHooks.map((h) => h.ruleName));
 const refAsIndexerHooks = (refHooks ?? [])
-  .filter((rh: any) => !defRuleNames.has(rh.ruleName))
-  .map((rh: any) => ({
+  .filter((rh) => !defRuleNames.has(rh.ruleName))
+  .map((rh) => ({
     ruleName: rh.ruleName,
     kind: "Reference",
     namePath: rh.namePath,
@@ -59,7 +66,14 @@ export function createSysML2WorkspaceIndex(): WorkspaceIndex {
  * Uses the pre-compiled snapshot for instant 0ms startup without CST parsing,
  * falling back to parser.parse() if the snapshot is unavailable.
  */
-export function loadEmbeddedKerMLStdlib(workspaceIndex: WorkspaceIndex, parser?: any): string | null {
+export function loadEmbeddedKerMLStdlib(
+  workspaceIndex: WorkspaceIndex,
+  parser?: {
+    parse(
+      text: string,
+    ): { rootNode?: ReturnType<NonNullable<Parameters<WorkspaceIndex["register"]>[1]>> } | null | undefined;
+  },
+): string | null {
   // Fast path: Ingest pre-compiled snapshot without parsing (0ms cold start, browser-safe)
   if (Array.isArray(kermlStdlibEntries) && kermlStdlibEntries.length > 0) {
     workspaceIndex.registerPrecompiledEntries(KERML_STDLIB_URI, kermlStdlibEntries);
@@ -76,7 +90,7 @@ export function loadEmbeddedKerMLStdlib(workspaceIndex: WorkspaceIndex, parser?:
         const uri = "sysml2://stdlib/KerML.sysml";
         workspaceIndex.register(uri, () => {
           const tree = parser.parse(text);
-          return tree ? (tree.rootNode as any) : null;
+          return tree?.rootNode ?? null;
         });
         return uri;
       }
@@ -90,7 +104,12 @@ export function loadEmbeddedKerMLStdlib(workspaceIndex: WorkspaceIndex, parser?:
 /**
  * Creates a configured QueryEngine for a given SysML2 SymbolIndex.
  */
-export function createSysML2QueryEngine(index: any, tree?: any, cacheStore?: any, maxMemos?: number): QueryEngine {
+export function createSysML2QueryEngine(
+  index: ConstructorParameters<typeof QueryEngine>[0],
+  tree?: NonNullable<ConstructorParameters<typeof QueryEngine>[2]>["tree"],
+  cacheStore?: NonNullable<ConstructorParameters<typeof QueryEngine>[2]>["cacheStore"],
+  maxMemos?: number,
+): QueryEngine {
   return new QueryEngine(index, queryHooks, { tree, cacheStore, ...(maxMemos !== undefined && { maxMemos }) });
 }
 
@@ -103,9 +122,9 @@ export function createSysML2QueryEngine(index: any, tree?: any, cacheStore?: any
  * @param resolver     Optional ScopeResolver for edge source/target resolution.
  */
 export function buildSysML2DiagramData(
-  index: any,
+  index: Parameters<typeof buildPolyglotDiagram>[0],
   documentUri: string,
-  resolver?: any,
+  resolver?: Parameters<typeof buildPolyglotDiagram>[3],
   diagramType:
     | "All"
     | "BDD"
@@ -136,6 +155,16 @@ export function buildSysML2DiagramData(
   });
 }
 
+export interface VerificationDiagnostic {
+  severity: number;
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  message: string;
+  source: string;
+}
+
 /**
  * Transforms VerificationRunner results into LSP Diagnostic objects.
  * Maps solver constraint violations and dynamic requirement failures back
@@ -143,14 +172,20 @@ export function buildSysML2DiagramData(
  */
 export function emitVerificationDiagnostics(
   results: VerificationResult[],
-  db: any,
+  db: {
+    symbols: {
+      get(
+        id: NonNullable<VerificationResult["constraintId"]>,
+      ): { startOffset?: number | undefined; endOffset?: number | undefined } | undefined;
+    };
+  },
   _documentUri: string,
   positions: {
     charOffsetToPosition?(offset: number): { line: number; character: number };
     offsetToPosition?(offset: number): { line: number; character: number };
   },
-): any[] {
-  const diagnostics = [];
+): VerificationDiagnostic[] {
+  const diagnostics: VerificationDiagnostic[] = [];
 
   for (const vr of results) {
     if (!vr.constraintId) continue;

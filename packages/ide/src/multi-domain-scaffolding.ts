@@ -56,7 +56,7 @@ export function generateMultiDomainScaffold(
   const modelicaSource = GenericModelicaBridge.emitModelica(sysmlDef);
 
   // 2. OpenSCAD CSG geometric model source
-  const attrs = new Map<string, any>();
+  const attrs = new Map<string, number | string | boolean>();
   for (const a of sysmlDef.attributes || []) {
     attrs.set(a.name.toLowerCase(), a.defaultValue ?? 10);
   }
@@ -220,8 +220,9 @@ export async function scaffoldMultiDomain(targetUri?: vscode.Uri | string): Prom
       feaUri,
       cfdUri,
     };
-  } catch (err: any) {
-    vscode.window.showErrorMessage(`Multi-domain scaffolding failed: ${err.message || err}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`Multi-domain scaffolding failed: ${message}`);
     return null;
   }
 }

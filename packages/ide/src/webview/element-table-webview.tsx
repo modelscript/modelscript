@@ -4,18 +4,28 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { EngineeringDataGrid, type DataGridColumn } from "./shared/index.js";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
 
 export interface TableColumnDef {
   id: string;
   title: string;
-  editable?: boolean;
+  editable?: boolean | undefined;
 }
+
+export type ElementTableRow = Record<string, unknown>;
 
 export interface TablePayload {
   metaclass: string;
   columns: TableColumnDef[];
-  rows: Record<string, any>[];
+  rows: ElementTableRow[];
 }
 
 const METACLASS_TABS = [
@@ -64,24 +74,26 @@ export function ElementTableApp() {
     vscode?.postMessage({ type: "changeMetaclass", metaclass: meta });
   };
 
-  const handleCellEdit = (item: Record<string, any>, key: string, newValue: string) => {
+  const handleCellEdit = (item: ElementTableRow, key: string, newValue: string) => {
     vscode?.postMessage({
       type: "updateAttribute",
-      qualifiedName: item.qualifiedName || item.name,
+      qualifiedName: String(item.qualifiedName || item.name || ""),
       attributeName: key,
       newValue,
     });
   };
 
-  const handleGoToSource = (item: Record<string, any>) => {
+  const handleGoToSource = (item: ElementTableRow) => {
+    const startOffset = typeof item.startOffset === "number" ? item.startOffset : 0;
+    const endOffset = typeof item.endOffset === "number" ? item.endOffset : startOffset;
     vscode?.postMessage({
       type: "goToSource",
-      startOffset: item.startOffset ?? 0,
-      endOffset: item.endOffset ?? item.startOffset ?? 0,
+      startOffset,
+      endOffset,
     });
   };
 
-  const columns = useMemo<DataGridColumn<Record<string, any>>[]>(() => {
+  const columns = useMemo<DataGridColumn<ElementTableRow>[]>(() => {
     if (!table?.columns) return [];
 
     return table.columns.map((c) => ({
@@ -89,7 +101,7 @@ export function ElementTableApp() {
       header: c.title,
       sortable: true,
       editable: c.editable !== false,
-      render: (item: Record<string, any>) => {
+      render: (item: ElementTableRow) => {
         const val = item[c.id];
         if (c.id === "name" || c.id === "qualifiedName") {
           return (
@@ -232,7 +244,7 @@ export function ElementTableApp() {
           <EngineeringDataGrid
             columns={columns}
             data={rows}
-            keyExtractor={(item, idx) => item.qualifiedName || item.name || idx}
+            keyExtractor={(item, idx) => String(item.qualifiedName || item.name || idx)}
             onCellEdit={handleCellEdit}
             searchPlaceholder={`Filter ${activeMetaclass} records…`}
             emptyMessage={`No ${activeMetaclass} elements found.`}

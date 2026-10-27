@@ -152,6 +152,9 @@ export function retractToken(tokenId: u32): u32 {
       }
     }
   }
+  if (retractedCount > 0) {
+    garbageCollectFacts();
+  }
   return retractedCount;
 }
 

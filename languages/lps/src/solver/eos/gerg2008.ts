@@ -85,8 +85,9 @@ export class Gerg2008Eos {
     let mm = 0;
     let total = 0;
     for (const [k, v] of Object.entries(comp)) {
-      if (v && v > 0 && GERG_COMPONENTS[k]) {
-        mm += v * GERG_COMPONENTS[k]!.molarMass;
+      const c = GERG_COMPONENTS[k];
+      if (v && v > 0 && c) {
+        mm += v * c.molarMass;
         total += v;
       }
     }
@@ -102,8 +103,8 @@ export class Gerg2008Eos {
     let total = 0;
 
     for (const [k, v] of Object.entries(comp)) {
-      if (v && v > 0 && GERG_COMPONENTS[k]) {
-        const c = GERG_COMPONENTS[k]!;
+      const c = GERG_COMPONENTS[k];
+      if (v && v > 0 && c) {
         tr += v * c.tc;
         invRhor += v * (1.0 / c.rhoc);
         total += v;

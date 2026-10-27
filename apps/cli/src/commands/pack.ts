@@ -3,7 +3,7 @@
 import AdmZip from "adm-zip";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import {
   buildPackageZip,
   collectPackageFiles,
@@ -29,7 +29,7 @@ export function formatArchiveFilename(name: string, version: string): string {
 export const Pack: CommandModule<{}, PackArgs> = {
   command: "pack [path]",
   describe: "Create an offline distribution zip archive from a package",
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("path", {
         description: "Path to the package directory or single Modelica file (defaults to current working directory)",
@@ -52,7 +52,7 @@ export const Pack: CommandModule<{}, PackArgs> = {
         type: "boolean",
         default: false,
       });
-  }) as any,
+  }) as CommandModule<{}, PackArgs>["builder"],
   handler: async (args) => {
     const targetPath = path.resolve(args.path || ".");
 

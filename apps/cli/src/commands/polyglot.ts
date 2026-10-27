@@ -21,7 +21,7 @@ import { GenericModelicaBridge } from "@modelscript/sysml2";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 import { cfdLanguage } from "@modelscript/cfd";
 import { CstUnparser } from "@modelscript/dsl";
@@ -37,67 +37,91 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-function findNodes(node: any, type: string, results: any[] = []): any[] {
+interface PolyglotCstNode {
+  type: string;
+  text: string;
+  children?: PolyglotCstNode[] | undefined;
+}
+
+interface PolyglotWasmParser {
+  parse(text: string): { rootNode: PolyglotCstNode };
+}
+
+type PolyglotRulesArray = Parameters<typeof runCPA>[0];
+
+interface PolyglotRulesConfig {
+  rules?: PolyglotRulesArray | undefined;
+}
+
+interface LanguageWithPolyglot {
+  polyglot?: PolyglotRulesConfig | undefined;
+}
+
+function findNodes(
+  node: PolyglotCstNode | null | undefined,
+  type: string,
+  results: PolyglotCstNode[] = [],
+): PolyglotCstNode[] {
   if (!node) return results;
   if (node.type === type) results.push(node);
   for (const c of node.children || []) findNodes(c, type, results);
   return results;
 }
 
-let moParserInstance: any = null;
-function getModelicaParser(): any {
+let moParserInstance: PolyglotWasmParser | null = null;
+function getModelicaParser(): PolyglotWasmParser | null {
   if (moParserInstance) return moParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/modelica/parser");
     const wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    moParserInstance = res.parser;
+    moParserInstance = res.parser as PolyglotWasmParser;
     return moParserInstance;
   } catch {
     return null;
   }
 }
 
-let sysmlParserInstance: any = null;
-function getSysmlParser(): any {
+let sysmlParserInstance: PolyglotWasmParser | null = null;
+function getSysmlParser(): PolyglotWasmParser | null {
   if (sysmlParserInstance) return sysmlParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/sysml2/parser");
     const wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    sysmlParserInstance = res.parser;
+    sysmlParserInstance = res.parser as PolyglotWasmParser;
     return sysmlParserInstance;
   } catch {
     return null;
   }
 }
 
-let scadParserInstance: any = null;
-function getScadParser(): any {
+let scadParserInstance: PolyglotWasmParser | null = null;
+function getScadParser(): PolyglotWasmParser | null {
   if (scadParserInstance) return scadParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/scad/parser");
     const wasmPath = require.resolve("@modelscript/scad/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    scadParserInstance = res.parser;
+    scadParserInstance = res.parser as PolyglotWasmParser;
     return scadParserInstance;
   } catch {
     return null;
   }
 }
 
-let owlParserInstance: any = null;
-function getOwlParser(): any {
+let owlParserInstance: PolyglotWasmParser | null = null;
+function getOwlParser(): PolyglotWasmParser | null {
   if (owlParserInstance) return owlParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/owl2/parser");
     const wasmPath = require.resolve("@modelscript/owl2/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    owlParserInstance = res.parser;
+    owlParserInstance = res.parser as PolyglotWasmParser;
     return owlParserInstance;
   } catch {
     return null;
@@ -326,7 +350,7 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
   if (ext === ".step" || ext === ".stp") {
     try {
       const model = extractStepAssembly(text);
-      const components = Array.from(model.parts.values()).map((p: any) => ({
+      const components = Array.from(model.parts.values()).map((p) => ({
         name: p.name || `part_${p.id}`,
         typeSpecifier: "CADPart",
       }));
@@ -419,7 +443,8 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
         { name: "refArea", type: "Real", value: String(slicing.refArea) },
         { name: "freeStreamVelocity", type: "Real", value: String(slicing.freeStreamVelocity) },
       ];
-      const ports = Array.from(model.markers.values()).map((m: any) => ({
+      const markers = Array.from(model.markers.values()) as Array<{ name: string; type: string }>;
+      const ports = markers.map((m) => ({
         name: m.name,
         type: m.type,
       }));
@@ -441,20 +466,22 @@ export function parseSourceToPolyglotNode(filePath: string, content?: string): P
       const model = parseOpi(text);
       const sim = simulateDriftFlux(model, { durationSeconds: 60 });
       const flowpath = model.flowpaths[0];
+      const pipes = (flowpath?.pipes ?? []) as Array<{ length: number; elevation: number }>;
       const attributes = [
         {
           name: "totalLength",
           type: "Real",
-          value: String(flowpath?.pipes.reduce((acc: number, p: any) => acc + p.length, 0) ?? 0),
+          value: String(pipes.reduce((acc: number, p) => acc + p.length, 0)),
         },
         {
           name: "elevationDelta",
           type: "Real",
-          value: String(flowpath?.pipes.reduce((acc: number, p: any) => acc + p.elevation, 0) ?? 0),
+          value: String(pipes.reduce((acc: number, p) => acc + p.elevation, 0)),
         },
         { name: "peakLiquidSurge", type: "Real", value: String(sim.trends.peakLiquidSurgeVolume.toFixed(2)) },
       ];
-      const ports = model.nodes.map((n: any) => ({
+      const nodes = (model.nodes ?? []) as Array<{ name: string; type: string }>;
+      const ports = nodes.map((n) => ({
         name: n.name,
         type: n.type,
       }));
@@ -517,7 +544,7 @@ const ProjectCommand: CommandModule<{}, ProjectArgs> = {
         description: "Enforce strict CPA confluence and type validation",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<ProjectArgs>;
   },
   handler: async (args) => {
     const resolvedSource = path.resolve(process.cwd(), args.sourceFile);
@@ -530,15 +557,14 @@ const ProjectCommand: CommandModule<{}, ProjectArgs> = {
     const transformer = new PolyglotTransformer();
 
     if (args.strict) {
+      const sysmlPolyglot = (sysml2Language as unknown as LanguageWithPolyglot).polyglot;
+      const modelicaPolyglot = (modelicaLanguage as unknown as LanguageWithPolyglot).polyglot;
       const activeRules =
         args.target === "modelica"
-          ? (sysml2Language as any).polyglot?.rules || []
+          ? sysmlPolyglot?.rules || []
           : args.target === "sysml2"
-            ? (modelicaLanguage as any).polyglot?.rules || []
-            : [
-                ...((sysml2Language as any).polyglot?.rules || []),
-                ...((modelicaLanguage as any).polyglot?.rules || []),
-              ];
+            ? modelicaPolyglot?.rules || []
+            : [...(sysmlPolyglot?.rules || []), ...(modelicaPolyglot?.rules || [])];
       const cpaReport = runCPA(activeRules);
       if (cpaReport.hasConflicts) {
         const errorConflicts = cpaReport.conflicts.filter((c) => c.severity === "error");
@@ -560,14 +586,19 @@ const ProjectCommand: CommandModule<{}, ProjectArgs> = {
         try {
           const existingText = fs.readFileSync(resolvedOut, "utf-8");
           if (existingText.trim().length > 0) {
-            let targetParser: any = null;
+            let targetParser: PolyglotWasmParser | null = null;
             if (args.target === "sysml2") {
               targetParser = getSysmlParser();
             } else if (args.target === "modelica") {
               targetParser = getModelicaParser();
             }
             if (targetParser) {
-              const synced = CstUnparser.syncTargetSource(existingText, node, args.target, targetParser);
+              const synced = CstUnparser.syncTargetSource(
+                existingText,
+                node,
+                args.target,
+                targetParser as unknown as Parameters<typeof CstUnparser.syncTargetSource>[3],
+              );
               if (synced && synced.text) {
                 finalOutput = synced.text;
               }
@@ -602,21 +633,21 @@ const VerifyCommand: CommandModule<{}, VerifyArgs> = {
       description: "Enforce strict CPA: fail on any cyclic conflict or ambiguous rule overlap",
       type: "boolean",
       default: false,
-    }) as any;
+    }) as unknown as Argv<VerifyArgs>;
   },
   handler: async (args) => {
     console.log("\n=== ModelScript Polyglot TGG Formal Confluence & Verification ===");
 
-    const domainConfigs: { domain: string; polyglot?: any }[] = [
-      { domain: "Modelica", polyglot: (modelicaLanguage as any).polyglot },
-      { domain: "SysML v2", polyglot: (sysml2Language as any).polyglot },
-      { domain: "OpenSCAD", polyglot: (scadLanguage as any).polyglot },
-      { domain: "STEP CAD", polyglot: (stepLanguage as any).polyglot },
-      { domain: "OWL 2", polyglot: (owl2Language as any).polyglot },
-      { domain: "SSP", polyglot: (sspLanguage as any).polyglot },
-      { domain: "CFD", polyglot: (cfdLanguage as any).polyglot },
-      { domain: "FEA", polyglot: (feaLanguage as any).polyglot },
-      { domain: "OLGA", polyglot: (olgaLanguage as any).polyglot },
+    const domainConfigs: { domain: string; polyglot?: PolyglotRulesConfig | undefined }[] = [
+      { domain: "Modelica", polyglot: (modelicaLanguage as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "SysML v2", polyglot: (sysml2Language as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "OpenSCAD", polyglot: (scadLanguage as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "STEP CAD", polyglot: (stepLanguage as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "OWL 2", polyglot: (owl2Language as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "SSP", polyglot: (sspLanguage as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "CFD", polyglot: (cfdLanguage as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "FEA", polyglot: (feaLanguage as unknown as LanguageWithPolyglot).polyglot },
+      { domain: "OLGA", polyglot: (olgaLanguage as unknown as LanguageWithPolyglot).polyglot },
     ];
 
     let totalRules = 0;
@@ -630,7 +661,9 @@ const VerifyCommand: CommandModule<{}, VerifyArgs> = {
 
       const count = polyglot.rules.length;
       totalRules += count;
-      const compiled = compileTGGRules(polyglot, { strictCpa: args.strict });
+      const compiled = compileTGGRules(polyglot as unknown as Parameters<typeof compileTGGRules>[0], {
+        strictCpa: args.strict,
+      });
       const cpa = compiled.cpaReport || runCPA(polyglot.rules);
 
       const status = cpa.cycles.length === 0 ? "✔ CONFLUENT" : "✖ CYCLIC ERROR";
@@ -664,7 +697,7 @@ const ThreadCommand: CommandModule<{}, ThreadArgs> = {
       demandOption: true,
       description: "Path to engineering asset (.mo, .sysml, .scad, .step, .reqif)",
       type: "string",
-    }) as any;
+    }) as unknown as Argv<ThreadArgs>;
   },
   handler: async (args) => {
     const resolved = path.resolve(process.cwd(), args.sourceFile);
@@ -1168,7 +1201,7 @@ const QueryCommand: CommandModule<{}, QueryArgs> = {
         description: "Output results in JSON format",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<QueryArgs>;
   },
   handler: async (args) => {
     const ws = buildPolyglotIndex(args.workspace ? [args.workspace] : [], args.workspace || process.cwd());
@@ -1217,13 +1250,24 @@ const QueryCommand: CommandModule<{}, QueryArgs> = {
     const domain = getSymbolDomain(entry.id);
     const boundIds = ws.queryEngine.crossDomainBinding(entry.id);
 
-    const twinReports: any[] = [];
+    interface TwinReportItem {
+      id: SymbolId;
+      name: string;
+      kind: string;
+      domain: string;
+      resourceId: string | undefined;
+      metadata: Record<string, unknown> | undefined;
+      parity: string;
+      shapeBinding: string | null;
+    }
+
+    const twinReports: TwinReportItem[] = [];
     for (const bid of boundIds) {
       const bEntry = ws.queryEngine.resolveEntry(bid);
       if (!bEntry) continue;
       const bDomain = getSymbolDomain(bid);
 
-      let parity: any = null;
+      let parity: ReturnType<QueryEngine["physicalQuantityParity"]> | null = null;
       if (args.checkParity) {
         parity = ws.queryEngine.physicalQuantityParity(entry.id, bid);
         if (!parity.compatible) {
@@ -1326,12 +1370,22 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
         description: "Output results in JSON format",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<CheckTwinsArgs>;
   },
   handler: async (args) => {
     const ws = buildPolyglotIndex(args.paths || [], args.workspace || process.cwd());
 
-    const results: any[] = [];
+    interface TwinVerificationResult {
+      source: string;
+      sourceDomain: string;
+      target: string;
+      targetDomain: string;
+      link: string;
+      status: string;
+      compatible: boolean;
+    }
+
+    const results: TwinVerificationResult[] = [];
     let brokenCount = 0;
 
     for (const sym of ws.symbolIndex.symbols.values()) {
@@ -1375,9 +1429,9 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
             : `✔ SYNCHRONIZED [${targetSym.kind}]`;
 
         results.push({
-          source: sym.metadata?.["qualifiedName"] || sym.namePath || sym.name,
+          source: String(sym.metadata?.["qualifiedName"] || sym.namePath || sym.name),
           sourceDomain: domainName(symDomain),
-          target: targetSym.metadata?.["qualifiedName"] || targetSym.namePath || targetSym.name,
+          target: String(targetSym.metadata?.["qualifiedName"] || targetSym.namePath || targetSym.name),
           targetDomain: domainName(targetDomain),
           link: twinTarget,
           status,
@@ -1386,7 +1440,7 @@ const CheckTwinsCommand: CommandModule<{}, CheckTwinsArgs> = {
       } else {
         brokenCount++;
         results.push({
-          source: sym.metadata?.["qualifiedName"] || sym.namePath || sym.name,
+          source: String(sym.metadata?.["qualifiedName"] || sym.namePath || sym.name),
           sourceDomain: domainName(symDomain),
           target: twinTarget,
           targetDomain: "Unknown",
@@ -1478,7 +1532,7 @@ const IndexCommand: CommandModule<{}, IndexArgs> = {
         description: "Output summary in JSON format",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<IndexArgs>;
   },
   handler: async (args) => {
     const ws = buildPolyglotIndex(args.paths || [], args.workspace || process.cwd());
@@ -1550,7 +1604,7 @@ const IndexCommand: CommandModule<{}, IndexArgs> = {
 export const Polyglot: CommandModule<{}, {}> = {
   command: "polyglot <action>",
   describe: "Multi-domain TGG projection, formal verification, digital thread tracking, and cross-language queries",
-  builder: ((yargs: any) => {
+  builder: (yargs) => {
     return yargs
       .command(ProjectCommand)
       .command(VerifyCommand)
@@ -1559,7 +1613,7 @@ export const Polyglot: CommandModule<{}, {}> = {
       .command(CheckTwinsCommand)
       .command(IndexCommand)
       .demandCommand(1, "Please specify a polyglot subcommand: project, verify, thread, query, check-twins, or index");
-  }) as any,
+  },
   handler: () => {
     // Parent dispatcher
   },

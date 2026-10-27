@@ -108,7 +108,7 @@ export class ProvenanceGraph {
       const existing = this.entities.get(genId);
       if (existing) {
         existing.wasGeneratedBy = activityId;
-        existing.wasDerivedFrom = [...(existing.wasDerivedFrom || []), ...usedEntityIds];
+        existing.wasDerivedFrom = Array.from(new Set([...(existing.wasDerivedFrom || []), ...usedEntityIds]));
       }
     }
   }
@@ -120,14 +120,18 @@ export class ProvenanceGraph {
     const visited = new Set<string>();
     const chain: string[] = [];
     const rootEntities: string[] = [];
+    let hasMissingEntity = false;
 
     const walk = (id: string) => {
       if (visited.has(id)) return;
       visited.add(id);
-      chain.push(id);
 
       const entity = this.entities.get(id);
-      if (!entity) return;
+      if (!entity) {
+        hasMissingEntity = true;
+        return;
+      }
+      chain.push(id);
 
       if (!entity.wasDerivedFrom || entity.wasDerivedFrom.length === 0) {
         rootEntities.push(id);
@@ -140,7 +144,7 @@ export class ProvenanceGraph {
 
     walk(entityId);
     return {
-      isValid: chain.length > 0,
+      isValid: !hasMissingEntity && chain.length > 0 && rootEntities.length > 0,
       chain,
       rootEntities,
     };

@@ -23,6 +23,36 @@ interface TokenRevokeArgs {
   json?: boolean | undefined;
 }
 
+interface TokenCreateResponse {
+  error?: string | undefined;
+  name?: string | undefined;
+  id?: number | string | undefined;
+  prefix?: string | undefined;
+  scopes?: string[] | undefined;
+  packagePattern?: string | undefined;
+  expiresAt?: string | null | undefined;
+  token?: string | undefined;
+}
+
+interface TokenListEntry {
+  id: number | string;
+  name: string;
+  token_prefix?: string | undefined;
+  scopes?: string[] | undefined;
+  package_pattern?: string | undefined;
+  expires_at?: string | null | undefined;
+}
+
+interface TokenListResponse {
+  error?: string | undefined;
+  tokens?: TokenListEntry[] | undefined;
+}
+
+interface TokenRevokeResponse {
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
 export const Token: CommandModule = {
   command: "token <action>",
   describe: "Manage granular personal access tokens (PATs) for CI/CD and automation",
@@ -65,8 +95,8 @@ export const Token: CommandModule = {
               type: "boolean",
               default: false,
             }),
-        async (args: any) => {
-          await handleCreateToken(args);
+        async (args) => {
+          await handleCreateToken(args as unknown as TokenCreateArgs);
         },
       )
       .command(
@@ -84,8 +114,8 @@ export const Token: CommandModule = {
               type: "boolean",
               default: false,
             }),
-        async (args: any) => {
-          await handleListTokens(args);
+        async (args) => {
+          await handleListTokens(args as unknown as TokenListArgs);
         },
       )
       .command(
@@ -108,8 +138,8 @@ export const Token: CommandModule = {
               type: "boolean",
               default: false,
             }),
-        async (args: any) => {
-          await handleRevokeToken(args);
+        async (args) => {
+          await handleRevokeToken(args as unknown as TokenRevokeArgs);
         },
       )
       .demandCommand(1, "Please specify a token action: create, list, or revoke");
@@ -142,7 +172,7 @@ async function handleCreateToken(args: TokenCreateArgs): Promise<void> {
       }),
     });
 
-    const data = (await res.json().catch(() => ({}))) as any;
+    const data = (await res.json().catch(() => ({}))) as TokenCreateResponse;
     if (!res.ok) {
       console.error(`Failed to create token: ${data.error || res.statusText}`);
       process.exit(1);
@@ -155,14 +185,15 @@ async function handleCreateToken(args: TokenCreateArgs): Promise<void> {
       console.log(`  Name:            ${data.name}`);
       console.log(`  ID:              ${data.id}`);
       console.log(`  Prefix:          ${data.prefix}`);
-      console.log(`  Scopes:          ${data.scopes.join(", ")}`);
+      console.log(`  Scopes:          ${(data.scopes ?? []).join(", ")}`);
       console.log(`  Package Pattern: ${data.packagePattern}`);
       console.log(`  Expires:         ${data.expiresAt || "Never"}`);
       console.log(`\n  Plaintext Secret:\n  \x1b[32m${data.token}\x1b[0m\n`);
       console.log("  ⚠️  Save this token now; you will NOT be able to view it again.\n");
     }
-  } catch (err: any) {
-    console.error(`Network error: ${err.message}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Network error: ${msg}`);
     process.exit(1);
   }
 }
@@ -183,13 +214,13 @@ async function handleListTokens(args: TokenListArgs): Promise<void> {
       },
     });
 
-    const data = (await res.json().catch(() => ({}))) as any;
+    const data = (await res.json().catch(() => ({}))) as TokenListResponse;
     if (!res.ok) {
       console.error(`Failed to list tokens: ${data.error || res.statusText}`);
       process.exit(1);
     }
 
-    const tokens: any[] = data.tokens || [];
+    const tokens: TokenListEntry[] = data.tokens || [];
     if (args.json) {
       console.log(JSON.stringify(tokens, null, 2));
       return;
@@ -221,8 +252,9 @@ async function handleListTokens(args: TokenListArgs): Promise<void> {
       console.log(`${id}${name}${prefix}${scopes}${pattern}${expires}`);
     }
     console.log("");
-  } catch (err: any) {
-    console.error(`Network error: ${err.message}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Network error: ${msg}`);
     process.exit(1);
   }
 }
@@ -244,7 +276,7 @@ async function handleRevokeToken(args: TokenRevokeArgs): Promise<void> {
       },
     });
 
-    const data = (await res.json().catch(() => ({}))) as any;
+    const data = (await res.json().catch(() => ({}))) as TokenRevokeResponse;
     if (!res.ok) {
       console.error(`Failed to revoke token: ${data.error || res.statusText}`);
       process.exit(1);
@@ -255,8 +287,9 @@ async function handleRevokeToken(args: TokenRevokeArgs): Promise<void> {
     } else {
       console.log(`✓ Token ID ${args.id} successfully revoked.`);
     }
-  } catch (err: any) {
-    console.error(`Network error: ${err.message}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`Network error: ${msg}`);
     process.exit(1);
   }
 }

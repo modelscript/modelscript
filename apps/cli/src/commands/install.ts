@@ -4,7 +4,7 @@ import AdmZip from "adm-zip";
 import crypto from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { DependencySolver, type PackageVersionProvider } from "../solver/solver.js";
 import { getToken } from "../util/auth.js";
 import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
@@ -182,7 +182,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
         description: "Simulate transitive dependency resolution without writing packages or lockfile to disk",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<InstallArgs>;
   },
   handler: async (args) => {
     const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
@@ -299,9 +299,12 @@ export const Install: CommandModule<{}, InstallArgs> = {
         try {
           const res = await fetch(`${API_URL}/api/v1/libraries/${pPath}`, { headers });
           if (!res.ok) return [];
-          const data = (await res.json()) as any;
+          const data = (await res.json()) as {
+            versions?: (string | { version: string })[] | undefined;
+            version?: string | undefined;
+          };
           if (Array.isArray(data.versions)) {
-            return data.versions.map((v: any) => (typeof v === "string" ? v : v.version));
+            return data.versions.map((v) => (typeof v === "string" ? v : v.version));
           }
           if (typeof data.version === "string") return [data.version];
           return [];
@@ -309,14 +312,14 @@ export const Install: CommandModule<{}, InstallArgs> = {
           return [];
         }
       },
-      async getManifest(pkgName: string, ver: string): Promise<any> {
+      async getManifest(pkgName: string, ver: string): ReturnType<PackageVersionProvider["getManifest"]> {
         const pPath = pkgName.startsWith("@")
           ? pkgName.split("/").map(encodeURIComponent).join("/")
           : encodeURIComponent(pkgName);
         try {
           const res = await fetch(`${API_URL}/api/v1/libraries/${pPath}/${encodeURIComponent(ver)}`, { headers });
           if (!res.ok) return null;
-          return await res.json();
+          return (await res.json()) as Awaited<ReturnType<PackageVersionProvider["getManifest"]>>;
         } catch {
           return null;
         }

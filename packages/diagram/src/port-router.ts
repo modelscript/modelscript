@@ -105,10 +105,62 @@ export function sideToNormal(side: PortSide): PortNormal {
   }
 }
 
+export interface RouterPortConfig {
+  args?: { x?: number | undefined; y?: number | undefined } | undefined;
+  side?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+}
+
+export interface RouterNodeLike {
+  id?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  angle?: number | undefined;
+  getPosition?: (() => { x?: number | undefined; y?: number | undefined } | null | undefined) | undefined;
+  getSize?: (() => { width?: number | undefined; height?: number | undefined } | null | undefined) | undefined;
+  getBBox?: (() => Partial<RectLike> | null | undefined) | undefined;
+  getAngle?: (() => number | undefined) | undefined;
+  getPortProp?: ((portId: string, prop?: string) => RouterPortConfig | null | undefined) | undefined;
+  getPort?: ((portId: string) => RouterPortConfig | null | undefined) | undefined;
+}
+
+export interface RouterEdgeLike {
+  id?: string | undefined;
+  source?: { cell?: string | undefined; port?: string | undefined } | undefined;
+  target?: { cell?: string | undefined; port?: string | undefined } | undefined;
+  getSourceCellId?: (() => string | undefined) | undefined;
+  getTargetCellId?: (() => string | undefined) | undefined;
+  getSourcePortId?: (() => string | undefined) | undefined;
+  getTargetPortId?: (() => string | undefined) | undefined;
+  getSourceCell?: (() => RouterNodeLike | null | undefined) | undefined;
+  getTargetCell?: (() => RouterNodeLike | null | undefined) | undefined;
+  getSourcePoint?: (() => PointLike | null | undefined) | undefined;
+  getTargetPoint?: (() => PointLike | null | undefined) | undefined;
+  getVertices?: (() => PointLike[] | null | undefined) | undefined;
+  setVertices?: ((vertices: PointLike[], options?: { ignoreSnap?: boolean | undefined }) => void) | undefined;
+}
+
+export interface RouterGraphLike {
+  getEdges?: (() => RouterEdgeLike[]) | undefined;
+  getNodes?: (() => RouterNodeLike[]) | undefined;
+  getCellById?: ((id?: string) => RouterNodeLike | null | undefined) | undefined;
+  getConnectedEdges?: ((node: RouterNodeLike) => RouterEdgeLike[]) | undefined;
+}
+
+export interface RouterEdgeViewLike {
+  sourcePoint?: PointLike | null | undefined;
+  targetPoint?: PointLike | null | undefined;
+  graph?: RouterGraphLike | null | undefined;
+  cell?: RouterEdgeLike | null | undefined;
+}
+
 /**
  * Extracts the axis-aligned bounding box of an X6 node or node-like object, if available.
  */
-export function getNodeBBox(node: any): RectLike | null {
+export function getNodeBBox(node: RouterNodeLike | null | undefined): RectLike | null {
   if (!node) return null;
   if (typeof node.getPosition === "function" && typeof node.getSize === "function") {
     const pos = node.getPosition();
@@ -157,7 +209,7 @@ export function getNodeBBox(node: any): RectLike | null {
  * Resolves the world-space coordinates of a port on a node, accounting for node position and rotation.
  */
 export function resolveNodePortWorldPoint(
-  node: any,
+  node: RouterNodeLike | null | undefined,
   portId?: string,
   fallbackPoint?: PointLike | null,
 ): PointLike | null {
@@ -209,7 +261,11 @@ export function inferPortNormalFromBox(portPt: PointLike, box: RectLike): PortNo
  * Computes the outward cardinal normal vector for a node's port, accounting for node rotation
  * and local port coordinates or world-space port position.
  */
-export function getPortOutwardNormal(node: any, portId?: string, portWorldPoint?: PointLike | null): PortNormal | null {
+export function getPortOutwardNormal(
+  node: RouterNodeLike | null | undefined,
+  portId?: string,
+  portWorldPoint?: PointLike | null,
+): PortNormal | null {
   if (!node) return null;
   const bbox = getNodeBBox(node);
   if (portId) {
@@ -456,12 +512,18 @@ export function regularizeOrthogonalPolyline(
  * Pushes coincident trunk segments on peer edges sharing the same electrical net so shared
  * schematic buses (such as ground rails) slide together as a unified corridor.
  */
-function pushCoincidentNetTrunks(g: any, primaryEdge: any, axis: "x" | "y", oldCoord: number, newCoord: number): void {
+function pushCoincidentNetTrunks(
+  g: RouterGraphLike | null | undefined,
+  primaryEdge: RouterEdgeLike,
+  axis: "x" | "y",
+  oldCoord: number,
+  newCoord: number,
+): void {
   if (typeof g?.getEdges !== "function") return;
-  const allEdges: any[] = g.getEdges() || [];
+  const allEdges: RouterEdgeLike[] = g.getEdges() || [];
   if (allEdges.length <= 1) return;
 
-  const getPortKey = (e: any, end: "source" | "target"): string | undefined => {
+  const getPortKey = (e: RouterEdgeLike, end: "source" | "target"): string | undefined => {
     const cellId =
       end === "source"
         ? typeof e.getSourceCellId === "function"
@@ -574,8 +636,8 @@ function pushCoincidentNetTrunks(g: any, primaryEdge: any, axis: "x" | "y", oldC
  * injecting doglegs for 0/1-vertex collinear wires, and re-routing when self-impalement occurs.
  */
 export function translateConnectedEdgeStubs(
-  g: any,
-  node: any,
+  g: RouterGraphLike | null | undefined,
+  node: RouterNodeLike,
   dx: number,
   dy: number,
   options?: { forceReroute?: boolean; minStub?: number },
@@ -599,7 +661,7 @@ export function translateConnectedEdgeStubs(
 
     if (isSource && isTarget) {
       // Self-loop: translate all vertices
-      const newVertices = vertices.map((v: any) => ({ x: v.x + dx, y: v.y + dy }));
+      const newVertices = vertices.map((v: PointLike) => ({ x: v.x + dx, y: v.y + dy }));
       if (typeof edge.setVertices === "function") edge.setVertices(newVertices, { ignoreSnap: true });
       continue;
     }
@@ -708,7 +770,7 @@ export function translateConnectedEdgeStubs(
     }
 
     let modified = false;
-    let newVertices: PointLike[] = vertices.map((v: any) => ({ ...v }));
+    let newVertices: PointLike[] = vertices.map((v: PointLike) => ({ ...v }));
 
     // Case 1: 1-vertex edge (either collinear 3-point wire or 90-degree L-bend)
     if (newVertices.length === 1) {
@@ -1053,8 +1115,32 @@ export class BinaryHeap<T> {
  * Routes an orthogonal path on a 2D occupancy grid (`cols x rows`) using the WebAssembly
  * binary-heap A* kernel (`diagram_route_orthogonal_astar`) when available.
  */
+interface DiagramAStarWasmExports {
+  __new: (size: number, id: number) => number;
+  memory: { buffer: ArrayBufferLike };
+  diagram_route_orthogonal_astar: (
+    cols: number,
+    rows: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    startDir: number,
+    bendPenalty: number,
+    crossingPenalty: number,
+    gridPtr: number,
+    gScorePtr: number,
+    parentPtr: number,
+    closedPtr: number,
+    heapStatesPtr: number,
+    heapPrioritiesPtr: number,
+    outWaypointsPtr: number,
+    maxWaypoints: number,
+  ) => number;
+}
+
 interface DiagramAStarScratch {
-  wasm: any;
+  wasm: DiagramAStarWasmExports;
   maxCells: number;
   gridPtr: number;
   gScorePtr: number;
@@ -1067,7 +1153,7 @@ interface DiagramAStarScratch {
 
 let diagramAStarScratch: DiagramAStarScratch | null = null;
 
-function ensureDiagramAStarScratch(wasm: any, totalCells: number): DiagramAStarScratch {
+function ensureDiagramAStarScratch(wasm: DiagramAStarWasmExports, totalCells: number): DiagramAStarScratch {
   if (diagramAStarScratch && diagramAStarScratch.wasm === wasm && diagramAStarScratch.maxCells >= totalCells) {
     return diagramAStarScratch;
   }
@@ -1103,17 +1189,22 @@ export function routeOrthogonalGridAStar(options: {
   grid: Uint8Array;
 }): [number, number][] {
   const { cols, rows, startX, startY, endX, endY, grid } = options;
-  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
-  if (wasm && typeof wasm.diagram_route_orthogonal_astar === "function") {
+  const wasm =
+    typeof globalThis !== "undefined"
+      ? (globalThis as { __modelscript_wasm_exports__?: Partial<DiagramAStarWasmExports> | undefined })
+          .__modelscript_wasm_exports__
+      : null;
+  if (wasm && typeof wasm.diagram_route_orthogonal_astar === "function" && wasm.__new && wasm.memory) {
+    const validWasm = wasm as DiagramAStarWasmExports;
     // Each grid cell has 4 directional states (N, E, S, W) to penalize 90-degree bends accurately
     const totalCells = cols * rows;
     const maxWaypoints = Math.min(totalCells, 1024);
-    const sc = ensureDiagramAStarScratch(wasm, totalCells);
+    const sc = ensureDiagramAStarScratch(validWasm, totalCells);
 
     // Copy occupancy grid (0 = free, 1 = obstacle, 2 = existing wire) into WASM linear memory
-    new Uint8Array(wasm.memory.buffer, sc.gridPtr, totalCells).set(grid.subarray(0, totalCells));
+    new Uint8Array(validWasm.memory.buffer, sc.gridPtr, totalCells).set(grid.subarray(0, totalCells));
 
-    const count: number = wasm.diagram_route_orthogonal_astar(
+    const count: number = validWasm.diagram_route_orthogonal_astar(
       cols,
       rows,
       startX,
@@ -1134,7 +1225,7 @@ export function routeOrthogonalGridAStar(options: {
     );
 
     // Unpack interleaved (x, y) int32 waypoint pairs returned by the WASM kernel
-    const outView = new Int32Array(wasm.memory.buffer, sc.outWaypointsPtr, count * 2);
+    const outView = new Int32Array(validWasm.memory.buffer, sc.outWaypointsPtr, count * 2);
     const waypoints: [number, number][] = [];
     for (let i = 0; i < count; i++) {
       waypoints.push([outView[i * 2]!, outView[i * 2 + 1]!]);
@@ -1602,8 +1693,8 @@ export function computeOrthogonalRoute(
  */
 export function portOrthogonalRouter(
   vertices: PointLike[],
-  args: Record<string, any> = {},
-  edgeView?: any,
+  args: RouterOptions & Record<string, unknown> = {},
+  edgeView?: RouterEdgeViewLike,
 ): PointLike[] {
   // If manual vertices are explicitly specified, preserve them
   if (vertices && vertices.length > 0) {
@@ -1644,6 +1735,7 @@ export function portOrthogonalRouter(
     for (const node of graph.getNodes()) {
       if (node.id === sourceCell?.id || node.id === targetCell?.id) continue;
       if (
+        !node.id ||
         node.id.startsWith("solder_dot_") ||
         node.id.startsWith("__seq_stem_") ||
         node.id.startsWith("__alignment_guide_") ||
@@ -1661,14 +1753,14 @@ export function portOrthogonalRouter(
 
     if (sourceCell && targetCell && typeof graph.getEdges === "function") {
       const allEdges = graph.getEdges();
-      const parallelEdges = allEdges.filter((e: any) => {
-        const s = e.getSourceCell()?.id;
-        const t = e.getTargetCell()?.id;
+      const parallelEdges = allEdges.filter((e: RouterEdgeLike) => {
+        const s = e.getSourceCell?.()?.id;
+        const t = e.getTargetCell?.()?.id;
         return (s === sourceCell.id && t === targetCell.id) || (s === targetCell.id && t === sourceCell.id);
       });
       if (parallelEdges.length > 1) {
         parallelCount = parallelEdges.length;
-        const idx = parallelEdges.findIndex((e: any) => e.id === edgeView.cell?.id);
+        const idx = parallelEdges.findIndex((e: RouterEdgeLike) => e.id === edgeView.cell?.id);
         if (idx !== -1) {
           parallelIndex = idx;
         }

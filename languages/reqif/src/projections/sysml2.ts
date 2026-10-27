@@ -78,7 +78,7 @@ export function sysml2ToReqIf(sysmlText: string, title = "Imported from SysML v2
   let match: RegExpExecArray | null;
 
   while ((match = defStartPattern.exec(sysmlText)) !== null) {
-    const rawId = match[1]!;
+    const rawId = match[1] ?? "";
     const openBraceIdx = defStartPattern.lastIndex - 1;
     let depth = 1;
     let closeBraceIdx = openBraceIdx + 1;
@@ -92,19 +92,19 @@ export function sysml2ToReqIf(sysmlText: string, title = "Imported from SysML v2
 
     let text = rawId;
     const docMatch = body.match(/doc\s*\/\*([\s\S]*?)\*\//);
-    if (docMatch) {
-      text = docMatch[1]!.trim();
+    if (docMatch?.[1]) {
+      text = docMatch[1].trim();
     }
 
     let contract: ReqIfSpecObject["contract"] = undefined;
     const constraintMatch = body.match(
       /require\s+constraint\s*\{\s*([a-zA-Z0-9_]+)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+)\s*\}/,
     );
-    if (constraintMatch) {
+    if (constraintMatch?.[1] && constraintMatch[2] && constraintMatch[3]) {
       contract = {
-        variable: constraintMatch[1]!,
-        comparator: constraintMatch[2]! as NonNullable<ReqIfSpecObject["contract"]>["comparator"],
-        limitValue: parseFloat(constraintMatch[3]!),
+        variable: constraintMatch[1],
+        comparator: constraintMatch[2] as NonNullable<ReqIfSpecObject["contract"]>["comparator"],
+        limitValue: parseFloat(constraintMatch[3]),
       };
     }
 

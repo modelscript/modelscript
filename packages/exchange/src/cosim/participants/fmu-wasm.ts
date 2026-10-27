@@ -265,7 +265,7 @@ export class FmuWasmParticipant implements CoSimParticipant {
     this.values.clear();
     this.inputOverrides.clear();
 
-    this.wasmExports = undefined as any;
+    this.wasmExports = undefined;
     this.initialized = false;
   }
 

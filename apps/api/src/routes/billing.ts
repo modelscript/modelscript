@@ -37,9 +37,9 @@ export function billingRouter(database: LibraryDatabase): Router {
         total_gpu_hours: summary.wallet.total_gpu_hours,
         wallet: summary.wallet,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[BillingRouter] GET /billing/wallet error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });
@@ -65,9 +65,9 @@ export function billingRouter(database: LibraryDatabase): Router {
         offset,
         count: transactions.length,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[BillingRouter] GET /billing/transactions error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });
@@ -83,9 +83,9 @@ export function billingRouter(database: LibraryDatabase): Router {
 
       const summary = database.getUserBillingSummary(userId);
       res.json(summary);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[BillingRouter] GET /billing/usage error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });
@@ -118,11 +118,12 @@ export function billingRouter(database: LibraryDatabase): Router {
         success: true,
         ...intent,
       });
-    } catch (err: any) {
-      const isLocked = err.message?.includes("Billing actions temporarily locked");
-      const isRadar = err.message?.includes("Stripe Radar");
+    } catch (err: unknown) {
+      const errMessage = err instanceof Error ? err.message : "";
+      const isLocked = errMessage.includes("Billing actions temporarily locked");
+      const isRadar = errMessage.includes("Stripe Radar");
       const statusCode = isLocked ? 429 : isRadar ? 403 : 400;
-      res.status(statusCode).json({ error: err.message || "Failed to create payment intent" });
+      res.status(statusCode).json({ error: errMessage || "Failed to create payment intent" });
     }
     return;
   });
@@ -138,9 +139,9 @@ export function billingRouter(database: LibraryDatabase): Router {
 
       const result = handleStripeWebhookEvent(event, database, defaultPaymentGuard);
       res.json({ received: true, ...result });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[BillingRouter] Webhook error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });
@@ -208,9 +209,9 @@ export function billingRouter(database: LibraryDatabase): Router {
         newBalance,
         message: `Successfully added ${amount.toFixed(1)} credits to your wallet.`,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[BillingRouter] POST /billing/topup error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });

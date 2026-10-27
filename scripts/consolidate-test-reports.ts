@@ -81,7 +81,7 @@ export interface CtrfReport {
         reportFormat: "CTRF";
         results: {
           tool?: { name: string } | undefined;
-          summary?: any;
+          summary?: Record<string, unknown> | undefined;
           tests: CtrfTest[];
         };
       }

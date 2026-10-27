@@ -138,8 +138,8 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
         totalCpuSeconds: summary.totalCpuSeconds,
         totalGpuSeconds: summary.totalGpuSeconds,
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || String(err) });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -354,10 +354,10 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
                 }
               }
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             if ((jobRecord.status as string) === "cancelled") return;
             jobRecord.status = "failed";
-            jobRecord.error = err.message || String(err);
+            jobRecord.error = err instanceof Error ? err.message : String(err);
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
               database.updateJobStatus(dbJobId, "FAILED");
@@ -545,10 +545,10 @@ getErrorString();
                 }
               }
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             fs.rmSync(tmpDir, { recursive: true, force: true });
             jobRecord.status = "failed";
-            jobRecord.error = err.message || String(err);
+            jobRecord.error = err instanceof Error ? err.message : String(err);
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
               database.updateJobStatus(dbJobId, "FAILED");
@@ -679,10 +679,8 @@ getErrorString();
 
     const listener = (event: { type: string; data: unknown }) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
-      if (
-        event.type === "status" &&
-        ((event.data as any)?.status === "completed" || (event.data as any)?.status === "failed")
-      ) {
+      const eventData = event.data as { status?: string | undefined } | null | undefined;
+      if (event.type === "status" && (eventData?.status === "completed" || eventData?.status === "failed")) {
         res.end();
       }
     };

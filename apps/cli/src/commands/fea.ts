@@ -63,8 +63,8 @@ export const FeaCommand: CommandModule<Record<string, unknown>, Record<string, u
       let model;
       try {
         model = parseFeaDeck(content, ext);
-      } catch (err: any) {
-        console.error(`Error parsing '${filePath}': ${err.message}`);
+      } catch (err: unknown) {
+        console.error(`Error parsing '${filePath}': ${err instanceof Error ? err.message : String(err)}`);
         process.exitCode = 1;
         continue;
       }

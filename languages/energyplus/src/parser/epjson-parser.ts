@@ -129,8 +129,8 @@ export function parseEpJson(jsonStr: string, filename?: string): EnergyPlusDocum
   // 1. Building
   if (data.Building) {
     const bldgNames = Object.keys(data.Building);
-    if (bldgNames.length > 0) {
-      const bldgName = bldgNames[0]!;
+    const bldgName = bldgNames[0];
+    if (bldgName) {
       const bObj = data.Building[bldgName];
       doc.building = {
         name: bldgName,

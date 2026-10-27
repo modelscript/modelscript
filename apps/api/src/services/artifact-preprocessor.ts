@@ -173,12 +173,16 @@ export async function pregenerateServerSvgThumbnail(
         let inputCount = 0;
         let outputCount = 0;
         for (const comp of model.components?.values() ?? []) {
-          const cAny = comp as any;
+          const cTyped = comp as {
+            type?: string | undefined;
+            inputs?: Record<string, unknown> | undefined;
+            outputs?: Record<string, unknown> | undefined;
+          };
           const t = comp.type?.toUpperCase() || "";
           if (t === "IN" || t === "INTEGRATOR" || t === "LAG" || t === "POLE") dynamicStates += 1;
           else if (t === "TF" || t === "SECOND_ORDER") dynamicStates += 2;
-          if (cAny.inputs) inputCount += Object.keys(cAny.inputs).length;
-          if (cAny.outputs) outputCount += Object.keys(cAny.outputs).length;
+          if (cTyped.inputs) inputCount += Object.keys(cTyped.inputs).length;
+          if (cTyped.outputs) outputCount += Object.keys(cTyped.outputs).length;
         }
 
         result.svg = svg;
@@ -284,7 +288,11 @@ export async function pregenerateServerSvgThumbnail(
 
         const model = parseGtmModel(content);
         const svg = renderGtSuiteSchematicSvg(model);
-        const cylinders = (model.components || []).filter((c) => c.kind === "cylinder") as any[];
+        const cylinders = (model.components || []).filter((c) => c.kind === "cylinder") as {
+          displacementM3?: number | undefined;
+          boreM?: number | undefined;
+          strokeM?: number | undefined;
+        }[];
         const cylCount = cylinders.length;
         let totalDisplacementL = 0;
         for (const c of cylinders) {
@@ -329,23 +337,33 @@ export async function pregenerateServerSvgThumbnail(
           vesselName: model.vessels[0]?.name ?? baseTitle,
           watchCircleRadius: 15,
           vesselOffset: { x: 0, y: 0 },
-          lines: (model.lines || []).map((l: any, i: number) => {
-            const rad = (2 * Math.PI * i) / Math.max(1, linesCount);
-            const anchorR = l.length || (waterDepth ? waterDepth * 2 : 500);
-            return {
-              id: `line-${i + 1}`,
-              name: l.name || `Line #${i + 1}`,
-              anchorRadius: anchorR,
-              azimuthDeg: (360 / Math.max(1, linesCount)) * i,
-              tension: l.pretension || 0,
-              mbl: l.mbl || 0,
-              anchorPos: [
-                Math.round(anchorR * Math.cos(rad)),
-                Math.round(anchorR * Math.sin(rad)),
-                -(waterDepth || 100),
-              ] as [number, number, number],
-            };
-          }),
+          lines: (model.lines || []).map(
+            (
+              l: {
+                length?: number | undefined;
+                name?: string | undefined;
+                pretension?: number | undefined;
+                mbl?: number | undefined;
+              },
+              i: number,
+            ) => {
+              const rad = (2 * Math.PI * i) / Math.max(1, linesCount);
+              const anchorR = l.length || (waterDepth ? waterDepth * 2 : 500);
+              return {
+                id: `line-${i + 1}`,
+                name: l.name || `Line #${i + 1}`,
+                anchorRadius: anchorR,
+                azimuthDeg: (360 / Math.max(1, linesCount)) * i,
+                tension: l.pretension || 0,
+                mbl: l.mbl || 0,
+                anchorPos: [
+                  Math.round(anchorR * Math.cos(rad)),
+                  Math.round(anchorR * Math.sin(rad)),
+                  -(waterDepth || 100),
+                ] as [number, number, number],
+              };
+            },
+          ),
         });
 
         result.svg = svg;
@@ -368,19 +386,49 @@ export async function pregenerateServerSvgThumbnail(
         const { parseGensysDeck, renderGensysSvg } = await import("@modelscript/gensys");
         const model = parseGensysDeck(content, baseTitle);
         const svg = renderGensysSvg(model);
-        const bodies = Array.from(model.bodies.values()).map((b: any) => ({
-          name: b.name,
-          mass: b.mass,
-          inertia: [b.ixx ?? b.inertia?.[0] ?? 0, b.iyy ?? b.inertia?.[1] ?? 0, b.izz ?? b.inertia?.[2] ?? 0],
-          cg: [b.x ?? b.cg?.[0] ?? 0, b.y ?? b.cg?.[1] ?? 0, b.z ?? b.cg?.[2] ?? 0],
-        }));
-        const couplings = Array.from(model.couplings.values()).map((c: any) => ({
-          name: c.name,
-          type: c.type,
-          from: c.bodyFrom ?? c.from ?? "",
-          to: c.bodyTo ?? c.to ?? "",
-          stiffness: c.stiffnessOrDamping ?? c.stiffness ?? 0,
-        }));
+        const bodies = Array.from(model.bodies.values()).map((b) => {
+          const rawB = b as unknown as {
+            name: string;
+            mass: number;
+            ixx?: number | undefined;
+            iyy?: number | undefined;
+            izz?: number | undefined;
+            inertia?: number[] | undefined;
+            x?: number | undefined;
+            y?: number | undefined;
+            z?: number | undefined;
+            cg?: number[] | undefined;
+          };
+          return {
+            name: rawB.name,
+            mass: rawB.mass,
+            inertia: [
+              rawB.ixx ?? rawB.inertia?.[0] ?? 0,
+              rawB.iyy ?? rawB.inertia?.[1] ?? 0,
+              rawB.izz ?? rawB.inertia?.[2] ?? 0,
+            ],
+            cg: [rawB.x ?? rawB.cg?.[0] ?? 0, rawB.y ?? rawB.cg?.[1] ?? 0, rawB.z ?? rawB.cg?.[2] ?? 0],
+          };
+        });
+        const couplings = Array.from(model.couplings.values()).map((c) => {
+          const rawC = c as unknown as {
+            name: string;
+            type: string;
+            bodyFrom?: string | undefined;
+            from?: string | undefined;
+            bodyTo?: string | undefined;
+            to?: string | undefined;
+            stiffnessOrDamping?: number | undefined;
+            stiffness?: number | undefined;
+          };
+          return {
+            name: rawC.name,
+            type: rawC.type,
+            from: rawC.bodyFrom ?? rawC.from ?? "",
+            to: rawC.bodyTo ?? rawC.to ?? "",
+            stiffness: rawC.stiffnessOrDamping ?? rawC.stiffness ?? 0,
+          };
+        });
         result.svg = svg;
         result.metadata = {
           bodyCount: bodies.length,
@@ -402,23 +450,42 @@ export async function pregenerateServerSvgThumbnail(
         const isXml = content.trimStart().startsWith("<");
         const model = isXml ? parseSpckXml(content, baseTitle) : parseSimDeck(content, baseTitle);
         const svg = renderSimpackSvg(model);
-        const bodies = Array.from(model.bodies.values()).map((b: any) => ({
+        const bodies = Array.from(model.bodies.values()).map((b: { name: string; mass: number }) => ({
           name: b.name,
           mass: b.mass,
         }));
-        const joints = Array.from(model.joints.values()).map((j: any) => ({
-          name: j.name,
-          type: j.type,
-          from: j.bodyFrom ?? j.from ?? "",
-          to: j.bodyTo ?? j.to ?? "",
-        }));
-        const forces = Array.from(model.forces.values()).map((f: any) => ({
-          name: f.name,
-          type: f.type,
-          from: f.bodyFrom ?? f.from ?? "",
-          to: f.bodyTo ?? f.to ?? "",
-          parameters: f.parameters ?? {},
-        }));
+        const joints = Array.from(model.joints.values()).map(
+          (j: {
+            name: string;
+            type: string;
+            bodyFrom?: string | undefined;
+            from?: string | undefined;
+            bodyTo?: string | undefined;
+            to?: string | undefined;
+          }) => ({
+            name: j.name,
+            type: j.type,
+            from: j.bodyFrom ?? j.from ?? "",
+            to: j.bodyTo ?? j.to ?? "",
+          }),
+        );
+        const forces = Array.from(model.forces.values()).map(
+          (f: {
+            name: string;
+            type: string;
+            bodyFrom?: string | undefined;
+            from?: string | undefined;
+            bodyTo?: string | undefined;
+            to?: string | undefined;
+            parameters?: Record<string, unknown> | undefined;
+          }) => ({
+            name: f.name,
+            type: f.type,
+            from: f.bodyFrom ?? f.from ?? "",
+            to: f.bodyTo ?? f.to ?? "",
+            parameters: f.parameters ?? {},
+          }),
+        );
         result.svg = svg;
         result.metadata = {
           bodyCount: bodies.length,
@@ -491,7 +558,13 @@ export async function pregenerateServerSvgThumbnail(
       case "spice": {
         const { parseSpice } = await import("@modelscript/spice");
         const { renderSpiceSvg } = await import("@modelscript/diagram/spice-diagram-builder");
-        const deck: any = parseSpice(content);
+        const deck = parseSpice(content) as unknown as {
+          title?: string | undefined;
+          elements?: unknown[] | { size?: number | undefined } | undefined;
+          components?: unknown[] | { size?: number | undefined } | undefined;
+          subcircuits?: unknown[] | Map<string, unknown> | undefined;
+          models?: { size?: number | undefined } | undefined;
+        };
         const elements = deck.elements || deck.components || [];
         const subcircuits = deck.subcircuits
           ? Array.isArray(deck.subcircuits)
@@ -502,7 +575,7 @@ export async function pregenerateServerSvgThumbnail(
           title: deck.title || baseTitle,
           elements,
           subcircuits,
-        } as any);
+        } as unknown as Parameters<typeof renderSpiceSvg>[0]);
         const elemCount = Array.isArray(elements) ? elements.length : elements.size || 0;
         const subcktCount = Array.isArray(subcircuits) ? subcircuits.length : 0;
         const modelCount = deck.models ? (typeof deck.models.size === "number" ? deck.models.size : 0) : 0;
@@ -521,13 +594,25 @@ export async function pregenerateServerSvgThumbnail(
       }
 
       case "simulink": {
-        const simulinkMod: any = await import("@modelscript/simulink");
+        interface SimulinkRootSys {
+          blocks?: { size?: number | undefined; length?: number | undefined } | undefined;
+          lines?: { size?: number | undefined; length?: number | undefined } | undefined;
+        }
+        interface SimulinkParsedModel extends SimulinkRootSys {
+          name?: string | undefined;
+          rootSystem?: SimulinkRootSys | undefined;
+        }
+        const simulinkMod = (await import("@modelscript/simulink")) as unknown as {
+          parseSimulinkXml?: ((src: string, name: string) => SimulinkParsedModel) | undefined;
+          parseSlxXml?: ((src: string, name: string) => SimulinkParsedModel) | undefined;
+          parseMdl: (src: string, name: string) => SimulinkParsedModel;
+        };
         const { renderSimulinkSvg } = await import("@modelscript/diagram/simulink-diagram-builder");
         const isXml = content.trimStart().startsWith("<");
         const parseXmlFn = simulinkMod.parseSimulinkXml || simulinkMod.parseSlxXml || simulinkMod.parseMdl;
         const model = isXml ? parseXmlFn(content, baseTitle) : simulinkMod.parseMdl(content, baseTitle);
         const rootSys = model.rootSystem || model;
-        result.svg = renderSimulinkSvg(rootSys);
+        result.svg = renderSimulinkSvg(rootSys as unknown as Parameters<typeof renderSimulinkSvg>[0]);
         const blockCount = rootSys.blocks?.size ?? rootSys.blocks?.length ?? 0;
         const lineCount = rootSys.lines?.length ?? rootSys.lines?.size ?? 0;
         result.metadata = {
@@ -545,7 +630,7 @@ export async function pregenerateServerSvgThumbnail(
 
       case "fea-deck": {
         const { parseInpDeck } = await import("@modelscript/fea");
-        const deck: any = parseInpDeck(content);
+        const deck = parseInpDeck(content) as unknown as FeaDeckLike;
         const svg = buildFeaMeshSvgFromDeck(deck, baseTitle);
         const stepCount = deck.steps?.length ?? deck.steps?.size ?? 0;
         const boundaryCount = deck.boundaries?.length ?? deck.boundaries?.size ?? 0;
@@ -573,7 +658,7 @@ export async function pregenerateServerSvgThumbnail(
 
       case "cfd-config": {
         const { parseSu2Config } = await import("@modelscript/cfd");
-        const cfg: any = parseSu2Config(content);
+        const cfg = parseSu2Config(content) as unknown as Su2ConfigLike;
         const svg = buildCfdDomainSvgFromConfig(cfg, baseTitle);
         result.svg = svg;
         result.metadata = {
@@ -599,17 +684,28 @@ export async function pregenerateServerSvgThumbnail(
       }
 
       case "owl2": {
-        const owlMod: any = await import("@modelscript/owl2");
+        interface Owl2NodeLike {
+          kind?: string | undefined;
+          type?: string | undefined;
+        }
+        interface Owl2DiagramLike {
+          nodes?: Owl2NodeLike[] | undefined;
+          edges?: unknown[] | undefined;
+        }
+        const owlMod = (await import("@modelscript/owl2")) as unknown as {
+          parseOWL2?: ((src: string) => { axioms?: unknown[] | undefined; iri?: string | undefined }) | undefined;
+          buildOWL2DiagramData?: ((axioms: unknown[]) => Owl2DiagramLike) | undefined;
+        };
         const { renderPolyglotDiagramToSvg } = await import("@modelscript/diagram/svg");
         const ontology = owlMod.parseOWL2 ? owlMod.parseOWL2(content) : { axioms: [], iri: baseTitle };
-        const diag = owlMod.buildOWL2DiagramData
+        const diag: Owl2DiagramLike = owlMod.buildOWL2DiagramData
           ? owlMod.buildOWL2DiagramData(ontology.axioms || [])
           : buildPolyglotDiagramFromSource(content, "owl2", baseTitle);
-        result.svg = renderPolyglotDiagramToSvg(diag as any, { theme: "dark" });
-        const classCount = (diag.nodes || []).filter((n: any) => n.kind === "class" || n.type === "class").length;
-        const indivCount = (diag.nodes || []).filter(
-          (n: any) => n.kind === "individual" || n.type === "individual",
-        ).length;
+        result.svg = renderPolyglotDiagramToSvg(diag as unknown as Parameters<typeof renderPolyglotDiagramToSvg>[0], {
+          theme: "dark",
+        });
+        const classCount = (diag.nodes || []).filter((n) => n.kind === "class" || n.type === "class").length;
+        const indivCount = (diag.nodes || []).filter((n) => n.kind === "individual" || n.type === "individual").length;
         result.metadata = {
           classCount,
           axiomCount: ontology.axioms?.length || diag.nodes?.length || 0,
@@ -648,7 +744,9 @@ export async function pregenerateServerSvgThumbnail(
               : viewType;
         const diag = buildPolyglotDiagramFromSource(content, dslLang, baseTitle);
         if (diag.nodes.length > 0) {
-          result.svg = renderPolyglotDiagramToSvg(diag as any, { theme: "dark" });
+          result.svg = renderPolyglotDiagramToSvg(diag as unknown as Parameters<typeof renderPolyglotDiagramToSvg>[0], {
+            theme: "dark",
+          });
         }
         result.metadata = {
           nodeCount: diag.nodes.length,
@@ -684,7 +782,7 @@ export async function pregenerateServerSvgThumbnail(
         const { parseSwmm } = await import("@modelscript/swmm");
         const { renderSwmmSvg } = await import("@modelscript/diagram/swmm-diagram-builder");
         const model = parseSwmm(content);
-        result.svg = renderSwmmSvg(model as any);
+        result.svg = renderSwmmSvg(model as unknown as Parameters<typeof renderSwmmSvg>[0]);
         result.metadata = { junctionCount: model.junctions.size, conduitCount: model.conduits.size };
         result.viewConfigAdditions = {
           code: inlineCode,
@@ -698,7 +796,12 @@ export async function pregenerateServerSvgThumbnail(
       case "touchstone": {
         const { parseTouchstone, verifyPassivity } = await import("@modelscript/touchstone");
         const { renderTouchstoneSvg } = await import("@modelscript/diagram/touchstone-diagram-builder");
-        const net: any = parseTouchstone(content);
+        const net = parseTouchstone(content) as unknown as Parameters<typeof verifyPassivity>[0] & {
+          numPorts: number;
+          options: { referenceResistance: number };
+          frequencies?: unknown[] | undefined;
+          dataPoints?: unknown[] | undefined;
+        };
         const passivity = verifyPassivity(net);
         result.svg = renderTouchstoneSvg({
           portCount: net.numPorts,
@@ -725,7 +828,14 @@ export async function pregenerateServerSvgThumbnail(
         result.svg = renderIbisBufferSvg({
           componentName: firstComp?.name || baseTitle,
           pins: firstComp
-            ? Array.from(firstComp.pins.values()).map((p: any) => ({ pin: p.pin, signal: p.signal, model: p.model }))
+            ? Array.from(firstComp.pins.values()).map((p) => {
+                const rawP = p as unknown as { pin: string; signal: string; model: string };
+                return {
+                  pin: rawP.pin,
+                  signal: rawP.signal,
+                  model: rawP.model,
+                };
+              })
             : [],
         });
         result.metadata = { componentCount: model.components.size, modelCount: model.models.size };
@@ -742,7 +852,7 @@ export async function pregenerateServerSvgThumbnail(
         const { parseOpenDss } = await import("@modelscript/opendss");
         const { renderOpenDssSvg } = await import("@modelscript/diagram/opendss-diagram-builder");
         const deck = parseOpenDss(content);
-        result.svg = renderOpenDssSvg(deck as any);
+        result.svg = renderOpenDssSvg(deck as unknown as Parameters<typeof renderOpenDssSvg>[0]);
         result.metadata = {
           lineCount: deck.lines.size,
           loadCount: deck.loads.size,
@@ -764,7 +874,13 @@ export async function pregenerateServerSvgThumbnail(
         const scen = parseOpenScenario(content);
         result.svg = renderOpenScenarioSvg({
           title: scen.header.description || baseTitle,
-          entities: Array.from(scen.entities.values()).map((e: any) => ({ name: e.name, category: e.category })),
+          entities: Array.from(scen.entities.values()).map((e) => {
+            const rawE = e as unknown as { name: string; category: string };
+            return {
+              name: rawE.name,
+              category: rawE.category,
+            };
+          }) as unknown as Parameters<typeof renderOpenScenarioSvg>[0]["entities"],
         });
         result.metadata = { entityCount: scen.entities.size };
         result.viewConfigAdditions = {
@@ -779,7 +895,7 @@ export async function pregenerateServerSvgThumbnail(
         const { parseRelap5 } = await import("@modelscript/relap5");
         const { renderRelap5Svg } = await import("@modelscript/diagram/relap5-diagram-builder");
         const deck = parseRelap5(content);
-        result.svg = renderRelap5Svg(deck as any);
+        result.svg = renderRelap5Svg(deck as unknown as Parameters<typeof renderRelap5Svg>[0]);
         result.metadata = { volumeCount: deck.volumes.size, junctionCount: deck.junctions.size };
         result.viewConfigAdditions = {
           code: inlineCode,
@@ -794,7 +910,7 @@ export async function pregenerateServerSvgThumbnail(
         const { parseEclipse } = await import("@modelscript/eclipse");
         const { renderEclipseSvg } = await import("@modelscript/diagram/eclipse-diagram-builder");
         const deck = parseEclipse(content);
-        result.svg = renderEclipseSvg(deck as any);
+        result.svg = renderEclipseSvg(deck as unknown as Parameters<typeof renderEclipseSvg>[0]);
         result.metadata = { wellCount: deck.wells.size, nz: deck.dimensions?.nz };
         result.viewConfigAdditions = {
           code: inlineCode,
@@ -980,7 +1096,30 @@ function buildPolyglotDiagramFromSource(content: string, dslLang: string, fallba
   };
 }
 
-function buildFeaMeshSvgFromDeck(deck: any, fallbackTitle: string): string {
+interface FeaDeckLike {
+  heading?: string | undefined;
+  nodes?: Map<number, { id: number; x: number; y: number; z: number }> | undefined;
+  elements?: Map<number, { id: number; type: string; nodes: number[] }> | undefined;
+  materials?: Map<string, unknown> | undefined;
+  steps?: { length?: number | undefined; size?: number | undefined } | undefined;
+  boundaries?: { length?: number | undefined; size?: number | undefined } | undefined;
+  cloads?: { length?: number | undefined; size?: number | undefined } | undefined;
+  dloads?: { length?: number | undefined; size?: number | undefined } | undefined;
+}
+
+interface Su2ConfigLike {
+  solver?: string | undefined;
+  kindTurbModel?: string | undefined;
+  mathProblem?: string | undefined;
+  machNumber?: number | undefined;
+  aoa?: number | undefined;
+  reynoldsNumber?: number | undefined;
+  markersEuler?: string[] | undefined;
+  markersFar?: string[] | undefined;
+  markersHeatflux?: string[] | undefined;
+}
+
+function buildFeaMeshSvgFromDeck(deck: FeaDeckLike, fallbackTitle: string): string {
   const width = 680;
   const height = 380;
   const pad = 48;
@@ -1051,7 +1190,7 @@ function buildFeaMeshSvgFromDeck(deck: any, fallbackTitle: string): string {
   </svg>`;
 }
 
-function buildCfdDomainSvgFromConfig(cfg: any, fallbackTitle: string): string {
+function buildCfdDomainSvgFromConfig(cfg: Su2ConfigLike, fallbackTitle: string): string {
   const width = 680;
   const height = 360;
   const solver = escapeXml(cfg.solver || "EULER");

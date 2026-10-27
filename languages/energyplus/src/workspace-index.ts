@@ -85,6 +85,7 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
       this.fileBaseIds.set(uri, baseId);
     }
 
+    const fileBaseId = baseId;
     let localSeq = 1;
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, SymbolId[]>();
@@ -96,7 +97,7 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
       parentId: SymbolId | null = null,
       extra?: Record<string, unknown>,
     ): SymbolId {
-      const symId = (baseId! + localSeq++) as SymbolId;
+      const symId = (fileBaseId + localSeq++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,

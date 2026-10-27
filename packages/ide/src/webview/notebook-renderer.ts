@@ -7,10 +7,25 @@ interface NotebookRendererOutputItem {
   json(): unknown;
 }
 
-interface DiagramData {
-  nodes: any[];
+interface DiagramNodeData {
+  id?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  autoLayout?: boolean | undefined;
+  [key: string]: unknown;
+}
 
-  edges: any[];
+interface DiagramEdgeData {
+  source: string | { cell: string; port?: string | undefined };
+  target: string | { cell: string; port?: string | undefined };
+  [key: string]: unknown;
+}
+
+interface DiagramData {
+  nodes: DiagramNodeData[];
+  edges: DiagramEdgeData[];
   coordinateSystem?: {
     x: number;
     y: number;
@@ -60,7 +75,7 @@ export function activate() {
       // Auto-layout nodes that lack placement annotations
       const nodesToLayout: string[] = [];
 
-      nodes.forEach((node: any) => {
+      nodes.forEach((node: DiagramNodeData) => {
         if (node.autoLayout) {
           nodesToLayout.push(node.id ?? "");
         }
@@ -78,12 +93,12 @@ export function activate() {
         });
 
         const modelEdges = edges
-          .filter((e: { source: string | { cell: string }; target: string | { cell: string } }) => {
+          .filter((e: DiagramEdgeData) => {
             const s = typeof e.source === "string" ? e.source : e.source.cell;
             const t = typeof e.target === "string" ? e.target : e.target.cell;
             return nodesToLayout.includes(s) && nodesToLayout.includes(t);
           })
-          .map((e: { source: string | { cell: string }; target: string | { cell: string } }) => ({
+          .map((e: DiagramEdgeData) => ({
             source: typeof e.source === "string" ? e.source : e.source.cell,
             target: typeof e.target === "string" ? e.target : e.target.cell,
           }));
@@ -98,27 +113,27 @@ export function activate() {
         if (isolatedNodes.length > 2) {
           const cols = Math.ceil(Math.sqrt(isolatedNodes.length));
           for (let i = 0; i < isolatedNodes.length - cols; i++) {
-            modelEdges.push({ source: isolatedNodes[i], target: isolatedNodes[i + cols] });
+            modelEdges.push({ source: isolatedNodes[i]!, target: isolatedNodes[i + cols]! });
           }
         }
 
         const model = {
           nodes: nodes
-            .filter((n: { id?: string }) => nodesToLayout.includes(n.id ?? ""))
-            .map((n: Record<string, unknown> & { id?: string; width?: number; height?: number }) => ({
+            .filter((n: DiagramNodeData) => nodesToLayout.includes(n.id ?? ""))
+            .map((n: DiagramNodeData) => ({
               ...n,
               size: [n.width || 200, n.height || 80],
             })),
           edges: modelEdges,
         };
 
-        const newModel = dagreLayout.layout(model as any);
+        const newModel = dagreLayout.layout(model as unknown as Parameters<DagreLayout["layout"]>[0]);
 
-        newModel.nodes?.forEach((n: any) => {
-          const node = nodes.find((no: any) => no.id === n.id);
+        (newModel.nodes as DiagramNodeData[] | undefined)?.forEach((n: DiagramNodeData) => {
+          const node = nodes.find((no: DiagramNodeData) => no.id === n.id);
           if (node) {
-            node.x = n.x - (node.width ?? 0) / 2;
-            node.y = n.y - (node.height ?? 0) / 2;
+            node.x = (n.x ?? 0) - (node.width ?? 0) / 2;
+            node.y = (n.y ?? 0) - (node.height ?? 0) / 2;
           }
         });
       }

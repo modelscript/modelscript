@@ -146,13 +146,18 @@ export class IC3Engine {
     let currentClause = cube.map((l) => -l); // clause = ~cube
     if (level === 0) return currentClause;
 
+    const initSolver = this.getFrameSolver(0);
     const solver = this.getFrameSolver(level - 1);
 
     for (let i = 0; i < currentClause.length; i++) {
       const candidate = currentClause.filter((_, idx) => idx !== i);
       if (candidate.length === 0) continue;
 
-      // Use an activation literal for candidate:
+      // 1. Initiation check: Init & ~candidate must be UNSAT
+      const initViolated = initSolver.solve(candidate.map((l) => -l));
+      if (initViolated.status === "SAT") continue;
+
+      // 2. Relative consecution check: F_{level-1} & candidate & T & ~candidate' must be UNSAT
       const act = ++this.auxVarCounter;
       solver.addClause([-act, ...candidate]);
 
@@ -320,11 +325,18 @@ export class IC3Engine {
 
         const converged = this.propagateClauses(k);
         if (converged) {
-          // Collect all invariant clauses
+          // Collect deduplicated invariant clauses
           const invariant: LitId[][] = [];
+          const seenClauses = new Set<string>();
           for (let i = 1; i <= k; i++) {
             if (this.frameClauses[i]) {
-              invariant.push(...this.frameClauses[i]!);
+              for (const c of this.frameClauses[i]!) {
+                const key = this.serializeClause(c);
+                if (!seenClauses.has(key)) {
+                  seenClauses.add(key);
+                  invariant.push(c);
+                }
+              }
             }
           }
           return {

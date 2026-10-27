@@ -69,6 +69,10 @@ export class BlastRadiusRegressionRunner {
           matched = { domain: ThreadDomain.FEA, nodeId: this.hash(cf.path), name: cf.path };
         } else if (cf.path.endsWith(".cfg")) {
           matched = { domain: ThreadDomain.CFD, nodeId: this.hash(cf.path), name: cf.path };
+        } else if (cf.path.endsWith(".reqif")) {
+          matched = { domain: ThreadDomain.Requirements, nodeId: this.hash(cf.path), name: cf.path };
+        } else if (cf.path.endsWith(".fmu")) {
+          matched = { domain: ThreadDomain.FMU, nodeId: this.hash(cf.path), name: cf.path };
         }
       }
 
@@ -157,7 +161,7 @@ export class BlastRadiusRegressionRunner {
     if (!staleDomainsSet.has(ThreadDomain.FEA)) savedSec += 300;
     if (!staleDomainsSet.has(ThreadDomain.Surrogate)) savedSec += 180;
 
-    const totalPossibleDomains = 8;
+    const totalPossibleDomains = 16;
     const skippedCount = Math.max(0, totalPossibleDomains - staleDomainsSet.size);
 
     return {

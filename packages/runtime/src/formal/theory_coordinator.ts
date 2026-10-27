@@ -368,6 +368,10 @@ export class SemanticTheoryCoordinator {
    * Merges equivalence classes of two variables and intersects their known bounds.
    */
   private unionVars(a: string, b: string): string {
+    const aIsNum = a.trim() !== "" && !isNaN(Number(a));
+    const bIsNum = b.trim() !== "" && !isNaN(Number(b));
+    if (bIsNum && !aIsNum) return this.getCanonicalVar(a);
+    if (aIsNum && !bIsNum) return this.getCanonicalVar(b);
     const rootA = this.getCanonicalVar(a);
     const rootB = this.getCanonicalVar(b);
     if (rootA !== rootB) {

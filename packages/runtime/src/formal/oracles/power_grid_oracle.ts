@@ -266,7 +266,12 @@ export class PowerGridTheoryOracle implements TheoryOracle {
       if (spec) this.reactivePowers.set(String(spec.genId), spec);
     } else if (predicate === "branchLoading") {
       const spec = args[0] as BranchLoadingSpec;
-      if (spec) this.branchLoadings.set(`${spec.fromBus}_${spec.toBus}`, spec);
+      if (spec) {
+        const key = spec.circuitId
+          ? `${spec.fromBus}_${spec.toBus}_${spec.circuitId}`
+          : `${spec.fromBus}_${spec.toBus}`;
+        this.branchLoadings.set(key, spec);
+      }
     } else if (predicate === "ieee2800Clause") {
       const spec = args[0] as Ieee2800ClauseSpec;
       if (spec) this.ieee2800Clauses.set(spec.clause, spec);
@@ -361,7 +366,12 @@ export class PowerGridTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.fromBus === spec.fromBus && a?.toBus === spec.toBus),
+              l.args.some(
+                (a) =>
+                  a?.fromBus === spec.fromBus &&
+                  a?.toBus === spec.toBus &&
+                  (!spec.circuitId || a?.circuitId === spec.circuitId),
+              ),
             ),
             explanation: `Power Grid Violation: Branch ${spec.fromBus}->${spec.toBus} thermal loading ${spec.loadingPercent.toFixed(1)}% exceeds 100% MVA continuous rating (${spec.actualMva.toFixed(1)} / ${spec.rateMva.toFixed(1)} MVA).`,
             culpritEntities: [id, `Branch_${id}`],
@@ -393,16 +403,23 @@ export class PowerGridTheoryOracle implements TheoryOracle {
 
   public propagateEqualities(): SharedEquality[] {
     const eqs: SharedEquality[] = [];
+    const allLitIds = Array.from(this.assertedLiterals.keys());
 
     // Propagate bus voltage bounds
     for (const [id, spec] of this.busVoltages.entries()) {
+      const busJusts = Array.from(this.assertedLiterals.values())
+        .filter((l) => l.args.some((a) => a?.busId === spec.busId))
+        .map((l) => l.id);
+      const varName = `grid.bus_voltage.${id}`;
       eqs.push({
-        varA: `grid.bus_voltage.${id}`,
-        varB: String(spec.actualVm),
+        varA: varName,
+        varB: varName,
         domain: "real",
         bounds: [spec.actualVm, spec.actualVm],
         explanation: `Power grid bus #${id} voltage magnitude is ${spec.actualVm} p.u.`,
         sourceOracle: this.name,
+        justifications: busJusts,
+        justification: busJusts,
       });
     }
 
@@ -416,31 +433,41 @@ export class PowerGridTheoryOracle implements TheoryOracle {
       }
       eqs.push({
         varA: "grid.min_bus_voltage",
-        varB: String(minV),
+        varB: "grid.min_bus_voltage",
         domain: "real",
         bounds: [minV, minV],
         explanation: `System minimum bus voltage is ${minV} p.u.`,
         sourceOracle: this.name,
+        justifications: allLitIds,
+        justification: allLitIds,
       });
       eqs.push({
         varA: "grid.max_bus_voltage",
-        varB: String(maxV),
+        varB: "grid.max_bus_voltage",
         domain: "real",
         bounds: [maxV, maxV],
         explanation: `System maximum bus voltage is ${maxV} p.u.`,
         sourceOracle: this.name,
+        justifications: allLitIds,
+        justification: allLitIds,
       });
     }
 
     // Propagate IEEE 2800 metrics
     for (const [clauseId, spec] of this.ieee2800Clauses.entries()) {
+      const clauseJusts = Array.from(this.assertedLiterals.values())
+        .filter((l) => l.args.some((a) => a?.clause === clauseId))
+        .map((l) => l.id);
+      const varName = `grid.ieee2800.${clauseId}`;
       eqs.push({
-        varA: `grid.ieee2800.${clauseId}`,
-        varB: String(spec.actualValue),
+        varA: varName,
+        varB: varName,
         domain: "real",
         bounds: [spec.actualValue, spec.actualValue],
         explanation: `IEEE 2800 clause ${clauseId} measured value: ${spec.actualValue} ${spec.unit}`,
         sourceOracle: this.name,
+        justifications: clauseJusts,
+        justification: clauseJusts,
       });
     }
 

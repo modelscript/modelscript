@@ -37,6 +37,17 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+interface ArchiveJobStatus {
+  id: string;
+  status: string;
+  format: string;
+  queuePosition?: number | undefined;
+  createdAt?: string | undefined;
+  fileSizeBytes?: number | undefined;
+  error?: string | undefined;
+  concurrency?: number | undefined;
+}
+
 export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
   command: "archive [action] [users..]",
   describe: "GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits",
@@ -107,7 +118,7 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
           console.error(c.red(`Failed to query archive status: ${body.error || res.statusText}`));
           process.exit(1);
         }
-        const data = (await res.json()) as { job: any; concurrency?: number | undefined };
+        const data = (await res.json()) as { job?: ArchiveJobStatus | undefined; concurrency?: number | undefined };
         if (!data.job) {
           console.log(c.yellow("No active or recent archive job found for current user."));
           return;
@@ -131,8 +142,9 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
           console.log(`  Error:           ${c.red(data.job.error)}`);
         }
         console.log("");
-      } catch (err: any) {
-        console.error(c.red(`Error connecting to ${apiUrl}: ${err.message}`));
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(c.red(`Error connecting to ${apiUrl}: ${message}`));
         process.exit(1);
       }
       return;
@@ -186,7 +198,7 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
       // Polling loop
       const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
       let spinIdx = 0;
-      let finalJob: any = null;
+      let finalJob: ArchiveJobStatus | null = null;
 
       while (true) {
         const pollRes = await fetch(`${apiUrl}/api/v1/users/me/export/status?jobId=${encodeURIComponent(jobId)}`, {
@@ -194,8 +206,8 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
         });
 
         if (pollRes.ok) {
-          const pollData = (await pollRes.json()) as { job: any };
-          finalJob = pollData.job;
+          const pollData = (await pollRes.json()) as { job?: ArchiveJobStatus | undefined };
+          finalJob = pollData.job ?? null;
 
           if (finalJob) {
             const spin = spinnerChars[spinIdx++ % spinnerChars.length] ?? "•";
@@ -263,8 +275,9 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
         console.log(`  1. Extract ${path.basename(targetPath)}`);
         console.log(`  2. Double-click "index.html" to open the interactive offline viewer.\n`);
       }
-    } catch (err: any) {
-      console.error(c.red(`\nArchive export error: ${err.message}\n`));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(c.red(`\nArchive export error: ${message}\n`));
       process.exit(1);
     }
   },

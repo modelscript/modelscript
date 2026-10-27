@@ -130,14 +130,27 @@ export class ThreadDiagnosticsProvider {
       }
     }
 
-    // 2. Check SysML v2 vs Modelica parameter divergence (mass, voltage, etc.)
+    // 2. Check SysML v2 vs Modelica parameter divergence (mass, voltage, temperature, etc.)
     if (sysmlElem?.properties && modelicaElem?.properties) {
       for (const [propKey, sysmlValRaw] of Object.entries(sysmlElem.properties)) {
-        const sysmlVal = Number(sysmlValRaw);
         const moValRaw = modelicaElem.properties[propKey];
+        if (
+          sysmlValRaw === undefined ||
+          sysmlValRaw === null ||
+          sysmlValRaw === "" ||
+          typeof sysmlValRaw === "boolean" ||
+          moValRaw === undefined ||
+          moValRaw === null ||
+          moValRaw === "" ||
+          typeof moValRaw === "boolean"
+        ) {
+          continue;
+        }
+        const sysmlVal = Number(sysmlValRaw);
         const moVal = Number(moValRaw);
-        if (!isNaN(sysmlVal) && !isNaN(moVal) && sysmlVal > 0 && moVal > 0) {
-          const diffRel = Math.abs(sysmlVal - moVal) / Math.max(sysmlVal, moVal);
+        if (!isNaN(sysmlVal) && !isNaN(moVal)) {
+          const denom = Math.max(Math.abs(sysmlVal), Math.abs(moVal), 1e-9);
+          const diffRel = Math.abs(sysmlVal - moVal) / denom;
           if (diffRel > tolerance) {
             const consensus = (sysmlVal + moVal) / 2;
             const unit = propKey.toLowerCase().includes("volt")

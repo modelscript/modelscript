@@ -134,7 +134,9 @@ export const SimulinkCommand: CommandModule<Record<string, unknown>, Record<stri
           }
           const moText = fs.readFileSync(moPath, "utf-8");
           const originalText = fs.readFileSync(fullPath, "utf-8");
-          const strategy = argv["strategy"] as any;
+          const strategy = argv["strategy"] as
+            | NonNullable<Parameters<typeof synchronizeModelicaToSimulink>[2]>["strategy"]
+            | undefined;
           const result = synchronizeModelicaToSimulink(originalText, moText, { strategy });
 
           console.log(`[Simulink Sync] Reconciled ${result.changes.length} change(s) from '${fromMo}' into '${file}':`);

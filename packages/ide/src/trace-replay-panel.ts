@@ -76,7 +76,13 @@ export class TraceReplayPanel extends BaseWebviewPanel {
           case "requestDiff": {
             if (this._client && this._currentTrace) {
               try {
-                const diffResult = await this._client.sendRequest<any>("modelscript/getCounterexampleDiff", {
+                const diffResult = await this._client.sendRequest<{
+                  success?: boolean | undefined;
+                  divergenceTime?: number | undefined;
+                  divergingVariable?: string | undefined;
+                  diffSignals?: Record<string, number[]> | undefined;
+                  syncedNom?: { continuousSignals?: Record<string, number[]> | undefined } | undefined;
+                }>("modelscript/getCounterexampleDiff", {
                   counterexample: this._currentTrace,
                 });
                 if (diffResult?.success) {
@@ -106,7 +112,7 @@ export class TraceReplayPanel extends BaseWebviewPanel {
                 const raw = await vscode.workspace.fs.readFile(files[0]);
                 const text = new TextDecoder().decode(raw);
                 if (files[0].path.endsWith(".json")) {
-                  const parsed = JSON.parse(text);
+                  const parsed = JSON.parse(text) as ReplayTraceData;
                   this.loadTrace(parsed);
                 } else {
                   const lines = text.trim().split(/\r?\n/);
@@ -130,8 +136,9 @@ export class TraceReplayPanel extends BaseWebviewPanel {
                   });
                 }
                 vscode.window.showInformationMessage(`Loaded trace file: ${files[0].fsPath || files[0].path}`);
-              } catch (e: any) {
-                vscode.window.showErrorMessage(`Failed to parse trace file: ${e?.message || e}`);
+              } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : String(e);
+                vscode.window.showErrorMessage(`Failed to parse trace file: ${message}`);
               }
             }
             break;

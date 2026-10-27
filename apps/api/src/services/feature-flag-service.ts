@@ -95,7 +95,7 @@ export class FeatureFlagService {
 
     // Flag is enabled in DB; check role restriction if any
     if (allowedRoles.length > 0) {
-      if (!allowedRoles.includes(userRole as any)) {
+      if (!(allowedRoles as readonly string[]).includes(userRole)) {
         // Admin exception: admin can always access role-gated features
         if (!isAdmin) {
           return false;

@@ -58,23 +58,38 @@ export function clearActiveDropPlaceholder(): void {
  * or returns language-appropriate defaults (e.g. 20x20 for Modelica/physical circuits).
  */
 
-export function getTypicalNodeSize(g: any): { width: number; height: number } {
+export interface DropPlaceholderGraphNode {
+  id: string;
+  width?: number | undefined;
+  height?: number | undefined;
+  getSize?: (() => { width: number; height: number } | undefined) | undefined;
+  getBBox?: (() => { width: number; height: number } | undefined) | undefined;
+}
+
+export interface DropPlaceholderGraph {
+  getNodes?: (() => DropPlaceholderGraphNode[]) | undefined;
+  getCellById?: ((id: string) => unknown) | undefined;
+  removeCell?: ((cell: unknown) => unknown) | undefined;
+  addNode: (node: Record<string, unknown>) => unknown;
+}
+
+export function getTypicalNodeSize(g: DropPlaceholderGraph | null | undefined): { width: number; height: number } {
   if (g && typeof g.getNodes === "function") {
-    const nodes = g.getNodes().filter((n: any) => !isEphemeralDiagramNode(n.id));
+    const nodes = g.getNodes().filter((n) => !isEphemeralDiagramNode(n.id));
     const sizes = nodes
-      .map((n: any) => {
+      .map((n) => {
         const s = n.getSize?.();
         if (s && s.width > 0 && s.height > 0) return s;
         const b = n.getBBox?.();
         if (b && b.width > 0 && b.height > 0) return { width: b.width, height: b.height };
-        return { width: n.width, height: n.height };
+        return { width: n.width ?? 0, height: n.height ?? 0 };
       })
-      .filter((s: any) => s && s.width > 0 && s.height > 0 && s.width <= 300 && s.height <= 300);
+      .filter((s) => s && s.width > 0 && s.height > 0 && s.width <= 300 && s.height <= 300);
 
     if (sizes.length > 0) {
       // Sort by area to pick median representative node
-      sizes.sort((a: any, b: any) => a.width * a.height - b.width * b.height);
-      const median = sizes[Math.floor(sizes.length / 2)];
+      sizes.sort((a, b) => a.width * a.height - b.width * b.height);
+      const median = sizes[Math.floor(sizes.length / 2)]!;
       return { width: Math.round(median.width), height: Math.round(median.height) };
     }
   }
@@ -188,7 +203,7 @@ export function ensureDiagramStyles(): void {
 }
 
 export function dropComponentGhost(
-  g: any,
+  g: DropPlaceholderGraph,
   x: number,
   y: number,
   className: string,

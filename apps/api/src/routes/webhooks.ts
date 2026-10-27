@@ -81,7 +81,8 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
       return;
     }
 
-    const rawPayload = (req as any).rawBody ? (req as any).rawBody.toString("utf-8") : JSON.stringify(req.body);
+    const reqWithRaw = req as Request & { rawBody?: Buffer | undefined };
+    const rawPayload = reqWithRaw.rawBody ? reqWithRaw.rawBody.toString("utf-8") : JSON.stringify(req.body);
 
     let authenticatedWebhook = null;
 

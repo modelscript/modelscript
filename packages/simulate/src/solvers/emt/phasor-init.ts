@@ -65,8 +65,7 @@ export function initializePhasorSteadyState(
   const rhs = new Float64Array(dim);
 
   const addComplexEntry = (r: number, c: number, g: number, b: number) => {
-    if (r === ("__proto__" as any) || c === ("__proto__" as any) || typeof r !== "number" || typeof c !== "number")
-      return;
+    if (typeof r !== "number" || typeof c !== "number") return;
     if (r < 0 || r >= nNodes || c < 0 || c >= nNodes) return;
     const rowR = dense[r];
     const rowRN = dense[r + nNodes];

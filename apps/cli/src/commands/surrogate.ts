@@ -7,7 +7,7 @@ import type { ArenaDoEInputRange, TrainedROM } from "@modelscript/simulate";
 import { buildArenaSurrogate, emitModelicaROM, exportROMToONNX, importONNXToROM } from "@modelscript/simulate";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 
 const require = createRequire(import.meta.url);
@@ -50,7 +50,7 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
   command: "surrogate <name> [paths..]",
   describe: "Train or import an AI surrogate model (ROM) and generate C, ONNX, or Modelica code",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -158,7 +158,7 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
     }
 
     let trainedROM: TrainedROM;
-    let metrics: any;
+    let metrics: TrainedROM["metrics"];
     let totalWallClockMs = 0;
 
     if (args.fromOnnx) {
@@ -191,7 +191,7 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
       }
 
       const { parser } = await createWasmParser(modelicaWasmPath);
-      Context.registerParser(".mo", parser as any);
+      Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
       const context = Context.createBatch(new NodeFileSystem());
 
       for (const p of args.paths) await context.addLibrary(p);
@@ -296,8 +296,9 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
         } else {
           console.error(`Warning: Component declaration '${compName}' not found in ${sourceFile}.`);
         }
-      } catch (err: any) {
-        console.error(`Failed to replace component: ${err.message}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`Failed to replace component: ${msg}`);
       }
     }
 

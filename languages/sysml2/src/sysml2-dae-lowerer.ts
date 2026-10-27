@@ -29,6 +29,7 @@ import {
   prefixSysmlExpression,
   SysML2CstFlattener,
   type SysML2Token,
+  type SysmlCstNode,
   SysmlExprParser,
   tokenizeSysml,
 } from "./flattener/cst-lowerer.js";
@@ -36,13 +37,17 @@ import {
 export { lowerSysmlExpr, prefixSysmlExpression, SysmlExprParser, tokenizeSysml };
 export type { SysML2Token };
 
-let cachedSysmlParser: any = null;
+export type SysmlWasmParser = NonNullable<ReturnType<typeof createWasmParserSync>>["parser"] & {
+  parse(text: string): { rootNode?: SysmlCstNode | null | undefined } | null | undefined;
+};
+
+let cachedSysmlParser: SysmlWasmParser | null = null;
 /**
  * Lazily loads and caches the synchronous WebAssembly GLR parser for SysML v2 (`parser.wasm`).
  *
  * @returns Initialized WASM parser instance or `null` if the binary is unavailable.
  */
-export function getSysmlParser(): any {
+export function getSysmlParser(): SysmlWasmParser | null {
   if (cachedSysmlParser) return cachedSysmlParser;
   try {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -54,7 +59,7 @@ export function getSysmlParser(): any {
     ];
     const wasmPath = candidatePaths.find((p) => fs.existsSync(p));
     if (wasmPath) {
-      cachedSysmlParser = createWasmParserSync(wasmPath)?.parser;
+      cachedSysmlParser = (createWasmParserSync(wasmPath)?.parser as SysmlWasmParser | undefined) ?? null;
     }
   } catch {
     // Parser fallback
@@ -400,18 +405,21 @@ export class SysML2DaeLowerer {
    * Lowers a parsed CST root node or source string directly into the DAE arena via SysML2CstFlattener.
    */
   public static lowerCst(
-    sourceOrRootNode: string | any,
+    sourceOrRootNode: string | SysmlCstNode,
     existingArena?: DAEBuilder,
     options?: { overrides?: Record<string, number> | undefined; rootComponentName?: string | undefined },
   ): LoweredConstraintDae & { rootName: string } {
-    let root = sourceOrRootNode;
+    let root: SysmlCstNode;
     let sourceText: string | undefined;
     if (typeof sourceOrRootNode === "string") {
       sourceText = sourceOrRootNode;
       const parser = getSysmlParser();
       if (!parser) throw new Error("SysML v2 parser not available");
       const tree = parser.parse(sourceOrRootNode);
-      root = tree?.rootNode;
+      if (!tree?.rootNode) throw new Error("Failed to parse SysML v2 source");
+      root = tree.rootNode;
+    } else {
+      root = sourceOrRootNode;
     }
     const arena = existingArena ?? new DAEBuilder();
     const flattener = new SysML2CstFlattener({

@@ -359,7 +359,13 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                     color: d.color,
                   }}
                 >
-                  <span>{typeof d.icon === "function" ? React.createElement(d.icon, { size: 12 }) : d.icon}</span>
+                  <span>
+                    {React.isValidElement(d.icon)
+                      ? d.icon
+                      : d.icon
+                        ? React.createElement(d.icon as any, { size: 12 })
+                        : null}
+                  </span>
                   <span>{d.label}</span>
                   <span style={{ opacity: 0.7, fontSize: 11 }}>({d.count})</span>
                 </span>

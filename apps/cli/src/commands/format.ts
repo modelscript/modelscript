@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { LanguageResolver } from "../util/language-registry.js";
 
 export interface FormatArgs {
@@ -51,7 +51,7 @@ function expandFiles(entries: string[], languageOverride?: string): string[] {
   return Array.from(new Set(result));
 }
 
-export const Format: CommandModule<any, any> = {
+export const Format: CommandModule<{}, FormatArgs> = {
   command: "format <files..>",
   describe: "Format source files using their language DSL formatter or unparser",
   builder: (yargs) => {
@@ -88,10 +88,10 @@ export const Format: CommandModule<any, any> = {
         description: "Preserve original token layout where grammar permits",
         type: "boolean",
         default: false,
-      });
+      }) as unknown as Argv<FormatArgs>;
   },
   handler: async (args) => {
-    const filePaths = expandFiles(args["files"], args["language"]);
+    const filePaths = expandFiles(args.files, args.language);
     if (filePaths.length === 0) {
       console.error("No matching files found to format.");
       process.exit(1);
@@ -99,15 +99,15 @@ export const Format: CommandModule<any, any> = {
 
     let unformattedCount = 0;
     let formattedCount = 0;
-    const isSingleFileStdout = !args["write"] && !args["check"] && filePaths.length === 1;
+    const isSingleFileStdout = !args.write && !args.check && filePaths.length === 1;
 
     for (const filePath of filePaths) {
       try {
-        const lang = await LanguageResolver.resolve(filePath, args["language"]);
+        const lang = await LanguageResolver.resolve(filePath, args.language);
         const original = fs.readFileSync(filePath, "utf-8");
         const formatted = await lang.format(original, {
-          indentSize: args["indentSize"],
-          preserveFormatting: args["preserveFormatting"],
+          indentSize: args.indentSize,
+          preserveFormatting: args.preserveFormatting,
         });
 
         if (isSingleFileStdout) {
@@ -117,12 +117,12 @@ export const Format: CommandModule<any, any> = {
 
         const isUnchanged = formatted === original;
 
-        if (args["check"]) {
+        if (args.check) {
           if (!isUnchanged) {
             console.error(`[unformatted] ${path.relative(process.cwd(), filePath)} (${lang.manifest.name})`);
             unformattedCount++;
           }
-        } else if (args["write"]) {
+        } else if (args.write) {
           if (!isUnchanged) {
             fs.writeFileSync(filePath, formatted, "utf-8");
             console.log(`Formatted ${path.relative(process.cwd(), filePath)} (${lang.manifest.name})`);
@@ -133,8 +133,10 @@ export const Format: CommandModule<any, any> = {
           console.log(`\n--- ${path.relative(process.cwd(), filePath)} ---`);
           process.stdout.write(formatted);
         }
-      } catch (err: any) {
-        console.error(`Error formatting ${path.relative(process.cwd(), filePath)}: ${err.message}`);
+      } catch (err: unknown) {
+        console.error(
+          `Error formatting ${path.relative(process.cwd(), filePath)}: ${err instanceof Error ? err.message : String(err)}`,
+        );
         unformattedCount++;
       }
     }

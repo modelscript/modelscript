@@ -96,8 +96,9 @@ export class FederationWorker {
         let payload: Record<string, unknown>;
         try {
           payload = JSON.parse(item.payload);
-        } catch (parseErr: any) {
-          this.db.updateFederationDeliveryStatus(item.id, "failed", `Invalid JSON payload: ${parseErr.message}`);
+        } catch (parseErr: unknown) {
+          const parseMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          this.db.updateFederationDeliveryStatus(item.id, "failed", `Invalid JSON payload: ${parseMsg}`);
           continue;
         }
 
@@ -120,8 +121,8 @@ export class FederationWorker {
         try {
           await sendSignedRequest(item.target_inbox_url, payload, signingKeyId, signingKey, this.db);
           this.db.updateFederationDeliveryStatus(item.id, "completed");
-        } catch (err: any) {
-          const errMsg = err?.message || String(err);
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
           const nextAttempt = item.attempts + 1;
           if (nextAttempt >= item.max_attempts) {
             this.db.updateFederationDeliveryStatus(

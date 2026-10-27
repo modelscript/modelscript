@@ -26,7 +26,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 
@@ -135,7 +135,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
   aliases: ["export-fmu"], // Keep old name for backward compatibility
   describe: "Export, validate, inspect, build, or simulate an FMU archive",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -272,7 +272,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         type: "boolean",
         default: false,
       });
-  }) as any,
+  }) as CommandModule<{}, FmuArgs>["builder"],
 
   handler: async (args) => {
     const fmuSubcommands = new Set(["import", "validate", "info", "list", "build", "simulate", "record", "verify"]);
@@ -509,7 +509,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     const profiler = new Profiler();
     const { parser } = await createWasmParser(modelicaWasmPath);
 
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     profiler.start("parsing");

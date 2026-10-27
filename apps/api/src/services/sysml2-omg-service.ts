@@ -185,11 +185,11 @@ export class SysML2OmgService {
           const elements = this.db.getSysml2Elements(c["@id"]);
           const elemMap = new Map<string, OmgElement>();
           for (const e of elements) {
-            elemMap.set(e["@id"], e);
+            elemMap.set(String(e["@id"]), e as unknown as OmgElement);
           }
           this.elements.set(c["@id"], elemMap);
           const rels = this.db.getSysml2Relationships(c["@id"]);
-          this.relationships.set(c["@id"], rels);
+          this.relationships.set(c["@id"], rels as unknown as OmgRelationship[]);
         }
       }
     } catch (err) {
@@ -512,8 +512,8 @@ export class SysML2OmgService {
     if (this.db) {
       try {
         this.db.saveSysml2Commit(commit);
-        this.db.saveSysml2Elements(commitId, elements);
-        this.db.saveSysml2Relationships(commitId, relationships);
+        this.db.saveSysml2Elements(commitId, elements as unknown as Record<string, unknown>[]);
+        this.db.saveSysml2Relationships(commitId, relationships as unknown as Record<string, unknown>[]);
         if (targetBranch) {
           this.db.saveSysml2Branch(targetBranch);
         }

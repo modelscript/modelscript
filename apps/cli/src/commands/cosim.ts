@@ -14,7 +14,7 @@ import {
   psoSolve,
   type SingleObjectiveResult,
 } from "@modelscript/simulate/optimizer";
-import type { CommandModule } from "yargs";
+import type { ArgumentsCamelCase, Argv, CommandModule } from "yargs";
 
 interface CosimArgs {
   "api-url": string;
@@ -34,10 +34,10 @@ async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
 // ── Subcommands ──
 
 /** List active co-simulation sessions. */
-const listSessions = {
+const listSessions: CommandModule<CosimArgs, CosimArgs> = {
   command: "sessions",
   describe: "List co-simulation sessions",
-  handler: async (args: CosimArgs) => {
+  handler: async (args) => {
     const data = (await fetchJson(`${args["api-url"]}/api/v1/cosim/sessions`)) as {
       sessions: { id: string; state: string; participants: number }[];
     };
@@ -53,10 +53,10 @@ const listSessions = {
 };
 
 /** List MQTT participants. */
-const listParticipants = {
+const listParticipants: CommandModule<CosimArgs, CosimArgs> = {
   command: "participants",
   describe: "List active MQTT participants",
-  handler: async (args: CosimArgs) => {
+  handler: async (args) => {
     const data = (await fetchJson(`${args["api-url"]}/api/v1/mqtt/participants`)) as {
       participants: { participantId: string; modelName: string; type: string; online: boolean }[];
     };
@@ -73,10 +73,10 @@ const listParticipants = {
 };
 
 /** List uploaded FMUs. */
-const listFmus = {
+const listFmus: CommandModule<CosimArgs, CosimArgs> = {
   command: "fmus",
   describe: "List uploaded FMU archives",
-  handler: async (args: CosimArgs) => {
+  handler: async (args) => {
     const data = (await fetchJson(`${args["api-url"]}/api/v1/fmus`)) as {
       fmus: { id: string; filename: string; modelName: string; variableCount: number }[];
     };
@@ -92,16 +92,16 @@ const listFmus = {
 };
 
 /** Upload an FMU archive. */
-const uploadFmu = {
+const uploadFmu: CommandModule<CosimArgs, CosimArgs & { file: string }> = {
   command: "upload <file>",
   describe: "Upload an FMU archive",
-  builder: (yargs: { positional: (name: string, opts: Record<string, unknown>) => unknown }) =>
+  builder: (yargs) =>
     yargs.positional("file", {
       description: "Path to the .fmu file",
       type: "string",
       demandOption: true,
-    }),
-  handler: async (args: CosimArgs & { file: string }) => {
+    }) as unknown as Argv<CosimArgs & { file: string }>,
+  handler: async (args) => {
     const { readFileSync } = await import("fs");
     const { basename } = await import("path");
     const filename = basename(args.file);
@@ -130,22 +130,10 @@ const uploadFmu = {
 };
 
 /** Start historian replay. */
-const replay = {
+const replay: CommandModule<CosimArgs, CosimArgs & { session: string; speed: number; from?: string | undefined }> = {
   command: "replay",
   describe: "Start historian replay of a recorded session",
-  builder: (yargs: {
-    option: (
-      name: string,
-      opts: Record<string, unknown>,
-    ) => {
-      option: (
-        name: string,
-        opts: Record<string, unknown>,
-      ) => {
-        option: (name: string, opts: Record<string, unknown>) => unknown;
-      };
-    };
-  }) =>
+  builder: (yargs) =>
     yargs
       .option("session", {
         description: "Session ID to replay",
@@ -160,8 +148,8 @@ const replay = {
       .option("from", {
         description: "Replay start time (ISO 8601)",
         type: "string",
-      }),
-  handler: async (args: CosimArgs & { session: string; speed: number; from?: string | undefined }) => {
+      }) as unknown as Argv<CosimArgs & { session: string; speed: number; from?: string | undefined }>,
+  handler: async (args) => {
     const body: Record<string, unknown> = {
       sessionId: args.session,
       speedFactor: args.speed,
@@ -181,10 +169,10 @@ const replay = {
 };
 
 /** List historian sessions. */
-const historianSessions = {
+const historianSessions: CommandModule<CosimArgs, CosimArgs> = {
   command: "history",
   describe: "List recorded historian sessions",
-  handler: async (args: CosimArgs) => {
+  handler: async (args) => {
     const data = (await fetchJson(`${args["api-url"]}/api/v1/historian/sessions`)) as {
       sessions: { id: string; startTime: string; stopTime: string }[];
     };
@@ -200,10 +188,10 @@ const historianSessions = {
 };
 
 /** Check system status. */
-const status = {
+const status: CommandModule<CosimArgs, CosimArgs> = {
   command: "status",
   describe: "Check co-simulation system health",
-  handler: async (args: CosimArgs) => {
+  handler: async (args) => {
     console.log("Co-Simulation System Status");
     console.log("═".repeat(40));
 
@@ -296,7 +284,7 @@ export interface CosimOptimizeArgs extends CosimArgs {
 export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
   command: "optimize [archive]",
   describe: "Optimize parameters in a co-simulation session or SSP archive using metaheuristics",
-  builder: ((yargs: any) =>
+  builder: ((yargs: Argv) =>
     yargs
       .positional("archive", {
         description: "Path to SSP archive (.ssp) or FMU (.fmu) model",
@@ -332,7 +320,7 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
         type: "number",
         default: 42,
       })) as CommandModule<{}, CosimOptimizeArgs>["builder"],
-  handler: async (args: any) => {
+  handler: async (args: ArgumentsCamelCase<CosimOptimizeArgs>) => {
     console.log("=== Co-Simulation Black-Box Parameter Optimization ===");
     const paramRanges = parseCosimParams(args.params);
     console.log(`Model Target: ${args.archive ?? "Active API Session"}`);
@@ -451,7 +439,7 @@ export const Cosim: CommandModule<{}, CosimArgs> = {
   command: "cosim",
   describe: "Co-simulation management (sessions, participants, FMUs, replay, optimize)",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .option("api-url", {
         description: "ModelScript API base URL",

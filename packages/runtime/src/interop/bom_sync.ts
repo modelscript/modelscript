@@ -142,9 +142,16 @@ export class BomSyncManager {
     const prevCarbon = (existing.embodiedCarbonKgCo2e || 0) * existing.quantity;
     const prevMass = existing.massKg * existing.quantity;
 
+    const prevMatKey = existing.material.toUpperCase().replace(/[\s-]/g, "_");
+    const newMatKey = newMaterial.toUpperCase().replace(/[\s-]/g, "_");
+    const prevMat = STANDARD_MATERIALS[prevMatKey];
+    const newMat = STANDARD_MATERIALS[newMatKey];
+
     existing.material = newMaterial;
-    if (existing.volumeM3 && STANDARD_MATERIALS[newMaterial]) {
-      existing.massKg = existing.volumeM3 * STANDARD_MATERIALS[newMaterial].densityKgM3;
+    if (existing.volumeM3 && newMat) {
+      existing.massKg = existing.volumeM3 * newMat.densityKgM3;
+    } else if (prevMat && newMat && prevMat.densityKgM3 > 0) {
+      existing.massKg = existing.massKg * (newMat.densityKgM3 / prevMat.densityKgM3);
     }
 
     const updated = this.recalculateItem(existing);

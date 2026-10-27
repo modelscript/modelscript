@@ -626,7 +626,7 @@ function parseOsc2Dsl(source: string, filename?: string): OpenScenarioDocument {
   let scenarioName = "ScenarioOsc2";
 
   for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+    const rawLine = lines[i] ?? "";
     const trimmed = rawLine.trim();
     if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
 

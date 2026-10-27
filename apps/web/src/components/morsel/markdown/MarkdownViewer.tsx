@@ -44,15 +44,15 @@ export function MarkdownViewer({ content, context, className }: MarkdownViewerPr
     () => ({
       diagram: (props: any) => {
         // Avoid passing down the 'node' prop to clean up the DOM
-        const { node, ...rest } = props;
+        const { node: _node, ...rest } = props;
         return <DiagramMacro {...rest} />;
       },
       requirements: (props: any) => {
-        const { node, ...rest } = props;
+        const { node: _node, ...rest } = props;
         return <RequirementsMacro {...rest} />;
       },
       var: (props: any) => {
-        const { name, node, children, ...rest } = props;
+        const { name, node: _node, children: _children, ...rest } = props;
         const value = resolveVariable(name);
         const displayValue = value !== undefined ? String(value) : `{{${name}}}`;
         return (

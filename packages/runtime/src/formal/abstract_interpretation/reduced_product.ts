@@ -127,6 +127,63 @@ export class ReducedProductState {
       }
     }
 
+    // 4. Bidirectional Intervals <-> TVPI reduction
+    if (this.tvpi.pairs.size > 0) {
+      for (const [pairKey, poly] of this.tvpi.pairs.entries()) {
+        const [u, v] = pairKey.split("|");
+        if (!u || !v) continue;
+        const uIval = tightenedEnv.get(u);
+        const vIval = tightenedEnv.get(v);
+        if (uIval.isBottom() || vIval.isBottom()) {
+          return ReducedProductState.bottom(this.octagon.numVars);
+        }
+        if (Number.isFinite(uIval.high)) {
+          if (!poly.addConstraint(1, 0, uIval.high)) return ReducedProductState.bottom(this.octagon.numVars);
+        }
+        if (Number.isFinite(uIval.low)) {
+          if (!poly.addConstraint(-1, 0, -uIval.low)) return ReducedProductState.bottom(this.octagon.numVars);
+        }
+        if (Number.isFinite(vIval.high)) {
+          if (!poly.addConstraint(0, 1, vIval.high)) return ReducedProductState.bottom(this.octagon.numVars);
+        }
+        if (Number.isFinite(vIval.low)) {
+          if (!poly.addConstraint(0, -1, -vIval.low)) return ReducedProductState.bottom(this.octagon.numVars);
+        }
+      }
+
+      if (!this.tvpi.close()) {
+        return ReducedProductState.bottom(this.octagon.numVars);
+      }
+
+      for (const [pairKey, poly] of this.tvpi.pairs.entries()) {
+        const [u, v] = pairKey.split("|");
+        if (!u || !v) continue;
+        const uHigh = poly.support(1, 0);
+        const uLow = -poly.support(-1, 0);
+        if (uLow > uHigh + 1e-7) {
+          return ReducedProductState.bottom(this.octagon.numVars);
+        }
+        if (Number.isFinite(uLow) || Number.isFinite(uHigh)) {
+          const currU = tightenedEnv.get(u);
+          const meetU = currU.meet(new Interval(uLow, uHigh));
+          if (meetU.isBottom()) return ReducedProductState.bottom(this.octagon.numVars);
+          if (!meetU.equals(currU)) tightenedEnv = tightenedEnv.set(u, meetU);
+        }
+
+        const vHigh = poly.support(0, 1);
+        const vLow = -poly.support(0, -1);
+        if (vLow > vHigh + 1e-7) {
+          return ReducedProductState.bottom(this.octagon.numVars);
+        }
+        if (Number.isFinite(vLow) || Number.isFinite(vHigh)) {
+          const currV = tightenedEnv.get(v);
+          const meetV = currV.meet(new Interval(vLow, vHigh));
+          if (meetV.isBottom()) return ReducedProductState.bottom(this.octagon.numVars);
+          if (!meetV.equals(currV)) tightenedEnv = tightenedEnv.set(v, meetV);
+        }
+      }
+    }
+
     return new ReducedProductState(tightenedEnv, this.octagon, this.varIndices, this.arraySegments, false, this.tvpi);
   }
 }

@@ -794,8 +794,10 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
         } else if (view === "wellbore") {
           const wellNode =
             model.nodes.find((n) => (n.type as string) === "WELL" || n.type === "TERMINAL") ?? model.nodes[0];
+          const wellIpr = (wellNode as { ipr?: Parameters<typeof renderOlgaWellboreIprSvg>[0] | undefined } | undefined)
+            ?.ipr;
           svg = renderOlgaWellboreIprSvg(
-            (wellNode as any)?.ipr as any,
+            wellIpr,
             wellNode?.name || "SUBSEA WELL",
             wellNode?.massRate ?? 35.0,
             (wellNode?.pressure ?? 140e5) / 1e5,
@@ -880,12 +882,16 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
       }
 
       case "gate": {
-        const maxSurge = parseGateMetric(argv["max-surge"] as any, 85.0);
-        const minHydrateMargin = parseGateMetric(argv["min-hydrate-margin"] as any, (argv["margin"] as number) ?? 3.0);
-        const maxWax = parseGateMetric(argv["max-wax"] as any, 2.0);
-        const maxCorrosion = parseGateMetric(argv["max-corrosion"] as any, 0.1);
-        const maopBar = parseGateMetric(argv["maop"] as any, 250.0);
-        const minVel = parseGateMetric(argv["min-vel"] as any, 0.5);
+        type GateMetricInput = Parameters<typeof parseGateMetric>[0];
+        const maxSurge = parseGateMetric(argv["max-surge"] as GateMetricInput, 85.0);
+        const minHydrateMargin = parseGateMetric(
+          argv["min-hydrate-margin"] as GateMetricInput,
+          (argv["margin"] as number) ?? 3.0,
+        );
+        const maxWax = parseGateMetric(argv["max-wax"] as GateMetricInput, 2.0);
+        const maxCorrosion = parseGateMetric(argv["max-corrosion"] as GateMetricInput, 0.1);
+        const maopBar = parseGateMetric(argv["maop"] as GateMetricInput, 250.0);
+        const minVel = parseGateMetric(argv["min-vel"] as GateMetricInput, 0.5);
         const durationSeconds = argv["duration"] as number | undefined;
 
         console.log(`Evaluating Flow Assurance CI/CD Safety Gate for '${model.title}'...`);
@@ -935,8 +941,9 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
           try {
             fs.appendFileSync(ghStepSummary, `\n\n${result.markdownReport}\n`, "utf-8");
             console.log(`✔ Appended Gate summary to GitHub Actions $GITHUB_STEP_SUMMARY`);
-          } catch (e: any) {
-            console.warn(`Warning: Could not write to $GITHUB_STEP_SUMMARY: ${e.message}`);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.warn(`Warning: Could not write to $GITHUB_STEP_SUMMARY: ${msg}`);
           }
         }
 

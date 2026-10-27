@@ -34,7 +34,7 @@ import type { FmiLsBusManifest } from "./fmi-ls-bus.js";
 import { extractBusManifestFromDae, generateFmiLsBusXml } from "./fmi-ls-bus.js";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
-import { generateFmi3 } from "./fmi3.js";
+import { type Fmi3Result, generateFmi3 } from "./fmi3.js";
 import { generateFmuAsSources } from "./fmu-as-codegen.js";
 import { generateFmuCSources } from "./fmu-codegen.js";
 import { generateFmuJsSources } from "./fmu-js-codegen.js";
@@ -73,7 +73,7 @@ export interface FmuArchiveResult {
   /** The FMU metadata result. */
   fmuResult: FmuResult;
   /** FMI 3.0 result if generated. */
-  fmi3Result?: any;
+  fmi3Result?: Fmi3Result | undefined;
   /** File listing inside the archive. */
   files: string[];
 }

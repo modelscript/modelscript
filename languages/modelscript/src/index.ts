@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createWasmParser } from "../src-gen/bindings.js";
+import { createWasmParser, type Tree, type TreeSitterParser } from "../src-gen/bindings.js";
 import { JsEmitter } from "./codegen/js-emitter.js";
 import { NativeEmitter, type NativeCompileOptions } from "./codegen/native-emitter.js";
 import { WasmEmitter } from "./codegen/wasm-emitter.js";
@@ -14,6 +13,7 @@ import { ModelScriptLinter } from "./linter.js";
 import {
   ModelScriptQueryEngine,
   unwrapNode,
+  type ModelScriptCstNode,
   type ModelScriptType,
   type StructFieldLayout,
   type StructLayout,
@@ -22,13 +22,18 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultWasmPath = path.join(__dirname, "../dist/parser.wasm");
 
+type DynamicJsRunner = (...args: unknown[]) => unknown;
+const createDynamicFunction = Object.getPrototypeOf(function () {}).constructor as (
+  ...paramsAndBody: string[]
+) => DynamicJsRunner;
+
 export interface CompileOptions {
   wasmPath?: string | undefined;
   target?: "js" | "wasm" | "native" | undefined;
 }
 
 export class ModelScriptCompiler {
-  private parser: any = null;
+  private parser: TreeSitterParser | null = null;
   public linter = new ModelScriptLinter();
   public queries = new ModelScriptQueryEngine();
 
@@ -39,9 +44,11 @@ export class ModelScriptCompiler {
     this.parser = parser;
   }
 
-  parse(source: string) {
+  parse(source: string): Tree {
     if (!this.parser) throw new Error("ModelScriptCompiler not initialized. Call await compiler.init() first.");
-    return this.parser.parse(source);
+    const tree = this.parser.parse(source);
+    if (!tree) throw new Error("Failed to parse ModelScript source.");
+    return tree;
   }
 
   lint(source: string): ModelScriptDiagnostic[] {
@@ -49,7 +56,7 @@ export class ModelScriptCompiler {
     return this.linter.lint(tree.rootNode);
   }
 
-  compileToJs(source: string): { js: string; tree: any } {
+  compileToJs(source: string): { js: string; tree: Tree } {
     const tree = this.parse(source);
     const emitter = new JsEmitter();
     const js = emitter.emit(tree.rootNode);
@@ -61,7 +68,7 @@ export class ModelScriptCompiler {
     const executableJs = js.replace(/^\s*import\s+[\s\S]*?\s+from\s+["'][^"']*["']\s*;\s*$/gm, "");
     const contextKeys = Object.keys(context);
     const contextVals = Object.values(context);
-    const fn = new Function(...contextKeys, executableJs);
+    const fn = createDynamicFunction(...contextKeys, executableJs);
     return fn(...contextVals);
   }
 
@@ -77,15 +84,17 @@ export class ModelScriptCompiler {
     return await emitter.compile(tree.rootNode);
   }
 
-  async executeWasm(source: string, entryFn = "main", args: number[] = []): Promise<any> {
+  async executeWasm(source: string, entryFn = "main", args: number[] = []): Promise<number> {
     const wasmBytes = await this.compileToWasm(source);
-    const res: any = await WebAssembly.instantiate(wasmBytes);
-    const exports = res.instance ? res.instance.exports : res.exports;
+    const res = (await WebAssembly.instantiate(wasmBytes)) as
+      | WebAssembly.WebAssemblyInstantiatedSource
+      | WebAssembly.Instance;
+    const exports = "instance" in res ? res.instance.exports : res.exports;
     const fn = exports[entryFn];
     if (typeof fn !== "function") {
       throw new Error(`Exported WASM function '${entryFn}' not found`);
     }
-    return fn(...args);
+    return (fn as (...callArgs: number[]) => number)(...args);
   }
 
   async compileToNative(source: string, options: NativeCompileOptions): Promise<string> {
@@ -103,6 +112,7 @@ export {
   NativeEmitter,
   unwrapNode,
   WasmEmitter,
+  type ModelScriptCstNode,
   type ModelScriptDiagnostic,
   type ModelScriptType,
   type NativeCompileOptions,

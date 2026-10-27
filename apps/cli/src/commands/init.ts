@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface InitArgs {
@@ -35,7 +35,7 @@ export const Init: CommandModule<{}, InitArgs> = {
         description: "Accept all defaults without prompts",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<InitArgs>;
   },
   handler: async (args) => {
     const projectDir = path.resolve(args.path || ".");
@@ -88,7 +88,19 @@ export const Init: CommandModule<{}, InitArgs> = {
 
     // Build the package.json
 
-    const packageJson: Record<string, any> = {
+    const packageJson: {
+      name: string;
+      version: string;
+      description: string;
+      license: string;
+      modelscript: {
+        languages: string[];
+        main?: string | undefined;
+        modelicaVersion: string;
+        artifacts: string[];
+      };
+      dependencies: Record<string, string>;
+    } = {
       name,
       version,
       description,
@@ -103,8 +115,8 @@ export const Init: CommandModule<{}, InitArgs> = {
     };
 
     // Remove undefined values
-    if (!packageJson["modelscript"].main) {
-      delete packageJson["modelscript"].main;
+    if (!packageJson.modelscript.main) {
+      delete packageJson.modelscript.main;
     }
 
     writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");

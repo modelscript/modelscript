@@ -15,6 +15,80 @@ import { getSimulationDefaults } from "../utils/config.js";
 import { extractFromZip } from "../utils/zip.js";
 import { VerificationPanel } from "../verification-panel.js";
 
+interface ModelicaActionInputs extends Record<string, unknown> {
+  documentText?: string | undefined;
+  name?: string | undefined;
+  stopTime?: number | undefined;
+  intervals?: number | undefined;
+  tolerance?: number | undefined;
+  solver?: string | undefined;
+}
+
+type SimulationCommandArg =
+  | vscode.Uri
+  | ({
+      scheme?: string | undefined;
+      path?: string | undefined;
+      uri?: vscode.Uri | string | undefined;
+    } & ModelicaActionInputs)
+  | string
+  | undefined;
+
+interface ModelicaSimulateResponse {
+  t?: number[] | undefined;
+  states?: string[] | undefined;
+  y?: number[][] | undefined;
+  experiment?:
+    | {
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        tolerance?: number | undefined;
+        solver?: string | undefined;
+      }
+    | undefined;
+  parameters?:
+    | {
+        name: string;
+        type: "real" | "integer" | "boolean" | "enumeration";
+        defaultValue: number;
+        min?: number | undefined;
+        max?: number | undefined;
+        step: number;
+        unit?: string | undefined;
+        description?: string | undefined;
+        enumLiterals?: { ordinal: number; label: string }[] | undefined;
+      }[]
+    | undefined;
+  telemetry?: { executionTimeMs: number; stepCount: number } | undefined;
+  projectName?: string | undefined;
+  error?: string | undefined;
+}
+
+type PhaseSeriesMap = Partial<Record<"a" | "b" | "c", Iterable<number> | ArrayLike<number>>>;
+
+interface PscadSimulationPayload {
+  time?: number[] | Float64Array | ArrayBufferView | undefined;
+  t?: number[] | Float64Array | ArrayBufferView | undefined;
+  busPhaseVoltages?: Map<string, PhaseSeriesMap> | Record<string, PhaseSeriesMap> | undefined;
+  busVoltages?:
+    | Map<string, Iterable<number> | ArrayLike<number>>
+    | Record<string, Iterable<number> | ArrayLike<number>>
+    | undefined;
+  branchCurrents?:
+    | Map<string, Iterable<number> | ArrayLike<number>>
+    | Record<string, Iterable<number> | ArrayLike<number>>
+    | undefined;
+}
+
+interface PscadSimulateActionResponse extends PscadSimulationPayload {
+  simulationResult?: PscadSimulationPayload | undefined;
+  comtrade?: { cfg: string; dat: string } | undefined;
+  pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+  pscadPsout?: Uint8Array | string | undefined;
+  project?: string | undefined;
+}
+
 export function registerSimulationCommands(
   context: vscode.ExtensionContext,
   client: LanguageClient | undefined,
@@ -56,8 +130,14 @@ export function registerSimulationCommands(
           const jsCode = new TextDecoder().decode(jsBytes);
 
           // Evaluate the JS inside an encapsulated strict factory
-          // eslint-disable-next-line @typescript-eslint/no-implied-eval
-          const createFmuInstance = new Function(
+          interface FmuJsInstance {
+            vars: number[];
+            doStep(t: number, dt: number): void;
+          }
+          const DynamicFunction = Object.getPrototypeOf(function () {}).constructor as (
+            ...args: string[]
+          ) => () => FmuJsInstance;
+          const createFmuInstance = DynamicFunction(
             `"use strict";\n${jsCode}\nif (typeof FmuModel === "undefined") { throw new Error("FmuModel not defined in FMU JS"); }\nreturn new FmuModel();`,
           );
           const inst = createFmuInstance();
@@ -76,7 +156,7 @@ export function registerSimulationCommands(
           while (t <= tStop) {
             result.time.push(t);
             for (let i = 0; i < inst.vars.length; i++) {
-              result.series[`var_${i}`]!.push(inst.vars[i]);
+              result.series[`var_${i}`]!.push(inst.vars[i]!);
             }
             inst.doStep(t, dt);
             t += dt;
@@ -125,22 +205,22 @@ export function registerSimulationCommands(
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.action.simulate", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.action.simulate", async (args?: SimulationCommandArg) => {
       return vscode.commands.executeCommand("modelscript.modelica.simulate", args);
     }),
 
-    vscode.commands.registerCommand("modelscript.modelica.simulate", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.modelica.simulate", async (args?: SimulationCommandArg) => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
       let uri = editor?.document.uri.toString();
-      let inputs: any = {};
+      let inputs: ModelicaActionInputs = {};
       if (args && typeof args === "object") {
-        if ("scheme" in args && "path" in args) {
+        if ("scheme" in args && "path" in args && args.scheme && args.path) {
           uri = args.toString();
         } else if (typeof args.toString === "function" && args.scheme) {
           uri = args.toString();
         } else {
-          inputs = args;
+          inputs = { ...args };
         }
       }
       if (!uri && editor?.document) {
@@ -194,7 +274,7 @@ export function registerSimulationCommands(
             cancellable: false,
           },
           async () => {
-            const res = await client!.sendRequest<any>("modelscript/executeAction", {
+            const res = await client!.sendRequest<ModelicaSimulateResponse>("modelscript/executeAction", {
               actionId: "simulate",
               languageId: lang,
               uri,
@@ -229,19 +309,32 @@ export function registerSimulationCommands(
             }
           },
         );
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Simulation failed: ${e?.message ?? e}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`Simulation failed: ${msg}`);
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.openLineGeometryEditor", async (args?: any) => {
-      const { LineGeometryPanel } = await import("../line-geometry-panel.js");
-      LineGeometryPanel.createOrShow(context.extensionUri, client, args?.uri, args?.componentName, args?.params);
-    }),
+    vscode.commands.registerCommand(
+      "modelscript.openLineGeometryEditor",
+      async (args?: {
+        uri?: string | undefined;
+        componentName?: string | undefined;
+        params?: Record<string, unknown> | undefined;
+      }) => {
+        const { LineGeometryPanel } = await import("../line-geometry-panel.js");
+        LineGeometryPanel.createOrShow(context.extensionUri, client, args?.uri, args?.componentName, args?.params);
+      },
+    ),
 
-    vscode.commands.registerCommand("modelscript.diagram.simulate", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.diagram.simulate", async (args?: SimulationCommandArg) => {
       if (!client) return;
-      let uri = args && (args.path || args.scheme) ? args.toString() : typeof args === "string" ? args : undefined;
+      let uri =
+        args && typeof args === "object" && (args.path || args.scheme)
+          ? args.toString()
+          : typeof args === "string"
+            ? args
+            : undefined;
       if (!uri) {
         uri = vscode.window.activeTextEditor?.document.uri.toString();
       }
@@ -272,7 +365,7 @@ export function registerSimulationCommands(
               const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
               if (openDoc) docText = openDoc.getText();
 
-              const res = await client!.sendRequest<any>("modelscript/executeAction", {
+              const res = await client!.sendRequest<PscadSimulateActionResponse>("modelscript/executeAction", {
                 actionId: "simulate_hybrid_emt",
                 languageId: "pscad",
                 uri,
@@ -299,11 +392,11 @@ export function registerSimulationCommands(
                   const branchCurrentsObj: Record<string, number[]> = {};
 
                   if (simRes.busPhaseVoltages) {
-                    const entries =
+                    const entries: [string, PhaseSeriesMap][] =
                       simRes.busPhaseVoltages instanceof Map
                         ? Array.from(simRes.busPhaseVoltages.entries())
                         : Object.entries(simRes.busPhaseVoltages);
-                    for (const [bus, phases] of entries as [string, any][]) {
+                    for (const [bus, phases] of entries) {
                       busPhaseVoltagesObj[bus] = {
                         a: Array.from(phases.a ?? []),
                         b: Array.from(phases.b ?? []),
@@ -317,11 +410,11 @@ export function registerSimulationCommands(
                       }
                     }
                   } else if (simRes.busVoltages) {
-                    const entries =
+                    const entries: [string, Iterable<number> | ArrayLike<number>][] =
                       simRes.busVoltages instanceof Map
                         ? Array.from(simRes.busVoltages.entries())
                         : Object.entries(simRes.busVoltages);
-                    for (const [bus, arr] of entries as [string, any][]) {
+                    for (const [bus, arr] of entries) {
                       busVoltagesObj[bus] = Array.from(arr);
                       stateNames.push(`v_${bus}`);
                       yRows.push(Array.from(arr));
@@ -329,11 +422,11 @@ export function registerSimulationCommands(
                   }
 
                   if (simRes.branchCurrents) {
-                    const entries =
+                    const entries: [string, Iterable<number> | ArrayLike<number>][] =
                       simRes.branchCurrents instanceof Map
                         ? Array.from(simRes.branchCurrents.entries())
                         : Object.entries(simRes.branchCurrents);
-                    for (const [branch, arr] of entries as [string, any][]) {
+                    for (const [branch, arr] of entries) {
                       branchCurrentsObj[branch] = Array.from(arr);
                       stateNames.push(`i_${branch}`);
                       yRows.push(Array.from(arr));
@@ -386,8 +479,9 @@ export function registerSimulationCommands(
                   );
                 }
               }
-            } catch (err: any) {
-              vscode.window.showErrorMessage(`PSCAD Simulation failed: ${err?.message || err}`);
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`PSCAD Simulation failed: ${msg}`);
             }
           },
         );
@@ -396,11 +490,11 @@ export function registerSimulationCommands(
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.action.flatten", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.action.flatten", async (args?: SimulationCommandArg) => {
       return vscode.commands.executeCommand("modelscript.modelica.flatten", args);
     }),
 
-    vscode.commands.registerCommand("modelscript.modelica.flatten", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.modelica.flatten", async (args?: SimulationCommandArg) => {
       if (!client) return;
       let editor = vscode.window.activeTextEditor;
       if (editor?.document.uri.scheme === "untitled" || editor?.document.uri.scheme === "output") {
@@ -418,12 +512,12 @@ export function registerSimulationCommands(
         editor?.document.uri.scheme !== "untitled" && editor?.document.uri.scheme !== "output"
           ? editor?.document.uri.toString()
           : undefined;
-      let inputs: any = {};
+      let inputs: ModelicaActionInputs = {};
       if (args && typeof args === "object") {
-        if ("scheme" in args && "path" in args) {
+        if ("scheme" in args && "path" in args && args.scheme && args.path) {
           uri = args.toString();
         } else {
-          inputs = args;
+          inputs = { ...args };
         }
       }
       if (
@@ -494,7 +588,7 @@ export function registerSimulationCommands(
       }
       try {
         const lang = editor?.document.languageId ?? "modelica";
-        const res = await client.sendRequest<any>("modelscript/executeAction", {
+        const res = await client.sendRequest<{ text?: string | undefined }>("modelscript/executeAction", {
           actionId: "flatten",
           languageId: lang,
           uri,
@@ -507,8 +601,9 @@ export function registerSimulationCommands(
           });
           await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
         }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Flatten failed: ${e?.message ?? e}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`Flatten failed: ${msg}`);
       }
     }),
 
@@ -540,85 +635,93 @@ export function registerSimulationCommands(
       CandidateTradeStudyPanel.createOrShow(context.extensionUri, client, entityName);
     }),
 
-    vscode.commands.registerCommand("modelscript.exportFmi2", async (args?: any) => {
-      if (!client) return;
-      const targetUri = args?.uri
-        ? typeof args.uri === "string"
-          ? vscode.Uri.parse(args.uri)
-          : args.uri
-        : args instanceof vscode.Uri
-          ? args
-          : undefined;
-      const editor = vscode.window.activeTextEditor;
-      const docUri = targetUri ?? editor?.document?.uri;
-      if (!docUri) {
-        vscode.window.showErrorMessage("Open a model file to export an FMU.");
-        return;
-      }
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 2.0...", cancellable: false },
-        async () => {
-          if (!client) return;
-          try {
-            if (editor?.document && editor.document.isDirty) {
-              await editor.document.save();
+    vscode.commands.registerCommand(
+      "modelscript.exportFmi2",
+      async (args?: vscode.Uri | { uri?: vscode.Uri | string | undefined }) => {
+        if (!client) return;
+        const targetUri =
+          args instanceof vscode.Uri
+            ? args
+            : args?.uri
+              ? typeof args.uri === "string"
+                ? vscode.Uri.parse(args.uri)
+                : args.uri
+              : undefined;
+        const editor = vscode.window.activeTextEditor;
+        const docUri = targetUri ?? editor?.document?.uri;
+        if (!docUri) {
+          vscode.window.showErrorMessage("Open a model file to export an FMU.");
+          return;
+        }
+        vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 2.0...", cancellable: false },
+          async () => {
+            if (!client) return;
+            try {
+              if (editor?.document && editor.document.isDirty) {
+                await editor.document.save();
+              }
+              const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
+                uri: docUri.toString(),
+                fmiVersion: "2.0",
+              });
+              const folder =
+                vscode.workspace.workspaceFolders?.[0]?.uri ||
+                (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
+              const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
+              await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
+              vscode.window.showInformationMessage(`Exported FMI 2.0 to ${res.fmuName}.fmu`);
+            } catch (e) {
+              vscode.window.showErrorMessage(`FMI 2.0 Export failed: ${e}`);
             }
-            const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
-              uri: docUri.toString(),
-              fmiVersion: "2.0",
-            });
-            const folder =
-              vscode.workspace.workspaceFolders?.[0]?.uri ||
-              (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
-            const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
-            await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
-            vscode.window.showInformationMessage(`Exported FMI 2.0 to ${res.fmuName}.fmu`);
-          } catch (e) {
-            vscode.window.showErrorMessage(`FMI 2.0 Export failed: ${e}`);
-          }
-        },
-      );
-    }),
+          },
+        );
+      },
+    ),
 
-    vscode.commands.registerCommand("modelscript.exportFmi3", async (args?: any) => {
-      if (!client) return;
-      const targetUri = args?.uri
-        ? typeof args.uri === "string"
-          ? vscode.Uri.parse(args.uri)
-          : args.uri
-        : args instanceof vscode.Uri
-          ? args
-          : undefined;
-      const editor = vscode.window.activeTextEditor;
-      const docUri = targetUri ?? editor?.document?.uri;
-      if (!docUri) {
-        vscode.window.showErrorMessage("Open a model file to export an FMU.");
-        return;
-      }
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 3.0...", cancellable: false },
-        async () => {
-          if (!client) return;
-          try {
-            if (editor?.document && editor.document.isDirty) {
-              await editor.document.save();
+    vscode.commands.registerCommand(
+      "modelscript.exportFmi3",
+      async (args?: vscode.Uri | { uri?: vscode.Uri | string | undefined }) => {
+        if (!client) return;
+        const targetUri =
+          args instanceof vscode.Uri
+            ? args
+            : args?.uri
+              ? typeof args.uri === "string"
+                ? vscode.Uri.parse(args.uri)
+                : args.uri
+              : undefined;
+        const editor = vscode.window.activeTextEditor;
+        const docUri = targetUri ?? editor?.document?.uri;
+        if (!docUri) {
+          vscode.window.showErrorMessage("Open a model file to export an FMU.");
+          return;
+        }
+        vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Exporting FMI 3.0...", cancellable: false },
+          async () => {
+            if (!client) return;
+            try {
+              if (editor?.document && editor.document.isDirty) {
+                await editor.document.save();
+              }
+              const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
+                uri: docUri.toString(),
+                fmiVersion: "3.0",
+              });
+              const folder =
+                vscode.workspace.workspaceFolders?.[0]?.uri ||
+                (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
+              const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
+              await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
+              vscode.window.showInformationMessage(`Exported FMI 3.0 to ${res.fmuName}.fmu`);
+            } catch (e) {
+              vscode.window.showErrorMessage(`FMI 3.0 Export failed: ${e}`);
             }
-            const res = await client.sendRequest<{ fmuName: string; base64: string }>("modelscript/exportFmu", {
-              uri: docUri.toString(),
-              fmiVersion: "3.0",
-            });
-            const folder =
-              vscode.workspace.workspaceFolders?.[0]?.uri ||
-              (docUri.scheme !== "untitled" ? vscode.Uri.joinPath(docUri, "..") : vscode.Uri.file("/"));
-            const uri = vscode.Uri.joinPath(folder, res.fmuName + ".fmu");
-            await vscode.workspace.fs.writeFile(uri, decodeBase64ToArray(res.base64));
-            vscode.window.showInformationMessage(`Exported FMI 3.0 to ${res.fmuName}.fmu`);
-          } catch (e) {
-            vscode.window.showErrorMessage(`FMI 3.0 Export failed: ${e}`);
-          }
-        },
-      );
-    }),
+          },
+        );
+      },
+    ),
 
     vscode.commands.registerCommand("modelscript.generateMultiBody", async () => {
       if (!client) return;
@@ -804,7 +907,16 @@ export function registerSimulationCommands(
       }
       VerificationPanel.createOrShow(context.extensionUri, client);
       try {
-        const report = await client.sendRequest<any>("modelscript/verifyAll", {
+        const report = await client.sendRequest<{
+          summary?:
+            | {
+                overallPassed?: boolean | undefined;
+                passedStages?: number | undefined;
+                totalStages?: number | undefined;
+                totalViolations?: number | undefined;
+              }
+            | undefined;
+        }>("modelscript/verifyAll", {
           uri: targetUri,
           options: { all: true },
         });
@@ -817,8 +929,9 @@ export function registerSimulationCommands(
             `Formal verification detected ${report?.summary?.totalViolations || 0} violation(s).`,
           );
         }
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`Verification failed: ${e.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        vscode.window.showErrorMessage(`Verification failed: ${msg}`);
       }
     }),
 
@@ -838,7 +951,14 @@ export function registerSimulationCommands(
         },
         async () => {
           try {
-            const res = await client!.sendRequest<any>("modelscript/verifyB2B", { uri: targetUri, format: "dhf" });
+            const res = await client!.sendRequest<{
+              success?: boolean | undefined;
+              maxDiscrepancy?: number | undefined;
+              sha256CSource?: string | undefined;
+              tolerance?: number | undefined;
+              error?: string | undefined;
+              stage?: { summary?: string | undefined } | undefined;
+            }>("modelscript/verifyB2B", { uri: targetUri, format: "dhf" });
             if (res.success) {
               const disc = res.maxDiscrepancy !== undefined ? res.maxDiscrepancy.toExponential(3) : "0.0";
               const sha = res.sha256CSource ? res.sha256CSource.slice(0, 12) : "unknown";
@@ -850,8 +970,9 @@ export function registerSimulationCommands(
                 `B2B Equivalence FAILED: ${res.error || res.stage?.summary || "Discrepancy exceeds tolerance"}`,
               );
             }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`B2B Equivalence failed: ${e.message}`);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`B2B Equivalence failed: ${msg}`);
           }
         },
       );
@@ -867,9 +988,9 @@ export function registerSimulationCommands(
 
     vscode.commands.registerCommand(
       "modelscript.showDaeVerificationDetails",
-      (_uri: string, className: string, proof: any) => {
+      (_uri: string, className: string, proof?: { issues?: { message: string }[] | undefined }) => {
         const msg = proof?.issues?.length
-          ? `DAE Verification Issues for ${className}:\n` + proof.issues.map((i: any) => `• ${i.message}`).join("\n")
+          ? `DAE Verification Issues for ${className}:\n` + proof.issues.map((i) => `• ${i.message}`).join("\n")
           : `DAE Verification: No singularity found among bounded variables for ${className || "model"}.`;
         vscode.window.showInformationMessage(msg);
       },

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { ModelScriptCstNode } from "../queries.js";
+
 /**
  * JavaScript code generator for ModelScript that lowers linear CST nodes
  * (including `struct` declarations and FLWOR comprehensions) into executable ES module code.
@@ -16,7 +18,7 @@ export class JsEmitter {
   /**
    * Recursively emits JavaScript source code for a ModelScript CST node.
    */
-  emit(node: any): string {
+  emit(node: ModelScriptCstNode | null | undefined): string {
     if (!node) return "";
 
     switch (node.type) {
@@ -24,7 +26,7 @@ export class JsEmitter {
         const statements: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
-          if (child.type !== ";" && child.type !== "_EmptyStatement") {
+          if (child && child.type !== ";" && child.type !== "_EmptyStatement") {
             const code = this.emit(child);
             if (code.trim()) statements.push(code);
           }
@@ -39,7 +41,7 @@ export class JsEmitter {
       case "PrimaryExpression": {
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
-          if (child.type !== ";" && child.type !== "_EmptyStatement") {
+          if (child && child.type !== ";" && child.type !== "_EmptyStatement") {
             return this.emit(child);
           }
         }
@@ -58,7 +60,7 @@ export class JsEmitter {
         const specs: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
-          if (c.type === "ImportSpecifier") {
+          if (c?.type === "ImportSpecifier") {
             specs.push(this.emit(c));
           }
         }
@@ -79,7 +81,7 @@ export class JsEmitter {
         const fields: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
-          if (child.type === "StructField") {
+          if (child?.type === "StructField") {
             const fName = child.childForFieldName?.("name")?.text;
             if (fName) fields.push(fName);
           }
@@ -102,7 +104,7 @@ export class JsEmitter {
         const params: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
-          if (c.type === "Parameter") {
+          if (c?.type === "Parameter") {
             params.push(this.emit(c));
           }
         }
@@ -118,7 +120,7 @@ export class JsEmitter {
         const stmts: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
-          if (child.type !== "{" && child.type !== "}") {
+          if (child && child.type !== "{" && child.type !== "}") {
             const s = this.emit(child);
             if (s.trim()) stmts.push(`${this.indent()}${s}`);
           }
@@ -232,7 +234,7 @@ export class JsEmitter {
         const args: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
-          if (c.type === "Argument") {
+          if (c?.type === "Argument") {
             args.push(this.emit(c));
           }
         }
@@ -248,7 +250,7 @@ export class JsEmitter {
         const elems: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
-          if (c.type === "Expression") {
+          if (c?.type === "Expression") {
             elems.push(this.emit(c));
           }
         }
@@ -259,7 +261,7 @@ export class JsEmitter {
         const fields: string[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
-          if (c.type === "ObjectField") {
+          if (c?.type === "ObjectField") {
             const key = c.childForFieldName?.("key")?.text;
             const val = c.childForFieldName?.("value");
             const shorthand = c.childForFieldName?.("shorthand")?.text;
@@ -295,15 +297,16 @@ export class JsEmitter {
    * into an immediately-invoked arrow function (IIFE) that collects, filters, sorts,
    * and maps query results into an array.
    */
-  private emitFLWOR(node: any): string {
-    const forClauses: any[] = [];
-    const letClauses: any[] = [];
-    let whereClause: any = null;
-    let orderByClause: any = null;
-    let returnClause: any = null;
+  private emitFLWOR(node: ModelScriptCstNode): string {
+    const forClauses: ModelScriptCstNode[] = [];
+    const letClauses: ModelScriptCstNode[] = [];
+    let whereClause: ModelScriptCstNode | null = null;
+    let orderByClause: ModelScriptCstNode | null = null;
+    let returnClause: ModelScriptCstNode | null = null;
 
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i);
+      if (!child) continue;
       if (child.type === "ForClause") forClauses.push(child);
       else if (child.type === "LetClause") letClauses.push(child);
       else if (child.type === "WhereClause") whereClause = child;

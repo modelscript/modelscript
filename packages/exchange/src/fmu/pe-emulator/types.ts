@@ -182,7 +182,7 @@ export interface X86RegisterState {
   ymm: Float64Array;
 }
 
-export type CRuntimeHook = (cpu: any, memory: GuestMemorySpace) => void;
+export type CRuntimeHook = (cpu: unknown, memory: GuestMemorySpace) => void;
 
 export interface BatchSimulationOptions {
   startTime?: number | undefined;

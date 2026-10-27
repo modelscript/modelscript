@@ -73,7 +73,7 @@ export interface PsseDiagramCell {
   source?: { cell: string; port?: string } | { x: number; y: number } | undefined;
   target?: { cell: string; port?: string } | { x: number; y: number } | undefined;
   vertices?: { x: number; y: number }[] | undefined;
-  attrs?: Record<string, unknown> | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
   data?: Record<string, unknown> | undefined;
 }
 
@@ -416,11 +416,10 @@ export function renderPsseSvg(c: PsseCaseLike): string {
       const p2 = getCellCenter(tgtId);
       if (!p1 || !p2) continue;
 
-      const stroke = (cell.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
-      const strokeWidth = (cell.attrs?.["line"] as any)?.strokeWidth ?? 2;
-      const strokeDash = (cell.attrs?.["line"] as any)?.strokeDasharray
-        ? `stroke-dasharray="${(cell.attrs?.["line"] as any).strokeDasharray}"`
-        : "";
+      const stroke = (cell.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const strokeWidth = (cell.attrs?.["line"]?.["strokeWidth"] as number | undefined) ?? 2;
+      const rawDash = cell.attrs?.["line"]?.["strokeDasharray"] as string | undefined;
+      const strokeDash = rawDash ? `stroke-dasharray="${rawDash}"` : "";
 
       if (cell.id.startsWith("wire_")) {
         svg += `    <line id="${cell.id}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.6" />\n`;
@@ -472,7 +471,7 @@ export function renderPsseSvg(c: PsseCaseLike): string {
         }
         svg += `    </g>\n`;
       } else if (cell.id.startsWith("load_")) {
-        const stroke = (cell.attrs?.["body"] as any)?.stroke ?? "#f59e0b";
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#f59e0b";
         svg += `    <g id="${cell.id}" class="sld-node load-node">\n`;
         svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="3" fill="#0f172a" stroke="${stroke}" stroke-width="1.5" />\n`;
         if (cell.label) {
@@ -486,8 +485,8 @@ export function renderPsseSvg(c: PsseCaseLike): string {
         svg += `    </g>\n`;
       } else {
         // Bus node
-        const stroke = (cell.attrs?.["body"] as any)?.stroke ?? "#38bdf8";
-        const busNum = (cell.data as any)?.busNumber ?? cell.id.replace("bus_", "");
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+        const busNum = cell.data?.["busNumber"] ?? cell.id.replace("bus_", "");
         svg += `    <g id="${cell.id}" class="sld-node bus-node" data-bus="${busNum}">\n`;
         svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="${stroke}" stroke-width="2.5" />\n`;
         if (cell.label) {

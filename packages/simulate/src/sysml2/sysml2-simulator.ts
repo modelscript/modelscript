@@ -23,11 +23,17 @@ export async function simulateSysml2(
 ): Promise<ArenaSimulationResult> {
   await initBltWasm();
 
+  interface SysML2LowererModule {
+    SysML2DaeLowerer: {
+      lowerSystem(source: string): Promise<DAEBuilder> | DAEBuilder;
+    };
+  }
+
   // Dynamically import SysML2DaeLowerer from @modelscript/sysml2 to preserve clean package boundaries
-  let SysML2DaeLowerer: any;
+  let SysML2DaeLowerer: SysML2LowererModule["SysML2DaeLowerer"] | undefined;
   try {
     const sysml2Module = "@modelscript/sysml2";
-    ({ SysML2DaeLowerer } = (await import(sysml2Module)) as any);
+    ({ SysML2DaeLowerer } = (await import(sysml2Module)) as SysML2LowererModule);
   } catch {
     let fallbackUrl = "";
     try {
@@ -40,8 +46,11 @@ export async function simulateSysml2(
       fallbackUrl = "";
     }
     if (fallbackUrl) {
-      ({ SysML2DaeLowerer } = (await import(fallbackUrl)) as any);
+      ({ SysML2DaeLowerer } = (await import(fallbackUrl)) as SysML2LowererModule);
     }
+  }
+  if (!SysML2DaeLowerer) {
+    throw new Error("Failed to load SysML2DaeLowerer from @modelscript/sysml2");
   }
   const arena = await SysML2DaeLowerer.lowerSystem(sysmlSource);
   return simulateArenaAsync(arena, options);

@@ -37,8 +37,8 @@ export function mcpRouter(database: LibraryDatabase): Router {
         if (botUser) return botUser.id;
       }
       try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        if (decoded?.id) {
+        const decoded = jwt.verify(token, JWT_SECRET) as { id?: number | undefined } | string;
+        if (typeof decoded === "object" && decoded !== null && decoded.id) {
           const u = database.getUserById(decoded.id);
           if (u) return u.id;
         }

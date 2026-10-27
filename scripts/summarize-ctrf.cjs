@@ -39,7 +39,6 @@ if (files.length === 0) {
 let totalTests = 0;
 let totalPassed = 0;
 let totalFailed = 0;
-let totalPending = 0;
 let totalSkipped = 0;
 
 console.log("\n================================================================================");
@@ -50,7 +49,7 @@ console.log(
     "Tests".padStart(8) +
     "Passed".padStart(8) +
     "Failed".padStart(8) +
-    "Skipped".padStart(9)
+    "Skipped".padStart(9),
 );
 console.log("-".repeat(79));
 
@@ -63,7 +62,11 @@ for (const file of files) {
     const summary = data.summary || {};
     const relDir = path.relative(rootDir, path.dirname(path.dirname(file)));
     const toolName = data.tool?.name;
-    const displayName = relDir ? (toolName && toolName !== "node-test" && toolName !== "jest" ? toolName : `${relDir} (${toolName || "test"})`) : (toolName || "root");
+    const displayName = relDir
+      ? toolName && toolName !== "node-test" && toolName !== "jest"
+        ? toolName
+        : `${relDir} (${toolName || "test"})`
+      : toolName || "root";
 
     const tests = summary.tests || 0;
     const passed = summary.passed || 0;
@@ -74,7 +77,6 @@ for (const file of files) {
     totalTests += tests;
     totalPassed += passed;
     totalFailed += failed;
-    totalPending += pending;
     totalSkipped += skipped;
 
     const statusMark = failed > 0 ? "✗" : "✓";
@@ -83,7 +85,7 @@ for (const file of files) {
         String(tests).padStart(8) +
         String(passed).padStart(8) +
         String(failed).padStart(8) +
-        String(skipped).padStart(9)
+        String(skipped).padStart(9),
     );
   } catch {}
 }
@@ -94,7 +96,7 @@ console.log(
     String(totalTests).padStart(8) +
     String(totalPassed).padStart(8) +
     String(totalFailed).padStart(8) +
-    String(totalSkipped).padStart(9)
+    String(totalSkipped).padStart(9),
 );
 console.log("================================================================================\n");
 

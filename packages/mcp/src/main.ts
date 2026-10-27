@@ -15,7 +15,7 @@ import type { ServerContext } from "./types.js";
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/dist/parser.wasm");
 const { parser } = await createWasmParser(modelicaWasmPath);
-Context.registerParser(".mo", parser as any);
+Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
 
 // Shared mutable context — populated by modelica_load tool
 const ctx: ServerContext = { current: null };

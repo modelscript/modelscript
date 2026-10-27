@@ -80,7 +80,7 @@ export class RelationalVerifier {
     // Check if |y1 - y2| > L * |x1 - x2| is satisfiable
     // Equivalent to: (y1 - y2) > L * (x1 - x2) OR (y2 - y1) > L * (x1 - x2) for x1 >= x2
     // Encode violation query into DPLL(T)
-    const violationConstraints: NonlinearConstraint[] = [
+    const baseConstraints: NonlinearConstraint[] = [
       ...c1,
       ...c2,
       // Input bounds
@@ -98,31 +98,58 @@ export class RelationalVerifier {
         rel: ">=",
         rhs: 0.01,
       },
-      // Violation: (y1 - y2) - targetL * (x1 - x2) >= 0.01
-      {
-        expr: {
-          kind: "sub",
-          left: {
-            kind: "sub",
-            left: { kind: "var", name: y1 },
-            right: { kind: "var", name: y2 },
-          },
-          right: {
-            kind: "mul",
-            left: { kind: "const", value: targetL },
-            right: {
-              kind: "sub",
-              left: { kind: "var", name: x1 },
-              right: { kind: "var", name: x2 },
-            },
-          },
-        },
-        rel: ">=",
-        rhs: 0.01,
-      },
     ];
 
-    const isSat = this.checkSatisfiability(violationConstraints);
+    // Positive slope violation: (y1 - y2) - targetL * (x1 - x2) >= 0.01
+    const posViolation: NonlinearConstraint = {
+      expr: {
+        kind: "sub",
+        left: {
+          kind: "sub",
+          left: { kind: "var", name: y1 },
+          right: { kind: "var", name: y2 },
+        },
+        right: {
+          kind: "mul",
+          left: { kind: "const", value: targetL },
+          right: {
+            kind: "sub",
+            left: { kind: "var", name: x1 },
+            right: { kind: "var", name: x2 },
+          },
+        },
+      },
+      rel: ">=",
+      rhs: 0.01,
+    };
+
+    // Negative slope violation: (y2 - y1) - targetL * (x1 - x2) >= 0.01
+    const negViolation: NonlinearConstraint = {
+      expr: {
+        kind: "sub",
+        left: {
+          kind: "sub",
+          left: { kind: "var", name: y2 },
+          right: { kind: "var", name: y1 },
+        },
+        right: {
+          kind: "mul",
+          left: { kind: "const", value: targetL },
+          right: {
+            kind: "sub",
+            left: { kind: "var", name: x1 },
+            right: { kind: "var", name: x2 },
+          },
+        },
+      },
+      rel: ">=",
+      rhs: 0.01,
+    };
+
+    let isSat = this.checkSatisfiability([...baseConstraints, posViolation]);
+    if (!isSat.sat) {
+      isSat = this.checkSatisfiability([...baseConstraints, negViolation]);
+    }
     const duration = performance.now() - startTime;
 
     if (!isSat.sat) {
@@ -336,7 +363,14 @@ export class RelationalVerifier {
       case "const":
         return expr;
       case "neg":
-        return { kind: "neg", arg: this.tagExpr(expr.arg, suffix) };
+      case "sqr":
+      case "sqrt":
+      case "sin":
+      case "cos":
+        return {
+          kind: expr.kind,
+          child: this.tagExpr(expr.child ?? expr.arg, suffix),
+        };
       case "add":
       case "sub":
       case "mul":
@@ -346,6 +380,12 @@ export class RelationalVerifier {
           kind: expr.kind,
           left: this.tagExpr(expr.left, suffix),
           right: this.tagExpr(expr.right, suffix),
+        };
+      case "call":
+        return {
+          kind: "call",
+          fn: expr.fn ?? expr.name,
+          args: (expr.args ?? []).map((a: any) => this.tagExpr(a, suffix)),
         };
       default:
         return expr;
@@ -379,7 +419,7 @@ export class RelationalVerifier {
       }
     }
 
-    // 2. Fall back to DPLL(T) with HC4 contractor
+    // 2. Fall back to DPLL(T) with HC4 contractor + NLSAT CAD
     const theoryLits = new Map<number, NonlinearConstraint>();
     const clauses: number[][] = [];
     let litId = 1;
@@ -393,7 +433,7 @@ export class RelationalVerifier {
     const solver = new DpllTSolver({
       clauses,
       theoryLiterals: theoryLits,
-      useNlsat: false,
+      useNlsat: true,
       delta: 1e-6,
     });
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { clearToken, getApiUrl, getAuthHeaders, getToken } from "../util/auth.js";
 
 interface LogoutArgs {
@@ -22,7 +22,7 @@ export const Logout: CommandModule<{}, LogoutArgs> = {
         description: "Clear all saved registry preferences and credentials",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<LogoutArgs>;
   },
   handler: async (args) => {
     const token = getToken();

@@ -68,8 +68,10 @@ export function organizationsRouter(database: LibraryDatabase): Router {
       });
 
       res.status(201).json({ organization: org });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to create organization" });
+    } catch (err: unknown) {
+      res
+        .status(500)
+        .json({ error: (err instanceof Error ? err.message : String(err)) || "Failed to create organization" });
     }
   });
 

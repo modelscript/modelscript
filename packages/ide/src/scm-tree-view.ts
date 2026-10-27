@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import type { GitExtensionExports } from "./scm-integration";
 import { FlatSemanticEdit } from "./semantic-diff-comments"; // actually, we should define it locally or import from where it is shared
 import { isSupportedModelFile } from "./utils/file-utils";
 
@@ -61,13 +62,13 @@ class SemanticDiffTreeProvider implements vscode.TreeDataProvider<SemanticDiffTr
 
     if (!this.client) return [];
 
-    const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+    const gitExtension = vscode.extensions.getExtension<GitExtensionExports>("vscode.git")?.exports;
     if (!gitExtension) return [];
 
     const git = gitExtension.getAPI(1);
     if (!git || git.repositories.length === 0) return [];
 
-    const repository = git.repositories[0];
+    const repository = git.repositories[0]!;
     const changes = repository.state.indexChanges;
 
     if (!changes || changes.length === 0) return [];
@@ -125,11 +126,11 @@ export function registerScmTreeView(context: vscode.ExtensionContext, client: La
 
     // Refresh when git state changes
 
-    const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+    const gitExtension = vscode.extensions.getExtension<GitExtensionExports>("vscode.git")?.exports;
     if (gitExtension) {
       const git = gitExtension.getAPI(1);
       if (git && git.repositories.length > 0) {
-        const repo = git.repositories[0];
+        const repo = git.repositories[0]!;
         context.subscriptions.push(
           repo.state.onDidChange(() => {
             treeProvider.refresh();

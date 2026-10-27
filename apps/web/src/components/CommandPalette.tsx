@@ -602,7 +602,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                     onMouseEnter={() => setActiveIndex(index)}
                   >
                     <div className="left">
-                      <div className="icon">{item.icon}</div>
+                      <div className="icon">
+                        {React.isValidElement(item.icon)
+                          ? item.icon
+                          : typeof item.icon === "function" ||
+                              (typeof item.icon === "object" && item.icon !== null && "$$typeof" in item.icon)
+                            ? React.createElement(item.icon as any, { size: 16 })
+                            : item.icon}
+                      </div>
                       <div className="info">
                         <span className="title">{item.title}</span>
                         {item.subtitle && <span className="subtitle">{item.subtitle}</span>}

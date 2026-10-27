@@ -335,7 +335,10 @@ export function classifyDiagnostic(error: unknown, toolName?: string, elapsedMs?
     combined.includes("timed out") ||
     combined.includes("timeout") ||
     combined.includes("deadline") ||
-    (error as any)?.name === "TimeoutError"
+    (typeof error === "object" &&
+      error !== null &&
+      "name" in error &&
+      (error as { name?: unknown }).name === "TimeoutError")
   ) {
     const cat = SANDBOX_ERROR_CATALOG.M6017;
     return {
@@ -757,10 +760,10 @@ export async function runInSandbox<T>(
  */
 export function withSandbox<TArgs extends Record<string, unknown>, TResult>(
   toolName: string,
-  handler: (args: TArgs, signal: AbortSignal, extra?: any) => Promise<TResult>,
+  handler: (args: TArgs, signal: AbortSignal, extra?: unknown) => Promise<TResult>,
   getLimits?: (args: TArgs) => McpExecutionLimits | undefined,
-): (args: TArgs, extra?: any) => Promise<TResult | McpToolErrorResponse> {
-  return async (args: TArgs, extra?: any): Promise<TResult | McpToolErrorResponse> => {
+): (args: TArgs, extra?: unknown) => Promise<TResult | McpToolErrorResponse> {
+  return async (args: TArgs, extra?: unknown): Promise<TResult | McpToolErrorResponse> => {
     const startTime = Date.now();
     const contextLimits = getLimits ? getLimits(args) : undefined;
     const dynamicTimeout =
@@ -782,17 +785,23 @@ export function withSandbox<TArgs extends Record<string, unknown>, TResult>(
       });
 
       // If handler returned an error response without structured diagnostic, classify it
-      if (
-        res &&
-        typeof res === "object" &&
-        (res as any).isError &&
-        Array.isArray((res as any).content) &&
-        (res as any).content.length > 0 &&
-        !(res as any).diagnostic
-      ) {
-        const text = String((res as any).content[0]?.text ?? "");
-        const diag = classifyDiagnostic(new Error(text), toolName, Date.now() - startTime);
-        return formatMcpDiagnosticResponse(diag);
+      if (res && typeof res === "object") {
+        const resRecord = res as {
+          isError?: unknown;
+          content?: { text?: unknown }[] | unknown;
+          diagnostic?: unknown;
+        };
+        if (
+          resRecord.isError &&
+          Array.isArray(resRecord.content) &&
+          resRecord.content.length > 0 &&
+          !resRecord.diagnostic
+        ) {
+          const firstItem = resRecord.content[0] as { text?: unknown } | undefined;
+          const text = String(firstItem?.text ?? "");
+          const diag = classifyDiagnostic(new Error(text), toolName, Date.now() - startTime);
+          return formatMcpDiagnosticResponse(diag);
+        }
       }
 
       return res;

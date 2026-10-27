@@ -78,7 +78,7 @@ function offsetToPosition(offset: number, lineStarts: number[]): { line: number;
   let high = lineStarts.length - 1;
   while (low <= high) {
     const mid = (low + high) >> 1;
-    if (lineStarts[mid]! <= offset) {
+    if ((lineStarts[mid] ?? 0) <= offset) {
       low = mid + 1;
     } else {
       high = mid - 1;
@@ -86,7 +86,7 @@ function offsetToPosition(offset: number, lineStarts: number[]): { line: number;
   }
   const lineIdx = low - 1;
   const line = lineIdx + 1;
-  const col = offset - lineStarts[lineIdx]! + 1;
+  const col = offset - (lineStarts[lineIdx] ?? 0) + 1;
   return { line, col };
 }
 
@@ -115,7 +115,7 @@ export function extractFormalContract(text: string): ReqIfContract | undefined {
   const match = pattern.exec(normalized);
   if (!match) return undefined;
 
-  let rawPrefix = match[1]!.trim();
+  let rawPrefix = (match[1] ?? "").trim();
   rawPrefix = rawPrefix
     .replace(
       /\b(must\s+be|shall\s+be|should\s+be|may\s+reach|can\s+be|is\s+less\s+than\s+or\s+equal\s+to|is|are|be|to|reach|of|under|at)\b/gi,
@@ -123,11 +123,11 @@ export function extractFormalContract(text: string): ReqIfContract | undefined {
     )
     .trim();
   const tokens = rawPrefix.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return undefined;
-  const varName = tokens[tokens.length - 1]!;
+  const varName = tokens[tokens.length - 1];
+  if (!varName) return undefined;
 
-  const comp = match[2]! as ContractComparator;
-  const num = parseFloat(match[3]!);
+  const comp = (match[2] ?? "==") as ContractComparator;
+  const num = parseFloat(match[3] ?? "");
   const unit = match[4]?.trim();
 
   if (isNaN(num)) return undefined;
@@ -200,8 +200,9 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
   };
 
   let coreContent = getChild(root, "CORE-CONTENT") || root;
-  if (coreContent && getChild(coreContent, "REQ-IF-CONTENT")) {
-    coreContent = getChild(coreContent, "REQ-IF-CONTENT")!;
+  const nestedReqIfContent = coreContent ? getChild(coreContent, "REQ-IF-CONTENT") : undefined;
+  if (nestedReqIfContent) {
+    coreContent = nestedReqIfContent;
   }
 
   // 2. Data Types
@@ -278,8 +279,9 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
 
           let typeRef = "";
           const typeWrapper = getChild(attrDefEl, "TYPE");
-          if (typeWrapper && typeWrapper.children.length > 0) {
-            typeRef = typeWrapper.children[0]!.text.trim();
+          const firstTypeChild = typeWrapper?.children[0];
+          if (firstTypeChild) {
+            typeRef = firstTypeChild.text.trim();
           }
 
           let defaultValue: string | number | boolean | undefined;
@@ -346,15 +348,17 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
 
           let defRef = "";
           const defWrapper = getChild(valEl, "DEFINITION");
-          if (defWrapper && defWrapper.children.length > 0) {
-            defRef = defWrapper.children[0]!.text.trim();
+          const firstDefChild = defWrapper?.children[0];
+          if (firstDefChild) {
+            defRef = firstDefChild.text.trim();
           }
 
           let rawValue: string | number | boolean = "";
           if (kind === "ENUMERATION") {
             const valsEl = getChild(valEl, "VALUES");
-            if (valsEl && valsEl.children.length > 0) {
-              rawValue = valsEl.children[0]!.text.trim();
+            const firstValChild = valsEl?.children[0];
+            if (firstValChild) {
+              rawValue = firstValChild.text.trim();
             } else {
               rawValue = getAttr(valEl, "THE-VALUE") ?? "";
             }
@@ -381,8 +385,8 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
           const attrSpan = createSpan(valEl.start, valEl.end, lineStarts);
 
           let attrName = defRef;
-          if (typeRef && specTypes.has(typeRef)) {
-            const st = specTypes.get(typeRef)!;
+          const st = typeRef ? specTypes.get(typeRef) : undefined;
+          if (st) {
             const ad = st.attributeDefinitions.get(defRef);
             if (ad?.longName) attrName = ad.longName;
           }

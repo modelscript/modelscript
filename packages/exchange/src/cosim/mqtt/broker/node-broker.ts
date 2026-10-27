@@ -24,8 +24,9 @@ export class NodeBroker implements EmbeddedBroker {
 
     // Using simple aedes instantiator handling either new or default function
 
-    const AedesConstructor = (aedes as any).default || aedes;
-    this.aedes = new (AedesConstructor as new () => Aedes)();
+    const aedesMod = aedes as unknown as { default?: new () => Aedes } & (new () => Aedes);
+    const AedesConstructor = aedesMod.default || aedesMod;
+    this.aedes = new AedesConstructor();
 
     this.server = createServer(this.aedes, { ws: true });
     this.port = port;

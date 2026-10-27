@@ -41,7 +41,7 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
   },
   handler: async (args) => {
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     // Build mapping from absolute resolved paths to user-provided paths

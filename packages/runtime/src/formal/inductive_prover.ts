@@ -539,14 +539,23 @@ export class InductiveProver {
       }
     }
 
-    // Check form: x_prime == x + delta -> x_prime - (x + delta) == 0
+    // Check form: x_prime == x + delta, x_prime == delta + x, or x_prime == x - delta
+    // encoded as x_prime - (...) == 0
     if (t.rel === "==" && t.expr.kind === "sub" && t.rhs === 0) {
       const left = t.expr.left;
       const right = t.expr.right;
-      if (left.kind === "var" && isPrimedVar(left.name) && right.kind === "add") {
-        if (right.left.kind === "var" && right.right.kind === "const") {
-          if (toUnprimedVar(left.name) === right.left.name) {
-            return { variable: right.left.name, delta: right.right.value };
+      if (left.kind === "var" && isPrimedVar(left.name)) {
+        const unprimed = toUnprimedVar(left.name);
+        if (right.kind === "add") {
+          if (right.left.kind === "var" && right.left.name === unprimed && right.right.kind === "const") {
+            return { variable: unprimed, delta: right.right.value };
+          }
+          if (right.right.kind === "var" && right.right.name === unprimed && right.left.kind === "const") {
+            return { variable: unprimed, delta: right.left.value };
+          }
+        } else if (right.kind === "sub") {
+          if (right.left.kind === "var" && right.left.name === unprimed && right.right.kind === "const") {
+            return { variable: unprimed, delta: -right.right.value };
           }
         }
       }

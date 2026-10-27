@@ -441,12 +441,17 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
       return res.status(400).json({ error: "Missing 'values' object in request body" });
     }
 
+    const publishableClient = mqttClient as CosimMqttClient & {
+      publishVariable?: ((participantId: string, varName: string, val: number) => void) | undefined;
+    };
     for (const [varName, val] of Object.entries(values)) {
       try {
-        (mqttClient as any).publishVariable?.(meta.participantId, varName, val);
-        const existingVar = meta.variables?.find((v: any) => v.name === varName);
+        publishableClient.publishVariable?.(meta.participantId, varName, val);
+        const existingVar = (meta.variables as { name: string; start?: number | undefined }[] | undefined)?.find(
+          (v) => v.name === varName,
+        );
         if (existingVar) {
-          (existingVar as any).start = val;
+          existingVar.start = val;
         }
       } catch {
         // Ignore publish errors on disconnected brokers

@@ -30,7 +30,7 @@ export interface SysML2Diagnostic {
 /**
  * Definition of a SysML v2 error code rule.
  */
-export interface ErrorCodeDef {
+export interface ErrorCodeDef<TArgs extends readonly unknown[] = readonly never[]> {
   /** Unique numeric diagnostic code (1xxx-5xxx). */
   code: number;
   /** Kebab-case rule identifier used for filtering and suppression. */
@@ -38,7 +38,7 @@ export interface ErrorCodeDef {
   /** Default severity level emitted when this rule triggers. */
   severity: DiagnosticSeverity;
   /** Message formatter accepting rule-specific context arguments. */
-  message: (...args: any[]) => string;
+  message: (...args: TArgs) => string;
 }
 
 /**
@@ -418,16 +418,16 @@ export const SysML2ErrorCode = {
  * @param options - Optional source range or AST field targeting options.
  * @returns Formatted `LintResult` ready for IDE/CLI consumption.
  */
-export function createSysML2Diagnostic(
-  def: ErrorCodeDef,
-  args: any[] = [],
+export function createSysML2Diagnostic<TArgs extends readonly unknown[] = readonly unknown[]>(
+  def: ErrorCodeDef<TArgs>,
+  args: TArgs | readonly unknown[] = [],
   options?: LintRangeOptions,
 ): LintResult & { rule?: string | undefined } {
   return {
     code: def.code,
     rule: def.rule,
     severity: def.severity,
-    message: def.message(...args),
+    message: (def.message as (...a: readonly unknown[]) => string)(...args),
     ...options,
   };
 }

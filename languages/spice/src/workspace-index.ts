@@ -226,14 +226,16 @@ export class SpiceWorkspaceIndex implements IWorkspaceIndex {
       const idx = this.fileIndices.get(fromUri);
       if (idx) {
         const ids = idx.byName.get(name) ?? idx.byName.get(upperName);
-        if (ids && ids.length > 0) return idx.symbols.get(ids[0]!);
+        const firstId = ids?.[0];
+        if (firstId !== undefined) return idx.symbols.get(firstId);
       }
     }
 
     // Search globally across all indexed documents
     for (const idx of this.fileIndices.values()) {
       const ids = idx.byName.get(name) ?? idx.byName.get(upperName);
-      if (ids && ids.length > 0) return idx.symbols.get(ids[0]!);
+      const firstId = ids?.[0];
+      if (firstId !== undefined) return idx.symbols.get(firstId);
     }
     return undefined;
   }

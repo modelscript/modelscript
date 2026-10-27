@@ -86,8 +86,8 @@ export function lowerOpenDssToDae(deck: DssDeck, options?: DssDaeOptions): DAEBu
 
   // 4. Declare Transformers and voltage transformation equations
   for (const [id, xfmr] of deck.transformers) {
-    const b1 = xfmr.buses[0]!;
-    const b2 = xfmr.buses[1]!;
+    const b1 = xfmr.buses[0] ?? "Bus1";
+    const b2 = xfmr.buses[1] ?? "Bus2";
     const kv1 = xfmr.kvs[0] ?? 115.0;
     const kv2 = xfmr.kvs[1] ?? 12.47;
     const ratio = kv1 / kv2;

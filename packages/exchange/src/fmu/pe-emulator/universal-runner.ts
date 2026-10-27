@@ -34,7 +34,7 @@ export interface UniversalFmuRunnerOptions {
 
 export class UniversalBinaryRunner implements WasmFmuRunner {
   readonly format: "pe" | "elf" | "macho" | "unknown";
-  readonly instance: any = null;
+  readonly instance: WebAssembly.Instance | null = null;
   readonly loader: PeLoader | ElfLoader | MachoLoader;
   readonly memory: GuestMemorySpace;
   readonly cruntime: CRuntimeManager;
@@ -441,10 +441,15 @@ export class UniversalBinaryRunner implements WasmFmuRunner {
       timeBuffer[frameCount] = curTime;
       if (nOutputs > 0) {
         if (getRealAddr) {
-          if ((this.cpu as any).callGetRealFast) {
-            (this.cpu as any).callGetRealFast(getRealAddr, this.instancePtr, vrBufPtr, BigInt(nOutputs), valBufPtr);
+          if (typeof this.cpu.callGetRealFast === "function") {
+            this.cpu.callGetRealFast(getRealAddr, this.instancePtr, vrBufPtr, BigInt(nOutputs), valBufPtr);
           } else {
-            this.cpu.callFunction(getRealAddr, [this.instancePtr, vrBufPtr, BigInt(nOutputs), valBufPtr]);
+            (this.cpu as X86Cpu | AArch64Cpu).callFunction(getRealAddr, [
+              this.instancePtr,
+              vrBufPtr,
+              BigInt(nOutputs),
+              valBufPtr,
+            ]);
           }
           for (let i = 0; i < nOutputs; i++) {
             outputMatrix[frameCount * nOutputs + i] = this.memory.dataView.getFloat64(valBufOff + i * 8, true);
@@ -470,13 +475,14 @@ export class UniversalBinaryRunner implements WasmFmuRunner {
 
         // 2. DoStep
         if (doStepAddr) {
-          if ((this.cpu as any).callDoStepFast) {
-            (this.cpu as any).callDoStepFast(doStepAddr, this.instancePtr, curTime, dt);
+          if (typeof this.cpu.callDoStepFast === "function") {
+            this.cpu.callDoStepFast(doStepAddr, this.instancePtr, curTime, dt);
           } else {
-            if (this.cpu.abi === "win64") {
-              this.cpu.callFunction(doStepAddr, [this.instancePtr, 1n], [0.0, curTime, dt]);
+            const cpu = this.cpu as X86Cpu | AArch64Cpu;
+            if (cpu.abi === "win64") {
+              cpu.callFunction(doStepAddr, [this.instancePtr, 1n], [0.0, curTime, dt]);
             } else {
-              this.cpu.callFunction(doStepAddr, [this.instancePtr, 1n], [curTime, dt]);
+              cpu.callFunction(doStepAddr, [this.instancePtr, 1n], [curTime, dt]);
             }
           }
         }
@@ -489,10 +495,15 @@ export class UniversalBinaryRunner implements WasmFmuRunner {
           timeBuffer[frameCount] = curTime;
           if (nOutputs > 0) {
             if (getRealAddr) {
-              if ((this.cpu as any).callGetRealFast) {
-                (this.cpu as any).callGetRealFast(getRealAddr, this.instancePtr, vrBufPtr, BigInt(nOutputs), valBufPtr);
+              if (typeof this.cpu.callGetRealFast === "function") {
+                this.cpu.callGetRealFast(getRealAddr, this.instancePtr, vrBufPtr, BigInt(nOutputs), valBufPtr);
               } else {
-                this.cpu.callFunction(getRealAddr, [this.instancePtr, vrBufPtr, BigInt(nOutputs), valBufPtr]);
+                (this.cpu as X86Cpu | AArch64Cpu).callFunction(getRealAddr, [
+                  this.instancePtr,
+                  vrBufPtr,
+                  BigInt(nOutputs),
+                  valBufPtr,
+                ]);
               }
               for (let i = 0; i < nOutputs; i++) {
                 outputMatrix[frameCount * nOutputs + i] = this.memory.dataView.getFloat64(valBufOff + i * 8, true);

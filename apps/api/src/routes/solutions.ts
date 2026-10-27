@@ -16,8 +16,8 @@ export function solutionsRouter(database: LibraryDatabase): Router {
     try {
       const solutions = database.getAllPublicSolutions();
       res.json({ solutions });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -35,8 +35,8 @@ export function solutionsRouter(database: LibraryDatabase): Router {
         return;
       }
       res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -50,8 +50,8 @@ export function solutionsRouter(database: LibraryDatabase): Router {
     try {
       const releases = database.getSolutionReleases(author, slug);
       res.json({ releases });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -110,8 +110,8 @@ export function solutionsRouter(database: LibraryDatabase): Router {
         releaseId,
         url: `/solutions/${req.user!.username}/${slug}`,
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 

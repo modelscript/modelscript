@@ -76,8 +76,9 @@ export class AutosarWorkspaceIndex implements IWorkspaceIndex {
       this.fileBaseIds.set(uri, baseId);
     }
 
+    const fileBaseId = baseId;
     let localIdCounter = 1;
-    const nextId = (): SymbolId => (baseId! + localIdCounter++) as SymbolId;
+    const nextId = (): SymbolId => (fileBaseId + localIdCounter++) as SymbolId;
 
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, SymbolId[]>();

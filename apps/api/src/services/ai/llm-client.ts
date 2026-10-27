@@ -17,7 +17,7 @@ export interface LLMResponse {
   model: string;
   toolCalls?: {
     name: string;
-    arguments: Record<string, any>;
+    arguments: Record<string, unknown>;
   }[];
 }
 
@@ -82,7 +82,10 @@ export class OpenAICompatibleProvider implements LLMProvider {
       throw new Error(`LLM provider error (${res.status}): ${errText}`);
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as {
+      choices?: { message?: { content?: string | undefined } | undefined }[] | undefined;
+      model?: string | undefined;
+    };
     const choice = data.choices?.[0]?.message;
     return {
       content: choice?.content || "",

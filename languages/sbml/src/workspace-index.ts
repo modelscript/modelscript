@@ -89,7 +89,7 @@ export class SbmlWorkspaceIndex implements IWorkspaceIndex {
       endOffset: number,
       metadata: Record<string, unknown> = {},
     ): SymbolId {
-      const symId = (baseId! + localId++) as SymbolId;
+      const symId = ((baseId ?? 0) + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,

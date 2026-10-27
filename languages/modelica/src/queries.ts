@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable */
 /**
  * Modelica Salsa Query Hooks.
  * Semantic query definitions for QueryEngine.

@@ -89,8 +89,9 @@ export function validateLps(content: string, _uri: string = "network.lps"): LspD
 
     return issues.map((issue) => {
       let targetLine = 0;
-      if (issue.target) {
-        const found = lines.findIndex((l) => l.includes(issue.target!));
+      const targetStr = issue.target;
+      if (targetStr) {
+        const found = lines.findIndex((l) => l.includes(targetStr));
         if (found >= 0) targetLine = found;
       }
 

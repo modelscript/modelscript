@@ -164,14 +164,14 @@ export function lowerAdamsToDae(dataset: AdamsDataset, builder?: DAEBuilder, opt
 
     // Apply on Part A (+F, +tau)
     if (!isPartGround(bA) && bodyForcesX.has(bA)) {
-      bodyForcesX.get(bA)!.push(fxVar);
-      bodyForcesY.get(bA)!.push(fyVar);
-      bodyForcesZ.get(bA)!.push(fzVar);
+      bodyForcesX.get(bA)?.push(fxVar);
+      bodyForcesY.get(bA)?.push(fyVar);
+      bodyForcesZ.get(bA)?.push(fzVar);
 
       const tA = buildTorque(sA, fxVar, fyVar, fzVar);
-      if (tA.tx) bodyTorquesX.get(bA)!.push(tA.tx);
-      if (tA.ty) bodyTorquesY.get(bA)!.push(tA.ty);
-      if (tA.tz) bodyTorquesZ.get(bA)!.push(tA.tz);
+      if (tA.tx) bodyTorquesX.get(bA)?.push(tA.tx);
+      if (tA.ty) bodyTorquesY.get(bA)?.push(tA.ty);
+      if (tA.tz) bodyTorquesZ.get(bA)?.push(tA.tz);
     }
 
     // Apply on Part B (-F, -tau)
@@ -180,14 +180,14 @@ export function lowerAdamsToDae(dataset: AdamsDataset, builder?: DAEBuilder, opt
       const negFy = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fyVar);
       const negFz = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fzVar);
 
-      bodyForcesX.get(bB)!.push(negFx);
-      bodyForcesY.get(bB)!.push(negFy);
-      bodyForcesZ.get(bB)!.push(negFz);
+      bodyForcesX.get(bB)?.push(negFx);
+      bodyForcesY.get(bB)?.push(negFy);
+      bodyForcesZ.get(bB)?.push(negFz);
 
       const tB = buildTorque(sB, negFx, negFy, negFz);
-      if (tB.tx) bodyTorquesX.get(bB)!.push(tB.tx);
-      if (tB.ty) bodyTorquesY.get(bB)!.push(tB.ty);
-      if (tB.tz) bodyTorquesZ.get(bB)!.push(tB.tz);
+      if (tB.tx) bodyTorquesX.get(bB)?.push(tB.tx);
+      if (tB.ty) bodyTorquesY.get(bB)?.push(tB.ty);
+      if (tB.tz) bodyTorquesZ.get(bB)?.push(tB.tz);
     }
   }
 
@@ -268,17 +268,17 @@ export function lowerAdamsToDae(dataset: AdamsDataset, builder?: DAEBuilder, opt
       );
 
       if (!isGroundA && bodyForcesX.has(bA)) {
-        bodyForcesX.get(bA)!.push(fStabX);
-        bodyForcesY.get(bA)!.push(fStabY);
-        bodyForcesZ.get(bA)!.push(fStabZ);
+        bodyForcesX.get(bA)?.push(fStabX);
+        bodyForcesY.get(bA)?.push(fStabY);
+        bodyForcesZ.get(bA)?.push(fStabZ);
       }
       if (!isGroundB && bodyForcesX.has(bB)) {
         const negX = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fStabX);
         const negY = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fStabY);
         const negZ = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), fStabZ);
-        bodyForcesX.get(bB)!.push(negX);
-        bodyForcesY.get(bB)!.push(negY);
-        bodyForcesZ.get(bB)!.push(negZ);
+        bodyForcesX.get(bB)?.push(negX);
+        bodyForcesY.get(bB)?.push(negY);
+        bodyForcesZ.get(bB)?.push(negZ);
       }
     }
   } else {

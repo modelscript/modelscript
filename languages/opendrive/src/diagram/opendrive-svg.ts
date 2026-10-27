@@ -131,7 +131,9 @@ export function renderOpenDriveSvg(
       polyPoints.push(`${pt.x.toFixed(2)},${pt.y.toFixed(2)}`);
     }
     for (let i = rightEdge.length - 1; i >= 0; i--) {
-      polyPoints.push(`${rightEdge[i]!.x.toFixed(2)},${rightEdge[i]!.y.toFixed(2)}`);
+      const pt = rightEdge[i];
+      if (!pt) continue;
+      polyPoints.push(`${pt.x.toFixed(2)},${pt.y.toFixed(2)}`);
     }
 
     // Asphalt surface
@@ -175,7 +177,8 @@ export function renderOpenDriveSvg(
 
     // Road label badge at start point
     if (showLabels && points.length > 0) {
-      const p0 = points[0]!;
+      const p0 = points[0];
+      if (!p0) continue;
       const labelText = road.name ? `${road.name} (#${road.id})` : `Road ${road.id}`;
       svgParts.push(`  <!-- Road Label -->`);
       svgParts.push(`  <g transform="translate(${p0.x.toFixed(2)}, ${p0.y.toFixed(2)})">`);
@@ -195,8 +198,9 @@ export function renderOpenDriveSvg(
       // Find connected roads
       const connRoadIds = new Set(junc.connections.map((c) => c.connectingRoad));
       const juncTracks = roadTracks.filter((rt) => connRoadIds.has(rt.road.id));
-      if (juncTracks.length > 0) {
-        const midP = juncTracks[0]!.points[Math.floor(juncTracks[0]!.points.length / 2)];
+      const firstTrack = juncTracks[0];
+      if (firstTrack) {
+        const midP = firstTrack.points[Math.floor(firstTrack.points.length / 2)];
         if (midP && showLabels) {
           svgParts.push(`  <!-- Junction ${junc.id} Badge -->`);
           svgParts.push(`  <g transform="translate(${midP.x.toFixed(2)}, ${midP.y.toFixed(2)})">`);

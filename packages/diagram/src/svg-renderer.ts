@@ -7,12 +7,103 @@ import {
   type JumpoverSegment,
   type PointLike,
 } from "./port-router.js";
-import type { DiagramData, DiagramEdge, DiagramNode, SvgExportOptions } from "./protocol.js";
+import type {
+  ComponentPropertyData,
+  DiagramData,
+  DiagramEdge,
+  DiagramEdgeLabel,
+  DiagramEdgeMarker,
+  DiagramNode,
+  DiagramNodeData,
+  SvgExportOptions,
+  X6Markup,
+} from "./protocol.js";
+
+type LooseEdgeEndpoint =
+  | string
+  | {
+      cell?: string | undefined;
+      port?: string | undefined;
+      x?: number | undefined;
+      y?: number | undefined;
+    };
+
+export interface RawGraphCell {
+  id: string;
+  shape?: string | undefined;
+  source?:
+    | string
+    | {
+        cell: string;
+        port?: string | undefined;
+        anchor?: string | undefined;
+        connectionPoint?: { name: string } | undefined;
+      }
+    | undefined;
+  target?:
+    | string
+    | {
+        cell: string;
+        port?: string | undefined;
+        anchor?: string | undefined;
+        connectionPoint?: { name: string } | undefined;
+      }
+    | undefined;
+  vertices?: { x: number; y: number }[] | undefined;
+  connector?: string | undefined;
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  zIndex?: number | undefined;
+  label?: string | undefined;
+  labels?: DiagramEdgeLabel[] | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  angle?: number | undefined;
+  opacity?: number | undefined;
+  markup?: X6Markup | undefined;
+  ports?: DiagramNode["ports"] | undefined;
+  attrs?:
+    | {
+        line?:
+          | {
+              stroke?: string | undefined;
+              strokeWidth?: number | undefined;
+              strokeDasharray?: string | undefined;
+              targetMarker?: DiagramEdgeMarker | undefined;
+              sourceMarker?: DiagramEdgeMarker | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        body?:
+          | {
+              fill?: string | undefined;
+              stroke?: string | undefined;
+              strokeWidth?: number | undefined;
+              rx?: number | undefined;
+              ry?: number | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        label?:
+          | {
+              text?: string | undefined;
+              fill?: string | undefined;
+              fontSize?: number | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        [key: string]: Record<string, unknown> | undefined;
+      }
+    | undefined;
+  data?: DiagramNodeData | undefined;
+  properties?: ComponentPropertyData | undefined;
+}
 
 /**
  * Escapes XML special characters.
  */
-function escapeXml(str: any): string {
+function escapeXml(str: unknown): string {
   if (str === null || str === undefined) return "";
   return String(str)
     .replace(/&/g, "&amp;")
@@ -173,8 +264,10 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
   }[] = [];
 
   for (const edge of diagram.edges) {
-    const srcId = typeof edge.source === "string" ? edge.source : edge.source?.cell;
-    const tgtId = typeof edge.target === "string" ? edge.target : edge.target?.cell;
+    const srcEndpoint = edge.source as LooseEdgeEndpoint;
+    const tgtEndpoint = edge.target as LooseEdgeEndpoint;
+    const srcId = typeof srcEndpoint === "string" ? srcEndpoint : srcEndpoint?.cell;
+    const tgtId = typeof tgtEndpoint === "string" ? tgtEndpoint : tgtEndpoint?.cell;
 
     const srcNode = srcId ? nodeMap.get(srcId) : undefined;
     const tgtNode = tgtId ? nodeMap.get(tgtId) : undefined;
@@ -182,7 +275,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const resolvePortWorldPoint = (node: DiagramNode, px: number, py: number, nw: number, nh: number): PointLike => {
       const nx = node.x ?? 0;
       const ny = node.y ?? 0;
-      const angleDeg = (node as any).angle ?? 0;
+      const angleDeg = node.angle ?? 0;
       if (!angleDeg) {
         return { x: nx + px, y: ny + py };
       }
@@ -206,18 +299,18 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       const sh = srcNode.height ?? 60;
       pSrc = { x: (srcNode.x ?? 0) + sw / 2, y: (srcNode.y ?? 0) + sh / 2 };
       // Check port if specified
-      if (typeof edge.source === "object" && edge.source?.port && srcNode.ports?.items) {
-        const pt = srcNode.ports.items.find((p) => p.id === edge.source?.port);
+      if (typeof srcEndpoint === "object" && srcEndpoint?.port && srcNode.ports?.items) {
+        const pt = srcNode.ports.items.find((p) => p.id === srcEndpoint.port);
         if (pt?.args) {
           pSrc = resolvePortWorldPoint(srcNode, pt.args.x ?? sw / 2, pt.args.y ?? sh / 2, sw, sh);
         }
       }
     } else if (
-      typeof edge.source === "object" &&
-      "x" in (edge.source as any) &&
-      typeof (edge.source as any).x === "number"
+      typeof srcEndpoint === "object" &&
+      typeof srcEndpoint.x === "number" &&
+      typeof srcEndpoint.y === "number"
     ) {
-      pSrc = { x: (edge.source as any).x, y: (edge.source as any).y };
+      pSrc = { x: srcEndpoint.x, y: srcEndpoint.y };
     }
 
     // Calculate target point
@@ -226,18 +319,18 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       const tw = tgtNode.width ?? 120;
       const th = tgtNode.height ?? 60;
       pTgt = { x: (tgtNode.x ?? 0) + tw / 2, y: (tgtNode.y ?? 0) + th / 2 };
-      if (typeof edge.target === "object" && edge.target?.port && tgtNode.ports?.items) {
-        const pt = tgtNode.ports.items.find((p) => p.id === edge.target?.port);
+      if (typeof tgtEndpoint === "object" && tgtEndpoint?.port && tgtNode.ports?.items) {
+        const pt = tgtNode.ports.items.find((p) => p.id === tgtEndpoint.port);
         if (pt?.args) {
           pTgt = resolvePortWorldPoint(tgtNode, pt.args.x ?? tw / 2, pt.args.y ?? th / 2, tw, th);
         }
       }
     } else if (
-      typeof edge.target === "object" &&
-      "x" in (edge.target as any) &&
-      typeof (edge.target as any).x === "number"
+      typeof tgtEndpoint === "object" &&
+      typeof tgtEndpoint.x === "number" &&
+      typeof tgtEndpoint.y === "number"
     ) {
-      pTgt = { x: (edge.target as any).x, y: (edge.target as any).y };
+      pTgt = { x: tgtEndpoint.x, y: tgtEndpoint.y };
     }
 
     const points: PointLike[] = [pSrc];
@@ -324,7 +417,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     if (ep.edge.labels && ep.edge.labels.length > 0) {
       const midIdx = Math.floor(ep.points.length / 2);
       const lp = ep.points[midIdx]!;
-      const labelText = ep.edge.labels[0].attrs?.text?.text || "";
+      const labelText = ep.edge.labels[0]?.attrs?.text?.text || "";
       if (labelText) {
         const textStr = escapeXml(String(labelText));
         const badgeW = textStr.length * 6.5 + 16;
@@ -347,12 +440,16 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const nw = node.width ?? 120;
     const nh = node.height ?? 60;
 
-    const markupChildren = Array.isArray((node.markup as any)?.children) ? (node.markup as any).children : [];
-    const markupRect = markupChildren.find((c: any) => c.tagName === "rect");
+    const markupChildren: X6Markup[] = Array.isArray(node.markup)
+      ? node.markup
+      : Array.isArray(node.markup?.children)
+        ? node.markup.children
+        : [];
+    const markupRect = markupChildren.find((c) => c.tagName === "rect");
 
-    let fill = (node.attrs?.body?.fill as string) || (markupRect?.attrs?.fill as string) || defaultNodeFill;
+    let fill = (node.attrs?.body?.fill as string) || (markupRect?.attrs?.["fill"] as string) || defaultNodeFill;
 
-    if (node.id.startsWith("solder_dot_") || (node as any).shape === "circle") {
+    if (node.id.startsWith("solder_dot_") || node.shape === "circle") {
       const r = nw / 2;
       bodyParts.push(
         `<circle id="${escapeXml(node.id)}" cx="${nx + r}" cy="${ny + r}" r="${r}" fill="${escapeXml(fill)}" stroke="none"/>`,
@@ -368,11 +465,11 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       fill = "url(#grad-sphere)";
     }
 
-    const stroke = (node.attrs?.body?.stroke as string) || (markupRect?.attrs?.stroke as string) || borderColor;
+    const stroke = (node.attrs?.body?.stroke as string) || (markupRect?.attrs?.["stroke"] as string) || borderColor;
     const strokeWidth =
       (node.attrs?.body?.strokeWidth as number) || (markupRect?.attrs?.["stroke-width"] as number) || 1.5;
-    const rx = (node.attrs?.body?.rx as number) || (markupRect?.attrs?.rx as number) || 6;
-    const ry = (node.attrs?.body?.ry as number) || (markupRect?.attrs?.ry as number) || 6;
+    const rx = (node.attrs?.body?.rx as number) || (markupRect?.attrs?.["rx"] as number) || 6;
+    const ry = (node.attrs?.body?.ry as number) || (markupRect?.attrs?.["ry"] as number) || 6;
     const labelText =
       (node.attrs?.label?.text as string) ||
       (node.properties?.name as string) ||
@@ -495,7 +592,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       for (const port of node.ports.items) {
         const px = port.args?.x ?? (port.group === "in" || port.group === "left" ? 0 : nw);
         const py = port.args?.y ?? nh / 2;
-        const isConj = (port as any).isConjugated;
+        const isConj = port.isConjugated;
         const portFill = isConj ? stroke : isBlueprint ? "#172554" : isDark ? "#1e293b" : "#ffffff";
         const portStroke = isBlueprint ? "#93c5fd" : stroke;
         bodyParts.push(
@@ -504,7 +601,7 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
 
         // Directional arrow indicator
         const dir =
-          (port as any).direction ??
+          port.direction ??
           (port.group === "in" || port.group === "left"
             ? "in"
             : port.group === "out" || port.group === "right"
@@ -546,9 +643,9 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
 export const renderDiagramDataToSvg = renderPolyglotDiagramToSvg;
 
 /**
- * Adapts an AntV X6 or domain visualizer cell graph ({ title?, cells: any[] }) into canonical DiagramData.
+ * Adapts an AntV X6 or domain visualizer cell graph into canonical DiagramData.
  */
-export function cellsToDiagramData(graph: { title?: string; cells: any[] }): DiagramData {
+export function cellsToDiagramData(graph: { title?: string | undefined; cells: RawGraphCell[] }): DiagramData {
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
   let minX = Infinity;
@@ -558,24 +655,34 @@ export function cellsToDiagramData(graph: { title?: string; cells: any[] }): Dia
 
   for (const cell of graph.cells) {
     if (cell.shape === "edge" || (cell.source && cell.target)) {
-      const src =
-        typeof cell.source === "object" && "cell" in cell.source
+      const src: DiagramEdge["source"] =
+        typeof cell.source === "object" && cell.source !== null && "cell" in cell.source
           ? {
               cell: cell.source.cell,
               port: cell.source.port ?? "",
               anchor: "center",
               connectionPoint: { name: "boundary" },
             }
-          : (cell.source as any);
-      const tgt =
-        typeof cell.target === "object" && "cell" in cell.target
+          : {
+              cell: typeof cell.source === "string" ? cell.source : "",
+              port: "",
+              anchor: "center",
+              connectionPoint: { name: "boundary" },
+            };
+      const tgt: DiagramEdge["target"] =
+        typeof cell.target === "object" && cell.target !== null && "cell" in cell.target
           ? {
               cell: cell.target.cell,
               port: cell.target.port ?? "",
               anchor: "center",
               connectionPoint: { name: "boundary" },
             }
-          : (cell.target as any);
+          : {
+              cell: typeof cell.target === "string" ? cell.target : "",
+              port: "",
+              anchor: "center",
+              connectionPoint: { name: "boundary" },
+            };
 
       const edgeAttrs = cell.attrs ?? {};
       const lineAttrs = edgeAttrs.line ?? {};
@@ -619,6 +726,7 @@ export function cellsToDiagramData(graph: { title?: string; cells: any[] }): Dia
 
       nodes.push({
         id: cell.id,
+        shape: cell.shape,
         x: nx,
         y: ny,
         width: nw,
@@ -669,9 +777,12 @@ export function cellsToDiagramData(graph: { title?: string; cells: any[] }): Dia
 }
 
 /**
- * Headless SVG Serializer for cell graphs ({ title?, cells: any[] }).
+ * Headless SVG Serializer for cell graphs.
  */
-export function renderCellsSvg(graph: { title?: string; cells: any[] }, options: SvgExportOptions = {}): string {
+export function renderCellsSvg(
+  graph: { title?: string | undefined; cells: RawGraphCell[] },
+  options: SvgExportOptions = {},
+): string {
   const diagram = cellsToDiagramData(graph);
   return renderPolyglotDiagramToSvg(diagram, options);
 }

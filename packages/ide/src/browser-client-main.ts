@@ -54,11 +54,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const registeredCommandIds = new Set<string>();
 
-  function safeRegisterCommand(
-    commandId: string,
-
-    callback: (...args: any[]) => any,
-  ): vscode.Disposable {
+  function safeRegisterCommand(commandId: string, callback: (...args: never[]) => unknown): vscode.Disposable {
     if (registeredCommandIds.has(commandId)) {
       return { dispose: () => {} };
     }
@@ -237,7 +233,7 @@ export async function activate(context: vscode.ExtensionContext) {
         participantId: string;
         time: number;
         data?: number[] | undefined;
-        payload?: any;
+        payload?: unknown;
       }) => {
         const { CadViewerPanel } = await import("./cad-viewer-panel.js");
         if (CadViewerPanel.currentPanel) {
@@ -277,8 +273,10 @@ export async function activate(context: vscode.ExtensionContext) {
       treeController.libraryTreeProvider.refresh();
       treeController.experimentsTreeProvider?.refresh();
       vscode.window.showInformationMessage("ModelScript language server restarted successfully.");
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to restart language server: ${err?.message || err}`);
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(
+        `Failed to restart language server: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   });
 
@@ -388,7 +386,17 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       try {
-        const response: any = await lspManager.client.sendRequest("modelscript/diagram.applyEdits", {
+        const response = await lspManager.client.sendRequest<{
+          edits?:
+            | {
+                range: {
+                  start: { line: number; character: number };
+                  end: { line: number; character: number };
+                };
+                newText: string;
+              }[]
+            | undefined;
+        }>("modelscript/diagram.applyEdits", {
           uri: docUri,
           seq: 0,
           actions: [{ type: "addComponent", className, x: 0, y: 0 }],
@@ -464,7 +472,10 @@ export async function activate(context: vscode.ExtensionContext) {
         },
         async () => {
           try {
-            const res = await lspManager!.client.sendRequest<any>("modelscript/decomposeRegions", {
+            const res = await lspManager!.client.sendRequest<{
+              success?: boolean | undefined;
+              result?: { regions?: unknown[] | undefined } | undefined;
+            }>("modelscript/decomposeRegions", {
               uri: targetUri,
             });
             if (res?.success) {
@@ -472,8 +483,10 @@ export async function activate(context: vscode.ExtensionContext) {
                 `Decomposed ${res.result?.regions?.length ?? 0} non-overlapping invariant regions with Octagon difference bounds.`,
               );
             }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`Region decomposition failed: ${e?.message || e}`);
+          } catch (e: unknown) {
+            vscode.window.showErrorMessage(
+              `Region decomposition failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
           }
         },
       );
@@ -513,19 +526,24 @@ export async function activate(context: vscode.ExtensionContext) {
               const { CadViewerPanel } = await import("./cad-viewer-panel.js");
               CadViewerPanel.createOrShow(context.extensionUri, lspManager!.client);
 
-              const result = await lspManager!.client.sendRequest<any>("modelscript/simulatePhysics", {
-                uri,
-                className,
-                physicsType: "FEA",
-              });
+              const result = await lspManager!.client.sendRequest<{ error?: string | undefined }>(
+                "modelscript/simulatePhysics",
+                {
+                  uri,
+                  className,
+                  physicsType: "FEA",
+                },
+              );
 
               if (result?.error) {
                 vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
               } else {
                 vscode.window.showInformationMessage("Physics co-simulation completed successfully.");
               }
-            } catch (err: any) {
-              vscode.window.showErrorMessage(`Failed to run physics simulation: ${err?.message || err}`);
+            } catch (err: unknown) {
+              vscode.window.showErrorMessage(
+                `Failed to run physics simulation: ${err instanceof Error ? err.message : String(err)}`,
+              );
             }
           },
         );

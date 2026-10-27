@@ -153,8 +153,9 @@ export async function seedExamplePackages(
     const zipBuffer = await zipFolderToBuffer(pkgDir, ignorePatterns);
     try {
       await storage.store(name, version, zipBuffer);
-    } catch (err: any) {
-      if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
+    } catch (err: unknown) {
+      const errObj = err as { name?: string | undefined; message?: string | undefined };
+      if (errObj?.name !== "ConflictError" && !errObj?.message?.includes("already exists")) {
         throw err;
       }
     }
@@ -365,8 +366,9 @@ export async function seedPrepackagedLibraries(
     } else {
       try {
         await storage.store(pkg.name, pkg.version, zipBuffer);
-      } catch (err: any) {
-        if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
+      } catch (err: unknown) {
+        const errObj = err as { name?: string | undefined; message?: string | undefined };
+        if (errObj?.name !== "ConflictError" && !errObj?.message?.includes("already exists")) {
           throw err;
         }
       }

@@ -94,8 +94,11 @@ export class MailerService {
           return { success: false, error: `SendGrid API error (${response.status}): ${errText}` };
         }
         return { success: true, messageId: id };
-      } catch (err: any) {
-        return { success: false, error: err.message || "Failed to dispatch email via SendGrid" };
+      } catch (err: unknown) {
+        return {
+          success: false,
+          error: (err instanceof Error ? err.message : String(err)) || "Failed to dispatch email via SendGrid",
+        };
       }
     }
 

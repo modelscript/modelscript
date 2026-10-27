@@ -84,7 +84,8 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
   for (const road of doc.roads) {
     // 2. Geometry Tangency & Clothoid Divergence Checks (M7801, M7803)
     for (let i = 0; i < road.planView.length; i++) {
-      const g = road.planView[i]!;
+      const g = road.planView[i];
+      if (!g) continue;
 
       // Clothoid curvature rate check
       if (g.type === "spiral") {
@@ -110,7 +111,8 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
 
       // Check tangency with next geometry element
       if (i < road.planView.length - 1) {
-        const nextG = road.planView[i + 1]!;
+        const nextG = road.planView[i + 1];
+        if (!nextG) continue;
         const endEval = evaluateGeometry(g, g.length);
         const startNextX = nextG.x;
         const startNextY = nextG.y;
@@ -147,7 +149,8 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
     // 4. Lane Sections, Center Lane & Width Checks (M7808, M7806, M7802)
     const sections = road.lanes.laneSections;
     for (let si = 0; si < sections.length; si++) {
-      const sec = sections[si]!;
+      const sec = sections[si];
+      if (!sec) continue;
 
       // Center lane check
       if (!sec.centerLane || sec.centerLane.id !== 0) {
@@ -179,7 +182,8 @@ export function lintOpenDrive(doc: OpenDriveDocument): OpenDriveDiagnostic[] {
 
       // Lane linking check across adjacent sections
       if (si < sections.length - 1) {
-        const nextSec = sections[si + 1]!;
+        const nextSec = sections[si + 1];
+        if (!nextSec) continue;
         const nextLaneIds = new Set([
           nextSec.centerLane.id,
           ...nextSec.leftLanes.map((l) => l.id),

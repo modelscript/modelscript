@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
 
 export interface ThreadNode {
   nodeId: string;

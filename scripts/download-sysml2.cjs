@@ -7,7 +7,6 @@
 // Canonical download location: scripts/SysML-v2-Release-2026-03.zip
 
 const fs = require("fs");
-const https = require("https");
 const path = require("path");
 const { execSync } = require("child_process");
 
@@ -27,30 +26,30 @@ try {
   execSync(`curl -L -C - --retry 5 --retry-delay 2 -o "${FULL_ZIP}" "${URL}"`, { stdio: "inherit" });
   console.log(`[download-sysml2] Downloaded full release, extracting sysml.library...`);
 
-    // Create a temp directory for extraction
-    const tmpDir = path.join(__dirname, "_sysml2-extract");
-    if (fs.existsSync(tmpDir)) {
-      fs.rmSync(tmpDir, { recursive: true });
-    }
-    fs.mkdirSync(tmpDir, { recursive: true });
+  // Create a temp directory for extraction
+  const tmpDir = path.join(__dirname, "_sysml2-extract");
+  if (fs.existsSync(tmpDir)) {
+    fs.rmSync(tmpDir, { recursive: true });
+  }
+  fs.mkdirSync(tmpDir, { recursive: true });
 
-    try {
-      // Extract only sysml.library/ .sysml files
-      execSync(`unzip -q -o "${FULL_ZIP}" "SysML-v2-Release-2026-03/sysml.library/*.sysml" -d "${tmpDir}"`, {
-        stdio: "pipe",
-      });
+  try {
+    // Extract only sysml.library/ .sysml files
+    execSync(`unzip -q -o "${FULL_ZIP}" "SysML-v2-Release-2026-03/sysml.library/*.sysml" -d "${tmpDir}"`, {
+      stdio: "pipe",
+    });
 
-      // Repackage into the final zip (paths relative to the extract dir)
-      execSync(`cd "${tmpDir}" && zip -q -r "${DEST}" .`);
+    // Repackage into the final zip (paths relative to the extract dir)
+    execSync(`cd "${tmpDir}" && zip -q -r "${DEST}" .`);
 
-      const stats = fs.statSync(DEST);
-      const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-      console.log(`[download-sysml2] Created ${ZIP_NAME} (${sizeMB} MB, sysml.library only)`);
-    } finally {
-      // Clean up
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      fs.unlinkSync(FULL_ZIP);
-    }
+    const stats = fs.statSync(DEST);
+    const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+    console.log(`[download-sysml2] Created ${ZIP_NAME} (${sizeMB} MB, sysml.library only)`);
+  } finally {
+    // Clean up
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.unlinkSync(FULL_ZIP);
+  }
 } catch (err) {
   console.error(`[download-sysml2] Failed: ${err.message}`);
   try {

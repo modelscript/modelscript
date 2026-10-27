@@ -6,7 +6,13 @@ import type { McpPropertySchema } from "@modelscript/dsl/dsl/language.js";
 import { DigitalThreadHypergraph, ThreadDomain } from "@modelscript/runtime";
 import { z } from "zod";
 import { withSandbox } from "./sandbox.js";
-import type { ServerContext } from "./types.js";
+import type {
+  PolyglotConflictData,
+  PolyglotConflictDiagnosis,
+  PolyglotReconciliationResult,
+  PolyglotThreadNodeDescriptor,
+  ServerContext,
+} from "./types.js";
 
 /**
  * Converts a declarative McpPropertySchema into a runtime Zod validator.
@@ -100,20 +106,7 @@ export class PolyglotMcpHost {
   /** In-memory digital thread hypergraph tracking cross-domain links and synchronization status. */
   private hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
   /** Registry of active cross-domain parameter conflicts keyed by conflict identifier. */
-  private conflictRegistry = new Map<
-    string,
-    {
-      slot: number;
-      sourceDomain: string;
-      sourceValue: number;
-      sourceUnit: string;
-      targetDomain: string;
-      targetValue: number;
-      targetUnit: string;
-      min: number;
-      max: number;
-    }
-  >();
+  private conflictRegistry = new Map<string, { slot: number } & PolyglotConflictData>();
 
   /**
    * Creates a new `PolyglotMcpHost` bound to an MCP server and shared compiler context.
@@ -179,9 +172,7 @@ export class PolyglotMcpHost {
                 : typeof args["name"] === "string"
                   ? args["name"]
                   : undefined;
-            const symbolMap = (this.context.current?.queryEngine?.index as any)?.symbols as
-              | Map<number, any>
-              | undefined;
+            const symbolMap = this.context.current?.queryEngine?.index?.symbols;
             if (symbolMap) {
               for (const sym of symbolMap.values()) {
                 if (!queryTarget || sym?.name === queryTarget || String(sym?.name ?? "").includes(queryTarget)) {
@@ -199,7 +190,7 @@ export class PolyglotMcpHost {
                   ? args["content"]
                   : typeof args["deckContent"] === "string"
                     ? args["deckContent"]
-                    : (this.context.current as any)?.sourceText;
+                    : (this.context.current as { sourceText?: string | undefined } | null)?.sourceText;
             if (typeof rawSource === "string" && rawSource.length > 0) {
               if (tool.name.startsWith("fea_")) {
                 try {
@@ -209,7 +200,14 @@ export class PolyglotMcpHost {
                   domainAnalysis = {
                     domain: "fea",
                     ...(props ? { slicingProperties: props } : {}),
-                    ...(deck ? { sectionCount: (deck as any).sections?.length ?? deck.elementSets?.size ?? 0 } : {}),
+                    ...(deck
+                      ? {
+                          sectionCount:
+                            (deck as { sections?: readonly unknown[] | undefined }).sections?.length ??
+                            deck.elementSets?.size ??
+                            0,
+                        }
+                      : {}),
                   };
                 } catch {
                   // Optional FEA package not loaded
@@ -223,7 +221,12 @@ export class PolyglotMcpHost {
                     domain: "cfd",
                     ...(props ? { slicingProperties: props } : {}),
                     ...(cfg
-                      ? { optionCount: cfg.directives?.size ?? (cfg as any).options?.size ?? Object.keys(cfg).length }
+                      ? {
+                          optionCount:
+                            cfg.directives?.size ??
+                            (cfg as { options?: { size?: number | undefined } | undefined }).options?.size ??
+                            Object.keys(cfg).length,
+                        }
                       : {}),
                   };
                 } catch {
@@ -266,8 +269,7 @@ export class PolyglotMcpHost {
           mimeType: resource.mimeType || "application/json",
         },
         async (uri) => {
-          const symbolCount =
-            ((this.context.current?.queryEngine?.index as any)?.symbols as Map<number, any> | undefined)?.size ?? 0;
+          const symbolCount = this.context.current?.queryEngine?.index?.symbols?.size ?? 0;
           return {
             contents: [
               {
@@ -277,7 +279,8 @@ export class PolyglotMcpHost {
                   resource: resource.name,
                   status: "available",
                   symbolCount,
-                  activeFile: (this.context.current as any)?.filePath ?? null,
+                  activeFile:
+                    (this.context.current as { filePath?: string | null | undefined } | null)?.filePath ?? null,
                 }),
                 mimeType: resource.mimeType || "application/json",
               },
@@ -297,7 +300,7 @@ export class PolyglotMcpHost {
         promptShape[arg.name] = zArg;
       }
 
-      this.server.prompt(prompt.name, prompt.description, promptShape, async (args: any) => {
+      this.server.prompt(prompt.name, prompt.description, promptShape, async (args) => {
         return {
           messages: [
             {
@@ -344,20 +347,7 @@ export class PolyglotMcpHost {
    * @param slot - Numeric hypergraph slot index.
    * @param data - Competing domain values, units, and admissible physical envelope.
    */
-  public registerConflict(
-    conflictId: string,
-    slot: number,
-    data: {
-      sourceDomain: string;
-      sourceValue: number;
-      sourceUnit: string;
-      targetDomain: string;
-      targetValue: number;
-      targetUnit: string;
-      min: number;
-      max: number;
-    },
-  ): void {
+  public registerConflict(conflictId: string, slot: number, data: PolyglotConflictData): void {
     this.hypergraph.markConflict(slot);
     this.conflictRegistry.set(conflictId, { slot, ...data });
   }
@@ -369,7 +359,7 @@ export class PolyglotMcpHost {
    * @param elementId - Thread ID (e.g., `"THREAD-1"`, `"thread_1"`) or numeric node identifier.
    * @returns Map of domain names to node descriptors, or `undefined` if no matching active thread exists.
    */
-  public getThread(elementId: string): Record<string, any> | undefined {
+  public getThread(elementId: string): Record<string, PolyglotThreadNodeDescriptor> | undefined {
     let threadId: number | undefined;
     const cleanId = elementId.replace(/^(THREAD-|thread_)/i, "");
     const parsed = parseInt(cleanId, 10);
@@ -400,7 +390,7 @@ export class PolyglotMcpHost {
     if (!rec || rec.isRemoved) return undefined;
 
     // Format each linked domain node entry with its current synchronization state
-    const domainsRecord: Record<string, any> = {};
+    const domainsRecord: Record<string, PolyglotThreadNodeDescriptor> = {};
     for (const [domIdx, nodeId] of Object.entries(rec.domainNodes)) {
       const domName = DOMAIN_NAME_MAP[Number(domIdx)] || `domain_${domIdx}`;
       domainsRecord[domName] = {
@@ -420,7 +410,7 @@ export class PolyglotMcpHost {
    * @param conflictId - Conflict identifier or slot reference (e.g., `"slot_0"`).
    * @returns Structured conflict diagnosis report.
    */
-  public diagnoseConflict(conflictId: string): any {
+  public diagnoseConflict(conflictId: string): PolyglotConflictDiagnosis {
     const entry = this.conflictRegistry.get(conflictId);
     if (entry) {
       const isConflicted = this.hypergraph.isConflicted(entry.slot);
@@ -479,7 +469,7 @@ export class PolyglotMcpHost {
    * @param customValue - Optional explicit numeric value overriding strategy calculation.
    * @returns Resolution summary with the final synchronized value.
    */
-  public reconcileSlot(conflictId: string, strategy: string, customValue?: number): any {
+  public reconcileSlot(conflictId: string, strategy: string, customValue?: number): PolyglotReconciliationResult {
     const entry = this.conflictRegistry.get(conflictId);
     let resolvedValue = customValue ?? 18.0;
 

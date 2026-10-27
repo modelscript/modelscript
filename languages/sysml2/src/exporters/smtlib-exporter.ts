@@ -2,7 +2,7 @@
 
 import type { QueryDB } from "@modelscript/runtime";
 import { type ExtractedConstraint, extractSysML2Constraints } from "../constraint-extractor.js";
-import { findCstDescendants, findFirstDescendant } from "../flattener/cst-lowerer.js";
+import { findCstDescendants, findFirstDescendant, type SysmlCstNode } from "../flattener/cst-lowerer.js";
 import { getSysmlParser } from "../sysml2-dae-lowerer.js";
 
 export interface SmtFunctionDef {
@@ -211,20 +211,19 @@ function astToSmt(node: AstNode): string {
 /**
  * Converts a CST expression node into an SMT-LIB2 prefix S-expression string.
  */
-function cstToSmt(node: any): string | null {
+function cstToSmt(node: SysmlCstNode | null | undefined): string | null {
   if (!node) return null;
   // Unwrap wrapper nodes
   while (
-    node &&
-    (node.type === "OwnedExpression" ||
-      node.type === "SequenceExpression" ||
-      node.type === "ResultExpressionMember" ||
-      node.type === "_Expression" ||
-      node.type === "_BaseExpression")
+    node.type === "OwnedExpression" ||
+    node.type === "SequenceExpression" ||
+    node.type === "ResultExpressionMember" ||
+    node.type === "_Expression" ||
+    node.type === "_BaseExpression"
   ) {
-    const inner =
+    const inner: SysmlCstNode | null | undefined =
       node.childForFieldName?.("ownedRelatedElement") ||
-      (node.childCount > 0 ? (node.child ? node.child(0) : node.children[0]) : null);
+      ((node.childCount ?? 0) > 0 ? (node.child ? node.child(0) : node.children?.[0]) : null);
     if (inner && inner !== node) {
       node = inner;
     } else {
@@ -232,21 +231,23 @@ function cstToSmt(node: any): string | null {
     }
   }
 
+  const count = node.childCount ?? 0;
+
   // Parenthesized: ( expr )
-  if (node.childCount >= 3) {
-    const first = node.child ? node.child(0) : node.children[0];
-    const last = node.child ? node.child(node.childCount - 1) : node.children[node.childCount - 1];
+  if (count >= 3) {
+    const first = node.child ? node.child(0) : node.children?.[0];
+    const last = node.child ? node.child(count - 1) : node.children?.[count - 1];
     if (first?.text === "(" && last?.text === ")") {
-      const inner = node.child ? node.child(1) : node.children[1];
+      const inner = node.child ? node.child(1) : node.children?.[1];
       return cstToSmt(inner);
     }
   }
 
   // Binary expression
-  if (node.childCount >= 3) {
-    const op = node.child ? node.child(1)?.text : node.children[1]?.text;
-    const left = cstToSmt(node.child ? node.child(0) : node.children[0]);
-    const right = cstToSmt(node.child ? node.child(2) : node.children[2]);
+  if (count >= 3) {
+    const op = node.child ? node.child(1)?.text : node.children?.[1]?.text;
+    const left = cstToSmt(node.child ? node.child(0) : node.children?.[0]);
+    const right = cstToSmt(node.child ? node.child(2) : node.children?.[2]);
     if (left !== null && right !== null && op) {
       if (op === "^" || op === "**") {
         if (right === "2" || right === "2.0") return `(* ${left} ${left})`;
@@ -256,9 +257,9 @@ function cstToSmt(node: any): string | null {
   }
 
   // Unary expression
-  if (node.childCount === 2) {
-    const op = node.child ? node.child(0)?.text : node.children[0]?.text;
-    const operand = cstToSmt(node.child ? node.child(1) : node.children[1]);
+  if (count === 2) {
+    const op = node.child ? node.child(0)?.text : node.children?.[0]?.text;
+    const operand = cstToSmt(node.child ? node.child(1) : node.children?.[1]);
     if (op === "-" && operand !== null) return `(- ${operand})`;
     if (op === "+" && operand !== null) return operand;
   }
@@ -304,13 +305,13 @@ export function infixArithmeticToSmt(expr: string): string {
           findFirstDescendant(tree.rootNode, "ResultExpressionMember");
         if (retNode) {
           const exprChild =
-            retNode.childCount > 1
+            (retNode.childCount ?? 0) > 1
               ? retNode.child
                 ? retNode.child(1)
-                : retNode.children[1]
+                : retNode.children?.[1]
               : retNode.child
                 ? retNode.child(0)
-                : retNode.children[0];
+                : retNode.children?.[0];
           const smt = cstToSmt(exprChild);
           if (smt) return smt;
         }
@@ -393,15 +394,16 @@ export function expressionToSmtLib(c: ExtractedConstraint): string {
 function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
   const funcs: SmtFunctionDef[] = [];
   const entries = db.allEntries();
+  const dbWithCst = db as { cstNode?(id: number): SysmlCstNode | null | undefined };
 
   for (const e of entries) {
     if (e.ruleName === "CalculationDefinition" || e.ruleName === "ActionDefinition") {
       let extracted: SmtFunctionDef | null = null;
 
       // 1. Direct CST inspection if QueryDB provides cstNode
-      if (typeof (db as any).cstNode === "function") {
+      if (typeof dbWithCst.cstNode === "function") {
         try {
-          const cst = (db as any).cstNode(e.id);
+          const cst = dbWithCst.cstNode(e.id);
           if (cst) {
             const nameNode = findFirstDescendant(cst, "Name") || findFirstDescendant(cst, "ID");
             const name = nameNode?.text?.trim();

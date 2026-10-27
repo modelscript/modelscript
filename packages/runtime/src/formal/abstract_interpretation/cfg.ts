@@ -155,14 +155,31 @@ export class GenericCFG {
       dfs(this.entryBlockId);
     }
 
+    const rpo = postOrder.reverse();
+
     // Include any unreachable blocks at the end
+    const unreachablePostOrder: number[] = [];
+    const dfsUnreachable = (id: number) => {
+      visited.add(id);
+      const block = this.blocks.get(id);
+      if (block) {
+        for (const succId of block.successors) {
+          if (!visited.has(succId)) {
+            dfsUnreachable(succId);
+          }
+        }
+      }
+      unreachablePostOrder.push(id);
+    };
     for (const id of this.blocks.keys()) {
       if (!visited.has(id)) {
-        dfs(id);
+        dfsUnreachable(id);
       }
     }
+    unreachablePostOrder.reverse();
+    rpo.push(...unreachablePostOrder);
 
-    return postOrder.reverse();
+    return rpo;
   }
 
   /**

@@ -85,11 +85,14 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
           webviewPanel.webview.postMessage({ type: "setLoading", data: false });
         }
         currentSurfaceIndices = payload.indices;
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn("[InpEditorProvider] Failed to parse deck:", err);
         if (!disposed) {
           webviewPanel.webview.postMessage({ type: "setLoading", data: false });
-          webviewPanel.webview.postMessage({ type: "error", message: err.message || String(err) });
+          webviewPanel.webview.postMessage({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     };
@@ -123,7 +126,15 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
 
         if (cadUriToLoad) {
           if (/\.scad$/i.test(cadUriToLoad.path)) {
-            const comps = await this.client.sendRequest<any[]>("modelscript/getCadComponents", {
+            const comps = await this.client.sendRequest<
+              {
+                name?: string | undefined;
+                proceduralMesh?:
+                  | { vertices?: number[] | undefined; normals?: number[] | undefined; indices?: number[] | undefined }
+                  | undefined;
+                cad?: { position?: number[] | undefined } | undefined;
+              }[]
+            >("modelscript/getCadComponents", {
               uri: cadUriToLoad.toString(),
             });
             if (Array.isArray(comps) && comps.length > 0 && !disposed) {
@@ -133,7 +144,7 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
                   const pos: [number, number, number] = Array.isArray(c.cad?.position)
                     ? [Number(c.cad.position[0]) || 0, Number(c.cad.position[1]) || 0, Number(c.cad.position[2]) || 0]
                     : [0, 0, 0];
-                  const rawVerts: number[] = c.proceduralMesh.vertices;
+                  const rawVerts: number[] = c.proceduralMesh!.vertices!;
                   const shifted = new Float32Array(rawVerts.length);
                   for (let i = 0; i < rawVerts.length; i += 3) {
                     shifted[i] = rawVerts[i]! + pos[0];
@@ -145,8 +156,8 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
                     name: c.name || `part_${idx + 1}`,
                     type: "SOLID",
                     vertices: shifted,
-                    normals: new Float32Array(c.proceduralMesh.normals || []),
-                    indices: new Uint32Array(c.proceduralMesh.indices),
+                    normals: new Float32Array(c.proceduralMesh!.normals || []),
+                    indices: new Uint32Array(c.proceduralMesh!.indices!),
                   };
                 });
               if (scadMeshes.length > 0) {
@@ -154,7 +165,7 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               }
             }
           } else {
-            const stepMeshes = await this.client.sendRequest<any[]>("modelscript/getStepMeshes", {
+            const stepMeshes = await this.client.sendRequest<unknown[]>("modelscript/getStepMeshes", {
               uri: cadUriToLoad.toString(),
             });
             if (stepMeshes && stepMeshes.length > 0 && !disposed) {
@@ -246,8 +257,8 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
 
             webviewPanel.webview.postMessage({ type: "feaResults", data: feaPayload });
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`FEA Solve failed: ${err.message || err}`);
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(`FEA Solve failed: ${err instanceof Error ? err.message : String(err)}`);
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           }
           break;
@@ -277,8 +288,11 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
                 vscode.window.showInformationMessage(
                   `CalculiX job #${jobId} completed. Streamed results to 3D viewport.`,
                 );
-              } catch (fetchErr: any) {
-                console.warn(`[inpEditorProvider] Could not load mesh payload for job #${jobId}:`, fetchErr?.message);
+              } catch (fetchErr: unknown) {
+                console.warn(
+                  `[inpEditorProvider] Could not load mesh payload for job #${jobId}:`,
+                  fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+                );
               } finally {
                 if (!disposed) {
                   webviewPanel.webview.postMessage({ type: "setLoading", data: false });
@@ -291,8 +305,9 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               webviewPanel.webview.postMessage({ type: "telemetryEvent", data: event });
 
               if (
-                event?.type === "phase" &&
-                (event.phase === "Completed" || event.phase.toLowerCase().includes("finish"))
+                event?.["type"] === "phase" &&
+                (event["phase"] === "Completed" ||
+                  (typeof event["phase"] === "string" && event["phase"].toLowerCase().includes("finish")))
               ) {
                 loadResults();
               }
@@ -327,8 +342,10 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               clearInterval(pollInterval);
               clearTimeout(pollTimeout);
             });
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Cloud solver dispatch failed: ${err.message || err}`);
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(
+              `Cloud solver dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           }
           break;
@@ -487,8 +504,10 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
                 } else {
                   vscode.window.showInformationMessage(msg);
                 }
-              } catch (err: any) {
-                vscode.window.showErrorMessage(`Surrogate training failed: ${err.message || err}`);
+              } catch (err: unknown) {
+                vscode.window.showErrorMessage(
+                  `Surrogate training failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
               }
             },
           );
@@ -550,7 +569,12 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
           let completed = 0;
           const total = sweepCfg.sampleCount || 10;
           const sweepId = `sweep_${Date.now()}`;
-          const runs: any[] = [];
+          const runs: {
+            runIndex: number;
+            status: string;
+            parameters: { thrustForce: number; youngsModulus: number };
+            scalars?: { maxVonMisesStressPa: number } | undefined;
+          }[] = [];
           for (let i = 0; i < total; i++) {
             const frac = total > 1 ? i / (total - 1) : 0;
             const loadScale = 0.6 + frac * 1.2;
@@ -584,11 +608,11 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               return;
             }
             if (completed < total) {
-              const run = runs[completed];
+              const run = runs[completed]!;
               const forceRatio = (run.parameters?.thrustForce ?? baseLoadMag) / Math.max(1e-6, baseLoadMag);
               const eRatio = baseE / Math.max(1e6, run.parameters?.youngsModulus ?? baseE);
-              runs[completed].status = "completed";
-              runs[completed].scalars = {
+              run.status = "completed";
+              run.scalars = {
                 maxVonMisesStressPa: Math.round(baseMaxStressPa * forceRatio * (0.9 + 0.1 * eRatio)),
               };
               completed++;
@@ -621,8 +645,10 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
             const moUri = vscode.Uri.joinPath(rootUri, "surrogates", `${mName}.mo`);
             try {
               await vscode.commands.executeCommand("vscode.open", moUri);
-            } catch (e: any) {
-              vscode.window.showErrorMessage(`Failed to open ${moUri.path}: ${e.message || e}`);
+            } catch (e: unknown) {
+              vscode.window.showErrorMessage(
+                `Failed to open ${moUri.path}: ${e instanceof Error ? e.message : String(e)}`,
+              );
             }
           }
           break;

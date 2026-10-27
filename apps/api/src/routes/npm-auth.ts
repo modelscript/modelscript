@@ -38,9 +38,14 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
     "/-/user/org.couchdb.user\\::username",
     enforceExportCompliance(() => database),
     async (req: Request, res: Response): Promise<void> => {
-      const username = req.params["username"];
+      const rawUsername = req.params["username"];
+      const username = typeof rawUsername === "string" ? rawUsername : undefined;
 
-      const body = req.body as any;
+      const body = (req.body ?? {}) as {
+        name?: string | undefined;
+        password?: string | undefined;
+        email?: string | undefined;
+      };
       const { name, password, email } = body;
 
       const effectiveUsername = username || name;
@@ -57,7 +62,7 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
         if (existing) {
           // Verify password
           const fullUser = database.getUserByEmail(existing.email);
-          if (!fullUser) {
+          if (!fullUser || !fullUser.password_hash) {
             res.status(401).json({ error: "Invalid credentials" });
             return;
           }

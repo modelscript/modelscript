@@ -10,14 +10,14 @@ import {
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { PhysicsSimplexReconciler, QueryEngine } from "@modelscript/runtime";
+import { PhysicsSimplexReconciler, QueryEngine, type QueryHooks } from "@modelscript/runtime";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { LanguageResolver } from "../util/language-registry.js";
 
 const require = createRequire(import.meta.url);
@@ -75,7 +75,7 @@ async function buildIndexedDb(
   filePath: string,
   sourceText: string,
   detectedLang: string,
-): Promise<{ db: any; rootId: number | null }> {
+): Promise<{ db: QueryEngine; rootId: number | null }> {
   const isSysml = detectedLang === "sysml2" || filePath.endsWith(".sysml");
   const isModelica = detectedLang === "modelica" || filePath.endsWith(".mo") || !isSysml;
 
@@ -86,7 +86,10 @@ async function buildIndexedDb(
     const wIdx = createModelicaWorkspaceIndex();
     wIdx.register(filePath, () => ast);
     const index = wIdx.toUnified();
-    const db = new QueryEngine(index, (modelicaLangFallback as any).queryHooks);
+    const db = new QueryEngine(
+      index,
+      (modelicaLangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
+    );
     const topIds = index.childrenOf.get(null) ?? [];
     return { db, rootId: topIds[0] ?? null };
   }
@@ -103,7 +106,10 @@ async function buildIndexedDb(
   const wIdx = createSysML2WorkspaceIndex();
   wIdx.register(filePath, () => ast);
   const index = await wIdx.toUnifiedAsync();
-  const db = new QueryEngine(index, (sysml2LangFallback as any).queryHooks);
+  const db = new QueryEngine(
+    index,
+    (sysml2LangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
+  );
   const topIds = index.childrenOf.get(null) ?? [];
   return { db, rootId: topIds[0] ?? null };
 }
@@ -161,7 +167,7 @@ export const Merge: CommandModule<{}, MergeArgs> = {
         alias: "o",
         description: "Write merged output to specified file path",
         type: "string",
-      }) as any;
+      }) as unknown as Argv<MergeArgs>;
   },
   handler: async (args) => {
     if (args.installGitDriver || args["install-git-driver"]) {
@@ -243,9 +249,9 @@ export const Merge: CommandModule<{}, MergeArgs> = {
     };
 
     const mergeResult = computeThreeWayMerge(
-      baseIndexed.rootId !== null ? { id: baseIndexed.rootId, db: baseIndexed.db } : null,
-      oursIndexed.rootId !== null ? { id: oursIndexed.rootId, db: oursIndexed.db } : null,
-      theirsIndexed.rootId !== null ? { id: theirsIndexed.rootId, db: theirsIndexed.db } : null,
+      baseIndexed.rootId !== null ? { id: baseIndexed.rootId, db: baseIndexed.db.toQueryDB() } : null,
+      oursIndexed.rootId !== null ? { id: oursIndexed.rootId, db: oursIndexed.db.toQueryDB() } : null,
+      theirsIndexed.rootId !== null ? { id: theirsIndexed.rootId, db: theirsIndexed.db.toQueryDB() } : null,
       {
         strategy,
         orderAgnostic,

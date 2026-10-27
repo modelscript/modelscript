@@ -220,7 +220,7 @@ export class AArch64Cpu {
         if (hookName && this.cruntime.handlers.has(hookName)) {
           const handler = this.cruntime.handlers.get(hookName)!;
           handler({
-            cpu: this as any,
+            cpu: this,
             memory: this.memory,
           });
           // Return to caller via LR (x30)

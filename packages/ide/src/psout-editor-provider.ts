@@ -125,8 +125,9 @@ export class PsoutEditorProvider implements vscode.CustomReadonlyEditorProvider<
             await vscode.workspace.fs.writeFile(datUri, new TextEncoder().encode(comtrade.dat));
 
             vscode.window.showInformationMessage(`Exported COMTRADE: ${baseName}.cfg & ${baseName}.dat`);
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`Failed to export COMTRADE: ${e?.message || e}`);
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Failed to export COMTRADE: ${message}`);
           }
           break;
         }

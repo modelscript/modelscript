@@ -73,11 +73,12 @@ function decodeBinaryOnnxModelProto(bytes: Uint8Array): OnnxGraphExport {
     return { name, dims };
   };
 
+  type OnnxNodeOpType = OnnxGraphExport["graph"]["nodes"][number]["opType"];
   const parseNodeProto = (end: number, state: { pos: number }) => {
     const inputs: string[] = [];
     const outputs: string[] = [];
     let name: string | undefined;
-    let opType: any = "Gemm";
+    let opType: OnnxNodeOpType = "Gemm";
     while (state.pos < end) {
       const tag = readVarint(state);
       const fieldNo = tag >>> 3;
@@ -96,7 +97,7 @@ function decodeBinaryOnnxModelProto(bytes: Uint8Array): OnnxGraphExport {
         state.pos += len;
       } else if (fieldNo === 4 && wireType === 2) {
         const len = readVarint(state);
-        opType = textDecoder.decode(bytes.subarray(state.pos, state.pos + len));
+        opType = textDecoder.decode(bytes.subarray(state.pos, state.pos + len)) as OnnxNodeOpType;
         state.pos += len;
       } else {
         skipField(state, wireType);

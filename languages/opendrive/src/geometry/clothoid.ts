@@ -49,8 +49,8 @@ export function integrateClothoidGL16(
   const halfS = 0.5 * s;
 
   for (let i = 0; i < 16; i++) {
-    const xi = GL16_X[i]!;
-    const wi = GL16_W[i]!;
+    const xi = GL16_X[i] ?? 0;
+    const wi = GL16_W[i] ?? 0;
     const tau1 = halfS * (1.0 + xi);
     const tau2 = halfS * (1.0 - xi);
     const theta1 = hdg0 + (k0 + 0.5 * kDot * tau1) * tau1;
@@ -174,15 +174,17 @@ export function evaluateElevation(
   records: OpenDriveElevationRecord[],
   s: number,
 ): { z: number; slope: number; pitch: number } {
-  if (records.length === 0) {
+  const firstRec = records[0];
+  if (!firstRec) {
     return { z: 0.0, slope: 0.0, pitch: 0.0 };
   }
 
   // Find applicable record with largest start s <= target s
-  let rec = records[0]!;
+  let rec = firstRec;
   for (let i = 1; i < records.length; i++) {
-    if (records[i]!.s <= s) {
-      rec = records[i]!;
+    const candidate = records[i];
+    if (candidate && candidate.s <= s) {
+      rec = candidate;
     } else {
       break;
     }
@@ -200,12 +202,14 @@ export function evaluateElevation(
  * Evaluates superelevation (cross-fall banking angle).
  */
 export function evaluateSuperelevation(records: OpenDriveSuperelevationRecord[], s: number): number {
-  if (records.length === 0) return 0.0;
+  const firstRec = records[0];
+  if (!firstRec) return 0.0;
 
-  let rec = records[0]!;
+  let rec = firstRec;
   for (let i = 1; i < records.length; i++) {
-    if (records[i]!.s <= s) {
-      rec = records[i]!;
+    const candidate = records[i];
+    if (candidate && candidate.s <= s) {
+      rec = candidate;
     } else {
       break;
     }
@@ -292,8 +296,9 @@ export function sampleRoadTrackFlat(road: OpenDriveRoad, step = 1.0, outBuffer?:
 function findGeometryAt(geometries: OpenDriveGeometry[], s: number): OpenDriveGeometry | undefined {
   if (geometries.length === 0) return undefined;
   for (let i = geometries.length - 1; i >= 0; i--) {
-    if (s >= geometries[i]!.s - 1e-9) {
-      return geometries[i]!;
+    const geom = geometries[i];
+    if (geom && s >= geom.s - 1e-9) {
+      return geom;
     }
   }
   return geometries[0];

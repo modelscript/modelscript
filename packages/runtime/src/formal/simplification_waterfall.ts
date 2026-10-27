@@ -255,6 +255,11 @@ export class SimplificationWaterfall {
         if (left.kind === "const" && right.kind === "const") {
           return { kind: "const", value: Math.pow(left.value, right.value) };
         }
+        if (right.kind === "const") {
+          if (Math.abs(right.value) < 1e-12) return { kind: "const", value: 1 };
+          if (Math.abs(right.value - 1) < 1e-12) return left;
+          if (Math.abs(right.value - 2) < 1e-12) return { kind: "sqr", child: left };
+        }
         return { kind: "pow", left, right };
       }
 
@@ -266,6 +271,14 @@ export class SimplificationWaterfall {
         };
       }
     }
+  }
+
+  private static invertRel(rel: NonlinearConstraint["rel"]): NonlinearConstraint["rel"] {
+    if (rel === "<=") return ">=";
+    if (rel === ">=") return "<=";
+    if (rel === "<") return ">";
+    if (rel === ">") return "<";
+    return rel;
   }
 
   /**
@@ -289,6 +302,9 @@ export class SimplificationWaterfall {
       if (expr.right.kind === "const") {
         rhs += expr.right.value;
         expr = SimplificationWaterfall.simplifyExpr(expr.left);
+      } else if (expr.left.kind === "const") {
+        rhs -= expr.left.value;
+        expr = { kind: "neg", child: SimplificationWaterfall.simplifyExpr(expr.right) };
       }
     }
 
@@ -296,14 +312,17 @@ export class SimplificationWaterfall {
     if (expr.kind === "neg") {
       expr = expr.child;
       rhs = -rhs;
-      if (rel === "<=") rel = ">=";
-      else if (rel === ">=") rel = "<=";
+      rel = SimplificationWaterfall.invertRel(rel);
     }
 
-    // Eliminate positive scalar multipliers: (c * expr) rel rhs -> expr rel (rhs / c)
-    if (expr.kind === "mul" && expr.left.kind === "const" && expr.left.value > 0) {
-      rhs = rhs / expr.left.value;
+    // Eliminate scalar multipliers: (c * expr) rel rhs -> expr rel (rhs / c)
+    if (expr.kind === "mul" && expr.left.kind === "const" && Math.abs(expr.left.value) > 1e-12) {
+      const c = expr.left.value;
+      rhs = rhs / c;
       expr = expr.right;
+      if (c < 0) {
+        rel = SimplificationWaterfall.invertRel(rel);
+      }
     }
 
     return { expr, rel, rhs };

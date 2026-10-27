@@ -8,7 +8,21 @@
 
 import { CreateMLCEngine, prebuiltAppConfig } from "@mlc-ai/web-llm";
 
-let engine: any = null;
+interface WorkerMLCEngine {
+  chat: {
+    completions: {
+      create(params: Record<string, unknown>): Promise<{
+        choices?: { message?: { content?: string | null | undefined } | undefined }[] | undefined;
+      }>;
+    };
+  };
+}
+
+interface WorkerGlobalWithOrigin {
+  __importScriptsOrigin?: string | undefined;
+}
+
+let engine: WorkerMLCEngine | null = null;
 let loading = false;
 
 const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
@@ -26,7 +40,7 @@ function getModelBaseUrl(): string {
 
   // Try to extract origin from the script URL that loaded us via importScripts
 
-  const scripts = (self as any).__importScriptsOrigin;
+  const scripts = (self as unknown as WorkerGlobalWithOrigin).__importScriptsOrigin;
   if (scripts) return scripts + "/api/models";
 
   // Fallback: use the page origin. In a worker context, we can try performance API
@@ -66,17 +80,17 @@ async function ensureEngine(): Promise<void> {
   try {
     // Check WebGPU
 
-    const nav = navigator as any;
+    const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } };
     if (!nav.gpu) throw new Error("WebGPU not available in this worker");
     const adapter = await nav.gpu.requestAdapter();
     if (!adapter) throw new Error("No WebGPU adapter found");
 
-    engine = await CreateMLCEngine(MODEL_ID, {
+    engine = (await CreateMLCEngine(MODEL_ID, {
       appConfig: getAppConfig(),
       initProgressCallback: (report: { text: string; progress: number }) => {
         self.postMessage({ type: "progress", text: report.text, progress: report.progress });
       },
-    });
+    })) as unknown as WorkerMLCEngine;
 
     self.postMessage({ type: "ready" });
   } catch (e) {
@@ -93,13 +107,14 @@ self.onmessage = async (event: MessageEvent) => {
   if (msg.type === "setOrigin") {
     // Main thread tells us the server origin so we can build model URLs
 
-    (self as any).__importScriptsOrigin = msg.origin;
+    (self as unknown as WorkerGlobalWithOrigin).__importScriptsOrigin = msg.origin;
     return;
   }
 
   if (msg.type === "chatComplete") {
     try {
       await ensureEngine();
+      if (!engine) throw new Error("WebLLM engine not initialized");
       const completion = await engine.chat.completions.create({
         messages: msg.messages,
         temperature: msg.temperature ?? 0.7,

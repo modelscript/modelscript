@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createInterface } from "node:readline";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { getApiUrl, saveApiUrl, saveToken } from "../util/auth.js";
 
 interface LoginArgs {
@@ -10,6 +10,19 @@ interface LoginArgs {
   token?: string | undefined;
   otp?: string | undefined;
   registry?: string | undefined;
+}
+
+interface AuthResponsePayload {
+  error?: string | undefined;
+  token?: string | undefined;
+  requires2FA?: boolean | undefined;
+  tempToken?: string | undefined;
+  user?:
+    | {
+        username?: string | undefined;
+        email?: string | undefined;
+      }
+    | undefined;
 }
 
 function prompt(question: string, hidden = false): Promise<string> {
@@ -83,7 +96,7 @@ export const Login: CommandModule<{}, LoginArgs> = {
         alias: "r",
         description: "Registry API URL",
         type: "string",
-      }) as any;
+      }) as unknown as Argv<LoginArgs>;
   },
   handler: async (args) => {
     const apiUrl = (args.registry || getApiUrl()).replace(/\/+$/, "");
@@ -106,9 +119,9 @@ export const Login: CommandModule<{}, LoginArgs> = {
           process.exit(1);
         }
 
-        const data = (await res.json()) as any;
+        const data = (await res.json()) as AuthResponsePayload;
         saveToken(args.token);
-        console.log(`✅ Logged in as ${data.user.username} (${data.user.email})`);
+        console.log(`✅ Logged in as ${data.user?.username} (${data.user?.email})`);
         console.log(`🌐 Registry: ${apiUrl}`);
         return;
       } catch (e) {
@@ -134,12 +147,12 @@ export const Login: CommandModule<{}, LoginArgs> = {
       });
 
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as AuthResponsePayload;
         console.error(`Login failed: ${data.error || res.statusText}`);
         process.exit(1);
       }
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as AuthResponsePayload;
 
       // Handle 2FA challenge if required
       if (data.requires2FA) {
@@ -157,20 +170,20 @@ export const Login: CommandModule<{}, LoginArgs> = {
         });
 
         if (!challengeRes.ok) {
-          const challengeData = (await challengeRes.json().catch(() => ({}))) as any;
+          const challengeData = (await challengeRes.json().catch(() => ({}))) as AuthResponsePayload;
           console.error(`Verification failed: ${challengeData.error || challengeRes.statusText}`);
           process.exit(1);
         }
 
-        const sessionData = (await challengeRes.json()) as any;
-        saveToken(sessionData.token);
-        console.log(`✅ Logged in as ${sessionData.user.username} (${sessionData.user.email})`);
+        const sessionData = (await challengeRes.json()) as AuthResponsePayload;
+        saveToken(sessionData.token ?? "");
+        console.log(`✅ Logged in as ${sessionData.user?.username} (${sessionData.user?.email})`);
         console.log(`🌐 Registry: ${apiUrl}`);
         return;
       }
 
-      saveToken(data.token);
-      console.log(`✅ Logged in as ${data.user.username} (${data.user.email})`);
+      saveToken(data.token ?? "");
+      console.log(`✅ Logged in as ${data.user?.username} (${data.user?.email})`);
       console.log(`🌐 Registry: ${apiUrl}`);
     } catch (e) {
       console.error(`Error connecting to registry at ${apiUrl}: ${(e as Error).message}`);

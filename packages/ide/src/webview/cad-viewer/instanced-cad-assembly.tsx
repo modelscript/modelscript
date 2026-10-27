@@ -16,7 +16,7 @@ import {
   type InstancedPartDescriptor,
 } from "@modelscript/cad";
 import { useGLTF } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
@@ -135,7 +135,7 @@ function InstancedCadCluster({
   });
 
   const handleClick = useCallback(
-    (e: any) => {
+    (e: ThreeEvent<MouseEvent>) => {
       e.stopPropagation();
       const instanceId = e.instanceId;
       if (instanceId !== undefined && instanceId < cluster.instanceNames.length) {
@@ -145,7 +145,7 @@ function InstancedCadCluster({
     [cluster.instanceNames, onSelect],
   );
 
-  const handlePointerOver = useCallback((e: any) => {
+  const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     const instanceId = e.instanceId;
     if (instanceId !== undefined) {

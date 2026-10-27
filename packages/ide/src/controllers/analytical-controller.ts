@@ -7,7 +7,7 @@ import { AnalysisPanel } from "../analysis-panel.js";
 import { ContractHierarchyPanel } from "../contract-hierarchy-panel.js";
 import { PacemakerProgrammerPanel } from "../pacemaker-programmer-panel.js";
 import { ThreadExplorerPanel } from "../thread-explorer-panel.js";
-import { TraceReplayPanel } from "../trace-replay-panel.js";
+import { type ReplayTraceData, TraceReplayPanel } from "../trace-replay-panel.js";
 
 export function registerAnalyticalCommands(
   context: vscode.ExtensionContext,
@@ -43,7 +43,7 @@ export function registerAnalyticalCommands(
       },
     ),
 
-    vscode.commands.registerCommand("modelscript.openTraceReplay", (trace?: any) => {
+    vscode.commands.registerCommand("modelscript.openTraceReplay", (trace?: ReplayTraceData) => {
       TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
     }),
 
@@ -66,7 +66,18 @@ export function registerAnalyticalCommands(
         },
         async () => {
           try {
-            const res = await client!.sendRequest<any>("modelscript/runMcdcTests", {
+            interface McdcTestResponse {
+              success?: boolean | undefined;
+              error?: string | undefined;
+              report?:
+                | {
+                    passed: number;
+                    totalTests: number;
+                    totalDurationMs: number;
+                  }
+                | undefined;
+            }
+            const res = await client!.sendRequest<McdcTestResponse>("modelscript/runMcdcTests", {
               uri: targetUri,
               actionName,
             });
@@ -78,8 +89,9 @@ export function registerAnalyticalCommands(
             } else {
               vscode.window.showErrorMessage(`MC/DC test generation failed: ${res?.error || "Unknown error"}`);
             }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`MC/DC test execution failed: ${e?.message || e}`);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`MC/DC test execution failed: ${msg}`);
           }
         },
       );
@@ -190,67 +202,76 @@ export function registerAnalyticalCommands(
         vscode.window.showInformationMessage(
           `✔ Digital Thread Synchronized: FEA mass (m = ${mass} kg, σ = ${(maxVonMisesPa / 1e6).toFixed(1)} MPa), CFD drag (Cd = ${cd.toFixed(2)}), and CAD area (A = ${area} m²) aligned with Modelica DAE & SysML v2.`,
         );
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Digital thread sync error: ${err?.message || err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Digital thread sync error: ${msg}`);
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.writebackParameter", async (targetOrArgs: any, valueArg?: string) => {
-      let target = "";
-      let newValue = "";
+    vscode.commands.registerCommand(
+      "modelscript.writebackParameter",
+      async (targetOrArgs: unknown, valueArg?: string) => {
+        let target = "";
+        let newValue = "";
 
-      if (Array.isArray(targetOrArgs)) {
-        target = String(targetOrArgs[0] || "");
-        newValue = String(targetOrArgs[1] || "");
-      } else if (typeof targetOrArgs === "object" && targetOrArgs !== null) {
-        target = String(targetOrArgs.target || "");
-        newValue = String(targetOrArgs.newValue ?? "");
-      } else if (typeof targetOrArgs === "string") {
-        target = targetOrArgs;
-        newValue = valueArg !== undefined ? String(valueArg) : "";
-      }
-
-      if (!target) {
-        const input = await vscode.window.showInputBox({
-          prompt: "Enter parameter name to write back (e.g. DronePkg.Battery.mass)",
-        });
-        if (!input) return;
-        target = input;
-      }
-
-      if (!newValue) {
-        const currentVal = markdownVarCache[target] || "";
-        const input = await vscode.window.showInputBox({
-          prompt: `Enter new value for ${target}`,
-          value: currentVal,
-        });
-        if (input === undefined) return;
-        newValue = input;
-      }
-
-      if (!client) return;
-
-      try {
-        const res: any = await client.sendRequest("modelscript/computeWritebackEdit", {
-          target,
-          newValue,
-        });
-
-        if (res?.success && res.workspaceEdit) {
-          const applied = await vscode.workspace.applyEdit(res.workspaceEdit);
-          if (applied) {
-            markdownVarCache[target] = newValue;
-            if (scheduleMarkdownRefresh) scheduleMarkdownRefresh();
-            vscode.window.showInformationMessage(`Successfully updated ${target} to ${newValue}`);
-          } else {
-            vscode.window.showWarningMessage(`Could not apply workspace edit for ${target}`);
-          }
-        } else {
-          vscode.window.showErrorMessage(res?.error || `Failed to compute writeback edit for ${target}`);
+        if (Array.isArray(targetOrArgs)) {
+          target = String(targetOrArgs[0] || "");
+          newValue = String(targetOrArgs[1] || "");
+        } else if (typeof targetOrArgs === "object" && targetOrArgs !== null) {
+          const obj = targetOrArgs as { target?: unknown; newValue?: unknown };
+          target = String(obj.target || "");
+          newValue = String(obj.newValue ?? "");
+        } else if (typeof targetOrArgs === "string") {
+          target = targetOrArgs;
+          newValue = valueArg !== undefined ? String(valueArg) : "";
         }
-      } catch (e) {
-        vscode.window.showErrorMessage(`Writeback error for ${target}: ${String(e)}`);
-      }
-    }),
+
+        if (!target) {
+          const input = await vscode.window.showInputBox({
+            prompt: "Enter parameter name to write back (e.g. DronePkg.Battery.mass)",
+          });
+          if (!input) return;
+          target = input;
+        }
+
+        if (!newValue) {
+          const currentVal = markdownVarCache[target] || "";
+          const input = await vscode.window.showInputBox({
+            prompt: `Enter new value for ${target}`,
+            value: currentVal,
+          });
+          if (input === undefined) return;
+          newValue = input;
+        }
+
+        if (!client) return;
+
+        try {
+          const res = await client.sendRequest<{
+            success?: boolean | undefined;
+            workspaceEdit?: vscode.WorkspaceEdit | undefined;
+            error?: string | undefined;
+          }>("modelscript/computeWritebackEdit", {
+            target,
+            newValue,
+          });
+
+          if (res?.success && res.workspaceEdit) {
+            const applied = await vscode.workspace.applyEdit(res.workspaceEdit);
+            if (applied) {
+              markdownVarCache[target] = newValue;
+              if (scheduleMarkdownRefresh) scheduleMarkdownRefresh();
+              vscode.window.showInformationMessage(`Successfully updated ${target} to ${newValue}`);
+            } else {
+              vscode.window.showWarningMessage(`Could not apply workspace edit for ${target}`);
+            }
+          } else {
+            vscode.window.showErrorMessage(res?.error || `Failed to compute writeback edit for ${target}`);
+          }
+        } catch (e) {
+          vscode.window.showErrorMessage(`Writeback error for ${target}: ${String(e)}`);
+        }
+      },
+    ),
   ];
 }

@@ -198,13 +198,13 @@ export class ReqIfWorkspaceIndex implements IWorkspaceIndex {
     if (fromUri) {
       const idx = this.fileIndices.get(fromUri);
       if (idx) {
-        const ids = idx.byName.get(name);
-        if (ids && ids.length > 0) return idx.symbols.get(ids[0]!);
+        const firstId = idx.byName.get(name)?.[0];
+        if (firstId !== undefined) return idx.symbols.get(firstId);
       }
     }
     for (const idx of this.fileIndices.values()) {
-      const ids = idx.byName.get(name);
-      if (ids && ids.length > 0) return idx.symbols.get(ids[0]!);
+      const firstId = idx.byName.get(name)?.[0];
+      if (firstId !== undefined) return idx.symbols.get(firstId);
     }
     return undefined;
   }

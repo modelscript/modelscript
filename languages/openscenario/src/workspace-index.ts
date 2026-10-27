@@ -75,6 +75,7 @@ export class OpenScenarioWorkspaceIndex implements IWorkspaceIndex {
       this.fileBaseIds.set(uri, baseId);
     }
 
+    const fileBaseId = baseId;
     let localId = 1;
     function addSymbol(
       name: string,
@@ -84,7 +85,7 @@ export class OpenScenarioWorkspaceIndex implements IWorkspaceIndex {
       endOffset: number,
       metadata: Record<string, unknown> = {},
     ): SymbolId {
-      const symId = (baseId! + localId++) as SymbolId;
+      const symId = (fileBaseId + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,

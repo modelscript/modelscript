@@ -477,14 +477,17 @@ export function adaptModelicaPackageMo(
       } else if (
         impact["author"] &&
         typeof impact["author"] === "object" &&
-        typeof (impact["author"] as any).name === "string"
+        typeof (impact["author"] as Record<string, unknown>)["name"] === "string"
       ) {
-        author = (impact["author"] as any).name;
+        author = (impact["author"] as Record<string, unknown>)["name"] as string;
       }
       if (Array.isArray(impact["dependencies"])) {
         for (const dep of impact["dependencies"]) {
-          if (dep && typeof dep === "object" && typeof (dep as any).name === "string") {
-            dependencies[(dep as any).name] = String((dep as any).version || "*");
+          if (dep && typeof dep === "object") {
+            const depRec = dep as Record<string, unknown>;
+            if (typeof depRec["name"] === "string") {
+              dependencies[depRec["name"]] = String(depRec["version"] || "*");
+            }
           }
         }
       }
@@ -767,9 +770,20 @@ export function detectAndAdaptArchiveManifest(
     const target = pkgJsonEntry ?? msxJsonEntry!;
     format = pkgJsonEntry ? "npm" : "modelscript";
     try {
-      const parsed = JSON.parse(target.content) as Record<string, any>;
+      const parsed = JSON.parse(target.content) as Record<string, unknown>;
+      const parsedAuthor =
+        parsed["author"] && typeof parsed["author"] === "object"
+          ? (parsed["author"] as Record<string, unknown>)
+          : undefined;
+      const parsedMsx =
+        parsed["modelscript"] && typeof parsed["modelscript"] === "object"
+          ? (parsed["modelscript"] as Record<string, unknown>)
+          : undefined;
       name = typeof parsed["name"] === "string" && parsed["name"].trim() ? parsed["name"].trim() : fallbackName;
-      version = normalizeToSemver(parsed["version"], fallbackVersion);
+      version = normalizeToSemver(
+        typeof parsed["version"] === "string" ? parsed["version"] : undefined,
+        fallbackVersion,
+      );
       description =
         typeof parsed["description"] === "string"
           ? parsed["description"]
@@ -780,23 +794,25 @@ export function detectAndAdaptArchiveManifest(
       author =
         typeof parsed["author"] === "string"
           ? parsed["author"]
-          : typeof parsed["author"]?.name === "string"
-            ? parsed["author"].name
+          : typeof parsedAuthor?.["name"] === "string"
+            ? parsedAuthor["name"]
             : undefined;
       main =
         typeof parsed["main"] === "string"
           ? parsed["main"]
-          : typeof parsed["modelscript"]?.main === "string"
-            ? parsed["modelscript"].main
+          : typeof parsedMsx?.["main"] === "string"
+            ? parsedMsx["main"]
             : undefined;
       dependencies = {
-        ...(typeof parsed["dependencies"] === "object" && parsed["dependencies"] ? parsed["dependencies"] : {}),
-        ...(typeof parsed["modelscript"]?.dependencies === "object" && parsed["modelscript"].dependencies
-          ? parsed["modelscript"].dependencies
+        ...(typeof parsed["dependencies"] === "object" && parsed["dependencies"]
+          ? (parsed["dependencies"] as Record<string, string>)
+          : {}),
+        ...(typeof parsedMsx?.["dependencies"] === "object" && parsedMsx["dependencies"]
+          ? (parsedMsx["dependencies"] as Record<string, string>)
           : {}),
       };
-      if (Array.isArray(parsed["modelscript"]?.languages)) {
-        for (const l of parsed["modelscript"].languages) {
+      if (Array.isArray(parsedMsx?.["languages"])) {
+        for (const l of parsedMsx["languages"]) {
           if (typeof l === "string" && !detectedLangs.includes(l)) detectedLangs.push(l);
         }
       }
@@ -832,20 +848,31 @@ export function detectAndAdaptArchiveManifest(
   } else if (ddpEntry) {
     format = "ddp";
     try {
-      const ddp = JSON.parse(ddpEntry.content) as Record<string, any>;
-      name = ddp["packageId"]?.split(":").pop() || ddp["title"] || fallbackName;
-      version = normalizeToSemver(ddp["version"], fallbackVersion);
-      description = ddp["description"] || ddp["title"];
-      author = ddp["creator"]?.name || ddp["creator"]?.organization;
+      const ddp = JSON.parse(ddpEntry.content) as Record<string, unknown>;
+      const pkgId = typeof ddp["packageId"] === "string" ? ddp["packageId"].split(":").pop() : undefined;
+      const ddpTitle = typeof ddp["title"] === "string" ? ddp["title"] : undefined;
+      const ddpDesc = typeof ddp["description"] === "string" ? ddp["description"] : undefined;
+      const creator =
+        ddp["creator"] && typeof ddp["creator"] === "object" ? (ddp["creator"] as Record<string, unknown>) : undefined;
+      name = pkgId || ddpTitle || fallbackName;
+      version = normalizeToSemver(typeof ddp["version"] === "string" ? ddp["version"] : undefined, fallbackVersion);
+      description = ddpDesc || ddpTitle;
+      author =
+        typeof creator?.["name"] === "string"
+          ? creator["name"]
+          : typeof creator?.["organization"] === "string"
+            ? creator["organization"]
+            : undefined;
     } catch {
       // ignore
     }
   } else if (aasEntry) {
     format = "aasx";
     try {
-      const aas = JSON.parse(aasEntry.content) as Record<string, any>;
-      const shell = aas["assetAdministrationShells"]?.[0];
-      name = shell?.["idShort"] || fallbackName;
+      const aas = JSON.parse(aasEntry.content) as Record<string, unknown>;
+      const shells = Array.isArray(aas["assetAdministrationShells"]) ? aas["assetAdministrationShells"] : undefined;
+      const shell = shells?.[0] && typeof shells[0] === "object" ? (shells[0] as Record<string, unknown>) : undefined;
+      name = (typeof shell?.["idShort"] === "string" ? shell["idShort"] : undefined) || fallbackName;
       description = `Industrie 4.0 Asset Administration Shell (${name})`;
     } catch {
       // ignore
@@ -853,11 +880,14 @@ export function detectAndAdaptArchiveManifest(
   } else if (okhEntry) {
     format = "okh";
     try {
-      const okh = JSON.parse(okhEntry.content) as Record<string, any>;
-      name = okh["name"] || okh["title"] || fallbackName;
-      version = normalizeToSemver(okh["version"], fallbackVersion);
-      description = okh["description"] || okh["title"];
-      license = okh["license"];
+      const okh = JSON.parse(okhEntry.content) as Record<string, unknown>;
+      const okhName = typeof okh["name"] === "string" ? okh["name"] : undefined;
+      const okhTitle = typeof okh["title"] === "string" ? okh["title"] : undefined;
+      const okhDesc = typeof okh["description"] === "string" ? okh["description"] : undefined;
+      name = okhName || okhTitle || fallbackName;
+      version = normalizeToSemver(typeof okh["version"] === "string" ? okh["version"] : undefined, fallbackVersion);
+      description = okhDesc || okhTitle;
+      license = typeof okh["license"] === "string" ? okh["license"] : undefined;
     } catch {
       // ignore
     }
@@ -942,11 +972,22 @@ export function detectAndAdaptArchiveManifest(
   } else if (dataPkgEntry) {
     format = "datapackage";
     try {
-      const dp = JSON.parse(dataPkgEntry.content) as Record<string, any>;
-      name = dp["name"] || fallbackName;
-      version = normalizeToSemver(dp["version"], fallbackVersion);
-      description = dp["description"] || dp["title"];
-      license = dp["licenses"]?.[0]?.["name"] || dp["license"];
+      const dp = JSON.parse(dataPkgEntry.content) as Record<string, unknown>;
+      const dpName = typeof dp["name"] === "string" ? dp["name"] : undefined;
+      const dpDesc = typeof dp["description"] === "string" ? dp["description"] : undefined;
+      const dpTitle = typeof dp["title"] === "string" ? dp["title"] : undefined;
+      const dpLicenses = Array.isArray(dp["licenses"]) ? dp["licenses"] : undefined;
+      const firstLic =
+        dpLicenses?.[0] && typeof dpLicenses[0] === "object" ? (dpLicenses[0] as Record<string, unknown>) : undefined;
+      name = dpName || fallbackName;
+      version = normalizeToSemver(typeof dp["version"] === "string" ? dp["version"] : undefined, fallbackVersion);
+      description = dpDesc || dpTitle;
+      license =
+        typeof firstLic?.["name"] === "string"
+          ? firstLic["name"]
+          : typeof dp["license"] === "string"
+            ? dp["license"]
+            : undefined;
       main = dataPkgEntry.path;
       if (!detectedLangs.includes("csv")) detectedLangs.push("csv");
     } catch {
@@ -1007,7 +1048,7 @@ export function detectAndAdaptArchiveManifest(
       submodels: submodels.length > 0 ? submodels.map((s) => s.idShort) : undefined,
       languages: detectedLangs,
       nativeFormat: format,
-    } as any,
+    },
   };
 
   return {

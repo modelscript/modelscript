@@ -56,9 +56,11 @@ export function parseSpiceNumber(raw: string, params?: Map<string, number>): num
 
   // Handle parameter reference directly if present
   if (params) {
-    if (params.has(str)) return params.get(str)!;
+    const exactVal = params.get(str);
+    if (exactVal !== undefined) return exactVal;
     const upper = str.toUpperCase();
-    if (params.has(upper)) return params.get(upper)!;
+    const upperVal = params.get(upper);
+    if (upperVal !== undefined) return upperVal;
   }
 
   let i = 0;
@@ -88,9 +90,11 @@ export function parseSpiceNumber(raw: string, params?: Map<string, number>): num
   if (!hasDigits) {
     // If not a number, check params or return NaN
     if (params) {
-      if (params.has(str)) return params.get(str)!;
+      const exactVal = params.get(str);
+      if (exactVal !== undefined) return exactVal;
       const upper = str.toUpperCase();
-      if (params.has(upper)) return params.get(upper)!;
+      const upperVal = params.get(upper);
+      if (upperVal !== undefined) return upperVal;
     }
     return Number.NaN;
   }

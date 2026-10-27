@@ -98,8 +98,12 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
           }
           console.log(c.dim("\nRun 'msx db upgrade' to apply pending migrations."));
         }
-      } catch (err: any) {
-        console.error(c.red(`Could not connect to ModelScript API at ${apiUrl}: ${err.message}`));
+      } catch (err: unknown) {
+        console.error(
+          c.red(
+            `Could not connect to ModelScript API at ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
         process.exit(1);
       }
     } else if (action === "upgrade") {
@@ -129,8 +133,8 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
           }
           console.log(c.green(`[Success] Applied ${data.appliedCount} migration(s). Database is fully upgraded.`));
         }
-      } catch (err: any) {
-        console.error(c.red(`Upgrade request failed: ${err.message}`));
+      } catch (err: unknown) {
+        console.error(c.red(`Upgrade request failed: ${err instanceof Error ? err.message : String(err)}`));
         process.exit(1);
       }
     } else if (action === "verify") {
@@ -146,8 +150,8 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
         console.log(c.bold("\nDatabase Physical & Relational Integrity:"));
         console.log(`  Foreign Key Relations:  ${data.foreignKeysOk ? c.green("VALID") : c.red("INCONSISTENT")}`);
         console.log(`  Physical Table Storage: ${data.integrityOk ? c.green("HEALTHY") : c.red("CORRUPTED")}\n`);
-      } catch (err: any) {
-        console.error(c.red(`Verify request failed: ${err.message}`));
+      } catch (err: unknown) {
+        console.error(c.red(`Verify request failed: ${err instanceof Error ? err.message : String(err)}`));
         process.exit(1);
       }
     }

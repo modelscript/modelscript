@@ -123,12 +123,15 @@ export class CloudJobPanel {
           activeJobId: this._activeJobId,
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[CloudJobPanel] Refresh failed:", err);
     }
   }
 
-  private async dispatchJob(profileId: string, options: any): Promise<void> {
+  private async dispatchJob(
+    profileId: string,
+    options: { startTime?: number | undefined; stopTime?: number | undefined; numberOfIntervals?: number | undefined },
+  ): Promise<void> {
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === this._targetUri);
     if (!doc) {
       vscode.window.showErrorMessage("No active model file selected to dispatch.");
@@ -144,7 +147,14 @@ export class CloudJobPanel {
     if (ext === ".cfg") domain = "cfd";
     else if (ext === ".inp") domain = "fea";
 
-    const payload: any = {
+    const payload: {
+      domain: "modelica" | "cfd" | "fea";
+      name: string;
+      profile: string;
+      deck?: { content: string; format: string } | undefined;
+      sourceContent?: string | undefined;
+      experiment?: { startTime: number; stopTime: number; numberOfIntervals: number } | undefined;
+    } = {
       domain,
       name: modelName,
       profile: profileId,
@@ -172,7 +182,10 @@ export class CloudJobPanel {
       });
 
       if (res.status === 402) {
-        const errData = (await res.json().catch(() => ({}))) as any;
+        const errData = (await res.json().catch(() => ({}))) as {
+          required?: number | string | undefined;
+          balance?: number | string | undefined;
+        };
         vscode.window.showErrorMessage(
           `Payment Required: Insufficient Compute Credits. Required: ${errData.required ?? "?"} cr, Balance: ${errData.balance ?? "?"} cr`,
         );
@@ -198,9 +211,10 @@ export class CloudJobPanel {
           streamUrl: `${baseUrl}/cloud/jobs/${data.jobId}/events`,
         },
       });
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Dispatch failed: ${err.message}`);
-      this._panel.webview.postMessage({ type: "dispatchFailed", error: err.message });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Dispatch failed: ${msg}`);
+      this._panel.webview.postMessage({ type: "dispatchFailed", error: msg });
     }
   }
 
@@ -215,8 +229,8 @@ export class CloudJobPanel {
         vscode.window.showInformationMessage(`Job #${jobId} cancelled.`);
         this._panel.webview.postMessage({ type: "jobCancelled", jobId });
       }
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to cancel job: ${err.message}`);
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(`Failed to cancel job: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -268,8 +282,8 @@ export class CloudJobPanel {
       }
 
       SimulationPanel.createOrShowWithData(this._extensionUri, { t, y, states }, this._targetUri ?? "", this._client);
-    } catch (err: any) {
-      vscode.window.showErrorMessage(`Failed to display result: ${err.message}`);
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(`Failed to display result: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

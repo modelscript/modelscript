@@ -203,6 +203,18 @@ export class DaeBltReachabilityEngine {
           globalBounds.set(vIdx, bound);
           this.evaluator.setVarBound(vIdx, bound);
         }
+        if (cachedRes.derivativeBounds) {
+          for (const [vIdx, derBound] of cachedRes.derivativeBounds) {
+            const currentX = globalBounds.get(vIdx) ?? this.evaluator.getVarBound(vIdx);
+            const stateDisplacement = derBound.mul(new NumericalInterval(0, timeHorizon));
+            const projectedX = currentX.add(stateDisplacement);
+            stateEnclosures.set(vIdx, projectedX);
+            this.checkStateInvariants(vIdx, projectedX, allIssues);
+          }
+        }
+        if (cachedRes.isAlgebraicLoop && cachedRes.isRegular === false) {
+          singularLoopsCount++;
+        }
         allIssues.push(...cachedRes.issues);
         continue;
       }
@@ -576,6 +588,26 @@ export class DaeBltReachabilityEngine {
       };
     }
 
+    // Check if RHS is der(x)
+    if (rhsKind === ExprKind.Der) {
+      const _inner = this.arena.getExprData1(rhs);
+      void _inner;
+      const lhsEval = this.evaluator.evaluateExpr(lhs, globalBounds);
+      issues.push(...lhsEval.issues);
+      derBounds.set(varIdx, lhsEval.interval);
+      varBounds.set(varIdx, this.evaluator.getVarBound(varIdx));
+      return {
+        blockId,
+        isAlgebraicLoop: false,
+        equations: [eqIdx],
+        variables: [varIdx],
+        variableBounds: varBounds,
+        derivativeBounds: derBounds,
+        issues,
+        recomputed: true,
+      };
+    }
+
     // Check if LHS is the variable being solved: var = rhs
     if (lhsKind === ExprKind.Name) {
       const nameId = this.arena.getExprData1(lhs);
@@ -854,26 +886,27 @@ export class DaeBltReachabilityEngine {
       nominalEnv.set(block.vars[j]!, NumericalInterval.const(y0[j]!));
     }
 
-    const g0: number[] = [];
+    const g0: NumericalInterval[] = [];
     for (let i = 0; i < n; i++) {
       const eqIdx = block.eqIdxs[i]!;
       const lhs = this.arena.getEqLhs(eqIdx);
       const rhs = this.arena.getEqRhs(eqIdx);
       const resExpr = this.arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
       const evalRes = this.evaluator.evaluateExpr(resExpr, nominalEnv);
-      g0.push(evalRes.interval.low);
+      g0.push(evalRes.interval);
     }
 
     // Compute K([Y])_i
     let allStrictlyInside = true;
 
     for (let i = 0; i < n; i++) {
-      let kCenter = y0[i]!;
+      let kInterval = NumericalInterval.const(y0[i]!);
       for (let k = 0; k < n; k++) {
-        kCenter -= (C[i]![k] ?? 0) * g0[k]!;
+        const cVal = C[i]![k] ?? 0;
+        if (cVal !== 0) {
+          kInterval = kInterval.sub(NumericalInterval.const(cVal).mul(g0[k]!));
+        }
       }
-
-      let kInterval = NumericalInterval.const(kCenter);
 
       for (let j = 0; j < n; j++) {
         const I_ij = i === j ? NumericalInterval.ONE : NumericalInterval.ZERO;
@@ -975,25 +1008,12 @@ export class DaeBltReachabilityEngine {
    */
   private collectExprVarDeps(exprId: number, deps: Set<number>): void {
     if (exprId < 0) return;
-    const kind = this.arena.getExprKind(exprId);
-    if (kind === ExprKind.Name) {
-      const nameId = this.arena.getExprData1(exprId);
-      const vIdx = this.arena.lookupVariable(nameId);
-      if (vIdx >= 0) deps.add(vIdx);
-      return;
-    }
-    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
-      this.collectExprVarDeps(this.arena.getExprLeft(exprId), deps);
-      return;
-    }
-    if (kind === ExprKind.Binary) {
-      this.collectExprVarDeps(this.arena.getExprLeft(exprId), deps);
-      this.collectExprVarDeps(this.arena.getExprRight(exprId), deps);
-      return;
-    }
-    if (kind === ExprKind.Call) {
-      this.collectExprVarDeps(this.arena.getExprLeft(exprId), deps);
-      return;
+    const varNames = this.arena.collectExprVarNames(exprId);
+    for (const name of varNames) {
+      const vIdx = this.arena.getVarIdxByName(name);
+      if (vIdx >= 0) {
+        deps.add(vIdx);
+      }
     }
   }
 

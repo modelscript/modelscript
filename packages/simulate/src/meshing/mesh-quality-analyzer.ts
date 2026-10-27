@@ -3,6 +3,22 @@
 import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { MeshQualityMetrics, Tet4Mesh } from "../fea/tet4-types.js";
 
+interface MeshQualityWasmExports {
+  memory: WebAssembly.Memory;
+  __new: (bytes: number, id: number) => number;
+  __pin?: ((ptr: number) => void) | undefined;
+  __unpin?: ((ptr: number) => void) | undefined;
+  fea_analyze_tet_mesh_quality: (
+    numElements: number,
+    nodesPerElement: number,
+    nodeCoordsPtr: number,
+    elementsPtr: number,
+    jacobiansPtr: number,
+    aspectRatiosPtr: number,
+    statsPtr: number,
+  ) => number;
+}
+
 /**
  * High-performance Finite Element & CFD Mesh Quality Analyzer.
  * Computes scaled Jacobian determinants, aspect ratios, and flags inverted or degenerate cells.
@@ -10,7 +26,7 @@ import type { MeshQualityMetrics, Tet4Mesh } from "../fea/tet4-types.js";
 export class MeshQualityAnalyzer {
   private static wasmBuffers?:
     | {
-        wasm: any;
+        wasm: MeshQualityWasmExports;
         capCoords: number;
         capElems: number;
         capNumElements: number;
@@ -28,38 +44,41 @@ export class MeshQualityAnalyzer {
   public static analyze(mesh: Tet4Mesh): MeshQualityMetrics {
     const { nodeCoords, elements, numElements, nodesPerElement = 4 } = mesh;
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as Partial<MeshQualityWasmExports> | null | undefined;
     if (
       wasm &&
       typeof wasm.fea_analyze_tet_mesh_quality === "function" &&
       typeof wasm.__new === "function" &&
       numElements > 0
     ) {
+      const validWasm = wasm as MeshQualityWasmExports;
       const prev = MeshQualityAnalyzer.wasmBuffers;
       if (
         !prev ||
-        prev.wasm !== wasm ||
+        prev.wasm !== validWasm ||
         prev.capCoords < nodeCoords.length ||
         prev.capElems < elements.length ||
         prev.capNumElements < numElements
       ) {
-        if (prev && prev.wasm === wasm && typeof wasm.__unpin === "function") {
-          wasm.__unpin(prev.nodeCoordsPtr);
-          wasm.__unpin(prev.elementsPtr);
-          wasm.__unpin(prev.jacobiansPtr);
-          wasm.__unpin(prev.aspectRatiosPtr);
-          wasm.__unpin(prev.statsPtr);
+        if (prev && prev.wasm === validWasm && typeof validWasm.__unpin === "function") {
+          validWasm.__unpin(prev.nodeCoordsPtr);
+          validWasm.__unpin(prev.elementsPtr);
+          validWasm.__unpin(prev.jacobiansPtr);
+          validWasm.__unpin(prev.aspectRatiosPtr);
+          validWasm.__unpin(prev.statsPtr);
         }
-        const capCoords = prev && prev.wasm === wasm ? Math.max(prev.capCoords, nodeCoords.length) : nodeCoords.length;
-        const capElems = prev && prev.wasm === wasm ? Math.max(prev.capElems, elements.length) : elements.length;
-        const capNumElements = prev && prev.wasm === wasm ? Math.max(prev.capNumElements, numElements) : numElements;
+        const capCoords =
+          prev && prev.wasm === validWasm ? Math.max(prev.capCoords, nodeCoords.length) : nodeCoords.length;
+        const capElems = prev && prev.wasm === validWasm ? Math.max(prev.capElems, elements.length) : elements.length;
+        const capNumElements =
+          prev && prev.wasm === validWasm ? Math.max(prev.capNumElements, numElements) : numElements;
         const alloc = (bytes: number): number => {
-          const ptr = wasm.__new(bytes, 0);
-          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          const ptr = validWasm.__new(bytes, 0);
+          if (typeof validWasm.__pin === "function") validWasm.__pin(ptr);
           return ptr;
         };
         MeshQualityAnalyzer.wasmBuffers = {
-          wasm,
+          wasm: validWasm,
           capCoords,
           capElems,
           capNumElements,
@@ -72,12 +91,12 @@ export class MeshQualityAnalyzer {
       }
 
       const bufs = MeshQualityAnalyzer.wasmBuffers!;
-      const coordsF64 = new Float64Array(wasm.memory.buffer, bufs.nodeCoordsPtr, nodeCoords.length);
+      const coordsF64 = new Float64Array(validWasm.memory.buffer, bufs.nodeCoordsPtr, nodeCoords.length);
       for (let i = 0; i < nodeCoords.length; i++) coordsF64[i] = nodeCoords[i]!;
-      const elemsI32 = new Int32Array(wasm.memory.buffer, bufs.elementsPtr, elements.length);
+      const elemsI32 = new Int32Array(validWasm.memory.buffer, bufs.elementsPtr, elements.length);
       for (let i = 0; i < elements.length; i++) elemsI32[i] = elements[i]!;
 
-      const numInverted: number = wasm.fea_analyze_tet_mesh_quality(
+      const numInverted: number = validWasm.fea_analyze_tet_mesh_quality(
         numElements,
         nodesPerElement,
         bufs.nodeCoordsPtr,
@@ -87,9 +106,9 @@ export class MeshQualityAnalyzer {
         bufs.statsPtr,
       );
 
-      const jView = new Float64Array(wasm.memory.buffer, bufs.jacobiansPtr, numElements);
-      const arView = new Float64Array(wasm.memory.buffer, bufs.aspectRatiosPtr, numElements);
-      const stats = new Float64Array(wasm.memory.buffer, bufs.statsPtr, 6);
+      const jView = new Float64Array(validWasm.memory.buffer, bufs.jacobiansPtr, numElements);
+      const arView = new Float64Array(validWasm.memory.buffer, bufs.aspectRatiosPtr, numElements);
+      const stats = new Float64Array(validWasm.memory.buffer, bufs.statsPtr, 6);
 
       const elementJacobians = new Float32Array(numElements);
       const elementAspectRatios = new Float32Array(numElements);

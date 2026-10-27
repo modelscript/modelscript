@@ -6,7 +6,28 @@ import occtimportjs from "occt-import-js";
 import type { LibraryDatabase } from "../database.js";
 import { safePublicFetch } from "./ssrf.js";
 
-function computeMeshProperties(meshes: any[]) {
+export interface OcctMesh {
+  name?: string | undefined;
+  color?: [number, number, number] | undefined;
+  attributes?:
+    | {
+        position?: { array: number[] } | undefined;
+        normal?: { array: number[] } | undefined;
+      }
+    | undefined;
+  index?: { array: number[] } | undefined;
+  [key: string]: unknown;
+}
+
+export interface ConvertedStepResult {
+  meshes: OcctMesh[];
+  properties?: { volume: number; surfaceArea: number } | undefined;
+  bvh?: { depth: number; totalItems: number; root: unknown } | undefined;
+  assembly?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
+function computeMeshProperties(meshes: OcctMesh[]) {
   let totalVolume = 0;
   let totalSurfaceArea = 0;
 
@@ -20,13 +41,13 @@ function computeMeshProperties(meshes: any[]) {
     let surfaceArea = 0;
 
     for (let i = 0; i < indices.length; i += 3) {
-      const i0 = indices[i] * 3;
-      const i1 = indices[i + 1] * 3;
-      const i2 = indices[i + 2] * 3;
+      const i0 = indices[i]! * 3;
+      const i1 = indices[i + 1]! * 3;
+      const i2 = indices[i + 2]! * 3;
 
-      const v0 = [positions[i0], positions[i0 + 1], positions[i0 + 2]];
-      const v1 = [positions[i1], positions[i1 + 1], positions[i1 + 2]];
-      const v2 = [positions[i2], positions[i2 + 1], positions[i2 + 2]];
+      const v0 = [positions[i0]!, positions[i0 + 1]!, positions[i0 + 2]!] as const;
+      const v1 = [positions[i1]!, positions[i1 + 1]!, positions[i1 + 2]!] as const;
+      const v2 = [positions[i2]!, positions[i2 + 1]!, positions[i2 + 2]!] as const;
 
       const crossX = v1[1] * v2[2] - v1[2] * v2[1];
       const crossY = v1[2] * v2[0] - v1[0] * v2[2];
@@ -56,14 +77,16 @@ function computeMeshProperties(meshes: any[]) {
   return { volume: totalVolume, surfaceArea: totalSurfaceArea };
 }
 
-export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: string): Promise<any> {
+export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: string): Promise<ConvertedStepResult> {
   // occtimportjs is a wasm module factory
   const occt = await (
-    occtimportjs as unknown as () => Promise<{ ReadStepFile: (data: Uint8Array, param: null) => any }>
+    occtimportjs as unknown as () => Promise<{
+      ReadStepFile: (data: Uint8Array, param: null) => ConvertedStepResult | null;
+    }>
   )();
 
   // Read the STEP file from memory
-  const result = occt.ReadStepFile(fileData, null) || { meshes: [] };
+  const result: ConvertedStepResult = occt.ReadStepFile(fileData, null) || { meshes: [] };
 
   if (result.meshes && result.meshes.length > 0) {
     // Compute mass properties for manufacturing estimation
@@ -74,7 +97,7 @@ export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: s
       const bvhItems: BVHItem[] = [];
       for (let i = 0; i < result.meshes.length; i++) {
         const mesh = result.meshes[i];
-        if (mesh.attributes?.position?.array) {
+        if (mesh?.attributes?.position?.array) {
           const pos = mesh.attributes.position.array;
           let minX = Infinity;
           let minY = Infinity;
@@ -83,9 +106,9 @@ export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: s
           let maxY = -Infinity;
           let maxZ = -Infinity;
           for (let j = 0; j < pos.length; j += 3) {
-            const x = pos[j];
-            const y = pos[j + 1];
-            const z = pos[j + 2];
+            const x = pos[j] ?? 0;
+            const y = pos[j + 1] ?? 0;
+            const z = pos[j + 2] ?? 0;
             if (x < minX) minX = x;
             if (y < minY) minY = y;
             if (z < minZ) minZ = z;

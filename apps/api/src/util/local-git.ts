@@ -93,7 +93,7 @@ export class LocalGitProvider implements IGitProvider {
 
     const log = await git.log([refName]);
 
-    return log.all.map((c: any) => ({
+    return log.all.map((c) => ({
       id: c.hash,
       short_id: c.hash.substring(0, 8),
       title: c.message,

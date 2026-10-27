@@ -92,8 +92,14 @@ export function extractExprVariables(node: ExprNode, out: Set<string>): void {
     case "sub":
     case "mul":
     case "div":
+    case "pow":
       extractExprVariables(node.left, out);
       extractExprVariables(node.right, out);
+      break;
+    case "call":
+      for (const arg of node.args) {
+        extractExprVariables(arg, out);
+      }
       break;
   }
 }

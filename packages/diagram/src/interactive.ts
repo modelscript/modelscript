@@ -55,13 +55,15 @@ export interface InteractiveWriteAction {
 export interface InteractiveNodeLike {
   id: string;
   getData?:
-    | (() => {
-        interactive?: InteractiveBinding[] | undefined;
-        [key: string]: unknown;
-      })
+    | (() =>
+        | {
+            interactive?: InteractiveBinding[] | undefined;
+            [key: string]: unknown;
+          }
+        | undefined)
     | undefined;
   setData?: ((data: Record<string, unknown>, options?: Record<string, unknown>) => void) | undefined;
-  attr?: ((path: string, val: unknown) => void) | undefined;
+  attr?: ((path: string, val: unknown) => unknown) | undefined;
 }
 
 /**

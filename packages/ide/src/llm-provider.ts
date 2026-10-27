@@ -2,9 +2,29 @@
 
 import * as vscode from "vscode";
 
-let webllm: any = null;
+interface WebLLMEngine {
+  chat: {
+    completions: {
+      create(opts: {
+        messages: { role: string; content: string }[];
+        temperature?: number | undefined;
+        max_tokens?: number | undefined;
+        stream: boolean;
+      }): Promise<AsyncIterable<{ choices?: { delta?: { content?: string | undefined } | undefined }[] | undefined }>>;
+    };
+  };
+}
 
-let engine: any = null;
+interface WebLLMModule {
+  CreateMLCEngine(
+    modelId: string,
+    opts: { initProgressCallback: (report: { text: string; progress: number }) => void },
+  ): Promise<WebLLMEngine>;
+}
+
+let webllm: WebLLMModule | null = null;
+
+let engine: WebLLMEngine | null = null;
 
 const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
 
@@ -25,7 +45,7 @@ async function ensureEngine(): Promise<void> {
       progress.report({ message: "Loading WebLLM runtime..." });
 
       // Dynamic import — WebLLM is an ESM package bundled by webpack
-      webllm = await import("@mlc-ai/web-llm").catch(() => null);
+      webllm = (await import("@mlc-ai/web-llm").catch(() => null)) as WebLLMModule | null;
       if (!webllm) {
         throw new Error("Failed to load @mlc-ai/web-llm");
       }
@@ -49,11 +69,33 @@ async function ensureEngine(): Promise<void> {
  * This makes the local Qwen model available to all extensions via vscode.lm.
  *
  * Note: `registerChatModelProvider` is a proposed API (VS Code 1.104+).
- * We check for its existence at runtime and use `any` casts to avoid
- * type errors with current @types/vscode.
  */
 export function registerLLMProvider(context: vscode.ExtensionContext): void {
-  const lm = vscode.lm as any;
+  const lm = vscode.lm as unknown as {
+    registerChatModelProvider?: (
+      id: string,
+      provider: {
+        provideChatResponse: (
+          messages: vscode.LanguageModelChatMessage[],
+          options: {
+            modelOptions?: { temperature?: number | undefined; maxOutputTokens?: number | undefined } | undefined;
+          },
+          extensionId: string,
+          progress: vscode.Progress<{ index: number; part: vscode.LanguageModelTextPart }>,
+          token: vscode.CancellationToken,
+        ) => Promise<void>;
+        provideTokenCount: (text: string | vscode.LanguageModelChatMessage[]) => Promise<number>;
+      },
+      metadata: {
+        name: string;
+        family: string;
+        version: string;
+        maxInputTokens: number;
+        maxOutputTokens: number;
+        isDefault: boolean;
+      },
+    ) => vscode.Disposable;
+  };
   if (!lm || typeof lm.registerChatModelProvider !== "function") {
     console.log("[llm-provider] vscode.lm.registerChatModelProvider not available — skipping local model registration");
     return;
@@ -64,11 +106,11 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
     {
       provideChatResponse: async (
         messages: vscode.LanguageModelChatMessage[],
-
-        options: Record<string, any>,
+        options: {
+          modelOptions?: { temperature?: number | undefined; maxOutputTokens?: number | undefined } | undefined;
+        },
         _extensionId: string,
-
-        progress: vscode.Progress<any>,
+        progress: vscode.Progress<{ index: number; part: vscode.LanguageModelTextPart }>,
         token: vscode.CancellationToken,
       ) => {
         await ensureEngine();
@@ -76,7 +118,7 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
 
         // Convert VS Code messages to OpenAI format
 
-        const openaiMessages: any[] = messages.map((msg: any) => {
+        const openaiMessages: { role: string; content: string }[] = messages.map((msg) => {
           let role: string;
           switch (msg.role) {
             case vscode.LanguageModelChatMessageRole.User:
@@ -101,12 +143,12 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         // Stream completion
         const completion = await engine.chat.completions.create({
           messages: openaiMessages,
-          temperature: options?.["modelOptions"]?.temperature ?? 0.7,
-          max_tokens: options?.["modelOptions"]?.maxOutputTokens ?? 4096,
+          temperature: options?.modelOptions?.temperature ?? 0.7,
+          max_tokens: options?.modelOptions?.maxOutputTokens ?? 4096,
           stream: true,
         });
 
-        for await (const chunk of completion as AsyncIterable<any>) {
+        for await (const chunk of completion) {
           if (token.isCancellationRequested) break;
           const delta = chunk.choices?.[0]?.delta?.content;
           if (delta) {
@@ -115,7 +157,7 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         }
       },
 
-      provideTokenCount: async (text: any) => {
+      provideTokenCount: async (text: string | vscode.LanguageModelChatMessage[]) => {
         // Approximate token count (4 chars per token is a reasonable heuristic)
         if (typeof text === "string") {
           return Math.ceil(text.length / 4);
@@ -123,7 +165,7 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         // For message arrays, sum up content
         let total = 0;
 
-        for (const msg of text as any[]) {
+        for (const msg of text) {
           for (const part of msg.content) {
             if (part instanceof vscode.LanguageModelTextPart) {
               total += Math.ceil(part.value.length / 4);

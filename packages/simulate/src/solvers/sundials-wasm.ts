@@ -28,6 +28,67 @@ export interface SundialsEmscriptenModule {
   removeFunction(ptr: number): void;
   /** Invokes a compiled C export by name with automatic type marshaling. */
   ccall(name: string, returnType: string | null, argTypes: string[], args: (number | string)[]): number;
+  /** Optional raw WebAssembly.Memory instance exposed by some Emscripten builds. */
+  wasmMemory?: WebAssembly.Memory | undefined;
+  /** Optional raw ArrayBuffer exposed by mock/custom modules. */
+  buffer?: ArrayBufferLike | undefined;
+  /** Optional direct C export for advanced CVODE initialization. */
+  _cvode_init_advanced?: (
+    nStates: number,
+    solverType: number,
+    mu: number,
+    ml: number,
+    nnz: number,
+    jacFnPtr: number,
+    t0: number,
+    y0Ptr: number,
+    rhsFnPtr: number,
+    nEvents: number,
+    eventFnPtr: number,
+    rtol: number,
+    atol: number,
+  ) => number;
+  /** Optional direct C export for standard CVODE initialization. */
+  _cvode_init?: (
+    nStates: number,
+    t0: number,
+    y0Ptr: number,
+    rhsFnPtr: number,
+    nEvents: number,
+    eventFnPtr: number,
+    rtol: number,
+    atol: number,
+  ) => number;
+  /** Optional direct C export for stepping CVODE. */
+  _cvode_step?: (ctxPtr: number, tOut: number, tRetPtr: number, yRetPtr: number) => number;
+  /** Optional direct C export for reinitializing CVODE. */
+  _cvode_reinit?: (ctxPtr: number, t: number, y0Ptr: number) => void;
+  /** Optional direct C export for freeing CVODE context. */
+  _cvode_free?: (ctxPtr: number) => void;
+}
+
+/** Exported functions and linear memory of the DAE runtime WASM instance. */
+export interface DaeRuntimeWasmExports {
+  memory: WebAssembly.Memory;
+  varCount?: number | undefined;
+  dae_getVarCount?: (daePtr: number) => number;
+  dae_evalBlocks?: (daePtr: number, varValuesPtr: number) => void;
+  dae_evalExpr?: (daePtr: number, exprId: number, varValuesPtr: number) => number;
+  atomicChunkAlloc?: (bytes: number) => number;
+  atomicChunkFree?: (ptr: number) => void;
+  _malloc?: (bytes: number) => number;
+  _free?: (ptr: number) => void;
+  malloc?: (bytes: number) => number;
+  free?: (ptr: number) => void;
+  __new?: (bytes: number, id: number) => number;
+}
+
+/** FMI 2.0 / 3.0 Model-Exchange instance interface used by CvodeFmuDirectSolver. */
+export interface FmuModelExchangeInstance {
+  fmiSetTime?: (t: number) => void;
+  setContinuousStates?: (y: Float64Array) => void;
+  getDerivatives?: () => ArrayLike<number>;
+  getEventIndicators?: () => ArrayLike<number>;
 }
 
 /** Configuration options for SUNDIALS CVODE / IDA WebAssembly integrators. */
@@ -81,7 +142,7 @@ export interface SundialsSimulationResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Resolves a `Float64Array` view over the current WebAssembly linear memory buffer of a SUNDIALS module. */
-function getHeapF64(module: any): Float64Array {
+function getHeapF64(module: SundialsEmscriptenModule): Float64Array {
   const buf = module.wasmMemory?.buffer ?? module.HEAPU8?.buffer ?? module.HEAPF64?.buffer ?? module.buffer;
   if (!buf) throw new Error("Unable to locate WASM memory buffer in SUNDIALS module");
   return new Float64Array(buf);
@@ -198,8 +259,8 @@ export class CvodeSolver {
     const nnz = options?.nnz ?? 3 * nStates;
 
     // Call cvode_init_advanced or cvode_init
-    if ((module as any)._cvode_init_advanced) {
-      this.ctxPtr = (module as any)._cvode_init_advanced(
+    if (module._cvode_init_advanced) {
+      this.ctxPtr = module._cvode_init_advanced(
         nStates,
         solverType,
         mu,
@@ -214,8 +275,8 @@ export class CvodeSolver {
         rtol,
         atol,
       );
-    } else if ((module as any)._cvode_init) {
-      this.ctxPtr = (module as any)._cvode_init(nStates, t0, this.y0Ptr, rhsFnPtr, nEvents, eventFnPtr, rtol, atol);
+    } else if (module._cvode_init) {
+      this.ctxPtr = module._cvode_init(nStates, t0, this.y0Ptr, rhsFnPtr, nEvents, eventFnPtr, rtol, atol);
     } else {
       this.ctxPtr = module.ccall(
         "cvode_init",
@@ -238,8 +299,8 @@ export class CvodeSolver {
    *          the actual time `t` reached, and the state vector `y` at time `t`.
    */
   step(tOut: number): { flag: number; t: number; y: number[] } {
-    const flag = (this.module as any)._cvode_step
-      ? (this.module as any)._cvode_step(this.ctxPtr, tOut, this.tRetPtr, this.yRetPtr)
+    const flag = this.module._cvode_step
+      ? this.module._cvode_step(this.ctxPtr, tOut, this.tRetPtr, this.yRetPtr)
       : this.module.ccall(
           "cvode_step",
           "number",
@@ -269,8 +330,8 @@ export class CvodeSolver {
     for (let i = 0; i < this.nStates; i++) {
       heapF64[(this.y0Ptr >> 3) + i] = y[i] ?? 0;
     }
-    if ((this.module as any)._cvode_reinit) {
-      (this.module as any)._cvode_reinit(this.ctxPtr, t, this.y0Ptr);
+    if (this.module._cvode_reinit) {
+      this.module._cvode_reinit(this.ctxPtr, t, this.y0Ptr);
     } else {
       this.module.ccall("cvode_reinit", "void", ["number", "number", "number"], [this.ctxPtr, t, this.y0Ptr]);
     }
@@ -281,8 +342,8 @@ export class CvodeSolver {
    */
   dispose(): void {
     if (this.ctxPtr) {
-      if ((this.module as any)._cvode_free) {
-        (this.module as any)._cvode_free(this.ctxPtr);
+      if (this.module._cvode_free) {
+        this.module._cvode_free(this.ctxPtr);
       } else {
         this.module.ccall("cvode_free", "void", ["number"], [this.ctxPtr]);
       }
@@ -326,7 +387,7 @@ export class CvodeDaeDirectSolver {
   /** Underlying CVODE solver instance. */
   private cvode: CvodeSolver;
   /** Exported functions and linear memory of the DAE runtime WASM instance. */
-  public wasmExports: any;
+  public wasmExports: DaeRuntimeWasmExports;
   /** Pointer to the DAE arena struct in WASM linear memory. */
   private daePtr: number;
   /** Variable indices of the continuous states in the DAE arena. */
@@ -356,7 +417,7 @@ export class CvodeDaeDirectSolver {
    */
   constructor(
     sundialsModule: SundialsEmscriptenModule,
-    wasmExports: any,
+    wasmExports: DaeRuntimeWasmExports,
     daePtr: number,
     stateVarIds: number[],
     derivEqIds: number[],
@@ -390,17 +451,17 @@ export class CvodeDaeDirectSolver {
     if (typeof wasmExports.atomicChunkAlloc === "function") {
       this.varValuesPtr = wasmExports.atomicChunkAlloc(scratchBytes);
       if (typeof wasmExports.atomicChunkFree === "function") {
-        this.freeScratchFn = (ptr) => wasmExports.atomicChunkFree(ptr);
+        this.freeScratchFn = (ptr) => wasmExports.atomicChunkFree!(ptr);
       }
     } else if (typeof wasmExports._malloc === "function") {
       this.varValuesPtr = wasmExports._malloc(scratchBytes);
       if (typeof wasmExports._free === "function") {
-        this.freeScratchFn = (ptr) => wasmExports._free(ptr);
+        this.freeScratchFn = (ptr) => wasmExports._free!(ptr);
       }
     } else if (typeof wasmExports.malloc === "function") {
       this.varValuesPtr = wasmExports.malloc(scratchBytes);
       if (typeof wasmExports.free === "function") {
-        this.freeScratchFn = (ptr) => wasmExports.free(ptr);
+        this.freeScratchFn = (ptr) => wasmExports.free!(ptr);
       }
     } else if (typeof wasmExports.__new === "function") {
       this.varValuesPtr = wasmExports.__new(scratchBytes, 0);
@@ -509,7 +570,7 @@ export class CvodeFmuDirectSolver {
    */
   constructor(
     sundialsModule: SundialsEmscriptenModule,
-    fmuInstance: any,
+    fmuInstance: FmuModelExchangeInstance,
     nStates: number,
     t0: number,
     y0: number[],
@@ -530,7 +591,7 @@ export class CvodeFmuDirectSolver {
 
     if (nEvents > 0 && fmuInstance.getEventIndicators) {
       eventFn = (_t: number, _y: Float64Array, gout: Float64Array): number => {
-        const ind = fmuInstance.getEventIndicators();
+        const ind = fmuInstance.getEventIndicators!();
         for (let i = 0; i < nEvents; i++) gout[i] = ind[i] ?? 0;
         return 0;
       };
@@ -565,7 +626,7 @@ export class CvodeFmuDirectSolver {
  */
 export async function simulateDaeWithSundials(
   sundialsModule: SundialsEmscriptenModule,
-  wasmExports: any,
+  wasmExports: DaeRuntimeWasmExports,
   daePtr: number,
   stateVarIds: number[],
   derivEqIds: number[],

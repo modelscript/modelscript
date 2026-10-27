@@ -3,13 +3,20 @@
 import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { MaterialProperties } from "./tet4-types.js";
 
+interface Tet4WasmExports {
+  memory: WebAssembly.Memory;
+  __new: (bytes: number, id: number) => number;
+  __pin?: ((ptr: number) => void) | undefined;
+  fea_compute_tet4_stiffness: (coordsPtr: number, dPtr: number, keOutPtr: number, bOutPtr: number) => number;
+}
+
 /**
  * Closed-form 4-node linear tetrahedral (Tet4) element formulation.
  */
 export class Tet4Element {
   private static wasmScratch?:
     | {
-        wasm: any;
+        wasm: Tet4WasmExports;
         coordsPtr: number;
         dPtr: number;
         keOutPtr: number;
@@ -64,16 +71,17 @@ export class Tet4Element {
     p3: [number, number, number],
     D: Float64Array,
   ): { Ke: Float64Array; B: Float64Array; volume: number } {
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as Partial<Tet4WasmExports> | null | undefined;
     if (wasm && typeof wasm.fea_compute_tet4_stiffness === "function" && typeof wasm.__new === "function") {
-      if (!Tet4Element.wasmScratch || Tet4Element.wasmScratch.wasm !== wasm) {
+      const validWasm = wasm as Tet4WasmExports;
+      if (!Tet4Element.wasmScratch || Tet4Element.wasmScratch.wasm !== validWasm) {
         const alloc = (bytes: number): number => {
-          const ptr = wasm.__new(bytes, 0);
-          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          const ptr = validWasm.__new(bytes, 0);
+          if (typeof validWasm.__pin === "function") validWasm.__pin(ptr);
           return ptr;
         };
         Tet4Element.wasmScratch = {
-          wasm,
+          wasm: validWasm,
           coordsPtr: alloc(12 * 8),
           dPtr: alloc(36 * 8),
           keOutPtr: alloc(144 * 8),
@@ -81,7 +89,7 @@ export class Tet4Element {
         };
       }
       const s = Tet4Element.wasmScratch;
-      const coords = new Float64Array(wasm.memory.buffer, s.coordsPtr, 12);
+      const coords = new Float64Array(validWasm.memory.buffer, s.coordsPtr, 12);
       coords[0] = p0[0];
       coords[1] = p0[1];
       coords[2] = p0[2];
@@ -94,16 +102,16 @@ export class Tet4Element {
       coords[9] = p3[0];
       coords[10] = p3[1];
       coords[11] = p3[2];
-      new Float64Array(wasm.memory.buffer, s.dPtr, 36).set(D);
+      new Float64Array(validWasm.memory.buffer, s.dPtr, 36).set(D);
 
-      const volume: number = wasm.fea_compute_tet4_stiffness(s.coordsPtr, s.dPtr, s.keOutPtr, s.bOutPtr);
+      const volume: number = validWasm.fea_compute_tet4_stiffness(s.coordsPtr, s.dPtr, s.keOutPtr, s.bOutPtr);
       if (volume <= 1e-18) {
         throw new Error(`Degenerate or zero-volume tetrahedron encountered (volume = ${volume}).`);
       }
       const Ke = new Float64Array(144);
-      Ke.set(new Float64Array(wasm.memory.buffer, s.keOutPtr, 144));
+      Ke.set(new Float64Array(validWasm.memory.buffer, s.keOutPtr, 144));
       const B = new Float64Array(72);
-      B.set(new Float64Array(wasm.memory.buffer, s.bOutPtr, 72));
+      B.set(new Float64Array(validWasm.memory.buffer, s.bOutPtr, 72));
       return { Ke, B, volume };
     }
 

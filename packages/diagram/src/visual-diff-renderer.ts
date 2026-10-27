@@ -18,7 +18,7 @@ export interface VisualDiffSvgOptions extends SvgExportOptions {
   dimUnchanged?: boolean | undefined;
 }
 
-function escapeXml(str: any): string {
+function escapeXml(str: unknown): string {
   if (str === null || str === undefined) return "";
   return String(str)
     .replace(/&/g, "&amp;")

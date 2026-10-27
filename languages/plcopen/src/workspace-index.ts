@@ -287,8 +287,9 @@ export class PlcopenWorkspaceIndex implements IWorkspaceIndex {
     // Fallback: search global scope across all indexed files
     for (const fileIndex of this.fileIndices.values()) {
       const candidates = fileIndex.byName.get(name);
-      if (candidates && candidates.length > 0) {
-        const found = fileIndex.symbols.get(candidates[0]!);
+      const firstCandidate = candidates?.[0];
+      if (firstCandidate !== undefined) {
+        const found = fileIndex.symbols.get(firstCandidate);
         if (found) return found;
       }
     }

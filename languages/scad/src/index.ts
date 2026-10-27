@@ -9,11 +9,11 @@ import { ScadErrorCode } from "./errors.js";
 import { ScadEvaluator, type ScadEvaluationOptions } from "./evaluator.js";
 import { scadLanguage } from "./language.js";
 import { lintScadCst, type ScadDiagnostic } from "./linter.js";
-import { ScadPatcher } from "./patcher.js";
+import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
 
 export * from "./workspace-index.js";
 export { lintScadCst, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
-export type { ScadDiagnostic, ScadEvaluationOptions };
+export type { ScadCstNode, ScadCstTree, ScadDiagnostic, ScadEvaluationOptions };
 
 export interface ScadCadComponent {
   name: string;
@@ -36,7 +36,7 @@ export interface ScadCadComponent {
       offsetPosition?: [number, number, number] | undefined;
     };
   }[];
-  dynamicBindings: any[];
+  dynamicBindings: unknown[];
   sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
@@ -112,7 +112,7 @@ function collectSelectableParts(solid: Solid, out: Solid[]): void {
  */
 export async function extractScadCadComponents(
   source: string,
-  rootNode?: any,
+  rootNode?: ScadCstNode | null,
   uri?: string,
   options?: ScadEvaluationOptions,
 ): Promise<ScadCadComponent[]> {
@@ -152,7 +152,7 @@ export async function extractScadCadComponents(
     }
 
     const ports = mesh.tags.map((t) => {
-      const rawOrigin = (t as any).origin;
+      const rawOrigin = (t as { origin?: unknown }).origin;
       return {
         name: t.portName,
         port: {

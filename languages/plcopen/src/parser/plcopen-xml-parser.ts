@@ -207,8 +207,8 @@ export function parsePlcopenXml(source: string, filename?: string): PlcProject {
             if (interval) {
               const msMatch = /T#(\d+)(ms|s|m|h)/i.exec(interval);
               if (msMatch) {
-                const val = parseInt(msMatch[1]!, 10);
-                const unit = msMatch[2]!.toLowerCase();
+                const val = parseInt(msMatch[1] ?? "0", 10);
+                const unit = (msMatch[2] ?? "ms").toLowerCase();
                 if (unit === "ms") intervalMs = val;
                 else if (unit === "s") intervalMs = val * 1000;
                 else if (unit === "m") intervalMs = val * 60000;
@@ -287,8 +287,8 @@ function parsePouElement(source: string, pouElem: XmlElement): PlcPou {
   const ifaceElem = findChild(pouElem, "interface");
   if (ifaceElem) {
     const returnTypeElem = findChild(ifaceElem, "returnType");
-    if (returnTypeElem && returnTypeElem.children.length > 0) {
-      const firstChild = returnTypeElem.children[0]!;
+    const firstChild = returnTypeElem?.children[0];
+    if (firstChild) {
       returnType =
         firstChild.name.toLowerCase() === "derived" ? (getAttr(firstChild, "name") ?? "DERIVED") : firstChild.name;
     }
@@ -368,8 +368,8 @@ function parseVariableGroup(source: string, groupElem: XmlElement, scope: PlcVar
     // Extract Type
     let dataType = "BOOL";
     const typeElem = findChild(varElem, "type");
-    if (typeElem && typeElem.children.length > 0) {
-      const typeChild = typeElem.children[0]!;
+    const typeChild = typeElem?.children[0];
+    if (typeChild) {
       if (typeChild.name.toLowerCase() === "derived") {
         dataType = getAttr(typeChild, "name") ?? "DERIVED";
       } else if (typeChild.name.toLowerCase() === "string") {

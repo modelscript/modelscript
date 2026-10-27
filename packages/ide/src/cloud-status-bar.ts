@@ -5,7 +5,7 @@ import { getCloudApiUrl, getCloudPollIntervalMs, getStatusBarConfig } from "./ut
 
 export class CloudStatusBar implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
-  private timer: any = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
   private configSub: vscode.Disposable | undefined;
   private apiBaseUrl: string;
   private authToken: string | undefined;

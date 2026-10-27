@@ -107,7 +107,7 @@ export class CaeCloudClient {
    */
   public async uploadGeometry(fileBytes: Uint8Array, fileName: string): Promise<{ hash: string; cached: boolean }> {
     const formData = new FormData();
-    const blob = new Blob([fileBytes as any], { type: "application/octet-stream" });
+    const blob = new Blob([new Uint8Array(fileBytes)], { type: "application/octet-stream" });
     formData.append("file", blob, fileName);
 
     const res = await fetch(`${this.apiBaseUrl}/cae/upload`, {
@@ -183,7 +183,13 @@ export class CaeCloudClient {
   /**
    * Fetches 3D surface mesh and result fields (stress, displacement) formatted as FeaMeshPayload.
    */
-  public async fetchMeshPayload(jobId: string): Promise<any> {
+  public async fetchMeshPayload(jobId: string): Promise<{
+    type: string;
+    time: number;
+    geometry: { positions: number[]; indices: number[] };
+    fields: { vonMisesStress: number[]; displacements: number[] };
+    stats: { maxStress: number; maxDisplacement: number; safetyFactor: number };
+  }> {
     const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/mesh-payload`, {
       headers: this.buildHeaders(),
     });
@@ -198,20 +204,26 @@ export class CaeCloudClient {
   /**
    * Fetches scalar KPIs (convergence, max stress, max displacement) for a job.
    */
-  public async fetchScalars(jobId: string): Promise<any> {
+  public async fetchScalars(jobId: string): Promise<Record<string, unknown>> {
     const res = await fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/scalars`, {
       headers: this.buildHeaders(),
     });
     if (!res.ok) {
       throw new Error(`Scalars not ready for job ${jobId}`);
     }
-    return await res.json();
+    return (await res.json()) as Record<string, unknown>;
   }
 
   /**
    * Parses VTU XML text client-side into FeaMeshPayload structure.
    */
-  public parseVtuXmlToPayload(vtuXml: string): any {
+  public parseVtuXmlToPayload(vtuXml: string): {
+    type: string;
+    time: number;
+    geometry: { positions: number[]; indices: number[] };
+    fields: { vonMisesStress: number[]; displacements: number[] };
+    stats: { maxStress: number; maxDisplacement: number; safetyFactor: number };
+  } {
     const pointsMatch = vtuXml.match(/<Points>[\s\S]*?<DataArray[^>]*>([\s\S]*?)<\/DataArray>[\s\S]*?<\/Points>/);
     const positions: number[] = [];
     if (pointsMatch && pointsMatch[1]) {
@@ -306,7 +318,11 @@ export class CaeCloudClient {
    * Connects to the real-time Server-Sent Events (SSE) telemetry stream for a job.
    */
 
-  public connectTelemetry(jobId: string, onMessage: (event: any) => void, onError?: (err: any) => void): () => void {
+  public connectTelemetry(
+    jobId: string,
+    onMessage: (event: Record<string, unknown>) => void,
+    onError?: (err: unknown) => void,
+  ): () => void {
     const controller = new AbortController();
 
     fetch(`${this.apiBaseUrl}/cae/jobs/${jobId}/events`, {

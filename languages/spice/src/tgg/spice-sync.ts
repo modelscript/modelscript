@@ -33,8 +33,8 @@ export function parseModelicaElectrical(sourceText: string): ParsedModelicaElect
     if (line.startsWith("connect(") && line.endsWith(");")) {
       const inner = line.slice("connect(".length, -2);
       const parts = inner.split(",").map((s) => s.trim());
-      if (parts.length === 2) {
-        connections.push({ source: parts[0]!, target: parts[1]! });
+      if (parts.length === 2 && parts[0] !== undefined && parts[1] !== undefined) {
+        connections.push({ source: parts[0], target: parts[1] });
       }
       continue;
     }
@@ -54,10 +54,9 @@ export function parseModelicaElectrical(sourceText: string): ParsedModelicaElect
       }
 
       const tokens = typeAndName.split(/\s+/);
-      if (tokens.length >= 2) {
-        const fullType = tokens[tokens.length - 2]!;
-        const name = tokens[tokens.length - 1]!;
-
+      const fullType = tokens[tokens.length - 2];
+      const name = tokens[tokens.length - 1];
+      if (fullType !== undefined && name !== undefined) {
         let kind: "R" | "C" | "L" | "V" | "I" | "Other" = "Other";
         if (fullType.includes("Resistor")) kind = "R";
         else if (fullType.includes("Capacitor")) kind = "C";
@@ -142,7 +141,7 @@ export function synchronizeModelicaToSpice(
   let endDirectiveIndex = -1;
 
   for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+    const rawLine = lines[i] ?? "";
     const trimmed = rawLine.trim();
 
     if (trimmed.toUpperCase() === ".END" || trimmed.toUpperCase().startsWith(".END ")) {
@@ -166,8 +165,8 @@ export function synchronizeModelicaToSpice(
     const tokens = trimmed.split(/\s+/);
     const compName = tokens[0]?.toUpperCase() ?? "";
 
-    if (updatedValues.has(compName)) {
-      const newVal = updatedValues.get(compName)!;
+    const newVal = updatedValues.get(compName);
+    if (newVal !== undefined) {
       // In SPICE, 2-terminal device format: NAME N1 N2 VALUE [params]
       // 3-terminal: NAME N1 N2 N3 ...
       // If 4 or more tokens, token 3 is typically the value

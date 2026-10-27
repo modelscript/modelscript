@@ -687,7 +687,6 @@ export class WasmCdclSolver {
     }
 
     // Enqueue assumptions at successive decision levels
-    this.assumptionLevel = assumptions.length;
     for (let i = 0; i < assumptions.length; i++) {
       let lit = assumptions[i];
       let val = this.litValue(lit);
@@ -726,6 +725,7 @@ export class WasmCdclSolver {
         return SAT_RESULT_UNSAT;
       }
     }
+    this.assumptionLevel = this.currentLevel;
 
     // ── CDCL Main Search Loop ──
     let learned = new Array<i32>();
@@ -739,16 +739,17 @@ export class WasmCdclSolver {
           return SAT_RESULT_UNSAT;
         }
 
-        let btLevel = this.analyzeConflict(conflict, learned);
-
-        if (btLevel < this.assumptionLevel) {
+        if (this.currentLevel <= this.assumptionLevel) {
           // Conflict reaches assumption levels: extract minimal conflicting core
           this.analyzeFinalConflict(this.clauses[conflict], assumptions);
           this.backtrack(0);
           return SAT_RESULT_UNSAT;
         }
 
-        this.backtrack(btLevel);
+        let btLevel = this.analyzeConflict(conflict, learned);
+        let targetLevel = btLevel < this.assumptionLevel ? this.assumptionLevel : btLevel;
+
+        this.backtrack(targetLevel);
 
         if (learned.length == 1) {
           let unitClause = new Array<i32>(1);

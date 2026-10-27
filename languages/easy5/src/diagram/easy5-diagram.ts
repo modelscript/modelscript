@@ -10,7 +10,7 @@ export interface AntvNode {
   width: number;
   height: number;
   label?: string | undefined;
-  data?: Record<string, any> | undefined;
+  data?: Record<string, unknown> | undefined;
 }
 
 export interface AntvEdge {

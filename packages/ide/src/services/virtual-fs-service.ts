@@ -3,7 +3,7 @@
 import * as vscode from "vscode";
 import { Uri, workspace } from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
-import { type LibraryTreeProvider } from "../library-tree-provider.js";
+import { type LibraryTreeItem, type LibraryTreeProvider } from "../library-tree-provider.js";
 import { getTemplatePrimaryFile, mountArtifactToMemFs, scaffoldTemplateFiles } from "../templates/catalog.js";
 
 export function decodeBase64ToArray(base64: string): Uint8Array {
@@ -161,7 +161,7 @@ export class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
   readonly onDidChangeFile = this._emitter.event;
   private cache = new Map<string, Uint8Array>();
 
-  constructor(private readonly getClient?: () => any) {}
+  constructor(private readonly getClient?: () => LanguageClient | undefined) {}
 
   watch(): vscode.Disposable {
     return new vscode.Disposable(() => undefined);
@@ -181,9 +181,12 @@ export class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
     const client = this.getClient ? this.getClient() : undefined;
     if (!client) return [];
     try {
-      const res: any = await client.sendRequest("modelscript/readVirtualDirectory", { uri: uri.toString() });
+      const res = await client.sendRequest<{ name: string; isDirectory?: boolean | undefined }[]>(
+        "modelscript/readVirtualDirectory",
+        { uri: uri.toString() },
+      );
       if (Array.isArray(res)) {
-        return res.map((e: any) => [e.name, e.isDirectory ? vscode.FileType.Directory : vscode.FileType.File]);
+        return res.map((e) => [e.name, e.isDirectory ? vscode.FileType.Directory : vscode.FileType.File]);
       }
     } catch (e) {
       console.warn("[ModelicaFileSystemProvider] readDirectory error:", e);
@@ -222,7 +225,10 @@ export class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     try {
-      const res = await client.sendRequest("modelscript/readVirtualFile", { uri: key });
+      const res = await client.sendRequest<{ content?: string | undefined; encoding?: string | undefined }>(
+        "modelscript/readVirtualFile",
+        { uri: key },
+      );
       if (res && res.content) {
         const data =
           res.encoding === "base64" ? decodeBase64ToArray(res.content) : new TextEncoder().encode(res.content);
@@ -243,7 +249,7 @@ export class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
  */
 export function registerVirtualFileSystems(
   context: vscode.ExtensionContext,
-  getClient?: () => any,
+  getClient?: () => LanguageClient | undefined,
 ): {
   memFs: MemoryFileSystemProvider;
   modelicaFs: ModelicaFileSystemProvider;
@@ -288,7 +294,7 @@ export function registerVirtualFileSystems(
  */
 export async function initWorkspaceAndTree(
   treeProvider: LibraryTreeProvider,
-  treeView: vscode.TreeView<vscode.TreeItem> | undefined,
+  treeView: vscode.TreeView<LibraryTreeItem> | vscode.TreeView<vscode.TreeItem> | undefined,
   memFs?: MemoryFileSystemProvider,
   getClient?: () => LanguageClient | undefined,
 ): Promise<void> {
@@ -314,11 +320,16 @@ export async function initWorkspaceAndTree(
 
       if ((template === "scratch" || template.startsWith("artifact-")) && memFs) {
         const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
-        let cachedPayload: any = null;
+        interface CachedArtifactPayload {
+          title?: string | undefined;
+          viewType?: string | undefined;
+          viewConfig?: Record<string, unknown> | undefined;
+        }
+        let cachedPayload: CachedArtifactPayload | null = null;
         try {
           const raw =
             typeof sessionStorage !== "undefined" ? sessionStorage.getItem(`modelscript.artifact_${artifactId}`) : null;
-          if (raw) cachedPayload = JSON.parse(raw);
+          if (raw) cachedPayload = JSON.parse(raw) as CachedArtifactPayload;
         } catch {
           // ignore
         }

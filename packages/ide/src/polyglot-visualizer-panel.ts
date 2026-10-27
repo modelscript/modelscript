@@ -143,14 +143,18 @@ export class PolyglotVisualizerPanel extends BaseWebviewPanel {
 
       if (this._client) {
         try {
-          const resp: any = await this._client.sendRequest("modelscript/projectModel", {
+          const resp = await this._client.sendRequest<{
+            success?: boolean | undefined;
+            targetSource?: string | undefined;
+            correspondenceCount?: number | undefined;
+          }>("modelscript/projectModel", {
             uri: this.sourceUri,
             targetLang: this.targetLang,
             options: { strict: false, includeInferredFeatures: true },
           });
           if (resp && resp.success) {
-            targetSource = resp.targetSource;
-            correspondenceCount = resp.correspondenceCount;
+            targetSource = resp.targetSource ?? "";
+            correspondenceCount = resp.correspondenceCount ?? 0;
           }
         } catch {
           // Fallback to local transform
@@ -224,7 +228,16 @@ export class PolyglotVisualizerPanel extends BaseWebviewPanel {
     let collisions = 0;
     try {
       const { PolyglotTransformer } = await import("@modelscript/runtime");
-      const transformer = new PolyglotTransformer() as any;
+      const transformer = new PolyglotTransformer() as unknown as {
+        rules?:
+          | {
+              sourceDomain?: unknown;
+              targetDomain?: unknown;
+              sourcePattern?: unknown;
+              name?: unknown;
+            }[]
+          | undefined;
+      };
       if (Array.isArray(transformer.rules) && transformer.rules.length > 0) {
         ruleCount = transformer.rules.length;
         const domains = new Set<string>();

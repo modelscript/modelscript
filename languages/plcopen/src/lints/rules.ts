@@ -225,7 +225,8 @@ function checkStatementSequence(
   let terminated = false;
 
   for (let i = 0; i < statements.length; i++) {
-    const stmt = statements[i]!;
+    const stmt = statements[i];
+    if (!stmt) continue;
 
     if (terminated && stmt.kind !== "empty") {
       diagnostics.push({

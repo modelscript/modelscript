@@ -34,26 +34,43 @@ export interface SwimlanePartition {
   nodeIds: string[];
 }
 
+export interface SwimlaneNodeLike {
+  id: string;
+  shape?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  zIndex?: number | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
+  [key: string]: unknown;
+}
+
+export interface SwimlaneEdgeLike {
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  [key: string]: unknown;
+}
+
 /**
  * Applies a 2D swimlane layout to diagram nodes and edges.
  * Groups action nodes by their partition and renders container lane boxes.
  */
 export function applySwimlaneLayout(
-  data: { nodes: any[]; edges: any[] },
+  data: { nodes: SwimlaneNodeLike[]; edges: SwimlaneEdgeLike[] },
   partitions: SwimlanePartition[],
   config: Partial<SwimlaneConfig> = {},
 ): void {
   if (!partitions || partitions.length === 0) return;
 
   const cfg: SwimlaneConfig = { ...DEFAULT_SWIMLANE_CONFIG, ...config };
-  const nodeMap = new Map<string, any>(data.nodes.map((n) => [n.id, n]));
+  const nodeMap = new Map<string, SwimlaneNodeLike>(data.nodes.map((n) => [n.id, n]));
 
   let currentX = cfg.leftMargin;
   let maxTotalHeight = 300;
 
   // First pass: compute lane heights based on member nodes
   const laneMetrics = partitions.map((part) => {
-    const memberNodes = part.nodeIds.map((id) => nodeMap.get(id)).filter(Boolean);
+    const memberNodes = part.nodeIds.map((id) => nodeMap.get(id)).filter((n): n is SwimlaneNodeLike => Boolean(n));
     const count = memberNodes.length;
     const requiredHeight = cfg.headerHeight + cfg.topMargin + count * (60 + cfg.nodeSpacingY) + 50;
     maxTotalHeight = Math.max(maxTotalHeight, requiredHeight);

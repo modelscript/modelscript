@@ -172,7 +172,8 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
 
     // 2. Advance running actions
     for (let i = runningActions.length - 1; i >= 0; i--) {
-      const act = runningActions[i]!;
+      const act = runningActions[i];
+      if (!act) continue;
       const state = actorStates.get(act.entityRef);
       if (state) {
         state.acceleration = act.rate;

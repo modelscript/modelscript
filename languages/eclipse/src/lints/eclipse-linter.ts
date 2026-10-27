@@ -77,8 +77,11 @@ export function lintEclipse(deck: EclipseDeck): DiagnosticItem[] {
   // M8705: Non-monotonic PVT tables
   if (deck.props.pvdo.length > 1) {
     for (let i = 1; i < deck.props.pvdo.length; i++) {
-      const prevP = deck.props.pvdo[i - 1]!.pressure;
-      const curP = deck.props.pvdo[i]!.pressure;
+      const prevRow = deck.props.pvdo[i - 1];
+      const curRow = deck.props.pvdo[i];
+      if (!prevRow || !curRow) continue;
+      const prevP = prevRow.pressure;
+      const curP = curRow.pressure;
       if (curP <= prevP) {
         diagnostics.push({
           code: EclipseErrorCode.NON_MONOTONIC_PVT_TABLE.code,
@@ -93,8 +96,11 @@ export function lintEclipse(deck: EclipseDeck): DiagnosticItem[] {
 
   if (deck.props.pvdg.length > 1) {
     for (let i = 1; i < deck.props.pvdg.length; i++) {
-      const prevP = deck.props.pvdg[i - 1]!.pressure;
-      const curP = deck.props.pvdg[i]!.pressure;
+      const prevRow = deck.props.pvdg[i - 1];
+      const curRow = deck.props.pvdg[i];
+      if (!prevRow || !curRow) continue;
+      const prevP = prevRow.pressure;
+      const curP = curRow.pressure;
       if (curP <= prevP) {
         diagnostics.push({
           code: EclipseErrorCode.NON_MONOTONIC_PVT_TABLE.code,
@@ -142,8 +148,11 @@ export function lintEclipse(deck: EclipseDeck): DiagnosticItem[] {
   // M8707: Non-monotonic saturation tables
   if (deck.props.swof.length > 1) {
     for (let i = 1; i < deck.props.swof.length; i++) {
-      const prev = deck.props.swof[i - 1]!.saturation;
-      const cur = deck.props.swof[i]!.saturation;
+      const prevRow = deck.props.swof[i - 1];
+      const curRow = deck.props.swof[i];
+      if (!prevRow || !curRow) continue;
+      const prev = prevRow.saturation;
+      const cur = curRow.saturation;
       if (cur <= prev) {
         diagnostics.push({
           code: EclipseErrorCode.NON_MONOTONIC_SATURATION_TABLE.code,

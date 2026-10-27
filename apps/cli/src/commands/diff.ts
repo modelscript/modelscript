@@ -7,13 +7,13 @@ import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { QueryEngine } from "@modelscript/runtime";
+import { QueryEngine, type QueryHooks, type SymbolIndex } from "@modelscript/runtime";
 import { buildSysML2DiagramData, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 const require = createRequire(import.meta.url);
 
@@ -70,7 +70,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         alias: "o",
         description: "Output file path for visual formats",
         type: "string",
-      }) as any;
+      }) as unknown as Argv<DiffArgs>;
   },
   handler: async (args) => {
     const file1Path = path.resolve(process.cwd(), args.file1);
@@ -104,29 +104,40 @@ export const Diff: CommandModule<{}, DiffArgs> = {
     const text2 = fs.readFileSync(file2Path, "utf8");
 
     // Load appropriate parser & indexes
-    let parser: any;
-    let oldIndex: any;
-    let newIndex: any;
-    let oldDb: any;
-    let newDb: any;
+    let oldIndex: SymbolIndex;
+    let newIndex: SymbolIndex;
+    let oldDb: QueryEngine;
+    let newDb: QueryEngine;
 
     if (isModelica) {
       const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
       const res = await createWasmParser(modelicaWasmPath);
-      parser = res.parser;
+      const parser = res.parser;
 
       const oldAst = parser.parse(text1)?.rootNode;
       const newAst = parser.parse(text2)?.rootNode;
 
       const oldWIdx = createModelicaWorkspaceIndex();
-      oldWIdx.register(file1Path, () => oldAst);
+      oldWIdx.register(
+        file1Path,
+        () => oldAst as unknown as ReturnType<NonNullable<Parameters<typeof oldWIdx.register>[1]>>,
+      );
       oldIndex = oldWIdx.toUnified();
-      oldDb = new QueryEngine(oldIndex, (modelicaLangFallback as any).queryHooks);
+      oldDb = new QueryEngine(
+        oldIndex,
+        (modelicaLangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
+      );
 
       const newWIdx = createModelicaWorkspaceIndex();
-      newWIdx.register(file2Path, () => newAst);
+      newWIdx.register(
+        file2Path,
+        () => newAst as unknown as ReturnType<NonNullable<Parameters<typeof newWIdx.register>[1]>>,
+      );
       newIndex = newWIdx.toUnified();
-      newDb = new QueryEngine(newIndex, (modelicaLangFallback as any).queryHooks);
+      newDb = new QueryEngine(
+        newIndex,
+        (modelicaLangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
+      );
     } else if (isSysml) {
       let sysmlWasmPath: string;
       try {
@@ -136,20 +147,32 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       }
       const { createWasmParser: createSysmlParser } = await import("@modelscript/dsl/bindings");
       const res = await createSysmlParser(sysmlWasmPath);
-      parser = res.parser;
+      const parser = res.parser;
 
       const oldAst = parser.parse(text1)?.rootNode;
       const newAst = parser.parse(text2)?.rootNode;
 
       const oldWIdx = createSysML2WorkspaceIndex();
-      oldWIdx.register(file1Path, () => oldAst);
+      oldWIdx.register(
+        file1Path,
+        () => oldAst as unknown as ReturnType<NonNullable<Parameters<typeof oldWIdx.register>[1]>>,
+      );
       oldIndex = await oldWIdx.toUnifiedAsync();
-      oldDb = new QueryEngine(oldIndex, (sysml2LangFallback as any).queryHooks);
+      oldDb = new QueryEngine(
+        oldIndex,
+        (sysml2LangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
+      );
 
       const newWIdx = createSysML2WorkspaceIndex();
-      newWIdx.register(file2Path, () => newAst);
+      newWIdx.register(
+        file2Path,
+        () => newAst as unknown as ReturnType<NonNullable<Parameters<typeof newWIdx.register>[1]>>,
+      );
       newIndex = await newWIdx.toUnifiedAsync();
-      newDb = new QueryEngine(newIndex, (sysml2LangFallback as any).queryHooks);
+      newDb = new QueryEngine(
+        newIndex,
+        (sysml2LangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
+      );
     } else {
       // Generic DSL semantic diff
       const resolved = await LanguageResolver.resolve(file1Path, args.language);
@@ -169,7 +192,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
       return;
     }
 
-    const getRoots = (idx: any) => {
+    const getRoots = (idx: SymbolIndex) => {
       const byNull = idx.childrenOf?.get(null) || [];
       if (byNull.length > 0) return byNull;
       const byZero = idx.childrenOf?.get(0) || [];
@@ -191,8 +214,8 @@ export const Diff: CommandModule<{}, DiffArgs> = {
     let hasBreaking = false;
 
     for (let i = 0; i < maxLen; i++) {
-      const oldId = i < oldRoots.length ? oldRoots[i] : null;
-      const newId = i < newRoots.length ? newRoots[i] : null;
+      const oldId = i < oldRoots.length ? (oldRoots[i] ?? null) : null;
+      const newId = i < newRoots.length ? (newRoots[i] ?? null) : null;
 
       const oldNode = oldId !== null ? { id: oldId, db: oldDb.toQueryDB() } : null;
       const newNode = newId !== null ? { id: newId, db: newDb.toQueryDB() } : null;
@@ -232,12 +255,19 @@ export const Diff: CommandModule<{}, DiffArgs> = {
     const breakingCount = flatList.filter((e) => e.isBreaking).length;
 
     if (format === "visual-html" || format === "visual-svg" || format === "pr-comment") {
-      let baseDiagram: any = null;
-      let headDiagram: any = null;
+      type DiffDiagramInput = Parameters<typeof buildVisualDiffGraph>[0];
+      let baseDiagram: DiffDiagramInput = null;
+      let headDiagram: DiffDiagramInput = null;
 
       if (isSysml && oldIndex && newIndex) {
-        baseDiagram = buildSysML2DiagramData(oldIndex, file1Path);
-        headDiagram = buildSysML2DiagramData(newIndex, file2Path);
+        baseDiagram = buildSysML2DiagramData(
+          oldIndex as unknown as Parameters<typeof buildSysML2DiagramData>[0],
+          file1Path,
+        ) as unknown as DiffDiagramInput;
+        headDiagram = buildSysML2DiagramData(
+          newIndex as unknown as Parameters<typeof buildSysML2DiagramData>[0],
+          file2Path,
+        ) as unknown as DiffDiagramInput;
       }
 
       const diffData = buildVisualDiffGraph(baseDiagram, headDiagram);

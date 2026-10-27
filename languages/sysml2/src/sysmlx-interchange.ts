@@ -14,6 +14,7 @@
  *     constraints, and requirements.
  */
 
+import type { QueryDB, SymbolEntry, WorkspaceIndex } from "@modelscript/runtime";
 import { randomUUID } from "node:crypto";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex, getSysmlParser } from "./factory.js";
 
@@ -28,7 +29,7 @@ export interface SysmlxElement {
   owner?: { "@id": string } | null | undefined;
   ownedElement?: { "@id": string }[] | undefined;
   superclasses?: string[] | undefined;
-  attributes?: Record<string, any> | undefined;
+  attributes?: Record<string, unknown> | undefined;
   sourceUri?: string | undefined;
 }
 
@@ -69,17 +70,21 @@ export class SysML2ModelInterchange {
    * Exports SysML v2 textual code into an official OMG .sysmlx (JSON-LD) document.
    */
   public static async exportToSysmlx(sysmlSource: string, options: SysmlxExportOptions = {}): Promise<SysmlxDocument> {
-    const parser = await getSysmlParser();
+    const parser = getSysmlParser();
+    if (!parser) throw new Error("SysML v2 parser not available");
     const ws = createSysML2WorkspaceIndex();
     const uri = options.sourceUri || "file:///workspace/model.sysml";
 
     ws.register(uri, () => {
       const tree = parser.parse(sysmlSource);
-      return tree ? (tree.rootNode as any) : null;
+      return (tree?.rootNode as unknown as ReturnType<NonNullable<Parameters<WorkspaceIndex["register"]>[1]>>) ?? null;
     });
 
     const unified = await ws.toUnifiedAsync();
-    const qe = createSysML2QueryEngine(unified, parser.parse(sysmlSource));
+    const qe = createSysML2QueryEngine(
+      unified,
+      parser.parse(sysmlSource) as unknown as Parameters<typeof createSysML2QueryEngine>[1],
+    );
     const db = qe.toQueryDB();
 
     const elements: SysmlxElement[] = [];
@@ -131,7 +136,7 @@ export class SysML2ModelInterchange {
       }
 
       // Extract attributes and properties
-      const attrs: Record<string, any> = { ...entry.metadata };
+      const attrs: Record<string, unknown> = { ...entry.metadata };
       if (entry.name) attrs["declaredName"] = entry.name;
       if (entry.startOffset != null) attrs["startOffset"] = entry.startOffset;
       if (entry.endOffset != null) attrs["endOffset"] = entry.endOffset;
@@ -502,7 +507,7 @@ export class SysML2ModelInterchange {
     }
   }
 
-  private static computeQualifiedName(db: any, entry: any): string {
+  private static computeQualifiedName(db: QueryDB, entry: SymbolEntry): string {
     const parts: string[] = [entry.name || "<anonymous>"];
     let curr = entry.parentId != null ? db.symbol(entry.parentId) : null;
     while (curr) {

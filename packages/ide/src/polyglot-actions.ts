@@ -170,7 +170,10 @@ export class PolyglotLiveSyncManager implements vscode.Disposable {
 
       if (this.client) {
         try {
-          const resp: any = await this.client.sendRequest("modelscript/projectModel", {
+          const resp = await this.client.sendRequest<{
+            success?: boolean | undefined;
+            targetSource?: string | undefined;
+          }>("modelscript/projectModel", {
             uri: fromUri,
             targetLang,
             options: { strict: false, includeInferredFeatures: true },
@@ -287,7 +290,11 @@ export function registerPolyglotActions(context: vscode.ExtensionContext, client
 
         if (client) {
           // Send LSP JSON-RPC request to language server
-          const response: any = await client.sendRequest("modelscript/projectModel", {
+          const response = await client.sendRequest<{
+            success?: boolean | undefined;
+            targetSource?: string | undefined;
+            error?: string | undefined;
+          }>("modelscript/projectModel", {
             uri,
             targetLang: selected.targetLang,
             options: { strict: true, includeInferredFeatures: true },
@@ -326,8 +333,9 @@ export function registerPolyglotActions(context: vscode.ExtensionContext, client
         vscode.window.showInformationMessage(
           `Projected '${document.fileName}' to ${selected.label} (${targetSource?.length ?? 0} bytes) with Live Sync active.`,
         );
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Projection failed: ${err.message || err}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Projection failed: ${message}`);
       }
     }),
   );

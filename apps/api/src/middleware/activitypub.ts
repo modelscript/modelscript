@@ -127,13 +127,19 @@ export const defaultInboxLimiter = new ActivityPubInboxRateLimiter();
 
 import { multibaseToEd25519Pem } from "../util/multikey.js";
 
+interface AssertionMethodKey {
+  id?: string | undefined;
+  publicKeyMultibase?: string | undefined;
+  publicKeyPem?: string | undefined;
+}
+
 export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
   return async function verifyActivityPubSignature(req: Request, res: Response, next: NextFunction): Promise<void> {
     const db: LibraryDatabase | undefined =
       databaseInstance ||
-      (req as any).database ||
-      req.app?.locals?.["database"] ||
-      ((req.app as any)?.get ? (req.app as any).get("database") : undefined);
+      req.database ||
+      (req.app?.locals?.["database"] as LibraryDatabase | undefined) ||
+      (typeof req.app?.get === "function" ? (req.app.get("database") as LibraryDatabase | undefined) : undefined);
 
     try {
       if (process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-sig"] === "true") {
@@ -256,7 +262,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
             return;
           }
           if (db.isDomainSilenced(actorDomain)) {
-            (req as any).isDomainSilenced = true;
+            req.isDomainSilenced = true;
           }
         }
 
@@ -284,8 +290,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
 
           // Look in assertionMethod (FEP-521a Multikey)
           if (Array.isArray(actorPayload["assertionMethod"])) {
-            const matchingKey = actorPayload["assertionMethod"].find(
-              (k: any) => k.id === keyId || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
+            const matchingKey = (actorPayload["assertionMethod"] as AssertionMethodKey[]).find(
+              (k) => k.id === keyId || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
             );
             if (matchingKey) {
               if (matchingKey.publicKeyMultibase) {
@@ -297,8 +303,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           }
 
           if (!publicKeyPem) {
-            const pkObj = (actorPayload["publicKey"] as any) || {};
-            publicKeyPem = pkObj.publicKeyPem || (actorPayload["publicKeyPem"] as string);
+            const pkObj = (actorPayload["publicKey"] as { publicKeyPem?: string | undefined } | undefined) || {};
+            publicKeyPem = pkObj.publicKeyPem || (actorPayload["publicKeyPem"] as string | undefined);
           }
 
           if (!publicKeyPem) {
@@ -415,7 +421,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
 
         if (db.isDomainSilenced(actorDomain)) {
-          (req as any).isDomainSilenced = true;
+          req.isDomainSilenced = true;
         }
       }
 
@@ -444,8 +450,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
 
         // Check assertionMethod (FEP-521a Multikey)
         if (Array.isArray(payload["assertionMethod"])) {
-          const matchingKey = payload["assertionMethod"].find(
-            (k: any) => k.id === parts["keyId"] || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
+          const matchingKey = (payload["assertionMethod"] as AssertionMethodKey[]).find(
+            (k) => k.id === parts["keyId"] || (k.id && actorUrl.hash && k.id.endsWith(actorUrl.hash)),
           );
           if (matchingKey) {
             if (matchingKey.publicKeyMultibase) {
@@ -457,8 +463,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
 
         if (!publicKeyPem) {
-          const pkObj = (payload["publicKey"] as any) || {};
-          publicKeyPem = pkObj.publicKeyPem || (payload["publicKeyPem"] as string);
+          const pkObj = (payload["publicKey"] as { publicKeyPem?: string | undefined } | undefined) || {};
+          publicKeyPem = pkObj.publicKeyPem || (payload["publicKeyPem"] as string | undefined);
         }
         actor = payload;
 
@@ -489,8 +495,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           res.status(401).json({ error: "Missing Digest header" });
           return;
         }
-        const rawBody =
-          typeof (req as any).rawBody === "string" ? (req as any).rawBody : req.body ? JSON.stringify(req.body) : "";
+        const rawBody = typeof req.rawBody === "string" ? req.rawBody : req.body ? JSON.stringify(req.body) : "";
         const expectedHash = crypto.createHash("sha256").update(rawBody).digest("base64");
         if (!digestHeader.includes(expectedHash)) {
           res.status(401).json({ error: "Digest header mismatch" });

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ServerContext } from "./types.js";
+import type { QueriedModelicaElement, ServerContext } from "./types.js";
 
 /**
  * Register MCP resources for read-only access to loaded Modelica model data.
@@ -75,7 +75,11 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     // Gather classes exported by each registered library package
     const classes: { name: string; kind: string; library: string }[] = [];
     for (const lib of ctx.current.listLibraries()) {
-      for (const element of (lib as any).elements || []) {
+      const libWithElements = lib as {
+        name?: string | undefined;
+        elements?: Iterable<QueriedModelicaElement> | undefined;
+      };
+      for (const element of libWithElements.elements ?? []) {
         if (element && (element.isClassInstance || element.kind === "Class" || element.classKind)) {
           classes.push({
             name: element.name ?? "<anonymous>",
@@ -87,7 +91,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     }
 
     // Also include context-loaded classes (from load())
-    for (const cls of ctx.current.classes) {
+    for (const cls of ctx.current.classes as readonly QueriedModelicaElement[]) {
       classes.push({
         name: cls.name ?? "<anonymous>",
         kind: cls.classKind ?? cls.kind ?? "class",
@@ -128,7 +132,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     // Extract the target class name from the `modelica://classes/{name}` URI path
     const name = uri.pathname.replace(/^\/\/classes\//, "").replace(/^\//, "");
 
-    const element: any = ctx.current.query(name);
+    const element = ctx.current.query(name) as QueriedModelicaElement | null | undefined;
 
     if (!element) {
       return {
@@ -159,7 +163,7 @@ export function registerResources(server: McpServer, ctx: ServerContext): void {
     const components: { name: string; type: string; description: string }[] = [];
     const childClasses: { name: string; kind: string }[] = [];
 
-    for (const child of element.elements || []) {
+    for (const child of element.elements ?? []) {
       if (child.isComponentInstance || child.kind === "Component") {
         components.push({
           name: child.name ?? "",

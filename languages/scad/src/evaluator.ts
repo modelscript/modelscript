@@ -48,12 +48,24 @@ import {
   type Vec3,
 } from "@modelscript/cad";
 
+import type { ScadCstNode, ScadCstTree } from "./patcher.js";
+
+export type ScadValue = number | string | boolean | undefined | ScadValue[];
+
+interface ScadCallableDef {
+  params: string[];
+  defaults: Map<string, ScadValue>;
+  defaultExprs?: Map<string, ScadCstNode> | undefined;
+  bodyNode: ScadCstNode;
+  scope: Scope;
+}
+
 /**
  * Options for configuring an OpenSCAD evaluation run, such as externally injected variables.
  */
 export interface ScadEvaluationOptions {
   /** Optional map of initial variable bindings (e.g., synchronized from Modelica parameters). */
-  variables?: Record<string, any> | undefined;
+  variables?: Record<string, ScadValue> | undefined;
 }
 
 /**
@@ -80,7 +92,7 @@ const NAMED_COLORS: Record<string, [number, number, number, number]> = {
  * Parses an OpenSCAD `color()` argument (named color string, hex string, or RGB/RGBA array)
  * into a normalized `[r, g, b, a]` tuple with components clamped to `[0, 1]`.
  */
-function parseScadColor(arg0: any, alphaArg?: any): [number, number, number, number] | undefined {
+function parseScadColor(arg0: ScadValue, alphaArg?: ScadValue): [number, number, number, number] | undefined {
   const alpha = typeof alphaArg === "number" ? Math.max(0, Math.min(1, alphaArg)) : undefined;
   if (typeof arg0 === "string") {
     const key = arg0.toLowerCase().trim();
@@ -100,7 +112,7 @@ function parseScadColor(arg0: any, alphaArg?: any): [number, number, number, num
     let r = Number(arg0[0] ?? 0.7);
     let g = Number(arg0[1] ?? 0.7);
     let b = Number(arg0[2] ?? 0.7);
-    let a = arg0[3] !== undefined ? Number(arg0[3]) : (alpha ?? 1);
+    const a = arg0[3] !== undefined ? Number(arg0[3]) : (alpha ?? 1);
     if (r > 1 || g > 1 || b > 1) {
       r /= 255;
       g /= 255;
@@ -134,15 +146,9 @@ function withSolidColor(solid: Solid, color?: [number, number, number, number]):
  * Hierarchical lexical environment storing OpenSCAD variables, functions, and modules.
  */
 class Scope {
-  public variables = new Map<string, any>();
-  public functions = new Map<
-    string,
-    { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
-  >();
-  public modules = new Map<
-    string,
-    { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
-  >();
+  public variables = new Map<string, ScadValue>();
+  public functions = new Map<string, ScadCallableDef>();
+  public modules = new Map<string, ScadCallableDef>();
 
   constructor(public parent: Scope | null = null) {
     if (!parent) {
@@ -164,7 +170,7 @@ class Scope {
   /**
    * Resolves a variable value by walking up the lexical scope chain.
    */
-  getVar(name: string): any {
+  getVar(name: string): ScadValue {
     if (this.variables.has(name)) return this.variables.get(name);
     if (this.parent) return this.parent.getVar(name);
     return undefined;
@@ -173,18 +179,14 @@ class Scope {
   /**
    * Binds or updates a variable in the current scope.
    */
-  setVar(name: string, val: any): void {
+  setVar(name: string, val: ScadValue): void {
     this.variables.set(name, val);
   }
 
   /**
    * Resolves a user-defined function signature by walking up the scope chain.
    */
-  getFunc(
-    name: string,
-  ):
-    | { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
-    | undefined {
+  getFunc(name: string): ScadCallableDef | undefined {
     if (this.functions.has(name)) return this.functions.get(name);
     if (this.parent) return this.parent.getFunc(name);
     return undefined;
@@ -193,11 +195,7 @@ class Scope {
   /**
    * Resolves a user-defined module signature by walking up the scope chain.
    */
-  getModule(
-    name: string,
-  ):
-    | { params: string[]; defaults: Map<string, any>; defaultExprs?: Map<string, any>; bodyNode: any; scope: Scope }
-    | undefined {
+  getModule(name: string): ScadCallableDef | undefined {
     if (this.modules.has(name)) return this.modules.get(name);
     if (this.parent) return this.parent.getModule(name);
     return undefined;
@@ -236,7 +234,7 @@ export class ScadEvaluator {
   /**
    * Evaluates a parsed SourceFile CST root node into a list of top-level Solid parts.
    */
-  public evaluateParts(rootNode: any): Solid[] {
+  public evaluateParts(rootNode: ScadCstNode): Solid[] {
     const solids: Solid[] = [];
     this.evaluateStatements(rootNode, this.globalScope, solids);
     return solids;
@@ -245,7 +243,7 @@ export class ScadEvaluator {
   /**
    * Evaluates a parsed SourceFile CST root node into a combined Solid geometry tree.
    */
-  public evaluate(rootNode: any): Solid | null {
+  public evaluate(rootNode: ScadCstNode): Solid | null {
     const solids = this.evaluateParts(rootNode);
 
     if (solids.length === 0) return null;
@@ -263,7 +261,7 @@ export class ScadEvaluator {
    * Evaluates all child statements of a block or root node in order, pre-scanning and hoisting
    * `function` and `module` declarations before evaluating variables and geometry statements.
    */
-  private evaluateStatements(containerNode: any, scope: Scope, outSolids: Solid[]): void {
+  private evaluateStatements(containerNode: ScadCstNode, scope: Scope, outSolids: Solid[]): void {
     // Pass 1a: Hoist function declarations so functions and module defaults can call them regardless of order
     for (let i = 0; i < containerNode.childCount; i++) {
       let stmt = containerNode.child(i);
@@ -292,7 +290,7 @@ export class ScadEvaluator {
     }
   }
 
-  private registerModuleDeclaration(stmtNode: any, scope: Scope): void {
+  private registerModuleDeclaration(stmtNode: ScadCstNode, scope: Scope): void {
     const nameNode = this.findChildByType(stmtNode, "IDENTIFIER");
     const paramListNode = this.findChildByType(stmtNode, "ParameterList");
     const bodyNode = this.findChildByType(stmtNode, "Statement") ?? this.findChildByType(stmtNode, "BlockStatement");
@@ -302,7 +300,7 @@ export class ScadEvaluator {
     }
   }
 
-  private registerFunctionDeclaration(stmtNode: any, scope: Scope): void {
+  private registerFunctionDeclaration(stmtNode: ScadCstNode, scope: Scope): void {
     const nameNode = this.findChildByType(stmtNode, "IDENTIFIER");
     const paramListNode = this.findChildByType(stmtNode, "ParameterList");
     const exprNode = this.findChildByType(stmtNode, "Expression");
@@ -315,7 +313,7 @@ export class ScadEvaluator {
   /**
    * Dispatches evaluation for a single statement node (declarations, control flow, prefix or chained solids).
    */
-  private evaluateStatement(stmtNode: any, scope: Scope, outSolids: Solid[]): void {
+  private evaluateStatement(stmtNode: ScadCstNode, scope: Scope, outSolids: Solid[]): void {
     const type = stmtNode.type;
 
     if (type === "Statement") {
@@ -348,7 +346,7 @@ export class ScadEvaluator {
       const condNode = this.findChildByType(stmtNode, "Expression");
       const condVal = condNode ? this.evaluateExpression(condNode, scope) : false;
       const children = stmtNode.children ?? [];
-      const stmts: any[] = [];
+      const stmts: ScadCstNode[] = [];
       for (const c of children) {
         if (c.type === "Statement" || c.type === "BlockStatement") stmts.push(c);
       }
@@ -407,7 +405,7 @@ export class ScadEvaluator {
    * Evaluates a fluent method-chained solid expression (`cube(...).translate(...).fillet(...)`),
    * recording source byte ranges on each transformation step for interactive 3D gizmo writeback.
    */
-  private evaluateChainedSolid(chainedNode: any, scope: Scope): Solid | null {
+  private evaluateChainedSolid(chainedNode: ScadCstNode, scope: Scope): Solid | null {
     const primaryNode = this.findChildByType(chainedNode, "PrimarySolid");
     if (!primaryNode) return null;
 
@@ -423,8 +421,8 @@ export class ScadEvaluator {
       const argListNode = this.findChildByType(c, "ArgumentList");
       const methodName = methodNameNode ? methodNameNode.text.trim() : "";
       const args = this.evaluateArgumentList(argListNode, scope);
-      const startOffset = c.startIndex ?? c.startOffset;
-      const endOffset = c.endIndex ?? c.endOffset;
+      const startOffset = c.startIndex ?? c.startOffset ?? 0;
+      const endOffset = c.endIndex ?? c.endOffset ?? 0;
 
       const sourceMeta: SolidSourceMetadata = {
         transformMethod: methodName,
@@ -448,7 +446,7 @@ export class ScadEvaluator {
    */
   private applyScadRotation(
     target: Solid,
-    args: { positional: any[]; named: Map<string, any> },
+    args: { positional: ScadValue[]; named: Map<string, ScadValue> },
     sourceMeta?: SolidSourceMetadata,
   ): Solid {
     const aArg = args.positional[0] ?? args.named.get("a");
@@ -517,16 +515,16 @@ export class ScadEvaluator {
   private applyMethod(
     target: Solid,
     method: string,
-    args: { positional: any[]; named: Map<string, any> },
+    args: { positional: ScadValue[]; named: Map<string, ScadValue> },
     sourceMeta?: SolidSourceMetadata,
   ): Solid {
     switch (method) {
       case "fillet": {
-        const r = typeof args.positional[0] === "number" ? args.positional[0] : (args.named.get("r") ?? 1.0);
+        const r = typeof args.positional[0] === "number" ? args.positional[0] : Number(args.named.get("r") ?? 1.0);
         return fillet(target, r);
       }
       case "chamfer": {
-        const d = typeof args.positional[0] === "number" ? args.positional[0] : (args.named.get("d") ?? 1.0);
+        const d = typeof args.positional[0] === "number" ? args.positional[0] : Number(args.named.get("d") ?? 1.0);
         return chamfer(target, d);
       }
       case "translate": {
@@ -566,7 +564,7 @@ export class ScadEvaluator {
   /**
    * Unwraps a `PrimarySolid` CST node and evaluates its underlying primitive or module call.
    */
-  private evaluatePrimarySolid(primaryNode: any, scope: Scope): Solid | null {
+  private evaluatePrimarySolid(primaryNode: ScadCstNode, scope: Scope): Solid | null {
     const inner = primaryNode.child(0);
     if (!inner) return null;
     return this.tryEvaluateSolid(inner, scope);
@@ -576,7 +574,7 @@ export class ScadEvaluator {
    * Evaluates a prefix-style OpenSCAD operation (`linear_extrude`, `tag_port`, `union`, `difference`,
    * `intersection`, `translate`, `rotate`, `scale`, `mirror`, `color`) applied to a child statement or block.
    */
-  private evaluatePrefixSolid(prefixNode: any, scope: Scope): Solid | null {
+  private evaluatePrefixSolid(prefixNode: ScadCstNode, scope: Scope): Solid | null {
     const opNode =
       this.findChildByType(prefixNode, "TransformOp") ??
       this.findChildByType(prefixNode, "LinearExtrudeOp") ??
@@ -624,7 +622,7 @@ export class ScadEvaluator {
       const portType = (args.positional[1] ?? args.named.get("type") ?? "mechanical_flange") as BoundaryPatchType;
       const rawNorm = args.positional[2] ?? args.named.get("normal");
       const normal: Vec3 | undefined = Array.isArray(rawNorm)
-        ? [rawNorm[0] ?? 0, rawNorm[1] ?? 0, rawNorm[2] ?? 1]
+        ? [Number(rawNorm[0] ?? 0), Number(rawNorm[1] ?? 0), Number(rawNorm[2] ?? 1)]
         : undefined;
 
       let combinedChild = childSolids[0]!;
@@ -674,8 +672,8 @@ export class ScadEvaluator {
       return withSolidColor(combinedChild, parseScadColor(cArg, alphaArg));
     }
 
-    const startOffset = opNode.startIndex ?? opNode.startOffset;
-    const endOffset = opNode.endIndex ?? opNode.endOffset;
+    const startOffset = opNode.startIndex ?? opNode.startOffset ?? 0;
+    const endOffset = opNode.endIndex ?? opNode.endOffset ?? 0;
     const transformMethod = opText.startsWith("translate")
       ? "translate"
       : opText.startsWith("rotate")
@@ -728,7 +726,7 @@ export class ScadEvaluator {
    * Collects all `IDENTIFIER` token texts within a subtree, using fast zero-allocation
    * WASM linear-memory traversal when available.
    */
-  private collectIdentifiers(node: any): string[] {
+  private collectIdentifiers(node: ScadCstNode | null | undefined): string[] {
     const list: string[] = [];
     // Fast path: walk WASM linear-memory CST directly without allocating intermediate wrapper nodes
     if (node && typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
@@ -788,7 +786,7 @@ export class ScadEvaluator {
       return list;
     }
 
-    const visit = (n: any) => {
+    const visit = (n: ScadCstNode | null | undefined) => {
       if (!n) return;
       if (n.type === "IDENTIFIER") {
         list.push(n.text.trim());
@@ -805,7 +803,7 @@ export class ScadEvaluator {
    * Evaluates a 3D/2D primitive (`cube`, `cylinder`, `sphere`, `polyhedron`, `polygon`, `square`, `circle`)
    * or user-defined `ModuleInstantiation` into a `Solid` with attached source metadata.
    */
-  private tryEvaluateSolid(node: any, scope: Scope): Solid | null {
+  private tryEvaluateSolid(node: ScadCstNode, scope: Scope): Solid | null {
     const type = node.type;
 
     if (type === "CubePrimitive") {
@@ -904,7 +902,7 @@ export class ScadEvaluator {
       const argListNode = this.findChildByType(node, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
       const r = Number(
-        args.positional[0] ?? args.named.get("r") ?? (args.named.has("d") ? args.named.get("d") / 2 : 1),
+        args.positional[0] ?? args.named.get("r") ?? (args.named.has("d") ? Number(args.named.get("d")) / 2 : 1),
       );
       const fn = scope.getVar("$fn") ?? 16;
 
@@ -1013,7 +1011,7 @@ export class ScadEvaluator {
     if (type === "CirclePrimitive") {
       const args = this.evaluateArgumentList(this.findChildByType(node, "ArgumentList"), scope);
       const r = Number(
-        args.named.get("r") ?? (args.named.has("d") ? args.named.get("d") / 2 : (args.positional[0] ?? 1)),
+        args.named.get("r") ?? (args.named.has("d") ? Number(args.named.get("d")) / 2 : (args.positional[0] ?? 1)),
       );
       const fn = Math.max(8, Number(scope.getVar("$fn") ?? 24));
       const poly: [number, number][] = [];
@@ -1040,8 +1038,9 @@ export class ScadEvaluator {
         let val = args.positional[i];
         if (val === undefined && args.named.has(pName)) val = args.named.get(pName);
         if (val === undefined && modDef.defaults.has(pName)) val = modDef.defaults.get(pName);
-        if (val === undefined && modDef.defaultExprs?.has(pName)) {
-          val = this.evaluateExpression(modDef.defaultExprs.get(pName), modScope);
+        const defExpr = modDef.defaultExprs?.get(pName);
+        if (val === undefined && defExpr) {
+          val = this.evaluateExpression(defExpr, modScope);
         }
         modScope.setVar(pName, val);
       }
@@ -1067,7 +1066,7 @@ export class ScadEvaluator {
    * Evaluates an OpenSCAD expression CST node (literals, vectors, ranges, arithmetic, conditionals,
    * built-in math/vector/string functions, and user-defined function calls) within `scope`.
    */
-  public evaluateExpression(exprNode: any, scope: Scope): any {
+  public evaluateExpression(exprNode: ScadCstNode, scope: Scope): ScadValue {
     const type = exprNode.type;
 
     if (type === "Expression" || type === "PrimaryExpression") {
@@ -1108,7 +1107,7 @@ export class ScadEvaluator {
     }
 
     if (type === "VectorLiteral") {
-      const elements: any[] = [];
+      const elements: ScadValue[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
         if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
@@ -1119,7 +1118,7 @@ export class ScadEvaluator {
     }
 
     if (type === "RangeLiteral") {
-      const exprs: any[] = [];
+      const exprs: ScadValue[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
         if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
@@ -1145,7 +1144,7 @@ export class ScadEvaluator {
     }
 
     if (type === "BinaryExpression") {
-      const exprs: any[] = [];
+      const exprs: ScadValue[] = [];
       let op = "";
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
@@ -1161,43 +1160,46 @@ export class ScadEvaluator {
 
       // Vector arithmetic support
       if (Array.isArray(left) && Array.isArray(right) && left.length === right.length) {
-        if (op === "+") return left.map((v, i) => v + right[i]);
-        if (op === "-") return left.map((v, i) => v - right[i]);
-        if (op === "*") return left.map((v, i) => v * right[i]);
-        if (op === "/") return left.map((v, i) => v / right[i]);
+        if (op === "+") return left.map((v, i) => Number(v) + Number(right[i]));
+        if (op === "-") return left.map((v, i) => Number(v) - Number(right[i]));
+        if (op === "*") return left.map((v, i) => Number(v) * Number(right[i]));
+        if (op === "/") return left.map((v, i) => Number(v) / Number(right[i]));
       }
       if (Array.isArray(left) && typeof right === "number") {
-        if (op === "*") return left.map((v) => v * right);
-        if (op === "/") return left.map((v) => v / right);
-        if (op === "+") return left.map((v) => v + right);
-        if (op === "-") return left.map((v) => v - right);
+        if (op === "*") return left.map((v) => Number(v) * right);
+        if (op === "/") return left.map((v) => Number(v) / right);
+        if (op === "+") return left.map((v) => Number(v) + right);
+        if (op === "-") return left.map((v) => Number(v) - right);
       }
+
+      const lNum = Number(left);
+      const rNum = Number(right);
 
       switch (op) {
         case "+":
-          return left + right;
+          return typeof left === "string" || typeof right === "string" ? `${left ?? ""}${right ?? ""}` : lNum + rNum;
         case "-":
-          return left - right;
+          return lNum - rNum;
         case "*":
-          return left * right;
+          return lNum * rNum;
         case "/":
-          return right !== 0 ? left / right : 0;
+          return rNum !== 0 ? lNum / rNum : 0;
         case "%":
-          return left % right;
+          return lNum % rNum;
         case "^":
-          return Math.pow(left, right);
+          return Math.pow(lNum, rNum);
         case "==":
           return left === right;
         case "!=":
           return left !== right;
         case "<":
-          return left < right;
+          return lNum < rNum;
         case "<=":
-          return left <= right;
+          return lNum <= rNum;
         case ">":
-          return left > right;
+          return lNum > rNum;
         case ">=":
-          return left >= right;
+          return lNum >= rNum;
         case "&&":
           return Boolean(left && right);
         case "||":
@@ -1212,12 +1214,12 @@ export class ScadEvaluator {
       const valNode = this.findChildByType(exprNode, "Expression");
       const val = valNode ? this.evaluateExpression(valNode, scope) : 0;
       if (op === "!") return !val;
-      if (op === "-") return -val;
+      if (op === "-") return -Number(val);
       return val;
     }
 
     if (type === "ConditionalExpression") {
-      const exprs: any[] = [];
+      const exprs: ScadCstNode[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
         if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
@@ -1239,7 +1241,7 @@ export class ScadEvaluator {
       if (second?.text === "[") {
         const idxNode = this.findChildByType(exprNode, "Expression");
         const idx = idxNode ? this.evaluateExpression(idxNode, scope) : 0;
-        return Array.isArray(target) ? target[idx] : undefined;
+        return Array.isArray(target) ? target[Number(idx)] : undefined;
       }
 
       if (second?.text === "(") {
@@ -1251,64 +1253,71 @@ export class ScadEvaluator {
         const rad = (d: number) => (d * Math.PI) / 180;
         const deg = (r: number) => (r * 180) / Math.PI;
         const x = args.positional[0];
+        const xNum = Number(x);
+        const yNum = Number(args.positional[1]);
+        const posNums = args.positional.map((v) => Number(v));
 
         switch (funcName) {
           case "sin":
-            return Math.sin(rad(x));
+            return Math.sin(rad(xNum));
           case "cos":
-            return Math.cos(rad(x));
+            return Math.cos(rad(xNum));
           case "tan":
-            return Math.tan(rad(x));
+            return Math.tan(rad(xNum));
           case "asin":
-            return deg(Math.asin(x));
+            return deg(Math.asin(xNum));
           case "acos":
-            return deg(Math.acos(x));
+            return deg(Math.acos(xNum));
           case "atan":
-            return deg(Math.atan(x));
+            return deg(Math.atan(xNum));
           case "atan2":
-            return deg(Math.atan2(x, args.positional[1]));
+            return deg(Math.atan2(xNum, yNum));
           case "sqrt":
-            return Math.sqrt(x);
+            return Math.sqrt(xNum);
           case "pow":
-            return Math.pow(x, args.positional[1]);
+            return Math.pow(xNum, yNum);
           case "abs":
-            return Math.abs(x);
+            return Math.abs(xNum);
           case "min":
-            return Math.min(...args.positional);
+            return Math.min(...posNums);
           case "max":
-            return Math.max(...args.positional);
+            return Math.max(...posNums);
           case "floor":
-            return Math.floor(x);
+            return Math.floor(xNum);
           case "ceil":
-            return Math.ceil(x);
+            return Math.ceil(xNum);
           case "round":
-            return Math.round(x);
+            return Math.round(xNum);
           case "ln":
-            return Math.log(x);
+            return Math.log(xNum);
           case "log":
-            return Math.log10(x);
+            return Math.log10(xNum);
           case "exp":
-            return Math.exp(x);
+            return Math.exp(xNum);
           case "sign":
-            return Math.sign(x);
+            return Math.sign(xNum);
           case "len":
             return Array.isArray(x) || typeof x === "string" ? x.length : 0;
           case "norm":
-            return Array.isArray(x) ? Math.hypot(...x.map((v: any) => Number(v) || 0)) : Math.abs(Number(x) || 0);
+            return Array.isArray(x) ? Math.hypot(...x.map((v: ScadValue) => Number(v) || 0)) : Math.abs(Number(x) || 0);
           case "cross": {
             const b = args.positional[1];
             if (Array.isArray(x) && Array.isArray(b)) {
               if (x.length === 3 && b.length === 3) {
-                return [x[1] * b[2] - x[2] * b[1], x[2] * b[0] - x[0] * b[2], x[0] * b[1] - x[1] * b[0]];
+                return [
+                  Number(x[1]) * Number(b[2]) - Number(x[2]) * Number(b[1]),
+                  Number(x[2]) * Number(b[0]) - Number(x[0]) * Number(b[2]),
+                  Number(x[0]) * Number(b[1]) - Number(x[1]) * Number(b[0]),
+                ];
               }
               if (x.length === 2 && b.length === 2) {
-                return x[0] * b[1] - x[1] * b[0];
+                return Number(x[0]) * Number(b[1]) - Number(x[1]) * Number(b[0]);
               }
             }
             return [0, 0, 0];
           }
           case "concat": {
-            const out: any[] = [];
+            const out: ScadValue[] = [];
             for (const item of args.positional) {
               if (Array.isArray(item)) out.push(...item);
               else if (item !== undefined) out.push(item);
@@ -1320,16 +1329,20 @@ export class ScadEvaluator {
             const table = args.positional[1];
             if (!Array.isArray(table) || table.length === 0) return 0;
             const sorted = [...table]
-              .filter((row) => Array.isArray(row) && row.length >= 2)
+              .filter((row): row is ScadValue[] => Array.isArray(row) && row.length >= 2)
               .sort((a, b) => Number(a[0]) - Number(b[0]));
             if (sorted.length === 0) return 0;
-            if (key <= Number(sorted[0][0])) return Number(sorted[0][1]);
-            if (key >= Number(sorted[sorted.length - 1][0])) return Number(sorted[sorted.length - 1][1]);
+            const firstRow = sorted[0]!;
+            const lastRow = sorted[sorted.length - 1]!;
+            if (key <= Number(firstRow[0])) return Number(firstRow[1]);
+            if (key >= Number(lastRow[0])) return Number(lastRow[1]);
             for (let i = 0; i < sorted.length - 1; i++) {
-              const x0 = Number(sorted[i][0]);
-              const y0 = Number(sorted[i][1]);
-              const x1 = Number(sorted[i + 1][0]);
-              const y1 = Number(sorted[i + 1][1]);
+              const r0 = sorted[i]!;
+              const r1 = sorted[i + 1]!;
+              const x0 = Number(r0[0]);
+              const y0 = Number(r0[1]);
+              const x1 = Number(r1[0]);
+              const y1 = Number(r1[1]);
               if (key >= x0 && key <= x1) {
                 if (x1 === x0) return y0;
                 return y0 + ((key - x0) / (x1 - x0)) * (y1 - y0);
@@ -1405,8 +1418,9 @@ export class ScadEvaluator {
             let v = args.positional[i];
             if (v === undefined && args.named.has(p)) v = args.named.get(p);
             if (v === undefined && userFunc.defaults.has(p)) v = userFunc.defaults.get(p);
-            if (v === undefined && userFunc.defaultExprs?.has(p)) {
-              v = this.evaluateExpression(userFunc.defaultExprs.get(p), fnScope);
+            const defExpr = userFunc.defaultExprs?.get(p);
+            if (v === undefined && defExpr) {
+              v = this.evaluateExpression(defExpr, fnScope);
             }
             fnScope.setVar(p, v);
           }
@@ -1428,9 +1442,12 @@ export class ScadEvaluator {
   /**
    * Evaluates an `ArgumentList` CST node into positional values and named `key = value` bindings.
    */
-  private evaluateArgumentList(argListNode: any, scope: Scope): { positional: any[]; named: Map<string, any> } {
-    const positional: any[] = [];
-    const named = new Map<string, any>();
+  private evaluateArgumentList(
+    argListNode: ScadCstNode | null | undefined,
+    scope: Scope,
+  ): { positional: ScadValue[]; named: Map<string, ScadValue> } {
+    const positional: ScadValue[] = [];
+    const named = new Map<string, ScadValue>();
     if (!argListNode) return { positional, named };
 
     for (let i = 0; i < argListNode.childCount; i++) {
@@ -1453,12 +1470,12 @@ export class ScadEvaluator {
    * Parses a `ParameterList` CST node into ordered parameter names and evaluated default values.
    */
   private parseParameters(
-    paramListNode: any,
+    paramListNode: ScadCstNode | null | undefined,
     scope: Scope,
-  ): { params: string[]; defaults: Map<string, any>; defaultExprs: Map<string, any> } {
+  ): { params: string[]; defaults: Map<string, ScadValue>; defaultExprs: Map<string, ScadCstNode> } {
     const params: string[] = [];
-    const defaults = new Map<string, any>();
-    const defaultExprs = new Map<string, any>();
+    const defaults = new Map<string, ScadValue>();
+    const defaultExprs = new Map<string, ScadCstNode>();
     if (!paramListNode) return { params, defaults, defaultExprs };
 
     for (let i = 0; i < paramListNode.childCount; i++) {
@@ -1487,19 +1504,29 @@ export class ScadEvaluator {
    * Finds the first direct child node matching `targetType`, utilizing WASM linear-memory
    * pointer traversal when uncached to avoid allocating sibling CST node wrappers.
    */
-  private findChildByType(node: any, targetType: string): any {
+  private findChildByType(node: ScadCstNode | null | undefined, targetType: string): ScadCstNode | null {
     if (!node) return null;
     if (
       typeof node.ptr === "number" &&
       node.ptr > 0 &&
       node.tree?.mem32 &&
       node.tree?.facade?.syntaxNames &&
-      !node._cachedChildren
+      !(node as unknown as { _cachedChildren?: unknown })._cachedChildren
     ) {
       const mem32: Uint32Array = node.tree.mem32;
       const syntaxNames: string[] = node.tree.facade.syntaxNames;
       const exports = node.tree.facade.exports;
-      const NodeCtor = node.constructor as any;
+      type ScadCstNodeConstructor = new (
+        tree: ScadCstTree,
+        ptr: number,
+        startOffset: number,
+        parent: ScadCstNode | null,
+        pad: number,
+        len: number,
+        typeId: number,
+        fieldId: number,
+      ) => ScadCstNode;
+      const NodeCtor = node.constructor as unknown as ScadCstNodeConstructor;
 
       const ptrStack: number[] = [];
       const offsetStack: number[] = [];

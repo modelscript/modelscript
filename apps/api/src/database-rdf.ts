@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Source, Term } from "@rdfjs/types";
+import type { Literal, NamedNode, Source, Term } from "@rdfjs/types";
 import type { Database } from "better-sqlite3";
 import { DataFactory } from "n3";
 import { Readable } from "node:stream";
@@ -117,13 +117,13 @@ export class SqliteRdfSource implements Source {
     }
 
     // Generate Quads and emit them
-    const emit = (s: string, p: string, o: Term) => {
+    const emit = (s: string, p: string, o: NamedNode | Literal) => {
       // Apply exact bounds filtering
       if (sValue && sValue !== s) return;
       if (pValue && pValue !== p) return;
       if (oValue && object && !o.equals(object)) return;
 
-      stream.push(quad(namedNode(s), namedNode(p), o as any));
+      stream.push(quad(namedNode(s), namedNode(p), o));
     };
 
     const emitUri = (s: string, p: string, oStr: string) => emit(s, p, namedNode(oStr));

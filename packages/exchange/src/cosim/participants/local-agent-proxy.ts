@@ -104,13 +104,22 @@ export interface ILocalAgentTransport {
   readonly isConnected: boolean;
 }
 
+interface WebSocketLike {
+  send(data: string): void;
+  close(): void;
+  addEventListener?(type: string, listener: (event: unknown) => void): void;
+  removeEventListener?(type: string, listener: (event: unknown) => void): void;
+  on?(event: string, listener: (...args: unknown[]) => void): void;
+  off?(event: string, listener: (...args: unknown[]) => void): void;
+}
+
 /**
  * WebSocket transport implementation supporting both Browser (`window.WebSocket`)
  * and Node.js (`ws` package).
  */
 export class WebSocketAgentTransport implements ILocalAgentTransport {
   private readonly url: string;
-  private socket: any = null;
+  private socket: WebSocketLike | null = null;
   private messageHandlers: ((data: string) => void)[] = [];
   private closeHandlers: ((code: number, reason: string) => void)[] = [];
   private errorHandlers: ((err: Error) => void)[] = [];
@@ -127,12 +136,12 @@ export class WebSocketAgentTransport implements ILocalAgentTransport {
   async connect(): Promise<void> {
     if (this.connected) return;
 
-    let WsConstructor: any;
+    let WsConstructor: new (url: string) => WebSocketLike;
     if (typeof globalThis.WebSocket !== "undefined") {
-      WsConstructor = globalThis.WebSocket;
+      WsConstructor = globalThis.WebSocket as unknown as new (url: string) => WebSocketLike;
     } else {
       const wsModule = await import("ws");
-      WsConstructor = wsModule.WebSocket || wsModule.default;
+      WsConstructor = (wsModule.WebSocket || wsModule.default) as unknown as new (url: string) => WebSocketLike;
     }
 
     return new Promise((resolve, reject) => {
@@ -146,7 +155,7 @@ export class WebSocketAgentTransport implements ILocalAgentTransport {
           resolve();
         };
 
-        const onError = (err: any) => {
+        const onError = (err: unknown) => {
           cleanupConnectListeners();
           const error =
             err instanceof Error ? err : new Error(`Failed to connect to Local Desktop Agent at ${this.url}`);
@@ -166,24 +175,28 @@ export class WebSocketAgentTransport implements ILocalAgentTransport {
         if (ws.addEventListener) {
           ws.addEventListener("open", onOpen);
           ws.addEventListener("error", onError);
-          ws.addEventListener("message", (event: any) => {
-            const dataStr = typeof event.data === "string" ? event.data : event.data.toString();
+          ws.addEventListener("message", (event: unknown) => {
+            const data = (event as { data?: unknown })?.data;
+            const dataStr = typeof data === "string" ? data : String(data ?? "");
             for (const h of this.messageHandlers) h(dataStr);
           });
-          ws.addEventListener("close", (event: any) => {
+          ws.addEventListener("close", (event: unknown) => {
             this.connected = false;
-            for (const h of this.closeHandlers) h(event.code ?? 1000, event.reason ?? "");
+            const ev = event as { code?: number; reason?: string } | undefined;
+            for (const h of this.closeHandlers) h(ev?.code ?? 1000, ev?.reason ?? "");
           });
         } else if (ws.on) {
           ws.on("open", onOpen);
           ws.on("error", onError);
-          ws.on("message", (data: any) => {
-            const dataStr = typeof data === "string" ? data : data.toString();
+          ws.on("message", (data: unknown) => {
+            const dataStr = typeof data === "string" ? data : String(data ?? "");
             for (const h of this.messageHandlers) h(dataStr);
           });
-          ws.on("close", (code: number, reason: Buffer | string) => {
+          ws.on("close", (code: unknown, reason: unknown) => {
             this.connected = false;
-            for (const h of this.closeHandlers) h(code, reason.toString());
+            const numCode = typeof code === "number" ? code : 1000;
+            const strReason = typeof reason === "string" ? reason : String(reason ?? "");
+            for (const h of this.closeHandlers) h(numCode, strReason);
           });
         }
       } catch (err) {
@@ -323,9 +336,9 @@ export class LocalAgentProxyParticipant implements CoSimParticipant {
   private readonly pendingRpc = new Map<
     number,
     {
-      resolve: (value: any) => void;
+      resolve: (value: unknown) => void;
       reject: (reason: Error) => void;
-      timer: any;
+      timer: ReturnType<typeof setTimeout>;
     }
   >();
 
@@ -385,7 +398,7 @@ export class LocalAgentProxyParticipant implements CoSimParticipant {
         reject(new Error(`Local desktop agent RPC timeout for command '${cmd}' (id: ${id}) after ${this.timeoutMs}ms`));
       }, this.timeoutMs);
 
-      this.pendingRpc.set(id, { resolve, reject, timer });
+      this.pendingRpc.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
 
       this.transport.send(JSON.stringify(req)).catch((err) => {
         clearTimeout(timer);
@@ -628,9 +641,9 @@ export class MockLocalAgentServer {
   }
 
   private handleMessage(msgStr: string): void {
-    const req: LocalAgentRpcRequest<any> = JSON.parse(msgStr);
+    const req = JSON.parse(msgStr) as LocalAgentRpcRequest<Record<string, unknown>>;
     let status: "OK" | "ERROR" = "OK";
-    let payload: any = undefined;
+    let payload: unknown = undefined;
     let error: string | undefined = undefined;
 
     try {
@@ -674,27 +687,32 @@ export class MockLocalAgentServer {
           payload = {};
           break;
 
-        case "AGENT_DO_STEP":
+        case "AGENT_DO_STEP": {
+          const stepSize = Number(req.payload?.["stepSize"] ?? 0.0);
           // Simulated state integration: dx/dt = -0.5*x + u, y = 2.0*u + x
-          this.stateVal += (-0.5 * this.stateVal + (this.inputs["u"] ?? 0.0)) * req.payload.stepSize;
+          this.stateVal += (-0.5 * this.stateVal + (this.inputs["u"] ?? 0.0)) * stepSize;
           this.outputs["y"] = 2.0 * (this.inputs["u"] ?? 0.0) + this.stateVal;
           payload = {};
           break;
+        }
 
         case "AGENT_GET_OUTPUTS":
           payload = { ...this.outputs };
           break;
 
         case "AGENT_STEP_EXCHANGE": {
-          if (req.payload.inputs) {
-            for (const [k, v] of Object.entries(req.payload.inputs)) {
+          const stepInputs = req.payload?.["inputs"];
+          if (stepInputs && typeof stepInputs === "object") {
+            for (const [k, v] of Object.entries(stepInputs as Record<string, unknown>)) {
               if (typeof v === "number") this.inputs[k] = v;
             }
           }
-          this.stateVal += (-0.5 * this.stateVal + (this.inputs["u"] ?? 0.0)) * req.payload.stepSize;
+          const stepSize = Number(req.payload?.["stepSize"] ?? 0.0);
+          const currentTime = Number(req.payload?.["currentTime"] ?? 0.0);
+          this.stateVal += (-0.5 * this.stateVal + (this.inputs["u"] ?? 0.0)) * stepSize;
           this.outputs["y"] = 2.0 * (this.inputs["u"] ?? 0.0) + this.stateVal;
           payload = {
-            time: req.payload.currentTime + req.payload.stepSize,
+            time: currentTime + stepSize,
             outputs: { ...this.outputs },
             solverStatus: "OK",
             cpuDurationMs: 0.1,
@@ -713,7 +731,7 @@ export class MockLocalAgentServer {
         }
 
         case "AGENT_SET_STATE": {
-          const handle = req.payload.stateHandle;
+          const handle = Number(req.payload?.["stateHandle"]);
           const saved = this.savedStates.get(handle);
           if (saved) {
             this.stateVal = saved.stateVal;
@@ -724,14 +742,14 @@ export class MockLocalAgentServer {
         }
 
         case "AGENT_FREE_STATE": {
-          this.savedStates.delete(req.payload.stateHandle);
+          this.savedStates.delete(Number(req.payload?.["stateHandle"]));
           payload = {};
           break;
         }
 
         case "AGENT_DIRECTIONAL_DERIVATIVE": {
           // dy/du = 2.0
-          const dvKnown: number[] = req.payload.dvKnown ?? [1.0];
+          const dvKnown = Array.isArray(req.payload?.["dvKnown"]) ? (req.payload["dvKnown"] as number[]) : [1.0];
           payload = {
             dvUnknown: dvKnown.map((du) => 2.0 * du),
           };
@@ -751,9 +769,9 @@ export class MockLocalAgentServer {
           status = "ERROR";
           error = `Unsupported desktop agent command: ${req.cmd}`;
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       status = "ERROR";
-      error = e.message;
+      error = e instanceof Error ? e.message : String(e);
     }
 
     const res: LocalAgentRpcResponse = {

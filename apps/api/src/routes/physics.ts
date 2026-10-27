@@ -109,7 +109,16 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
     try {
       const { StudyFlattener } = await import("@modelscript/modelica");
       const { Context } = await import("@modelscript/modelica/context");
-      const defaultCtx = (Context as any).current || (Context as any).defaultInstance;
+      type ContextSingleton = {
+        queryEngine?: ConstructorParameters<typeof StudyFlattener>[0] & {
+          byName(name: string): { id: number }[] | undefined;
+        };
+      };
+      const ctxStatic = Context as unknown as {
+        current?: ContextSingleton | undefined;
+        defaultInstance?: ContextSingleton | undefined;
+      };
+      const defaultCtx = ctxStatic.current || ctxStatic.defaultInstance;
       if (defaultCtx && defaultCtx.queryEngine) {
         const symbols = defaultCtx.queryEngine.byName(className);
         if (symbols && symbols.length > 0 && symbols[0]) {
@@ -475,7 +484,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
     if (!gcodePath) {
       const numericId = Number(String(rawId).replace(/^cam-/, ""));
       if (!Number.isNaN(numericId)) {
-        const dbJob = (database as any).getJob?.(numericId);
+        const dbJob = database.getJob?.(numericId);
         if (dbJob?.metadata) {
           try {
             const meta = typeof dbJob.metadata === "string" ? JSON.parse(dbJob.metadata) : dbJob.metadata;

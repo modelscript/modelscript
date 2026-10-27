@@ -268,89 +268,147 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         this.mirrorOppositeSignBounds(canon);
         break;
       }
-      case "hyperplane": {
-        // args: [coefficients: Record<string, number>, op: ">=" | "<=" | "==", constant: number]
-        const [coeffs, op, rhsVal] = args as [Record<string, number>, ">=" | "<=" | "==", number];
-        const box = new Map<string, Interval>();
-        let sumExpr: ExprNode | null = null;
-        let isAlreadyInfeasible = false;
-
-        for (const [vName, coeff] of Object.entries(coeffs)) {
-          const canon = this.getCanonicalVar(vName);
-          if (!this.varJustifications.has(canon)) this.varJustifications.set(canon, new Set());
-          this.varJustifications.get(canon)!.add(lit.id);
-
-          const current = this.getInterval(canon);
-          if (current === null) {
-            isAlreadyInfeasible = true;
-            break;
-          }
-          box.set(canon, new Interval(current.lo, current.hi));
-          const termExpr: ExprNode = {
-            kind: "mul",
-            left: { kind: "const", value: coeff },
-            right: { kind: "var", name: canon },
-          };
-          sumExpr = sumExpr ? { kind: "add", left: sumExpr, right: termExpr } : termExpr;
-        }
-
-        if (isAlreadyInfeasible) {
-          break;
-        }
-
-        if (sumExpr) {
-          const constraint: NonlinearConstraint = {
-            expr: sumExpr,
-            rel: op,
-            rhs: rhsVal,
-          };
-          const valid = Hc4Contractor.revise(constraint, box);
-          if (!valid) {
-            for (const vName of Object.keys(coeffs)) {
-              this.intervals.set(this.getCanonicalVar(vName), null);
-            }
-          } else {
-            for (const [vName, contractedInt] of box.entries()) {
-              this.intervals.set(vName, contractedInt);
-            }
-          }
-        }
-        break;
-      }
+      case "hyperplane":
       case "nonlinear":
       case "expr": {
-        const [constraint] = args as [NonlinearConstraint];
-        if (constraint && constraint.expr) {
-          const box = new Map<string, Interval>();
-          let hasNull = false;
-          for (const [v, int] of this.intervals.entries()) {
-            if (int === null) {
-              hasNull = true;
-              break;
-            }
-            box.set(v, new Interval(int.lo, int.hi));
-          }
-          if (hasNull) break;
-          const valid = Hc4Contractor.revise(constraint, box);
-          if (!valid) {
-            for (const [v] of box.entries()) {
-              this.intervals.set(v, null);
-              if (!this.varJustifications.has(v)) this.varJustifications.set(v, new Set());
-              this.varJustifications.get(v)!.add(lit.id);
-            }
-          } else {
-            for (const [v, contractedInt] of box.entries()) {
-              this.intervals.set(v, contractedInt);
-              if (!this.varJustifications.has(v)) this.varJustifications.set(v, new Set());
-              this.varJustifications.get(v)!.add(lit.id);
-            }
-          }
-        }
+        this.applyRelationalLiteral(lit);
         break;
       }
     }
 
     return true;
+  }
+
+  private canonicalizeExpr(expr: ExprNode, varsOut: Set<string>): ExprNode {
+    switch (expr.kind) {
+      case "var": {
+        const canon = this.getCanonicalVar(expr.name);
+        varsOut.add(canon);
+        return { kind: "var", name: canon };
+      }
+      case "const":
+        return expr;
+      case "neg":
+      case "sqr":
+      case "sqrt":
+      case "sin":
+      case "cos":
+        return { kind: expr.kind, child: this.canonicalizeExpr(expr.child, varsOut) };
+      case "add":
+      case "sub":
+      case "mul":
+      case "div":
+      case "pow":
+        return {
+          kind: expr.kind,
+          left: this.canonicalizeExpr(expr.left, varsOut),
+          right: this.canonicalizeExpr(expr.right, varsOut),
+        };
+      case "call":
+        return {
+          kind: "call",
+          fn: expr.fn,
+          args: expr.args.map((a) => this.canonicalizeExpr(a, varsOut)),
+        };
+    }
+  }
+
+  private applyRelationalLiteral(lit: TheoryLiteral): void {
+    const { predicate, args } = lit;
+    if (predicate === "hyperplane") {
+      // args: [coefficients: Record<string, number>, op: ">=" | "<=" | "==", constant: number]
+      // or [{ coeffs: Record<string, number>, op: ">=" | "<=" | "==", rhs: number }]
+      let coeffs: Record<string, number>;
+      let op: ">=" | "<=" | "==";
+      let rhsVal: number;
+      if (
+        args.length === 1 &&
+        typeof args[0] === "object" &&
+        args[0] !== null &&
+        "coeffs" in (args[0] as Record<string, unknown>)
+      ) {
+        const obj = args[0] as { coeffs: Record<string, number>; op: ">=" | "<=" | "=="; rhs: number };
+        coeffs = obj.coeffs;
+        op = obj.op;
+        rhsVal = obj.rhs;
+      } else {
+        [coeffs, op, rhsVal] = args as [Record<string, number>, ">=" | "<=" | "==", number];
+      }
+      if (!coeffs) return;
+      const box = new Map<string, Interval>();
+      let sumExpr: ExprNode | null = null;
+      let isAlreadyInfeasible = false;
+
+      for (const [vName, coeff] of Object.entries(coeffs)) {
+        const canon = this.getCanonicalVar(vName);
+        if (!this.varJustifications.has(canon)) this.varJustifications.set(canon, new Set());
+        this.varJustifications.get(canon)!.add(lit.id);
+
+        const current = this.getInterval(canon);
+        if (current === null) {
+          isAlreadyInfeasible = true;
+          break;
+        }
+        box.set(canon, new Interval(current.lo, current.hi));
+        const termExpr: ExprNode = {
+          kind: "mul",
+          left: { kind: "const", value: coeff },
+          right: { kind: "var", name: canon },
+        };
+        sumExpr = sumExpr ? { kind: "add", left: sumExpr, right: termExpr } : termExpr;
+      }
+
+      if (isAlreadyInfeasible || !sumExpr) return;
+
+      const constraint: NonlinearConstraint = {
+        expr: sumExpr,
+        rel: op,
+        rhs: rhsVal,
+      };
+      const valid = Hc4Contractor.revise(constraint, box);
+      if (!valid) {
+        for (const vName of Object.keys(coeffs)) {
+          const canon = this.getCanonicalVar(vName);
+          this.intervals.set(canon, null);
+        }
+      } else {
+        for (const [canon, contractedInt] of box.entries()) {
+          const prev = this.getInterval(canon);
+          this.intervals.set(canon, prev ? intersectInterval(prev, contractedInt) : contractedInt);
+          this.mirrorOppositeSignBounds(canon);
+        }
+      }
+    } else if (predicate === "nonlinear" || predicate === "expr") {
+      const [rawConstraint] = args as [NonlinearConstraint];
+      if (!rawConstraint || !rawConstraint.expr) return;
+      const exprVars = new Set<string>();
+      const canonExpr = this.canonicalizeExpr(rawConstraint.expr, exprVars);
+      const constraint: NonlinearConstraint = {
+        expr: canonExpr,
+        rel: rawConstraint.rel,
+        rhs: rawConstraint.rhs,
+      };
+      const box = new Map<string, Interval>();
+      for (const canon of exprVars) {
+        if (!this.varJustifications.has(canon)) this.varJustifications.set(canon, new Set());
+        this.varJustifications.get(canon)!.add(lit.id);
+        const current = this.getInterval(canon);
+        if (current === null) return;
+        box.set(canon, new Interval(current.lo, current.hi));
+      }
+      const valid = Hc4Contractor.revise(constraint, box);
+      if (!valid) {
+        for (const canon of exprVars) {
+          this.intervals.set(canon, null);
+        }
+      } else {
+        for (const [canon, contractedInt] of box.entries()) {
+          const prev = this.getInterval(canon);
+          this.intervals.set(canon, prev ? intersectInterval(prev, contractedInt) : contractedInt);
+          this.mirrorOppositeSignBounds(canon);
+        }
+      }
+    }
   }
 
   public retractLiteral(litId: number): void {
@@ -374,6 +432,11 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
+    for (const lit of this.assertedLiterals.values()) {
+      if (lit.predicate === "hyperplane" || lit.predicate === "nonlinear" || lit.predicate === "expr") {
+        this.applyRelationalLiteral(lit);
+      }
+    }
     for (const [varName, interval] of this.intervals.entries()) {
       if (interval === null || interval.lo > interval.hi + 1e-9) {
         const culpritLitIds = this.varJustifications.get(varName) ?? new Set<number>();

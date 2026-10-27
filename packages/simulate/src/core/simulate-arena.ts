@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import {
   BinOp,
@@ -60,6 +59,50 @@ import {
   type SimulationDebugger,
 } from "./simulation.js";
 import { OnlineSTLMonitor, type STLStepResult } from "./stl_monitor.js";
+
+const createDynamicFunction = Object.getPrototypeOf(function () {}).constructor as (
+  ...paramsAndBody: string[]
+) => (...args: never[]) => unknown;
+
+interface CachedSimPrep {
+  parameters: Map<string, number>;
+  parameterVars: Set<number>;
+  stateVars: Set<number>;
+  derivativeVars: Set<number>;
+  dummyDerivatives: Set<number>;
+  sortedEquations: number[];
+  blocks: { eqIdxs: number[]; vars: number[] }[];
+  executionBlocks: import("@modelscript/runtime").ArenaExecutionBlock[];
+}
+
+interface SimDAEBuilder extends DAEBuilder {
+  _cachedSimPrep?: CachedSimPrep | undefined;
+  _delayHistory?: Map<number, { t: number; v: number }[]> | undefined;
+  _initialAlgorithmsExecuted?: boolean | undefined;
+}
+
+type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }> & {
+  _varNameIds?: Int32Array | undefined;
+  _resExprIds?: Int32Array | undefined;
+  _compiledResiduals?: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined;
+  _compiledJacobian?: ((env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) => void) | undefined;
+  _isLinearSystem?: boolean | undefined;
+};
+
+type ArenaCpuSolver =
+  | "euler"
+  | "rk4"
+  | "dopri5"
+  | "tsit5"
+  | "bdf"
+  | "rodas4p"
+  | "trbdf2"
+  | "qss1"
+  | "qss2"
+  | "qss3"
+  | "liqss2"
+  | "auto"
+  | "cvode";
 
 /** Maximum Newton iterations for algebraic loop solving. */
 const NEWTON_MAX_ITER = 20;
@@ -213,7 +256,8 @@ export class ArenaSimulator {
       );
     }
 
-    const cachedPrep = (this.arena as any)._cachedSimPrep;
+    const simArena = this.arena as SimDAEBuilder;
+    const cachedPrep = simArena._cachedSimPrep;
     const canUseCachedPrep =
       cachedPrep &&
       (!preOverrides || Array.from(preOverrides.entries()).every(([k, v]) => cachedPrep.parameters.get(k) === v));
@@ -230,7 +274,7 @@ export class ArenaSimulator {
           this.parameters.set(name, preOverrides.get(name)!);
           continue;
         }
-        const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
+        const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
         let val: number | null = null;
         if (typeof exprId === "number" && exprId !== -1) {
           const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
@@ -250,7 +294,7 @@ export class ArenaSimulator {
       this.blocks = cachedPrep.blocks;
       this.executionBlocks = cachedPrep.executionBlocks;
       this.preValuesByStringId = new Float64Array(this.arena.interner.size);
-      (this.arena as any)._delayHistory = new Map();
+      simArena._delayHistory = new Map();
       this.compiledBlocks = this.compileBlocks();
       this.extractWhenClauses();
       this.extractAssertions();
@@ -262,7 +306,7 @@ export class ArenaSimulator {
     }
 
     this.arena.isMutatedBySim = true;
-    (this.arena as any)._delayHistory = new Map();
+    simArena._delayHistory = new Map();
     this.preValuesByStringId = new Float64Array(this.arena.interner.size);
     this.resolveParameters(preOverrides);
     this.resolveKinematicVelocities();
@@ -284,7 +328,7 @@ export class ArenaSimulator {
     this.blocks = bltRes.blocks;
 
     this.buildExecutionBlocks();
-    (this.arena as any)._cachedSimPrep = {
+    simArena._cachedSimPrep = {
       parameters: new Map(this.parameters),
       parameterVars: new Set(this.parameterVars),
       stateVars: new Set(this.stateVars),
@@ -482,16 +526,17 @@ export class ArenaSimulator {
       return false;
     };
 
+    const simArena = this.arena as SimDAEBuilder;
     for (let i = 0; i < this.arena.varCount; i++) {
       if (this.arena.isVarRemoved(i)) continue;
       const variability = this.arena.getVarVariability(i);
       const isParam = variability === Variability.Parameter || variability === Variability.Constant;
-      const hasExplicitExpr = (this.arena as any).hasExplicitVarExpression?.(i);
+      const hasExplicitExpr = simArena.hasExplicitVarExpression?.(i);
       const isNotState = !this.stateVars.has(i);
 
       if (!isParam && !(hasExplicitExpr && isNotState)) continue;
 
-      const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
+      const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
       if (!isParam && typeof exprId === "number" && exprId >= 0 && exprReferencesContinuous(exprId)) {
         // Continuous/discrete variable with a continuous binding expression (e.g. from omcCompatibility: true).
         // Ensure its binding equation is present in the DAE arena rather than treating it as a static parameter.
@@ -543,7 +588,7 @@ export class ArenaSimulator {
       if (this.arena.isVarRemoved(i)) continue;
       const name = this.arena.getVarName(i);
       if (preOverrides && preOverrides.has(name)) continue;
-      const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(i) : undefined;
+      const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
       if (typeof exprId === "number" && exprId !== -1) {
         const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
         if (typeof rawVal === "number" && isFinite(rawVal)) {
@@ -1882,11 +1927,10 @@ export class ArenaSimulator {
       for (const ind of indicators) {
         let existing = this.eventIndicators.find((e) => e.exprId === ind.exprId && e.direction === ind.direction);
         if (!existing) {
-          existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction };
-          (existing as any).clauseIndices = [];
+          existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction, clauseIndices: [] };
           this.eventIndicators.push(existing);
         }
-        const clauseIndices: number[] = (existing as any).clauseIndices ?? ((existing as any).clauseIndices = []);
+        const clauseIndices: number[] = existing.clauseIndices ?? (existing.clauseIndices = []);
         if (!clauseIndices.includes(cIdx)) {
           clauseIndices.push(cIdx);
         }
@@ -1898,8 +1942,7 @@ export class ArenaSimulator {
       for (const ind of this.collectEventIndicators(condId)) {
         let existing = this.eventIndicators.find((e) => e.exprId === ind.exprId && e.direction === ind.direction);
         if (!existing) {
-          existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction };
-          (existing as any).clauseIndices = [];
+          existing = { exprId: ind.exprId, prevValue: 0, direction: ind.direction, clauseIndices: [] };
           this.eventIndicators.push(existing);
         }
       }
@@ -1938,7 +1981,9 @@ export class ArenaSimulator {
         scanIfElseExpr(this.arena.getEqLhs(eqIdx));
         scanIfElseExpr(this.arena.getEqRhs(eqIdx));
       } else if (eqKind === EqKind.If) {
-        const meta = (this.arena as any).getIfEquationMeta?.(eqIdx);
+        const meta = this.arena.getIfEquationMeta?.(eqIdx) as
+          | { branches?: { conditionExprId?: number | undefined }[] | undefined }
+          | undefined;
         if (meta?.branches) {
           for (const branch of meta.branches) {
             if (typeof branch.conditionExprId === "number" && branch.conditionExprId >= 0) {
@@ -2250,9 +2295,9 @@ export class ArenaSimulator {
     const scale = this.newtonScratchScale;
     const dualStack = this.newtonScratchDualStack;
 
-    const blockAny = block as any;
-    let cachedVarIds: Int32Array | undefined = blockAny._varNameIds;
-    let cachedResIds: Int32Array | undefined = blockAny._resExprIds;
+    const sysBlock = block as SystemExecutionBlock;
+    let cachedVarIds: Int32Array | undefined = sysBlock._varNameIds;
+    let cachedResIds: Int32Array | undefined = sysBlock._resExprIds;
     if (!cachedVarIds || !cachedResIds) {
       cachedVarIds = new Int32Array(m);
       cachedResIds = new Int32Array(m);
@@ -2263,8 +2308,8 @@ export class ArenaSimulator {
         const rhsId = this.arena.getEqRhs(eqIdx);
         cachedResIds[i] = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
       }
-      blockAny._varNameIds = cachedVarIds;
-      blockAny._resExprIds = cachedResIds;
+      sysBlock._varNameIds = cachedVarIds;
+      sysBlock._resExprIds = cachedResIds;
     }
 
     const bestX = new Float64Array(m);
@@ -2280,11 +2325,9 @@ export class ArenaSimulator {
       bestX[i] = x[i]!;
     }
 
-    const compiledRes: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined =
-      blockAny._compiledResiduals;
-    const compiledJac: ((env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) => void) | undefined =
-      blockAny._compiledJacobian;
-    const isLinearSystem = blockAny._isLinearSystem === true;
+    const compiledRes = sysBlock._compiledResiduals;
+    const compiledJac = sysBlock._compiledJacobian;
+    const isLinearSystem = sysBlock._isLinearSystem === true;
 
     let converged = false;
 
@@ -2881,7 +2924,8 @@ export class ArenaSimulator {
 
       // 4. Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
       const CHUNK_SIZE = 4000;
-      const chunks: ((env: Float64Array) => void)[] = [];
+      type CompiledBlockChunk = (env: Float64Array, h: typeof helpers) => void;
+      const chunks: CompiledBlockChunk[] = [];
       let currentLines: string[] = [];
 
       for (const block of this.executionBlocks) {
@@ -2890,14 +2934,14 @@ export class ArenaSimulator {
           const exprJs = exprToJs(block.exprId);
           currentLines.push(`env[${varNameId}] = ${exprJs};`);
           if (currentLines.length >= CHUNK_SIZE) {
-            chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
+            chunks.push(createDynamicFunction("env", "helpers", currentLines.join("\n")) as CompiledBlockChunk);
             currentLines = [];
           }
         } else if (block.type === "system" && block.vars.length > 0) {
           // 5. For simultaneous algebraic systems (`m` variables), construct residual expressions `lhs - rhs`
           //    and compile dedicated residual (`_compiledResiduals`) and Jacobian (`_compiledJacobian`) closures
           const m = block.vars.length;
-          const blockAny = block as any;
+          const sysBlock = block as SystemExecutionBlock;
           const varIds = new Int32Array(m);
           const resIds = new Int32Array(m);
           for (let i = 0; i < m; i++) {
@@ -2907,8 +2951,8 @@ export class ArenaSimulator {
             const rhsId = arena.getEqRhs(eqIdx);
             resIds[i] = arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
           }
-          blockAny._varNameIds = varIds;
-          blockAny._resExprIds = resIds;
+          sysBlock._varNameIds = varIds;
+          sysBlock._resExprIds = resIds;
 
           if (m <= 64) {
             // Detect whether the system is purely linear (constant Jacobian entries wrt block unknowns)
@@ -2927,8 +2971,13 @@ export class ArenaSimulator {
               );
             }
             resLines.push("return maxR;");
-            const rawResFn = new Function("env", "x", "R", "helpers", resLines.join("\n")) as any;
-            blockAny._compiledResiduals = (env: Float64Array, x: Float64Array, R: Float64Array) =>
+            const rawResFn = createDynamicFunction("env", "x", "R", "helpers", resLines.join("\n")) as (
+              env: Float64Array,
+              x: Float64Array,
+              R: Float64Array,
+              h: typeof helpers,
+            ) => number;
+            sysBlock._compiledResiduals = (env: Float64Array, x: Float64Array, R: Float64Array) =>
               rawResFn(env, x, R, helpers);
 
             const jacLines: string[] = [];
@@ -2958,32 +3007,38 @@ export class ArenaSimulator {
                 }
               }
             }
-            const rawJacFn = new Function("env", "x", "R", "J", "helpers", jacLines.join("\n")) as any;
-            blockAny._compiledJacobian = (env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) =>
+            const rawJacFn = createDynamicFunction("env", "x", "R", "J", "helpers", jacLines.join("\n")) as (
+              env: Float64Array,
+              x: Float64Array,
+              R: Float64Array,
+              J: Float64Array,
+              h: typeof helpers,
+            ) => void;
+            sysBlock._compiledJacobian = (env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) =>
               rawJacFn(env, x, R, J, helpers);
-            blockAny._isLinearSystem = isLinearSystem;
+            sysBlock._isLinearSystem = isLinearSystem;
           }
 
           const sysIdx = systemBlocks.length;
           systemBlocks.push(block);
           currentLines.push(`helpers.solveSystem(${sysIdx}, env);`);
           if (currentLines.length >= CHUNK_SIZE) {
-            chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
+            chunks.push(createDynamicFunction("env", "helpers", currentLines.join("\n")) as CompiledBlockChunk);
             currentLines = [];
           }
         }
       }
 
       if (currentLines.length > 0) {
-        chunks.push(new Function("env", "helpers", currentLines.join("\n")) as any);
+        chunks.push(createDynamicFunction("env", "helpers", currentLines.join("\n")) as CompiledBlockChunk);
       }
 
       if (chunks.length === 1) {
         const c0 = chunks[0]!;
-        return (env: Float64Array) => (c0 as any)(env, helpers);
+        return (env: Float64Array) => c0(env, helpers);
       }
       return (env: Float64Array) => {
-        for (const chunk of chunks) (chunk as any)(env, helpers);
+        for (const chunk of chunks) chunk(env, helpers);
       };
     } catch {
       return null;
@@ -3061,7 +3116,7 @@ export class ArenaSimulator {
       }
       let anyFired = false;
       for (const clause of this.whenClauses) {
-        const groupId: number | undefined = (clause as any).groupId;
+        const groupId = clause.groupId;
         const condVal = evaluateArenaRuntime(
           this.arena,
           clause.conditionExprId,
@@ -3233,7 +3288,7 @@ export class ArenaSimulator {
       if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
         const ei = this.eventIndicators[eventIdx];
         if (ei) {
-          triggeredClauseIndices = (ei as any).clauseIndices;
+          triggeredClauseIndices = ei.clauseIndices;
           const eiKind = this.arena.getExprKind(ei.exprId);
 
           let targetStateNameId = -1;
@@ -3294,7 +3349,7 @@ export class ArenaSimulator {
         }
         let anyFired = false;
         for (const clause of this.whenClauses) {
-          const groupId: number | undefined = (clause as any).groupId;
+          const groupId = clause.groupId;
           const condVal = evaluateArenaRuntime(
             this.arena,
             clause.conditionExprId,
@@ -3489,7 +3544,7 @@ export class ArenaSimulator {
     this.preValuesByStringId.set(valuesByStringId);
 
     // Execute initial algorithm sections (unless already executed by solveInitialEquationsArena)
-    if (!(this.arena as any)._initialAlgorithmsExecuted) {
+    if (!(this.arena as SimDAEBuilder)._initialAlgorithmsExecuted) {
       for (const sec of this.arena.initialAlgorithmSections) {
         executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
       }
@@ -3827,7 +3882,7 @@ export class ArenaSimulator {
         maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
-        eventDirections: eventDirs as any,
+        eventDirections: eventDirs,
       });
     } else if (solver === "rodas4p") {
       rawResult = rodas4p(rhsFn, startTime, y0, stopTime, outputTimes, {
@@ -3837,7 +3892,7 @@ export class ArenaSimulator {
         maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
-        eventDirections: eventDirs as any,
+        eventDirections: eventDirs,
       });
     } else if (solver === "trbdf2") {
       rawResult = trbdf2(rhsFn, startTime, y0, stopTime, outputTimes, {
@@ -3847,7 +3902,7 @@ export class ArenaSimulator {
         maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
-        eventDirections: eventDirs as any,
+        eventDirections: eventDirs,
       });
     } else if (solver === "qss1" || solver === "qss2" || solver === "qss3" || solver === "liqss2") {
       rawResult = qssSolve(rhsFn, startTime, y0, stopTime, outputTimes, {
@@ -3856,7 +3911,7 @@ export class ArenaSimulator {
         rtol: options?.rtol,
         eventFunctions: eventFns.length > 0 ? eventFns : undefined,
         eventCallback: eventCb,
-        eventDirections: eventDirs as any,
+        eventDirections: eventDirs,
       });
     } else if (solver === "auto") {
       rawResult = dopri5(
@@ -3901,7 +3956,7 @@ export class ArenaSimulator {
           maxStep: Math.min(Math.abs(stopTime - startTime), step * 2),
           eventFunctions: eventFns.length > 0 ? eventFns : undefined,
           eventCallback: eventCb,
-          eventDirections: eventDirs as any,
+          eventDirections: eventDirs,
         });
         if (isResultBad(rawResult)) {
           resetAdaptiveState();
@@ -4131,7 +4186,7 @@ export class ArenaSimulator {
     if (this.frictionStateMappings.length === 0) return;
 
     for (const mapping of this.frictionStateMappings) {
-      const v0 = (y0 as any)[mapping.stateIndex] ?? 0;
+      const v0 = y0[mapping.stateIndex] ?? 0;
       const v1 = vals[mapping.stateId] ?? 0;
       const crossedZero = (v0 > 1e-9 && v1 <= 0) || (v0 < -1e-9 && v1 >= 0);
       const deceleratingIntoStiction =
@@ -4306,8 +4361,8 @@ export class ArenaSimulator {
    * state machine transitions, and solver reinitialization.
    */
   private async simulateCvodeWasm(
-    wasmMod: any,
-    CvodeSolverClass: any,
+    wasmMod: import("../solvers/sundials-wasm.js").SundialsEmscriptenModule,
+    CvodeSolverClass: typeof import("../solvers/sundials-wasm.js").CvodeSolver,
     steps: number,
     step: number,
     valuesByStringId: Float64Array,
@@ -4319,6 +4374,10 @@ export class ArenaSimulator {
       atol?: number | undefined;
       rtol?: number | undefined;
       outputStringIds?: number[] | undefined;
+      linearSolver?: "auto" | "dense" | "band" | "klu" | "spgmr" | undefined;
+      mu?: number | undefined;
+      ml?: number | undefined;
+      nnz?: number | undefined;
     },
   ): Promise<{ t: number[]; y: number[][] }> {
     this.preValuesByStringId = new Float64Array(valuesByStringId.length);
@@ -4349,7 +4408,7 @@ export class ArenaSimulator {
       return { t: Array.from(resultT), y: resultY.map((arr) => Array.from(arr)) };
     }
 
-    const y0 = new Array(n);
+    const y0 = new Array<number>(n);
     for (let i = 0; i < n; i++) y0[i] = valuesByStringId[stateStringIds[i] as number] ?? 0;
 
     const rhsFn = (t_eval: number, y: Float64Array, ydot: Float64Array) => {
@@ -4362,7 +4421,7 @@ export class ArenaSimulator {
     };
 
     const nEvents = this.eventIndicators.length;
-    let eventFn: any;
+    let eventFn: import("../solvers/sundials-wasm.js").EventFunction | undefined;
     if (nEvents > 0) {
       eventFn = (t_eval: number, y: Float64Array, gout: Float64Array) => {
         valuesByStringId[timeId] = t_eval;
@@ -4370,7 +4429,7 @@ export class ArenaSimulator {
         this.evaluateBlocks(valuesByStringId);
         this.evaluateDerivativeEquations(valuesByStringId);
         for (let i = 0; i < nEvents; i++) {
-          const ei = this.eventIndicators[i] as any;
+          const ei = this.eventIndicators[i]!;
           let val = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
           if (ei.direction === 0) {
             val = val ? 1 : -1;
@@ -4383,15 +4442,15 @@ export class ArenaSimulator {
 
     const { mu: structuralMu, ml: structuralMl } = this.computeStateJacobianBandwidth(stateStringIds, derivStringIds);
     const isBanded = n > 50 && structuralMu + structuralMl > 0 && structuralMu + structuralMl < Math.floor(n / 3);
-    const chosenLinearSolver = (options as any)?.linearSolver ?? (isBanded ? "band" : "auto");
+    const chosenLinearSolver = options?.linearSolver ?? (isBanded ? "band" : "auto");
 
     const solver = new CvodeSolverClass(wasmMod, n, t, y0, rhsFn, nEvents, eventFn, {
       atol: options?.atol,
       rtol: options?.rtol,
       linearSolver: chosenLinearSolver,
-      mu: (options as any)?.mu ?? structuralMu,
-      ml: (options as any)?.ml ?? structuralMl,
-      nnz: (options as any)?.nnz,
+      mu: options?.mu ?? structuralMu,
+      ml: options?.ml ?? structuralMl,
+      nnz: options?.nnz,
     });
 
     let resultT = new Float64Array(steps + 1);
@@ -4437,7 +4496,7 @@ export class ArenaSimulator {
           // CV_ROOT_RETURN
           this.preValuesByStringId.set(valuesByStringId);
           for (let i = 0; i < nEvents; i++) {
-            const ei = this.eventIndicators[i] as any;
+            const ei = this.eventIndicators[i]!;
             const val = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
             ei.prevValue = val;
           }
@@ -4446,7 +4505,7 @@ export class ArenaSimulator {
           this.evaluateBlocks(valuesByStringId);
           this.evaluateDerivativeEquations(valuesByStringId);
 
-          const y_new = new Array(n);
+          const y_new = new Array<number>(n);
           for (let i = 0; i < n; i++) y_new[i] = valuesByStringId[stateStringIds[i] as number] ?? 0;
           solver.reinit(currentT, y_new);
         }
@@ -4537,7 +4596,7 @@ export class ArenaSimulator {
     this.preValuesByStringId.set(valuesByStringId);
 
     // Execute initial algorithm sections (unless already executed by solveInitialEquationsArena)
-    if (!(this.arena as any)._initialAlgorithmsExecuted) {
+    if (!(this.arena as SimDAEBuilder)._initialAlgorithmsExecuted) {
       for (const sec of this.arena.initialAlgorithmSections) {
         if (this.debuggerHook) {
           await executeArenaStatementsAsync(
@@ -4848,9 +4907,9 @@ export class ArenaSimulator {
     const scale = this.newtonScratchScale;
     const dualStack = this.newtonScratchDualStack;
 
-    const blockAny = block as any;
-    let cachedVarIds: Int32Array | undefined = blockAny._varNameIds;
-    let cachedResIds: Int32Array | undefined = blockAny._resExprIds;
+    const sysBlock = block as SystemExecutionBlock;
+    let cachedVarIds: Int32Array | undefined = sysBlock._varNameIds;
+    let cachedResIds: Int32Array | undefined = sysBlock._resExprIds;
     if (!cachedVarIds || !cachedResIds) {
       cachedVarIds = new Int32Array(m);
       cachedResIds = new Int32Array(m);
@@ -4861,8 +4920,8 @@ export class ArenaSimulator {
         const rhsId = this.arena.getEqRhs(eqIdx);
         cachedResIds[i] = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
       }
-      blockAny._varNameIds = cachedVarIds;
-      blockAny._resExprIds = cachedResIds;
+      sysBlock._varNameIds = cachedVarIds;
+      sysBlock._resExprIds = cachedResIds;
     }
 
     // 1. Freeze block unknown dual derivatives to 0 to evaluate partial derivative wrt upstream variables/seed
@@ -5016,7 +5075,7 @@ export function initializeArenaEnvironment(
   // Solve initial equations
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
-  (arena as any)._initialAlgorithmsExecuted = true;
+  (arena as SimDAEBuilder)._initialAlgorithmsExecuted = true;
 
   // Apply initial state overrides (for MHE, Kalman filtering, or state re-initialization)
   if (options?.initialStateOverrides) {
@@ -5265,7 +5324,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   // Copy initial solution back
   valuesByStringId.set(initResult.valuesByStringId);
-  (arena as any)._initialAlgorithmsExecuted = true;
+  (arena as SimDAEBuilder)._initialAlgorithmsExecuted = true;
 
   // Apply initial state overrides
   if (options?.initialStateOverrides) {
@@ -5312,12 +5371,13 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   // ── Step 5.5: Initialize FMU subsystems (if any) ──
   sim.initializeFmuSubsystems(startTime, stopTime, step);
 
-  const defaultSolver = (exp.algorithm as any)?.toLowerCase() === "cvode" ? "bdf" : ((exp.algorithm as any) ?? "rk4");
-  const chosenSolver =
+  const defaultSolver: ArenaCpuSolver =
+    exp.algorithm?.toLowerCase() === "cvode" ? "bdf" : ((exp.algorithm as ArenaCpuSolver | undefined) ?? "rk4");
+  const chosenSolver: ArenaCpuSolver =
     options?.solver === "webgpu"
       ? "rk4"
       : options?.solver === "auto"
-        ? ((exp.algorithm as any) ?? "auto")
+        ? ((exp.algorithm as ArenaCpuSolver | undefined) ?? "auto")
         : options?.solver
           ? options.solver
           : defaultSolver;
@@ -5489,7 +5549,7 @@ export async function simulateArenaAsync(
 
   const initResult = solveInitialEquationsArena(arena, valuesByStringId);
   valuesByStringId.set(initResult.valuesByStringId);
-  (arena as any)._initialAlgorithmsExecuted = true;
+  (arena as SimDAEBuilder)._initialAlgorithmsExecuted = true;
 
   if (options?.initialStateOverrides) {
     for (const [name, val] of options.initialStateOverrides) {
@@ -5621,12 +5681,12 @@ export async function simulateArenaAsync(
     }
   }
 
-  const defaultSolver = (exp.algorithm as any) ?? "tsit5";
-  const chosenSolver =
+  const defaultSolver: ArenaCpuSolver = (exp.algorithm as ArenaCpuSolver | undefined) ?? "tsit5";
+  const chosenSolver: ArenaCpuSolver =
     options?.solver === "webgpu"
       ? "rk4"
       : options?.solver === "auto"
-        ? ((exp.algorithm as any) ?? "auto")
+        ? ((exp.algorithm as ArenaCpuSolver | undefined) ?? "auto")
         : options?.solver
           ? options.solver
           : defaultSolver;

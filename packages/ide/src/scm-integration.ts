@@ -4,6 +4,19 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { isSupportedModelFile } from "./utils/file-utils";
 
+export interface GitRepository {
+  state: {
+    indexChanges: { uri: vscode.Uri }[];
+    onDidChange: vscode.Event<void>;
+  };
+  inputBox: { value: string };
+  show(ref: string, path: string): Promise<string>;
+}
+
+export interface GitExtensionExports {
+  getAPI(version: number): { repositories: GitRepository[] } | undefined;
+}
+
 export function registerScmIntegration(context: vscode.ExtensionContext, client: LanguageClient | undefined) {
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.scm.generateCommitMessage", async () => {
@@ -14,7 +27,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
 
       // 1. Get VS Code Git extension API
 
-      const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+      const gitExtension = vscode.extensions.getExtension<GitExtensionExports>("vscode.git")?.exports;
       if (!gitExtension) {
         vscode.window.showErrorMessage("Git extension is not available.");
         return;
@@ -26,7 +39,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
         return;
       }
 
-      const repository = git.repositories[0];
+      const repository = git.repositories[0]!;
 
       // 2. Get staged changes
       // This is dependent on git extension API. Let's try to get working tree or index changes
@@ -99,7 +112,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
         return;
       }
 
-      const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+      const gitExtension = vscode.extensions.getExtension<GitExtensionExports>("vscode.git")?.exports;
       if (!gitExtension) {
         vscode.window.showErrorMessage("Git extension is not available.");
         return;
@@ -111,7 +124,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
         return;
       }
 
-      const repository = git.repositories[0];
+      const repository = git.repositories[0]!;
 
       try {
         const oldText = await repository.show("HEAD", uri.fsPath);

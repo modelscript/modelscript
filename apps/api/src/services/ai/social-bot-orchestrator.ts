@@ -205,8 +205,8 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
       } catch {}
 
       return { success: true, responsePostId: responsePost.id };
-    } catch (err: any) {
-      const errMsg = err?.message || String(err);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
       this.#database.updateBotMentionStatus(job.id, "failed", { error: errMsg });
       try {
         const { broadcastBotTyping } = await import("../../routes/collab-ws.js");

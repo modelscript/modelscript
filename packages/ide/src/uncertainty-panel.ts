@@ -176,7 +176,7 @@ export class UncertaintyPanel extends BaseWebviewPanel {
           // If SimulationPanel is open, update its trajectory chart with the MC envelope
           const simPanel = SimulationPanel.currentPanel;
           if (simPanel && (result as { runs?: unknown[] }).runs) {
-            (simPanel as any).postResults?.(result as any);
+            simPanel.postResults(result as Parameters<typeof simPanel.postResults>[0]);
           }
 
           progress.report({ increment: 10, message: "Done" });

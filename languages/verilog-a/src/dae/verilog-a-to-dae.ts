@@ -260,11 +260,13 @@ function compileExpression(expr: VerilogAExpr, ctx: CompilerContext): number {
       return arena.addRealLiteral(expr.value);
 
     case "identifier": {
-      if (paramExprMap.has(expr.name)) {
-        return paramExprMap.get(expr.name)!;
+      const paramExpr = paramExprMap.get(expr.name);
+      if (paramExpr !== undefined) {
+        return paramExpr;
       }
-      if (varExprMap.has(expr.name)) {
-        return varExprMap.get(expr.name)!;
+      const varExpr = varExprMap.get(expr.name);
+      if (varExpr !== undefined) {
+        return varExpr;
       }
       if (expr.name === "$vt") {
         return arena.addRealLiteral(DEFAULT_VT);

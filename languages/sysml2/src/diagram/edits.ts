@@ -85,10 +85,24 @@ const ELEMENT_TEMPLATES: Record<string, (name: string, indent: string) => string
 
 // ── CST Traversal Helpers ──
 
+export interface DiagramCstNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  parent?: DiagramCstNode | null | undefined;
+  namedChildCount?: number | undefined;
+  namedChild(index: number): DiagramCstNode;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+}
+
+export interface DiagramCstTree {
+  rootNode?: DiagramCstNode | null | undefined;
+}
+
 /**
  * Searches the parsed CST tree for a definition or usage node whose identifier matches `name`.
  */
-export function findCstNodeByName(node: any, name: string): any | null {
+export function findCstNodeByName(node: DiagramCstNode | null | undefined, name: string): DiagramCstNode | null {
   if (!node) return null;
   const isDecl =
     node.type?.endsWith("Usage") ||
@@ -119,11 +133,14 @@ export function findCstNodeByName(node: any, name: string): any | null {
 /**
  * Finds the enclosing block or package node in the CST for inserting child elements.
  */
-export function findCstEnclosingBlock(tree: any, elementName?: string): { line: number; indent: string } | null {
+export function findCstEnclosingBlock(
+  tree: DiagramCstTree | null | undefined,
+  elementName?: string,
+): { line: number; indent: string } | null {
   if (!tree?.rootNode) return null;
   const root = tree.rootNode;
 
-  let targetBlockNode: any = null;
+  let targetBlockNode: DiagramCstNode | null | undefined = null;
   if (elementName) {
     const el = findCstNodeByName(root, elementName);
     if (el) {
@@ -163,9 +180,13 @@ export function findCstEnclosingBlock(tree: any, elementName?: string): { line: 
 /**
  * Finds all CST connection or transition nodes connecting source and target.
  */
-export function findCstConnectionNodes(root: any, source: string, target: string): any[] {
-  const matches: any[] = [];
-  function walk(node: any) {
+export function findCstConnectionNodes(
+  root: DiagramCstNode | null | undefined,
+  source: string,
+  target: string,
+): DiagramCstNode[] {
+  const matches: DiagramCstNode[] = [];
+  function walk(node: DiagramCstNode | null | undefined) {
     if (!node) return;
     const isConn =
       node.type === "ConnectionUsage" ||
@@ -197,7 +218,7 @@ export function computeSysML2ElementInsert(
   elementType: string,
   elementName: string,
   insertionLine?: number,
-  tree?: any,
+  tree?: DiagramCstTree | null,
 ): TextEdit[] {
   const lines = docText.split("\n");
   const template = ELEMENT_TEMPLATES[elementType];
@@ -250,7 +271,11 @@ export function computeSysML2ElementInsert(
  * Delete a SysML2 element by finding its declaration in the source text.
  * Uses the parsed CST tree if provided, falling back to keyword line scanning.
  */
-export function computeSysML2ElementDelete(docText: string, elementNames: string[], tree?: any): TextEdit[] {
+export function computeSysML2ElementDelete(
+  docText: string,
+  elementNames: string[],
+  tree?: DiagramCstTree | null,
+): TextEdit[] {
   const lines = docText.split("\n");
   const edits: TextEdit[] = [];
   const nameSet = new Set(elementNames);
@@ -321,7 +346,7 @@ export function computeSysML2ElementDelete(docText: string, elementNames: string
 
 // ── Helper: find enclosing block's closing brace ──
 
-function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: any): number {
+function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: DiagramCstTree | null): number {
   if (tree?.rootNode) {
     const cstBlock = findCstEnclosingBlock(tree, elementName);
     if (cstBlock) return cstBlock.line;
@@ -368,7 +393,12 @@ function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: a
  * If the document contains state definitions/usages (state machine context),
  * inserts a `transition` usage instead.
  */
-export function computeSysML2ConnectionInsert(docText: string, source: string, target: string, tree?: any): TextEdit[] {
+export function computeSysML2ConnectionInsert(
+  docText: string,
+  source: string,
+  target: string,
+  tree?: DiagramCstTree | null,
+): TextEdit[] {
   // Auto-detect state machine context — if source text contains state keywords,
   // insert a transition instead of a generic connection
   if (/\bstate\s+(def\s+)?\w+/.test(docText)) {
@@ -394,7 +424,12 @@ export function computeSysML2ConnectionInsert(docText: string, source: string, t
  * Insert a `transition` usage connecting two states.
  * Generates: `transition first sourceState then targetState;`
  */
-export function computeSysML2TransitionInsert(docText: string, source: string, target: string, tree?: any): TextEdit[] {
+export function computeSysML2TransitionInsert(
+  docText: string,
+  source: string,
+  target: string,
+  tree?: DiagramCstTree | null,
+): TextEdit[] {
   const lines = docText.split("\n");
   const targetLine = findEnclosingBlockBrace(lines, source, tree);
 
@@ -412,7 +447,12 @@ export function computeSysML2TransitionInsert(docText: string, source: string, t
  * Insert a `succession` usage connecting two actions in an activity diagram.
  * Generates: `first source then target;`
  */
-export function computeSysML2SuccessionInsert(docText: string, source: string, target: string, tree?: any): TextEdit[] {
+export function computeSysML2SuccessionInsert(
+  docText: string,
+  source: string,
+  target: string,
+  tree?: DiagramCstTree | null,
+): TextEdit[] {
   const lines = docText.split("\n");
   let targetLine = findEnclosingBlockBrace(lines, source, tree);
 
@@ -432,7 +472,12 @@ export function computeSysML2SuccessionInsert(docText: string, source: string, t
  * Delete a connection usage by finding matching `connect source to target` text.
  * Uses the parsed CST tree if available, falling back to line scanning.
  */
-export function computeSysML2ConnectionDelete(docText: string, source: string, target: string, tree?: any): TextEdit[] {
+export function computeSysML2ConnectionDelete(
+  docText: string,
+  source: string,
+  target: string,
+  tree?: DiagramCstTree | null,
+): TextEdit[] {
   const lines = docText.split("\n");
   const edits: TextEdit[] = [];
 
@@ -478,15 +523,17 @@ export function computeSysML2ConnectionDelete(docText: string, source: string, t
 export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: string, newName: string): TextEdit[] {
   const edits: TextEdit[] = [];
 
-  function findName(node: any) {
+  function findName(node: DiagramCstNode) {
     if (
-      (node.type === "Name" || node.type === "Identifier" || node.type.includes("Identification")) &&
+      (node.type === "Name" || node.type === "Identifier" || node.type?.includes("Identification")) &&
       node.text === oldName
     ) {
       if (
-        node.parent?.type.includes("Usage") ||
-        node.parent?.type.includes("Def") ||
-        node.parent?.type.includes("Declaration")
+        (node.parent?.type?.includes("Usage") ||
+          node.parent?.type?.includes("Def") ||
+          node.parent?.type?.includes("Declaration")) &&
+        node.startPosition &&
+        node.endPosition
       ) {
         edits.push(
           TextEdit.replace(
@@ -501,13 +548,14 @@ export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: s
         );
       }
     }
-    for (let i = 0; i < node.namedChildCount; i++) {
+    for (let i = 0; i < (node.namedChildCount ?? 0); i++) {
       findName(node.namedChild(i));
     }
   }
 
-  if (tree && (tree as Record<string, unknown>)["rootNode"]) {
-    findName((tree as Record<string, unknown>)["rootNode"]);
+  const cstTree = tree as DiagramCstTree | null | undefined;
+  if (cstTree?.rootNode) {
+    findName(cstTree.rootNode);
   }
 
   if (edits.length === 0) {

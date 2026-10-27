@@ -20,7 +20,15 @@ import { SurrogateLiveExplorer, type PodSurrogateDataPayload } from "./cad-viewe
 import { SurrogateTrainDialog } from "./cad-viewer/surrogate-train-dialog";
 import { SweepConfigDrawer, type ActiveSweepState } from "./cad-viewer/sweep-config-drawer";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
 
 interface CfgGeometryPart {
   name: string;

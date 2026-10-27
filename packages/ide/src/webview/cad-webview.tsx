@@ -8,7 +8,15 @@ import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
 import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
 
 function App() {
   const [components, setComponents] = useState<CadComponent[]>([]);

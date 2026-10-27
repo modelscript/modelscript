@@ -14,7 +14,7 @@ export class IpoptSolver {
 
   constructor(
     public modelDllPath: string,
-    wasmModule?: any,
+    wasmModule?: ConstructorParameters<typeof CoinorWasmSolver>[0],
   ) {
     if (wasmModule) {
       this.wasmSolver = new CoinorWasmSolver(wasmModule);

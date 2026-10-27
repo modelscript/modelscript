@@ -2,12 +2,12 @@
 
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { printArenaDAE } from "@modelscript/runtime";
+import { printArenaDAE, type SymbolEntry, type UnifiedWorkspace, type WorkspaceIndex } from "@modelscript/runtime";
 import { snapshotMemory } from "@modelscript/simulate";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 const require = createRequire(import.meta.url);
@@ -27,7 +27,7 @@ interface CompileArgs {
 export const Compile: CommandModule<{}, CompileArgs> = {
   command: ["compile <name> <paths...>", "flatten <name> <paths...>"],
   describe: "Flatten a Modelica model to a flat DAE representation",
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -70,7 +70,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     const hasSysML = args.paths.some((p) => p.endsWith(".sysml"));
 
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
 
     const needsStdlib = args.name.startsWith("ModelScript.") || args.paths.some((p) => p.includes("modelscript-"));
     const context = Context.createBatch(new NodeFileSystem(), { loadStdlib: needsStdlib });
@@ -94,9 +94,9 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     const memProfiles: Record<string, unknown> = {};
     let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
 
-    let sysmlParser: any = null;
-    let mIdx: any = null;
-    let sysmlIndex: any = null;
+    let sysmlParser: { parse(text: string): { rootNode?: unknown } | null | undefined } | null = null;
+    let mIdx: WorkspaceIndex | null = null;
+    let sysmlIndex: WorkspaceIndex | null = null;
 
     if (hasSysML) {
       const { createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
@@ -104,6 +104,8 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       mIdx = createModelicaWorkspaceIndex();
       sysmlIndex = createSysML2WorkspaceIndex();
     }
+
+    type RegisterAstReturn = ReturnType<NonNullable<Parameters<WorkspaceIndex["register"]>[1]>>;
 
     profiler.start("parsing");
     for (const p of args.paths) {
@@ -123,12 +125,15 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         const tree = sysmlParser.parse(text);
         const fileUri = "file://" + path.resolve(p);
 
-        sysmlIndex.register(fileUri, () => tree.rootNode as any);
+        sysmlIndex?.register(fileUri, () => tree?.rootNode as unknown as RegisterAstReturn);
       } else if (p.endsWith(".mo")) {
         await context.addLibrary(p);
         if (hasSysML && mIdx) {
           const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
-          mIdx.register(`file://${path.resolve(p)}`, () => parser.parse(text)?.rootNode as any);
+          mIdx.register(
+            `file://${path.resolve(p)}`,
+            () => parser.parse(text)?.rootNode as unknown as RegisterAstReturn,
+          );
         }
       } else {
         await context.addLibrary(p);
@@ -136,8 +141,8 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     }
     profiler.end("parsing");
 
-    if (hasSysML) {
-      const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    if (hasSysML && mIdx && sysmlIndex) {
+      const { UnifiedWorkspace: UnifiedWorkspaceCtor } = await import("@modelscript/runtime");
       const { createModelicaQueryEngine } = await import("@modelscript/modelica/factory");
       const { loadEmbeddedKerMLStdlib } = await import("@modelscript/sysml2/factory");
       const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
@@ -145,15 +150,21 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       if (sysmlParser) {
         loadEmbeddedKerMLStdlib(sysmlIndex, sysmlParser);
       }
-      const u = new UnifiedWorkspace();
+      const u = new UnifiedWorkspaceCtor();
       u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
 
-      u.registerWorkspace("sysml2", sysmlIndex, sysml2LangFallback as any);
-      if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
+      u.registerWorkspace(
+        "sysml2",
+        sysmlIndex,
+        sysml2LangFallback as unknown as Parameters<UnifiedWorkspace["registerWorkspace"]>[2],
+      );
+      await sysmlIndex.toUnifiedAsync();
       const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
       const sysmlFactory = await import("@modelscript/sysml2/factory");
-      u.registerParser(".mo", parser as any);
-      u.registerParser(".sysml", sysmlParser as any);
+      u.registerParser(".mo", parser as unknown as Parameters<typeof u.registerParser>[1]);
+      if (sysmlParser) {
+        u.registerParser(".sysml", sysmlParser as unknown as Parameters<typeof u.registerParser>[1]);
+      }
 
       const ensureDocument = (resId: string) => {
         const p = pathMap.get(resId.replace("file://", "")) || resId.replace("file://", "");
@@ -171,12 +182,12 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       const engine = createModelicaQueryEngine(
         unifiedDb,
         {
-          getText: (startOffset: number, endOffset: number, entry?: any) => {
+          getText: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
             if (!entry?.resourceId) return null;
             ensureDocument(entry.resourceId);
             return u.cstTextProvider ? u.cstTextProvider(startOffset, endOffset, entry) : null;
           },
-          getNode: (_startOffset: number, _endOffset: number, entry?: any) => {
+          getNode: (_startOffset: number, _endOffset: number, entry?: SymbolEntry) => {
             if (!entry?.resourceId) return null;
             ensureDocument(entry.resourceId);
             return u.cstNodeProvider ? u.cstNodeProvider(entry.id) : null;

@@ -67,10 +67,12 @@ export function dominates(
   directions: Record<string, ObjectiveDirection>,
 ): boolean {
   let atLeastOneBetter = false;
+  const allKeys = new Set([...Object.keys(a.objectives), ...Object.keys(b.objectives)]);
 
-  for (const objKey of Object.keys(a.objectives)) {
-    const valA = a.objectives[objKey]!;
-    const valB = b.objectives[objKey] ?? 0;
+  for (const objKey of allKeys) {
+    const valA = a.objectives[objKey];
+    const valB = b.objectives[objKey];
+    if (valA === undefined || valB === undefined) continue;
     const dir = directions[objKey] ?? "min";
 
     if (dir === "min") {
@@ -228,22 +230,26 @@ export class CegarRefinementSynthesizer {
    */
   public static synthesizeRefinement(witness: PhysicalRefutationWitness): RefinementInvariant {
     const id = `cegar_inv_${this.nextId++}`;
-    const delta = witness.actualValue - witness.thresholdValue; // > 0 means violation
+    const rawDelta = witness.actualValue - witness.thresholdValue;
+    const isUpperBreach = rawDelta >= 0; // true: actual > threshold (decrease property); false: actual < threshold (increase property)
+    const deltaMag = Math.abs(rawDelta);
+    const dirSign = isUpperBreach ? 1 : -1;
     const suggestedBounds: Record<string, { min?: number | undefined; max?: number | undefined }> = {};
     const coefficients: Record<string, number> = {};
 
     if (witness.sensitivityGradients && Object.keys(witness.sensitivityGradients).length > 0) {
       for (const [param, grad] of Object.entries(witness.sensitivityGradients)) {
-        coefficients[param] = -grad; // To decrease stress, move in opposite direction of positive gradient
+        const effectiveGrad = dirSign * grad;
+        coefficients[param] = -effectiveGrad;
         const currentVal = witness.parameters[param];
-        if (currentVal !== undefined && Math.abs(grad) > 1e-6) {
-          if (grad < 0) {
-            // Negative gradient: increasing parameter decreases stress (e.g. thickness or fillet radius)
-            const requiredDelta = delta / Math.abs(grad);
+        if (currentVal !== undefined && Math.abs(effectiveGrad) > 1e-6) {
+          if (effectiveGrad < 0) {
+            // Increasing parameter moves property toward feasible side of threshold
+            const requiredDelta = deltaMag / Math.abs(effectiveGrad);
             suggestedBounds[param] = { min: Number((currentVal + requiredDelta).toFixed(4)) };
           } else {
-            // Positive gradient: decreasing parameter decreases stress
-            const requiredDelta = delta / grad;
+            // Decreasing parameter moves property toward feasible side of threshold
+            const requiredDelta = deltaMag / effectiveGrad;
             suggestedBounds[param] = { max: Number((currentVal - requiredDelta).toFixed(4)) };
           }
         }
@@ -252,11 +258,11 @@ export class CegarRefinementSynthesizer {
       // Default to uniform sensitivity across parameters if gradients not provided
       for (const [p, val] of Object.entries(witness.parameters)) {
         coefficients[p] = 1.0;
-        suggestedBounds[p] = { min: Number((val + delta * 0.1).toFixed(4)) };
+        suggestedBounds[p] = { min: Number((val + deltaMag * 0.1).toFixed(4)) };
       }
     }
 
-    let constant = delta;
+    let constant = deltaMag;
     if (witness.parameters) {
       for (const [param, c] of Object.entries(coefficients)) {
         if (witness.parameters[param] !== undefined) {
@@ -265,7 +271,7 @@ export class CegarRefinementSynthesizer {
       }
     }
 
-    const explanation = `CEGAR Refinement: Candidate '${witness.candidateId}' breached '${witness.failedProperty}' (${witness.actualValue.toFixed(2)} > ${witness.thresholdValue.toFixed(2)}). Generated supporting hyperplane invariant requiring ${Object.entries(
+    const explanation = `CEGAR Refinement: Candidate '${witness.candidateId}' breached '${witness.failedProperty}' (${witness.actualValue.toFixed(2)} ${isUpperBreach ? ">" : "<"} ${witness.thresholdValue.toFixed(2)}). Generated supporting hyperplane invariant requiring ${Object.entries(
       suggestedBounds,
     )
       .map(([k, v]) => `${k} ${v.min !== undefined ? `>= ${v.min}` : `<= ${v.max}`}`)

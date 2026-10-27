@@ -126,7 +126,7 @@ export class HostBridgeService implements vscode.Disposable {
     artifactId: string | number;
     title?: string | undefined;
     viewType?: string | undefined;
-    viewConfig?: any;
+    viewConfig?: Record<string, unknown> | undefined;
   }): Promise<void> {
     if (!payload?.artifactId) return;
     this._mountedArtifactId = payload.artifactId;
@@ -187,7 +187,7 @@ export class HostBridgeService implements vscode.Disposable {
     const rootPath = this.memfsRootUri?.path ? this.memfsRootUri.path.replace(/\/+$/, "") : "";
 
     // 1. Read all files from MemoryFileSystemProvider
-    const rawFilesMap = (this.memFs as any)?.files as Map<string, Uint8Array> | undefined;
+    const rawFilesMap = (this.memFs as unknown as { files?: Map<string, Uint8Array> | undefined })?.files;
     if (rawFilesMap && typeof rawFilesMap.entries === "function") {
       for (const [fullPath, bytes] of rawFilesMap.entries()) {
         if (rootPath && !fullPath.startsWith(rootPath + "/") && fullPath !== rootPath) {

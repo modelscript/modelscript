@@ -72,7 +72,17 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
  * as produced by the updated ModelicaVariable.toJSON.
  */
 
-export function extractCadComponents(daeVariables: any[]): CadComponent[] {
+export interface RawDaeVariable {
+  name: string;
+  cad?: string | CadAnnotation | undefined;
+  ports?: { name: string; port: CadPortAnnotation }[] | undefined;
+  dynamicBindings?: CadComponent["dynamicBindings"] | undefined;
+  sourceMetadata?: CadComponent["sourceMetadata"] | undefined;
+  proceduralMesh?: CadComponent["proceduralMesh"] | undefined;
+  [key: string]: unknown;
+}
+
+export function extractCadComponents(daeVariables: readonly (RawDaeVariable | null | undefined)[]): CadComponent[] {
   const components: CadComponent[] = [];
   const portsByParent = new Map<string, { name: string; port: CadPortAnnotation }[]>();
 

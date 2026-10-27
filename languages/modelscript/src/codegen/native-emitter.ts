@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ModelScriptCstNode } from "../queries.js";
 import { WasmEmitter } from "./wasm-emitter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,7 +20,7 @@ export interface NativeCompileOptions {
 export class NativeEmitter {
   private wasmEmitter = new WasmEmitter();
 
-  async compileToNative(rootNode: any, options: NativeCompileOptions): Promise<string> {
+  async compileToNative(rootNode: ModelScriptCstNode, options: NativeCompileOptions): Promise<string> {
     const outBin = path.resolve(process.cwd(), options.outPath);
     const outDir = path.dirname(outBin);
     if (!fs.existsSync(outDir)) {

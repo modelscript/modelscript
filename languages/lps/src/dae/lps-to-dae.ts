@@ -71,7 +71,8 @@ export function lowerLpsToDae(model: LpsModel, options?: LpsDaeOptions): DAEBuil
   // 4. Emit Continuity Equations for each node:
   //    (V_node / c^2) * der(P_node) = sum(W_in) - sum(W_out) + W_source
   for (const node of model.nodes) {
-    const pVar = nodeMap.get(node.name)!;
+    const pVar = nodeMap.get(node.name);
+    if (pVar === undefined) continue;
     const derP = dae.addDer(pVar);
 
     // Node accumulator volume (approximate 50 m3 equivalent buffer)
@@ -109,7 +110,8 @@ export function lowerLpsToDae(model: LpsModel, options?: LpsDaeOptions): DAEBuil
   // 5. Emit Momentum Equations for each pipe:
   //    (L/A) * der(W) = (P_from - P_to) - (f * L / (2 * D * A^2 * rho)) * W * |W|
   for (const pipe of model.pipes) {
-    const wVar = pipeMap.get(pipe.name)!;
+    const wVar = pipeMap.get(pipe.name);
+    if (wVar === undefined) continue;
     const derW = dae.addDer(wVar);
 
     const area = (Math.PI / 4) * pipe.diameter * pipe.diameter;

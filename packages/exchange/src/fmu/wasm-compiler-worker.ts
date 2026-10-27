@@ -783,7 +783,7 @@ async function computeSha256(content: string): Promise<string> {
 // ── Client Interface ──────────────────────────────────────────────────────────
 
 export class CWasmCompilerClient {
-  private worker: any = null;
+  private worker: Worker | null = null;
   private blobUrl: string | null = null;
   private pendingRequests = new Map<
     string,
@@ -794,7 +794,7 @@ export class CWasmCompilerClient {
     }
   >();
 
-  private getOrCreateWorker(): any {
+  private getOrCreateWorker(): Worker | null {
     if (this.worker) return this.worker;
     if (typeof window === "undefined" || typeof Worker === "undefined") {
       return null;
@@ -1000,13 +1000,22 @@ export async function compileCToWasmInBrowser(
 // ── WASM FMU Runtime Runner ───────────────────────────────────────────────────
 
 export interface WasmFmuRunner {
-  instance?: WebAssembly.Instance | any;
+  instance?: WebAssembly.Instance | null | undefined;
   init: (startTime?: number) => void;
   step: (currentTime: number, stepSize: number, inputs?: Record<string, number>) => Record<string, number>;
   setVar: (nameOrIdx: string | number, val: number) => void;
   getVar: (nameOrIdx: string | number) => number;
   getTime: () => number;
   terminate: () => void;
+}
+
+interface WasmFmuExports {
+  _wasm_init?: (startTime: number) => void;
+  _wasm_do_step?: (stepSize: number) => void;
+  _wasm_get_var?: (idx: number) => number;
+  _wasm_set_var?: (idx: number, val: number) => void;
+  _wasm_get_time?: () => number;
+  fmi2DoStep?: (c: number, currentTime: number, stepSize: number, noSetPrior: number) => number;
 }
 
 /**
@@ -1025,9 +1034,12 @@ export async function createWasmFmuRunner(wasmBinary: Uint8Array, spec?: ParsedC
     },
   };
 
-  const instantiated = (await WebAssembly.instantiate(wasmBinary, importObject)) as any;
-  const instance: WebAssembly.Instance = instantiated.instance ?? instantiated;
-  const exports = instance.exports as any;
+  const instantiated = await WebAssembly.instantiate(wasmBinary, importObject);
+  const instance: WebAssembly.Instance =
+    "instance" in instantiated
+      ? (instantiated.instance as WebAssembly.Instance)
+      : (instantiated as WebAssembly.Instance);
+  const exports = instance.exports as unknown as WasmFmuExports;
 
   return {
     instance,

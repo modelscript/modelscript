@@ -575,8 +575,7 @@ export class ModelicaOptimizer {
         // Use Progressive Hedging (augmentedLagrangian is passed during PH iterations)
         if (!augmentedLagrangian) {
           const ph = new ProgressiveHedging();
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { randomVariables, ...baseProblem } = this.problem;
+          const { randomVariables: _randomVariables, ...baseProblem } = this.problem;
           const msProblem: MultiStageStochasticProblem = {
             stages: [
               { variables: this.problem.controls, ...(this.problem.method ? { method: this.problem.method } : {}) },
@@ -587,7 +586,7 @@ export class ModelicaOptimizer {
           return ph.solve(
             msProblem,
             (bp, overrides, aug) => {
-              const subSolver = new (this.constructor as any)(this.dae, {
+              const subSolver = new ModelicaOptimizer(this.dae, {
                 ...bp,
                 parameterOverrides: overrides,
               });
@@ -601,15 +600,18 @@ export class ModelicaOptimizer {
         // Only run SAA if we're not already inside a PH subproblem loop (augmentedLagrangian is undefined)
         if (!augmentedLagrangian) {
           const saa = new SampleAverageApproximation();
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { randomVariables, monteCarloOptions, ...baseProblem } = this.problem;
+          const {
+            randomVariables: _randomVariables,
+            monteCarloOptions: _monteCarloOptions,
+            ...baseProblem
+          } = this.problem;
           const sp: StochasticProblem = {
             baseProblem,
             randomVariables: this.problem.randomVariables,
             ...(this.problem.monteCarloOptions ? { monteCarloOptions: this.problem.monteCarloOptions } : {}),
           };
           return saa.solve(sp, (bp, overrides) => {
-            const subSolver = new (this.constructor as any)(this.dae, {
+            const subSolver = new ModelicaOptimizer(this.dae, {
               ...bp,
               parameterOverrides: overrides,
             });

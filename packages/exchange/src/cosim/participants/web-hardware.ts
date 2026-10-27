@@ -52,6 +52,13 @@ export interface WebSerialOptions {
     | undefined;
 }
 
+interface SerialPortLike {
+  open(options: { baudRate: number }): Promise<void>;
+  close(): Promise<void>;
+  readable: ReadableStream<Uint8Array>;
+  writable: WritableStream<Uint8Array>;
+}
+
 /**
  * WebSerial co-simulation participant.
  * Connects physical microcontrollers or CAN bus adapters to the Modelica plant model.
@@ -68,7 +75,7 @@ export class WebSerialParticipant implements CoSimParticipant {
 
   // Browser Serial handles
 
-  private port: any = null;
+  private port: SerialPortLike | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private customStream?: WebSerialOptions["customStream"] | undefined;
@@ -135,7 +142,7 @@ export class WebSerialParticipant implements CoSimParticipant {
     // Connect via navigator.serial if available in browser
     if (typeof navigator !== "undefined" && "serial" in navigator) {
       try {
-        const serial = (navigator as any).serial;
+        const serial = (navigator as unknown as { serial: { requestPort(): Promise<SerialPortLike> } }).serial;
         this.port = await serial.requestPort();
         await this.port.open({ baudRate: this.baudRate });
         this.reader = this.port.readable.getReader();

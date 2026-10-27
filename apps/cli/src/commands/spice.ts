@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 interface SpiceSimulateArgs {
   file: string;
@@ -62,7 +62,7 @@ const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         alias: "o",
         description: "Write results to output file",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceSimulateArgs>,
   handler: async (args) => {
     const { parseSpice, solveOp, solveTran, solveAc } = await import("@modelscript/spice");
 
@@ -126,7 +126,7 @@ const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         }
       }
     } else if (mode === "tran") {
-      const opts: any = {};
+      const opts: NonNullable<Parameters<typeof solveTran>[1]> = {};
       if (args.tstep !== undefined) opts.tstep = args.tstep;
       if (args.tstop !== undefined) opts.tstop = args.tstop;
 
@@ -180,7 +180,7 @@ const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
       const result = solveAc(circuit);
 
       if (args.format === "json") {
-        const voltagesObj: Record<string, any> = {};
+        const voltagesObj: Record<string, unknown> = {};
         for (const [k, v] of result.nodeVoltages.entries()) {
           voltagesObj[k] = v;
         }
@@ -220,7 +220,7 @@ const SpiceLintCommand: CommandModule<{}, SpiceLintArgs> = {
         description: "Output format",
         choices: ["pretty", "json"],
         default: "pretty",
-      }) as any,
+      }) as unknown as Argv<SpiceLintArgs>,
   handler: async (args) => {
     const { parseSpice, lintSpiceCircuit } = await import("@modelscript/spice");
 
@@ -234,8 +234,9 @@ const SpiceLintCommand: CommandModule<{}, SpiceLintArgs> = {
     let circuit;
     try {
       circuit = parseSpice(content);
-    } catch (err: any) {
-      console.error(`\x1b[31mFatal SPICE Syntax Error:\x1b[0m ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\x1b[31mFatal SPICE Syntax Error:\x1b[0m ${msg}`);
       process.exit(1);
     }
 
@@ -285,7 +286,7 @@ const SpiceToModelicaCommand: CommandModule<{}, SpiceToModelicaArgs> = {
         alias: "o",
         description: "Output .mo file path",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceToModelicaArgs>,
   handler: async (args) => {
     const { parseSpice, spiceToModelica } = await import("@modelscript/spice");
 
@@ -322,7 +323,7 @@ const SpiceToEcadCommand: CommandModule<{}, SpiceToEcadArgs> = {
         alias: "o",
         description: "Output JSON file path",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceToEcadArgs>,
   handler: async (args) => {
     const { parseSpice, spiceToNetlistGraph } = await import("@modelscript/spice");
 
@@ -378,7 +379,7 @@ const SpiceSyncCommand: CommandModule<{}, SpiceSyncArgs> = {
         alias: "o",
         description: "Output file path (default: in-place)",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceSyncArgs>,
   handler: async (args) => {
     const { synchronizeModelicaToSpice } = await import("@modelscript/spice");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -393,8 +394,10 @@ const SpiceSyncCommand: CommandModule<{}, SpiceSyncArgs> = {
     }
     const content = fs.readFileSync(filePath, "utf-8");
     const moContent = fs.readFileSync(moPath, "utf-8");
-    const strategy = args.strategy ?? "target-wins";
-    const result = synchronizeModelicaToSpice(content, moContent, { strategy: strategy as any });
+    const strategy = (args.strategy ?? "target-wins") as NonNullable<
+      Parameters<typeof synchronizeModelicaToSpice>[2]
+    >["strategy"];
+    const result = synchronizeModelicaToSpice(content, moContent, { strategy });
 
     console.log(
       `[SPICE Sync] Reconciled ${result.changes.length} change(s) from '${args.fromModelica}' into '${args.file}':`,
@@ -441,7 +444,7 @@ const SpiceInspectCommand: CommandModule<{}, SpiceInspectArgs> = {
         alias: "o",
         description: "Write summary to output JSON file",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceInspectArgs>,
   handler: async (args) => {
     const { parseSpice } = await import("@modelscript/spice");
 
@@ -528,7 +531,7 @@ const SpiceToDaeCommand: CommandModule<{}, SpiceToDaeArgs> = {
         alias: "o",
         description: "Output JSON file for DAE metadata",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceToDaeArgs>,
   handler: async (args) => {
     const { parseSpice, lowerSpiceToDae } = await import("@modelscript/spice");
 
@@ -594,7 +597,7 @@ const SpiceDiagramCommand: CommandModule<{}, SpiceDiagramArgs> = {
         alias: "o",
         description: "Output file path (e.g., schematic.svg or graph.json)",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<SpiceDiagramArgs>,
   handler: async (args) => {
     const { parseSpice, renderSpiceSvg, buildSpiceDiagram } = await import("@modelscript/spice");
 
@@ -640,7 +643,7 @@ export const Spice: CommandModule = {
       .demandCommand(
         1,
         "Please specify an action (simulate, lint, inspect, summary, to-modelica, to-ecad, to-dae, diagram, or sync)",
-      ) as any;
+      );
   },
   handler: () => {},
 };

@@ -135,13 +135,13 @@ export class AffineForm {
       newTerms.set(sym, (newTerms.get(sym) ?? 0) + this.c0 * coef);
     }
 
-    let radThis = this.r;
+    let radThis = 0;
     for (const coef of this.terms.values()) radThis += Math.abs(coef);
-    let radOther = other.r;
+    let radOther = 0;
     for (const coef of other.terms.values()) radOther += Math.abs(coef);
 
-    const remainder = radThis * radOther + Math.abs(this.c0) * other.r + Math.abs(other.c0) * this.r;
-    return new AffineForm(newC0, newTerms, this.r * other.r + remainder);
+    const newR = Math.abs(this.c0) * other.r + Math.abs(other.c0) * this.r + (radThis + this.r) * (radOther + other.r);
+    return new AffineForm(newC0, newTerms, newR);
   }
 }
 

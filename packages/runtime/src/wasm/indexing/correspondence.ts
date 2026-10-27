@@ -61,6 +61,20 @@ export class CorrespondenceIndex {
     let key: u64 = sourceNodeId as u64;
     let existingSlotPlusOne = this.sourceToSlot.get(key);
 
+    if (targetNodeId != 0) {
+      let prevTargetSlotPlusOne = this.targetToSlot.get(targetNodeId as u64);
+      if (prevTargetSlotPlusOne != 0 && prevTargetSlotPlusOne != existingSlotPlusOne) {
+        let prevTargetSlot = prevTargetSlotPlusOne - 1;
+        if (!this.isRemoved(prevTargetSlot)) {
+          let prevSource = this.data.get(prevTargetSlot * CORR_STRIDE + CORR_SOURCE);
+          if (prevSource != 0 && prevSource != sourceNodeId) {
+            this.sourceToSlot.set(prevSource as u64, 0);
+          }
+          this.markRemoved(prevTargetSlot);
+        }
+      }
+    }
+
     let slot: u32;
     if (existingSlotPlusOne != 0) {
       slot = existingSlotPlusOne - 1;
@@ -68,12 +82,12 @@ export class CorrespondenceIndex {
       let oldTarget = this.data.get(offsetOld + CORR_TARGET);
       if (oldTarget != targetNodeId) {
         if (oldTarget != 0) this.targetToSlot.set(oldTarget as u64, 0);
-        this.targetToSlot.set(targetNodeId as u64, slot + 1);
+        if (targetNodeId != 0) this.targetToSlot.set(targetNodeId as u64, slot + 1);
       }
     } else {
       slot = this.count++;
       this.sourceToSlot.set(key, slot + 1);
-      this.targetToSlot.set(targetNodeId as u64, slot + 1);
+      if (targetNodeId != 0) this.targetToSlot.set(targetNodeId as u64, slot + 1);
     }
 
     let offset = slot * CORR_STRIDE;
@@ -340,8 +354,16 @@ export function createCorrespondenceIndex(initialCapacity: u32 = 1024): usize {
   return ptr;
 }
 
-export function corr_addLink(ptr: usize, sourceNodeId: u32, targetNodeId: u32, ruleId: u16, flags: u16, revision: u32): u32 {
-  return changetype<CorrespondenceIndex>(ptr).addLink(sourceNodeId, targetNodeId, ruleId, flags, revision);
+export function corr_addLink(
+  ptr: usize,
+  sourceNodeId: u32,
+  targetNodeId: u32,
+  ruleId: u16,
+  flags: u16,
+  revision: u32,
+  parentSlot: u32 = CORR_NO_PARENT,
+): u32 {
+  return changetype<CorrespondenceIndex>(ptr).addLink(sourceNodeId, targetNodeId, ruleId, flags, revision, parentSlot);
 }
 
 export function corr_findBySource(ptr: usize, sourceNodeId: u32): u32 {

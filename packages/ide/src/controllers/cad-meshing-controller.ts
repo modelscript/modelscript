@@ -9,6 +9,13 @@ import { CadViewerPanel } from "../cad-viewer-panel.js";
 import { GCodeEditorProvider } from "../gcode-editor-provider.js";
 import { StepEditorProvider } from "../step-editor-provider.js";
 
+type UriCommandArg = vscode.Uri | { uri?: vscode.Uri | string | undefined } | undefined;
+
+interface ScadExecuteResponse {
+  step?: string | undefined;
+  components?: unknown[] | undefined;
+}
+
 export function registerCadAndMeshingCommands(
   context: vscode.ExtensionContext,
   client?: LanguageClient,
@@ -45,7 +52,7 @@ export function registerCadAndMeshingCommands(
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.previewCsg", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.previewCsg", async (args?: UriCommandArg) => {
       let targetUri: vscode.Uri | undefined;
       if (args instanceof vscode.Uri) {
         targetUri = args;
@@ -81,7 +88,7 @@ export function registerCadAndMeshingCommands(
           docText = new TextDecoder().decode(raw);
         }
 
-        const res = await client?.sendRequest<any>("modelscript/executeAction", {
+        const res = await client?.sendRequest<ScadExecuteResponse>("modelscript/executeAction", {
           actionId: "preview_csg",
           uri: targetUri.toString(),
           languageId: "scad",
@@ -104,16 +111,17 @@ export function registerCadAndMeshingCommands(
         } else {
           vscode.window.showWarningMessage("OpenSCAD model evaluated, but produced no 3D solid geometry.");
         }
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to preview OpenSCAD 3D model: ${err?.message ?? err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to preview OpenSCAD 3D model: ${msg}`);
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.scad.preview_csg", (args?: any) =>
+    vscode.commands.registerCommand("modelscript.scad.preview_csg", (args?: UriCommandArg) =>
       vscode.commands.executeCommand("modelscript.previewCsg", args),
     ),
 
-    vscode.commands.registerCommand("modelscript.scad.exportStep", async (args?: any) => {
+    vscode.commands.registerCommand("modelscript.scad.exportStep", async (args?: UriCommandArg) => {
       let targetUri: vscode.Uri | undefined;
       if (args instanceof vscode.Uri) {
         targetUri = args;
@@ -138,7 +146,7 @@ export function registerCadAndMeshingCommands(
           const raw = await vscode.workspace.fs.readFile(targetUri);
           docText = new TextDecoder().decode(raw);
         }
-        const res = await client?.sendRequest<any>("modelscript/executeAction", {
+        const res = await client?.sendRequest<ScadExecuteResponse>("modelscript/executeAction", {
           actionId: "export_step",
           uri: targetUri.toString(),
           languageId: "scad",
@@ -155,12 +163,13 @@ export function registerCadAndMeshingCommands(
             vscode.ViewColumn.Beside,
           );
         }
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to export STEP CAD: ${err?.message ?? err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to export STEP CAD: ${msg}`);
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.scad.export_step", (args?: any) =>
+    vscode.commands.registerCommand("modelscript.scad.export_step", (args?: UriCommandArg) =>
       vscode.commands.executeCommand("modelscript.scad.exportStep", args),
     ),
 
@@ -366,38 +375,41 @@ DATA;
       }
     }),
 
-    vscode.commands.registerCommand("modelscript.focusCadPart", async (arg?: any) => {
-      let partName = "";
-      if (typeof arg === "string") {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(arg));
-          partName = parsed.partName || arg;
-        } catch {
-          partName = arg;
+    vscode.commands.registerCommand(
+      "modelscript.focusCadPart",
+      async (arg?: string | { partName?: string | undefined }) => {
+        let partName = "";
+        if (typeof arg === "string") {
+          try {
+            const parsed = JSON.parse(decodeURIComponent(arg)) as { partName?: string | undefined };
+            partName = parsed.partName || arg;
+          } catch {
+            partName = arg;
+          }
+        } else if (arg && typeof arg === "object") {
+          partName = arg.partName || "";
         }
-      } else if (arg && typeof arg === "object") {
-        partName = arg.partName || "";
-      }
 
-      if (!partName) return;
+        if (!partName) return;
 
-      const { MultiBodyAnimationPanel } = await import("../multibody-animation-panel.js");
-      if (MultiBodyAnimationPanel.currentPanel) {
-        MultiBodyAnimationPanel.currentPanel.reveal();
-        MultiBodyAnimationPanel.currentPanel.focusPart(partName);
-        return;
-      }
+        const { MultiBodyAnimationPanel } = await import("../multibody-animation-panel.js");
+        if (MultiBodyAnimationPanel.currentPanel) {
+          MultiBodyAnimationPanel.currentPanel.reveal();
+          MultiBodyAnimationPanel.currentPanel.focusPart(partName);
+          return;
+        }
 
-      if (CadViewerPanel.currentPanel) {
-        CadViewerPanel.currentPanel.reveal();
-        CadViewerPanel.currentPanel.focusPart(partName);
-        return;
-      }
+        if (CadViewerPanel.currentPanel) {
+          CadViewerPanel.currentPanel.reveal();
+          CadViewerPanel.currentPanel.focusPart(partName);
+          return;
+        }
 
-      if (client && context.extensionUri) {
-        CadViewerPanel.createOrShow(context.extensionUri, client, partName);
-      }
-    }),
+        if (client && context.extensionUri) {
+          CadViewerPanel.createOrShow(context.extensionUri, client, partName);
+        }
+      },
+    ),
 
     vscode.commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
       let targetUri = uri;
@@ -563,8 +575,9 @@ end ${studyName};
               await vscode.window.showTextDocument(doc);
             }
           });
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to materialize FEA deck: ${err.message || err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to materialize FEA deck: ${msg}`);
       }
     }),
 
@@ -596,8 +609,9 @@ end ${studyName};
               await vscode.window.showTextDocument(doc);
             }
           });
-      } catch (err: any) {
-        vscode.window.showErrorMessage(`Failed to materialize CFD config: ${err.message || err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to materialize CFD config: ${msg}`);
       }
     }),
   ];

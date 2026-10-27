@@ -103,7 +103,10 @@ export class CosimMqttClient {
       }
 
       if (this.streamBuilder) {
-        this.client = mqtt.connect({ ...opts, builder: this.streamBuilder } as any);
+        this.client = mqtt.connect({
+          ...opts,
+          builder: this.streamBuilder,
+        } as unknown as Parameters<typeof mqtt.connect>[0]);
       } else if (this.brokerUrl) {
         this.client = mqtt.connect(this.brokerUrl, opts);
       } else {

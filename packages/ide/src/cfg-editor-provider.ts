@@ -33,7 +33,7 @@ export type CfgGeometryPart = CfdGeometryPart;
 export type CfgGeometryPayload = CfdGeometryPayload;
 
 export interface CfgPayload {
-  directives: Record<string, any>;
+  directives: Record<string, string>;
   markers: { name: string; type: string; options: (string | number)[] }[];
   meshFilename?: string | undefined;
   geometry?: CfdGeometryPayload | undefined;
@@ -43,6 +43,27 @@ export interface CfgPayload {
     reynoldsNumber?: number | undefined;
     freestreamVelocity?: number | undefined;
   };
+}
+
+interface ScadCadComponent {
+  name?: string | undefined;
+  proceduralMesh?:
+    | {
+        vertices?: unknown;
+        indices?: unknown;
+        normals?: unknown;
+        color?: number[] | [number, number, number, number] | undefined;
+      }
+    | undefined;
+  cad?: { position?: number[] | [number, number, number] | undefined } | undefined;
+}
+
+interface StepMeshEntry {
+  name?: string | undefined;
+  vertices?: unknown;
+  indices?: unknown;
+  normals?: unknown;
+  color?: number[] | undefined;
 }
 
 function toNumberArray(arr: unknown): number[] {
@@ -82,7 +103,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
 
   private async extractScadGeometry(cadUri: vscode.Uri): Promise<CfgGeometryPayload | null> {
     const fileName = cadUri.path.split("/").pop() || "model.scad";
-    let components: any[] = [];
+    let components: ScadCadComponent[] = [];
 
     try {
       const rawBytes = await vscode.workspace.fs.readFile(cadUri);
@@ -97,14 +118,14 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
         // Node fallback
       }
       await getScadParser(wasmBytes);
-      components = await extractScadCadComponents(source, undefined, cadUri.toString());
+      components = (await extractScadCadComponents(source, undefined, cadUri.toString())) as ScadCadComponent[];
     } catch (err) {
       console.warn("[CfgEditorProvider] Direct SCAD evaluation fallback:", err);
     }
 
     if ((!components || components.length === 0) && this.client) {
       try {
-        const lspComps = await this.client.sendRequest<any[]>("modelscript/getCadComponents", {
+        const lspComps = await this.client.sendRequest<ScadCadComponent[]>("modelscript/getCadComponents", {
           uri: cadUri.toString(),
         });
         if (Array.isArray(lspComps)) {
@@ -195,7 +216,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
       try {
         const rawBytes = await vscode.workspace.fs.readFile(cadUri);
         const documentText = new TextDecoder().decode(rawBytes);
-        const stepMeshes = await this.client.sendRequest<any[]>("modelscript/getStepMeshes", {
+        const stepMeshes = await this.client.sendRequest<StepMeshEntry[]>("modelscript/getStepMeshes", {
           uri: cadUri.toString(),
           documentText,
         });
@@ -426,7 +447,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
         const data = parseSu2Config(rawCfg);
         currentParsedData = data;
 
-        const directivesObj: Record<string, any> = {};
+        const directivesObj: Record<string, string> = {};
         for (const [k, v] of data.rawDirectives.entries()) {
           directivesObj[k] = v;
         }
@@ -474,11 +495,14 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
           webviewPanel.webview.postMessage({ type: "cfgData", data: payload });
           webviewPanel.webview.postMessage({ type: "setLoading", data: false });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn("[CfgEditorProvider] Failed to parse config:", err);
         if (!disposed) {
           webviewPanel.webview.postMessage({ type: "setLoading", data: false });
-          webviewPanel.webview.postMessage({ type: "error", message: err.message || String(err) });
+          webviewPanel.webview.postMessage({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     };
@@ -557,8 +581,8 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
 
             webviewPanel.webview.postMessage({ type: "cfdResults", data: cfdPayload });
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`CFD Preview failed: ${err.message || err}`);
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(`CFD Preview failed: ${err instanceof Error ? err.message : String(err)}`);
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           }
           break;
@@ -611,8 +635,11 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
                   webviewPanel.webview.postMessage({ type: "cfdResults", data: cfdPayload });
                 }
                 vscode.window.showInformationMessage(`SU2 job #${jobId} completed. Streamed results to 3D viewport.`);
-              } catch (fetchErr: any) {
-                console.warn(`[cfgEditorProvider] Could not load mesh payload for job #${jobId}:`, fetchErr?.message);
+              } catch (fetchErr: unknown) {
+                console.warn(
+                  `[cfgEditorProvider] Could not load mesh payload for job #${jobId}:`,
+                  fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+                );
               } finally {
                 if (!disposed) {
                   webviewPanel.webview.postMessage({ type: "setLoading", data: false });
@@ -625,8 +652,9 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
               webviewPanel.webview.postMessage({ type: "telemetryEvent", data: event });
 
               if (
-                event?.type === "phase" &&
-                (event.phase === "Completed" || event.phase.toLowerCase().includes("finish"))
+                event?.["type"] === "phase" &&
+                (event["phase"] === "Completed" ||
+                  (typeof event["phase"] === "string" && event["phase"].toLowerCase().includes("finish")))
               ) {
                 loadResults();
               }
@@ -660,8 +688,10 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
               clearInterval(pollInterval);
               clearTimeout(pollTimeout);
             });
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Cloud CFD dispatch failed: ${err.message || err}`);
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(
+              `Cloud CFD dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           }
           break;
@@ -832,8 +862,10 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
                 } else {
                   vscode.window.showInformationMessage(msg);
                 }
-              } catch (err: any) {
-                vscode.window.showErrorMessage(`Aerodynamic ROM training failed: ${err.message || err}`);
+              } catch (err: unknown) {
+                vscode.window.showErrorMessage(
+                  `Aerodynamic ROM training failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
               }
             },
           );
@@ -871,7 +903,12 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
           let completed = 0;
           const total = sweepCfg.sampleCount || 10;
           const sweepId = `sweep_${Date.now()}`;
-          const runs: any[] = [];
+          const runs: {
+            runIndex: number;
+            status: string;
+            parameters: { aoa: number; v_inlet: number };
+            scalars?: { liftCoefficient: number; dragCoefficient: number } | undefined;
+          }[] = [];
           for (let i = 0; i < total; i++) {
             const frac = total > 1 ? i / (total - 1) : 0;
             const aoaDeg = -2.0 + frac * 14.0;
@@ -902,7 +939,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
               return;
             }
             if (completed < total) {
-              const run = runs[completed];
+              const run = runs[completed]!;
               const aoaRad = ((run.parameters?.aoa ?? completed * 1.5) * Math.PI) / 180;
               const vRatio = (run.parameters?.v_inlet ?? 25.0) / 25.0;
               const prandtlGlauert = 1 / Math.sqrt(Math.max(0.2, 1 - Math.min(0.85, baseMach * vRatio) ** 2));
@@ -945,8 +982,10 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
             const moUri = vscode.Uri.joinPath(rootUri, "surrogates", `${mName}.mo`);
             try {
               await vscode.commands.executeCommand("vscode.open", moUri);
-            } catch (e: any) {
-              vscode.window.showErrorMessage(`Failed to open ${moUri.path}: ${e.message || e}`);
+            } catch (e: unknown) {
+              vscode.window.showErrorMessage(
+                `Failed to open ${moUri.path}: ${e instanceof Error ? e.message : String(e)}`,
+              );
             }
           }
           break;

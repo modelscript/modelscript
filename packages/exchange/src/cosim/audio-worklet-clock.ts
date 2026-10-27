@@ -22,14 +22,44 @@ export interface AudioClockOptions {
   onTick: (simTime: number, actualElapsedMs: number) => Promise<void> | void;
 }
 
+interface BrowserScriptProcessorNode {
+  onaudioprocess: ((e: unknown) => Promise<void> | void) | null;
+  connect(destination: unknown): void;
+  disconnect(): void;
+}
+
+interface BrowserGainNode {
+  gain: { value: number };
+  connect(destination: unknown): void;
+}
+
+interface BrowserAudioContext {
+  state: string;
+  sampleRate: number;
+  destination: unknown;
+  resume(): Promise<void>;
+  close(): Promise<void> | void;
+  createScriptProcessor(
+    bufferSize: number,
+    numberOfInputChannels: number,
+    numberOfOutputChannels: number,
+  ): BrowserScriptProcessorNode;
+  createGain(): BrowserGainNode;
+}
+
+interface WindowWithAudioContext {
+  AudioContext?: new () => BrowserAudioContext;
+  webkitAudioContext?: new () => BrowserAudioContext;
+}
+
 export class AudioWorkletClock {
   private stepSize: number;
   private realtimeFactor: number;
   private onTick: AudioClockOptions["onTick"];
 
-  private audioCtx: any = null;
+  private audioCtx: BrowserAudioContext | null = null;
 
-  private timerNode: any = null;
+  private timerNode: BrowserScriptProcessorNode | null = null;
   private isRunning = false;
   private currentSimTime = 0;
   private lastTickWallMs = 0;
@@ -49,13 +79,11 @@ export class AudioWorkletClock {
     this.isRunning = true;
     this.lastTickWallMs = performance.now();
 
-    const hasAudio =
-      typeof window !== "undefined" &&
-      (Boolean((window as any).AudioContext) || Boolean((window as any).webkitAudioContext));
+    const win = typeof window !== "undefined" ? (window as unknown as WindowWithAudioContext) : undefined;
+    const AudioContextClass = win?.AudioContext || win?.webkitAudioContext;
 
-    if (hasAudio) {
+    if (AudioContextClass) {
       try {
-        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         this.audioCtx = new AudioContextClass();
         if (this.audioCtx.state === "suspended") {
           await this.audioCtx.resume();
@@ -72,7 +100,7 @@ export class AudioWorkletClock {
           Math.round(this.audioCtx.sampleRate * (this.stepSize / this.realtimeFactor)),
         );
 
-        this.timerNode.onaudioprocess = async (_e: any) => {
+        this.timerNode.onaudioprocess = async (_e: unknown) => {
           if (!this.isRunning) return;
           sampleCounter += bufferSize;
 

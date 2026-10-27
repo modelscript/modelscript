@@ -33,7 +33,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
   /** Post simulation telemetry data to all active diagram webviews for a URI */
 
-  public static postSimulationData(uri: string, simData: any): void {
+  public static postSimulationData(uri: string, simData: unknown): void {
     if (!DiagramEditorProvider.instance) return;
     DiagramEditorProvider.instance.postToActiveWebviews({
       type: "simulationData",
@@ -63,7 +63,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
   /** Post a message to all active diagram webviews */
 
-  public postToActiveWebviews(message: any): void {
+  public postToActiveWebviews(message: unknown): void {
     for (const panel of this.activeWebviews) {
       panel.webview.postMessage(message);
     }
@@ -71,7 +71,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
   /** Post a message to all active diagram webviews except the sender */
 
-  public postToActiveWebviewsExcept(sourcePanel: vscode.WebviewPanel, message: any): void {
+  public postToActiveWebviewsExcept(sourcePanel: vscode.WebviewPanel, message: unknown): void {
     for (const panel of this.activeWebviews) {
       if (panel !== sourcePanel) {
         panel.webview.postMessage(message);
@@ -202,7 +202,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.onDidReceiveMessage(
       (message) => {
         try {
-          let actions: any[] | undefined;
+          let actions: ({ type: string } & Record<string, unknown>)[] | undefined;
 
           switch (message.type) {
             case "move":
@@ -327,7 +327,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
               const isOptimistic = actions?.every(
-                (a: any) =>
+                (a) =>
                   a.type === "move" ||
                   a.type === "resize" ||
                   a.type === "rotate" ||
@@ -337,7 +337,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   a.type === "updateProperty",
               );
               if (!isOptimistic) {
-                const hasLocalPlaceholder = actions?.some((a: any) => a.type === "addComponent");
+                const hasLocalPlaceholder = actions?.some((a) => a.type === "addComponent");
                 if (hasLocalPlaceholder) {
                   isAddComponentPending = true;
                 } else {
@@ -443,7 +443,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             // change. They can be applied optimistically without showing a spinner
             // or triggering a diagram re-render.
             const isOptimisticOnly = actions.every(
-              (a: any) =>
+              (a) =>
                 a.type === "move" ||
                 a.type === "resize" ||
                 a.type === "rotate" ||
@@ -453,11 +453,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 a.type === "updateProperty",
             );
 
+            interface ApplyEditsResponse {
+              sidecarUri?: string | undefined;
+              sidecarContent?: string | undefined;
+              edits?: vscode.TextEdit[] | undefined;
+              renderHint?: "none" | "immediate" | "debounced" | null | undefined;
+            }
+
             if (isOptimisticOnly) {
               // ── Optimistic path: silent text update, no spinner, no re-render ──
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
-                  const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
+                  const response = await this.client.sendRequest<ApplyEditsResponse | null>(DiagramMethods.applyEdits, {
                     uri: uriString,
                     seq: 1,
                     actions,
@@ -475,7 +482,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     }
                   }
 
-                  if (response?.edits?.length > 0) {
+                  if (response?.edits && response.edits.length > 0) {
                     // Mark as optimistic so onDidChangeTextDocument skips re-render
                     pendingRenderHint = "none";
                     lastOptimisticEditTime = Date.now();
@@ -497,12 +504,12 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             } else {
               // ── Semantic path: full re-render cycle with spinner ──
               diagramRequestNonce++; // Cancel incoming stale diagramData
-              if (actions.some((a: any) => a.type === "addComponent")) {
+              if (actions.some((a) => a.type === "addComponent")) {
                 isAddComponentPending = true;
               }
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
-                  const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
+                  const response = await this.client.sendRequest<ApplyEditsResponse | null>(DiagramMethods.applyEdits, {
                     uri: uriString,
                     seq: 1,
                     actions,
@@ -523,7 +530,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   }
 
                   if (response && response.edits && response.edits.length > 0) {
-                    pendingRenderHint = response.renderHint;
+                    pendingRenderHint = response.renderHint ?? null;
                     await applyTextEdits(uriString, response.edits);
                     // Wait for the document change event to fire and consume the render hint
                     await waitForDocumentChange();
@@ -664,15 +671,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         }
       }
 
-      const data = await this.client.sendRequest(DiagramMethods.getData, {
-        uri,
-        diagramType,
-        className,
-        sidecarContent,
-      });
+      const data = await this.client.sendRequest<{ isLoading?: boolean | undefined } & Record<string, unknown>>(
+        DiagramMethods.getData,
+        {
+          uri,
+          diagramType,
+          className,
+          sidecarContent,
+        },
+      );
       if (cancelToken?.isCanceled()) return;
       if (data) {
-        if ((data as any).isLoading) {
+        if (data.isLoading) {
           webviewPanel.webview.postMessage({ type: "loading" });
           setTimeout(() => {
             if (!cancelToken?.isCanceled()) {

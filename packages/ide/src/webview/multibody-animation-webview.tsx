@@ -2,15 +2,35 @@
 
 import { ContactShadows, GizmoHelper, GizmoViewport, OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
-import { AnimationController } from "./cad-viewer/animation-controller.js";
+import { AnimationController, type DynamicDeformationConfig } from "./cad-viewer/animation-controller.js";
 import { AnimationTimeline } from "./cad-viewer/animation-timeline.js";
+import type { CadComponent } from "./cad-viewer/cad-viewer.js";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations.js";
 import type { StepMeshPayload } from "./step-viewer/step-viewer.js";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
+
+interface RawStepMesh {
+  id: number;
+  name: string;
+  type: string;
+  color?: [number, number, number] | undefined;
+  vertices?: Float32Array | Record<string, number> | number[] | undefined;
+  normals?: Float32Array | Record<string, number> | number[] | undefined;
+  indices?: Uint32Array | Record<string, number> | number[] | undefined;
+  userData?: { name?: string | undefined } | undefined;
+}
 
 function AnimatedBody({
   mesh,
@@ -51,10 +71,11 @@ function AnimatedBody({
 
     // Apply Dynamic Modal Mesh Morphing
 
-    const modalDisp = (animationController as any).getModalDisplacements?.(
-      bindingName,
-      Math.floor(initialVertices.length / 3),
-    );
+    const modalDisp = (
+      animationController as AnimationController & {
+        getModalDisplacements?: (name: string, vertexCount: number) => Float32Array | number[] | undefined;
+      }
+    ).getModalDisplacements?.(bindingName, Math.floor(initialVertices.length / 3));
     if (modalDisp && geometry.attributes["position"]) {
       const posAttr = geometry.attributes["position"] as THREE.BufferAttribute;
       const arr = posAttr.array as Float32Array;
@@ -198,7 +219,7 @@ function SceneContents({
 }) {
   const { camera } = useThree();
 
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<React.ComponentRef<typeof OrbitControls> | null>(null);
 
   useEffect(() => {
     let minX = Infinity,
@@ -238,7 +259,11 @@ function SceneContents({
     if (!focusedPartName) return;
     const target = focusedPartName.toLowerCase();
     const mesh = meshes.find(
-      (m) => m.name.toLowerCase().includes(target) || ((m as any).userData?.name || "").toLowerCase().includes(target),
+      (m) =>
+        m.name.toLowerCase().includes(target) ||
+        ((m as StepMeshPayload & { userData?: { name?: string | undefined } | undefined }).userData?.name || "")
+          .toLowerCase()
+          .includes(target),
     );
     if (!mesh) return;
 
@@ -335,7 +360,7 @@ function App() {
 
         // 1. Load Meshes
 
-        const rawMeshes: StepMeshPayload[] = (stepMeshes || []).map((m: any) => ({
+        const rawMeshes: StepMeshPayload[] = ((stepMeshes as RawStepMesh[]) || []).map((m) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),
           normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(Object.values(m.normals || {})),
@@ -360,13 +385,13 @@ function App() {
 
         // We map dynamicPosition, dynamicRotation, dynamicScale, and dynamicDeformation to AnimationController bindings.
 
-        const bindings = parsedCad.map((c: any) => {
+        const bindings = parsedCad.map((c: CadComponent & { deformation?: DynamicDeformationConfig | undefined }) => {
           const compBindings: { property: "position" | "rotation" | "scale"; index: number; variable: string }[] = [];
 
           if (c.cad.dynamicPosition) {
             // dynamicPosition is something like "{body1.frame_a.r_0[1], body1.frame_a.r_0[2], body1.frame_a.r_0[3]}"
             const match = c.cad.dynamicPosition.match(/\{([^,]+),\s*([^,]+),\s*([^}]+)\}/);
-            if (match) {
+            if (match && match[1] && match[2] && match[3]) {
               compBindings.push({ property: "position", index: 0, variable: match[1].trim() });
               compBindings.push({ property: "position", index: 1, variable: match[2].trim() });
               compBindings.push({ property: "position", index: 2, variable: match[3].trim() });
@@ -389,7 +414,7 @@ function App() {
 
           if (c.cad.dynamicScale) {
             const match = c.cad.dynamicScale.match(/\{([^,]+),\s*([^,]+),\s*([^}]+)\}/);
-            if (match) {
+            if (match && match[1] && match[2] && match[3]) {
               compBindings.push({ property: "scale", index: 0, variable: match[1].trim() });
               compBindings.push({ property: "scale", index: 1, variable: match[2].trim() });
               compBindings.push({ property: "scale", index: 2, variable: match[3].trim() });
@@ -400,14 +425,14 @@ function App() {
             }
           }
 
-          let deformationConfig: any = c.deformation;
+          let deformationConfig: DynamicDeformationConfig | undefined = c.deformation;
           if (!deformationConfig && c.cad?.dynamicDeformation) {
             const volMatch = c.cad.dynamicDeformation.match(/V=([a-zA-Z0-9_.]+)/);
             const v0Match = c.cad.dynamicDeformation.match(/V0=([0-9.eE+-]+)/);
             deformationConfig = {
               mode: "volume_radial",
-              volumeVariable: volMatch ? volMatch[1] : c.cad.dynamicDeformation.trim(),
-              referenceVolume: v0Match ? parseFloat(v0Match[1]) : 1.0,
+              volumeVariable: volMatch?.[1] ? volMatch[1] : c.cad.dynamicDeformation.trim(),
+              referenceVolume: v0Match?.[1] ? parseFloat(v0Match[1]) : 1.0,
             };
           }
 
@@ -439,8 +464,11 @@ function App() {
         setFocusedPartName(message.partName);
 
         const found = meshes.find(
-          (m: any) =>
-            (m.name || "").toLowerCase().includes(target) || (m.userData?.name || "").toLowerCase().includes(target),
+          (m) =>
+            (m.name || "").toLowerCase().includes(target) ||
+            ((m as StepMeshPayload & { userData?: { name?: string | undefined } | undefined }).userData?.name || "")
+              .toLowerCase()
+              .includes(target),
         );
         if (found) {
           setSelectedId(found.id);

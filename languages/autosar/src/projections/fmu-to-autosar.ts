@@ -109,7 +109,7 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
   ];
 
   inputs.forEach((inp, idx) => {
-    const port = rPorts[idx]!;
+    const port = rPorts[idx] ?? "";
     rteLines.push(`  const ${sanitizeAutosarIdent(inp.name)} = Number(ctx.read("${port}", "val"));`);
   });
 
@@ -120,7 +120,7 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
   );
 
   outputs.forEach((out, idx) => {
-    const port = pPorts[idx]!;
+    const port = pPorts[idx] ?? "";
     rteLines.push(`  ctx.write("${port}", "val", 0.0 /* output from FMU VR ${out.valueReference} */);`);
   });
 

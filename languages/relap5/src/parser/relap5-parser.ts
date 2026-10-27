@@ -24,7 +24,7 @@ function splitTokens(line: string): string[] {
   const tokens: string[] = [];
   let current = "";
   for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
+    const ch = line[i] ?? "";
     if (ch === " " || ch === "\t" || ch === ",") {
       if (current.length > 0) {
         tokens.push(current);
@@ -46,7 +46,7 @@ export function parseRelap5(source: string, filename?: string): Relap5Deck {
 
   let lineOffset = 0;
   for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
-    const rawLine = lines[lineNum - 1]!;
+    const rawLine = lines[lineNum - 1] ?? "";
     const trimmed = rawLine.trim();
 
     // Check for comment or blank line
@@ -61,12 +61,11 @@ export function parseRelap5(source: string, filename?: string): Relap5Deck {
     }
 
     const tokens = splitTokens(trimmed);
-    if (tokens.length === 0) {
+    const firstTok = tokens[0];
+    if (!firstTok) {
       lineOffset += rawLine.length + 1;
       continue;
     }
-
-    const firstTok = tokens[0]!;
     const cardNum = parseInt(firstTok, 10);
     if (!isNaN(cardNum)) {
       const words = tokens.slice(1);
@@ -352,7 +351,8 @@ export function serializeRelap5(deck: Relap5Deck): string {
     lines.push(`* --------------------------------------------------------------------`);
     lines.push(`* Time Step Control: endTime, minDt, maxDt`);
     for (let i = 0; i < deck.timeSteps.length; i++) {
-      const ts = deck.timeSteps[i]!;
+      const ts = deck.timeSteps[i];
+      if (!ts) continue;
       lines.push(`20${i + 1} ${ts.endTime} ${ts.minDt} ${ts.maxDt}`);
     }
   }

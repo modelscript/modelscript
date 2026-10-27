@@ -151,7 +151,7 @@ export function evaluateIntervalBounds(nodeId: u32): void {
             }
           }
           for (const [childName, contrib] of Object.entries(templateMap as any)) {
-            const childAdjointVar = `dY_${childName.replace(/\\$\\$/g, "")}`;
+            const childAdjointVar = `dY_${childName.replace(/\$\$/g, "")}`;
             out += `            let ${childAdjointVar} = ${emitTemplateAdjoint(contrib)};\n`;
           }
           out += `            break;\n`;
@@ -167,11 +167,6 @@ export function evaluateIntervalBounds(nodeId: u32): void {
       out += `export function transform_${pipelineName}(astRoot: u32, ctxVar: u32 = 0): u32 {\n`;
       out += `    if (astRoot == 0) return 0;\n`;
       out += `    let type = getNodeType(astRoot);\n`;
-      out += `    let child = getNodeFirstChild(astRoot);\n`;
-      out += `    while(child != 0) {\n`;
-      out += `        transform_${pipelineName}(child, ctxVar);\n`;
-      out += `        child = getNodeNextSibling(child);\n`;
-      out += `    }\n`;
       out += `    switch(type) {\n`;
 
       // Lowers a captured forward/interval template object into AssemblyScript expressions:

@@ -3,7 +3,7 @@
 import { OslcGateway, ReqIfParser } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 interface OslcExportArgs {
   input?: string | undefined;
@@ -44,7 +44,7 @@ const OslcExportCommand: CommandModule<{}, OslcExportArgs> = {
         alias: "o",
         description: "Output file path (prints to stdout if not specified)",
         type: "string",
-      }) as any;
+      }) as unknown as Argv<OslcExportArgs>;
   },
   handler: async (args) => {
     const gateway = new OslcGateway("https://modelscript.org/oslc");
@@ -110,7 +110,7 @@ const OslcServeCommand: CommandModule<{}, OslcServeArgs> = {
         description: "Host interface to listen on",
         type: "string",
         default: "localhost",
-      }) as any;
+      }) as unknown as Argv<OslcServeArgs>;
   },
   handler: async (args) => {
     const gateway = new OslcGateway(`http://${args.host}:${args.port}`);
@@ -146,7 +146,7 @@ export const Oslc: CommandModule = {
     return yargs
       .command(OslcExportCommand)
       .command(OslcServeCommand)
-      .demandCommand(1, "Please specify an action (export or serve)") as any;
+      .demandCommand(1, "Please specify an action (export or serve)");
   },
   handler: () => {},
 };

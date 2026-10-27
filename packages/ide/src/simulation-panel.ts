@@ -529,7 +529,30 @@ export class SimulationPanel {
                   // Fall back if cannot read directly
                 }
 
-                const res: any = await this.client.sendRequest("modelscript/executeAction", {
+                interface PhaseMapEntry {
+                  a?: ArrayLike<number> | undefined;
+                  b?: ArrayLike<number> | undefined;
+                  c?: ArrayLike<number> | undefined;
+                }
+                interface PscadSimulationData {
+                  time?: number[] | Float64Array | ArrayLike<number> | undefined;
+                  t?: number[] | ArrayLike<number> | undefined;
+                  busPhaseVoltages?: Map<string, PhaseMapEntry> | Record<string, PhaseMapEntry> | undefined;
+                  busVoltages?: Map<string, ArrayLike<number>> | Record<string, ArrayLike<number>> | undefined;
+                  branchPhaseCurrents?: Map<string, PhaseMapEntry> | Record<string, PhaseMapEntry> | undefined;
+                  branchCurrents?: Map<string, ArrayLike<number>> | Record<string, ArrayLike<number>> | undefined;
+                  comtrade?: { cfg: string; dat: string } | undefined;
+                  pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+                  pscadPsout?: Uint8Array | string | undefined;
+                }
+                interface PscadActionResponse extends PscadSimulationData {
+                  simulationResult?: PscadSimulationData | undefined;
+                  settings?: { timeStepUs?: number | undefined; durationSec?: number | undefined } | undefined;
+                  error?: string | undefined;
+                  project?: string | undefined;
+                }
+
+                const res = await this.client.sendRequest<PscadActionResponse>("modelscript/executeAction", {
                   actionId: "simulate_hybrid_emt",
                   languageId: "pscad",
                   uri,
@@ -541,7 +564,7 @@ export class SimulationPanel {
                   },
                 });
 
-                const simRes = res?.simulationResult ?? res;
+                const simRes: PscadSimulationData | undefined = res?.simulationResult ?? res;
                 const timeArr: number[] = Array.isArray(simRes?.time)
                   ? simRes.time
                   : simRes?.time instanceof Float64Array || ArrayBuffer.isView(simRes?.time)
@@ -556,11 +579,11 @@ export class SimulationPanel {
                 const yRows: number[][] = [];
 
                 if (simRes?.busPhaseVoltages) {
-                  const mapEntries =
+                  const mapEntries: [string, PhaseMapEntry][] =
                     simRes.busPhaseVoltages instanceof Map
                       ? Array.from(simRes.busPhaseVoltages.entries())
                       : Object.entries(simRes.busPhaseVoltages);
-                  for (const [bus, phases] of mapEntries as [string, any][]) {
+                  for (const [bus, phases] of mapEntries) {
                     for (const ph of ["a", "b", "c"] as const) {
                       if (phases?.[ph]) {
                         stateNames.push(`v_${bus}_${ph}`);
@@ -569,22 +592,22 @@ export class SimulationPanel {
                     }
                   }
                 } else if (simRes?.busVoltages) {
-                  const mapEntries =
+                  const mapEntries: [string, ArrayLike<number>][] =
                     simRes.busVoltages instanceof Map
                       ? Array.from(simRes.busVoltages.entries())
                       : Object.entries(simRes.busVoltages);
-                  for (const [bus, arr] of mapEntries as [string, any][]) {
+                  for (const [bus, arr] of mapEntries) {
                     stateNames.push(`v_${bus}`);
                     yRows.push(Array.from(arr));
                   }
                 }
 
                 if (simRes?.branchPhaseCurrents) {
-                  const mapEntries =
+                  const mapEntries: [string, PhaseMapEntry][] =
                     simRes.branchPhaseCurrents instanceof Map
                       ? Array.from(simRes.branchPhaseCurrents.entries())
                       : Object.entries(simRes.branchPhaseCurrents);
-                  for (const [branch, phases] of mapEntries as [string, any][]) {
+                  for (const [branch, phases] of mapEntries) {
                     for (const ph of ["a", "b", "c"] as const) {
                       if (phases?.[ph]) {
                         stateNames.push(`i_${branch}_${ph}`);
@@ -593,11 +616,11 @@ export class SimulationPanel {
                     }
                   }
                 } else if (simRes?.branchCurrents) {
-                  const mapEntries =
+                  const mapEntries: [string, ArrayLike<number>][] =
                     simRes.branchCurrents instanceof Map
                       ? Array.from(simRes.branchCurrents.entries())
                       : Object.entries(simRes.branchCurrents);
-                  for (const [branch, arr] of mapEntries as [string, any][]) {
+                  for (const [branch, arr] of mapEntries) {
                     stateNames.push(`i_${branch}`);
                     yRows.push(Array.from(arr));
                   }
@@ -640,7 +663,7 @@ export class SimulationPanel {
                 };
               } else {
                 try {
-                  const simulateRes: any = await this.client.sendRequest("modelscript/simulate", {
+                  const simulateRes = await this.client.sendRequest<SimulationResult>("modelscript/simulate", {
                     uri,
                     startTime: msg.payload?.startTime,
                     stopTime: msg.payload?.stopTime,
@@ -660,7 +683,12 @@ export class SimulationPanel {
                   result = simulateRes;
                 } catch {
                   const activeDoc = vscode.window.activeTextEditor?.document;
-                  const res: any = await this.client.sendRequest("modelscript/executeAction", {
+                  const res = await this.client.sendRequest<
+                    Partial<SimulationResult> & {
+                      t?: number[] | Record<string, number> | undefined;
+                      y?: number[][] | Record<string, number[] | Record<string, number>> | undefined;
+                    }
+                  >("modelscript/executeAction", {
                     actionId: "simulate",
                     languageId: activeDoc?.languageId ?? "modelica",
                     uri,
@@ -679,9 +707,14 @@ export class SimulationPanel {
                       sweepConfig: msg.payload?.sweepConfig,
                     },
                   });
+                  const rawResY: (number[] | Record<string, number>)[] = Array.isArray(res?.y)
+                    ? res.y
+                    : (Object.values(res?.y || {}) as (number[] | Record<string, number>)[]);
                   result = {
                     t: Array.isArray(res?.t) ? res.t : Object.values(res?.t || {}),
-                    y: Array.isArray(res?.y) ? res.y : Object.values(res?.y || {}),
+                    y: rawResY.map((row: number[] | Record<string, number>) =>
+                      Array.isArray(row) ? row : Object.values(row),
+                    ),
                     states: res?.states || [],
                     parameters: res?.parameters,
                     experiment: res?.experiment,
@@ -696,8 +729,12 @@ export class SimulationPanel {
                 result.t = Array.isArray(result.t) ? result.t : Object.values(result.t);
               }
               if (result && result.y) {
-                const rawY = Array.isArray(result.y) ? result.y : Object.values(result.y);
-                result.y = rawY.map((row: any) => (Array.isArray(row) ? row : Object.values(row)));
+                const rawY = Array.isArray(result.y)
+                  ? result.y
+                  : (Object.values(result.y) as (number[] | Record<string, number>)[]);
+                result.y = rawY.map((row: number[] | Record<string, number>) =>
+                  Array.isArray(row) ? row : Object.values(row),
+                );
               }
 
               if (result.error) {

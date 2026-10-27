@@ -110,6 +110,9 @@ export class TseitinEncoder {
     switch (expr.op) {
       case "var": {
         const v = expr.id ?? (expr.name !== undefined ? this.getOrCreateVar(expr.name) : this.newAnonymousVar());
+        if (Math.abs(v) >= this.nextVarId) {
+          this.nextVarId = Math.abs(v) + 1;
+        }
         return v;
       }
       case "const": {
@@ -189,6 +192,12 @@ export class TseitinEncoder {
    * @returns Array of CNF clauses enforcing \sum lits <= k
    */
   public encodeAtMostK(lits: LitId[], k: number): LitId[][] {
+    for (const lit of lits) {
+      const v = Math.abs(lit);
+      if (v >= this.nextVarId) {
+        this.nextVarId = v + 1;
+      }
+    }
     const n = lits.length;
     if (k >= n) {
       return []; // Trivially satisfied
@@ -252,6 +261,12 @@ export class TseitinEncoder {
    * @returns Representative LitId that is true iff \sum lits > k
    */
   public encodeGreaterThanK(lits: LitId[], k: number): LitId {
+    for (const lit of lits) {
+      const v = Math.abs(lit);
+      if (v >= this.nextVarId) {
+        this.nextVarId = v + 1;
+      }
+    }
     const n = lits.length;
     if (k >= n) {
       return this.encode({ op: "const", value: false });
@@ -775,8 +790,13 @@ export class CdclSatSolver {
       this.backtrack(0);
     }
 
+    for (const aLit of assumptions) {
+      this.ensureVar(litToVar(aLit));
+    }
+
     const wasm: any = getDefaultWasmExports();
     if (
+      assumptions.length === 0 &&
       wasm &&
       typeof wasm.sat_create === "function" &&
       typeof wasm.sat_addClause === "function" &&
@@ -848,6 +868,17 @@ export class CdclSatSolver {
       }
     }
 
+    // Re-enqueue any level-0 unit clauses that may have been learned while solving under assumptions
+    for (let cIdx = 0; cIdx < this.clauses.length; cIdx++) {
+      const cl = this.clauses[cIdx]!;
+      if (cl.length === 1) {
+        if (!this.enqueue(cl[0]!, cIdx)) {
+          this.isRootUnsat = true;
+          return { status: "UNSAT" };
+        }
+      }
+    }
+
     // Check level 0 consistency
     if (this.propagate() !== -1) {
       return { status: "UNSAT" };
@@ -883,16 +914,17 @@ export class CdclSatSolver {
           return { status: "UNSAT" };
         }
 
-        const { learnedClause, backtrackLevel } = this.analyzeConflict(conflictCIdx);
-
-        if (backtrackLevel < assumptionLevel) {
-          // Cannot backtrack past assumptions => UNSAT under assumptions
+        if (this.currentLevel <= assumptionLevel) {
+          // Conflict at or below assumption level => UNSAT under assumptions
           const core = this.analyzeFinalConflict(this.clauses[conflictCIdx]!, assumptions);
           this.backtrack(0);
           return { status: "UNSAT", unsatCore: core };
         }
 
-        this.backtrack(backtrackLevel);
+        const { learnedClause, backtrackLevel } = this.analyzeConflict(conflictCIdx);
+        const targetLevel = Math.max(backtrackLevel, assumptionLevel);
+
+        this.backtrack(targetLevel);
         const newCIdx = this.clauses.length;
         this.clauses.push(learnedClause);
 

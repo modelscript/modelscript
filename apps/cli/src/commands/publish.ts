@@ -3,7 +3,7 @@
 import AdmZip from "adm-zip";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { requireToken } from "../util/auth.js";
 import {
   buildPackageZip,
@@ -26,7 +26,7 @@ interface PublishArgs {
 export const Publish: CommandModule<{}, PublishArgs> = {
   command: "publish <path>",
   describe: "Publish a library directory or single Modelica file to the ModelScript Registry",
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("path", {
         demandOption: true,
@@ -192,7 +192,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       if (!res.ok) {
         let errMessage = res.statusText;
         try {
-          const json = (await res.json()) as any;
+          const json = (await res.json()) as { error?: string | undefined };
           if (json.error) errMessage = json.error;
         } catch {
           // ignore parsing error if it's not JSON
@@ -201,7 +201,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
         process.exit(1);
       }
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as { message?: string | undefined };
       console.log(`✅ Uploaded: ${data.message || "Published successfully."}`);
       console.log(`⏳ Processing library (SVG generation + metadata extraction)...`);
 
@@ -229,7 +229,11 @@ export const Publish: CommandModule<{}, PublishArgs> = {
             continue;
           }
 
-          const status = (await statusRes.json()) as any;
+          const status = (await statusRes.json()) as {
+            status?: string | undefined;
+            classesProcessed?: number | undefined;
+            error?: string | undefined;
+          };
           const classesProcessed = status.classesProcessed ?? 0;
 
           switch (status.status) {

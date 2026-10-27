@@ -130,10 +130,10 @@ export function exportToNuXmv(db: QueryDB, options: NuXmvExportOptions = {}): st
 
   // Build transition cases
   for (const t of transitionEntries) {
-    const meta = t.metadata as any;
-    let source = meta?.source;
-    let target = meta?.target;
-    let guard = meta?.guard;
+    const meta = t.metadata;
+    let source = typeof meta?.["source"] === "string" ? meta["source"] : undefined;
+    let target = typeof meta?.["target"] === "string" ? meta["target"] : undefined;
+    const guard = typeof meta?.["guard"] === "string" ? meta["guard"] : undefined;
 
     if (!source || !target) {
       const text = db.cstText(t.startOffset, t.endOffset, t);

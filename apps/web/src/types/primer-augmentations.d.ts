@@ -117,7 +117,7 @@ export interface PrimerSystemStyleProps {
 }
 
 declare module "react" {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-object-type
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface HTMLAttributes<T> extends PrimerSystemStyleProps {}
 
   namespace JSX {

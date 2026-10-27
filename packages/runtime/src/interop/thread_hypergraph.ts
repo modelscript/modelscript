@@ -294,7 +294,11 @@ export class DigitalThreadHypergraph {
 
   isSynced(slot: number): boolean {
     if (slot >= this.count) return false;
-    return (this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS]! & THREAD_STATUS_SYNCED) !== 0;
+    const status = this.data[slot * THREAD_STRIDE + THREAD_FIELD_STATUS]!;
+    return (
+      (status & THREAD_STATUS_SYNCED) !== 0 &&
+      (status & (THREAD_STATUS_STALE | THREAD_STATUS_CONFLICT | THREAD_STATUS_REMOVED)) === 0
+    );
   }
 
   isConflicted(slot: number): boolean {
@@ -405,7 +409,9 @@ export class DigitalThreadHypergraph {
       relation,
       branchId,
       domainNodes,
-      isSynced: (status & THREAD_STATUS_SYNCED) !== 0 && (status & THREAD_STATUS_STALE) === 0,
+      isSynced:
+        (status & THREAD_STATUS_SYNCED) !== 0 &&
+        (status & (THREAD_STATUS_STALE | THREAD_STATUS_CONFLICT | THREAD_STATUS_REMOVED)) === 0,
       isStale: (status & THREAD_STATUS_STALE) !== 0,
       isConflicted: (status & THREAD_STATUS_CONFLICT) !== 0,
       isRemoved: (status & THREAD_STATUS_REMOVED) !== 0,

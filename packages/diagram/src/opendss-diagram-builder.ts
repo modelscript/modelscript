@@ -93,7 +93,7 @@ export interface DssDiagramCell {
   label?: string | undefined;
   source?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
   target?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
-  attrs?: Record<string, unknown> | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
   data?: Record<string, unknown> | undefined;
 }
 
@@ -503,8 +503,8 @@ export function renderOpenDssSvg(deck: DssDeckLike, options?: DssRenderOptions):
       const x2 = tgt.x + (tgt.width ?? 10) / 2;
       const y2 = tgt.y! + (tgt.height ?? 50) / 2;
 
-      const color = (c.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
-      const strokeWidth = (c.attrs?.["line"] as any)?.strokeWidth ?? 2;
+      const color = (c.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const strokeWidth = (c.attrs?.["line"]?.["strokeWidth"] as number | undefined) ?? 2;
 
       svg += `    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round">\n`;
       svg += `      <title>Line: ${c.label ?? ""}</title>\n`;
@@ -525,9 +525,9 @@ export function renderOpenDssSvg(deck: DssDeckLike, options?: DssRenderOptions):
     if (c.shape === "rect" && c.x !== undefined && c.y !== undefined) {
       const w = c.width ?? 10;
       const h = c.height ?? 50;
-      const fill = (c.attrs?.["body"] as any)?.fill ?? "#f8fafc";
-      const stroke = (c.attrs?.["body"] as any)?.stroke ?? "#38bdf8";
-      const strokeWidth = (c.attrs?.["body"] as any)?.strokeWidth ?? 2;
+      const fill = (c.attrs?.["body"]?.["fill"] as string | undefined) ?? "#f8fafc";
+      const stroke = (c.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const strokeWidth = (c.attrs?.["body"]?.["strokeWidth"] as number | undefined) ?? 2;
 
       svg += `    <g>\n`;
       svg += `      <rect x="${c.x}" y="${c.y}" width="${w}" height="${h}" rx="2" ry="2" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />\n`;
@@ -539,8 +539,8 @@ export function renderOpenDssSvg(deck: DssDeckLike, options?: DssRenderOptions):
       const r = (c.width ?? 28) / 2;
       const cx = c.x + r;
       const cy = c.y + r;
-      const fill = (c.attrs?.["body"] as any)?.fill ?? "#064e3b";
-      const stroke = (c.attrs?.["body"] as any)?.stroke ?? "#10b981";
+      const fill = (c.attrs?.["body"]?.["fill"] as string | undefined) ?? "#064e3b";
+      const stroke = (c.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#10b981";
 
       svg += `    <g>\n`;
       svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2" />\n`;

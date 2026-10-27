@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import * as vscode from "vscode";
+
+interface RegistryPackageSummary {
+  name: string;
+  latestVersion: string;
+  description?: string | undefined;
+}
+
+interface RegistryPackument {
+  name: string;
+  version: string;
+  description?: string | undefined;
+  modelicaVersion?: string | undefined;
+  size?: number | undefined;
+}
 
 export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView | undefined;
@@ -56,19 +69,20 @@ export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
         : `${this.registryUrl}/libraries`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error("Fetch failed");
-      const data = (await resp.json()) as any;
+      const data = (await resp.json()) as { packages: RegistryPackageSummary[] };
 
-      const packages = data.packages.slice(0, query ? undefined : 25).map((p: any) => ({
+      const packages = data.packages.slice(0, query ? undefined : 25).map((p: RegistryPackageSummary) => ({
         name: p.name,
         version: p.latestVersion,
         description: p.description || `Version ${p.latestVersion}`,
       }));
 
       this._view.webview.postMessage({ type: "results", packages });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       this._view.webview.postMessage({
         type: "error",
-        message: `Failed to fetch packages: ${err.message || String(err)}`,
+        message: `Failed to fetch packages: ${message}`,
       });
     }
   }
@@ -365,7 +379,7 @@ export function registerRegistryView(
                     }
                   });
                 });
-              } catch (err) {
+              } catch {
                 // Fall through to web fallback
               }
             }
@@ -374,11 +388,13 @@ export function registerRegistryView(
             try {
               if (!targetFolder) throw new Error("No target folder");
               const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
-              let packageJsonObj: any = {};
+              let packageJsonObj: { dependencies?: Record<string, string> | undefined } = {};
               try {
                 const data = await vscode.workspace.fs.readFile(packageJsonUri);
-                packageJsonObj = JSON.parse(new TextDecoder().decode(data));
-              } catch (e) {
+                packageJsonObj = JSON.parse(new TextDecoder().decode(data)) as {
+                  dependencies?: Record<string, string> | undefined;
+                };
+              } catch {
                 // Ignore read errors
               }
               packageJsonObj.dependencies = packageJsonObj.dependencies || {};
@@ -463,7 +479,7 @@ export function registerRegistryView(
                   }
                 });
               });
-            } catch (err) {
+            } catch {
               // Fall through to web fallback
             }
           }
@@ -474,15 +490,16 @@ export function registerRegistryView(
             const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
             try {
               const data = await vscode.workspace.fs.readFile(packageJsonUri);
-              const packageJsonObj = JSON.parse(new TextDecoder().decode(data));
+              const packageJsonObj = JSON.parse(new TextDecoder().decode(data)) as {
+                dependencies?: Record<string, string> | undefined;
+              };
               if (packageJsonObj.dependencies) {
-                // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-                delete packageJsonObj.dependencies[`@modelscript/${packageName.toLowerCase()}`];
+                Reflect.deleteProperty(packageJsonObj.dependencies, `@modelscript/${packageName.toLowerCase()}`);
                 const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
                 await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
                 vscode.window.showInformationMessage(`Removed ${packageName} from package.json.`);
               }
-            } catch (e) {
+            } catch {
               // Ignore
             }
             vscode.commands.executeCommand("modelscript.registryView.focus");
@@ -519,7 +536,7 @@ export function registerRegistryView(
       try {
         const resp = await fetch(`${registryUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const packument = (await resp.json()) as any;
+        const packument = (await resp.json()) as RegistryPackument;
         const readme = packument.description || "No description available.";
         panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"><style>
           body { font-family: var(--vscode-font-family); padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }

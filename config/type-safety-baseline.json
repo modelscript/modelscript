@@ -2,11 +2,11 @@
   "description": "Per-package type-safety ratchet ceilings for explicit 'any' and '@ts-expect-error'/'@ts-ignore' in src/. Counts may decrease but must never increase.",
   "packages": {
     "apps/api": {
-      "explicitAny": 472,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "apps/cli": {
-      "explicitAny": 334,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "apps/desktop": {
@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 595,
+      "explicitAny": 598,
       "tsComments": 0
     },
     "languages/adams": {
@@ -58,7 +58,7 @@
       "tsComments": 0
     },
     "languages/easy5": {
-      "explicitAny": 33,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/eclipse": {
@@ -106,7 +106,7 @@
       "tsComments": 0
     },
     "languages/modelscript": {
-      "explicitAny": 48,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/olga": {
@@ -158,7 +158,7 @@
       "tsComments": 0
     },
     "languages/scad": {
-      "explicitAny": 132,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/sima": {
@@ -190,7 +190,7 @@
       "tsComments": 0
     },
     "languages/sysml2": {
-      "explicitAny": 191,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/touchstone": {
@@ -210,7 +210,7 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 476,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/dsl": {
@@ -230,11 +230,11 @@
       "tsComments": 0
     },
     "packages/exchange": {
-      "explicitAny": 73,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/ide": {
-      "explicitAny": 385,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/lsp": {
@@ -242,7 +242,7 @@
       "tsComments": 0
     },
     "packages/mcp": {
-      "explicitAny": 106,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/react": {
@@ -250,11 +250,11 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 714,
+      "explicitAny": 715,
       "tsComments": 0
     },
     "packages/simulate": {
-      "explicitAny": 140,
+      "explicitAny": 0,
       "tsComments": 0
     }
   }

@@ -30,7 +30,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
   let userCodeLines: string[] = [];
 
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!;
+    const rawLine = lines[lineIdx] ?? "";
     const trimmed = rawLine.trim();
 
     // Skip empty lines and full-line comments
@@ -64,7 +64,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
         trimmed,
       );
     if (secMatch) {
-      const secName = secMatch[1]!.toUpperCase();
+      const secName = (secMatch[1] ?? "").toUpperCase();
       const secArg = secMatch[2]?.trim() || "";
 
       if (secName === "DECK" || secName === "MODEL" || secName === "ENGINE") {
@@ -95,17 +95,17 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
         !trimmed.includes("->") &&
         !trimmed.includes(" TO ")
       ) {
-        const id = cmpMatch[1]!.toUpperCase();
-        const typeRaw = cmpMatch[2]!.toUpperCase().replace(/^GP\//, "");
+        const id = (cmpMatch[1] ?? "").toUpperCase();
+        const typeRaw = (cmpMatch[2] ?? "").toUpperCase().replace(/^GP\//, "");
         const rest = cmpMatch[3] || "";
 
         let title: string | undefined;
         const titleMatch = /TITLE\s*=\s*("[^"]*"|'[^']*'|\S+)/i.exec(rest);
-        if (titleMatch) title = titleMatch[1]!.replace(/^["']|["']$/g, "");
+        if (titleMatch?.[1]) title = titleMatch[1].replace(/^["']|["']$/g, "");
 
         let fluid: PropellantKind | undefined;
         const fluidMatch = /FLUID\s*=\s*([A-Za-z0-9_]+)/i.exec(rest);
-        if (fluidMatch) fluid = fluidMatch[1]!.toUpperCase();
+        if (fluidMatch?.[1]) fluid = fluidMatch[1].toUpperCase();
 
         const desc = getModuleDescriptor(typeRaw);
         const defaultPorts: Record<string, RocetsPort> = {};
@@ -183,7 +183,7 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
           for (const item of portItems) {
             const m = /^([A-Za-z0-9_]+)(?:\((IN|OUT|BI)(?:,\s*([A-Za-z0-9_]+))?\))?$/i.exec(item);
             if (m && !item.includes("=")) {
-              const pName = m[1]!.toUpperCase();
+              const pName = (m[1] ?? "").toUpperCase();
               const d =
                 (m[2]?.toLowerCase() as "in" | "out" | "bidirectional") || (pName.includes("OUT") ? "out" : "in");
               const fl = m[3]?.toUpperCase() || fluid;
@@ -208,15 +208,15 @@ export function parseRocets(sourceText: string): RocetsEngineModel {
           trimmed,
         );
       if (connMatch) {
-        const fromComp = connMatch[1]!.toUpperCase();
-        const fromPort = connMatch[2]!.toUpperCase();
-        const toComp = connMatch[3]!.toUpperCase();
-        const toPort = connMatch[4]!.toUpperCase();
+        const fromComp = (connMatch[1] ?? "").toUpperCase();
+        const fromPort = (connMatch[2] ?? "").toUpperCase();
+        const toComp = (connMatch[3] ?? "").toUpperCase();
+        const toPort = (connMatch[4] ?? "").toUpperCase();
         const rest = connMatch[5] || "";
 
         let fluid: PropellantKind | undefined;
         const flMatch = /FLUID\s*=\s*([A-Za-z0-9_]+)/i.exec(rest);
-        if (flMatch) fluid = flMatch[1]!.toUpperCase();
+        if (flMatch?.[1]) fluid = flMatch[1].toUpperCase();
 
         connections.push({
           fromComponent: fromComp,
@@ -257,8 +257,8 @@ function parseKeyValuePairs(text: string, target: Record<string, number | string
   const regex = /\b([A-Za-z_]\w*)\s*=\s*("[^"]*"|'[^']*'|\[[^\]]*\]|[^\s,;]+)/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
-    const key = match[1]!.toUpperCase();
-    const rawVal = match[2]!.trim();
+    const key = (match[1] ?? "").toUpperCase();
+    const rawVal = (match[2] ?? "").trim();
 
     if (rawVal.startsWith("[") && rawVal.endsWith("]")) {
       const items = rawVal

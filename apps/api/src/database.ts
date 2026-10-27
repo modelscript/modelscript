@@ -1,12 +1,53 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable */
 
 import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type {
+  ArtifactViewRow,
+  AuditLogRow,
+  ContentReportRow,
+  DmcaNoticeRow,
+  LibraryReleaseRow,
+  LinkedRepoRow,
+  NotificationRow,
+  PackageTransferRow,
+  PostMetadata,
+  PostRow,
+  RemoteActorProfile,
+  RemotePackageRow,
+  RssFeedRow,
+  SolutionReleaseRow,
+  SolutionRow,
+  UserArchiveData,
+  UserFederationInfo,
+  UserRow,
+} from "./database/types.js";
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
+import type { ComputeProfile } from "./services/hpc/hpc-types.js";
+
+export type {
+  ArtifactViewRow,
+  AuditLogRow,
+  ContentReportRow,
+  DmcaNoticeRow,
+  LibraryReleaseRow,
+  LinkedRepoRow,
+  NotificationRow,
+  PackageTransferRow,
+  PostMetadata,
+  PostRow,
+  RemoteActorProfile,
+  RemotePackageRow,
+  RssFeedRow,
+  SolutionReleaseRow,
+  SolutionRow,
+  UserArchiveData,
+  UserFederationInfo,
+  UserRow,
+};
 
 const DEFAULT_DB_DIR = (() => {
   try {
@@ -167,7 +208,7 @@ export interface UserBillingSummary {
     total_gpu_hours: number;
   };
   recent_transactions: CreditTransactionRow[];
-  profiles: any[];
+  profiles: ComputeProfile[];
 }
 
 export interface HpcJobArtifactSummary {
@@ -183,7 +224,7 @@ export interface HpcJobArtifactSummary {
   completedAt: string | null;
   hasVtu: boolean;
   hasScalars: boolean;
-  scalars?: Record<string, any> | undefined;
+  scalars?: Record<string, unknown> | undefined;
   resultDir?: string | undefined;
 }
 
@@ -956,13 +997,13 @@ export class LibraryDatabase {
 
     try {
       this.#db.exec(`ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{}'`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
 
     try {
       this.#db.exec(`ALTER TABLE users ADD COLUMN credit_balance REAL DEFAULT 100.0`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
 
@@ -993,7 +1034,7 @@ export class LibraryDatabase {
     for (const sql of userColumns) {
       try {
         this.#db.exec(sql);
-      } catch (e) {
+      } catch {
         // Column already exists
       }
     }
@@ -1009,7 +1050,7 @@ export class LibraryDatabase {
     for (const sql of jobColumns) {
       try {
         this.#db.exec(sql);
-      } catch (e) {
+      } catch {
         // Column already exists
       }
     }
@@ -1021,7 +1062,7 @@ export class LibraryDatabase {
     for (const sql of packageVersionColumns) {
       try {
         this.#db.exec(sql);
-      } catch (e) {
+      } catch {
         // Column already exists
       }
     }
@@ -1029,7 +1070,7 @@ export class LibraryDatabase {
     try {
       const usersWithoutKeys = this.#db
         .prepare(`SELECT id, username FROM users WHERE rsa_private_key IS NULL`)
-        .all() as Array<{ id: number; username: string }>;
+        .all() as { id: number; username: string }[];
       const updateStmt = this.#db.prepare(
         `UPDATE users SET rsa_private_key = ?, rsa_public_key = ?, actor_url = ?, inbox_url = ?, outbox_url = ? WHERE id = ?`,
       );
@@ -1041,11 +1082,11 @@ export class LibraryDatabase {
           updateStmt.run(keys.privateKey, keys.publicKey, actorUrl, `${actorUrl}/inbox`, `${actorUrl}/outbox`, u.id);
         }
       })();
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE users ADD COLUMN account_type TEXT DEFAULT 'user'`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
 
@@ -1059,56 +1100,56 @@ export class LibraryDatabase {
         SET banner_url = 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80' 
         WHERE banner_url IS NULL;
       `);
-    } catch (e) {
+    } catch {
       // Ignore migration errors
     }
 
     try {
       this.#db.exec(`ALTER TABLE posts ADD COLUMN view_count INTEGER DEFAULT 0`);
-    } catch (e) {
+    } catch {
       // Column already exists
     }
 
     try {
       this.#db.exec(`ALTER TABLE posts ADD COLUMN ap_id TEXT UNIQUE`);
       this.#db.exec(`ALTER TABLE posts ADD COLUMN url TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE posts ADD COLUMN metadata TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE posts ADD COLUMN reply_visibility TEXT DEFAULT 'everyone'`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN access_token TEXT`);
       this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN refresh_token TEXT`);
       this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN expires_at TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE jobs ADD COLUMN metadata TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE posts ADD COLUMN is_silenced INTEGER DEFAULT 0`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE packages ADD COLUMN quarantine_status TEXT DEFAULT 'clean'`);
       this.#db.exec(`ALTER TABLE packages ADD COLUMN is_quarantined INTEGER DEFAULT 0`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE users ADD COLUMN ed25519_public_key TEXT`);
       this.#db.exec(`ALTER TABLE users ADD COLUMN ed25519_private_key TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE artifact_views ADD COLUMN remote_origin_url TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`
@@ -1129,16 +1170,16 @@ export class LibraryDatabase {
         );
         CREATE INDEX IF NOT EXISTS idx_remote_packages_name ON remote_packages(name);
       `);
-    } catch (e) {}
+    } catch {}
 
     try {
       this.#db.exec(`ALTER TABLE sysml2_commits ADD COLUMN merged_commit TEXT`);
-    } catch (e) {}
+    } catch {}
 
     try {
-      const usersWithoutEd = this.#db.prepare(`SELECT id FROM users WHERE ed25519_private_key IS NULL`).all() as Array<{
+      const usersWithoutEd = this.#db.prepare(`SELECT id FROM users WHERE ed25519_private_key IS NULL`).all() as {
         id: number;
-      }>;
+      }[];
       const updateEdStmt = this.#db.prepare(
         `UPDATE users SET ed25519_private_key = ?, ed25519_public_key = ? WHERE id = ?`,
       );
@@ -1148,7 +1189,7 @@ export class LibraryDatabase {
           updateEdStmt.run(keys.privateKey, keys.publicKey, u.id);
         }
       })();
-    } catch (e) {}
+    } catch {}
 
     // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
     // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
@@ -1165,12 +1206,12 @@ export class LibraryDatabase {
         .prepare(
           `SELECT id, description FROM classes WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
         )
-        .all() as Array<{ id: number; description: string }>;
+        .all() as { id: number; description: string }[];
       const dirtyComps = this.#db
         .prepare(
           `SELECT id, description FROM components WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
         )
-        .all() as Array<{ id: number; description: string }>;
+        .all() as { id: number; description: string }[];
       if (dirtyClasses.length > 0 || dirtyComps.length > 0) {
         const updClass = this.#db.prepare(`UPDATE classes SET description = ? WHERE id = ?`);
         const updComp = this.#db.prepare(`UPDATE components SET description = ? WHERE id = ?`);
@@ -1193,13 +1234,16 @@ export class LibraryDatabase {
         );
         UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
       `);
-    } catch (e) {}
+    } catch {}
   }
 
   // ── User management ─────────────────────────────────────────────
 
   getUserTopics(userId: number): { concept: string; is_active: boolean }[] {
-    return this.#db.prepare(`SELECT concept, is_active FROM user_topics WHERE user_id = ?`).all(userId) as any[];
+    return this.#db.prepare(`SELECT concept, is_active FROM user_topics WHERE user_id = ?`).all(userId) as {
+      concept: string;
+      is_active: boolean;
+    }[];
   }
 
   updateUserTopic(userId: number, concept: string, isActive: boolean) {
@@ -1229,14 +1273,14 @@ export class LibraryDatabase {
 
   // ── User management ─────────────────────────────────────────────
 
-  getOrCreateRemoteUser(actorUrl: string, profileData: any): { id: number } {
+  getOrCreateRemoteUser(actorUrl: string, profileData?: RemoteActorProfile): { id: number } {
     const existing = this.#db.prepare(`SELECT id FROM users WHERE actor_url = ?`).get(actorUrl) as
       | { id: number }
       | undefined;
     if (existing) return existing;
 
     // Use preferredUsername or fallback
-    const username = profileData.preferredUsername || actorUrl.split("/").pop();
+    const username = profileData?.preferredUsername || actorUrl.split("/").pop();
     const domain = new URL(actorUrl).hostname;
     // Create a unique username for remote to avoid collision with local
     const remoteUsername = `${username}@${domain}`;
@@ -1244,10 +1288,7 @@ export class LibraryDatabase {
     const keys = this.#generateRSAKeys();
     const edKeys = this.#generateEd25519Keys();
     const sharedInbox =
-      (profileData?.endpoints?.sharedInbox as string) ||
-      (profileData?.sharedInbox as string) ||
-      (profileData?.endpoints?.shared_inbox as string) ||
-      null;
+      profileData?.endpoints?.sharedInbox || profileData?.sharedInbox || profileData?.endpoints?.shared_inbox || null;
 
     const result = this.#db
       .prepare(
@@ -1257,16 +1298,16 @@ export class LibraryDatabase {
         remoteUsername,
         `remote-${crypto.randomUUID()}@${domain}`, // fake email for unique constraint
         "remote",
-        profileData.name || username,
-        profileData.summary || "",
-        profileData.icon?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUsername)}`,
+        profileData?.name || username,
+        profileData?.summary || "",
+        profileData?.icon?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUsername)}`,
         keys.privateKey,
         keys.publicKey,
         edKeys.privateKey,
         edKeys.publicKey,
         actorUrl,
-        profileData.inbox || `${actorUrl}/inbox`,
-        profileData.outbox || `${actorUrl}/outbox`,
+        profileData?.inbox || `${actorUrl}/inbox`,
+        profileData?.outbox || `${actorUrl}/outbox`,
         domain,
         sharedInbox,
       );
@@ -1289,9 +1330,11 @@ export class LibraryDatabase {
   }
 
   getInstanceKeys(): { publicKey: string; privateKey: string } {
-    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_keys'`).get() as any;
+    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_keys'`).get() as
+      | { value: string }
+      | undefined;
     if (existing) {
-      return JSON.parse(existing.value);
+      return JSON.parse(existing.value) as { publicKey: string; privateKey: string };
     }
     const keys = this.#generateRSAKeys();
     this.#db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)`).run("instance_keys", JSON.stringify(keys));
@@ -1299,9 +1342,11 @@ export class LibraryDatabase {
   }
 
   getInstanceEd25519Keys(): { publicKey: string; privateKey: string } {
-    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_ed25519_keys'`).get() as any;
+    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_ed25519_keys'`).get() as
+      | { value: string }
+      | undefined;
     if (existing) {
-      return JSON.parse(existing.value);
+      return JSON.parse(existing.value) as { publicKey: string; privateKey: string };
     }
     const keys = this.#generateEd25519Keys();
     this.#db
@@ -1396,8 +1441,11 @@ export class LibraryDatabase {
     };
   }
 
-  verifyUserEmail(userId: number, bonusCredits = 50.0): { success: boolean; creditsGranted: number; user?: any } {
-    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as any;
+  verifyUserEmail(
+    userId: number,
+    bonusCredits = 50.0,
+  ): { success: boolean; creditsGranted: number; user?: UserRow | undefined } {
+    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
     if (!user) {
       return { success: false, creditsGranted: 0 };
     }
@@ -1435,12 +1483,14 @@ export class LibraryDatabase {
       }
     }
 
-    const updatedUser = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId);
+    const updatedUser = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
     return { success: true, creditsGranted: creditsToGrant, user: updatedUser };
   }
 
   freezeUserForDispute(userId: number, reason: string): { success: boolean; previousBalance: number } {
-    const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as any;
+    const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
+      | { credit_balance?: number | undefined }
+      | undefined;
     if (!user) {
       return { success: false, previousBalance: 0 };
     }
@@ -1468,12 +1518,12 @@ export class LibraryDatabase {
    * Redacts personal data, deletes session tokens and social links, and flags account as deleted.
    */
   anonymizeUser(userId: number): { success: boolean; actorUrl?: string | undefined } {
-    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as any;
+    const user = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
     if (!user) {
       return { success: false };
     }
 
-    const actorUrl = user.actor_url;
+    const actorUrl = user.actor_url ?? undefined;
     const redactedEmail = `deleted_${userId}@deleted.modelscript.local`;
     const redactedName = `Deleted User #${userId}`;
     const redactedBio = "This account has been deleted pursuant to GDPR Article 17 Right to Erasure.";
@@ -1546,15 +1596,18 @@ export class LibraryDatabase {
       .prepare(
         `SELECT id, username, email, display_name, bio, actor_url, status, credit_balance, created_at FROM users WHERE id = ?`,
       )
-      .get(userId) as any;
+      .get(userId) as UserRow | undefined;
     if (!user) return null;
 
-    let posts: any[] = [];
+    let posts: Record<string, unknown>[] = [];
     try {
-      posts = this.#db.prepare(`SELECT id, content, created_at FROM posts WHERE author_id = ?`).all(userId);
+      posts = this.#db.prepare(`SELECT id, content, created_at FROM posts WHERE author_id = ?`).all(userId) as Record<
+        string,
+        unknown
+      >[];
     } catch {}
 
-    let libraries: any[] = [];
+    let libraries: Record<string, unknown>[] = [];
     try {
       libraries = this.#db
         .prepare(
@@ -1563,25 +1616,25 @@ export class LibraryDatabase {
            JOIN packages p ON pv.package_id = p.id
            WHERE pv.published_by = ?`,
         )
-        .all(userId);
+        .all(userId) as Record<string, unknown>[];
     } catch {}
 
-    let transactions: any[] = [];
+    let transactions: Record<string, unknown>[] = [];
     try {
       transactions = this.#db
         .prepare(
           `SELECT id, amount, balance_after, type, description, created_at FROM credit_transactions WHERE user_id = ? ORDER BY id DESC`,
         )
-        .all(userId);
+        .all(userId) as Record<string, unknown>[];
     } catch {}
 
-    let auditHistory: any[] = [];
+    let auditHistory: Record<string, unknown>[] = [];
     try {
       auditHistory = this.#db
         .prepare(
           `SELECT action, resource_type, resource_id, created_at FROM audit_logs WHERE actor_id = ? ORDER BY id DESC LIMIT 100`,
         )
-        .all(userId);
+        .all(userId) as Record<string, unknown>[];
     } catch {}
 
     return {
@@ -1645,25 +1698,38 @@ export class LibraryDatabase {
     return { id: result.lastInsertRowid as number, username };
   }
 
-  getUserBots(ownerId: number): Array<{
+  getUserBots(ownerId: number): {
     id: number;
     username: string;
     display_name: string;
     avatar_url: string;
     bio: string;
-    bot_scopes?: string;
-    bot_system_prompt?: string;
-    bot_model?: string;
-    bot_api_key?: string;
-    bot_endpoint_url?: string;
-    bot_last_used_at?: string;
+    bot_scopes?: string | undefined;
+    bot_system_prompt?: string | undefined;
+    bot_model?: string | undefined;
+    bot_api_key?: string | undefined;
+    bot_endpoint_url?: string | undefined;
+    bot_last_used_at?: string | undefined;
     created_at: string;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT id, username, display_name, avatar_url, bio, bot_scopes, bot_system_prompt, bot_model, bot_api_key, bot_endpoint_url, bot_last_used_at, created_at FROM users WHERE owner_id = ? AND account_type = 'bot' ORDER BY created_at DESC`,
       )
-      .all(ownerId) as any;
+      .all(ownerId) as {
+      id: number;
+      username: string;
+      display_name: string;
+      avatar_url: string;
+      bio: string;
+      bot_scopes?: string | undefined;
+      bot_system_prompt?: string | undefined;
+      bot_model?: string | undefined;
+      bot_api_key?: string | undefined;
+      bot_endpoint_url?: string | undefined;
+      bot_last_used_at?: string | undefined;
+      created_at: string;
+    }[];
   }
 
   getBotById(botId: number): {
@@ -1684,7 +1750,22 @@ export class LibraryDatabase {
       .prepare(
         `SELECT id, owner_id, username, display_name, avatar_url, bio, bot_scopes, bot_system_prompt, bot_model, bot_api_key, bot_endpoint_url, bot_last_used_at FROM users WHERE id = ? AND account_type = 'bot'`,
       )
-      .get(botId) as any;
+      .get(botId) as
+      | {
+          id: number;
+          owner_id: number;
+          username: string;
+          display_name: string;
+          avatar_url: string;
+          bio: string;
+          bot_scopes: string;
+          bot_system_prompt: string;
+          bot_model: string;
+          bot_api_key: string | null;
+          bot_endpoint_url: string | null;
+          bot_last_used_at: string | null;
+        }
+      | undefined;
     return row || null;
   }
 
@@ -1692,18 +1773,18 @@ export class LibraryDatabase {
     ownerId: number,
     botId: number,
     updates: {
-      displayName?: string;
-      bio?: string;
-      avatarUrl?: string;
-      scopes?: string;
-      systemPrompt?: string;
-      model?: string;
-      apiKey?: string;
-      endpointUrl?: string;
+      displayName?: string | undefined;
+      bio?: string | undefined;
+      avatarUrl?: string | undefined;
+      scopes?: string | undefined;
+      systemPrompt?: string | undefined;
+      model?: string | undefined;
+      apiKey?: string | undefined;
+      endpointUrl?: string | undefined;
     },
   ): void {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number)[] = [];
     if (updates.displayName !== undefined) {
       fields.push("display_name = ?");
       values.push(updates.displayName);
@@ -1765,7 +1846,16 @@ export class LibraryDatabase {
       .prepare(
         `SELECT id, owner_id, username, email, account_type, bot_scopes FROM users WHERE bot_token_hash = ? AND account_type = 'bot'`,
       )
-      .get(tokenHash) as any;
+      .get(tokenHash) as
+      | {
+          id: number;
+          owner_id: number;
+          username: string;
+          email: string;
+          account_type: string;
+          bot_scopes: string;
+        }
+      | undefined;
     return row || null;
   }
 
@@ -1777,7 +1867,7 @@ export class LibraryDatabase {
     return result.lastInsertRowid as number;
   }
 
-  getPendingBotMentions(limit: number = 10): Array<{
+  getPendingBotMentions(limit: number = 10): {
     id: number;
     bot_id: number;
     post_id: number;
@@ -1786,18 +1876,27 @@ export class LibraryDatabase {
     attempts: number;
     error: string | null;
     created_at: string;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT id, bot_id, post_id, author_id, status, attempts, error, created_at FROM bot_mention_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?`,
       )
-      .all(limit) as any;
+      .all(limit) as {
+      id: number;
+      bot_id: number;
+      post_id: number;
+      author_id: number;
+      status: string;
+      attempts: number;
+      error: string | null;
+      created_at: string;
+    }[];
   }
 
   updateBotMentionStatus(
     queueId: number,
     status: "processing" | "completed" | "failed",
-    options?: { error?: string; responsePostId?: number },
+    options?: { error?: string | undefined; responsePostId?: number | undefined },
   ): void {
     if (status === "processing") {
       this.#db
@@ -1907,7 +2006,13 @@ export class LibraryDatabase {
     }[];
   }
 
-  updateOAuthTokens(userId: number, provider: string, accessToken: string, refreshToken?: string, expiresAt?: string) {
+  updateOAuthTokens(
+    userId: number,
+    provider: string,
+    accessToken: string,
+    refreshToken?: string | null,
+    expiresAt?: string | null,
+  ) {
     this.#db
       .prepare(
         `UPDATE oauth_accounts SET access_token = ?, refresh_token = COALESCE(?, refresh_token), expires_at = COALESCE(?, expires_at) WHERE user_id = ? AND provider = ?`,
@@ -1919,9 +2024,9 @@ export class LibraryDatabase {
     userId: number,
     provider: string,
     providerUserId: string,
-    accessToken?: string,
-    refreshToken?: string,
-    expiresAt?: string,
+    accessToken?: string | null,
+    refreshToken?: string | null,
+    expiresAt?: string | null,
   ): void {
     this.#db
       .prepare(
@@ -1934,78 +2039,28 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?`).run(userId, provider);
   }
 
-  getUserByEmail(email: string):
-    | {
-        id: number;
-        username: string;
-        email: string;
-        password_hash: string;
-        account_type?: string | undefined;
-        avatar_url: string;
-        display_name: string;
-        bio: string;
-        email_verified?: number | undefined;
-        status?: string | undefined;
-        credit_balance?: number | undefined;
-        token_version?: number | undefined;
-        totp_enabled?: number | undefined;
-        totp_secret?: string | null | undefined;
-        backup_codes?: string | undefined;
-      }
-    | undefined {
+  getUserByEmail(email: string): UserRow | undefined {
     return this.#db
       .prepare(
         `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE email = ?`,
       )
-      .get(email) as any;
+      .get(email) as UserRow | undefined;
   }
 
-  getUserByUsername(username: string):
-    | {
-        id: number;
-        username: string;
-        email: string;
-        account_type?: string | undefined;
-        email_verified?: number | undefined;
-        status?: string | undefined;
-        credit_balance?: number | undefined;
-        token_version?: number | undefined;
-        totp_enabled?: number | undefined;
-        totp_secret?: string | null | undefined;
-        backup_codes?: string | undefined;
-      }
-    | undefined {
+  getUserByUsername(username: string): UserRow | undefined {
     return this.#db
       .prepare(
         `SELECT id, username, email, account_type, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE username = ?`,
       )
-      .get(username) as any;
+      .get(username) as UserRow | undefined;
   }
 
-  getUserById(id: number):
-    | {
-        id: number;
-        username: string;
-        email: string;
-        password_hash?: string | undefined;
-        account_type?: string | undefined;
-        avatar_url: string;
-        display_name: string;
-        bio: string;
-        email_verified?: number | undefined;
-        status?: string | undefined;
-        credit_balance?: number | undefined;
-        token_version?: number | undefined;
-        totp_enabled?: number | undefined;
-        totp_secret?: string | null | undefined;
-        backup_codes?: string | undefined;
-      }
-    | undefined {
+  getUserById(id: number): UserRow | undefined {
     return this.#db
       .prepare(
         `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`,
       )
-      .get(id) as any;
+      .get(id) as UserRow | undefined;
   }
 
   setUserAccountType(userId: number, accountType: string): void {
@@ -2024,7 +2079,9 @@ export class LibraryDatabase {
   }
 
   ensureUserRSAKeys(userId: number): { publicKey: string; privateKey: string } {
-    const user = this.#db.prepare(`SELECT rsa_private_key, rsa_public_key FROM users WHERE id = ?`).get(userId) as any;
+    const user = this.#db.prepare(`SELECT rsa_private_key, rsa_public_key FROM users WHERE id = ?`).get(userId) as
+      | { rsa_private_key?: string | null | undefined; rsa_public_key?: string | null | undefined }
+      | undefined;
     if (user?.rsa_private_key && user?.rsa_public_key) {
       return { privateKey: user.rsa_private_key, publicKey: user.rsa_public_key };
     }
@@ -2035,22 +2092,12 @@ export class LibraryDatabase {
     return keys;
   }
 
-  getUserFederationInfo(userId: number):
-    | {
-        id: number;
-        actor_url?: string | null | undefined;
-        inbox_url?: string | null | undefined;
-        outbox_url?: string | null | undefined;
-        remote_domain?: string | null | undefined;
-        rsa_public_key?: string | null | undefined;
-        rsa_private_key?: string | null | undefined;
-      }
-    | undefined {
+  getUserFederationInfo(userId: number): UserFederationInfo | undefined {
     const row = this.#db
       .prepare(
         `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key FROM users WHERE id = ?`,
       )
-      .get(userId) as any;
+      .get(userId) as UserFederationInfo | undefined;
     if (!row) return undefined;
     if (!row.rsa_private_key || !row.rsa_public_key) {
       const keys = this.ensureUserRSAKeys(userId);
@@ -2060,12 +2107,12 @@ export class LibraryDatabase {
     return row;
   }
 
-  getRemoteFollowersInboxes(authorId: number): Array<{ inbox_url: string }> {
+  getRemoteFollowersInboxes(authorId: number): { inbox_url: string }[] {
     return this.#db
       .prepare(
         `SELECT u.inbox_url FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ? AND u.remote_domain IS NOT NULL`,
       )
-      .all(authorId) as Array<{ inbox_url: string }>;
+      .all(authorId) as { inbox_url: string }[];
   }
 
   getTotalUsersCount(): number {
@@ -2073,7 +2120,7 @@ export class LibraryDatabase {
     return row?.count ?? 0;
   }
 
-  getAllUsers(): Array<{
+  getAllUsers(): {
     id: number;
     username: string;
     email: string;
@@ -2081,12 +2128,20 @@ export class LibraryDatabase {
     account_type: string;
     status: string;
     created_at: string;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT id, username, email, display_name, account_type, status, created_at FROM users WHERE status != 'deleted' ORDER BY id ASC`,
       )
-      .all() as any[];
+      .all() as {
+      id: number;
+      username: string;
+      email: string;
+      display_name?: string | undefined;
+      account_type: string;
+      status: string;
+      created_at: string;
+    }[];
   }
 
   getTotalPostsCount(): number {
@@ -2098,7 +2153,7 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(balance, userId);
   }
 
-  getFullProfileByUsername(username: string): any {
+  getFullProfileByUsername(username: string): UserRow | undefined {
     return this.#db
       .prepare(
         `
@@ -2110,7 +2165,7 @@ export class LibraryDatabase {
       FROM users u WHERE u.username = ?
     `,
       )
-      .get(username);
+      .get(username) as UserRow | undefined;
   }
 
   updateProfile(
@@ -2127,8 +2182,8 @@ export class LibraryDatabase {
     const ALLOWED_PROFILE_COLUMNS = new Set(["display_name", "bio", "location", "website", "avatar_url", "banner_url"]);
     const fields = Object.entries(profile).filter(([k, v]) => ALLOWED_PROFILE_COLUMNS.has(k) && v !== undefined);
     if (fields.length === 0) return;
-    const setClause = fields.map(([k, _]) => `${k} = ?`).join(", ");
-    const values = fields.map(([_, v]) => v);
+    const setClause = fields.map(([k]) => `${k} = ?`).join(", ");
+    const values = fields.map(([, v]) => v);
     this.#db.prepare(`UPDATE users SET ${setClause} WHERE id = ?`).run(...values, userId);
   }
 
@@ -2189,7 +2244,7 @@ export class LibraryDatabase {
     let backupCodes: string[] = [];
     try {
       if (row.backup_codes) {
-        backupCodes = JSON.parse(row.backup_codes);
+        backupCodes = JSON.parse(row.backup_codes) as string[];
       }
     } catch {
       backupCodes = [];
@@ -2227,7 +2282,7 @@ export class LibraryDatabase {
       this.#db
         .prepare(`INSERT INTO follows (follower_id, following_id, state) VALUES (?, ?, ?)`)
         .run(followerId, followingId, state);
-    } catch (err) {
+    } catch {
       // ignore unique constraint
     }
   }
@@ -2243,10 +2298,10 @@ export class LibraryDatabase {
     return !!res;
   }
 
-  getUserFollowers(userId: number, currentUserId?: number): any[] {
+  getUserFollowers(userId: number, currentUserId?: number): UserRow[] {
     const query = currentUserId
       ? `
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type,
+        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type, u.actor_url, u.remote_domain, u.inbox_url,
           EXISTS(SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) as is_following
         FROM follows f
         JOIN users u ON f.follower_id = u.id
@@ -2254,7 +2309,7 @@ export class LibraryDatabase {
         ORDER BY f.created_at DESC
       `
       : `
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type,
+        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type, u.actor_url, u.remote_domain, u.inbox_url,
           0 as is_following
         FROM follows f
         JOIN users u ON f.follower_id = u.id
@@ -2262,11 +2317,11 @@ export class LibraryDatabase {
         ORDER BY f.created_at DESC
       `;
     return currentUserId
-      ? (this.#db.prepare(query).all(currentUserId, userId) as any[])
-      : (this.#db.prepare(query).all(userId) as any[]);
+      ? (this.#db.prepare(query).all(currentUserId, userId) as UserRow[])
+      : (this.#db.prepare(query).all(userId) as UserRow[]);
   }
 
-  getUserFollowing(userId: number, currentUserId?: number): any[] {
+  getUserFollowing(userId: number, currentUserId?: number): UserRow[] {
     const query = currentUserId
       ? `
         SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type,
@@ -2285,11 +2340,11 @@ export class LibraryDatabase {
         ORDER BY f.created_at DESC
       `;
     return currentUserId
-      ? (this.#db.prepare(query).all(currentUserId, userId) as any[])
-      : (this.#db.prepare(query).all(userId) as any[]);
+      ? (this.#db.prepare(query).all(currentUserId, userId) as UserRow[])
+      : (this.#db.prepare(query).all(userId) as UserRow[]);
   }
 
-  getUserSuggestions(userId?: number, limit: number = 3): any[] {
+  getUserSuggestions(userId?: number, limit: number = 3): UserRow[] {
     if (userId) {
       return this.#db
         .prepare(
@@ -2300,7 +2355,7 @@ export class LibraryDatabase {
         ORDER BY RANDOM() LIMIT ?
       `,
         )
-        .all(userId, userId, limit) as any[];
+        .all(userId, userId, limit) as UserRow[];
     } else {
       return this.#db
         .prepare(
@@ -2310,25 +2365,32 @@ export class LibraryDatabase {
         ORDER BY RANDOM() LIMIT ?
       `,
         )
-        .all(limit) as any[];
+        .all(limit) as UserRow[];
     }
   }
 
   // ── Public Keys ─────────────────────────────────────────────────
 
-  getPublicKeysForUser(userId: number): Array<{
+  getPublicKeysForUser(userId: number): {
     id: number;
     key_id_string: string;
     public_key_pem: string;
     device_name: string | null;
     created_at: string;
     is_active: number;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT id, key_id_string, public_key_pem, device_name, created_at, is_active FROM user_public_keys WHERE user_id = ? AND is_active = 1`,
       )
-      .all(userId) as any;
+      .all(userId) as {
+      id: number;
+      key_id_string: string;
+      public_key_pem: string;
+      device_name: string | null;
+      created_at: string;
+      is_active: number;
+    }[];
   }
 
   addPublicKeyForUser(userId: number, keyIdString: string, publicKeyPem: string, deviceName?: string): { id: number } {
@@ -2355,7 +2417,7 @@ export class LibraryDatabase {
     url?: string,
     createdAt?: string,
     updatedAt?: string,
-    metadata?: any,
+    metadata?: PostMetadata | string | null,
     replyVisibility?: string,
     isSilenced?: boolean | number,
   ): { id: number } {
@@ -2393,13 +2455,20 @@ export class LibraryDatabase {
     updates: {
       content?: string | null | undefined;
       artifactViewId?: number | null | undefined;
-      metadata?: any;
+      metadata?: PostMetadata | string | null | undefined;
       replyVisibility?: string | undefined;
     },
   ): void {
     const existing = this.#db
       .prepare(`SELECT content, artifact_view_id, metadata, reply_visibility FROM posts WHERE id = ?`)
-      .get(postId) as any;
+      .get(postId) as
+      | {
+          content: string | null;
+          artifact_view_id: number | null;
+          metadata: string | null;
+          reply_visibility: string;
+        }
+      | undefined;
     if (!existing) return;
 
     const nextContent = updates.content !== undefined ? updates.content : existing.content;
@@ -2467,38 +2536,42 @@ export class LibraryDatabase {
       .all(postId) as { country: string; region: string; views: number }[];
   }
 
-  private hydratePost(p: any, currentUserId?: number): any {
+  private hydratePost(
+    p: (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined }) | null | undefined,
+    currentUserId?: number,
+  ): PostRow | null {
     if (!p) return null;
     if (p.metadata && typeof p.metadata === "string") {
       try {
-        p.metadata = JSON.parse(p.metadata);
+        p.metadata = JSON.parse(p.metadata) as PostMetadata | string;
         if (typeof p.metadata === "string") {
-          p.metadata = JSON.parse(p.metadata);
+          p.metadata = JSON.parse(p.metadata) as PostMetadata;
         }
-      } catch (e) {}
+      } catch {}
     }
-    if (p.metadata && typeof p.metadata === "object") {
-      if (!p.client_signature && p.metadata.clientSignature) {
-        p.client_signature = p.metadata.clientSignature;
+    const meta = p.metadata && typeof p.metadata === "object" ? p.metadata : undefined;
+    if (meta) {
+      if (!p.client_signature && meta.clientSignature) {
+        p.client_signature = meta.clientSignature;
       }
-      if (!p.key_id_string && p.metadata.keyIdString) {
-        p.key_id_string = p.metadata.keyIdString;
+      if (!p.key_id_string && meta.keyIdString) {
+        p.key_id_string = meta.keyIdString;
       }
     }
     if (p.artifact_view_id && !p.artifact_view) {
-      p.artifact_view = this.getArtifactView(p.artifact_view_id);
+      p.artifact_view = this.getArtifactView(p.artifact_view_id) ?? null;
     }
     const extraArtifactIds = new Set<number>();
     if (p.artifact_view_id) {
       extraArtifactIds.add(Number(p.artifact_view_id));
     }
-    if (Array.isArray(p.metadata?.notebook?.artifactIds)) {
-      for (const aid of p.metadata.notebook.artifactIds) {
+    if (Array.isArray(meta?.notebook?.artifactIds)) {
+      for (const aid of meta.notebook.artifactIds) {
         if (Number.isFinite(Number(aid))) extraArtifactIds.add(Number(aid));
       }
     }
-    if (Array.isArray(p.metadata?.notebook?.cells)) {
-      for (const cell of p.metadata.notebook.cells) {
+    if (Array.isArray(meta?.notebook?.cells)) {
+      for (const cell of meta.notebook.cells) {
         if (cell?.type === "artifact" && Number.isFinite(Number(cell.artifactId))) {
           extraArtifactIds.add(Number(cell.artifactId));
         }
@@ -2515,7 +2588,7 @@ export class LibraryDatabase {
       }
     }
     if (extraArtifactIds.size > 0) {
-      const viewsMap: Record<number, any> = {};
+      const viewsMap: Record<number, ArtifactViewRow> = {};
       for (const aid of extraArtifactIds) {
         const view = aid === p.artifact_view_id && p.artifact_view ? p.artifact_view : this.getArtifactView(aid);
         if (view) {
@@ -2530,10 +2603,10 @@ export class LibraryDatabase {
     if (p.quote_post_id) {
       p.quote_post = this.getPost(p.quote_post_id, currentUserId);
     }
-    return p;
+    return p as PostRow;
   }
 
-  getPost(id: number, currentUserId?: number): any {
+  getPost(id: number, currentUserId?: number): PostRow | null {
     const uid = currentUserId || -1;
     const p = this.#db
       .prepare(
@@ -2549,11 +2622,13 @@ export class LibraryDatabase {
       WHERE p.id = ?
     `,
       )
-      .get(uid, uid, uid, id);
+      .get(uid, uid, uid, id) as
+      | (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined })
+      | undefined;
     return this.hydratePost(p, currentUserId);
   }
 
-  getReplies(postId: number, currentUserId?: number, limit: number = 50): any[] {
+  getReplies(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const modFilter = this.buildMuteBlockFilter(currentUserId);
     const posts = this.#db
@@ -2573,11 +2648,13 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, postId, ...modFilter.params, limit) as any[];
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+      .all(uid, uid, uid, postId, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
-  getQuotes(postId: number, currentUserId?: number, limit: number = 50): any[] {
+  getQuotes(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
@@ -2595,11 +2672,13 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, postId, limit) as any[];
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+      .all(uid, uid, uid, postId, limit) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
-  getReposts(postId: number, currentUserId?: number, limit: number = 50): any[] {
+  getReposts(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
@@ -2617,17 +2696,21 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, postId, limit) as any[];
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+      .all(uid, uid, uid, postId, limit) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
-  getPostParents(postId: number, currentUserId?: number, depth: number = 5): any[] {
-    const parents: any[] = [];
+  getPostParents(postId: number, currentUserId?: number, depth: number = 5): PostRow[] {
+    const parents: PostRow[] = [];
     let currentId = postId;
     let currentDepth = 0;
 
     while (currentDepth < depth) {
-      const p = this.#db.prepare(`SELECT reply_to_id FROM posts WHERE id = ?`).get(currentId) as any;
+      const p = this.#db.prepare(`SELECT reply_to_id FROM posts WHERE id = ?`).get(currentId) as
+        | { reply_to_id: number | null }
+        | undefined;
       if (!p || !p.reply_to_id) break;
 
       const parentPost = this.getPost(p.reply_to_id, currentUserId);
@@ -2642,7 +2725,7 @@ export class LibraryDatabase {
     return parents;
   }
 
-  private buildArtifactFilter(artifactType?: string): { sql: string; params: any[] } {
+  private buildArtifactFilter(artifactType?: string): { sql: string; params: (string | number)[] } {
     if (!artifactType || artifactType === "all") return { sql: "", params: [] };
     const norm = artifactType.toLowerCase();
     if (norm === "cad") {
@@ -2699,7 +2782,7 @@ export class LibraryDatabase {
     return { sql: " AND LOWER(a.view_type) = ?", params: [norm] };
   }
 
-  private buildTagFilter(tag?: string): { sql: string; params: any[] } {
+  private buildTagFilter(tag?: string): { sql: string; params: (string | number)[] } {
     if (!tag) return { sql: "", params: [] };
     const clean = tag.replace(/^#/, "").trim().toLowerCase();
     if (!clean) return { sql: "", params: [] };
@@ -2715,7 +2798,7 @@ export class LibraryDatabase {
     };
   }
 
-  private buildMuteBlockFilter(userId?: number): { sql: string; params: any[] } {
+  private buildMuteBlockFilter(userId?: number): { sql: string; params: (string | number)[] } {
     if (!userId || userId <= 0) return { sql: "", params: [] };
     return {
       sql: ` AND p.author_id NOT IN (SELECT muted_id FROM user_mutes WHERE muter_id = ?)
@@ -2725,7 +2808,13 @@ export class LibraryDatabase {
     };
   }
 
-  getHomeTimeline(userId: number, limit: number = 20, offset: number = 0, artifactType?: string, tag?: string): any[] {
+  getHomeTimeline(
+    userId: number,
+    limit: number = 20,
+    offset: number = 0,
+    artifactType?: string,
+    tag?: string,
+  ): PostRow[] {
     try {
       const hasTopics = this.#db.prepare(`SELECT 1 FROM user_topics WHERE user_id = ? LIMIT 1`).get(userId);
       if (!hasTopics) {
@@ -2786,8 +2875,10 @@ export class LibraryDatabase {
       LIMIT ? OFFSET ?
     `,
       )
-      .all(...allParams) as any[];
-    return posts.map((p) => this.hydratePost(p, userId));
+      .all(...allParams) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, userId)!);
   }
 
   getFollowingTimeline(
@@ -2797,7 +2888,7 @@ export class LibraryDatabase {
     offset: number = 0,
     artifactType?: string,
     tag?: string,
-  ): any[] {
+  ): PostRow[] {
     const orderBy = sort === "popular" ? "like_count DESC, diversity_score DESC" : "diversity_score DESC";
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
@@ -2839,8 +2930,10 @@ export class LibraryDatabase {
       LIMIT ? OFFSET ?
     `,
       )
-      .all(...allParams) as any[];
-    return posts.map((p) => this.hydratePost(p, userId));
+      .all(...allParams) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, userId)!);
   }
 
   getExploreTimeline(
@@ -2849,7 +2942,7 @@ export class LibraryDatabase {
     offset: number = 0,
     artifactType?: string,
     tag?: string,
-  ): any[] {
+  ): PostRow[] {
     const uid = currentUserId || -1;
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
@@ -2883,9 +2976,11 @@ export class LibraryDatabase {
       LIMIT ? OFFSET ?
     `,
       )
-      .all(...allParams) as any[];
+      .all(...allParams) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
 
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
   getFederatedTimeline(
@@ -2894,7 +2989,7 @@ export class LibraryDatabase {
     offset: number = 0,
     artifactType?: string,
     tag?: string,
-  ): any[] {
+  ): PostRow[] {
     const uid = currentUserId || -1;
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
@@ -2923,12 +3018,14 @@ export class LibraryDatabase {
       LIMIT ? OFFSET ?
     `,
       )
-      .all(...allParams) as any[];
+      .all(...allParams) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
 
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
-  getUserTimeline(username: string, currentUserId?: number, limit: number = 20, type?: string): any[] {
+  getUserTimeline(username: string, currentUserId?: number, limit: number = 20, type?: string): PostRow[] {
     let typeFilter = "";
     if (type === "replies") {
       typeFilter = "AND p.reply_to_id IS NOT NULL";
@@ -2955,8 +3052,10 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, username, limit) as any[];
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+      .all(uid, uid, uid, username, limit) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
   blockUser(blockerId: number, blockedId: number): void {
@@ -3001,7 +3100,9 @@ export class LibraryDatabase {
       try {
         this.deriveUserTopics(userId);
       } catch {}
-      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as any;
+      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number }
+        | undefined;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "like", postId);
       }
@@ -3016,7 +3117,9 @@ export class LibraryDatabase {
       try {
         this.deriveUserTopics(userId);
       } catch {}
-      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as any;
+      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number }
+        | undefined;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "like", postId);
       }
@@ -3050,7 +3153,9 @@ export class LibraryDatabase {
       return false; // un-reposted
     } else {
       this.createPost(userId, null, undefined, undefined, undefined, postId);
-      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as any;
+      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number }
+        | undefined;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "repost", postId);
       }
@@ -3058,7 +3163,7 @@ export class LibraryDatabase {
     }
   }
 
-  getBookmarks(userId: number, limit: number = 20): any[] {
+  getBookmarks(userId: number, limit: number = 20): PostRow[] {
     const posts = this.#db
       .prepare(
         `
@@ -3077,8 +3182,10 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(userId, userId, userId, limit) as any[];
-    return posts.map((p) => this.hydratePost(p, userId));
+      .all(userId, userId, userId, limit) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, userId)!);
   }
 
   createNotification(
@@ -3147,7 +3254,7 @@ export class LibraryDatabase {
     }
   }
 
-  getNotifications(userId: number, limit: number = 20, category?: string): any[] {
+  getNotifications(userId: number, limit: number = 20, category?: string): NotificationRow[] {
     let typeClause = "";
     if (category === "engineering") {
       typeClause = "AND n.type IN ('simulation', 'simulation_completed', 'simulation_failed')";
@@ -3178,12 +3285,12 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(userId, limit) as any[];
+      .all(userId, limit) as NotificationRow[];
 
     return rows.map((r) => {
       if (r.metadata && typeof r.metadata === "string") {
         try {
-          r.metadata = JSON.parse(r.metadata);
+          r.metadata = JSON.parse(r.metadata) as Record<string, unknown>;
         } catch {
           // Keep as string
         }
@@ -3209,7 +3316,7 @@ export class LibraryDatabase {
   getUnreadNotificationCount(userId: number): number {
     const row = this.#db
       .prepare(`SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0`)
-      .get(userId) as any;
+      .get(userId) as { count: number };
     return row.count;
   }
 
@@ -3223,7 +3330,7 @@ export class LibraryDatabase {
     const cleanDomain = domain.toLowerCase().trim();
     const row = this.#db
       .prepare(`SELECT domain, tier, reason FROM federation_domains WHERE domain = ?`)
-      .get(cleanDomain) as any;
+      .get(cleanDomain) as { domain: string; tier: "allow" | "silence" | "suspend"; reason: string | null } | undefined;
     if (!row) {
       return { domain: cleanDomain, tier: "allow" };
     }
@@ -3258,7 +3365,13 @@ export class LibraryDatabase {
   }[] {
     return this.#db
       .prepare(`SELECT domain, tier, reason, created_at, updated_at FROM federation_domains ORDER BY created_at DESC`)
-      .all() as any[];
+      .all() as {
+      domain: string;
+      tier: string;
+      reason?: string | undefined;
+      created_at: string;
+      updated_at: string;
+    }[];
   }
 
   isDomainSuspended(domain: string): boolean {
@@ -3287,7 +3400,7 @@ export class LibraryDatabase {
     return { id: Number(res.lastInsertRowid) };
   }
 
-  fetchPendingFederationDeliveries(limit: number = 25): Array<{
+  fetchPendingFederationDeliveries(limit: number = 25): {
     id: number;
     activity_type: string;
     activity_id: string;
@@ -3296,14 +3409,23 @@ export class LibraryDatabase {
     target_domain: string;
     attempts: number;
     max_attempts: number;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT * FROM federation_delivery_queue 
          WHERE status = 'pending' AND datetime(next_retry_at) <= datetime('now')
          ORDER BY id ASC LIMIT ?`,
       )
-      .all(limit) as any[];
+      .all(limit) as {
+      id: number;
+      activity_type: string;
+      activity_id: string;
+      payload: string;
+      target_inbox_url: string;
+      target_domain: string;
+      attempts: number;
+      max_attempts: number;
+    }[];
   }
 
   updateFederationDeliveryStatus(
@@ -3358,7 +3480,7 @@ export class LibraryDatabase {
     return row?.count ?? 0;
   }
 
-  getUserOutboxPosts(userId: number, limit: number = 20, offset: number = 0): any[] {
+  getUserOutboxPosts(userId: number, limit: number = 20, offset: number = 0): PostRow[] {
     const posts = this.#db
       .prepare(
         `SELECT id, author_id, content, artifact_view_id, ap_id, url, metadata, created_at, updated_at
@@ -3366,8 +3488,10 @@ export class LibraryDatabase {
          WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0
          ORDER BY id DESC LIMIT ? OFFSET ?`,
       )
-      .all(userId, limit, offset) as any[];
-    return posts.map((p) => this.hydratePost(p));
+      .all(userId, limit, offset) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p)!);
   }
 
   getUserFollowerActors(userId: number, limit: number = 50, offset: number = 0): string[] {
@@ -3379,7 +3503,7 @@ export class LibraryDatabase {
          WHERE f.following_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
          ORDER BY f.id DESC LIMIT ? OFFSET ?`,
       )
-      .all(userId, limit, offset) as Array<{ actor_url?: string | undefined; username: string }>;
+      .all(userId, limit, offset) as { actor_url?: string | undefined; username: string }[];
     const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
     return rows.map((r) => r.actor_url || `${publicUrl}/users/${r.username}`);
   }
@@ -3400,7 +3524,7 @@ export class LibraryDatabase {
          WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
          ORDER BY f.id DESC LIMIT ? OFFSET ?`,
       )
-      .all(userId, limit, offset) as Array<{ actor_url?: string | undefined; username: string }>;
+      .all(userId, limit, offset) as { actor_url?: string | undefined; username: string }[];
     const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
     return rows.map((r) => r.actor_url || `${publicUrl}/users/${r.username}`);
   }
@@ -3412,12 +3536,14 @@ export class LibraryDatabase {
     return row?.count ?? 0;
   }
 
-  getPostByApId(apId: string): any {
-    return this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId);
+  getPostByApId(apId: string): PostRow | undefined {
+    return this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId) as PostRow | undefined;
   }
 
   deletePostByApId(apId: string, expectedAuthorId?: number): boolean {
-    const post = this.#db.prepare(`SELECT id, author_id FROM posts WHERE ap_id = ?`).get(apId) as any;
+    const post = this.#db.prepare(`SELECT id, author_id FROM posts WHERE ap_id = ?`).get(apId) as
+      | { id: number; author_id: number }
+      | undefined;
     if (!post) return false;
     if (expectedAuthorId !== undefined && post.author_id !== expectedAuthorId) {
       return false;
@@ -3458,7 +3584,7 @@ export class LibraryDatabase {
     return { id: Number(result.lastInsertRowid), status: "pending" };
   }
 
-  getContentReport(reportId: number): any {
+  getContentReport(reportId: number): ContentReportRow | undefined {
     return this.#db
       .prepare(
         `SELECT r.*, 
@@ -3470,10 +3596,10 @@ export class LibraryDatabase {
          LEFT JOIN posts p ON r.post_id = p.id
          WHERE r.id = ?`,
       )
-      .get(reportId);
+      .get(reportId) as ContentReportRow | undefined;
   }
 
-  getModerationQueue(status?: string, limit: number = 50, offset: number = 0): any[] {
+  getModerationQueue(status?: string, limit: number = 50, offset: number = 0): ContentReportRow[] {
     if (status) {
       return this.#db
         .prepare(
@@ -3488,7 +3614,7 @@ export class LibraryDatabase {
            ORDER BY r.created_at DESC
            LIMIT ? OFFSET ?`,
         )
-        .all(status, limit, offset) as any[];
+        .all(status, limit, offset) as ContentReportRow[];
     }
     return this.#db
       .prepare(
@@ -3502,7 +3628,7 @@ export class LibraryDatabase {
          ORDER BY r.created_at DESC
          LIMIT ? OFFSET ?`,
       )
-      .all(limit, offset) as any[];
+      .all(limit, offset) as ContentReportRow[];
   }
 
   resolveContentReport(reportId: number, status: "resolved" | "dismissed", resolutionNotes?: string): boolean {
@@ -3517,7 +3643,9 @@ export class LibraryDatabase {
   }
 
   deletePost(postId: number): { success: boolean; apId?: string | undefined; authorId?: number | undefined } {
-    const post = this.#db.prepare(`SELECT id, author_id, ap_id FROM posts WHERE id = ?`).get(postId) as any;
+    const post = this.#db.prepare(`SELECT id, author_id, ap_id FROM posts WHERE id = ?`).get(postId) as
+      | { id: number; author_id: number; ap_id: string | null }
+      | undefined;
     if (!post) {
       return { success: false };
     }
@@ -3528,7 +3656,7 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM post_location_stats WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(postId);
-    return { success: true, apId: post.ap_id, authorId: post.author_id };
+    return { success: true, apId: post.ap_id ?? undefined, authorId: post.author_id };
   }
 
   // ── DMCA Notices ─────────────────────────────────────────────────
@@ -3559,11 +3687,13 @@ export class LibraryDatabase {
     return { id: Number(res.lastInsertRowid) };
   }
 
-  listDmcaNotices(status?: string): any[] {
+  listDmcaNotices(status?: string): DmcaNoticeRow[] {
     if (status) {
-      return this.#db.prepare(`SELECT * FROM dmca_notices WHERE status = ? ORDER BY created_at DESC`).all(status);
+      return this.#db
+        .prepare(`SELECT * FROM dmca_notices WHERE status = ? ORDER BY created_at DESC`)
+        .all(status) as DmcaNoticeRow[];
     }
-    return this.#db.prepare(`SELECT * FROM dmca_notices ORDER BY created_at DESC`).all();
+    return this.#db.prepare(`SELECT * FROM dmca_notices ORDER BY created_at DESC`).all() as DmcaNoticeRow[];
   }
 
   resolveDmcaNotice(id: number, actionTaken: string): boolean {
@@ -3581,7 +3711,7 @@ export class LibraryDatabase {
     resourceType: string;
     resourceId?: string | null | undefined;
     ipAddress?: string | null | undefined;
-    details?: Record<string, any> | string | undefined;
+    details?: Record<string, unknown> | string | undefined;
   }): void {
     const detailsStr = typeof data.details === "object" ? JSON.stringify(data.details) : (data.details ?? null);
     try {
@@ -3603,7 +3733,7 @@ export class LibraryDatabase {
     }
   }
 
-  getAuditLogs(limit: number = 50, offset: number = 0, action?: string): any[] {
+  getAuditLogs(limit: number = 50, offset: number = 0, action?: string): AuditLogRow[] {
     if (action) {
       return this.#db
         .prepare(
@@ -3614,7 +3744,7 @@ export class LibraryDatabase {
            ORDER BY a.created_at DESC
            LIMIT ? OFFSET ?`,
         )
-        .all(action, limit, offset) as any[];
+        .all(action, limit, offset) as AuditLogRow[];
     }
     return this.#db
       .prepare(
@@ -3624,7 +3754,7 @@ export class LibraryDatabase {
          ORDER BY a.created_at DESC
          LIMIT ? OFFSET ?`,
       )
-      .all(limit, offset) as any[];
+      .all(limit, offset) as AuditLogRow[];
   }
 
   /**
@@ -3652,7 +3782,7 @@ export class LibraryDatabase {
       let domain = "rss";
       try {
         domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, "_");
-      } catch (e) {
+      } catch {
         // Ignore parsing error
       }
       const uniqueSuffix = crypto.randomInt(1000000);
@@ -3681,11 +3811,11 @@ export class LibraryDatabase {
     return transaction();
   }
 
-  getRssFeedByUrl(url: string): any {
-    return this.#db.prepare(`SELECT * FROM rss_feeds WHERE url = ?`).get(url);
+  getRssFeedByUrl(url: string): RssFeedRow | undefined {
+    return this.#db.prepare(`SELECT * FROM rss_feeds WHERE url = ?`).get(url) as RssFeedRow | undefined;
   }
 
-  getRssFeedsToPoll(): any[] {
+  getRssFeedsToPoll(): RssFeedRow[] {
     // Only fetch feeds where last_polled_at is null OR last_polled_at + poll_interval_mins < now
     return this.#db
       .prepare(
@@ -3695,7 +3825,7 @@ export class LibraryDatabase {
          OR datetime(last_polled_at, '+' || poll_interval_mins || ' minutes') <= datetime('now')
     `,
       )
-      .all();
+      .all() as RssFeedRow[];
   }
 
   updateRssFeedPollMetadata(
@@ -3718,7 +3848,9 @@ export class LibraryDatabase {
   subscribeToRssFeed(userId: number, rssFeedId: number): void {
     // Check limit first
     const subCount = (
-      this.#db.prepare(`SELECT COUNT(*) as count FROM user_rss_subscriptions WHERE user_id = ?`).get(userId) as any
+      this.#db.prepare(`SELECT COUNT(*) as count FROM user_rss_subscriptions WHERE user_id = ?`).get(userId) as {
+        count: number;
+      }
     ).count;
 
     // Check if already subscribed to avoid double-counting limit
@@ -3733,14 +3865,14 @@ export class LibraryDatabase {
       this.#db
         .prepare(`INSERT INTO user_rss_subscriptions (user_id, rss_feed_id) VALUES (?, ?)`)
         .run(userId, rssFeedId);
-    } catch (e) {
+    } catch {
       // Ignore unique constraint violation (already subscribed)
     }
   }
 
   unsubscribeFromRssFeed(userId: number, rssFeedId: number): void {
     const transaction = this.#db.transaction(() => {
-      const feed = this.#db.prepare(`SELECT * FROM rss_feeds WHERE id = ?`).get(rssFeedId) as any;
+      const feed = this.#db.prepare(`SELECT * FROM rss_feeds WHERE id = ?`).get(rssFeedId) as RssFeedRow | undefined;
       if (!feed) return;
 
       this.#db
@@ -3750,7 +3882,7 @@ export class LibraryDatabase {
       const subCount = (
         this.#db
           .prepare(`SELECT COUNT(*) as count FROM user_rss_subscriptions WHERE rss_feed_id = ?`)
-          .get(rssFeedId) as any
+          .get(rssFeedId) as { count: number }
       ).count;
 
       if (subCount === 0) {
@@ -3772,7 +3904,7 @@ export class LibraryDatabase {
     transaction();
   }
 
-  getUserRssSubscriptions(userId: number): any[] {
+  getUserRssSubscriptions(userId: number): RssFeedRow[] {
     return this.#db
       .prepare(
         `
@@ -3784,21 +3916,21 @@ export class LibraryDatabase {
         ORDER BY s.created_at DESC
       `,
       )
-      .all(userId) as any[];
+      .all(userId) as RssFeedRow[];
   }
 
-  getAllRssFeeds(): any[] {
-    return this.#db.prepare(`SELECT * FROM rss_feeds`).all() as any[];
+  getAllRssFeeds(): RssFeedRow[] {
+    return this.#db.prepare(`SELECT * FROM rss_feeds`).all() as RssFeedRow[];
   }
 
-  updateRssFeedStatus(rssFeedId: number, lastFetchedAt: string, lastGuid: string): void {
+  updateRssFeedStatus(rssFeedId: number, lastFetchedAt: string, lastGuid: string | null): void {
     this.#db
       .prepare(`UPDATE rss_feeds SET last_fetched_at = ?, last_guid = ? WHERE id = ?`)
       .run(lastFetchedAt, lastGuid, rssFeedId);
   }
 
-  getArtifactView(id: number): any {
-    return this.#db.prepare(`SELECT * FROM artifact_views WHERE id = ?`).get(id);
+  getArtifactView(id: number): ArtifactViewRow | undefined {
+    return this.#db.prepare(`SELECT * FROM artifact_views WHERE id = ?`).get(id) as ArtifactViewRow | undefined;
   }
 
   createArtifactView(
@@ -3820,12 +3952,14 @@ export class LibraryDatabase {
     return Number(res.lastInsertRowid);
   }
 
-  getAllArtifactViews(): any[] {
-    return this.#db.prepare(`SELECT id, view_type, view_config FROM artifact_views`).all();
+  getAllArtifactViews(): ArtifactViewRow[] {
+    return this.#db.prepare(`SELECT id, view_type, view_config FROM artifact_views`).all() as ArtifactViewRow[];
   }
 
-  getArtifactViewByTitle(title: string): any {
-    return this.#db.prepare(`SELECT id, view_type, title FROM artifact_views WHERE title = ? LIMIT 1`).get(title);
+  getArtifactViewByTitle(title: string): ArtifactViewRow | undefined {
+    return this.#db.prepare(`SELECT id, view_type, title FROM artifact_views WHERE title = ? LIMIT 1`).get(title) as
+      | ArtifactViewRow
+      | undefined;
   }
 
   updateArtifactViewConfig(id: number, viewConfig: string): void {
@@ -3851,16 +3985,8 @@ export class LibraryDatabase {
     this.#db.prepare(`UPDATE artifact_views SET thumbnail_url = ? WHERE id = ?`).run(thumbnailUrl, id);
   }
 
-  getUserArchiveData(userId: number): {
-    posts: any[];
-    libraries: any[];
-    billingHistory: any[];
-    auditHistory: any[];
-    bookmarks: any[];
-    following: string[];
-    followers: string[];
-  } {
-    let posts: any[] = [];
+  getUserArchiveData(userId: number): UserArchiveData {
+    let posts: UserArchiveData["posts"] = [];
     try {
       posts = this.#db
         .prepare(
@@ -3870,10 +3996,10 @@ export class LibraryDatabase {
              (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count
            FROM posts p WHERE p.author_id = ? ORDER BY p.id DESC`,
         )
-        .all(userId);
+        .all(userId) as UserArchiveData["posts"];
     } catch {}
 
-    let libraries: any[] = [];
+    let libraries: UserArchiveData["libraries"] = [];
     try {
       libraries = this.#db
         .prepare(
@@ -3883,41 +4009,41 @@ export class LibraryDatabase {
            WHERE pv.published_by = ?
            ORDER BY pv.id DESC`,
         )
-        .all(userId);
+        .all(userId) as UserArchiveData["libraries"];
     } catch {}
 
-    let billingHistory: any[] = [];
+    let billingHistory: UserArchiveData["billingHistory"] = [];
     try {
       billingHistory = this.#db
         .prepare(
           `SELECT id, amount, balance_after, type, description, created_at FROM credit_transactions WHERE user_id = ? ORDER BY id DESC`,
         )
-        .all(userId);
+        .all(userId) as UserArchiveData["billingHistory"];
     } catch {}
 
-    let auditHistory: any[] = [];
+    let auditHistory: UserArchiveData["auditHistory"] = [];
     try {
       auditHistory = this.#db
         .prepare(
           `SELECT action, resource_type, resource_id, created_at FROM audit_logs WHERE actor_id = ? ORDER BY id DESC LIMIT 200`,
         )
-        .all(userId);
+        .all(userId) as UserArchiveData["auditHistory"];
     } catch {}
 
-    let bookmarks: any[] = [];
+    let bookmarks: UserArchiveData["bookmarks"] = [];
     try {
       bookmarks = this.#db
         .prepare(
           `SELECT b.post_id, p.content, b.created_at FROM bookmarks b LEFT JOIN posts p ON b.post_id = p.id WHERE b.user_id = ? ORDER BY b.id DESC`,
         )
-        .all(userId);
+        .all(userId) as UserArchiveData["bookmarks"];
     } catch {}
 
     let following: string[] = [];
     try {
       const rows = this.#db
         .prepare(`SELECT u.username FROM follows f JOIN users u ON f.following_id = u.id WHERE f.follower_id = ?`)
-        .all(userId) as any[];
+        .all(userId) as { username: string }[];
       following = rows.map((r) => r.username);
     } catch {}
 
@@ -3925,7 +4051,7 @@ export class LibraryDatabase {
     try {
       const rows = this.#db
         .prepare(`SELECT u.username FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ?`)
-        .all(userId) as any[];
+        .all(userId) as { username: string }[];
       followers = rows.map((r) => r.username);
     } catch {}
 
@@ -3972,16 +4098,16 @@ export class LibraryDatabase {
     return { id: Number(res.lastInsertRowid) };
   }
 
-  getRemotePackage(name: string, version: string): any {
+  getRemotePackage(name: string, version: string): RemotePackageRow | undefined {
     return this.#db
       .prepare(`SELECT * FROM remote_packages WHERE name = ? AND version = ? AND is_deleted = 0`)
-      .get(name, version);
+      .get(name, version) as RemotePackageRow | undefined;
   }
 
-  getRemotePackages(limit = 50, offset = 0): any[] {
+  getRemotePackages(limit = 50, offset = 0): RemotePackageRow[] {
     return this.#db
       .prepare(`SELECT * FROM remote_packages WHERE is_deleted = 0 ORDER BY created_at DESC LIMIT ? OFFSET ?`)
-      .all(limit, offset);
+      .all(limit, offset) as RemotePackageRow[];
   }
 
   deleteRemotePackage(name: string, version: string, actorUrl?: string): void {
@@ -4049,7 +4175,7 @@ export class LibraryDatabase {
   linkPostToTopic(postId: number, topicId: number): void {
     try {
       this.#db.prepare(`INSERT INTO post_topics (post_id, topic_id) VALUES (?, ?)`).run(postId, topicId);
-    } catch (e) {
+    } catch {
       // Ignore unique constraint violation
     }
   }
@@ -4147,7 +4273,7 @@ export class LibraryDatabase {
              WHERE LOWER(t.concept) IN (${placeholders})
              GROUP BY LOWER(t.concept)`,
           )
-          .all(...missingCurated.map((c) => c.concept.toLowerCase())) as Array<{ concept: string; count: number }>;
+          .all(...missingCurated.map((c) => c.concept.toLowerCase())) as { concept: string; count: number }[];
         for (const r of indexedRows) {
           curatedPostCounts.set(r.concept, Number(r.count || 0));
         }
@@ -4197,7 +4323,7 @@ export class LibraryDatabase {
     return scoredTopics.slice(0, limit);
   }
 
-  getTopicPosts(concept: string, currentUserId?: number, limit = 20, offset = 0, artifactType?: string): any[] {
+  getTopicPosts(concept: string, currentUserId?: number, limit = 20, offset = 0, artifactType?: string): PostRow[] {
     const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
     const artifactFilter = this.buildArtifactFilter(artifactType);
     const uid = currentUserId || -1;
@@ -4233,19 +4359,21 @@ export class LibraryDatabase {
       offset,
     ];
 
-    const posts = this.#db.prepare(query).all(...params) as any[];
-    return posts.map((p) => this.hydratePost(p, currentUserId));
+    const posts = this.#db.prepare(query).all(...params) as (Omit<PostRow, "metadata"> & {
+      metadata?: PostMetadata | string | null | undefined;
+    })[];
+    return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
   // ── Linked Repositories ─────────────────────────────────────────
 
-  getLinkedRepos(userId: number): any[] {
+  getLinkedRepos(userId: number): LinkedRepoRow[] {
     return this.#db
       .prepare(`SELECT * FROM linked_repos WHERE user_id = ? ORDER BY created_at DESC`)
-      .all(userId) as any[];
+      .all(userId) as LinkedRepoRow[];
   }
 
-  getPopularRepos(limit: number = 5): any[] {
+  getPopularRepos(limit: number = 5): LinkedRepoRow[] {
     return this.#db
       .prepare(
         `
@@ -4257,7 +4385,7 @@ export class LibraryDatabase {
         LIMIT ?
       `,
       )
-      .all(limit) as any[];
+      .all(limit) as LinkedRepoRow[];
   }
 
   linkRepo(
@@ -4291,8 +4419,8 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM linked_repos WHERE id = ? AND user_id = ?`).run(repoId, userId);
   }
 
-  getLinkedRepoById(id: number): any {
-    return this.#db.prepare(`SELECT * FROM linked_repos WHERE id = ?`).get(id);
+  getLinkedRepoById(id: number): LinkedRepoRow | undefined {
+    return this.#db.prepare(`SELECT * FROM linked_repos WHERE id = ?`).get(id) as LinkedRepoRow | undefined;
   }
 
   // ==========================================
@@ -4354,7 +4482,11 @@ export class LibraryDatabase {
          JOIN linked_repos r ON w.repo_id = r.id
          WHERE w.provider = ? AND LOWER(r.namespace) = LOWER(?) AND LOWER(r.project) = LOWER(?) AND w.is_active = 1`,
       )
-      .all(provider, namespace, project) as any[];
+      .all(provider, namespace, project) as (RepoWebhookRecord & {
+      namespace: string;
+      project: string;
+      user_id: number;
+    })[];
   }
 
   recordWebhookDelivery(params: {
@@ -4416,7 +4548,7 @@ export class LibraryDatabase {
   getRepoBotReviews(
     repoId: number,
     limit: number = 50,
-  ): Array<{
+  ): {
     id: number;
     repo_id: number;
     bot_id: number;
@@ -4429,7 +4561,7 @@ export class LibraryDatabase {
     issues_json: string | null;
     post_id: number | null;
     created_at: string;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT r.*, u.username as bot_username, u.display_name as bot_display_name
@@ -4439,10 +4571,38 @@ export class LibraryDatabase {
          ORDER BY r.created_at DESC
          LIMIT ?`,
       )
-      .all(repoId, limit) as any;
+      .all(repoId, limit) as {
+      id: number;
+      repo_id: number;
+      bot_id: number;
+      bot_username: string;
+      bot_display_name: string;
+      pr_number: number | null;
+      commit_sha: string | null;
+      verdict: string;
+      summary: string;
+      issues_json: string | null;
+      post_id: number | null;
+      created_at: string;
+    }[];
   }
 
-  getRepoBotReviewById(id: number): any {
+  getRepoBotReviewById(id: number):
+    | {
+        id: number;
+        repo_id: number;
+        bot_id: number;
+        bot_username: string;
+        bot_display_name: string;
+        pr_number: number | null;
+        commit_sha: string | null;
+        verdict: string;
+        summary: string;
+        issues_json: string | null;
+        post_id: number | null;
+        created_at: string;
+      }
+    | undefined {
     return this.#db
       .prepare(
         `SELECT r.*, u.username as bot_username, u.display_name as bot_display_name
@@ -4450,7 +4610,22 @@ export class LibraryDatabase {
          JOIN users u ON r.bot_id = u.id
          WHERE r.id = ?`,
       )
-      .get(id);
+      .get(id) as
+      | {
+          id: number;
+          repo_id: number;
+          bot_id: number;
+          bot_username: string;
+          bot_display_name: string;
+          pr_number: number | null;
+          commit_sha: string | null;
+          verdict: string;
+          summary: string;
+          issues_json: string | null;
+          post_id: number | null;
+          created_at: string;
+        }
+      | undefined;
   }
 
   // ── Global Search ───────────────────────────────────────────────
@@ -4867,39 +5042,23 @@ export class LibraryDatabase {
   /**
    * Get release metadata (content hash, signature, timestamp) for a library.
    */
-  getLibraryRelease(
-    libraryName: string,
-    libraryVersion: string,
-  ): {
-    id: number;
-    library_name: string;
-    library_version: string;
-    content_hash: string;
-    signature: string | null;
-    published_by: number | null;
-    published_at: string;
-    is_deprecated?: number | null | undefined;
-    deprecation_reason?: string | null | undefined;
-    is_yanked?: number | null | undefined;
-    yank_reason?: string | null | undefined;
-    yanked_at?: string | null | undefined;
-  } | null {
+  getLibraryRelease(libraryName: string, libraryVersion: string): LibraryReleaseRow | null {
     const stmt = this.#db.prepare(`
       SELECT * FROM library_releases
       WHERE library_name = ? AND library_version = ?
     `);
-    return (stmt.get(libraryName, libraryVersion) as any) ?? null;
+    return (stmt.get(libraryName, libraryVersion) as LibraryReleaseRow | undefined) ?? null;
   }
 
   /**
    * Get all releases for a library name.
    */
-  getLibraryReleases(libraryName: string): any[] {
+  getLibraryReleases(libraryName: string): LibraryReleaseRow[] {
     const stmt = this.#db.prepare(`
       SELECT * FROM library_releases
       WHERE library_name = ?
     `);
-    return stmt.all(libraryName) as any[];
+    return stmt.all(libraryName) as LibraryReleaseRow[];
   }
 
   /**
@@ -5041,7 +5200,7 @@ export class LibraryDatabase {
   /**
    * Get pending transfers for a user (incoming and outgoing).
    */
-  getPendingTransfers(userId: number): any[] {
+  getPendingTransfers(userId: number): PackageTransferRow[] {
     return this.#db
       .prepare(
         `SELECT t.*, u_from.username AS from_username, u_to.username AS to_username
@@ -5051,7 +5210,7 @@ export class LibraryDatabase {
          WHERE (t.to_user_id = ? OR t.from_user_id = ?) AND t.status = 'pending'
          ORDER BY t.created_at DESC`,
       )
-      .all(userId, userId) as any[];
+      .all(userId, userId) as PackageTransferRow[];
   }
 
   /**
@@ -5748,7 +5907,9 @@ export class LibraryDatabase {
   // ── CAD Cache ───────────────────────────────────────────────────
 
   getCachedCadGeometry(url: string): string | undefined {
-    const row = this.#db.prepare(`SELECT geometry_json FROM cad_cache WHERE url = ?`).get(url) as any;
+    const row = this.#db.prepare(`SELECT geometry_json FROM cad_cache WHERE url = ?`).get(url) as
+      | { geometry_json?: string | undefined }
+      | undefined;
     return row?.geometry_json;
   }
 
@@ -5764,7 +5925,7 @@ export class LibraryDatabase {
     type: string,
     triggerSource: string | null = null,
     repositoryId: number | null = null,
-    metadata: any = null,
+    metadata: Record<string, unknown> | null = null,
     userId: number | null = null,
   ): number {
     const result = this.#db
@@ -5863,7 +6024,19 @@ export class LibraryDatabase {
     jobId: number | null = null,
     description: string = "HPC Compute Charge",
     metadata?: Record<string, unknown>,
-  ): any {
+  ): {
+    id?: number | undefined;
+    success: boolean;
+    user_id: number;
+    job_id: number | null;
+    amount: number;
+    balance_after: number;
+    transaction_type: string;
+    type: string;
+    description: string;
+    metadata?: string | undefined;
+    newBalance: number;
+  } {
     if (amount <= 0) {
       const balance = this.getUserBalance(userId);
       return {
@@ -6238,12 +6411,12 @@ export class LibraryDatabase {
          FROM jobs
          WHERE user_id = ? AND status = 'SUCCESS'`,
       )
-      .all(userId) as Array<{
+      .all(userId) as {
       compute_profile: string | null;
       cpu_seconds: number | null;
       gpu_seconds: number | null;
       cost_credits: number | null;
-    }>;
+    }[];
 
     let totalSpent = 0;
     let totalCpuSeconds = 0;
@@ -6321,7 +6494,7 @@ export class LibraryDatabase {
     for (const j of jobs) {
       let resultDir: string | undefined;
       let solver = "general";
-      let scalars: Record<string, any> | undefined;
+      let scalars: Record<string, unknown> | undefined;
 
       try {
         if (j.metadata) {
@@ -6349,7 +6522,7 @@ export class LibraryDatabase {
         if (fs.existsSync(scalarsPath)) {
           hasScalars = true;
           try {
-            scalars = JSON.parse(fs.readFileSync(scalarsPath, "utf8"));
+            scalars = JSON.parse(fs.readFileSync(scalarsPath, "utf8")) as Record<string, unknown>;
           } catch {}
         }
       }
@@ -6404,10 +6577,10 @@ export class LibraryDatabase {
       else if (job.name.toLowerCase().includes("modelica")) solver = "modelica";
     }
 
-    let scalars: Record<string, any> = {};
+    let scalars: Record<string, unknown> = {};
     if (resultDir && fs.existsSync(path.join(resultDir, "scalars.json"))) {
       try {
-        scalars = JSON.parse(fs.readFileSync(path.join(resultDir, "scalars.json"), "utf8"));
+        scalars = JSON.parse(fs.readFileSync(path.join(resultDir, "scalars.json"), "utf8")) as Record<string, unknown>;
       } catch {}
     }
 
@@ -6586,14 +6759,14 @@ export class LibraryDatabase {
   listInstancesForPackage(
     packageId: number,
     limit = 50,
-  ): Array<{
+  ): {
     id: number;
     serial_number: string;
     version: string;
     commit_sha: string | null;
     variant: string | null;
     created_at: string;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT id, serial_number, version, commit_sha, variant, created_at
@@ -6602,17 +6775,17 @@ export class LibraryDatabase {
          ORDER BY id DESC
          LIMIT ?`,
       )
-      .all(packageId, limit) as Array<{
+      .all(packageId, limit) as {
       id: number;
       serial_number: string;
       version: string;
       commit_sha: string | null;
       variant: string | null;
       created_at: string;
-    }>;
+    }[];
   }
 
-  listInstances(limit = 50): Array<{
+  listInstances(limit = 50): {
     id: number;
     serial_number: string;
     package_id: number;
@@ -6621,7 +6794,7 @@ export class LibraryDatabase {
     commit_sha: string | null;
     variant: string | null;
     created_at: string;
-  }> {
+  }[] {
     return this.#db
       .prepare(
         `SELECT i.id, i.serial_number, i.package_id, p.name as package_name, i.version, i.commit_sha, i.variant, i.created_at
@@ -6630,7 +6803,7 @@ export class LibraryDatabase {
          ORDER BY i.id DESC
          LIMIT ?`,
       )
-      .all(limit) as Array<{
+      .all(limit) as {
       id: number;
       serial_number: string;
       package_id: number;
@@ -6639,7 +6812,7 @@ export class LibraryDatabase {
       commit_sha: string | null;
       variant: string | null;
       created_at: string;
-    }>;
+    }[];
   }
 
   // ── Digital Twin Methods ──
@@ -6687,7 +6860,13 @@ export class LibraryDatabase {
          JOIN packages p ON p.id = i.package_id
          WHERE t.id = ?`,
       )
-      .get(id) as any;
+      .get(id) as
+      | (TwinRow & {
+          instance_serial: string;
+          package_name: string;
+          package_version: string;
+        })
+      | undefined;
   }
 
   getTwinByInstanceId(instanceId: number): TwinRow | undefined {
@@ -6696,13 +6875,11 @@ export class LibraryDatabase {
       | undefined;
   }
 
-  listTwins(limit = 50): Array<
-    TwinRow & {
-      instance_serial: string;
-      package_name: string;
-      package_version: string;
-    }
-  > {
+  listTwins(limit = 50): (TwinRow & {
+    instance_serial: string;
+    package_name: string;
+    package_version: string;
+  })[] {
     return this.#db
       .prepare(
         `SELECT t.*, i.serial_number as instance_serial, p.name as package_name, i.version as package_version
@@ -6712,7 +6889,11 @@ export class LibraryDatabase {
          ORDER BY t.id DESC
          LIMIT ?`,
       )
-      .all(limit) as any;
+      .all(limit) as (TwinRow & {
+      instance_serial: string;
+      package_name: string;
+      package_version: string;
+    })[];
   }
 
   updateTwinState(
@@ -6727,7 +6908,7 @@ export class LibraryDatabase {
     },
   ): void {
     const sets: string[] = [];
-    const params: any[] = [];
+    const params: (string | number | null)[] = [];
 
     if (data.status !== undefined) {
       sets.push("status = ?");
@@ -6822,20 +7003,24 @@ export class LibraryDatabase {
          JOIN twin_adaptations a ON a.id = p.adaptation_id
          WHERE p.id = ?`,
       )
-      .get(id) as any;
+      .get(id) as
+      | (TwinProposalRow & {
+          twin_name: string;
+          prior_parameters: string;
+          updated_parameters: string;
+        })
+      | undefined;
   }
 
   listTwinProposals(
     twinId?: number,
     status?: string,
     limit = 50,
-  ): Array<
-    TwinProposalRow & {
-      twin_name: string;
-      prior_parameters: string;
-      updated_parameters: string;
-    }
-  > {
+  ): (TwinProposalRow & {
+    twin_name: string;
+    prior_parameters: string;
+    updated_parameters: string;
+  })[] {
     let query = `
       SELECT p.*, t.name as twin_name, a.prior_parameters, a.updated_parameters
       FROM twin_proposals p
@@ -6843,7 +7028,7 @@ export class LibraryDatabase {
       JOIN twin_adaptations a ON a.id = p.adaptation_id
     `;
     const clauses: string[] = [];
-    const params: any[] = [];
+    const params: (string | number)[] = [];
 
     if (twinId !== undefined) {
       clauses.push("p.twin_id = ?");
@@ -6859,7 +7044,11 @@ export class LibraryDatabase {
     query += " ORDER BY p.id DESC LIMIT ?";
     params.push(limit);
 
-    return this.#db.prepare(query).all(...params) as any;
+    return this.#db.prepare(query).all(...params) as (TwinProposalRow & {
+      twin_name: string;
+      prior_parameters: string;
+      updated_parameters: string;
+    })[];
   }
 
   reviewTwinProposal(id: number, status: "approved" | "rejected", reviewerId: number, notes?: string): boolean {
@@ -6922,14 +7111,24 @@ export class LibraryDatabase {
     created: string;
     defaultBranch: { "@id": string; name: string; headCommitId?: string | undefined };
   }[] {
-    const rows = this.#db.prepare(`SELECT * FROM sysml2_projects ORDER BY created ASC`).all() as any[];
+    const rows = this.#db.prepare(`SELECT * FROM sysml2_projects ORDER BY created ASC`).all() as {
+      id: string;
+      name: string;
+      description: string | null;
+      created: string;
+      default_branch: string;
+    }[];
     return rows.map((r) => ({
       "@id": r.id,
       "@type": "Project" as const,
       name: r.name,
       description: r.description || undefined,
       created: r.created,
-      defaultBranch: JSON.parse(r.default_branch),
+      defaultBranch: JSON.parse(r.default_branch) as {
+        "@id": string;
+        name: string;
+        headCommitId?: string | undefined;
+      },
     }));
   }
 
@@ -6974,7 +7173,13 @@ export class LibraryDatabase {
   }[] {
     const rows = this.#db
       .prepare(`SELECT * FROM sysml2_branches WHERE project_id = ? ORDER BY created ASC`)
-      .all(projectId) as any[];
+      .all(projectId) as {
+      id: string;
+      project_id: string;
+      name: string;
+      head_commit_id: string | null;
+      created: string;
+    }[];
     return rows.map((r) => ({
       "@id": r.id,
       "@type": "Branch" as const,
@@ -7017,7 +7222,13 @@ export class LibraryDatabase {
   }[] {
     const rows = this.#db
       .prepare(`SELECT * FROM sysml2_tags WHERE project_id = ? ORDER BY created ASC`)
-      .all(projectId) as any[];
+      .all(projectId) as {
+      id: string;
+      project_id: string;
+      name: string;
+      tagged_commit_id: string;
+      created: string;
+    }[];
     return rows.map((r) => ({
       "@id": r.id,
       "@type": "Tag" as const,
@@ -7062,7 +7273,14 @@ export class LibraryDatabase {
   }[] {
     const rows = this.#db
       .prepare(`SELECT * FROM sysml2_commits WHERE project_id = ? ORDER BY created ASC`)
-      .all(projectId) as any[];
+      .all(projectId) as {
+      id: string;
+      project_id: string;
+      description: string;
+      created: string;
+      previous_commit: string | null;
+      merged_commit: string | null;
+    }[];
     return rows.map((r) => ({
       "@id": r.id,
       "@type": "Commit" as const,
@@ -7074,62 +7292,78 @@ export class LibraryDatabase {
     }));
   }
 
-  saveSysml2Elements(commitId: string, elements: any[]): void {
+  saveSysml2Elements(commitId: string, elements: Record<string, unknown>[]): void {
     const insertStmt = this.#db.prepare(`
       INSERT OR REPLACE INTO sysml2_elements (id, commit_id, name, qualified_name, owner_id, is_abstract, element_json)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     this.#db.transaction(() => {
       for (const elem of elements) {
+        const owner = elem["owner"] as { "@id"?: string | undefined } | null | undefined;
         insertStmt.run(
-          elem["@id"],
+          elem["@id"] as string,
           commitId,
-          elem.name || "",
-          elem.qualifiedName || "",
-          elem.owner?.["@id"] || null,
-          elem.isAbstract ? 1 : 0,
+          (elem["name"] as string | undefined) || "",
+          (elem["qualifiedName"] as string | undefined) || "",
+          owner?.["@id"] || null,
+          elem["isAbstract"] ? 1 : 0,
           JSON.stringify(elem),
         );
       }
     })();
   }
 
-  getSysml2Elements(commitId: string): any[] {
-    const rows = this.#db
-      .prepare(`SELECT element_json FROM sysml2_elements WHERE commit_id = ?`)
-      .all(commitId) as any[];
-    return rows.map((r) => JSON.parse(r.element_json));
+  getSysml2Elements(commitId: string): Record<string, unknown>[] {
+    const rows = this.#db.prepare(`SELECT element_json FROM sysml2_elements WHERE commit_id = ?`).all(commitId) as {
+      element_json: string;
+    }[];
+    return rows.map((r) => JSON.parse(r.element_json) as Record<string, unknown>);
   }
 
-  saveSysml2Relationships(commitId: string, relationships: any[]): void {
+  saveSysml2Relationships(commitId: string, relationships: Record<string, unknown>[]): void {
     const insertStmt = this.#db.prepare(`
       INSERT OR REPLACE INTO sysml2_relationships (id, commit_id, source_id, target_id, rel_type, rel_json)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     this.#db.transaction(() => {
       for (const rel of relationships) {
-        const sourceId = rel.source?.[0]?.["@id"] || "";
-        const targetId = rel.target?.[0]?.["@id"] || "";
-        insertStmt.run(rel["@id"], commitId, sourceId, targetId, rel.relationshipType || "", JSON.stringify(rel));
+        const source = rel["source"] as { "@id"?: string | undefined }[] | undefined;
+        const target = rel["target"] as { "@id"?: string | undefined }[] | undefined;
+        const sourceId = source?.[0]?.["@id"] || "";
+        const targetId = target?.[0]?.["@id"] || "";
+        insertStmt.run(
+          rel["@id"] as string,
+          commitId,
+          sourceId,
+          targetId,
+          (rel["relationshipType"] as string | undefined) || "",
+          JSON.stringify(rel),
+        );
       }
     })();
   }
 
-  getSysml2Relationships(commitId: string): any[] {
-    const rows = this.#db
-      .prepare(`SELECT rel_json FROM sysml2_relationships WHERE commit_id = ?`)
-      .all(commitId) as any[];
-    return rows.map((r) => JSON.parse(r.rel_json));
+  getSysml2Relationships(commitId: string): Record<string, unknown>[] {
+    const rows = this.#db.prepare(`SELECT rel_json FROM sysml2_relationships WHERE commit_id = ?`).all(commitId) as {
+      rel_json: string;
+    }[];
+    return rows.map((r) => JSON.parse(r.rel_json) as Record<string, unknown>);
   }
 
-  getFeatureFlags(): Array<{
+  getFeatureFlags(): {
     flag_key: string;
     is_enabled: number;
     rollout_percentage: number;
     allowed_roles: string;
     updated_at: string;
-  }> {
-    return this.#db.prepare(`SELECT * FROM feature_flags`).all() as any[];
+  }[] {
+    return this.#db.prepare(`SELECT * FROM feature_flags`).all() as {
+      flag_key: string;
+      is_enabled: number;
+      rollout_percentage: number;
+      allowed_roles: string;
+      updated_at: string;
+    }[];
   }
 
   getFeatureFlag(key: string):
@@ -7141,7 +7375,15 @@ export class LibraryDatabase {
         updated_at: string;
       }
     | undefined {
-    return this.#db.prepare(`SELECT * FROM feature_flags WHERE flag_key = ?`).get(key) as any;
+    return this.#db.prepare(`SELECT * FROM feature_flags WHERE flag_key = ?`).get(key) as
+      | {
+          flag_key: string;
+          is_enabled: number;
+          rollout_percentage: number;
+          allowed_roles: string;
+          updated_at: string;
+        }
+      | undefined;
   }
 
   setFeatureFlag(key: string, isEnabled: boolean, allowedRoles?: string, rolloutPercentage = 100): void {
@@ -7196,7 +7438,7 @@ export class LibraryDatabase {
 
   getThreadProposals(threadId?: string, status?: string): ThreadProposal[] {
     let sql = `SELECT * FROM thread_proposals WHERE 1=1`;
-    const params: any[] = [];
+    const params: string[] = [];
     if (threadId) {
       sql += ` AND thread_id = ?`;
       params.push(threadId);
@@ -7329,14 +7571,20 @@ export class LibraryDatabase {
 
   loadThreadSnapshot(workspaceId = "default"): {
     serializedJson: string;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
     updatedAt: string;
   } | null {
-    const row = this.#db.prepare(`SELECT * FROM thread_snapshots WHERE workspace_id = ?`).get(workspaceId) as any;
+    const row = this.#db.prepare(`SELECT * FROM thread_snapshots WHERE workspace_id = ?`).get(workspaceId) as
+      | {
+          serialized_json: string;
+          metadata_json: string | null;
+          updated_at: string;
+        }
+      | undefined;
     if (!row) return null;
-    let metadata: Record<string, any> = {};
+    let metadata: Record<string, unknown> = {};
     try {
-      metadata = JSON.parse(row.metadata_json || "{}");
+      metadata = JSON.parse(row.metadata_json || "{}") as Record<string, unknown>;
     } catch {
       metadata = {};
     }
@@ -7388,13 +7636,28 @@ export class LibraryDatabase {
 
   getThreadConflicts(workspaceId = "default", status?: string): ThreadConflictRecord[] {
     let sql = `SELECT * FROM thread_conflicts WHERE workspace_id = ?`;
-    const params: any[] = [workspaceId];
+    const params: string[] = [workspaceId];
     if (status) {
       sql += ` AND status = ?`;
       params.push(status);
     }
     sql += ` ORDER BY updated_at DESC`;
-    const rows = this.#db.prepare(sql).all(...params) as any[];
+    const rows = this.#db.prepare(sql).all(...params) as {
+      conflict_id: string;
+      workspace_id: string;
+      slot: number;
+      source_domain: string;
+      source_value: number;
+      source_unit: string;
+      target_domain: string;
+      target_value: number;
+      target_unit: string;
+      min_bound: number;
+      max_bound: number;
+      status: "conflicted" | "resolved";
+      resolved_value: number | null;
+      updated_at: string;
+    }[];
     return rows.map((r) => ({
       conflictId: r.conflict_id,
       workspaceId: r.workspace_id,
@@ -7460,11 +7723,11 @@ export class LibraryDatabase {
          FROM api_tokens
          WHERE token_hash = ?`,
       )
-      .get(tokenHash) as any;
+      .get(tokenHash) as (Omit<ApiTokenRecord, "scopes"> & { scopes: string }) | undefined;
     if (!row) return null;
     let scopes: string[] = [];
     try {
-      scopes = JSON.parse(row.scopes);
+      scopes = JSON.parse(row.scopes) as string[];
     } catch {
       scopes = [];
     }
@@ -7482,12 +7745,12 @@ export class LibraryDatabase {
          WHERE user_id = ?
          ORDER BY created_at DESC`,
       )
-      .all(userId) as any[];
+      .all(userId) as (Omit<ApiTokenRecord, "token_hash" | "scopes"> & { scopes: string })[];
 
     return rows.map((r) => {
       let scopes: string[] = [];
       try {
-        scopes = JSON.parse(r.scopes);
+        scopes = JSON.parse(r.scopes) as string[];
       } catch {
         scopes = [];
       }
@@ -7513,7 +7776,7 @@ export class LibraryDatabase {
     }
   }
 
-  getUserSolutions(username: string): any[] {
+  getUserSolutions(username: string): SolutionRow[] {
     const user = this.getUserByUsername(username);
     if (!user) return [];
     try {
@@ -7530,18 +7793,18 @@ export class LibraryDatabase {
           WHERE s.user_id = ? AND s.is_public = 1
           ORDER BY s.updated_at DESC`,
         )
-        .all(user.id) as any[];
+        .all(user.id) as (Omit<SolutionRow, "supported_formats"> & { supported_formats: string | null })[];
 
       return rows.map((r) => ({
         ...r,
-        supported_formats: JSON.parse(r.supported_formats || "[]"),
+        supported_formats: JSON.parse(r.supported_formats || "[]") as string[],
       }));
     } catch {
       return [];
     }
   }
 
-  getAllPublicSolutions(): any[] {
+  getAllPublicSolutions(): SolutionRow[] {
     try {
       const rows = this.#db
         .prepare(
@@ -7557,18 +7820,24 @@ export class LibraryDatabase {
           ORDER BY s.updated_at DESC
           LIMIT 50`,
         )
-        .all() as any[];
+        .all() as (Omit<SolutionRow, "supported_formats"> & { supported_formats: string | null })[];
 
       return rows.map((r) => ({
         ...r,
-        supported_formats: JSON.parse(r.supported_formats || "[]"),
+        supported_formats: JSON.parse(r.supported_formats || "[]") as string[],
       }));
     } catch {
       return [];
     }
   }
 
-  getSolution(authorUsername: string, slug: string): any {
+  getSolution(
+    authorUsername: string,
+    slug: string,
+  ): {
+    solution: SolutionRow;
+    release: SolutionReleaseRow | null;
+  } | null {
     const user = this.getUserByUsername(authorUsername);
     if (!user) return null;
     try {
@@ -7579,23 +7848,27 @@ export class LibraryDatabase {
           JOIN users u ON s.user_id = u.id
           WHERE s.user_id = ? AND s.slug = ?`,
         )
-        .get(user.id, slug) as any;
+        .get(user.id, slug) as
+        | (Omit<SolutionRow, "supported_formats"> & { supported_formats: string | null })
+        | undefined;
 
       if (!solution) return null;
 
       const latestRelease = this.#db
         .prepare(`SELECT * FROM solution_releases WHERE solution_id = ? ORDER BY id DESC LIMIT 1`)
-        .get(solution.id) as any;
+        .get(solution.id) as SolutionReleaseRow | undefined;
 
       return {
         solution: {
           ...solution,
-          supported_formats: JSON.parse(solution.supported_formats || "[]"),
+          supported_formats: JSON.parse(solution.supported_formats || "[]") as string[],
         },
         release: latestRelease
           ? {
               ...latestRelease,
-              manifest: latestRelease.manifest_json ? JSON.parse(latestRelease.manifest_json) : null,
+              manifest: latestRelease.manifest_json
+                ? (JSON.parse(latestRelease.manifest_json) as Record<string, unknown>)
+                : null,
             }
           : null,
       };
@@ -7604,18 +7877,18 @@ export class LibraryDatabase {
     }
   }
 
-  getSolutionReleases(authorUsername: string, slug: string): any[] {
+  getSolutionReleases(authorUsername: string, slug: string): SolutionReleaseRow[] {
     const user = this.getUserByUsername(authorUsername);
     if (!user) return [];
     try {
       const solution = this.#db
         .prepare(`SELECT id FROM solutions WHERE user_id = ? AND slug = ?`)
-        .get(user.id, slug) as any;
+        .get(user.id, slug) as { id: number } | undefined;
       if (!solution) return [];
 
       return this.#db
         .prepare(`SELECT * FROM solution_releases WHERE solution_id = ? ORDER BY id DESC`)
-        .all(solution.id) as any[];
+        .all(solution.id) as SolutionReleaseRow[];
     } catch {
       return [];
     }

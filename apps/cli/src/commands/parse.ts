@@ -2,11 +2,9 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path, { join } from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 import { LanguageResolver } from "../util/language-registry.js";
-
-declare const WebAssembly: any;
 
 export interface ParseArgs {
   file: string;
@@ -14,7 +12,14 @@ export interface ParseArgs {
   language?: string | undefined;
 }
 
-export const Parse: CommandModule<any, any> = {
+interface RawSExprNode {
+  getTypeId(): number;
+  getPtr(): number;
+  getFirstChild(): RawSExprNode | null;
+  getNextSibling(): RawSExprNode | null;
+}
+
+export const Parse: CommandModule<{}, ParseArgs> = {
   command: "parse <file>",
   describe: "Parse a file using its language DSL parser (supports any registered language)",
   builder: (yargs) => {
@@ -34,9 +39,9 @@ export const Parse: CommandModule<any, any> = {
         type: "string",
         choices: ["utf8", "utf16le", "utf16be", "utf32le", "utf32be"],
         default: "utf8",
-      });
+      }) as unknown as Argv<ParseArgs>;
   },
-  handler: async (args: any) => {
+  handler: async (args) => {
     const cwd = process.cwd();
     const filePath = path.resolve(cwd, args.file);
 
@@ -62,10 +67,10 @@ export const Parse: CommandModule<any, any> = {
         console.error(`\n[Syntax Errors Detected in ${resolved.manifest.name}]`);
       }
       return;
-    } catch (resolveErr: any) {
+    } catch (resolveErr: unknown) {
       // If language was not in registry, fall back to local wrapperPath in cwd if present
       if (!existsSync(wrapperPath)) {
-        console.error(resolveErr.message);
+        console.error(resolveErr instanceof Error ? resolveErr.message : String(resolveErr));
         process.exit(1);
       }
     }
@@ -90,10 +95,28 @@ export const Parse: CommandModule<any, any> = {
     const { Parser, WasmRuntime, InputEncoding } = await import(wrapperUrl);
 
     const wasmBuffer = readFileSync(join(distDir, wasmFile));
-    const sharedMemory = new WebAssembly.Memory({ initial: 4000, maximum: 16000, shared: true });
-    let exportedMemory: any = sharedMemory;
-    const wasmModule = new WebAssembly.Module(wasmBuffer);
-    const wasmInstance = new WebAssembly.Instance(wasmModule, {
+    interface WasmMemory {
+      readonly buffer: ArrayBufferLike;
+    }
+    interface WasmGlobal {
+      Memory: new (descriptor: {
+        initial: number;
+        maximum?: number | undefined;
+        shared?: boolean | undefined;
+      }) => WasmMemory;
+      Module: new (bytes: Uint8Array | ArrayBuffer) => object;
+      Instance: new (
+        module: object,
+        importObject?: Record<string, Record<string, unknown>>,
+      ) => {
+        exports: Record<string, unknown>;
+      };
+    }
+    const WA = (globalThis as unknown as { WebAssembly: WasmGlobal }).WebAssembly;
+    const sharedMemory = new WA.Memory({ initial: 4000, maximum: 16000, shared: true });
+    const exportedMemory: WasmMemory = sharedMemory;
+    const wasmModule = new WA.Module(wasmBuffer);
+    const wasmInstance = new WA.Instance(wasmModule, {
       env: {
         memory: sharedMemory,
         emitTextEdit: (op: number, len: number, start: number, end: number) => {
@@ -111,7 +134,7 @@ export const Parse: CommandModule<any, any> = {
               const fileUtf16 = new Uint16Array(exportedMemory.buffer, filePtr, fileLen >>> 1);
               const fileName = new TextDecoder("utf-16le").decode(fileUtf16);
               msg += " at " + fileName + ":" + line + ":" + column;
-            } catch (e) {}
+            } catch (_e) {}
           }
           console.error(msg);
           process.exit(1);
@@ -123,7 +146,7 @@ export const Parse: CommandModule<any, any> = {
         },
       },
       parser: {
-        logInt: (val: any) => console.log("DEBUG_INT:", val),
+        logInt: (val: unknown) => console.log("DEBUG_INT:", val),
       },
       engine: {
         debugLog: (cat: number, val1: number, val2: number, val3: number) => {
@@ -174,7 +197,7 @@ export const Parse: CommandModule<any, any> = {
       parseInput = new Uint8Array(view32.buffer, 0, cpCount * 4);
     }
 
-    const tree = parser.parse(parseInput);
+    const tree = parser.parse(parseInput) as RawSExprNode | null;
 
     if (!tree) {
       console.error("Parse failed. No tree returned.");
@@ -238,7 +261,11 @@ export const Parse: CommandModule<any, any> = {
       return [row, col];
     }
 
-    function toSExpr(node: any, currentOffset: number, depth = 0): { strs: string[]; nextOffset: number } {
+    const wasmExports = wasmInstance.exports as {
+      getFatPaddingPtr?: ((rawPad: number) => number) | undefined;
+    };
+
+    function toSExpr(node: RawSExprNode, currentOffset: number, depth = 0): { strs: string[]; nextOffset: number } {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
 
       const typeId = node.getTypeId();
@@ -250,9 +277,7 @@ export const Parse: CommandModule<any, any> = {
       const rawPad = typeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad =
-        isFat && wasmInstance.exports.getFatPaddingPtr
-          ? runtime.readU32((wasmInstance.exports as any).getFatPaddingPtr(rawPad))
-          : rawPad;
+        isFat && wasmExports.getFatPaddingPtr ? runtime.readU32(wasmExports.getFatPaddingPtr(rawPad)) : rawPad;
       const len = envHashPadding & 0x007fffff;
       typeName = typeName + ":" + typeId;
 

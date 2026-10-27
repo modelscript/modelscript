@@ -29,8 +29,9 @@ function projectAtomicSwc(swc: AutosarSwComponent): string {
   lines.push(`  equation`);
   if (inPorts.length > 0 && outPorts.length > 0) {
     for (let i = 0; i < outPorts.length; i++) {
-      const outP = outPorts[i]!;
-      const inP = inPorts[i % inPorts.length]!;
+      const outP = outPorts[i];
+      const inP = inPorts[i % inPorts.length];
+      if (!outP || !inP) continue;
       lines.push(`    ${outP} = ${inP};`);
     }
   } else if (outPorts.length > 0) {

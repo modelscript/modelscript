@@ -502,21 +502,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     try {
       // 1. Try VS Code Language Model API (e.g. Copilot, Claude, GPT-4o) if available
 
-      const lm = (vscode as any).lm;
+      const lm = vscode.lm;
       if (typeof lm?.selectChatModels === "function") {
         const models = await lm.selectChatModels({ family: "gpt-4o" });
         const model = models[0] ?? (await lm.selectChatModels())[0];
 
         if (model) {
-          const LMChatMessage = (vscode as any).LanguageModelChatMessage;
+          const LMChatMessage = vscode.LanguageModelChatMessage;
           const lmMessages = msg.messages.map((m) =>
             m.role === "assistant" ? LMChatMessage.Assistant(m.content) : LMChatMessage.User(m.content),
           );
           const response = await model.sendRequest(lmMessages, {}, new vscode.CancellationTokenSource().token);
 
           for await (const chunk of response.stream) {
-            if (chunk && typeof (chunk as any).value === "string") {
-              webview.postMessage({ type: "cloudStreamChunk", id: msg.id, content: (chunk as any).value });
+            const chunkObj = chunk as { value?: unknown } | null | undefined;
+            if (chunkObj && typeof chunkObj.value === "string") {
+              webview.postMessage({ type: "cloudStreamChunk", id: msg.id, content: chunkObj.value });
             }
           }
           webview.postMessage({ type: "cloudStreamEnd", id: msg.id });

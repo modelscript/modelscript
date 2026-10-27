@@ -44,8 +44,8 @@ export function synchronizeModelicaToEnergyPlus(
   let qMatch: RegExpExecArray | null;
   const moZoneGains = new Map<string, number>();
   while ((qMatch = qIntRegex.exec(modifiedModelicaText)) !== null) {
-    const zoneClean = qMatch[1]!.toLowerCase();
-    const qVal = parseFloat(qMatch[2]!);
+    const zoneClean = (qMatch[1] ?? "").toLowerCase();
+    const qVal = parseFloat(qMatch[2] ?? "0");
     moZoneGains.set(zoneClean, qVal);
   }
 
@@ -54,8 +54,8 @@ export function synchronizeModelicaToEnergyPlus(
   let gMatch: RegExpExecArray | null;
   const moSurfCond = new Map<string, number>();
   while ((gMatch = gRegex.exec(modifiedModelicaText)) !== null) {
-    const surfClean = gMatch[1]!.toLowerCase();
-    const gVal = parseFloat(gMatch[2]!);
+    const surfClean = (gMatch[1] ?? "").toLowerCase();
+    const gVal = parseFloat(gMatch[2] ?? "0");
     moSurfCond.set(surfClean, gVal);
   }
 

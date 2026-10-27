@@ -12,7 +12,7 @@ export interface UnparseArgs {
   indentSize?: number | undefined;
 }
 
-export const Unparse: CommandModule<any, any> = {
+export const Unparse: CommandModule<{}, UnparseArgs> = {
   command: "unparse <file>",
   describe: "Unparse and re-synthesize clean source code from the language AST",
   builder: (yargs) => {
@@ -59,8 +59,9 @@ export const Unparse: CommandModule<any, any> = {
       } else {
         process.stdout.write(unparsed);
       }
-    } catch (err: any) {
-      console.error(`Unparse failed: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Unparse failed: ${msg}`);
       process.exit(1);
     }
   },

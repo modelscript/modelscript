@@ -4,13 +4,31 @@ import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
 import { safePublicFetch } from "./ssrf.js";
 
+type RssFeedRow = ReturnType<LibraryDatabase["getRssFeedsToPoll"]>[number];
+
+interface RssItemLike {
+  title?: string | undefined;
+  contentSnippet?: string | undefined;
+  guid?: string | undefined;
+  link?: string | undefined;
+  isoDate?: string | undefined;
+  pubDate?: string | undefined;
+  mediaGroup?:
+    | {
+        "media:thumbnail"?: { $?: { url?: string | undefined } | undefined }[] | undefined;
+        "media:description"?: string[] | undefined;
+      }
+    | undefined;
+  videoId?: string | undefined;
+  [key: string]: unknown;
+}
+
 // Extensible framework for domain-specific feed handlers
 interface FeedItemProcessor {
   matchUrl(url: string): boolean;
   processItem(
-    item: any,
-
-    feed: any,
+    item: RssItemLike,
+    feed: RssFeedRow,
     database: LibraryDatabase,
   ): { content: string; artifactViewId?: number | undefined };
 }
@@ -30,21 +48,16 @@ const feedProcessors: FeedItemProcessor[] = [
       let content = `**${item.title}**\n\n`;
       let artifactViewId: number | undefined;
 
-      const extItem = item as typeof item & {
-        mediaGroup?: Record<string, unknown[]> | undefined;
-        videoId?: string | undefined;
-      };
-
-      if (extItem.mediaGroup) {
-        const mg = extItem.mediaGroup;
+      if (item.mediaGroup) {
+        const mg = item.mediaGroup;
         const thumbnail = mg["media:thumbnail"]?.[0]?.$?.url;
 
-        if (extItem.videoId && thumbnail) {
+        if (item.videoId && thumbnail) {
           artifactViewId = database.createArtifactView(
             feed.user_id,
             "youtube_video",
             "youtube_id",
-            JSON.stringify({ videoId: extItem.videoId }),
+            JSON.stringify({ videoId: item.videoId }),
             item.title,
             thumbnail,
           );
@@ -129,7 +142,12 @@ export async function processRssFeeds(database: LibraryDatabase) {
       if (res.status === 304) {
         // Not modified. 4. Exponential Backoff
         currentInterval = Math.min(currentInterval * 1.5, MAX_INTERVAL); // Increase interval
-        database.updateRssFeedPollMetadata(feed.id, feed.etag, feed.last_modified, Math.round(currentInterval));
+        database.updateRssFeedPollMetadata(
+          feed.id,
+          feed.etag ?? null,
+          feed.last_modified ?? null,
+          Math.round(currentInterval),
+        );
         continue; // Skip parsing
       }
 
@@ -162,7 +180,7 @@ export async function processRssFeeds(database: LibraryDatabase) {
         // Find the right processor for this domain
         const processor = (feedProcessors.find((p) => p.matchUrl(feed.url)) ||
           feedProcessors[feedProcessors.length - 1]) as FeedItemProcessor;
-        const { content, artifactViewId } = processor.processItem(item, feed, database);
+        const { content, artifactViewId } = processor.processItem(item as unknown as RssItemLike, feed, database);
 
         const extItem = item as unknown as Record<string, unknown>;
         const pubDate =
@@ -190,7 +208,7 @@ export async function processRssFeeds(database: LibraryDatabase) {
         newPostsCount++;
       }
 
-      database.updateRssFeedStatus(feed.id, new Date().toISOString(), feed.last_guid);
+      database.updateRssFeedStatus(feed.id, new Date().toISOString(), feed.last_guid ?? null);
 
       // If we found new posts, reset the poll interval!
       if (newPostsCount > 0) {
@@ -210,8 +228,8 @@ export async function processRssFeeds(database: LibraryDatabase) {
       const fallbackInterval = feed.poll_interval_mins || 15;
       database.updateRssFeedPollMetadata(
         feed.id,
-        feed.etag,
-        feed.last_modified,
+        feed.etag ?? null,
+        feed.last_modified ?? null,
         Math.min(Math.round(fallbackInterval * 1.5), 24 * 60),
       );
     }

@@ -232,9 +232,9 @@ export class DpoGraph {
     let slot = nodeId - 1;
     let offset = slot * DPO_NODE_STRIDE;
 
-    // Mark tombstoned
+    // Mark tombstoned and clear active flag
     let meta = this.nodes.get(offset + DPO_NODE_TYPE);
-    let flags = ((meta & 0xffff) as u16) | DPO_FLAG_TOMBSTONE;
+    let flags = (((meta & 0xffff) as u16) | DPO_FLAG_TOMBSTONE) & ~DPO_FLAG_ACTIVE;
     this.nodes.set(offset + DPO_NODE_TYPE, (meta & 0xffff0000) | (flags as u32));
     this.nodes.set(offset + DPO_NODE_DEGREE, 0);
     this.nodes.set(offset + DPO_NODE_FIRST_EDGE, 0);
@@ -251,14 +251,21 @@ export class DpoGraph {
   @inline
   rewireEdgeTarget(edgeId: u32, newTargetNodeId: u32): boolean {
     if (edgeId == 0 || edgeId > this.edgeCount) return false;
+    if (!this.isNodeActive(newTargetNodeId)) return false;
     let edgeSlot = edgeId - 1;
     let edgeOffset = edgeSlot * DPO_EDGE_STRIDE;
+
+    let edgeMeta = this.edges.get(edgeOffset + DPO_EDGE_TYPE);
+    let flags = (edgeMeta & 0xffff) as u16;
+    if ((flags & DPO_FLAG_ACTIVE) == 0 || (flags & DPO_FLAG_TOMBSTONE) != 0) {
+      return false;
+    }
 
     let oldTargetId = this.edges.get(edgeOffset + DPO_EDGE_TARGET);
     if (oldTargetId == newTargetNodeId) return true;
 
     // Decrement old target degree
-    if (oldTargetId != 0) {
+    if (oldTargetId > 0 && oldTargetId <= this.nodeCount) {
       let oldTgtSlot = oldTargetId - 1;
       let oldOffset = oldTgtSlot * DPO_NODE_STRIDE + DPO_NODE_DEGREE;
       let deg = this.nodes.get(oldOffset);

@@ -11,7 +11,7 @@ import { extractStepAssembly } from "@modelscript/step/assembly";
 import type { StepPart } from "@modelscript/step/physical-data";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 interface AlignArgs {
   source: string;
@@ -61,7 +61,7 @@ export const Align: CommandModule<{}, AlignArgs> = {
         description: "Output raw JSON candidates",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<AlignArgs>;
   },
   handler: async (args) => {
     const srcPath = path.resolve(process.cwd(), args.source);

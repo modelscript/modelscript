@@ -221,29 +221,34 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
         };
       }
 
-      if (spec.passedDamaged === false && spec.safetyFactorDamaged !== undefined) {
-        const reqSfDamaged = spec.consequenceClass === 1 ? 1.1 : 1.25;
+      const reqSfDamaged = spec.consequenceClass === 1 ? 1.1 : 1.25;
+      if (
+        spec.passedDamaged === false ||
+        (spec.safetyFactorDamaged !== undefined && spec.safetyFactorDamaged < reqSfDamaged)
+      ) {
+        const sfDmgStr = spec.safetyFactorDamaged !== undefined ? spec.safetyFactorDamaged.toFixed(2) : "N/A";
         return {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
               l.args.some((a) => a?.lineId === spec.lineId),
             ),
-            explanation: `DNV-OS-E301 Damaged Line Failure: Line '${spec.lineName || id}' single-line-broken safety factor ${spec.safetyFactorDamaged.toFixed(2)} is below required ${reqSfDamaged}.`,
+            explanation: `DNV-OS-E301 Damaged Line Failure: Line '${spec.lineName || id}' single-line-broken safety factor ${sfDmgStr} is below required ${reqSfDamaged}.`,
             culpritEntities: [id, spec.lineName || `Line#${id}`],
             theoryName: this.name,
           },
         };
       }
 
-      if (spec.anchorUpliftPassed === false && spec.anchorUpliftDeg && spec.anchorUpliftDeg > 0.05) {
+      if (spec.anchorUpliftPassed === false || (spec.anchorUpliftDeg !== undefined && spec.anchorUpliftDeg > 0.05)) {
+        const upliftStr = spec.anchorUpliftDeg !== undefined ? spec.anchorUpliftDeg.toFixed(2) : "non-zero";
         return {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
               l.args.some((a) => a?.lineId === spec.lineId),
             ),
-            explanation: `DNV Mooring Anchor Uplift Failure: Line '${spec.lineName || id}' exhibits vertical anchor uplift angle of ${spec.anchorUpliftDeg.toFixed(2)} deg (must be 0.0 deg for drag-embedment anchors).`,
+            explanation: `DNV Mooring Anchor Uplift Failure: Line '${spec.lineName || id}' exhibits vertical anchor uplift angle of ${upliftStr} deg (must be 0.0 deg for drag-embedment anchors).`,
             culpritEntities: [id, spec.lineName || `Line#${id}`],
             theoryName: this.name,
           },
@@ -316,6 +321,7 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
 
   public propagateEqualities(): SharedEquality[] {
     const eqs: SharedEquality[] = [];
+    const allLitIds = Array.from(this.assertedLiterals.keys());
 
     let minSf = Infinity;
     let maxTension = -Infinity;
@@ -323,53 +329,72 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
     for (const [id, spec] of this.lines.entries()) {
       if (spec.safetyFactorIntact < minSf) minSf = spec.safetyFactorIntact;
       if (spec.tensionIntact > maxTension) maxTension = spec.tensionIntact;
+      const lineJusts = Array.from(this.assertedLiterals.values())
+        .filter((l) => l.args.some((a) => a?.lineId === spec.lineId))
+        .map((l) => l.id);
 
+      const sfVar = `mooring.safety_factor.${id}`;
       eqs.push({
-        varA: `mooring.safety_factor.${id}`,
-        varB: String(spec.safetyFactorIntact),
+        varA: sfVar,
+        varB: sfVar,
         domain: "real",
         bounds: [spec.safetyFactorIntact, spec.safetyFactorIntact],
         explanation: `Mooring line ${id} intact safety factor is ${spec.safetyFactorIntact}`,
         sourceOracle: this.name,
+        justifications: lineJusts,
+        justification: lineJusts,
       });
 
+      const tensionVar = `mooring.tension.${id}`;
       eqs.push({
-        varA: `mooring.tension.${id}`,
-        varB: String(spec.tensionIntact),
+        varA: tensionVar,
+        varB: tensionVar,
         domain: "real",
         bounds: [spec.tensionIntact, spec.tensionIntact],
         explanation: `Mooring line ${id} intact tension is ${spec.tensionIntact} N`,
         sourceOracle: this.name,
+        justifications: lineJusts,
+        justification: lineJusts,
       });
     }
 
     if (this.lines.size > 0 && minSf !== Infinity) {
       eqs.push({
         varA: "mooring.min_sf",
-        varB: String(minSf),
+        varB: "mooring.min_sf",
         domain: "real",
         bounds: [minSf, minSf],
         explanation: `Critical minimum mooring line safety factor is ${minSf}`,
         sourceOracle: this.name,
+        justifications: allLitIds,
+        justification: allLitIds,
       });
       eqs.push({
         varA: "mooring.max_tension",
-        varB: String(maxTension),
+        varB: "mooring.max_tension",
         domain: "real",
         bounds: [maxTension, maxTension],
         explanation: `Maximum fairlead line tension is ${maxTension} N`,
         sourceOracle: this.name,
+        justifications: allLitIds,
+        justification: allLitIds,
       });
     }
 
     for (const [id, spec] of this.floaters.entries()) {
+      const floaterJusts = Array.from(this.assertedLiterals.values())
+        .filter((l) => l.args.some((a) => a?.floaterId === spec.floaterId))
+        .map((l) => l.id);
+      const offsetVar = `floater.offset.${id}`;
       eqs.push({
-        varA: `floater.offset.${id}`,
-        varB: String(spec.actualOffsetMeters),
+        varA: offsetVar,
+        varB: offsetVar,
         domain: "real",
         bounds: [spec.actualOffsetMeters, spec.actualOffsetMeters],
         explanation: `Floater ${id} offset excursion is ${spec.actualOffsetMeters} m`,
         sourceOracle: this.name,
+        justifications: floaterJusts,
+        justification: floaterJusts,
       });
     }
 

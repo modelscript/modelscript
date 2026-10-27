@@ -135,7 +135,7 @@ export class CompressorMapEngine {
     speedRpm = Math.max(map.minSpeedRpm, Math.min(map.maxSpeedRpm, map.ratedSpeedRpm * speedRatioEst));
 
     // Find nearest or bounding speed curve
-    let activeCurve = map.speedCurves[0]!;
+    let activeCurve = map.speedCurves[0];
     let minSpeedDiff = Infinity;
     for (const sc of map.speedCurves) {
       const diff = Math.abs(sc.speedRpm - speedRpm);
@@ -151,13 +151,14 @@ export class CompressorMapEngine {
     const phi = actualInflowM3s / Math.max(1e-4, omega * Math.pow(d, 3));
 
     // Interpolate efficiency from curve
-    if (activeCurve.flowCoeffs.length > 1) {
-      const phiMin = activeCurve.flowCoeffs[0]!;
-      const phiMax = activeCurve.flowCoeffs[activeCurve.flowCoeffs.length - 1]!;
+    if (activeCurve && activeCurve.flowCoeffs.length > 1) {
+      const phiMin = activeCurve.flowCoeffs[0] ?? 0;
+      const phiMax = activeCurve.flowCoeffs[activeCurve.flowCoeffs.length - 1] ?? 1;
       const t = Math.max(0.0, Math.min(1.0, (phi - phiMin) / Math.max(1e-5, phiMax - phiMin)));
       const idx = Math.min(activeCurve.efficiency.length - 2, Math.floor(t * (activeCurve.efficiency.length - 1)));
       const frac = t * (activeCurve.efficiency.length - 1) - idx;
-      etaPoly = (1.0 - frac) * activeCurve.efficiency[idx]! + frac * activeCurve.efficiency[idx + 1]!;
+      etaPoly =
+        (1.0 - frac) * (activeCurve.efficiency[idx] ?? etaPoly) + frac * (activeCurve.efficiency[idx + 1] ?? etaPoly);
     }
 
     // Actual delivered discharge pressure clamped by max speed head
@@ -173,8 +174,8 @@ export class CompressorMapEngine {
     }
 
     // Check surge and stonewall boundaries
-    const surgeFlow = activeCurve.surgeFlowM3s;
-    const stonewallFlow = activeCurve.stonewallFlowM3s;
+    const surgeFlow = activeCurve?.surgeFlowM3s ?? 0;
+    const stonewallFlow = activeCurve?.stonewallFlowM3s ?? Infinity;
     const safetyMarginPct = map.surgeSafetyMarginPercent ?? 10.0;
     const antiSurgeLineFlow = surgeFlow * (1.0 + safetyMarginPct / 100.0);
 

@@ -37,6 +37,7 @@ import {
   WasmOntologyStore,
   hashIri64,
   type OWL2Axiom,
+  type SubsumptionResult,
   type WasmOntologyInstance,
 } from "../packages/runtime/src/ontology/wasm_ontology.js";
 import { PagedStorageEngine, type PagedWasmExports } from "../packages/runtime/src/storage/paged_store.js";
@@ -1509,8 +1510,8 @@ async function benchmarkExternalReasoners(
     let subOk = false;
     const tSub0 = performance.now();
     for (let it = 0; it < subIters; it++) {
-      const res: any = tsReasoner.isSubClassOf(leafClassIri, rootClassIri);
-      subOk = typeof res === "boolean" ? res : Boolean(res?.subsumed ?? res?.isSubsumed);
+      const res: SubsumptionResult = tsReasoner.isSubClassOf(leafClassIri, rootClassIri);
+      subOk = res.holds;
     }
     const subUs = ((performance.now() - tSub0) * 1000) / subIters;
 

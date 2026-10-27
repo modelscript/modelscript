@@ -72,7 +72,7 @@ export function setOctagonBound(i: u32, j: u32, bound: i32): void {
     }
 }
 
-// Incremental Floyd-Warshall Shortest Path Closure (O(N^3))
+// Incremental Floyd-Warshall Shortest Path + Unary-to-Binary Strong Closure (O(N^3))
 export function closeOctagonDBM(): void {
     if (octagonDBM == 0 || octagonNumVars == 0) return;
     let dim = octagonNumVars * 2;
@@ -89,6 +89,25 @@ export function closeOctagonDBM(): void {
                     if (newBound < current) {
                         dbm.set(i, j, newBound);
                     }
+                }
+            }
+        }
+    }
+
+    // Strengthening step: M[i, j] = min(M[i, j], floor((M[i, i^1] + M[j^1, j]) / 2))
+    for (let i: u32 = 0; i < dim; i++) {
+        let iBar = i ^ 1;
+        let mii = dbm.get(i, iBar);
+        if (mii == OCTAGON_INF) continue;
+        for (let j: u32 = 0; j < dim; j++) {
+            let jBar = j ^ 1;
+            let mjj = dbm.get(jBar, j);
+            if (mjj != OCTAGON_INF) {
+                let sum = mii + mjj;
+                let strengthened = sum >= 0 ? (sum >> 1) : -((-sum + 1) >> 1);
+                let current = dbm.get(i, j);
+                if (strengthened < current) {
+                    dbm.set(i, j, strengthened);
                 }
             }
         }

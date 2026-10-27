@@ -367,7 +367,7 @@ class CsvLineLocator {
     let high = this.lineStarts.length - 1;
     while (low <= high) {
       const mid = (low + high) >>> 1;
-      if (this.lineStarts[mid]! <= clamped) {
+      if ((this.lineStarts[mid] ?? 0) <= clamped) {
         low = mid + 1;
       } else {
         high = mid - 1;
@@ -376,7 +376,7 @@ class CsvLineLocator {
     const lineIdx = Math.max(0, low - 1);
     return {
       line: lineIdx + 1,
-      column: clamped - this.lineStarts[lineIdx]! + 1,
+      column: clamped - (this.lineStarts[lineIdx] ?? 0) + 1,
     };
   }
 }
@@ -412,7 +412,7 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
     let unclosedQuote = false;
 
     while (i < len) {
-      const ch = text[i]!;
+      const ch = text[i] ?? "";
       if (ch === '"') {
         if (inQuote && text[i + 1] === '"') {
           currentVal += '"';
@@ -530,13 +530,15 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
   const { rows } = tokenizeCsvWithRanges(csvText);
   if (rows.length === 0) return diagnostics;
 
-  const headerRow = rows[0]!;
+  const headerRow = rows[0];
+  if (!headerRow) return diagnostics;
   const numCols = headerRow.cells.length;
   const seenHeaders = new Map<string, number>();
 
   // 1. Validate header cells (empty or duplicate headers, unclosed quotes)
   for (let c = 0; c < numCols; c++) {
-    const cell = headerRow.cells[c]!;
+    const cell = headerRow.cells[c];
+    if (!cell) continue;
     if (cell.unclosedQuote) {
       emit(
         cell.startOffset,
@@ -550,13 +552,14 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
       emit(cell.startOffset, cell.endOffset, "CSV_EMPTY_HEADER", "error", `Header column ${c + 1} is empty.`);
       continue;
     }
-    if (seenHeaders.has(cell.text)) {
+    const existingCol = seenHeaders.get(cell.text);
+    if (existingCol !== undefined) {
       emit(
         cell.startOffset,
         cell.endOffset,
         "CSV_DUPLICATE_HEADER",
         "error",
-        `Duplicate header column '${cell.text}' (already defined at column ${seenHeaders.get(cell.text)! + 1}).`,
+        `Duplicate header column '${cell.text}' (already defined at column ${existingCol + 1}).`,
       );
     } else {
       seenHeaders.set(cell.text, c);
@@ -567,7 +570,7 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
   const numericCols = new Array<boolean>(numCols).fill(false);
   let timeColIdx = -1;
   for (let c = 0; c < numCols; c++) {
-    const hName = headerRow.cells[c]!.text.toLowerCase();
+    const hName = (headerRow.cells[c]?.text ?? "").toLowerCase();
     if (timeColIdx === -1 && (hName === "time" || hName === "t")) {
       timeColIdx = c;
       numericCols[c] = true;
@@ -575,9 +578,10 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
   }
 
   for (let r = 1; r < rows.length; r++) {
-    const row = rows[r]!;
+    const row = rows[r];
+    if (!row) continue;
     for (let c = 0; c < Math.min(numCols, row.cells.length); c++) {
-      if (isStrictFiniteNumber(row.cells[c]!.text)) {
+      if (isStrictFiniteNumber(row.cells[c]?.text ?? "")) {
         numericCols[c] = true;
       }
     }
@@ -587,10 +591,12 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
 
   // 2. Validate data rows (column count mismatch, unclosed quotes, invalid numeric cells, non-monotonic time)
   for (let r = 1; r < rows.length; r++) {
-    const row = rows[r]!;
+    const row = rows[r];
+    if (!row) continue;
 
     for (let c = 0; c < row.cells.length; c++) {
-      const cell = row.cells[c]!;
+      const cell = row.cells[c];
+      if (!cell) continue;
       if (cell.unclosedQuote) {
         emit(
           cell.startOffset,
@@ -603,10 +609,10 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     }
 
     if (row.cells.length !== numCols) {
-      if (row.cells.length > numCols) {
+      const firstExcess = row.cells[numCols];
+      const lastExcess = row.cells[row.cells.length - 1];
+      if (row.cells.length > numCols && firstExcess && lastExcess) {
         // Underline ONLY the excess cells
-        const firstExcess = row.cells[numCols]!;
-        const lastExcess = row.cells[row.cells.length - 1]!;
         emit(
           firstExcess.startOffset,
           lastExcess.endOffset,
@@ -628,7 +634,8 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     const checkCols = Math.min(numCols, row.cells.length);
     for (let c = 0; c < checkCols; c++) {
       if (!numericCols[c]) continue;
-      const cell = row.cells[c]!;
+      const cell = row.cells[c];
+      if (!cell) continue;
       const colName = headerRow.cells[c]?.text || `column ${c + 1}`;
       if (!cell.text) {
         emit(

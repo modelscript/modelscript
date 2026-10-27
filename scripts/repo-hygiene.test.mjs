@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { checkFile } from "./lint-filenames.ts";
 import { getExpectedMetadata } from "./lint-package-manifests.ts";
 import { analyzeFileContent } from "./lint-type-safety-ratchet.ts";
-import { isIncludedByFilesWhitelist } from "./verify-pack-install.ts";
+import { CORE_PACK_TARGETS, ESM_IMPORT_TARGETS, isIncludedByFilesWhitelist } from "./verify-pack-install.ts";
 
 // 1. Type-safety ratchet AST/regex analyzer
 {
@@ -69,13 +69,29 @@ import { isIncludedByFilesWhitelist } from "./verify-pack-install.ts";
   assert.strictEqual(badTest[0].rule, "no-redundant-test-prefix");
 }
 
-// 4. Publishable files whitelist globstar matching
+// 4. Publishable files whitelist globstar matching & core SDK pack/ESM targets
 {
   assert.strictEqual(isIncludedByFilesWhitelist("./dist/index.js", ["dist"]), true);
   assert.strictEqual(isIncludedByFilesWhitelist("./dist/main.js", ["dist/**/*.js"]), true);
   assert.strictEqual(isIncludedByFilesWhitelist("./dist/nested/sub/file.js", ["dist/**/*.js"]), true);
   assert.strictEqual(isIncludedByFilesWhitelist("./src/index.ts", ["dist"]), false);
   assert.strictEqual(isIncludedByFilesWhitelist("README.md", ["dist"]), true);
+
+  for (const sdkPkg of [
+    "packages/dsl",
+    "packages/runtime",
+    "packages/simulate",
+    "packages/cad",
+    "packages/exchange",
+    "packages/mcp",
+    "packages/diagram",
+    "packages/lsp",
+    "languages/modelica",
+  ]) {
+    assert.ok(CORE_PACK_TARGETS.includes(sdkPkg), `Expected CORE_PACK_TARGETS to include ${sdkPkg}`);
+    assert.ok(ESM_IMPORT_TARGETS.includes(sdkPkg), `Expected ESM_IMPORT_TARGETS to include ${sdkPkg}`);
+  }
+  assert.ok(CORE_PACK_TARGETS.includes("apps/cli"), "Expected CORE_PACK_TARGETS to include apps/cli");
 }
 
 console.log("All repo-hygiene unit tests passed!");

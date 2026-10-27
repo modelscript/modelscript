@@ -43,7 +43,7 @@ export interface SolverPort {
   offset?: number | undefined; // Distance along edge [margin, edgeLength - margin]
   x?: number | undefined; // Absolute canvas X coordinate
   y?: number | undefined; // Absolute canvas Y coordinate
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SolverNode {

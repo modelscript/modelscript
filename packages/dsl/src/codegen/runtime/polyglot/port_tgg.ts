@@ -50,12 +50,23 @@ export class TggPortBalancer {
   find(portId: u32): u32 {
     if (portId == 0 || portId > this.portCount) return 0;
     let slot = portId - 1;
-    let parent = this.ports.get(slot * PORT_STRIDE + PORT_PARENT);
-    if (parent != slot) {
-      parent = this.find(parent + 1) - 1;
-      this.ports.set(slot * PORT_STRIDE + PORT_PARENT, parent);
+    let root = slot;
+    let steps: u32 = 0;
+    while (steps <= this.portCount) {
+      let parent = this.ports.get(root * PORT_STRIDE + PORT_PARENT);
+      if (parent == root || parent >= this.portCount) break;
+      root = parent;
+      steps++;
     }
-    return parent + 1;
+    let curr = slot;
+    steps = 0;
+    while (curr != root && curr < this.portCount && steps <= this.portCount) {
+      let nxt = this.ports.get(curr * PORT_STRIDE + PORT_PARENT);
+      this.ports.set(curr * PORT_STRIDE + PORT_PARENT, root);
+      curr = nxt;
+      steps++;
+    }
+    return root + 1;
   }
 
   @inline

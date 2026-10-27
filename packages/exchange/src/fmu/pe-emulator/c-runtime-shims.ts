@@ -9,7 +9,7 @@ import type { GuestMemorySpace, X86RegisterState } from "./types.js";
 
 export interface SyscallContext {
   cpu: {
-    registers: X86RegisterState;
+    registers?: X86RegisterState | unknown;
     getArg(index: number): bigint;
     getFloatArg(index: number): number;
     setReturnInt(val: bigint | number): void;

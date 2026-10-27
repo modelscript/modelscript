@@ -241,7 +241,7 @@ export class OslcGateway {
 
       const elementsInThread: string[] = [];
 
-      for (let d = 0; d < 8; d++) {
+      for (let d = 0; d < 16; d++) {
         const nodeId = rec.domainNodes[d];
         if (nodeId) {
           const domainName = ThreadDomain[d] || `Domain_${d}`;

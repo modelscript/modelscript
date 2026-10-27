@@ -5,7 +5,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 export type HubProfile = "standalone" | "internal" | "federated";
 
@@ -158,7 +158,7 @@ export const HubInit: CommandModule<{}, HubInitArgs> = {
         description: "Skip interactive prompts and accept all defaults",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<HubInitArgs>;
   },
   handler: async (args) => {
     const isInteractive = !args.yes && process.stdin.isTTY;
@@ -255,6 +255,36 @@ export const HubInit: CommandModule<{}, HubInitArgs> = {
   },
 };
 
+interface HubReadinessProbe {
+  status?: string | undefined;
+  environment?: string | undefined;
+  timestamp?: string | undefined;
+  checks?:
+    | {
+        exportControls?:
+          | {
+              status?: string | undefined;
+              sanctionedCountriesCount?: number | undefined;
+              sanctionedRegionsCount?: number | undefined;
+            }
+          | undefined;
+        services?:
+          | {
+              geolocation?: { dbLoaded?: boolean | undefined } | undefined;
+              mailer?: { driver?: string | undefined } | undefined;
+              database?: { hasAdminUser?: boolean | undefined } | undefined;
+            }
+          | undefined;
+        secrets?:
+          | {
+              jwtSecretIsSecure?: boolean | undefined;
+              turnstileConfigured?: boolean | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+}
+
 export const HubStatus: CommandModule<{}, { url?: string | undefined }> = {
   command: "status [url]",
   describe: "Query the compliance and health readiness probe of a ModelScript node",
@@ -263,7 +293,7 @@ export const HubStatus: CommandModule<{}, { url?: string | undefined }> = {
       description: "Base URL of the ModelScript hub (defaults to http://localhost:3000)",
       type: "string",
       default: "http://localhost:3000",
-    }) as any;
+    }) as unknown as Argv<{ url?: string | undefined }>;
   },
   handler: async (args) => {
     const baseUrl = (args.url || "http://localhost:3000").replace(/\/+$/, "");
@@ -272,7 +302,7 @@ export const HubStatus: CommandModule<{}, { url?: string | undefined }> = {
     console.log(`\n🔍 Probing ModelScript Hub at ${probeUrl}...\n`);
     try {
       const response = await fetch(probeUrl);
-      const data = (await response.json()) as any;
+      const data = (await response.json()) as HubReadinessProbe;
 
       console.log(
         `Status:           ${data.status === "ready" ? "🟢 READY" : "🟡 " + (data.status || "UNKNOWN").toUpperCase()}`,
@@ -293,8 +323,8 @@ export const HubStatus: CommandModule<{}, { url?: string | undefined }> = {
       );
       console.log(`  Admin User:        ${data.checks?.services?.database?.hasAdminUser ? "Provisioned" : "Missing"}`);
       console.log("");
-    } catch (err: any) {
-      console.error(`❌ Failed to connect to node at ${baseUrl}: ${err.message}`);
+    } catch (err: unknown) {
+      console.error(`❌ Failed to connect to node at ${baseUrl}: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   },
@@ -304,10 +334,7 @@ export const Hub: CommandModule = {
   command: "hub <command>",
   describe: "Manage, configure, and inspect ModelScript hub nodes",
   builder: (yargs) => {
-    return yargs
-      .command(HubInit)
-      .command(HubStatus)
-      .demandCommand(1, "Please specify a hub command (init, status)") as any;
+    return yargs.command(HubInit).command(HubStatus).demandCommand(1, "Please specify a hub command (init, status)");
   },
   handler: () => {},
 };

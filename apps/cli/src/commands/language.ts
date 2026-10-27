@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import {
   getRegistryDir,
   listAllLanguages,
@@ -14,7 +14,7 @@ export interface LanguageArgs {
   target?: string | undefined;
 }
 
-export const Language: CommandModule<any, any> = {
+export const Language: CommandModule<{}, LanguageArgs> = {
   command: "language <action> [target]",
   aliases: ["lang"],
   describe: "Manage registered language DSLs (list, register, unregister)",
@@ -29,7 +29,7 @@ export const Language: CommandModule<any, any> = {
       .positional("target", {
         description: "Target directory (for register) or language ID (for unregister)",
         type: "string",
-      });
+      }) as unknown as Argv<LanguageArgs>;
   },
   handler: async (args) => {
     const { action, target } = args;
@@ -67,8 +67,8 @@ export const Language: CommandModule<any, any> = {
           `✔ Successfully registered language '${manifest.name}' [${manifest.id}] for extensions: ${manifest.extensions.join(", ")}`,
         );
         console.log(`  Installed at: ${path.join(getRegistryDir(), manifest.id)}`);
-      } catch (err: any) {
-        console.error(`Failed to register language: ${err.message}`);
+      } catch (err: unknown) {
+        console.error(`Failed to register language: ${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
       }
       return;

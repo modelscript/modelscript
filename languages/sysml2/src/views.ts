@@ -3,14 +3,15 @@
 // Declarative 9-View Projection Configurations for SysML v2.
 // Replaces hardcoded logic in polyglot builder with declarative projection specs.
 
-import type { DiagramProjectionConfig } from "@modelscript/dsl";
+import type { PolyglotProjectionConfig } from "@modelscript/diagram";
 
-export const sysml2Views: Record<string, DiagramProjectionConfig> = {
+export const sysml2Views: Record<string, PolyglotProjectionConfig> = {
   BDD: {
     label: "Block Definition Diagram",
     description: "System taxonomy, definitions, classifications, and general structure",
     excludeRules: ["PartUsage", "PortUsage", "StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage"],
-    filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
+    filter: (sym: { ruleName?: string | undefined }) =>
+      !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
   },
   IBD: {
     label: "Internal Block Diagram",
@@ -23,7 +24,8 @@ export const sysml2Views: Record<string, DiagramProjectionConfig> = {
       "ExhibitStateUsage",
       "TransitionUsage",
     ],
-    filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
+    filter: (sym: { ruleName?: string | undefined }) =>
+      !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
   },
   StateMachine: {
     label: "State Machine Diagram",
@@ -99,7 +101,7 @@ export const sysml2Views: Record<string, DiagramProjectionConfig> = {
   Package: {
     label: "Package Diagram",
     description: "Package containment, namespaces, and definition hierarchy",
-    filter: (sym: any) =>
+    filter: (sym: { ruleName?: string | undefined }) =>
       sym.ruleName === "Package" ||
       sym.ruleName === "LibraryPackage" ||
       (typeof sym.ruleName === "string" && sym.ruleName.endsWith("Definition")),

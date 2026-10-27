@@ -12,8 +12,8 @@ export type DiffStatus = "added" | "deleted" | "modified" | "unchanged";
 
 export interface VisualPropertyDiff {
   key: string;
-  oldValue?: any;
-  newValue?: any;
+  oldValue?: unknown;
+  newValue?: unknown;
   isBreaking: boolean;
 }
 
@@ -99,7 +99,7 @@ function getNodeKey(node: DiagramNode): string {
 /**
  * Extracts source or target cell id from edge endpoint.
  */
-function getEndpointCell(endpoint: any): string {
+function getEndpointCell(endpoint: string | { cell?: string | undefined } | null | undefined): string {
   if (!endpoint) return "";
   if (typeof endpoint === "string") return endpoint;
   return endpoint.cell || "";
@@ -108,7 +108,7 @@ function getEndpointCell(endpoint: any): string {
 /**
  * Extracts source or target port id from edge endpoint.
  */
-function getEndpointPort(endpoint: any): string {
+function getEndpointPort(endpoint: string | { port?: string | undefined } | null | undefined): string {
   if (!endpoint) return "";
   if (typeof endpoint === "object") return endpoint.port || "";
   return "";
@@ -129,8 +129,8 @@ function getEdgeKey(edge: DiagramEdge): string {
  * Compares two property maps and extracts fine-grained deltas.
  */
 function diffProperties(
-  oldValues: Record<string, any> = {},
-  newValues: Record<string, any> = {},
+  oldValues: Record<string, unknown> = {},
+  newValues: Record<string, unknown> = {},
   breakingKeys: Set<string>,
   ignoredKeys: Set<string>,
 ): { propertyChanges: VisualPropertyDiff[]; isBreaking: boolean } {

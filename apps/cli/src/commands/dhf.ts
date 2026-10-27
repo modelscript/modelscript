@@ -6,7 +6,7 @@ import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { resolveBuiltInWasmPath } from "../util/language-registry.js";
 
 interface DhfExportArgs {
@@ -256,7 +256,7 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
         type: "string",
         default: "ModelScript Verification Engineering Team",
         description: "Author name",
-      }) as any;
+      }) as unknown as Argv<DhfExportArgs>;
   },
 
   handler: async (args) => {
@@ -267,7 +267,9 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
     console.log(`[msx dhf] Found ${targetFiles.length} source file(s).`);
 
     const sysmlWasmPath = resolveBuiltInWasmPath("sysml2");
-    let sysmlParser: any = null;
+    let sysmlParser:
+      | Awaited<ReturnType<(typeof import("@modelscript/sysml2/parser"))["createWasmParser"]>>["parser"]
+      | null = null;
     if (sysmlWasmPath && fs.existsSync(sysmlWasmPath)) {
       const { createWasmParser } = await import("@modelscript/sysml2/parser");
       const res = await createWasmParser(sysmlWasmPath);
@@ -280,7 +282,10 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
         const content = fs.readFileSync(file, "utf-8");
         const tree = sysmlParser.parse(content);
         if (tree) {
-          sysmlIndex.register("file://" + path.resolve(file), () => tree.rootNode as any);
+          sysmlIndex.register(
+            "file://" + path.resolve(file),
+            () => tree.rootNode as unknown as ReturnType<NonNullable<Parameters<typeof sysmlIndex.register>[1]>>,
+          );
         }
       }
     }

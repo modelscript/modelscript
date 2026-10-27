@@ -648,9 +648,9 @@ export class WebGPUAdjointRunner {
       // If running against a stub/mock GPU device (e.g. in headless unit tests),
       // populate from exact continuous adjoint solver so test pipelines verify correctly.
       const isMockDevice =
-        Boolean((this.device as any)?._isMock) ||
+        Boolean((this.device as { _isMock?: boolean | undefined } | null)?._isMock) ||
         this.device?.constructor?.name === "MockGPUDevice" ||
-        (allZero && batchSize > 0 && typeof (navigator as any)?.gpu === "undefined");
+        (allZero && batchSize > 0 && typeof (navigator as { gpu?: GPU | undefined } | undefined)?.gpu === "undefined");
 
       if (isMockDevice && batchSize > 0) {
         const exact = fallbackComputed ?? this.computeCpuBatchedAdjoint(options);

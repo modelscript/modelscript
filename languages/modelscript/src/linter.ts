@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ModelScriptErrorCode, type ModelScriptDiagnostic } from "./errors.js";
+import type { ModelScriptCstNode } from "./queries.js";
 
 /**
  * Lexical scope entry representing a declared variable, function, struct, parameter, or FLWOR variable.
@@ -56,7 +57,12 @@ export class ModelScriptLinter {
    * Registers a symbol in the current lexical scope, emitting `DUPLICATE_DECLARATION`
    * if an identifier with the same name already exists in the same scope.
    */
-  private declareSymbol(name: string, kind: SymbolInfo["kind"], node: any, type?: string): boolean {
+  private declareSymbol(
+    name: string,
+    kind: SymbolInfo["kind"],
+    node: ModelScriptCstNode | null | undefined,
+    type?: string,
+  ): boolean {
     const scope = this.currentScope();
     if (scope.has(name)) {
       this.addDiagnostic(
@@ -90,7 +96,7 @@ export class ModelScriptLinter {
    * Attempts to resolve the struct type name of an object receiver expression
    * (either via variable type annotation or `new StructName(...)` construction).
    */
-  private resolveObjectStructName(node: any): string | undefined {
+  private resolveObjectStructName(node: ModelScriptCstNode | null | undefined): string | undefined {
     let cur = node;
     while (
       cur &&
@@ -123,7 +129,7 @@ export class ModelScriptLinter {
     rule: string,
     severity: "error" | "warning" | "info",
     message: string,
-    node: any,
+    node: ModelScriptCstNode | null | undefined,
   ): void {
     const pos = node?.startPosition || { row: 0, column: 0 };
     const endPos = node?.endPosition || { row: 0, column: 0 };
@@ -145,7 +151,7 @@ export class ModelScriptLinter {
    * Runs two-pass semantic linting over a parsed ModelScript CST root node:
    * Pass 1 hoists top-level imports, structs, and functions; Pass 2 validates statements and expressions.
    */
-  lint(rootNode: any): ModelScriptDiagnostic[] {
+  lint(rootNode: ModelScriptCstNode | null | undefined): ModelScriptDiagnostic[] {
     this.diagnostics = [];
     this.scopes = [];
     this.functions.clear();
@@ -169,11 +175,12 @@ export class ModelScriptLinter {
    * First pass: hoists top-level `ImportDeclaration`, `StructDeclaration`, and
    * `FunctionDeclaration` symbols so forward references and member checks succeed.
    */
-  private collectDeclarations(node: any): void {
+  private collectDeclarations(node: ModelScriptCstNode | null | undefined): void {
     if (!node) return;
 
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i);
+      if (!child) continue;
 
       if (child.type === "TopLevelDeclaration" || child.type === "Statement") {
         this.collectDeclarations(child);
@@ -185,7 +192,7 @@ export class ModelScriptLinter {
         if (specsList) {
           for (let j = 0; j < specsList.childCount; j++) {
             const spec = specsList.child(j);
-            if (spec.type === "ImportSpecifier") {
+            if (spec?.type === "ImportSpecifier") {
               const localNode =
                 spec.childForFieldName?.("local") ??
                 spec.childForFieldName?.("name") ??
@@ -204,7 +211,7 @@ export class ModelScriptLinter {
           const fields = new Set<string>();
           for (let j = 0; j < child.childCount; j++) {
             const f = child.child(j);
-            if (f.type === "StructField") {
+            if (f?.type === "StructField") {
               const fName = f.childForFieldName?.("name")?.text;
               if (fName) fields.add(fName);
             }
@@ -220,7 +227,7 @@ export class ModelScriptLinter {
           let paramCount = 0;
           if (paramsNode) {
             for (let j = 0; j < paramsNode.childCount; j++) {
-              if (paramsNode.child(j).type === "Parameter") paramCount++;
+              if (paramsNode.child(j)?.type === "Parameter") paramCount++;
             }
           }
           const retType = child.childForFieldName?.("returnType")?.text;
@@ -234,7 +241,7 @@ export class ModelScriptLinter {
    * Second pass: recursively traverses statements and expressions, managing lexical scopes
    * and checking identifier resolution, call arities, and struct member accesses.
    */
-  private walk(node: any): void {
+  private walk(node: ModelScriptCstNode | null | undefined): void {
     if (!node) return;
 
     switch (node.type) {
@@ -278,7 +285,7 @@ export class ModelScriptLinter {
         if (paramsNode) {
           for (let i = 0; i < paramsNode.childCount; i++) {
             const p = paramsNode.child(i);
-            if (p.type === "Parameter") {
+            if (p?.type === "Parameter") {
               const pId = p.childForFieldName?.("name");
               const pType = p.childForFieldName?.("type")?.text?.trim();
               if (pId) {
@@ -303,6 +310,7 @@ export class ModelScriptLinter {
         this.enterScope();
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
+          if (!c) continue;
           if (c.type === "ForClause") {
             const coll = c.childForFieldName?.("collection");
             this.walk(coll);
@@ -340,7 +348,7 @@ export class ModelScriptLinter {
           let argCount = 0;
           if (argsNode) {
             for (let i = 0; i < argsNode.childCount; i++) {
-              if (argsNode.child(i).type === "Argument") argCount++;
+              if (argsNode.child(i)?.type === "Argument") argCount++;
             }
           }
           if (fnSig && fnSig.paramCount !== argCount) {

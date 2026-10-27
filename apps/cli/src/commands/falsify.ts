@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import { ParameterInversionEngine } from "@modelscript/cad";
 import { TraceRecordNormalizer, type CanonicalTraceRecord, type STLFormula } from "@modelscript/runtime";
 import { RequirementFalsifier, type FalsificationOptions, type ParameterRange } from "@modelscript/sysml2";
 import fs from "node:fs";
-import type { ArgumentsCamelCase, CommandModule } from "yargs";
+import vm from "node:vm";
+import type { ArgumentsCamelCase, Argv, CommandModule } from "yargs";
 
 export interface FalsifyArgs {
   property?: string | undefined;
@@ -61,7 +61,7 @@ export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
           formula: {
             type: "predicate",
             variable: match[1],
-            operator: match[2] as any,
+            operator: match[2] as "<=" | ">=" | "<" | ">",
             threshold: parseFloat(match[3]),
           },
         };
@@ -126,12 +126,10 @@ export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
     for (const [varName, rhsExpr] of modelEquations.entries()) {
       if (varName in params) continue;
       try {
-        const argNames = Object.keys(params);
-        const argVals = Object.values(params);
         if (/^[0-9a-zA-Z_+\-*/().\s]+$/.test(rhsExpr)) {
-          const fn = new Function(...argNames, "t", `return (${rhsExpr});`);
+          const script = new vm.Script(`(${rhsExpr})`);
           const series = times.map((t) => {
-            const val = Number(fn(...argVals, t));
+            const val = Number(script.runInNewContext({ ...params, t }));
             return Number.isFinite(val) ? val : 0;
           });
           signals[varName] = series;
@@ -203,7 +201,7 @@ export const Falsify: CommandModule<{}, FalsifyArgs> = {
   command: "falsify",
   describe: "Run adversarial multi-domain requirement falsification across SysML, Modelica, and CAD",
 
-  builder: ((yargs: any) =>
+  builder: ((yargs: Argv) =>
     yargs
       .option("property", {
         type: "string",

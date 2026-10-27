@@ -112,7 +112,8 @@ export class WasmPointKineticsBridge {
 
     // 1. Set delayed groups
     for (let i = 0; i < 6; i++) {
-      const g = groups[i]!;
+      const g = groups[i];
+      if (!g) continue;
       this.exports.point_kinetics_set_delayed_group(i, g.decayConstant, g.fraction);
     }
 
@@ -143,19 +144,19 @@ export class WasmPointKineticsBridge {
     for (let i = 0; i < sampleCount; i++) {
       const offset = i * 12;
       trajectory[i] = {
-        time: f64View[offset + 0]!,
-        powerNormalized: f64View[offset + 1]!,
-        powerMegawatts: f64View[offset + 2]!,
-        reactivityPcm: f64View[offset + 3]!,
-        fuelTemperature: f64View[offset + 4]!,
-        moderatorTemperature: f64View[offset + 5]!,
+        time: f64View[offset + 0] ?? 0,
+        powerNormalized: f64View[offset + 1] ?? 0,
+        powerMegawatts: f64View[offset + 2] ?? 0,
+        reactivityPcm: f64View[offset + 3] ?? 0,
+        fuelTemperature: f64View[offset + 4] ?? 0,
+        moderatorTemperature: f64View[offset + 5] ?? 0,
         precursors: [
-          f64View[offset + 6]!,
-          f64View[offset + 7]!,
-          f64View[offset + 8]!,
-          f64View[offset + 9]!,
-          f64View[offset + 10]!,
-          f64View[offset + 11]!,
+          f64View[offset + 6] ?? 0,
+          f64View[offset + 7] ?? 0,
+          f64View[offset + 8] ?? 0,
+          f64View[offset + 9] ?? 0,
+          f64View[offset + 10] ?? 0,
+          f64View[offset + 11] ?? 0,
         ],
       };
     }

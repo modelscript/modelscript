@@ -158,7 +158,14 @@ export class UnscentedKalmanFilter {
 
   private wasmUkfScratch?:
     | {
-        wasm: any;
+        wasm: {
+          memory: WebAssembly.Memory;
+          __new?: ((bytes: number, id: number) => number) | undefined;
+          ukf_cholesky?: ((L: number, covPtr: number, cholPtr: number) => void) | undefined;
+          ukf_generate_sigma_points?:
+            | ((L: number, gamma: number, statePtr: number, cholPtr: number, sigmaPtr: number) => void)
+            | undefined;
+        };
         L: number;
         statePtr: number;
         covPtr: number;
@@ -174,7 +181,17 @@ export class UnscentedKalmanFilter {
     const L = this.L;
     const gamma = Math.sqrt(L + this.lambda);
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as
+      | {
+          memory: WebAssembly.Memory;
+          __new?: ((bytes: number, id: number) => number) | undefined;
+          ukf_cholesky?: ((L: number, covPtr: number, cholPtr: number) => void) | undefined;
+          ukf_generate_sigma_points?:
+            | ((L: number, gamma: number, statePtr: number, cholPtr: number, sigmaPtr: number) => void)
+            | undefined;
+        }
+      | null
+      | undefined;
     if (
       wasm &&
       typeof wasm.ukf_cholesky === "function" &&
@@ -182,8 +199,9 @@ export class UnscentedKalmanFilter {
       typeof wasm.__new === "function" &&
       L > 0
     ) {
+      const wasmAlloc = wasm.__new;
       if (!this.wasmUkfScratch || this.wasmUkfScratch.wasm !== wasm || this.wasmUkfScratch.L !== L) {
-        const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+        const alloc = (bytes: number): number => wasmAlloc(bytes, 0);
         this.wasmUkfScratch = {
           wasm,
           L,

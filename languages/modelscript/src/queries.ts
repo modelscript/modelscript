@@ -85,38 +85,64 @@ export function parseTypeName(typeStr: string): ModelScriptType {
 }
 
 /**
+ * Structural CST node interface compatible with generated WASM `SyntaxNode` instances.
+ */
+export interface ModelScriptCstNode {
+  id?: number | string | undefined;
+  type: string;
+  text: string;
+  name?: string | undefined;
+  fieldName?: string | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  parent?: ModelScriptCstNode | null | undefined;
+  children?: ModelScriptCstNode[] | undefined;
+  namedChildren?: ModelScriptCstNode[] | undefined;
+  childCount: number;
+  child(index: number): ModelScriptCstNode | null;
+  childForFieldName(name: string): ModelScriptCstNode | null;
+}
+
+/**
  * Recursively unwraps grammar wrapper CST nodes (`TopLevelDeclaration`, `Statement`,
  * `Expression`, `PrimaryExpression`, `ParenthesizedExpression`) to reach the underlying
  * semantic AST/CST node.
  */
-export function unwrapNode(node: any): any {
+export function unwrapNode(node: ModelScriptCstNode): ModelScriptCstNode;
+export function unwrapNode(node: ModelScriptCstNode | null | undefined): ModelScriptCstNode | null;
+export function unwrapNode(node: ModelScriptCstNode | null | undefined): ModelScriptCstNode | null {
   if (!node) return null;
+  let current: ModelScriptCstNode | null = node;
   while (
-    node &&
-    (node.type === "TopLevelDeclaration" ||
-      node.type === "Statement" ||
-      node.type === "Expression" ||
-      node.type === "PrimaryExpression" ||
-      node.type === "ParenthesizedExpression")
+    current &&
+    (current.type === "TopLevelDeclaration" ||
+      current.type === "Statement" ||
+      current.type === "Expression" ||
+      current.type === "PrimaryExpression" ||
+      current.type === "ParenthesizedExpression")
   ) {
-    if (node.type === "ParenthesizedExpression") {
-      const inner = node.childForFieldName ? node.childForFieldName("expression") : node.namedChildren?.[0];
-      if (!inner || inner === node) break;
-      node = inner;
+    if (current.type === "ParenthesizedExpression") {
+      const inner: ModelScriptCstNode | null | undefined = current.childForFieldName
+        ? current.childForFieldName("expression")
+        : current.namedChildren?.[0];
+      if (!inner || inner === current) break;
+      current = inner;
       continue;
     }
-    let child = null;
-    for (let i = 0; i < node.childCount; i++) {
-      const c = node.child(i);
+    let child: ModelScriptCstNode | null = null;
+    for (let i = 0; i < current.childCount; i++) {
+      const c = current.child(i);
       if (c && c.type !== ";" && c.type !== "_EmptyStatement") {
         child = c;
         break;
       }
     }
-    if (!child || child === node) break;
-    node = child;
+    if (!child || child === current) break;
+    current = child;
   }
-  return node;
+  return current;
 }
 
 /**
@@ -131,7 +157,8 @@ function queryKey(queryName: string, id: string | number): string {
  * struct memory layout computation and expression type inference.
  */
 export class ModelScriptQueryEngine {
-  private cache = new Map<string, { revision: number; value: any }>();
+  private layoutCache = new Map<string, { revision: number; value: StructLayout }>();
+  private exprCache = new Map<string, { revision: number; value: ModelScriptType }>();
   private structLayouts = new Map<string, StructLayout>();
   private globalRevision = 1;
 
@@ -153,7 +180,8 @@ export class ModelScriptQueryEngine {
    * Clears all memoized query results and resets the revision counter.
    */
   clear(): void {
-    this.cache.clear();
+    this.layoutCache.clear();
+    this.exprCache.clear();
     this.structLayouts.clear();
     this.globalRevision = 1;
   }
@@ -161,7 +189,7 @@ export class ModelScriptQueryEngine {
   /**
    * Walks up to the root `SourceFile` node and indexes all top-level `StructDeclaration` layouts.
    */
-  private indexStructsFromRoot(contextNode: any): void {
+  private indexStructsFromRoot(contextNode: ModelScriptCstNode | null | undefined): void {
     let curr = contextNode;
     while (curr?.parent) {
       curr = curr.parent;
@@ -178,7 +206,7 @@ export class ModelScriptQueryEngine {
   /**
    * Looks up a struct's memory layout by name, lazily indexing root declarations if needed.
    */
-  private findStructLayout(structName: string, contextNode?: any): StructLayout | undefined {
+  private findStructLayout(structName: string, contextNode?: ModelScriptCstNode | null): StructLayout | undefined {
     let layout = this.structLayouts.get(structName);
     if (!layout && contextNode) {
       this.indexStructsFromRoot(contextNode);
@@ -190,7 +218,7 @@ export class ModelScriptQueryEngine {
   /**
    * Searches all known struct layouts for a field matching `propName` when receiver type is unknown.
    */
-  private findFieldInAnyStruct(propName: string, contextNode?: any): ModelScriptType | undefined {
+  private findFieldInAnyStruct(propName: string, contextNode?: ModelScriptCstNode | null): ModelScriptType | undefined {
     if (contextNode) {
       this.indexStructsFromRoot(contextNode);
     }
@@ -204,12 +232,12 @@ export class ModelScriptQueryEngine {
   /**
    * Computes the memory layout (offsets, alignment, size) for an @unmanaged struct node.
    */
-  structLayout(rawStructNode: any): StructLayout {
+  structLayout(rawStructNode: ModelScriptCstNode): StructLayout {
     const structNode = unwrapNode(rawStructNode);
     const structName = structNode.childForFieldName ? structNode.childForFieldName("name")?.text : structNode.name;
     const cacheKey = queryKey("structLayout", structName || structNode.id || 0);
 
-    const cached = this.cache.get(cacheKey);
+    const cached = this.layoutCache.get(cacheKey);
     if (cached && cached.revision === this.globalRevision) {
       return cached.value;
     }
@@ -220,14 +248,14 @@ export class ModelScriptQueryEngine {
 
     const fieldNodes =
       structNode.namedChildren?.filter(
-        (c: any) =>
+        (c: ModelScriptCstNode) =>
           c.type === "StructField" || c.type === "field" || (c.type === "IDENTIFIER" && c.fieldName === "fields"),
       ) ?? [];
 
     for (const f of fieldNodes) {
-      const fNameNode = f.childForFieldName ? f.childForFieldName("name") : f.name;
-      const fTypeNode = f.childForFieldName ? f.childForFieldName("type") : f.type;
-      const fName = fNameNode?.text || "unnamed";
+      const fNameNode = f.childForFieldName ? f.childForFieldName("name") : null;
+      const fTypeNode = f.childForFieldName ? f.childForFieldName("type") : null;
+      const fName = fNameNode?.text || f.name || "unnamed";
       const fType = parseTypeName(fTypeNode?.text || "i32");
 
       const { size, align } = getTypeSizeAndAlign(fType);
@@ -262,14 +290,17 @@ export class ModelScriptQueryEngine {
     };
 
     this.structLayouts.set(layout.name, layout);
-    this.cache.set(cacheKey, { revision: this.globalRevision, value: layout });
+    this.layoutCache.set(cacheKey, { revision: this.globalRevision, value: layout });
     return layout;
   }
 
   /**
    * Infers the type of an expression node.
    */
-  inferExpressionType(rawNode: any, scope: Map<string, ModelScriptType> = new Map()): ModelScriptType {
+  inferExpressionType(
+    rawNode: ModelScriptCstNode | null | undefined,
+    scope: Map<string, ModelScriptType> = new Map(),
+  ): ModelScriptType {
     const node = unwrapNode(rawNode);
     if (!node) return { kind: "unknown" };
 
@@ -285,7 +316,7 @@ export class ModelScriptQueryEngine {
             .join(",")
         : "";
     const cacheKey = queryKey("inferExpr", `${node.startIndex}_${node.endIndex}_${node.text}_${scopeTag}`);
-    const cached = this.cache.get(cacheKey);
+    const cached = this.exprCache.get(cacheKey);
     if (cached && cached.revision === this.globalRevision) {
       return cached.value;
     }
@@ -328,9 +359,9 @@ export class ModelScriptQueryEngine {
         const right = node.childForFieldName ? node.childForFieldName("right") : node.children?.[2];
 
         // Relational and logical operators always yield boolean results; arithmetic promotes to f64
-        if (["==", "!=", "<", "<=", ">", ">="].includes(op)) {
+        if (op && ["==", "!=", "<", "<=", ">", ">="].includes(op)) {
           result = { kind: "bool" };
-        } else if (["&&", "||"].includes(op)) {
+        } else if (op && ["&&", "||"].includes(op)) {
           result = { kind: "bool" };
         } else {
           const lType = this.inferExpressionType(left, scope);
@@ -364,7 +395,7 @@ export class ModelScriptQueryEngine {
       }
       case "FLWORExpression": {
         // A FLWOR query always evaluates to an array of its ReturnClause expression type
-        const returnClause = node.namedChildren?.find((c: any) => c.type === "ReturnClause");
+        const returnClause = node.namedChildren?.find((c: ModelScriptCstNode) => c.type === "ReturnClause");
         if (returnClause) {
           const expr =
             returnClause.childForFieldName?.("value") ||
@@ -406,7 +437,7 @@ export class ModelScriptQueryEngine {
         break;
     }
 
-    this.cache.set(cacheKey, { revision: this.globalRevision, value: result });
+    this.exprCache.set(cacheKey, { revision: this.globalRevision, value: result });
     return result;
   }
 }

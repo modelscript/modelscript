@@ -77,16 +77,72 @@ export interface ActivePortInstance {
   flowAttrs: string[];
 }
 
+export interface SysmlCstTree {
+  sourceCode?: string | undefined;
+  _encoding?: number | undefined;
+  mem32?: Uint32Array | undefined;
+  facade?:
+    | {
+        getInputEncoding?(): number;
+        syntaxNames?: string[] | undefined;
+        exports?:
+          | {
+              getInputBuffer?(): number;
+              lsp_getInputBuffer?(): number;
+              getFatPaddingPtr?(rawPad: number): number;
+            }
+          | undefined;
+      }
+    | undefined;
+}
+
+export type SysmlCstNodeConstructor = new (
+  tree: SysmlCstTree,
+  ptr: number,
+  startOffset: number,
+  parent: SysmlCstNode | null | undefined,
+  pad: number,
+  len: number,
+  typeId: number,
+  fieldId: number,
+) => SysmlCstNode;
+
+export interface SysmlCstNode {
+  type: string;
+  text: string;
+  name?: string | undefined;
+  ptr?: number | undefined;
+  typeId?: number | undefined;
+  _startOffset?: number | undefined;
+  _cachedPad?: number | undefined;
+  _cachedLen?: number | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  tree?: SysmlCstTree | undefined;
+  parent?: SysmlCstNode | null | undefined;
+  childCount?: number | undefined;
+  children?: SysmlCstNode[] | undefined;
+  child?(index: number): SysmlCstNode | null | undefined;
+  childForFieldName?(name: string): SysmlCstNode | null | undefined;
+  childrenForFieldName?(name: string): SysmlCstNode[];
+  hasError?(): boolean;
+}
+
 /**
  * Zero-allocation linear-memory CST text extractor from raw `(startOffset, pad, len)` in `Tree`.
  */
-function extractLinearNodeText(tree: any, startOffset: number, pad: number, len: number): string {
+function extractLinearNodeText(tree: SysmlCstTree, startOffset: number, pad: number, len: number): string {
   const enc = tree.facade?.getInputEncoding ? tree.facade.getInputEncoding() : (tree._encoding ?? 1);
-  if ((enc === 0 || enc === 3 || enc === 4) && tree.facade?.wasmMemory) {
+  const wasmMemory = (tree.facade as { wasmMemory?: WebAssembly.Memory } | undefined)?.wasmMemory;
+  if ((enc === 0 || enc === 3 || enc === 4) && tree.facade && wasmMemory) {
     const getInputBuf = tree.facade.exports?.getInputBuffer || tree.facade.exports?.lsp_getInputBuffer;
     if (getInputBuf) {
       const inputBufPtr = getInputBuf();
-      const rawBytes = new Uint8Array(tree.facade.wasmMemory.buffer, inputBufPtr + startOffset + pad, len);
+      const rawBytes = new Uint8Array(wasmMemory.buffer, inputBufPtr + startOffset + pad, len);
       if (enc === 3 || enc === 4) {
         const view = new DataView(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
         const cps: number[] = [];
@@ -114,19 +170,23 @@ function extractLinearNodeText(tree: any, startOffset: number, pad: number, len:
  * Uses direct WASM `mem32` pointer iteration when available to avoid allocating
  * `SyntaxNode` wrappers for non-matching children.
  */
-export function findCstChildren(node: any, type: string, results: any[] = []): any[] {
+export function findCstChildren(
+  node: SysmlCstNode | null | undefined,
+  type: string,
+  results: SysmlCstNode[] = [],
+): SysmlCstNode[] {
   if (!node) return results;
   if (
     typeof node.ptr === "number" &&
     node.ptr > 0 &&
     node.tree?.mem32 &&
     node.tree?.facade?.syntaxNames &&
-    !node._cachedChildren
+    !(node as { _cachedChildren?: unknown })._cachedChildren
   ) {
     const mem32: Uint32Array = node.tree.mem32;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
     const exports = node.tree.facade.exports;
-    const NodeCtor = node.constructor as any;
+    const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     // Linear CST node layout in WASM memory (20 bytes per node):
     //   +0:  typeFlags (bits 0..9 = typeId, bit 14 = isInvisible, bits 22..31 = rawPad)
@@ -182,7 +242,7 @@ export function findCstChildren(node: any, type: string, results: any[] = []): a
 
   const count = node.childCount ?? node.children?.length ?? 0;
   for (let i = 0; i < count; i++) {
-    const child = node.child ? node.child(i) : node.children[i];
+    const child = node.child ? node.child(i) : node.children?.[i];
     if (!child) continue;
     if (child.type === type) {
       results.push(child);
@@ -196,14 +256,18 @@ export function findCstChildren(node: any, type: string, results: any[] = []): a
  * Uses direct WASM linear-memory `u32` pointer traversal when available so only
  * matching nodes allocate a `SyntaxNode` wrapper.
  */
-export function findCstDescendants(node: any, type: string, results: any[] = []): any[] {
+export function findCstDescendants(
+  node: SysmlCstNode | null | undefined,
+  type: string,
+  results: SysmlCstNode[] = [],
+): SysmlCstNode[] {
   if (!node) return results;
   if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
     if (node.type === type) results.push(node);
     const mem32: Uint32Array = node.tree.mem32;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
     const exports = node.tree.facade.exports;
-    const NodeCtor = node.constructor as any;
+    const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
     const offsetStack: number[] = [];
@@ -256,7 +320,7 @@ export function findCstDescendants(node: any, type: string, results: any[] = [])
   if (node.type === type) results.push(node);
   const count = node.childCount ?? node.children?.length ?? 0;
   for (let i = 0; i < count; i++) {
-    const child = node.child ? node.child(i) : node.children[i];
+    const child = node.child ? node.child(i) : node.children?.[i];
     if (child) findCstDescendants(child, type, results);
   }
   return results;
@@ -265,14 +329,14 @@ export function findCstDescendants(node: any, type: string, results: any[] = [])
 /**
  * Finds the first descendant of a given type using direct WASM linear-memory `u32` pointer traversal.
  */
-export function findFirstDescendant(node: any, type: string): any | null {
+export function findFirstDescendant(node: SysmlCstNode | null | undefined, type: string): SysmlCstNode | null {
   if (!node) return null;
   if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
     if (node.type === type) return node;
     const mem32: Uint32Array = node.tree.mem32;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
     const exports = node.tree.facade.exports;
-    const NodeCtor = node.constructor as any;
+    const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
     const offsetStack: number[] = [];
@@ -325,7 +389,7 @@ export function findFirstDescendant(node: any, type: string): any | null {
   if (node.type === type) return node;
   const count = node.childCount ?? node.children?.length ?? 0;
   for (let i = 0; i < count; i++) {
-    const child = node.child ? node.child(i) : node.children[i];
+    const child = node.child ? node.child(i) : node.children?.[i];
     const found = findFirstDescendant(child, type);
     if (found) return found;
   }
@@ -337,7 +401,7 @@ export function findFirstDescendant(node: any, type: string): any | null {
  * into `DAEBuilder` without allocating intermediate `SyntaxNode` wrapper objects.
  */
 function lowerLinearWasmCstExpression(
-  tree: any,
+  tree: SysmlCstTree,
   ptr: number,
   startOffset: number,
   pad: number,
@@ -347,7 +411,7 @@ function lowerLinearWasmCstExpression(
   prefix: string,
   localNames?: Set<string>,
 ): number {
-  if (!ptr) return arena.addRealLiteral(0.0);
+  if (!ptr || !tree.mem32 || !tree.facade?.syntaxNames) return arena.addRealLiteral(0.0);
   const mem32: Uint32Array = tree.mem32;
   const syntaxNames: string[] = tree.facade.syntaxNames;
   const exports = tree.facade.exports;
@@ -606,7 +670,12 @@ function lowerLinearWasmCstExpression(
 /**
  * Lowers a SysML v2 / KerML CST expression node directly into an integer `ExprId` in `DAEBuilder`.
  */
-export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", localNames?: Set<string>): number {
+export function lowerCstExpression(
+  node: SysmlCstNode | null | undefined,
+  arena: DAEBuilder,
+  prefix = "",
+  localNames?: Set<string>,
+): number {
   if (!node) return arena.addRealLiteral(0.0);
 
   if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
@@ -626,17 +695,16 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
 
   // Unwrap wrapper nodes
   while (
-    node &&
-    (node.type === "OwnedExpression" ||
-      node.type === "SequenceExpression" ||
-      node.type === "ArgumentValue" ||
-      node.type === "ResultExpressionMember" ||
-      node.type === "_Expression" ||
-      node.type === "_BaseExpression")
+    node.type === "OwnedExpression" ||
+    node.type === "SequenceExpression" ||
+    node.type === "ArgumentValue" ||
+    node.type === "ResultExpressionMember" ||
+    node.type === "_Expression" ||
+    node.type === "_BaseExpression"
   ) {
-    const inner =
+    const inner: SysmlCstNode | null | undefined =
       node.childForFieldName?.("ownedRelatedElement") ||
-      (node.childCount > 0 ? (node.child ? node.child(0) : node.children[0]) : null);
+      ((node.childCount ?? 0) > 0 ? (node.child ? node.child(0) : node.children?.[0]) : null);
     if (inner && inner !== node) {
       node = inner;
     } else {
@@ -645,12 +713,13 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   }
 
   // Handle parenthesized expressions: ( expr )
-  if (node.childCount >= 3) {
-    const first = node.child ? node.child(0) : node.children[0];
-    const last = node.child ? node.child(node.childCount - 1) : node.children[node.childCount - 1];
+  const topCount = node.childCount ?? 0;
+  if (topCount >= 3) {
+    const first = node.child ? node.child(0) : node.children?.[0];
+    const last = node.child ? node.child(topCount - 1) : node.children?.[topCount - 1];
     if (first?.text === "(" && last?.text === ")") {
-      const inner = node.child ? node.child(1) : node.children[1];
-      if (inner && node.childCount === 3) {
+      const inner = node.child ? node.child(1) : node.children?.[1];
+      if (inner && topCount === 3) {
         return lowerCstExpression(inner, arena, prefix, localNames);
       }
     }
@@ -673,8 +742,8 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
 
   // 2. Unary Expression: -x, +x, !x, not x
   if (type === "UnaryExpression") {
-    const opNode = node.childForFieldName?.("operator") || (node.child ? node.child(0) : node.children[0]);
-    const operandNode = node.childForFieldName?.("operand") || (node.child ? node.child(1) : node.children[1]);
+    const opNode = node.childForFieldName?.("operator") || (node.child ? node.child(0) : node.children?.[0]);
+    const operandNode = node.childForFieldName?.("operand") || (node.child ? node.child(1) : node.children?.[1]);
     const opText = opNode?.text?.trim() || "-";
     const childId = lowerCstExpression(operandNode, arena, prefix, localNames);
 
@@ -690,11 +759,11 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   // 3. Additive Expression: a + b - c
   if (type === "AdditiveExpression") {
     const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children[0], arena, prefix, localNames);
+    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
 
     for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children[i + 1];
+      const opNode = node.child ? node.child(i) : node.children?.[i];
+      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
       if (!rightNode) break;
 
       const right = lowerCstExpression(rightNode, arena, prefix, localNames);
@@ -707,11 +776,11 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   // 4. Multiplicative Expression: a * b / c % d
   if (type === "MultiplicativeExpression") {
     const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children[0], arena, prefix, localNames);
+    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
 
     for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children[i + 1];
+      const opNode = node.child ? node.child(i) : node.children?.[i];
+      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
       if (!rightNode) break;
 
       const right = lowerCstExpression(rightNode, arena, prefix, localNames);
@@ -728,8 +797,8 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
 
   // 5. Exponentiation Expression: a ** b or a ^ b
   if (type === "ExponentiationExpression") {
-    const baseNode = node.childForFieldName?.("base") || (node.child ? node.child(0) : node.children[0]);
-    const expNode = node.childForFieldName?.("exponent") || (node.child ? node.child(2) : node.children[2]);
+    const baseNode = node.childForFieldName?.("base") || (node.child ? node.child(0) : node.children?.[0]);
+    const expNode = node.childForFieldName?.("exponent") || (node.child ? node.child(2) : node.children?.[2]);
     const baseId = lowerCstExpression(baseNode, arena, prefix, localNames);
     const expId = lowerCstExpression(expNode, arena, prefix, localNames);
     return arena.addBinaryExpr(BinOp.Pow, baseId, expId);
@@ -738,11 +807,11 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   // 6. Relational Expression: a < b, a <= b, a > b, a >= b
   if (type === "RelationalExpression") {
     const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children[0], arena, prefix, localNames);
+    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
 
     for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children[i + 1];
+      const opNode = node.child ? node.child(i) : node.children?.[i];
+      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
       if (!rightNode) break;
 
       const right = lowerCstExpression(rightNode, arena, prefix, localNames);
@@ -760,11 +829,11 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   // 7. Equality Expression: a == b, a != b
   if (type === "EqualityExpression") {
     const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children[0], arena, prefix, localNames);
+    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
 
     for (let i = 1; i < count; i += 2) {
-      const opNode = node.child ? node.child(i) : node.children[i];
-      const rightNode = node.child ? node.child(i + 1) : node.children[i + 1];
+      const opNode = node.child ? node.child(i) : node.children?.[i];
+      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
       if (!rightNode) break;
 
       const right = lowerCstExpression(rightNode, arena, prefix, localNames);
@@ -777,9 +846,9 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   // 8. Logical And / Or
   if (type === "AndExpression") {
     const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children[0], arena, prefix, localNames);
+    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
     for (let i = 1; i < count; i += 2) {
-      const rightNode = node.child ? node.child(i + 1) : node.children[i + 1];
+      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
       if (!rightNode) break;
       const right = lowerCstExpression(rightNode, arena, prefix, localNames);
       left = arena.addBinaryExpr(BinOp.And, left, right);
@@ -788,9 +857,9 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
   }
   if (type === "OrExpression") {
     const count = node.childCount ?? node.children?.length ?? 0;
-    let left = lowerCstExpression(node.child ? node.child(0) : node.children[0], arena, prefix, localNames);
+    let left = lowerCstExpression(node.child ? node.child(0) : node.children?.[0], arena, prefix, localNames);
     for (let i = 1; i < count; i += 2) {
-      const rightNode = node.child ? node.child(i + 1) : node.children[i + 1];
+      const rightNode = node.child ? node.child(i + 1) : node.children?.[i + 1];
       if (!rightNode) break;
       const right = lowerCstExpression(rightNode, arena, prefix, localNames);
       left = arena.addBinaryExpr(BinOp.Or, left, right);
@@ -824,7 +893,7 @@ export function lowerCstExpression(node: any, arena: DAEBuilder, prefix = "", lo
 
   // 10. Measurement Expression: 100.0 [km / h]
   if (type === "MeasurementExpression") {
-    const valNode = node.childForFieldName?.("value") || (node.child ? node.child(0) : node.children[0]);
+    const valNode = node.childForFieldName?.("value") || (node.child ? node.child(0) : node.children?.[0]);
     return lowerCstExpression(valNode, arena, prefix, localNames);
   }
 
@@ -1225,7 +1294,7 @@ export function prefixSysmlExpression(exprText: string, prefix: string, localNam
 export class SysML2CstFlattener {
   private arena: DAEBuilder;
   private portDefs = new Map<string, PortMeta>();
-  private compDefs = new Map<string, any>();
+  private compDefs = new Map<string, SysmlCstNode>();
   private activePorts = new Map<string, ActivePortInstance>();
   private connections: { p1: string; p2: string }[] = [];
   private parameters: string[] = [];
@@ -1251,7 +1320,7 @@ export class SysML2CstFlattener {
    * @param rootNode - Root CST node returned by the SysML v2 WASM GLR parser.
    * @returns Lowered DAE arena and variable/equation summary metadata.
    */
-  public flatten(rootNode: any): LoweredSysml2CstResult {
+  public flatten(rootNode: SysmlCstNode): LoweredSysml2CstResult {
     const initialEqCount = this.arena.eqCount;
 
     // 0. Extract experiment configs from root text if present
@@ -1300,7 +1369,7 @@ export class SysML2CstFlattener {
    * Scans the CST for `PortDefinition` nodes and classifies their attributes into
    * potential (across) and `flow` (through) variables.
    */
-  private collectPortDefinitions(rootNode: any): void {
+  private collectPortDefinitions(rootNode: SysmlCstNode | null | undefined): void {
     const portDefNodes = findCstDescendants(rootNode, "PortDefinition");
     for (const pNode of portDefNodes) {
       const nameNode = findFirstDescendant(pNode, "Name") || findFirstDescendant(pNode, "ID");
@@ -1377,7 +1446,7 @@ export class SysML2CstFlattener {
   /**
    * Indexes all `PartDefinition` and `ConstraintDefinition` CST nodes by declared name.
    */
-  private collectComponentDefinitions(rootNode: any): void {
+  private collectComponentDefinitions(rootNode: SysmlCstNode | null | undefined): void {
     const partDefNodes = findCstDescendants(rootNode, "PartDefinition");
     const constraintDefNodes = findCstDescendants(rootNode, "ConstraintDefinition");
 
@@ -1417,7 +1486,7 @@ export class SysML2CstFlattener {
    * Heuristically selects the top-level system definition by finding a component that is
    * neither instantiated as a child `PartUsage` nor specialized as a superclass (`:>`).
    */
-  private determineRootComponent(rootNode?: any): string {
+  private determineRootComponent(rootNode?: SysmlCstNode | null): string {
     if (this.compDefs.size === 0) {
       const cleanSource = this.sourceText || rootNode?.text || "";
       const nameMatch = /(?:constraint|part|package|model)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(cleanSource);
@@ -1483,7 +1552,7 @@ export class SysML2CstFlattener {
     return sourceText.slice(m.index, i);
   }
 
-  private getCompText(compNode: any): string {
+  private getCompText(compNode: SysmlCstNode): string {
     const compNameNode = findFirstDescendant(compNode, "Name") || findFirstDescendant(compNode, "ID");
     const compName = compNameNode?.text?.trim() || compNode.name;
     if (compName && this.sourceText) {
@@ -1500,7 +1569,7 @@ export class SysML2CstFlattener {
    * Uses visitedDefs set to prevent unbounded recursion on circular inheritance cycles.
    */
   private elaborateComponent(
-    compNode: any,
+    compNode: SysmlCstNode,
     prefix: string,
     overrides: Record<string, number>,
     visitedDefs = new Set<string>(),
@@ -1839,7 +1908,7 @@ export class SysML2CstFlattener {
    * Returns true if `node` is nested inside a child `PartUsage` of `currentComp`
    * (so it isn't double-processed during the parent's traversal).
    */
-  private isDescendantOfPartUsage(node: any, currentComp: any): boolean {
+  private isDescendantOfPartUsage(node: SysmlCstNode, currentComp: SysmlCstNode): boolean {
     let p = node.parent;
     while (p && p !== currentComp) {
       if (p.type === "PartUsage") return true;
@@ -1848,7 +1917,7 @@ export class SysML2CstFlattener {
     return false;
   }
 
-  private isDescendantOf(node: any, ancestor: any): boolean {
+  private isDescendantOf(node: SysmlCstNode, ancestor: SysmlCstNode): boolean {
     let p = node.parent;
     while (p) {
       if (p === ancestor) return true;
@@ -1861,7 +1930,7 @@ export class SysML2CstFlattener {
    * Lowers `AssertConstraintUsage`, `ConstraintUsage`, `ResultExpressionMember`, and bare equations
    * within `compNode` into simple equations (`lhs == rhs`) inside `this.arena`.
    */
-  private elaborateEquations(compNode: any, prefix: string, localNames: Set<string>): void {
+  private elaborateEquations(compNode: SysmlCstNode, prefix: string, localNames: Set<string>): void {
     const initialEqCount = this.arena.eqCount;
 
     // 1. Process official SysML v2 AssertConstraintUsage and ConstraintUsage
@@ -1875,9 +1944,9 @@ export class SysML2CstFlattener {
       const eqNodes = findCstDescendants(au, "EqualityExpression");
       if (eqNodes.length > 0) {
         for (const eqNode of eqNodes) {
-          if (eqNode.childCount >= 3) {
-            const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children[0];
-            const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children[2];
+          if ((eqNode.childCount ?? 0) >= 3) {
+            const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children?.[0];
+            const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children?.[2];
 
             const lhsId = lowerCstExpression(lhsNode, this.arena, prefix, localNames);
             const rhsId = lowerCstExpression(rhsNode, this.arena, prefix, localNames);
@@ -1903,9 +1972,9 @@ export class SysML2CstFlattener {
         continue;
 
       const eqNode = findFirstDescendant(re, "EqualityExpression");
-      if (eqNode && eqNode.childCount >= 3) {
-        const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children[0];
-        const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children[2];
+      if (eqNode && (eqNode.childCount ?? 0) >= 3) {
+        const lhsNode = eqNode.child ? eqNode.child(0) : eqNode.children?.[0];
+        const rhsNode = eqNode.child ? eqNode.child(2) : eqNode.children?.[2];
 
         const lhsId = lowerCstExpression(lhsNode, this.arena, prefix, localNames);
         const rhsId = lowerCstExpression(rhsNode, this.arena, prefix, localNames);
@@ -2007,7 +2076,7 @@ export class SysML2CstFlattener {
             continue;
           }
           if (emittedFromCst > 0 && directResultExprs.length > 0) {
-            const reText = directResultExprs[0].text.replace(/;$/, "").trim();
+            const reText = directResultExprs[0]!.text.replace(/;$/, "").trim();
             if (stmt === reText || `${lhsText} == ${rhsText}` === reText) {
               continue;
             }
@@ -2026,7 +2095,7 @@ export class SysML2CstFlattener {
   /**
    * Lowers hybrid continuous-discrete `when` event blocks directly into `DAEBuilder` when equations.
    */
-  private elaborateWhenClauses(compNode: any, prefix: string, localNames: Set<string>): void {
+  private elaborateWhenClauses(compNode: SysmlCstNode, prefix: string, localNames: Set<string>): void {
     const compText = this.getCompText(compNode);
     let searchIdx = 0;
     while (searchIdx < compText.length) {
@@ -2074,7 +2143,7 @@ export class SysML2CstFlattener {
   /**
    * Extracts `ConnectionUsage` endpoint pairs (`connect p1 to p2;`) for global Kirchhoff synthesis.
    */
-  private elaborateConnections(compNode: any, prefix: string): void {
+  private elaborateConnections(compNode: SysmlCstNode, prefix: string): void {
     const connUsages = findCstDescendants(compNode, "ConnectionUsage");
     for (const cu of connUsages) {
       if (this.isDescendantOfPartUsage(cu, compNode)) continue;
@@ -2089,8 +2158,8 @@ export class SysML2CstFlattener {
       }
       if (refNodes.length >= 2) {
         for (let i = 0; i < refNodes.length - 1; i++) {
-          const p1Raw = refNodes[i].text.trim();
-          const p2Raw = refNodes[i + 1].text.trim();
+          const p1Raw = refNodes[i]!.text.trim();
+          const p2Raw = refNodes[i + 1]!.text.trim();
 
           const p1 = prefix + p1Raw;
           const p2 = prefix + p2Raw;

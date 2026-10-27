@@ -460,8 +460,10 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | 
     }
 
     // Determine connection endpoints from metadata or children
-    const metaSource = (conn.metadata as any)?.source;
-    const metaTarget = (conn.metadata as any)?.target;
+    const rawMetaSource = conn.metadata?.["source"];
+    const rawMetaTarget = conn.metadata?.["target"];
+    const metaSource = typeof rawMetaSource === "string" ? rawMetaSource : undefined;
+    const metaTarget = typeof rawMetaTarget === "string" ? rawMetaTarget : undefined;
 
     let sourceName = metaSource;
     let targetName = metaTarget;
@@ -498,7 +500,8 @@ export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | 
       for (const child of children) {
         const text = db.cstText(child.startOffset, child.endOffset, child);
         if (!text) continue;
-        const kind = (child.metadata as any)?.constraintKind || "";
+        const rawKind = child.metadata?.["constraintKind"];
+        const kind = typeof rawKind === "string" ? rawKind : "";
         if (isSource && (kind === "require" || text.includes("require") || text.includes("constraint"))) {
           sourceGuarantees.push(text);
         } else if (!isSource && (kind === "assume" || text.includes("assume"))) {
@@ -868,7 +871,7 @@ export interface CompositionalProofResult {
  * Exports an Assume-Guarantee or Temporal contract into standard nuXmv / OCRA SMV syntax.
  */
 export function exportContractToNuXmv(contract: AssumeGuaranteeContract | TemporalContract): string {
-  const isTemporal = "assumption" in contract && typeof (contract as any).assumption === "string";
+  const isTemporal = "assumption" in contract && typeof contract.assumption === "string";
   const name = contract.name || "ContractModule";
 
   let smv = `-- nuXmv / OCRA SMV Specification for Contract: ${name}\n`;

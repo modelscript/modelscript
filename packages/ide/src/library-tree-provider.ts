@@ -86,7 +86,7 @@ function svgToIconUri(svg: string): vscode.Uri {
   const len = bytes.byteLength;
   const chunkSize = 8192;
   for (let i = 0; i < len; i += chunkSize) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as any);
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   const base64 = btoa(binary);
   return vscode.Uri.parse(`data:image/svg+xml;base64,${base64}`);

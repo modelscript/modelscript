@@ -16,7 +16,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 import { parseStartValueArgs } from "./fmu.js";
@@ -120,7 +120,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
   command: "simulate <name> [paths..]",
   describe: "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -307,7 +307,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     }
 
     if (args.cloud) {
-      await simulateCloud(args as any);
+      await simulateCloud(args);
       return;
     }
     const paths = args.paths ?? [];
@@ -340,7 +340,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       profiler.end("flattening");
     } else {
       const { parser } = await createWasmParser(modelicaWasmPath);
-      Context.registerParser(".mo", parser as any);
+      Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
       const context = Context.createBatch(new NodeFileSystem());
 
       // Build mapping from absolute resolved paths to user-provided paths
@@ -475,7 +475,7 @@ async function simulateJs(
     | "auto"
     | "cvode"
     | "webgpu";
-  const opts: any = {
+  const opts: NonNullable<Parameters<typeof simulateArenaAsync>[1]> = {
     startTime,
     stopTime,
     step,
@@ -536,7 +536,7 @@ async function simulateArenaEngine(
     | "auto"
     | "cvode"
     | "webgpu";
-  const opts: any = {
+  const opts: NonNullable<Parameters<typeof simulateArenaAsync>[1]> = {
     startTime,
     stopTime,
     step,

@@ -19,7 +19,7 @@ class SimpleNodeFileSystem {
     return fs.existsSync(p);
   }
   readFileSync(p: string, encoding: string) {
-    return fs.readFileSync(p, encoding as any);
+    return fs.readFileSync(p, encoding as BufferEncoding);
   }
 }
 
@@ -81,7 +81,7 @@ async function runBenchmark() {
 
   const { parser: sysmlParser } = await createWasmParser(sysmlWasmPath);
   const { parser: modelicaParser } = await createModelicaParser(modelicaWasmPath);
-  Context.registerParser(".mo", modelicaParser as any);
+  Context.registerParser(".mo", modelicaParser as unknown as Parameters<typeof Context.registerParser>[1]);
 
   const scales = [10];
   const resultsTable: Record<string, number[]> = {
@@ -115,7 +115,7 @@ async function runBenchmark() {
 
     // Parse & flatten Modelica
     console.log("    Loading Modelica...");
-    const ctx0 = new Context(new SimpleNodeFileSystem() as any);
+    const ctx0 = new Context(new SimpleNodeFileSystem() as unknown as ConstructorParameters<typeof Context>[0]);
     ctx0.load(modelicaSrc0, modelicaUri);
     console.log("    Flattening Modelica arena...");
     const arena0 = ctx0.flattenArena(`BatteryPack_${n}`, undefined, modelicaUri);

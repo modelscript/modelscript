@@ -34,8 +34,8 @@ function getCachedPatternRegex(pattern: string): RegExp | null {
  */
 export function validatePropertyValue(
   field: PropertyFieldConfig,
-  value: any,
-  contextValues: Record<string, any> = {},
+  value: unknown,
+  contextValues: Record<string, unknown> = {},
 ): string | null {
   const isPresent = value !== undefined && value !== null && value !== "";
 
@@ -77,8 +77,8 @@ export function validatePropertyValue(
     try {
       const customErr = validation.validate(value, contextValues);
       if (customErr) return customErr;
-    } catch (e: any) {
-      return e?.message || "Validation failed";
+    } catch (e: unknown) {
+      return e instanceof Error && e.message ? e.message : "Validation failed";
     }
   }
 
@@ -91,7 +91,7 @@ export function validatePropertyValue(
  */
 export function validatePropertySchema(
   schema: EntityPropertySchema | undefined | null,
-  values: Record<string, any> = {},
+  values: Record<string, unknown> = {},
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!schema?.tabs) return errors;

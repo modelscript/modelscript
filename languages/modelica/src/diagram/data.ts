@@ -56,6 +56,7 @@ import type {
   ComponentPropertyData,
   DiagramData,
   DiagramEdge,
+  DiagramEdgeMarker,
   DiagramNode,
   DiagramPort,
   EntityPropertySchema,
@@ -2021,7 +2022,7 @@ function unrotateText(node: X6Markup, rotateAngle: number): void {
   }
 }
 
-function buildMarker(arrow: string | null | undefined, strokeColor: string, strokeWidth: number): unknown {
+function buildMarker(arrow: string | null | undefined, strokeColor: string, strokeWidth: number): DiagramEdgeMarker {
   if (!arrow) return null;
   const normalized = arrow.toLowerCase();
   switch (normalized) {

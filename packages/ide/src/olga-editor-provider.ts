@@ -156,7 +156,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         cachedSimResult = simResult;
 
         const diagnostics = lintOlgaModel(model);
-        let olgaConfig: any;
+        let olgaConfig: vscode.WorkspaceConfiguration | undefined;
         try {
           olgaConfig =
             typeof vscode.workspace?.getConfiguration === "function"
@@ -166,10 +166,10 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           olgaConfig = undefined;
         }
         const limits: FlowAssuranceLimits = {
-          maop: olgaConfig?.get?.("maopPa") ?? 250e5,
-          hydrateMarginKelvin: olgaConfig?.get?.("hydrateMarginKelvin") ?? 3.0,
-          slugCatcherLiquidCapacity: olgaConfig?.get?.("slugCatcherLiquidCapacityM3") ?? 150.0,
-          minGasVelocity: olgaConfig?.get?.("minGasVelocity") ?? 0.5,
+          maop: olgaConfig?.get<number>("maopPa") ?? 250e5,
+          hydrateMarginKelvin: olgaConfig?.get<number>("hydrateMarginKelvin") ?? 3.0,
+          slugCatcherLiquidCapacity: olgaConfig?.get<number>("slugCatcherLiquidCapacityM3") ?? 150.0,
+          minGasVelocity: olgaConfig?.get<number>("minGasVelocity") ?? 0.5,
         };
         const verification = verifyFlowAssuranceTrajectory(simResult, limits);
 
@@ -267,7 +267,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
           model.nodes.find((n) => (n.type as string) === "WELL" || n.type === "TERMINAL") ?? model.nodes[0];
         const wellboreSvg = wellNode
           ? renderOlgaWellboreIprSvg(
-              (wellNode as any)?.ipr as any,
+              (wellNode as { ipr?: Parameters<typeof renderOlgaWellboreIprSvg>[0] })?.ipr,
               wellNode.name || "SUBSEA WELL",
               wellNode.massRate ?? 35.0,
               (wellNode.pressure ?? 140e5) / 1e5,
@@ -276,7 +276,16 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         const slugSvg = renderOlgaSlugStatisticsSvg(simResult, limits.slugCatcherLiquidCapacity);
 
         // What-If perturbed transient simulation
-        let whatIfSimulation: any = undefined;
+        let whatIfSimulation:
+          | {
+              times: number[];
+              inletPressureBar: number[];
+              arrivalPressureBar: number[];
+              arrivalTempC: number[];
+              arrivalHoldup: number[];
+              peakSurgeM3: number;
+            }
+          | undefined = undefined;
         if (whatIf) {
           try {
             const pModel: OlgaModel = JSON.parse(JSON.stringify(model));
@@ -307,7 +316,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         }
 
         // Run cooldown assessment with configurable ambient temperature
-        const ambientTempK = olgaConfig?.get?.("ambientTemperatureKelvin") ?? 277.15;
+        const ambientTempK = olgaConfig?.get<number>("ambientTemperatureKelvin") ?? 277.15;
         const cooldown = evaluatePipelineCooldown({
           innerDiameter: model.flowpaths[0]?.pipes[0]?.diameter ?? 0.254,
           pipeLength: model.flowpaths[0]?.pipes.reduce((acc, p) => acc + p.length, 0) ?? 1000.0,
@@ -446,8 +455,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
               await vscode.workspace.fs.writeFile(saveUri, new TextEncoder().encode(json));
               vscode.window.showInformationMessage(`Saved simulation state checkpoint to ${saveUri.path}`);
             }
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to save checkpoint: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Failed to save checkpoint: ${message}`);
           }
           break;
         }
@@ -474,8 +484,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
                 updateWebview();
               }
             }
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to load checkpoint: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Failed to load checkpoint: ${message}`);
           }
           break;
         }
@@ -495,11 +506,12 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
             vscode.window.showInformationMessage(
               `History matching completed with ${tuningResult.evaluations} evaluations (R²: ${(tuningResult.metrics.pressureR2 * 100).toFixed(1)}%, Reduction: ${tuningResult.improvementPercent.toFixed(1)}%)`,
             );
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Calibration failed: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Calibration failed: ${message}`);
             webviewPanel.webview.postMessage({
               type: "calibrationError",
-              message: err.message,
+              message,
             });
           }
           break;
@@ -528,8 +540,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
               await vscode.workspace.applyEdit(edit);
               vscode.window.showInformationMessage("Applied calibrated parameters to active OLGA model.");
             }
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to apply calibrated parameters: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Failed to apply calibrated parameters: ${message}`);
           }
           break;
         }
@@ -553,8 +566,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
                 `Applied What-If scenario (Choke: ${(Number(msg.chokeOpening) * 100).toFixed(0)}%) to model.`,
               );
             }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`Failed to apply What-If to code: ${e.message}`);
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Failed to apply What-If to code: ${message}`);
           }
           break;
         }
@@ -607,7 +621,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
               cachedModel.nodes.find((n) => (n.type as string) === "WELL" || n.type === "TERMINAL") ??
               cachedModel.nodes[0];
             svgContent = renderOlgaWellboreIprSvg(
-              (wellNode as any)?.ipr as any,
+              (wellNode as { ipr?: Parameters<typeof renderOlgaWellboreIprSvg>[0] } | undefined)?.ipr,
               wellNode?.name || "SUBSEA WELL",
               wellNode?.massRate ?? 35.0,
               (wellNode?.pressure ?? 140e5) / 1e5,
@@ -644,8 +658,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
               snippet: surveyRes.opiXmlSnippet,
               summary: `Total length: ${(surveyRes.totalLengthM / 1000).toFixed(2)} km, Elevation: [${surveyRes.minElevationM}m, ${surveyRes.maxElevationM}m], Pipes: ${surveyRes.pipes.length} segments`,
             });
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`Survey import failed: ${e.message}`);
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Survey import failed: ${message}`);
           }
           break;
         }
@@ -663,8 +678,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
             } else {
               vscode.window.showWarningMessage("Could not locate <Flowpath> tag to insert pipes.");
             }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`Failed to apply survey pipes: ${e.message}`);
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Failed to apply survey pipes: ${message}`);
           }
           break;
         }
@@ -700,9 +716,10 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
                 componentKeys: eos.componentKeys,
               },
             });
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Compositional flash failed: ${err.message}`);
-            webviewPanel.webview.postMessage({ type: "flashError", message: err.message });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Compositional flash failed: ${message}`);
+            webviewPanel.webview.postMessage({ type: "flashError", message });
           }
           break;
         }
@@ -727,9 +744,10 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
             vscode.window.showInformationMessage(
               `Generated phase envelope: Cricondenbar ${(envelope.cricondenbar.pressurePa / 1e5).toFixed(1)} bar, Cricondentherm ${(envelope.cricondentherm.temperatureK - 273.15).toFixed(1)} °C`,
             );
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Phase envelope tracing failed: ${err.message}`);
-            webviewPanel.webview.postMessage({ type: "phaseEnvelopeError", message: err.message });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Phase envelope tracing failed: ${message}`);
+            webviewPanel.webview.postMessage({ type: "phaseEnvelopeError", message });
           }
           break;
         }
@@ -762,8 +780,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
               type: "pvtTableBound",
               filePath: tabUri.path,
             });
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`Failed to synthesize PVT table: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Failed to synthesize PVT table: ${message}`);
           }
           break;
         }
@@ -872,8 +891,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
                 }
               }
             }
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`Failed to synthesize component: ${e.message}`);
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Failed to synthesize component: ${message}`);
           }
           break;
         }
@@ -888,8 +908,9 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
             });
             await vscode.window.showTextDocument(doc);
             vscode.window.showInformationMessage("OLGA model projected to SysML v2 Digital Thread package.");
-          } catch (e: any) {
-            vscode.window.showErrorMessage(`SysML v2 projection failed: ${e.message}`);
+          } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`SysML v2 projection failed: ${message}`);
           }
           break;
         }

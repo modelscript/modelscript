@@ -515,8 +515,9 @@ function computePolygonArea(vertices: IdfVertex3D[]): number {
   const n = vertices.length;
 
   for (let i = 0; i < n; i++) {
-    const curr = vertices[i]!;
-    const next = vertices[(i + 1) % n]!;
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    if (!curr || !next) continue;
     nx += (curr.y - next.y) * (curr.z + next.z);
     ny += (curr.z - next.z) * (curr.x + next.x);
     nz += (curr.x - next.x) * (curr.y + next.y);

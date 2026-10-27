@@ -56,7 +56,99 @@ import path from "node:path";
 import { z } from "zod";
 import { NodeFileSystem } from "./filesystem.js";
 import { withSandbox } from "./sandbox.js";
-import type { ServerContext, TopologyGraph } from "./types.js";
+import type {
+  PolyglotHostLike,
+  PolyglotThreadNodeDescriptor,
+  QueriedModelicaElement,
+  ServerContext,
+  TopologyGraph,
+} from "./types.js";
+
+/**
+ * Structural interface for a parsed CST node used when inspecting inline Modelica syntax trees.
+ */
+interface ParsedCstNode {
+  type: string;
+  text: string;
+  startIndex: number;
+  endIndex: number;
+  isMissing?: boolean | undefined;
+  hasError?: (() => boolean) | boolean | undefined;
+  children?: readonly ParsedCstNode[] | undefined;
+  childForFieldName?: ((name: string) => ParsedCstNode | null | undefined) | undefined;
+}
+
+/**
+ * Raw diagnostic object yielded by `QueryEngine.runAllLints()`.
+ */
+interface RawLintEntry {
+  symbolId?: number | null | undefined;
+  file?: string | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  severity?: string | undefined;
+  code?: string | number | undefined;
+  lintName?: string | undefined;
+  rule?: string | undefined;
+  message?: string | undefined;
+}
+
+/**
+ * Extended symbol entry shape with optional source line/column and metadata fields.
+ */
+interface IndexedSymbolWithLocation {
+  id?: number | undefined;
+  name?: string | undefined;
+  qualifiedName?: string | undefined;
+  kind?: string | undefined;
+  classRestriction?: string | undefined;
+  language?: string | undefined;
+  resourceId?: string | undefined;
+  startLine?: number | undefined;
+  line?: number | undefined;
+  startColumn?: number | undefined;
+  column?: number | undefined;
+  metadata?:
+    | {
+        value?: unknown;
+        defaultValue?: unknown;
+        unit?: unknown;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * Wrapper or direct `UnifiedWorkspace` container stored on `ServerContext.workspace`.
+ */
+interface WorkspaceHolder {
+  unifiedWorkspace?: UnifiedWorkspace | undefined;
+  toUnifiedPartial?: (() => ReturnType<UnifiedWorkspace["toUnifiedPartial"]>) | undefined;
+  polyglot?: PolyglotHostLike | undefined;
+}
+
+/**
+ * Extracts a human-readable message from an unknown caught error value.
+ */
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string") return msg;
+  }
+  return String(err);
+}
+
+/**
+ * Resolves the active `PolyglotHostLike` instance from `ServerContext`, if present.
+ */
+function getPolyglotHost(ctx: ServerContext): PolyglotHostLike | undefined {
+  if (ctx.polyglotHost && typeof ctx.polyglotHost === "object") {
+    return ctx.polyglotHost as PolyglotHostLike;
+  }
+  const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
+  return wsHolder?.polyglot;
+}
 
 /**
  * Registers all ModelScript, Modelica, SysML v2, Ontology/OWL2, Digital Thread (TGG/RTM),
@@ -114,9 +206,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const tree = context.parse(".mo", code);
       const errors: string[] = [];
 
-      // Collect syntax errors from tree-sitter
+      // Collect syntax errors from CST
 
-      const walk = (node: any) => {
+      const walk = (node: ParsedCstNode | null | undefined): void => {
         if (!node) return;
         if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
         if (node.isMissing || node.type === "ERROR") {
@@ -125,29 +217,36 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const children = node.children || [];
         for (const child of children) walk(child);
       };
-      walk(tree.rootNode);
+      walk(tree.rootNode as unknown as ParsedCstNode);
 
       /**
        * Recursively collects all CST descendant nodes satisfying `predicate`.
        */
-      function findDescendants(n: any, predicate: (node: any) => boolean, out: any[] = []): any[] {
+      function findDescendants(
+        n: ParsedCstNode | null | undefined,
+        predicate: (node: ParsedCstNode) => boolean,
+        out: ParsedCstNode[] = [],
+      ): ParsedCstNode[] {
         if (!n) return out;
         if (predicate(n)) out.push(n);
         for (const child of n.children || []) findDescendants(child, predicate, out);
         return out;
       }
 
-      const classNodes = findDescendants(tree.rootNode, (n) => n.type === "class_definition");
+      const classNodes = findDescendants(
+        tree.rootNode as unknown as ParsedCstNode,
+        (n) => n.type === "class_definition",
+      );
       const classes: { name: string; kind: string; components: string[]; equations: string[] }[] = [];
 
       for (const classNode of classNodes) {
         const prefixesNode =
           classNode.childForFieldName?.("class_prefixes") ??
-          classNode.children?.find((c: any) => c.type === "class_prefixes");
+          classNode.children?.find((c) => c.type === "class_prefixes");
         const specifierNode =
           classNode.childForFieldName?.("class_specifier") ??
           classNode.children?.find(
-            (c: any) =>
+            (c) =>
               c.type === "class_specifier" || c.type === "long_class_specifier" || c.type === "short_class_specifier",
           );
 
@@ -341,16 +440,18 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       const resolvedFilter = filterPath ? path.resolve(filterPath) : undefined;
-      const rawLints = Array.from(ctx.current.queryEngine.runAllLints()) as any[];
+      const rawLints = Array.from(ctx.current.queryEngine.runAllLints()) as RawLintEntry[];
       const symbols = ctx.current.queryEngine.index.symbols;
       const diagnostics = rawLints
         .map((d) => {
-          const sym = d.symbolId != null ? symbols.get(d.symbolId) : undefined;
+          const sym = (d.symbolId != null ? symbols.get(d.symbolId) : undefined) as
+            | IndexedSymbolWithLocation
+            | undefined;
           const file = d.file ?? sym?.resourceId ?? "<unknown>";
           return {
             file,
-            line: d.line ?? (sym as any)?.startLine ?? (sym as any)?.line ?? 1,
-            column: d.column ?? (sym as any)?.startColumn ?? (sym as any)?.column ?? 1,
+            line: d.line ?? sym?.startLine ?? sym?.line ?? 1,
+            column: d.column ?? sym?.startColumn ?? sym?.column ?? 1,
             severity: d.severity ?? "warning",
             code: d.code ? `M${d.code}` : (d.lintName ?? d.rule ?? "lint"),
             message: d.message ?? "",
@@ -436,7 +537,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           if (startTime !== undefined) simOpts.startTime = startTime;
           if (stopTime !== undefined) simOpts.stopTime = stopTime;
           if (interval !== undefined) simOpts.step = interval;
-          const result = await simulateArenaAsync(arena as any, simOpts);
+          const result = await simulateArenaAsync(arena, simOpts);
           const states = result.states;
 
           let costNotice = "";
@@ -508,7 +609,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               const text = fs.readFileSync(resolved, "utf-8");
               const sysmlParser = UnifiedWorkspace.getGlobalParser(".sysml");
               if (sysmlParser) {
-                sIdx.register(resolved, () => sysmlParser.parse(text)?.rootNode as any);
+                sIdx.register(
+                  resolved,
+                  (() => sysmlParser.parse(text).rootNode) as unknown as NonNullable<
+                    Parameters<typeof sIdx.register>[1]
+                  >,
+                );
               }
             } catch {
               // ignore unreadable sysml path
@@ -519,8 +625,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         }
 
         const u = new UnifiedWorkspace();
-        u.registerWorkspace("modelica", context.workspaceIndex as any, {} as any);
-        u.registerWorkspace("sysml2", sIdx as any, sysml2LangFallback);
+        u.registerWorkspace(
+          "modelica",
+          context.workspaceIndex,
+          {} as unknown as Parameters<typeof u.registerWorkspace>[2],
+        );
+        u.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
 
         const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
@@ -621,7 +731,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const simOpts: ArenaSimulateOptions = {};
         if (stopTime !== undefined) simOpts.stopTime = stopTime;
 
-        const doeResult = runArenaDoE(arena as any, {
+        const doeResult = runArenaDoE(arena, {
           inputs: inputMap,
           outputs,
           strategy: strategy ?? "sobol",
@@ -700,13 +810,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           if (spec.perturbation !== undefined) perturbationFactor = spec.perturbation;
         }
 
-        const result = runSensitivityAnalysisArena(
-          arena as any,
-          parameterNames,
-          nominalValues,
-          perturbationFactor,
-          simOpts,
-        );
+        const result = runSensitivityAnalysisArena(arena, parameterNames, nominalValues, perturbationFactor, simOpts);
 
         // Convert Maps to plain objects for JSON serialization
         const serialized: Record<string, Record<string, number>> = {};
@@ -760,7 +864,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
-      const element: any = ctx.current.query(name);
+      const element = ctx.current.query(name) as QueriedModelicaElement | null | undefined;
       if (!element) {
         return {
           content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
@@ -779,7 +883,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const components: { name: string; type: string; description: string }[] = [];
       const extends_: string[] = [];
 
-      for (const child of element.elements || []) {
+      for (const child of element.elements ?? []) {
         if (child.isComponentInstance || child.kind === "Component") {
           components.push({
             name: child.name ?? "",
@@ -859,12 +963,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         for (const m of sysmlText.matchAll(
           /\battribute\s+([A-Za-z_][A-Za-z0-9_.]*)\s*(?::\s*[A-Za-z0-9_:]+)?\s*=\s*([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s*(?:\[([^\]]+)\])?/gi,
         )) {
-          sysmlParams.set(m[1]!, { value: Number(m[2]), unit: m[3]?.trim() ?? "SI" });
+          if (m[1]) {
+            sysmlParams.set(m[1], { value: Number(m[2]), unit: m[3]?.trim() ?? "SI" });
+          }
         }
         // Also inspect SysML constraint bounds (`name <= val` or `name == val`)
         for (const m of sysmlText.matchAll(/\b([A-Za-z_][A-Za-z0-9_.]*)\s*(?:<=|==)\s*([+-]?\d+(?:\.\d+)?)/g)) {
-          if (!sysmlParams.has(m[1]!)) {
-            sysmlParams.set(m[1]!, { value: Number(m[2]), unit: "SI" });
+          if (m[1] && !sysmlParams.has(m[1])) {
+            sysmlParams.set(m[1], { value: Number(m[2]), unit: "SI" });
           }
         }
 
@@ -873,7 +979,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         for (const m of moText.matchAll(
           /\bparameter\s+Real\s+([A-Za-z_][A-Za-z0-9_.]*)\s*(?:\([^)]*unit\s*=\s*"([^"]+)"[^)]*\))?\s*=\s*([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/g,
         )) {
-          moParams.set(m[1]!, { value: Number(m[3]), unit: m[2]?.trim() ?? "SI" });
+          if (m[1]) {
+            moParams.set(m[1], { value: Number(m[3]), unit: m[2]?.trim() ?? "SI" });
+          }
         }
 
         const divergences: {
@@ -883,7 +991,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           unit: string;
         }[] = [];
 
-        const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+        const polyglot = getPolyglotHost(ctx);
         let slotIdx = 0;
         for (const [k, sEntry] of sysmlParams.entries()) {
           const shortKey = k.split(".").pop() ?? k;
@@ -1038,7 +1146,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       const reasoner = ctx.ontologyBuilder.backend;
-      const result = executeBgpQuery(reasoner, { patterns: patterns as any });
+      const result = executeBgpQuery(reasoner, { patterns });
 
       return {
         content: [{ type: "text" as const, text: formatBgpQueryResult(result) }],
@@ -1130,10 +1238,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ elementId, targetDomain }) => {
       // Check if context has polyglot transformer or thread hypergraph
-      const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+      const polyglot = getPolyglotHost(ctx);
       const thread = polyglot?.getThread?.(elementId) || polyglot?.getThread?.(`THREAD-${elementId}`);
 
-      let domainsRecord: Record<string, any>;
+      let domainsRecord: Record<string, PolyglotThreadNodeDescriptor>;
       let statusStr = "synced";
 
       if (thread) {
@@ -1149,10 +1257,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         }
       } else {
         // Search active SymbolIndex and WorkspaceIndex for symbols matching elementId
-        const symbolMap = (ctx.current?.queryEngine?.index as any)?.symbols as Map<number, any> | undefined;
-        let matchedSym: any = undefined;
+        const symbolMap = ctx.current?.queryEngine?.index?.symbols;
+        let matchedSym: IndexedSymbolWithLocation | undefined = undefined;
         if (symbolMap) {
-          for (const sym of symbolMap.values()) {
+          for (const sym of symbolMap.values() as IterableIterator<IndexedSymbolWithLocation>) {
             if (sym?.name === elementId || String(sym?.qualifiedName ?? "").endsWith(elementId)) {
               matchedSym = sym;
               break;
@@ -1160,6 +1268,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           }
         }
 
+        const activeFilePath = (ctx.current as { filePath?: string | undefined } | null)?.filePath;
         domainsRecord = {
           sysml2: {
             element: matchedSym?.name ?? elementId,
@@ -1171,10 +1280,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             element: matchedSym?.name ?? elementId,
             kind: matchedSym?.classRestriction ? String(matchedSym.classRestriction) : "ModelicaClass",
             status: "active",
-            ...((ctx.current as any)?.filePath ? { file: (ctx.current as any).filePath } : {}),
+            ...(activeFilePath ? { file: activeFilePath } : {}),
           },
           cad: { element: `${matchedSym?.name ?? elementId}_Assembly`, kind: "StepComponent", status: "active" },
-          requirements: { satisfies: `REQ-${matchedSym?.name ?? elementId}`, status: "verified" },
+          requirements: {
+            element: `REQ-${matchedSym?.name ?? elementId}`,
+            satisfies: `REQ-${matchedSym?.name ?? elementId}`,
+            status: "verified",
+          },
         };
         if (targetDomain && targetDomain.toLowerCase() !== "all") {
           const domKey = targetDomain.toLowerCase();
@@ -1214,16 +1327,17 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     let targetVal = 12.0;
     let unit = "V";
     const shortName = conflictId.split(".").pop() ?? conflictId;
-    const symbols = (ctx.workspace as any)?.toUnifiedPartial?.()?.symbols ?? ctx.current?.queryEngine?.index?.symbols;
+    const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
+    const symbols = wsHolder?.toUnifiedPartial?.()?.symbols ?? ctx.current?.queryEngine?.index?.symbols;
     if (symbols) {
-      for (const sym of symbols.values()) {
+      for (const sym of symbols.values() as IterableIterator<IndexedSymbolWithLocation>) {
         if (sym.name === shortName || sym.name === conflictId) {
-          const rawVal = Number((sym.metadata as any)?.value ?? (sym.metadata as any)?.defaultValue);
+          const rawVal = Number(sym.metadata?.value ?? sym.metadata?.defaultValue);
           if (Number.isFinite(rawVal)) {
             if (sym.language === "sysml2") sourceVal = rawVal;
             else targetVal = rawVal;
           }
-          if ((sym.metadata as any)?.unit) unit = String((sym.metadata as any).unit);
+          if (sym.metadata?.unit) unit = String(sym.metadata.unit);
         }
       }
     }
@@ -1237,7 +1351,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       conflictId: z.string().describe("Identifier of the conflict slot or variable"),
     },
     async ({ conflictId }) => {
-      const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+      const polyglot = getPolyglotHost(ctx);
       if (typeof polyglot?.diagnoseConflict === "function") {
         const diag = polyglot.diagnoseConflict(conflictId);
         return {
@@ -1324,7 +1438,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           : (strategy ??
             (authority === "sysml" ? "source-wins" : authority === "modelica" ? "target-wins" : "source-wins"));
 
-      const polyglot = (ctx.polyglotHost as any) || (ctx.workspace as any)?.polyglot;
+      const polyglot = getPolyglotHost(ctx);
       if (
         typeof polyglot?.reconcileSlot === "function" &&
         conflictId !== undefined &&
@@ -1475,9 +1589,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         .describe("Column element domain"),
     },
     async ({ rowDomain, colDomain }) => {
-      const workspace = (ctx.workspace as any)?.unifiedWorkspace ?? new UnifiedWorkspace();
+      const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
+      const workspace = wsHolder?.unifiedWorkspace ?? new UnifiedWorkspace();
       const db = workspace.toUnifiedPartial();
-      const matrix = RtmIndexEngine.buildMatrix(db, rowDomain as any, colDomain as any);
+      const matrix = RtmIndexEngine.buildMatrix(db, rowDomain, colDomain);
 
       return {
         content: [
@@ -1511,7 +1626,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       requirementName: z.string().describe("Name of the orphan requirement"),
     },
     async ({ requirementName }) => {
-      const workspace = (ctx.workspace as any)?.unifiedWorkspace ?? new UnifiedWorkspace();
+      const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
+      const workspace = wsHolder?.unifiedWorkspace ?? new UnifiedWorkspace();
       const db = workspace.toUnifiedPartial();
       const components = RtmIndexEngine.extractElementsByDomain(db, "sysml_logical");
 
@@ -1566,10 +1682,18 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ sourceName, targetRequirement }) => {
       const linkKey = `${sourceName}|${targetRequirement}`;
-      const workspace = (ctx.workspace as any)?.unifiedWorkspace ?? (ctx.workspace as any) ?? new UnifiedWorkspace();
+      const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
+      const workspace = wsHolder?.unifiedWorkspace ?? wsHolder ?? new UnifiedWorkspace();
       const db = typeof workspace.toUnifiedPartial === "function" ? workspace.toUnifiedPartial() : undefined;
-      const matrix = db ? RtmIndexEngine.buildMatrix(db, "sysml_logical" as any, "requirement" as any) : undefined;
-      const linkEntry = (matrix?.links as Record<string, any> | undefined)?.[linkKey];
+      const matrix = db ? RtmIndexEngine.buildMatrix(db, "sysml_logical", "requirement") : undefined;
+      const linkEntry = (
+        matrix?.links as
+          | Record<
+              string,
+              { isSuspect?: boolean | undefined; status?: string | undefined; reason?: string | undefined }
+            >
+          | undefined
+      )?.[linkKey];
       const isSuspect = linkEntry ? Boolean(linkEntry.isSuspect ?? linkEntry.status === "suspect") : true;
       const diagnosis =
         linkEntry?.reason ??
@@ -1659,7 +1783,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       const result = await runSelfHealingPipeline({
         prompt: effectivePrompt,
-        language: inferredLanguage as any,
+        language: inferredLanguage,
         initialCode: candidateSource,
         maxIterations: effectiveMaxIter,
       });
@@ -1886,12 +2010,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ success: false, error: err?.message ?? String(err) }),
+              text: JSON.stringify({ success: false, error: getErrorMessage(err) }),
             },
           ],
           isError: true,
@@ -1942,12 +2066,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ success: false, error: err?.message ?? String(err) }),
+              text: JSON.stringify({ success: false, error: getErrorMessage(err) }),
             },
           ],
           isError: true,
@@ -2019,12 +2143,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           content: [
             {
               type: "text" as const,
-              text: JSON.stringify({ success: false, error: err?.message ?? String(err) }),
+              text: JSON.stringify({ success: false, error: getErrorMessage(err) }),
             },
           ],
           isError: true,
@@ -2095,7 +2219,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         }
 
         const arena = flattener.flatten(firstId);
-        const sim = new ArenaSimulator(arena as any);
+        const sim = new ArenaSimulator(arena);
         sim.prepare();
 
         const boundsMap = new Map<string, { min: number; max: number }>();
@@ -2121,7 +2245,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           }
         }
 
-        const calibrator = new ModelicaCalibrator(arena as any, sim, {
+        const calibrator = new ModelicaCalibrator(arena, sim, {
           parameters,
           parameterBounds: boundsMap,
           initialGuess: guessMap.size > 0 ? guessMap : undefined,
@@ -2270,9 +2394,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `PSCAD Linting error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `PSCAD Linting error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -2331,7 +2455,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               : baseCircuit.faults,
           };
 
-          const solver = new EmtSolver(circuit as any, {
+          const solver = new EmtSolver(circuit as unknown as ConstructorParameters<typeof EmtSolver>[0], {
             timeStepSec: dt ?? 20e-6,
             durationSec: tstop ?? 0.1,
             nominalFrequencyHz: netlist.nominalFrequencyHz,
@@ -2404,9 +2528,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             const busName = netlist.buses.get(busId)?.name ?? busId;
             let min = Infinity;
             let max = -Infinity;
-            for (let i = 0; i < series.length; i++) {
-              if (series[i]! < min) min = series[i]!;
-              if (series[i]! > max) max = series[i]!;
+            for (const val of series) {
+              if (val < min) min = val;
+              if (val > max) max = val;
             }
             const finalVal = series[series.length - 1] ?? 0;
             const entry = {
@@ -2438,9 +2562,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               },
             ],
           };
-        } catch (err: any) {
+        } catch (err: unknown) {
           return {
-            content: [{ type: "text" as const, text: `PSCAD Simulation error: ${err.message}` }],
+            content: [{ type: "text" as const, text: `PSCAD Simulation error: ${getErrorMessage(err)}` }],
             isError: true,
           };
         }
@@ -2498,7 +2622,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           const baseCircuit = netlistToEmtCircuit(netlist);
 
           // Resolve POI bus by ID or human-readable name
-          let targetBus = poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0]!;
+          let targetBus =
+            poiBus ?? netlist.fmuInstances[0]?.busConnection ?? Array.from(netlist.buses.keys())[0] ?? "BUS1";
           if (poiBus && !netlist.buses.has(poiBus)) {
             for (const [id, bus] of netlist.buses.entries()) {
               if (bus.name === poiBus) {
@@ -2535,7 +2660,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           const dtSec = stepUs ? stepUs * 1e-6 : 20e-6;
           const durationSec = tStop ? Math.min(tStop, 1.0) : 0.25;
 
-          const solver = new EmtSolver(circuit as any, {
+          const solver = new EmtSolver(circuit as unknown as ConstructorParameters<typeof EmtSolver>[0], {
             timeStepSec: dtSec,
             durationSec,
             nominalFrequencyHz: netlist.nominalFrequencyHz,
@@ -2560,7 +2685,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             const baseImpedance = Math.max(0.1, vNominalKv / 1.2);
             for (let i = 0; i < iIbr.length; i++) {
               const vInst =
-                vPoi[i] ?? vNominalKv * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+                vPoi[i] ?? vNominalKv * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * (result.time[i] ?? 0));
               iIbr[i] = vInst / baseImpedance;
             }
           }
@@ -2606,9 +2731,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               },
             ],
           };
-        } catch (err: any) {
+        } catch (err: unknown) {
           return {
-            content: [{ type: "text" as const, text: `IEEE 2800 verification failed: ${err.message}` }],
+            content: [{ type: "text" as const, text: `IEEE 2800 verification failed: ${getErrorMessage(err)}` }],
             isError: true,
           };
         }
@@ -2665,9 +2790,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `PSCAD export error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `PSCAD export error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -2707,7 +2832,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           };
         }
         const arena = flattener.flatten(firstId);
-        const lti = linearizeArenaDae(arena as any, {
+        const lti = linearizeArenaDae(arena, {
           findEquilibrium,
           inputNames,
           outputNames,
@@ -2739,9 +2864,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `Linearization error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `Linearization error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -2781,7 +2906,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           };
         }
         const arena = flattener.flatten(firstId);
-        const lti = linearizeArenaDae(arena as any, { inputNames, outputNames });
+        const lti = linearizeArenaDae(arena, { inputNames, outputNames });
         const tuned = autotunePid(lti, {
           controllerType,
           targetBandwidth,
@@ -2791,9 +2916,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         return {
           content: [{ type: "text" as const, text: JSON.stringify(tuned, null, 2) }],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `PID tuning error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `PID tuning error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -2854,7 +2979,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             for (let i = 0; i < result.times.length; i++) {
               lines.push(
                 [
-                  result.times[i]!.toFixed(1),
+                  (result.times[i] ?? 0).toFixed(1),
                   ((result.trends.inletPressure[i] ?? 0) / 1e5).toFixed(2),
                   ((result.trends.arrivalPressure[i] ?? 0) / 1e5).toFixed(2),
                   ((result.trends.arrivalTemperature[i] ?? 273.15) - 273.15).toFixed(2),
@@ -2886,8 +3011,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           };
 
           return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
-        } catch (err: any) {
-          return { content: [{ type: "text" as const, text: `OLGA simulation error: ${err.message}` }], isError: true };
+        } catch (err: unknown) {
+          return {
+            content: [{ type: "text" as const, text: `OLGA simulation error: ${getErrorMessage(err)}` }],
+            isError: true,
+          };
         }
       },
       () => ctx.sandboxLimits,
@@ -2911,8 +3039,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const model = parseOlga(content);
         const diagnostics = lintOlgaModel(model);
         return { content: [{ type: "text" as const, text: JSON.stringify(diagnostics, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `OLGA lint error: ${err.message}` }], isError: true };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA lint error: ${getErrorMessage(err)}` }],
+          isError: true,
+        };
       }
     },
   );
@@ -2949,9 +3080,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           };
           const result = verifyFlowAssuranceLimits(model, limits);
           return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-        } catch (err: any) {
+        } catch (err: unknown) {
           return {
-            content: [{ type: "text" as const, text: `OLGA verification error: ${err.message}` }],
+            content: [{ type: "text" as const, text: `OLGA verification error: ${getErrorMessage(err)}` }],
             isError: true,
           };
         }
@@ -2990,8 +3121,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           svg = renderOlgaElevationProfileSvg(model, simResult);
         }
         return { content: [{ type: "text" as const, text: svg }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `OLGA diagram error: ${err.message}` }], isError: true };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA diagram error: ${getErrorMessage(err)}` }],
+          isError: true,
+        };
       }
     },
   );
@@ -3059,8 +3193,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         }
 
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `OLGA .tpl parsing error: ${err.message}` }], isError: true };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA .tpl parsing error: ${getErrorMessage(err)}` }],
+          isError: true,
+        };
       }
     },
   );
@@ -3124,8 +3261,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         }
 
         return { content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `OLGA .ppl parsing error: ${err.message}` }], isError: true };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `OLGA .ppl parsing error: ${getErrorMessage(err)}` }],
+          isError: true,
+        };
       }
     },
   );
@@ -3195,9 +3335,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
 
         return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `OLGA history matching error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `OLGA history matching error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -3266,9 +3406,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
 
         return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `OLGA gate evaluation error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `OLGA gate evaluation error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -3315,9 +3455,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
 
         return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `OLGA survey ingestion error: ${err.message}` }],
+          content: [{ type: "text" as const, text: `OLGA survey ingestion error: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -3338,8 +3478,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const model = parseGensysDeck(content);
         const diags = lintGensysModel(model);
         return { content: [{ type: "text" as const, text: JSON.stringify(diags, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `GENSYS lint error: ${err.message}` }], isError: true };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `GENSYS lint error: ${getErrorMessage(err)}` }],
+          isError: true,
+        };
       }
     },
   );
@@ -3411,8 +3554,11 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
         const diags = lintSimpackModel(model);
         return { content: [{ type: "text" as const, text: JSON.stringify(diags, null, 2) }] };
-      } catch (err: any) {
-        return { content: [{ type: "text" as const, text: `SIMPACK lint error: ${err.message}` }], isError: true };
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: `SIMPACK lint error: ${getErrorMessage(err)}` }],
+          isError: true,
+        };
       }
     },
   );
@@ -3434,9 +3580,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
           const mobility = analyzeMobility(model);
           return { content: [{ type: "text" as const, text: JSON.stringify(mobility, null, 2) }] };
-        } catch (err: any) {
+        } catch (err: unknown) {
           return {
-            content: [{ type: "text" as const, text: `SIMPACK mobility error: ${err.message}` }],
+            content: [{ type: "text" as const, text: `SIMPACK mobility error: ${getErrorMessage(err)}` }],
             isError: true,
           };
         }
@@ -3473,9 +3619,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `Failed to read social thread: ${err.message}` }],
+          content: [{ type: "text" as const, text: `Failed to read social thread: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }
@@ -3518,9 +3664,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
-          content: [{ type: "text" as const, text: `Failed to post social reply: ${err.message}` }],
+          content: [{ type: "text" as const, text: `Failed to post social reply: ${getErrorMessage(err)}` }],
           isError: true,
         };
       }

@@ -87,8 +87,9 @@ export function validateRocets(content: string, _uri: string = "engine.roc"): Ls
 
     return diags.map((d) => {
       let lineNum = d.line ? Math.max(0, d.line - 1) : 0;
-      if (lineNum === 0 && d.componentId) {
-        const found = lines.findIndex((l) => l.includes(d.componentId!));
+      const compId = d.componentId;
+      if (lineNum === 0 && compId) {
+        const found = lines.findIndex((l) => l.includes(compId));
         if (found >= 0) lineNum = found;
       }
       const colNum = d.column ? Math.max(0, d.column - 1) : 0;

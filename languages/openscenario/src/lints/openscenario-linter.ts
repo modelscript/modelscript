@@ -194,8 +194,9 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
   const entitiesList = Array.from(doc.entities.values());
   for (let i = 0; i < entitiesList.length; i++) {
     for (let j = i + 1; j < entitiesList.length; j++) {
-      const eA = entitiesList[i]!;
-      const eB = entitiesList[j]!;
+      const eA = entitiesList[i];
+      const eB = entitiesList[j];
+      if (!eA || !eB) continue;
       const dist = computeInitialDistance(eA, eB);
       if (dist !== null && dist < 1.0) {
         diagnostics.push({

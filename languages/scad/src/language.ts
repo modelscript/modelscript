@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { Solid } from "@modelscript/cad";
 import {
   choice,
   def,
@@ -14,7 +15,46 @@ import {
   tggEq,
   tggRule,
 } from "@modelscript/dsl";
+import type { ScadCstNode } from "./patcher.js";
 import { scadWriteback } from "./writeback.js";
+
+interface ScadLspActionContext {
+  languageId?: string | undefined;
+  uri?: string | undefined;
+  documentText?: string | undefined;
+  documents?: { get(uri: string): { getText(): string } | undefined } | undefined;
+  documentManager?:
+    | {
+        documentTrees?:
+          | Map<string, { text?: string | undefined; tree?: { rootNode?: ScadCstNode | undefined } | undefined }>
+          | undefined;
+      }
+    | undefined;
+  sharedFs?: { read(uri: string): Promise<string> } | undefined;
+  parserService?:
+    | {
+        getParser(
+          lang: string,
+        ): Promise<{ parse(source: string): { rootNode?: ScadCstNode | undefined } | null } | null>;
+      }
+    | undefined;
+}
+
+interface ScadLintSymbol {
+  id: number | string;
+  kind?: string | undefined;
+  name?: string | undefined;
+  parentId: number | string | null;
+  resourceId?: string | number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
+}
+
+interface ScadLintDb {
+  childrenOf(parentId: number | string): ScadLintSymbol[];
+  byName(name: string): ScadLintSymbol[];
+}
 
 /**
  * Operator precedence levels for OpenSCAD expressions (from lowest to highest binding strength).
@@ -52,7 +92,10 @@ export const scadLanguage = language({
     },
     handlers: {
       // Custom LSP request to extract parametric CAD components and source ranges for the 3D viewport
-      "modelscript/getCadComponents": async (ctx: any, params: { uri: string; documentText?: string | undefined }) => {
+      "modelscript/getCadComponents": async (
+        ctx: ScadLspActionContext,
+        params: { uri: string; documentText?: string | undefined },
+      ) => {
         const uri = params?.uri ?? ctx.uri;
         let source = params?.documentText ?? ctx.documentText;
         if (!source && uri && ctx.documents) {
@@ -68,7 +111,9 @@ export const scadLanguage = language({
         }
         if (!source) return [];
 
-        let rootNode: any = uri ? ctx.documentManager?.documentTrees?.get(uri)?.tree?.rootNode : undefined;
+        let rootNode: ScadCstNode | undefined = uri
+          ? ctx.documentManager?.documentTrees?.get(uri)?.tree?.rootNode
+          : undefined;
         if (!rootNode && ctx.parserService) {
           try {
             const parser = await ctx.parserService.getParser("scad");
@@ -95,7 +140,10 @@ export const scadLanguage = language({
       title: "Preview 3D CSG Model",
       description: "Evaluates constructive solid geometry boolean trees and renders 3D polygonal meshes.",
       category: "geometry",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: ScadLspActionContext,
+        params?: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         // Resolve document text from request parameters, open editor buffers, or virtual filesystem
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
@@ -114,7 +162,9 @@ export const scadLanguage = language({
         }
 
         // Reuse cached CST root node when available, or parse on-demand via WASM GLR parser
-        let rootNode: any = ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode;
+        let rootNode: ScadCstNode | undefined = ctx.uri
+          ? ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode
+          : undefined;
         if (!rootNode && ctx.parserService) {
           try {
             const parser = await ctx.parserService.getParser("scad");
@@ -134,7 +184,7 @@ export const scadLanguage = language({
         }
 
         // Evaluate the CST into a normalized CSG Solid tree
-        let solid: any = null;
+        let solid: Solid | null = null;
         if (rootNode) {
           const { ScadEvaluator } = await import("./evaluator.js");
           const evaluator = new ScadEvaluator();
@@ -184,7 +234,10 @@ export const scadLanguage = language({
       title: "Export Shape to STEP CAD (.step)",
       description: "Converts OpenSCAD boundary representations into standard ISO 10303 STEP solid bodies.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: ScadLspActionContext,
+        params?: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -201,7 +254,9 @@ export const scadLanguage = language({
           throw new Error("No OpenSCAD source code found to export.");
         }
 
-        let rootNode: any = ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode;
+        let rootNode: ScadCstNode | undefined = ctx.uri
+          ? ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode
+          : undefined;
         if (!rootNode && ctx.parserService) {
           try {
             const parser = await ctx.parserService.getParser("scad");
@@ -220,7 +275,7 @@ export const scadLanguage = language({
           } catch {}
         }
 
-        let solid: any = null;
+        let solid: Solid | null = null;
         if (rootNode) {
           const { ScadEvaluator } = await import("./evaluator.js");
           const evaluator = new ScadEvaluator();
@@ -432,14 +487,16 @@ export const scadLanguage = language({
           name: self["name"] ?? "",
         }),
         queries: {
-          lint__duplicateVariable: (db: any, self: any) => {
+          lint__duplicateVariable: (db: ScadLintDb, self: ScadLintSymbol) => {
             if (!self.name || self.name.startsWith("$")) return null;
             const siblings =
               self.parentId !== null
                 ? db.childrenOf(self.parentId)
-                : db.byName(self.name).filter((s: any) => s.parentId === null && s.resourceId === self.resourceId);
+                : db
+                    .byName(self.name)
+                    .filter((s: ScadLintSymbol) => s.parentId === null && s.resourceId === self.resourceId);
             const earlier = siblings.find(
-              (s: any) =>
+              (s: ScadLintSymbol) =>
                 s.id !== self.id &&
                 s.kind === "Variable" &&
                 s.name === self.name &&
@@ -477,14 +534,16 @@ export const scadLanguage = language({
           exports: ["body"],
         }),
         queries: {
-          lint__duplicateModule: (db: any, self: any) => {
+          lint__duplicateModule: (db: ScadLintDb, self: ScadLintSymbol) => {
             if (!self.name) return null;
             const siblings =
               self.parentId !== null
                 ? db.childrenOf(self.parentId)
-                : db.byName(self.name).filter((s: any) => s.parentId === null && s.resourceId === self.resourceId);
+                : db
+                    .byName(self.name)
+                    .filter((s: ScadLintSymbol) => s.parentId === null && s.resourceId === self.resourceId);
             const earlier = siblings.find(
-              (s: any) =>
+              (s: ScadLintSymbol) =>
                 s.id !== self.id &&
                 s.kind === "Module" &&
                 s.name === self.name &&
@@ -523,14 +582,16 @@ export const scadLanguage = language({
           name: self["name"] ?? "",
         }),
         queries: {
-          lint__duplicateFunction: (db: any, self: any) => {
+          lint__duplicateFunction: (db: ScadLintDb, self: ScadLintSymbol) => {
             if (!self.name) return null;
             const siblings =
               self.parentId !== null
                 ? db.childrenOf(self.parentId)
-                : db.byName(self.name).filter((s: any) => s.parentId === null && s.resourceId === self.resourceId);
+                : db
+                    .byName(self.name)
+                    .filter((s: ScadLintSymbol) => s.parentId === null && s.resourceId === self.resourceId);
             const earlier = siblings.find(
-              (s: any) =>
+              (s: ScadLintSymbol) =>
                 s.id !== self.id &&
                 s.kind === "Function" &&
                 s.name === self.name &&

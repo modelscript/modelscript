@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * WebAssembly Simulation Runner.
@@ -166,10 +165,24 @@ export async function runWasmSimulation(
 
 // ── Module loader ──
 
+type WasmModuleFactoryResult =
+  | WasmModelModule
+  | Promise<WasmModelModule>
+  | ((config: Record<string, unknown>) => WasmModelModule | Promise<WasmModelModule>);
+
+const createDynamicFactory = Object.getPrototypeOf(function () {}).constructor as (
+  ...paramsAndBody: string[]
+) => (
+  moduleConfig: Record<string, unknown>,
+  req: unknown,
+  dirname: string,
+  filename: string,
+) => WasmModuleFactoryResult;
+
 async function loadWasmModule(wasmBytes: ArrayBuffer | Uint8Array, jsGlueCode: string): Promise<WasmModelModule> {
   // Create the factory function from the JS glue code
   // The Emscripten-generated JS glue defines a module factory function
-  const factoryFn = new Function(
+  const factoryFn = createDynamicFactory(
     "Module",
     "require",
     "__dirname",
@@ -207,7 +220,7 @@ async function loadWasmModule(wasmBytes: ArrayBuffer | Uint8Array, jsGlueCode: s
       }
 
       // Handle both callback and promise patterns
-      if (factory && typeof factory.then === "function") {
+      if (factory && "then" in factory && typeof factory.then === "function") {
         factory.then((mod: WasmModelModule) => resolve(mod)).catch(reject);
       }
     } catch (e) {

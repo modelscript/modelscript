@@ -196,42 +196,52 @@ export function hashInsert(key: u64, val: u32): void {
 }
 
 export function rebuildEGraph(): void {
-    if (eNodeMap != changetype<UnmanagedMap64>(0)) {
-        eNodeMap.clear();
-    }
-    hashOccupied = 0;
-    let writeIdx: u32 = 0;
     let eNodeKeys = changetype<UnmanagedUint64Array>(eNodeKeysOffset);
     let eNodeClasses = changetype<UnmanagedUint32Array>(eNodeClassesOffset);
+    let merged = true;
 
-    for (let i: u32 = 0; i < eNodeCount; i++) {
-        let key = eNodeKeys[i];
-        let eClass = ufFind(eNodeClasses[i]);
-        let op = (key >> 48) as u16;
-        let left = ((key >> 24) & 0xFFFFFF) as u32;
-        let right = (key & 0xFFFFFF) as u32;
-
-        if ((op >= 1280 && op <= 1289) || (op >= 1536 && op <= 1541) || (op >= 1792 && op <= 1793) || (op >= 1811 && op <= 1821)) {
-            left = ufFind(left);
-            right = ufFind(right);
-            key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24) | ((right & 0xFFFFFF) as u64);
-        } else if ((op >= 1024 && op <= 1027) || (op >= 1800 && op <= 1810) || op == 3072) {
-            left = ufFind(left);
-            key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24);
+    while (merged) {
+        merged = false;
+        if (eNodeMap != changetype<UnmanagedMap64>(0)) {
+            eNodeMap.clear();
         }
+        hashOccupied = 0;
+        let writeIdx: u32 = 0;
 
-        let existing = hashFind(key);
-        if (existing != 0xFFFFFFFF) {
-            ufUnion(eClass, existing);
-        } else {
-            eNodeMap.set(key, eClass + 1);
-            hashOccupied++;
-            eNodeKeys[writeIdx] = key;
-            eNodeClasses[writeIdx] = eClass;
-            writeIdx++;
+        for (let i: u32 = 0; i < eNodeCount; i++) {
+            let key = eNodeKeys[i];
+            let eClass = ufFind(eNodeClasses[i]);
+            let op = (key >> 48) as u16;
+            let left = ((key >> 24) & 0xFFFFFF) as u32;
+            let right = (key & 0xFFFFFF) as u32;
+
+            if ((op >= 1280 && op <= 1289) || (op >= 1536 && op <= 1541) || (op >= 1792 && op <= 1793) || (op >= 1811 && op <= 1821)) {
+                left = ufFind(left);
+                right = ufFind(right);
+                key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24) | ((right & 0xFFFFFF) as u64);
+            } else if ((op >= 1024 && op <= 1027) || (op >= 1800 && op <= 1810) || op == 3072) {
+                left = ufFind(left);
+                key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24);
+            }
+
+            let existing = hashFind(key);
+            if (existing != 0xFFFFFFFF) {
+                let rootExisting = ufFind(existing);
+                if (eClass != rootExisting) {
+                    let newRoot = ufUnion(eClass, rootExisting);
+                    eNodeMap.set(key, newRoot + 1);
+                    merged = true;
+                }
+            } else {
+                eNodeMap.set(key, eClass + 1);
+                hashOccupied++;
+                eNodeKeys[writeIdx] = key;
+                eNodeClasses[writeIdx] = eClass;
+                writeIdx++;
+            }
         }
+        eNodeCount = writeIdx;
     }
-    eNodeCount = writeIdx;
 }
 
 export function isConstant(eClass: u32, val: f64): boolean {

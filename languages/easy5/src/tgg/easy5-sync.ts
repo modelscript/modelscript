@@ -350,7 +350,7 @@ function resolveParameterConflict(
   return targetVal;
 }
 
-function formatXpLine(params: Record<string, any>): string {
+function formatXpLine(params: Record<string, number | number[] | string>): string {
   const parts: string[] = [];
   for (const [k, v] of Object.entries(params)) {
     if (Array.isArray(v)) {
@@ -362,7 +362,7 @@ function formatXpLine(params: Record<string, any>): string {
   return `    XP: ${parts.join(", ")}`;
 }
 
-function updateXpLine(origLine: string, params: Record<string, any>): string {
+function updateXpLine(origLine: string, params: Record<string, number | number[] | string>): string {
   const indentMatch = /^\s*/.exec(origLine);
   const indent = indentMatch ? indentMatch[0] : "    ";
   const content = origLine.replace(/^\s*XP\s*:\s*/i, "");

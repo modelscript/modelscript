@@ -68,7 +68,7 @@ export function parseArrayValues(raw: string): string[] {
   const result: string[] = [];
   let cur = "";
   for (let i = 0; i < s.length; i++) {
-    const ch = s[i]!;
+    const ch = s[i] ?? "";
     if (ch === "," || ch === " " || ch === "\t") {
       if (cur.trim().length > 0) {
         result.push(cur.trim());
@@ -119,7 +119,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
   }
 
   for (let lineNum = 0; lineNum < rawLines.length; lineNum++) {
-    let lineText = rawLines[lineNum]!;
+    let lineText = rawLines[lineNum] ?? "";
 
     // Strip comments: !, //
     const exclamIdx = lineText.indexOf("!");
@@ -141,7 +141,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
     let i = 0;
     const lLen = lineText.length;
     while (i < lLen) {
-      while (i < lLen && isWhitespace(lineText[i]!)) i++;
+      while (i < lLen && isWhitespace(lineText[i] ?? "")) i++;
       if (i >= lLen) break;
 
       let tok = "";
@@ -150,7 +150,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
       let quoteChar = "";
 
       while (i < lLen) {
-        const ch = lineText[i]!;
+        const ch = lineText[i] ?? "";
         if (!inBrackets && !inQuotes && isWhitespace(ch)) {
           break;
         }
@@ -177,7 +177,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
 
     if (tokens.length === 0) continue;
 
-    const firstWord = tokens[0]!.toLowerCase();
+    const firstWord = (tokens[0] ?? "").toLowerCase();
     const range: DssRange = {
       startLine: lineNum + 1,
       startCol: 1,
@@ -186,22 +186,24 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
     };
 
     if (firstWord === "new" || firstWord === "edit") {
-      if (tokens.length < 2) continue;
-      const target = tokens[1]!;
+      const target = tokens[1];
+      if (!target) continue;
       const dotIdx = target.indexOf(".");
       const elemClass = (dotIdx !== -1 ? target.slice(0, dotIdx) : target).toLowerCase();
       const elemName = dotIdx !== -1 ? target.slice(dotIdx + 1) : "Default";
       const props = parseKeyValuePairs(tokens.slice(2));
 
       if (elemClass === "circuit") {
+        const angleRaw = props.get("angle");
+        const freqRaw = props.get("frequency");
         circuit = {
           name: elemName,
           baseKv: parseFloat(props.get("basekv") ?? "115.0") || 115.0,
           pu: parseFloat(props.get("pu") ?? "1.0") || 1.0,
           phases: parseInt(props.get("phases") ?? "3", 10) || 3,
           bus1: extractBaseBusName(props.get("bus1") ?? "SourceBus"),
-          angle: props.has("angle") ? parseFloat(props.get("angle")!) : 0,
-          frequency: props.has("frequency") ? parseFloat(props.get("frequency")!) : 60,
+          angle: angleRaw !== undefined ? parseFloat(angleRaw) : 0,
+          frequency: freqRaw !== undefined ? parseFloat(freqRaw) : 60,
           range,
         };
       } else if (elemClass === "line") {
@@ -210,9 +212,12 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
         const length = parseFloat(props.get("length") ?? "1.0") || 1.0;
         const lineCode = props.get("linecode");
-        const r1 = props.has("r1") ? parseFloat(props.get("r1")!) : undefined;
-        const x1 = props.has("x1") ? parseFloat(props.get("x1")!) : undefined;
-        const c1 = props.has("c1") ? parseFloat(props.get("c1")!) : undefined;
+        const r1Raw = props.get("r1");
+        const x1Raw = props.get("x1");
+        const c1Raw = props.get("c1");
+        const r1 = r1Raw !== undefined ? parseFloat(r1Raw) : undefined;
+        const x1 = x1Raw !== undefined ? parseFloat(x1Raw) : undefined;
+        const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
 
         linesMap.set(elemName, {
           name: elemName,
@@ -236,6 +241,8 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const kvs = parseArrayValues(rawKvs).map((v) => parseFloat(v) || 12.47);
         const rawKvas = props.get("kvas") ?? "";
         const kvas = parseArrayValues(rawKvas).map((v) => parseFloat(v) || 1000);
+        const pctLoadLossRaw = props.get("%loadloss");
+        const xhlRaw = props.get("xhl");
 
         transformers.set(elemName, {
           name: elemName,
@@ -244,8 +251,8 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           buses: buses.length > 0 ? buses : ["Bus1", "Bus2"],
           kvs: kvs.length > 0 ? kvs : [115.0, 12.47],
           kvas: kvas.length > 0 ? kvas : [10000.0, 10000.0],
-          pctLoadLoss: props.has("%loadloss") ? parseFloat(props.get("%loadloss")!) : undefined,
-          xhl: props.has("xhl") ? parseFloat(props.get("xhl")!) : undefined,
+          pctLoadLoss: pctLoadLossRaw !== undefined ? parseFloat(pctLoadLossRaw) : undefined,
+          xhl: xhlRaw !== undefined ? parseFloat(xhlRaw) : undefined,
           range,
         });
       } else if (elemClass === "load") {
@@ -254,6 +261,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const kv = parseFloat(props.get("kv") ?? "12.47") || 12.47;
         const kw = parseFloat(props.get("kw") ?? "100.0");
         const kvar = parseFloat(props.get("kvar") ?? "30.0") || 0.0;
+        const modelRaw = props.get("model");
 
         loads.set(elemName, {
           name: elemName,
@@ -262,7 +270,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           kv,
           kw: isNaN(kw) ? 100.0 : kw,
           kvar,
-          model: props.has("model") ? parseInt(props.get("model")!, 10) : 1,
+          model: modelRaw !== undefined ? parseInt(modelRaw, 10) : 1,
           range,
         });
       } else if (elemClass === "pvsystem") {
@@ -315,7 +323,8 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const nphases = parseInt(props.get("nphases") ?? "3", 10) || 3;
         const r1 = parseFloat(props.get("r1") ?? "0.1") || 0.1;
         const x1 = parseFloat(props.get("x1") ?? "0.4") || 0.4;
-        const c1 = props.has("c1") ? parseFloat(props.get("c1")!) : undefined;
+        const c1Raw = props.get("c1");
+        const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
 
         lineCodes.set(elemName, {
           name: elemName,

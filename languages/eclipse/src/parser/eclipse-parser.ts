@@ -101,7 +101,7 @@ function splitWords(line: string): string[] {
   let inQuote = false;
 
   for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
+    const ch = line[i] ?? "";
     if (ch === "'" || ch === '"') {
       inQuote = !inQuote;
       continue;
@@ -138,7 +138,8 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
   let lineOffset = 0;
 
   for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
-    let line = lines[lineNum - 1]!;
+    const rawLine = lines[lineNum - 1] ?? "";
+    let line = rawLine;
     // Strip -- comment
     const commentIdx = line.indexOf("--");
     if (commentIdx !== -1) {
@@ -151,7 +152,7 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
       let tIdx = 0;
 
       while (tIdx < tokens.length) {
-        const tok = tokens[tIdx]!;
+        const tok = tokens[tIdx] ?? "";
         const upper = tok.toUpperCase();
 
         if (currentKeyword === "") {
@@ -299,7 +300,7 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
       }
     }
 
-    lineOffset += lines[lineNum - 1]!.length + 1;
+    lineOffset += rawLine.length + 1;
   }
 
   // If a keyword record was left unclosed at EOF
@@ -668,7 +669,8 @@ export function serializeEclipse(deck: EclipseDeck): string {
   if (producers.length > 0) {
     lines.push(`WCONPROD`);
     for (const w of producers) {
-      const pc = w.productionControl!;
+      const pc = w.productionControl;
+      if (!pc) continue;
       lines.push(
         `  '${w.name}' '${pc.status}' '${pc.controlMode}' ${pc.oilRate} ${pc.waterRate} ${pc.gasRate} ${pc.liquidRate} ${pc.bhpLimit} /`,
       );
@@ -680,7 +682,8 @@ export function serializeEclipse(deck: EclipseDeck): string {
   if (injectors.length > 0) {
     lines.push(`WCONINJE`);
     for (const w of injectors) {
-      const ic = w.injectionControl!;
+      const ic = w.injectionControl;
+      if (!ic) continue;
       lines.push(`  '${w.name}' '${ic.fluidType}' '${ic.status}' '${ic.controlMode}' ${ic.rate} ${ic.bhpLimit} /`);
     }
     lines.push(`/`);

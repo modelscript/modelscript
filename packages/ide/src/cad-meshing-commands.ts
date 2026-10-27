@@ -47,7 +47,12 @@ async function resolveStepBytes(
 
     if (client) {
       try {
-        const comps = await client.sendRequest<any[]>("modelscript/getCadComponents", {
+        const comps = await client.sendRequest<
+          {
+            proceduralMesh?: { vertices?: number[] | undefined; indices?: number[] | undefined } | undefined;
+            cad?: { position?: [number, number, number] | number[] | undefined } | undefined;
+          }[]
+        >("modelscript/getCadComponents", {
           uri: targetUri.toString(),
         });
         if (Array.isArray(comps) && comps.length > 0) {
@@ -161,8 +166,8 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext, cli
 
             // Open in InpEditor
             await vscode.commands.executeCommand("vscode.openWith", inpUri, "modelscript.inpEditor");
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`FEA Meshing failed: ${err.message || String(err)}`);
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(`FEA Meshing failed: ${err instanceof Error ? err.message : String(err)}`);
           }
         },
       );
@@ -275,8 +280,8 @@ export function registerCadMeshingCommands(context: vscode.ExtensionContext, cli
 
             // Open in CfgEditor
             await vscode.commands.executeCommand("vscode.openWith", cfgUri, "modelscript.cfgEditor");
-          } catch (err: any) {
-            vscode.window.showErrorMessage(`CFD Meshing failed: ${err.message || String(err)}`);
+          } catch (err: unknown) {
+            vscode.window.showErrorMessage(`CFD Meshing failed: ${err instanceof Error ? err.message : String(err)}`);
           }
         },
       );

@@ -200,7 +200,7 @@ async function main() {
   } else {
     const notFound: string[] = [];
     for (const query of options.userQueries) {
-      let user: any = null;
+      let user: (typeof targetUsers)[number] | null | undefined = null;
       const numericId = Number(query);
       if (!Number.isNaN(numericId) && numericId > 0) {
         user = database.getUserById(numericId);
@@ -331,11 +331,11 @@ async function main() {
           `  ${c.green("✔")} [${job.index}/${jobs.length}] @${c.bold(job.user.username.padEnd(14))} -> ${path.basename(job.outputPath)} ${c.dim(`(${sizeStr}, ${job.durationMs}ms)`)}`,
         );
         updateStatusLine();
-      } catch (err: any) {
+      } catch (err: unknown) {
         job.completedAt = Date.now();
         job.durationMs = job.completedAt - (job.startedAt || Date.now());
         job.status = "failed";
-        job.error = err.message || "Unknown export error";
+        job.error = err instanceof Error ? err.message : "Unknown export error";
         failedCount++;
 
         activeWorkerMap.delete(workerId);

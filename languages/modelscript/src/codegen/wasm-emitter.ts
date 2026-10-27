@@ -5,6 +5,7 @@ import {
   ModelScriptQueryEngine,
   parseTypeName,
   unwrapNode,
+  type ModelScriptCstNode,
   type ModelScriptType,
   type StructFieldLayout,
   type StructLayout,
@@ -65,7 +66,7 @@ export class WasmEmitter {
   /**
    * Emits a complete WebAssembly Text Format (`.wat`) module string from a parsed CST root node.
    */
-  emitWat(rawRootNode: any): string {
+  emitWat(rawRootNode: ModelScriptCstNode): string {
     const rootNode = unwrapNode(rawRootNode);
     this.loopCounter = 0;
     this.structLayouts.clear();
@@ -87,7 +88,7 @@ export class WasmEmitter {
     }
 
     const functionsWat: string[] = [];
-    const topLevelStmts: any[] = [];
+    const topLevelStmts: ModelScriptCstNode[] = [];
     const topLevelLocals = new Map<string, string>();
     const topLevelSemanticTypes = new Map<string, ModelScriptType>();
 
@@ -140,9 +141,9 @@ export class WasmEmitter {
   /**
    * Compiles a parsed ModelScript CST root node into a binary WebAssembly module (`Uint8Array`).
    */
-  async compile(rootNode: any): Promise<Uint8Array> {
+  async compile(rootNode: ModelScriptCstNode): Promise<Uint8Array> {
     const wat = this.emitWat(rootNode);
-    const wabtModule = await (wabt as any)();
+    const wabtModule = await wabt();
     const parsed = wabtModule.parseWat("module.wat", wat);
     const { buffer } = parsed.toBinary({});
     return buffer;
@@ -152,7 +153,7 @@ export class WasmEmitter {
    * Checks whether a CST subtree contains any `new` struct allocations or array literals
    * that require the linear-memory bump allocator (`$__heap_ptr` and `$__alloc_ptr`).
    */
-  private containsHeapAllocation(rawNode: any): boolean {
+  private containsHeapAllocation(rawNode: ModelScriptCstNode | null | undefined): boolean {
     if (!rawNode) return false;
     const node = unwrapNode(rawNode);
     if (!node) return false;
@@ -168,7 +169,10 @@ export class WasmEmitter {
   /**
    * Infers the semantic `ModelScriptType` of an initializer expression for local variable typing.
    */
-  private inferSemanticTypeFromValue(rawValNode: any, semanticTypes: Map<string, ModelScriptType>): ModelScriptType {
+  private inferSemanticTypeFromValue(
+    rawValNode: ModelScriptCstNode | null | undefined,
+    semanticTypes: Map<string, ModelScriptType>,
+  ): ModelScriptType {
     const valNode = unwrapNode(rawValNode);
     if (!valNode) return { kind: "i32" };
 
@@ -181,7 +185,7 @@ export class WasmEmitter {
       return { kind: "struct", name: ctor };
     }
     if (valNode.type === "ArrayLiteral") {
-      const elems: any[] = [];
+      const elems: ModelScriptCstNode[] = [];
       for (let i = 0; i < valNode.childCount; i++) {
         const c = valNode.child(i);
         if (c?.type === "Expression") {
@@ -222,7 +226,11 @@ export class WasmEmitter {
    * Recursively scans a statement or function body to pre-collect all `VariableDeclaration`
    * locals and their WASM/semantic types (required at the top of a WAT `(func ...)`).
    */
-  private collectLocals(node: any, locals: Map<string, string>, semanticTypes: Map<string, ModelScriptType>): void {
+  private collectLocals(
+    node: ModelScriptCstNode | null | undefined,
+    locals: Map<string, string>,
+    semanticTypes: Map<string, ModelScriptType>,
+  ): void {
     if (!node) return;
     const unwrapped = unwrapNode(node);
     if (!unwrapped) return;
@@ -252,7 +260,7 @@ export class WasmEmitter {
   /**
    * Emits a WAT `(func ...)` and `(export ...)` definition for a `FunctionDeclaration` node.
    */
-  private emitFunction(node: any): string {
+  private emitFunction(node: ModelScriptCstNode): string {
     const name = node.childForFieldName?.("name")?.text || "fn";
     const paramsNode = node.childForFieldName?.("parameters");
     const returnTypeStr = node.childForFieldName?.("returnType")?.text;
@@ -266,7 +274,7 @@ export class WasmEmitter {
     if (paramsNode) {
       for (let i = 0; i < paramsNode.childCount; i++) {
         const param = paramsNode.child(i);
-        if (param.type === "Parameter") {
+        if (param?.type === "Parameter") {
           const pName = param.childForFieldName?.("name")?.text;
           const pTypeStr = param.childForFieldName?.("type")?.text;
           const pType = toWasmType(pTypeStr);
@@ -324,11 +332,11 @@ export class WasmEmitter {
   /**
    * Emits WAT instructions for all statements inside a `BlockStatement`.
    */
-  private emitBlock(blockNode: any, indent: string): string {
+  private emitBlock(blockNode: ModelScriptCstNode, indent: string): string {
     const lines: string[] = [];
     for (let i = 0; i < blockNode.childCount; i++) {
       const child = blockNode.child(i);
-      if (child.type !== "{" && child.type !== "}" && child.type !== ";") {
+      if (child && child.type !== "{" && child.type !== "}" && child.type !== ";") {
         const s = this.emitStatement(child, indent);
         if (s.trim()) lines.push(s);
       }
@@ -340,7 +348,7 @@ export class WasmEmitter {
    * Resolves a struct field's layout (`offset`, `size`, `type`) from an object receiver expression.
    */
   private resolveStructField(
-    rawObjNode: any,
+    rawObjNode: ModelScriptCstNode | null | undefined,
     propName: string,
     semanticMap: Map<string, ModelScriptType> = this.localTypes,
   ): StructFieldLayout | undefined {
@@ -370,7 +378,7 @@ export class WasmEmitter {
   /**
    * Determines the WASM element type (`"i32"`, `"i64"`, or `"f64"`) for an array expression.
    */
-  private resolveArrayElementWasmType(rawArrNode: any): string {
+  private resolveArrayElementWasmType(rawArrNode: ModelScriptCstNode | null | undefined): string {
     const arrNode = unwrapNode(rawArrNode);
     if (!arrNode) return "i32";
     if (arrNode.type === "IDENTIFIER") {
@@ -393,7 +401,7 @@ export class WasmEmitter {
    * Emits WAT instructions for a single statement node (declarations, assignments,
    * returns, conditionals, and structured `block`/`loop` control flow).
    */
-  private emitStatement(rawNode: any, indent: string): string {
+  private emitStatement(rawNode: ModelScriptCstNode | null | undefined, indent: string): string {
     const node = unwrapNode(rawNode);
     if (!node) return "";
 
@@ -571,7 +579,7 @@ export class WasmEmitter {
   /**
    * Computes the resulting WASM stack value type (`"i32"`, `"i64"`, or `"f64"`) of an expression node.
    */
-  private exprType(rawNode: any): string {
+  private exprType(rawNode: ModelScriptCstNode | null | undefined): string {
     const node = unwrapNode(rawNode);
     if (!node) return "i32";
 
@@ -632,7 +640,7 @@ export class WasmEmitter {
    * Emits an expression and appends numeric conversion instructions (`f64.convert_i32_s`
    * or `i32.trunc_f64_s`) when the expression's type differs from `targetWasmType`.
    */
-  private emitExpressionAs(rawNode: any, targetWasmType: string): string {
+  private emitExpressionAs(rawNode: ModelScriptCstNode | null | undefined, targetWasmType: string): string {
     const actualType = this.exprType(rawNode);
     const wat = this.emitExpression(rawNode);
     if (actualType === targetWasmType) return wat;
@@ -648,7 +656,7 @@ export class WasmEmitter {
   /**
    * Emits WAT stack instructions to evaluate an expression node and leave its result on the stack.
    */
-  private emitExpression(rawNode: any): string {
+  private emitExpression(rawNode: ModelScriptCstNode | null | undefined): string {
     const node = unwrapNode(rawNode);
     if (!node) return "i32.const 0";
 
@@ -674,11 +682,11 @@ export class WasmEmitter {
         const ctor = node.childForFieldName?.("constructor")?.text || "";
         const layout = this.structLayouts.get(ctor);
         const argsNode = node.childForFieldName?.("arguments");
-        const argValues: any[] = [];
+        const argValues: ModelScriptCstNode[] = [];
         if (argsNode) {
           for (let i = 0; i < argsNode.childCount; i++) {
             const arg = argsNode.child(i);
-            if (arg.type === "Argument") {
+            if (arg?.type === "Argument") {
               argValues.push(arg.childForFieldName?.("value") || arg);
             }
           }
@@ -696,7 +704,7 @@ export class WasmEmitter {
         ];
 
         for (let i = 0; i < argValues.length; i++) {
-          const argVal = argValues[i];
+          const argVal = argValues[i]!;
           const field = layout?.fields[i];
           const fieldWasmType = field ? modelScriptTypeToWasm(field.type) : this.exprType(argVal);
           const offset = field ? field.offset : i * 8;
@@ -718,7 +726,7 @@ export class WasmEmitter {
       }
 
       case "ArrayLiteral": {
-        const elems: any[] = [];
+        const elems: ModelScriptCstNode[] = [];
         for (let i = 0; i < node.childCount; i++) {
           const c = node.child(i);
           if (c?.type === "Expression") {
@@ -842,7 +850,7 @@ export class WasmEmitter {
           if (argsNode) {
             for (let i = 0; i < argsNode.childCount; i++) {
               const arg = argsNode.child(i);
-              if (arg.type === "Argument") {
+              if (arg?.type === "Argument") {
                 const val = arg.childForFieldName?.("value") || arg;
                 argsWat.push(this.emitExpression(val));
               }
@@ -903,7 +911,7 @@ export class WasmEmitter {
         if (argsNode) {
           for (let i = 0; i < argsNode.childCount; i++) {
             const arg = argsNode.child(i);
-            if (arg.type === "Argument" || (arg.type !== "(" && arg.type !== ")" && arg.type !== ",")) {
+            if (arg && (arg.type === "Argument" || (arg.type !== "(" && arg.type !== ")" && arg.type !== ","))) {
               const val = arg.childForFieldName?.("value") || arg;
               argsWat.push(this.emitExpression(val));
             }

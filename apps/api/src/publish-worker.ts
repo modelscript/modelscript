@@ -77,7 +77,7 @@ process.on(
       let metadataBatch: ClassMetadata[] = [];
       let classCount = processedClassNames.size;
 
-      let rootMetadata: any = null;
+      let rootMetadata: { description: string | null; documentation: string | null } | null = null;
       const iconSvgs: Record<string, string> = {};
 
       // Prepopulate iconSvgs from existing storage for the final lsp-bundle export
@@ -138,7 +138,7 @@ process.on(
       const unifiedWs = new UnifiedWorkspace();
       unifiedWs.domainPartitioning = true;
 
-      let queryEngineRef: any = null;
+      let queryEngineRef: QueryEngine | null = null;
 
       // 1. Process Modelica (if present)
       if (hasModelica) {
@@ -173,15 +173,19 @@ process.on(
           },
         );
 
-        if (queryEngineRef) {
-          unifiedWs.registerWorkspace("modelica", {
-            toSymbolIndex: () => (queryEngineRef as any).index,
+        type SymbolIndexType = ConstructorParameters<typeof QueryEngine>[0];
+        type SymbolEntryType = SymbolIndexType["symbols"] extends Map<number, infer E> ? E : never;
 
-            toUnified: () => (queryEngineRef as any).index,
+        if (queryEngineRef) {
+          const qeWithIndex = queryEngineRef as unknown as { index: SymbolIndexType };
+          unifiedWs.registerWorkspace("modelica", {
+            toSymbolIndex: () => qeWithIndex.index,
+
+            toUnified: () => qeWithIndex.index,
           });
         } else {
           // Fallback for polyglot packages with loose .mo files without a root package.mo
-          const symbols = new Map<number, any>();
+          const symbols = new Map<number, SymbolEntryType>();
           const byName = new Map<string, number[]>();
           const childrenOf = new Map<number | null, number[]>();
           let nextSeq = 1;
@@ -232,7 +236,7 @@ process.on(
                 metadata: {
                   qualifiedName: className,
                 },
-              };
+              } as unknown as SymbolEntryType;
               symbols.set(symId, entry);
               const existing = byName.get(className) || [];
               existing.push(symId);
@@ -244,7 +248,7 @@ process.on(
               console.warn(`[publish] Failed to index Modelica file ${file}:`, err);
             }
           }
-          const modelicaIndex = { symbols, byName, childrenOf };
+          const modelicaIndex = { symbols, byName, childrenOf } as unknown as SymbolIndexType;
           unifiedWs.registerWorkspace("modelica", {
             toSymbolIndex: () => modelicaIndex,
             toUnified: () => modelicaIndex,
@@ -257,7 +261,7 @@ process.on(
         console.log(`[publish] ${name}@${version}: indexing ${sysmlFiles.length} SysML v2 files...`);
         const sysmlWs = createSysML2WorkspaceIndex();
 
-        let sysmlParser: any = null;
+        let sysmlParser: Awaited<ReturnType<typeof createWasmParser>>["parser"] | null = null;
         try {
           const require = createRequire(import.meta.url);
           const wasmPath = require.resolve("@modelscript/sysml2/dist/parser.wasm");
@@ -272,6 +276,7 @@ process.on(
         }
 
         const sysmlTextByUri = new Map<string, string>();
+        type RegisterTreeReturn = ReturnType<NonNullable<Parameters<typeof sysmlWs.register>[1]>>;
         for (const file of sysmlFiles) {
           try {
             const text = fs.readFileSync(file, "utf-8");
@@ -280,7 +285,7 @@ process.on(
             if (sysmlParser) {
               const tree = sysmlParser.parse(text);
 
-              sysmlWs.register(fileUri, () => (tree ? (tree.rootNode as any) : null));
+              sysmlWs.register(fileUri, () => (tree ? (tree.rootNode as unknown as RegisterTreeReturn) : null));
             } else {
               sysmlWs.register(fileUri);
             }
@@ -398,9 +403,12 @@ process.on(
         `[publish] ${name}@${version}: unified symbol index created with ${unifiedSymbolIndex.symbols.size} symbols.`,
       );
 
-      const polyglotHooks = new Map<string, any>();
+      type HooksMapType = NonNullable<ConstructorParameters<typeof QueryEngine>[1]>;
+      type HookValueType = HooksMapType extends Map<string, infer V> ? V : never;
+      const polyglotHooks: HooksMapType = new Map<string, HookValueType>();
       if (queryEngineRef) {
-        for (const [k, v] of (queryEngineRef as any).hooksByRule?.entries?.() ?? []) {
+        const qeWithHooks = queryEngineRef as unknown as { hooksByRule?: HooksMapType | undefined };
+        for (const [k, v] of qeWithHooks.hooksByRule?.entries?.() ?? []) {
           polyglotHooks.set(k, v);
         }
       }

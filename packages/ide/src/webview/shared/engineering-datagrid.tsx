@@ -28,7 +28,7 @@ export interface EngineeringDataGridProps<T> {
  * EngineeringDataGrid — Reusable, high-performance table component for requirements,
  * elements, and engineering metadata tables across ModelScript IDE panels.
  */
-export function EngineeringDataGrid<T extends Record<string, any>>({
+export function EngineeringDataGrid<T extends object>({
   columns,
   data,
   keyExtractor,
@@ -52,7 +52,7 @@ export function EngineeringDataGrid<T extends Record<string, any>>({
     if (!search.trim()) return data;
     const q = search.toLowerCase();
     return data.filter((item) => {
-      return Object.values(item).some((val) => {
+      return Object.values(item as Record<string, unknown>).some((val) => {
         if (val === null || val === undefined) return false;
         return String(val).toLowerCase().includes(q);
       });
@@ -63,12 +63,19 @@ export function EngineeringDataGrid<T extends Record<string, any>>({
   const sortedData = useMemo(() => {
     if (!sortKey) return filteredData;
     return [...filteredData].sort((a, b) => {
-      const aVal = a[sortKey];
-      const bVal = b[sortKey];
+      const aVal = (a as Record<string, unknown>)[sortKey];
+      const bVal = (b as Record<string, unknown>)[sortKey];
       if (aVal === bVal) return 0;
       if (aVal === undefined || aVal === null) return 1;
       if (bVal === undefined || bVal === null) return -1;
-      const res = aVal < bVal ? -1 : 1;
+      const res =
+        typeof aVal === "number" && typeof bVal === "number"
+          ? aVal < bVal
+            ? -1
+            : 1
+          : String(aVal) < String(bVal)
+            ? -1
+            : 1;
       return sortAsc ? res : -res;
     });
   }, [filteredData, sortKey, sortAsc]);
@@ -200,7 +207,7 @@ export function EngineeringDataGrid<T extends Record<string, any>>({
                     {columns.map((col) => {
                       const colKey = String(col.key);
                       const isEditing = editingKey?.id === id && editingKey?.col === colKey;
-                      const rawVal = item[colKey];
+                      const rawVal = (item as Record<string, unknown>)[colKey];
 
                       if (isEditing) {
                         return (

@@ -2,10 +2,10 @@
 
 import { easy5ToDae } from "./dae/easy5-to-dae.js";
 import { computeBodePlot, linearizeEasy5 } from "./linear/index.js";
-import { lintEasy5 } from "./lints/index.js";
+import { type Easy5Diagnostic, lintEasy5 } from "./lints/index.js";
 import { parseEasy5 } from "./parser/easy5-parser.js";
 import { easy5ToModelica, easy5ToSsp } from "./projections/index.js";
-import { synchronizeModelicaToEasy5 } from "./tgg/index.js";
+import { type SyncOptions, type SyncResult, synchronizeModelicaToEasy5 } from "./tgg/index.js";
 import type { Easy5Model } from "./types.js";
 
 export interface LspPosition {
@@ -106,14 +106,15 @@ export function validateEasy5(content: string, _uri: string = "model.ez5"): LspD
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M7000",
         source: "modelscript-easy5",
-        message: `Failed to parse EASY5 model: ${err.message}`,
+        message: `Failed to parse EASY5 model: ${errMsg}`,
       },
     ];
   }
@@ -215,10 +216,42 @@ export function getEasy5Hover(
   }
 }
 
+export type Easy5ActionResult =
+  | Easy5Diagnostic[]
+  | string
+  | ReturnType<typeof easy5ToSsp>
+  | { varCount: number; eqCount: number }
+  | ReturnType<typeof linearizeEasy5>
+  | ReturnType<typeof computeBodePlot>
+  | SyncResult;
+
 /**
  * Executes domain actions on an EASY5 control model.
  */
-export async function executeEasy5Action(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeEasy5Action(action: "lint", args: Record<string, unknown>): Promise<Easy5Diagnostic[]>;
+export async function executeEasy5Action(action: "to_modelica", args: Record<string, unknown>): Promise<string>;
+export async function executeEasy5Action(
+  action: "to_ssp",
+  args: Record<string, unknown>,
+): Promise<ReturnType<typeof easy5ToSsp>>;
+export async function executeEasy5Action(
+  action: "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ varCount: number; eqCount: number }>;
+export async function executeEasy5Action(
+  action: "linearize",
+  args: Record<string, unknown>,
+): Promise<ReturnType<typeof linearizeEasy5>>;
+export async function executeEasy5Action(
+  action: "bode",
+  args: Record<string, unknown>,
+): Promise<ReturnType<typeof computeBodePlot>>;
+export async function executeEasy5Action(
+  action: "sync_from_modelica",
+  args: Record<string, unknown>,
+): Promise<SyncResult>;
+export async function executeEasy5Action(action: string, args: Record<string, unknown>): Promise<Easy5ActionResult>;
+export async function executeEasy5Action(action: string, args: Record<string, unknown>): Promise<Easy5ActionResult> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const model: Easy5Model = parseEasy5(content);
 
@@ -250,7 +283,7 @@ export async function executeEasy5Action(action: string, args: Record<string, un
 
     case "sync_from_modelica": {
       const modelicaText = typeof args["modelicaText"] === "string" ? args["modelicaText"] : "";
-      const options = args["options"] as any;
+      const options = args["options"] as SyncOptions | undefined;
       return synchronizeModelicaToEasy5(content, modelicaText, options);
     }
 

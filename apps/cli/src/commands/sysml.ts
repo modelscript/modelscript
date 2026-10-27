@@ -12,7 +12,7 @@ import {
 } from "@modelscript/sysml2";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 function byteToLineCol(text: string, byteOffset: number): { line: number; col: number } {
   const slice = text.slice(0, Math.max(0, byteOffset));
@@ -20,6 +20,41 @@ function byteToLineCol(text: string, byteOffset: number): { line: number; col: n
   const line = lines.length;
   const col = (lines[lines.length - 1]?.length ?? 0) + 1;
   return { line, col };
+}
+
+interface SysMLParserFacade {
+  loadSource?: ((text: string) => void) | undefined;
+  getDiagnostics?:
+    | ((
+        rootPtr: number,
+        a: number,
+        b: number,
+        text: string,
+      ) => Array<{
+        code?: number | undefined;
+        startOffset?: number | undefined;
+        severity?: number | undefined;
+        message?: string | undefined;
+      }>)
+    | undefined;
+}
+
+interface SysMLAstNode {
+  id?: number | undefined;
+  ptr?: number | undefined;
+  tree?: { facade?: SysMLParserFacade | undefined } | undefined;
+  hasError?: (() => boolean) | undefined;
+  descendantForIndex?: ((start: number, end: number) => unknown) | undefined;
+}
+
+interface SysMLDiagnostic {
+  file: string;
+  line: number;
+  col: number;
+  code: string;
+  rule?: string | undefined;
+  severity: string;
+  message: string;
 }
 
 interface SysMLExportArgs {
@@ -60,7 +95,7 @@ const SysMLExportCommand: CommandModule<{}, SysMLExportArgs> = {
         description: "Include KerML standard library symbols in export",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<SysMLExportArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -147,7 +182,7 @@ const SysMLImportCommand: CommandModule<{}, SysMLImportArgs> = {
         description: "Indentation depth in spaces",
         type: "number",
         default: 2,
-      }) as any;
+      }) as unknown as Argv<SysMLImportArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -159,8 +194,9 @@ const SysMLImportCommand: CommandModule<{}, SysMLImportArgs> = {
     const content = fs.readFileSync(filePath, "utf-8");
     try {
       JSON.parse(content);
-    } catch (err: any) {
-      console.error(`\x1b[31mError:\x1b[0m Failed to parse '${args.file}' as valid JSON-LD: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\x1b[31mError:\x1b[0m Failed to parse '${args.file}' as valid JSON-LD: ${msg}`);
       process.exit(1);
     }
 
@@ -205,19 +241,19 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
         description: "Treat warnings as errors",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<SysMLCheckArgs>;
   },
   handler: async (args) => {
-    const parser = await getSysmlParser();
+    const parser = getSysmlParser();
     const ws = createSysML2WorkspaceIndex();
-    loadEmbeddedKerMLStdlib(ws, parser);
+    loadEmbeddedKerMLStdlib(ws, parser ?? undefined);
 
-    const diagnostics: any[] = [];
+    const diagnostics: SysMLDiagnostic[] = [];
     const sourceTexts = new Map<string, string>();
-    const astMap = new Map<string, any>();
+    const astMap = new Map<string, SysMLAstNode>();
 
     const seenDiagKeys = new Set<string>();
-    const pushUniqueDiagnostic = (diag: any) => {
+    const pushUniqueDiagnostic = (diag: SysMLDiagnostic) => {
       const key = `${diag.file}:${diag.line}:${diag.code}:${diag.message}`;
       if (seenDiagKeys.has(key)) return;
       seenDiagKeys.add(key);
@@ -243,11 +279,11 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
       const relPath = path.relative(process.cwd(), filePath) || f;
       sourceTexts.set(uri, text);
 
-      const tree = parser.parse(text);
-      const ast = tree ? (tree.rootNode as any) : null;
+      const tree = parser ? parser.parse(text) : null;
+      const ast = tree ? (tree.rootNode as unknown as SysMLAstNode) : null;
       if (ast) {
         astMap.set(uri, ast);
-        const facade = (tree as any)?.facade ?? ast?.tree?.facade;
+        const facade = (tree as unknown as { facade?: SysMLParserFacade | undefined })?.facade ?? ast?.tree?.facade;
         if (facade && typeof facade.getDiagnostics === "function") {
           const rootPtr = ast.id ?? ast.ptr ?? 0;
           if (rootPtr) {
@@ -255,6 +291,7 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
             for (const cd of facade.getDiagnostics(rootPtr, 0, 0, text)) {
               const codeNum = typeof cd.code === "number" ? cd.code : 1001;
               const def = getSysML2ErrorCodeDef(codeNum);
+              const defMsg = (def?.message as ((arg: string) => string) | undefined)?.("Syntax error");
               const pos = byteToLineCol(text, cd.startOffset ?? 0);
               pushUniqueDiagnostic({
                 file: relPath,
@@ -263,7 +300,7 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
                 code: `S${codeNum}`,
                 rule: def?.rule || "syntax",
                 severity: cd.severity === 1 ? "error" : cd.severity === 2 ? "warning" : def?.severity || "error",
-                message: cd.message || def?.message("Syntax error") || "Syntax error",
+                message: cd.message || defMsg || "Syntax error",
               });
             }
           }
@@ -279,24 +316,27 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
           });
         }
       }
-      ws.register(uri, () => ast, text);
+      ws.register(uri, () => ast as unknown as ReturnType<NonNullable<Parameters<typeof ws.register>[1]>>, text);
     }
 
     const unified = await ws.toUnifiedAsync();
     const cstProvider = {
-      getText: (startOffset: number, endOffset: number, entry?: any) => {
+      getText: (startOffset: number, endOffset: number, entry?: { resourceId?: string | undefined }) => {
         if (!entry || !entry.resourceId) return null;
         const text = sourceTexts.get(entry.resourceId);
         return text ? text.slice(startOffset, endOffset) : null;
       },
-      getNode: (startOffset: number, endOffset: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: { resourceId?: string | undefined }) => {
         if (!entry || !entry.resourceId) return null;
         const ast = astMap.get(entry.resourceId);
         if (!ast || typeof ast.descendantForIndex !== "function") return null;
         return ast.descendantForIndex(startOffset, Math.max(startOffset, endOffset - 1));
       },
     };
-    const qe = createSysML2QueryEngine(unified, cstProvider as any);
+    const qe = createSysML2QueryEngine(
+      unified,
+      cstProvider as unknown as Parameters<typeof createSysML2QueryEngine>[1],
+    );
 
     // Run semantic & formal verification linter queries
     for (const [uri, text] of sourceTexts.entries()) {
@@ -364,7 +404,7 @@ const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
         description: "Output display format",
         choices: ["table", "json"],
         default: "table",
-      }) as any;
+      }) as unknown as Argv<SysMLInfoArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -374,13 +414,13 @@ const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
     }
 
     const content = fs.readFileSync(filePath, "utf-8");
-    const parser = await getSysmlParser();
+    const parser = getSysmlParser();
     const ws = createSysML2WorkspaceIndex();
     const uri = `file://${filePath}`;
 
     ws.register(uri, () => {
-      const tree = parser.parse(content);
-      return tree ? (tree.rootNode as any) : null;
+      const tree = parser ? parser.parse(content) : null;
+      return tree ? (tree.rootNode as unknown as ReturnType<NonNullable<Parameters<typeof ws.register>[1]>>) : null;
     });
 
     const unified = await ws.toUnifiedAsync();
@@ -490,7 +530,7 @@ const SysMLSyncPullCommand: CommandModule<{}, SysMLSyncPullArgs> = {
         alias: "o",
         type: "string",
         description: "Target output .sysml file path",
-      }) as any;
+      }) as unknown as Argv<SysMLSyncPullArgs>;
   },
   handler: async (args) => {
     console.log(`\x1b[1m[SysML v2 Sync]\x1b[0m Pulling from ${args.target.toUpperCase()} at ${args.url}...`);
@@ -595,7 +635,7 @@ const SysMLSyncPushCommand: CommandModule<{}, SysMLSyncPushArgs> = {
         type: "boolean",
         default: false,
         description: "Force push and overwrite conflicting upstream revisions",
-      }) as any;
+      }) as unknown as Argv<SysMLSyncPushArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -650,8 +690,9 @@ const SysMLSyncPushCommand: CommandModule<{}, SysMLSyncPushArgs> = {
       console.log(
         `\x1b[32m✔ Successfully committed revision\x1b[0m '${result.newRevision}' (${result.elementsCommitted} elements: +${result.diffSummary.added} ~${result.diffSummary.modified} -${result.diffSummary.deleted})`,
       );
-    } catch (err: any) {
-      console.error(`\x1b[31mCommit Error:\x1b[0m ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`\x1b[31mCommit Error:\x1b[0m ${msg}`);
       process.exit(1);
     }
   },
@@ -664,7 +705,7 @@ const SysMLSyncCommand: CommandModule = {
     return yargs
       .command(SysMLSyncPullCommand)
       .command(SysMLSyncPushCommand)
-      .demandCommand(1, "Please specify a sync action (pull or push)") as any;
+      .demandCommand(1, "Please specify a sync action (pull or push)");
   },
   handler: () => {},
 };
@@ -679,7 +720,7 @@ export const SysML: CommandModule = {
       .command(SysMLCheckCommand)
       .command(SysMLInfoCommand)
       .command(SysMLSyncCommand)
-      .demandCommand(1, "Please specify an action (export, import, check, info, or sync)") as any;
+      .demandCommand(1, "Please specify an action (export, import, check, info, or sync)");
   },
   handler: () => {},
 };

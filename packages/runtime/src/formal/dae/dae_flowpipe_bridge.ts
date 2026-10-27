@@ -72,8 +72,10 @@ export class DaeFlowpipeBridge {
           const nameId = arena.getExprData1(inner);
           const vIdx = arena.lookupVariable(nameId);
           if (vIdx >= 0) {
-            diffVarIndices.push(vIdx);
-            diffVarNames.push(arena.getVarName(vIdx));
+            if (!diffEqMap.has(vIdx)) {
+              diffVarIndices.push(vIdx);
+              diffVarNames.push(arena.getVarName(vIdx));
+            }
             diffEqMap.set(vIdx, rhs);
             continue;
           }
@@ -87,8 +89,10 @@ export class DaeFlowpipeBridge {
           const nameId = arena.getExprData1(inner);
           const vIdx = arena.lookupVariable(nameId);
           if (vIdx >= 0) {
-            diffVarIndices.push(vIdx);
-            diffVarNames.push(arena.getVarName(vIdx));
+            if (!diffEqMap.has(vIdx)) {
+              diffVarIndices.push(vIdx);
+              diffVarNames.push(arena.getVarName(vIdx));
+            }
             diffEqMap.set(vIdx, lhs);
             continue;
           }
@@ -141,7 +145,7 @@ export class DaeFlowpipeBridge {
       jacobianXExprs.push(rowX);
     }
 
-    // Helper: evaluate expressions with a given point state
+    // Helper: evaluate expressions with a given point state (using midpoint to avoid outward-rounding lower bias)
     const evaluatePointState = (exprId: number, xVals: number[], zVals: number[]): number => {
       const env = new Map<number, NumericalInterval>();
       for (let i = 0; i < diffVarIndices.length; i++) {
@@ -151,7 +155,11 @@ export class DaeFlowpipeBridge {
         env.set(algVarIndices[j]!, NumericalInterval.const(zVals[j] ?? 0));
       }
       const evalRes = evaluator.evaluateExpr(exprId, env);
-      return evalRes.interval.low;
+      const { low, high } = evalRes.interval;
+      if (Number.isFinite(low) && Number.isFinite(high)) {
+        return 0.5 * (low + high);
+      }
+      return Number.isFinite(low) ? low : Number.isFinite(high) ? high : 0;
     };
 
     const numDiffStates = diffVarIndices.length;

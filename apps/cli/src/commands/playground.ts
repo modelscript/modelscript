@@ -271,7 +271,7 @@ end ChuaCircuit;`;
             const files = bundleExtension(langInput, payload.options);
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: true, files }));
-          } catch (_e: any) {
+          } catch (_e: unknown) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: false, error: "Failed to bundle extension" }));
           }
@@ -311,7 +311,7 @@ end ChuaCircuit;`;
       }
     });
 
-    server.on("error", (err: any) => {
+    server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
         console.log(`Port ${currentPort} is in use, trying port ${currentPort + 1}...`);
         currentPort++;

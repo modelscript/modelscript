@@ -4,7 +4,7 @@ import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { ModelicaOptimizer } from "@modelscript/simulate/optimizer";
 import { createRequire } from "node:module";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 
 const require = createRequire(import.meta.url);
@@ -49,7 +49,7 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
   command: "optimize <name> <paths..>",
   describe: "Solve an optimal control problem for a Modelica model",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -107,7 +107,7 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
   }) as CommandModule<{}, OptimizeArgs>["builder"],
   handler: async (args) => {
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);

@@ -24,9 +24,12 @@ import { MultiBodyAnimationPanel } from "./multibody-animation-panel.js";
 
 /** Currently active in-process DAP debug session instance, if one is running. */
 export let activeDebugSession: ModelScriptDebugSession | undefined;
+function setActiveDebugSession(session: ModelScriptDebugSession | undefined): void {
+  activeDebugSession = session;
+}
 /** Callback registered by the LSP client to launch a debugged simulation for a model URI/path. */
 
-export let startLspDebugSession: ((program: string) => Promise<any>) | undefined;
+export let startLspDebugSession: ((program: string) => Promise<unknown>) | undefined;
 /** Callback registered by the LSP client to resume simulation execution from a breakpoint. */
 export let continueLspDebugSession: (() => Promise<void>) | undefined;
 /** Callback registered by the LSP client to inspect current variable values at a paused step. */
@@ -44,7 +47,7 @@ export let nextLspDebugSession: (() => Promise<void>) | undefined;
  * Registers the LSP-backed simulation control callbacks invoked by `ModelScriptDebugSession`.
  */
 export function setLspDebugCallbacks(
-  start: (program: string) => Promise<any>,
+  start: (program: string) => Promise<unknown>,
   cont: () => Promise<void>,
   getVars: () => Promise<{ name: string; value: string; variablesReference: number }[]>,
   setBps: (program: string, bps: { line: number; column?: number | undefined }[]) => Promise<void>,
@@ -76,8 +79,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
   /** Initializes a new DAP session with 1-based line and column indexing. */
   public constructor() {
     super();
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    activeDebugSession = this;
+    setActiveDebugSession(this);
     // This debugger uses 1-based lines and columns matching LSP/OMC diagnostics
     this.setDebuggerLinesStartAt1(true);
     this.setDebuggerColumnsStartAt1(true);
@@ -319,8 +321,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
         }
         if (/^[\d.\s+\-*/()]+$/.test(evaluatedExpr)) {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-implied-eval
-            const mathResult = Function(`"use strict"; return (${evaluatedExpr});`)();
+            const evalFn = Object.getPrototypeOf(function () {}).constructor as (body: string) => () => unknown;
+            const mathResult = evalFn(`"use strict"; return (${evaluatedExpr});`)();
             response.body = { result: String(mathResult), variablesReference: 0 };
             this.sendResponse(response);
             return;

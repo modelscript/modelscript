@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import type { GitExtensionExports } from "./scm-integration";
 import { isSupportedModelFile } from "./utils/file-utils";
 
 export interface RegulatoryImpact {
@@ -89,13 +90,13 @@ export function registerSemanticDiffComments(context: vscode.ExtensionContext, c
       return; // Only annotate the working tree version
     }
 
-    const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
+    const gitExtension = vscode.extensions.getExtension<GitExtensionExports>("vscode.git")?.exports;
     if (!gitExtension) return;
 
     const git = gitExtension.getAPI(1);
     if (!git || git.repositories.length === 0) return;
 
-    const repository = git.repositories[0];
+    const repository = git.repositories[0]!;
 
     try {
       // Get the HEAD version of the file

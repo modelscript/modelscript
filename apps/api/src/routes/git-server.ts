@@ -53,7 +53,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     return resolved;
   }
 
-  function authenticate(req: Request): { user: any | null } {
+  function authenticate(req: Request): { user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>> | null } {
     const authHeader = req.headers["authorization"];
     if (!authHeader) return { user: null };
 
@@ -75,8 +75,8 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         }
 
         try {
-          const decoded = jwt.verify(password, JWT_SECRET) as any;
-          if (decoded && decoded.id === user.id) {
+          const decoded = jwt.verify(password, JWT_SECRET) as { id?: number | undefined } | string;
+          if (typeof decoded === "object" && decoded !== null && decoded.id === user.id) {
             return { user };
           }
         } catch {
@@ -88,8 +88,8 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     } else if (authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.slice(7);
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        if (decoded && decoded.id) {
+        const decoded = jwt.verify(token, JWT_SECRET) as { id?: number | undefined } | string;
+        if (typeof decoded === "object" && decoded !== null && decoded.id) {
           const user = database.getUserById(decoded.id);
           return { user: user ?? null };
         }

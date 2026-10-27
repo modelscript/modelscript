@@ -119,9 +119,14 @@ export class MarkdownPreviewService implements vscode.Disposable {
             const uri = activeEditor ? activeEditor.document.uri.toString() : "modelscript-lib://global";
             const docText = activeEditor ? activeEditor.document.getText() : "";
 
-            let reqs: any[] | null = null;
+            interface MarkdownRequirementInfo {
+              name: string;
+              attributes?: Record<string, string | number | boolean | undefined> | undefined;
+            }
+
+            let reqs: MarkdownRequirementInfo[] | null = null;
             try {
-              reqs = (await client.sendRequest("modelscript/getRequirements", { uri })) as any[];
+              reqs = await client.sendRequest<MarkdownRequirementInfo[]>("modelscript/getRequirements", { uri });
             } catch {
               reqs = null;
             }
@@ -142,15 +147,18 @@ export class MarkdownPreviewService implements vscode.Disposable {
 
                 if (reqs && reqs.length > 0) {
                   const req = reqs.find(
-                    (r: any) => name.includes(r.name) || (r.attributes && leafName in r.attributes),
+                    (r: MarkdownRequirementInfo) => name.includes(r.name) || (r.attributes && leafName in r.attributes),
                   );
                   if (req?.attributes?.[leafName] !== undefined) {
                     values[name] = String(req.attributes[leafName]);
                     continue;
                   }
                   if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {
-                    const vReq = reqs.find((r: any) => name.includes(r.name) || r.name.includes("MaxVoltageReq"));
-                    values[name] = vReq?.attributes?.maxLimit ?? "8.0";
+                    const vReq = reqs.find(
+                      (r: MarkdownRequirementInfo) => name.includes(r.name) || r.name.includes("MaxVoltageReq"),
+                    );
+                    values[name] =
+                      vReq?.attributes?.["maxLimit"] !== undefined ? String(vReq.attributes["maxLimit"]) : "8.0";
                     continue;
                   }
                 } else if (name.includes("MaxVoltageReq") || name.endsWith("maxLimit")) {

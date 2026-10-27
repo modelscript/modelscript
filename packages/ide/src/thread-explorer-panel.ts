@@ -4,6 +4,30 @@ import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
+interface ThreadDomainNode {
+  domain: string;
+  nodeId: string;
+  name?: string | undefined;
+  status?: string | undefined;
+  uri?: string | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  properties?: Record<string, unknown> | undefined;
+}
+
+interface ThreadAlignmentItem {
+  slot?: string | number | undefined;
+  status?: string | undefined;
+  nodes?: ThreadDomainNode[] | undefined;
+}
+
+interface ThreadGraphData {
+  threadItems?: ThreadAlignmentItem[] | undefined;
+  syncedCount?: number | undefined;
+  conflictCount?: number | undefined;
+  staleCount?: number | undefined;
+}
+
 export class ThreadExplorerPanel extends BaseWebviewPanel {
   public static currentPanel: ThreadExplorerPanel | undefined;
   public static readonly viewType = "modelscript.threadExplorer";
@@ -98,7 +122,7 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
 
           case "exportProvenance": {
             try {
-              const graphData = await this._client.sendRequest<any>("modelscript/getThreadGraph", {});
+              const graphData = await this._client.sendRequest<ThreadGraphData>("modelscript/getThreadGraph", {});
               const provJsonLd = this._serializeToProvO(graphData);
               const saveOptions: vscode.SaveDialogOptions = {
                 filters: { "JSON-LD": ["jsonld", "json"] },
@@ -126,10 +150,9 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
                   "Opened W3C PROV-O digital thread audit bundle in preview editor.",
                 );
               }
-            } catch (err: any) {
-              vscode.window.showErrorMessage(
-                `Failed to export W3C PROV-O audit bundle: ${err?.message || String(err)}`,
-              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`Failed to export W3C PROV-O audit bundle: ${message}`);
             }
             break;
           }
@@ -154,10 +177,10 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
     }
   }
 
-  private _serializeToProvO(graphData: any): string {
+  private _serializeToProvO(graphData: ThreadGraphData | undefined): string {
     const threadItems = Array.isArray(graphData?.threadItems) ? graphData.threadItems : [];
-    const entities: any[] = [];
-    const activities: any[] = [];
+    const entities: Record<string, unknown>[] = [];
+    const activities: Record<string, unknown>[] = [];
 
     entities.push({
       "@id": "urn:modelscript:digital-thread",
@@ -168,7 +191,7 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
       staleCount: graphData?.staleCount ?? 0,
     });
 
-    threadItems.forEach((item: any, slotIdx: number) => {
+    threadItems.forEach((item: ThreadAlignmentItem, slotIdx: number) => {
       const activityId = `urn:modelscript:alignment:slot:${item.slot ?? slotIdx}`;
       activities.push({
         "@id": activityId,
@@ -178,7 +201,7 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
       });
 
       if (Array.isArray(item.nodes)) {
-        item.nodes.forEach((node: any) => {
+        item.nodes.forEach((node: ThreadDomainNode) => {
           const entityId = `urn:modelscript:domain:${node.domain}:node:${node.nodeId}`;
           entities.push({
             "@id": entityId,

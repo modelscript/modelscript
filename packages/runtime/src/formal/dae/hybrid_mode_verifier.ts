@@ -221,51 +221,61 @@ export class HybridModeConsistencyVerifier {
     meta: {
       conditionExprId: number;
       equations: { kind: EqKind; lhs: number; rhs: number }[];
+      elseWhenClauses?:
+        | { conditionExprId: number; equations: { kind: EqKind; lhs: number; rhs: number }[] }[]
+        | undefined;
     },
     issues: HybridVerificationIssue[],
   ): void {
-    const condExpr = meta.conditionExprId;
-    if (condExpr < 0) return;
+    const clauses = [
+      { conditionExprId: meta.conditionExprId, equations: meta.equations },
+      ...(meta.elseWhenClauses ?? []),
+    ];
 
-    // Create a local post-reset state map
-    const postResetEnv = new Map<number, NumericalInterval>();
+    for (const clause of clauses) {
+      const condExpr = clause.conditionExprId;
+      if (condExpr < 0) continue;
 
-    for (const eq of meta.equations) {
-      const lhsExpr = eq.lhs;
-      const rhsExpr = eq.rhs;
+      // Create a local post-reset state map
+      const postResetEnv = new Map<number, NumericalInterval>();
 
-      if (this.arena.getExprKind(lhsExpr) === ExprKind.Name) {
-        const nameId = this.arena.getExprData1(lhsExpr);
-        const vIdx = this.arena.lookupVariable(nameId);
-        if (vIdx >= 0) {
-          const resetEval = this.evaluator.evaluateExpr(rhsExpr);
-          postResetEnv.set(vIdx, resetEval.interval);
+      for (const eq of clause.equations) {
+        const lhsExpr = eq.lhs;
+        const rhsExpr = eq.rhs;
+
+        if (this.arena.getExprKind(lhsExpr) === ExprKind.Name) {
+          const nameId = this.arena.getExprData1(lhsExpr);
+          const vIdx = this.arena.lookupVariable(nameId);
+          if (vIdx >= 0) {
+            const resetEval = this.evaluator.evaluateExpr(rhsExpr);
+            postResetEnv.set(vIdx, resetEval.interval);
+          }
         }
       }
-    }
 
-    if (postResetEnv.size === 0) return;
+      if (postResetEnv.size === 0) continue;
 
-    // Evaluate entry guard condition under post-reset state x^+
-    const postGuardEval = this.evaluator.evaluateExpr(condExpr, postResetEnv);
+      // Evaluate entry guard condition under post-reset state x^+
+      const postGuardEval = this.evaluator.evaluateExpr(condExpr, postResetEnv);
 
-    if (postGuardEval.interval.isDefinitePositive()) {
-      // Guard is unconditionally TRUE immediately after reset! Zeno chattering lockup!
-      issues.push({
-        kind: "zeno_chattering_detected",
-        severity: "definite",
-        whenEqIdx,
-        message: `Zeno chattering detected: entry guard is definitely satisfied at post-reset state x^+ (guard \u2208 [${postGuardEval.interval.low}, ${postGuardEval.interval.high}]). Minimum dwell time \u03c4_min = 0, causing solver freezing.`,
-        details: { postResetEnv, postGuardInterval: postGuardEval.interval },
-      });
-    } else if (postGuardEval.interval.high >= 1.0) {
-      issues.push({
-        kind: "zeno_chattering_detected",
-        severity: "possible",
-        whenEqIdx,
-        message: `Potential Zeno phenomenon: entry guard may remain satisfied at post-reset state x^+ (\u03c4_min may reach zero).`,
-        details: { postResetEnv, postGuardInterval: postGuardEval.interval },
-      });
+      if (postGuardEval.interval.isDefinitePositive()) {
+        // Guard is unconditionally TRUE immediately after reset! Zeno chattering lockup!
+        issues.push({
+          kind: "zeno_chattering_detected",
+          severity: "definite",
+          whenEqIdx,
+          message: `Zeno chattering detected: entry guard is definitely satisfied at post-reset state x^+ (guard \u2208 [${postGuardEval.interval.low}, ${postGuardEval.interval.high}]). Minimum dwell time \u03c4_min = 0, causing solver freezing.`,
+          details: { postResetEnv, postGuardInterval: postGuardEval.interval },
+        });
+      } else if (postGuardEval.interval.high >= 1.0) {
+        issues.push({
+          kind: "zeno_chattering_detected",
+          severity: "possible",
+          whenEqIdx,
+          message: `Potential Zeno phenomenon: entry guard may remain satisfied at post-reset state x^+ (\u03c4_min may reach zero).`,
+          details: { postResetEnv, postGuardInterval: postGuardEval.interval },
+        });
+      }
     }
   }
 }

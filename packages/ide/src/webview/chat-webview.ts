@@ -8,7 +8,11 @@
 
 import { CreateMLCEngine, prebuiltAppConfig } from "@mlc-ai/web-llm";
 
-declare const acquireVsCodeApi: () => { postMessage(msg: unknown): void; getState(): any; setState(s: any): void };
+declare const acquireVsCodeApi: () => {
+  postMessage(msg: unknown): void;
+  getState<T = unknown>(): T | undefined;
+  setState<T = unknown>(s: T): T;
+};
 declare const MODEL_BASE_URL: string;
 declare const OLLAMA_BASE_URL: string | undefined;
 declare const OLLAMA_MODEL: string | undefined;
@@ -32,11 +36,49 @@ interface ChatMessage {
   content: string;
 }
 
-interface CompletionChunk {
-  content?: string;
-  finish_reason?: string;
+interface NativeToolCall {
+  id?: string | undefined;
+  function?:
+    | {
+        name?: string | undefined;
+        arguments?: string | Record<string, unknown> | undefined;
+      }
+    | undefined;
+}
 
-  tool_calls?: any[];
+interface CompletionChunk {
+  content?: string | undefined;
+  finish_reason?: string | null | undefined;
+  tool_calls?: NativeToolCall[] | undefined;
+}
+
+interface ChatCompletionChunkChoice {
+  delta?:
+    | {
+        content?: string | null | undefined;
+        tool_calls?: NativeToolCall[] | undefined;
+      }
+    | undefined;
+  finish_reason?: string | null | undefined;
+  message?:
+    | {
+        content?: string | null | undefined;
+      }
+    | undefined;
+}
+
+interface ChatCompletionStreamChunk {
+  choices: ChatCompletionChunkChoice[];
+}
+
+interface MLCEngineLike {
+  chat: {
+    completions: {
+      create(
+        params: Record<string, unknown>,
+      ): Promise<AsyncIterable<ChatCompletionStreamChunk> & { choices?: ChatCompletionChunkChoice[] | undefined }>;
+    };
+  };
 }
 
 interface PendingCloudStream {
@@ -45,7 +87,7 @@ interface PendingCloudStream {
   onEnd: () => void;
 }
 
-let engine: any = null;
+let engine: MLCEngineLike | null = null;
 let engineLoading = false;
 let isGenerating = false;
 let currentProvider = modelProviderSelect?.value || "webgpu";
@@ -412,7 +454,7 @@ async function ensureEngine(): Promise<void> {
 
   engineLoading = true;
   try {
-    const nav = navigator as any;
+    const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } };
     if (!nav.gpu) throw new Error("WebGPU not available");
     const adapter = await nav.gpu.requestAdapter();
     if (!adapter) throw new Error("No WebGPU adapter found");
@@ -421,7 +463,7 @@ async function ensureEngine(): Promise<void> {
     progressText.textContent = "Downloading model (~336 MB, cached after first time)...";
     statusEl.textContent = "Loading...";
 
-    engine = await CreateMLCEngine(MODEL_ID, {
+    engine = (await CreateMLCEngine(MODEL_ID, {
       appConfig: getAppConfig(),
       initProgressCallback: (report: { text: string; progress: number }) => {
         const pct = Math.round(report.progress * 100);
@@ -429,7 +471,7 @@ async function ensureEngine(): Promise<void> {
         progressText.textContent = report.text;
         statusEl.textContent = `Loading ${pct}%`;
       },
-    });
+    })) as unknown as MLCEngineLike;
 
     progressContainer.style.display = "none";
     statusEl.textContent = "Qwen3-0.6B ready";
@@ -601,7 +643,7 @@ interface ExtractedToolCall {
   input: Record<string, unknown>;
 }
 
-function extractToolCalls(rawText: string, nativeToolCalls?: any[]): ExtractedToolCall[] {
+function extractToolCalls(rawText: string, nativeToolCalls?: NativeToolCall[]): ExtractedToolCall[] {
   const calls: ExtractedToolCall[] = [];
 
   // 1. Native tool calls from WebLLM completion
@@ -610,7 +652,7 @@ function extractToolCalls(rawText: string, nativeToolCalls?: any[]): ExtractedTo
       try {
         const inputObj =
           typeof ntc.function?.arguments === "string"
-            ? JSON.parse(ntc.function.arguments)
+            ? (JSON.parse(ntc.function.arguments) as Record<string, unknown>)
             : (ntc.function?.arguments ?? {});
         calls.push({
           id: ntc.id || Math.random().toString(36).slice(2),
@@ -746,8 +788,9 @@ async function* streamChatCompletion(
 ): AsyncGenerator<CompletionChunk, void, unknown> {
   if (currentProvider === "webgpu") {
     await ensureEngine();
+    if (!engine) throw new Error("WebLLM engine not initialized");
 
-    let completion: any;
+    let completion: AsyncIterable<ChatCompletionStreamChunk>;
     try {
       completion = await engine.chat.completions.create({
         messages,
@@ -869,7 +912,7 @@ async function sendMessage(): Promise<void> {
       let rawText = "";
       let finishReason = "stop";
 
-      let nativeToolCalls: any[] = [];
+      let nativeToolCalls: NativeToolCall[] = [];
 
       for await (const chunk of completion) {
         rawText += chunk.content || "";
@@ -891,7 +934,7 @@ async function sendMessage(): Promise<void> {
       if (!visibleText && rawText) visibleText = rawText;
 
       // If truncated (finish_reason="length") on WebGPU, try one continuation
-      if (finishReason === "length" && visibleText && currentProvider === "webgpu") {
+      if (finishReason === "length" && visibleText && currentProvider === "webgpu" && engine) {
         statusEl.textContent = "Continuing...";
         const cont = await engine.chat.completions.create({
           messages: [

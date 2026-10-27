@@ -31,7 +31,13 @@ export const VerifyDecisions: CommandModule<{}, VerifyDecisionsArgs> = {
 
   handler: async (args) => {
     let allPassed = true;
-    const allResults: Record<string, any> = {};
+    const allResults: Record<
+      string,
+      Record<
+        string,
+        ReturnType<typeof DecisionTableVerifier.verifyAllDecisionsFromText> extends Map<string, infer V> ? V : unknown
+      >
+    > = {};
 
     for (const filePath of args.paths) {
       if (!fs.existsSync(filePath)) {
@@ -42,9 +48,13 @@ export const VerifyDecisions: CommandModule<{}, VerifyDecisionsArgs> = {
       const content = fs.readFileSync(filePath, "utf-8");
       const results = DecisionTableVerifier.verifyAllDecisionsFromText(content);
 
-      allResults[filePath] = {};
+      const fileRes: Record<
+        string,
+        ReturnType<typeof DecisionTableVerifier.verifyAllDecisionsFromText> extends Map<string, infer V> ? V : unknown
+      > = {};
+      allResults[filePath] = fileRes;
       for (const [nodeName, res] of results.entries()) {
-        allResults[filePath][nodeName] = res;
+        fileRes[nodeName] = res;
         if (!res.isExhaustive || !res.isDeterministic || res.hasDeadBranches) {
           allPassed = false;
         }

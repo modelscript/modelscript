@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { InteractiveBinding } from "./interactive.js";
-import { computeStemLines } from "./port-router.js";
+import { computeStemLines, type PortSide } from "./port-router.js";
 import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
 
 /** X6 SVG Markup element — defines the DOM structure of a node/port. */
@@ -16,12 +16,14 @@ export interface X6Markup {
   children?: X6Markup[] | undefined;
 }
 
+export type X6AttrValue = string | number | boolean | Record<string, unknown> | undefined;
+
 /**
  * X6 attribute styles keyed by selector.
  * Values may contain template placeholders like "{{name}}" that are resolved
  * at render time from symbol entry properties.
  */
-export type X6Attrs = Record<string, Record<string, string | number | Record<string, unknown>>>;
+export type X6Attrs = Record<string, Record<string, X6AttrValue>>;
 
 /** X6 port group definition — appearance template for a group of ports. */
 export interface X6PortGroup {
@@ -43,10 +45,17 @@ export interface X6PortItem {
   group?: string | undefined;
   direction?: string | undefined;
   isConjugated?: boolean | undefined;
-  args?: Record<string, unknown> | undefined;
+  args?: { x?: number | undefined; y?: number | undefined; [key: string]: unknown } | undefined;
   markup?: X6Markup | X6Markup[] | undefined;
   attrs?: X6Attrs | undefined;
   zIndex?: number | "auto" | undefined;
+  label?:
+    | {
+        position?: { name: string; args?: Record<string, unknown> | undefined } | undefined;
+        attrs?: X6Attrs | undefined;
+      }
+    | undefined;
+  [key: string]: unknown;
 }
 
 /** X6 port configuration — groups define templates, items define instances. */
@@ -55,10 +64,31 @@ export interface X6Ports {
   items?: X6PortItem[] | undefined;
 }
 
+export interface GraphicsAnimationChannel {
+  attribute?: string | undefined;
+  signal?: string | undefined;
+  transform?: string | undefined;
+}
+
+export interface GraphicsCompartmentConfig {
+  header: string;
+  query?: string | undefined;
+}
+
+export interface PolyglotEdgeLabel {
+  attrs?: X6Attrs | undefined;
+  position?: number | { distance?: number | undefined; offset?: number | undefined } | undefined;
+  [key: string]: unknown;
+}
+
 /** Full GraphicsConfig — node, edge, and port configuration for X6 rendering. */
 export interface GraphicsConfig {
   /** The graphic role this node plays in diagram rendering. */
   role: "node" | "edge" | "group" | "port-owner" | "compartment" | "port";
+  fillPattern?: string | undefined;
+  icon?: string | undefined;
+  animation?: { channels?: GraphicsAnimationChannel[] | undefined } | undefined;
+  compartments?: GraphicsCompartmentConfig[] | undefined;
 
   /** Node/Group visual configuration (X6 addNode format). */
   node?:
@@ -78,6 +108,9 @@ export interface GraphicsConfig {
          * The renderer calls `db.query(portQuery, symbolId)` to get port entries.
          */
         portQuery?: string | undefined;
+        icon?: string | undefined;
+        animation?: { channels?: GraphicsAnimationChannel[] | undefined } | undefined;
+        compartments?: GraphicsCompartmentConfig[] | undefined;
       }
     | undefined;
 
@@ -97,16 +130,12 @@ export interface GraphicsConfig {
         /** Edge attrs (line styles, markers). */
         attrs?: X6Attrs | undefined;
         /** Edge labels (stereotype text, etc). */
-        labels?:
-          | {
-              attrs?: X6Attrs | undefined;
-              position?: { distance?: number | undefined; offset?: number | undefined } | undefined;
-            }[]
-          | undefined;
+        labels?: PolyglotEdgeLabel[] | undefined;
         /** Router config (e.g. "manhattan", "orth"). */
         router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
         /** Connector config (e.g. "rounded", "smooth"). */
         connector?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+        animation?: { channels?: GraphicsAnimationChannel[] | undefined } | undefined;
       }
     | undefined;
 }
@@ -116,7 +145,7 @@ export interface GraphicsConfig {
 // Reads SymbolIndex + GraphicsConfig and produces X6‑compatible JSON
 // that the webview can feed directly to Graph.fromJSON().
 
-type SelfAccessor = any;
+type SelfAccessor = unknown;
 
 // Minimal types for symbol index entries
 export type SymbolId = string;
@@ -126,6 +155,7 @@ export interface SymbolEntry {
   name?: string | undefined;
   parentId: SymbolId | null;
   metadata: Record<string, unknown>;
+  attributes?: Record<string, unknown> | undefined;
   resourceId?: string | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
@@ -136,7 +166,7 @@ export interface SymbolIndex {
   childrenOf: Map<SymbolId, SymbolId[]>;
 }
 export interface ScopeResolver {
-  resolve?: any;
+  resolve(entry: SymbolEntry): SymbolEntry[];
   isDeclaration(entry: SymbolEntry): boolean;
 }
 
@@ -156,7 +186,7 @@ export interface PolyglotDiagramNode {
   /** X6 attrs keyed by selector. */
   attrs?: X6Attrs | undefined;
   /** Ports configuration. */
-  ports?: (X6Ports & { items?: any[] | undefined }) | undefined;
+  ports?: (X6Ports & { items?: X6PortItem[] | undefined }) | undefined;
   /** Shape name for X6 (e.g. "rect"). */
   shape?: string | undefined;
   /** Parent node ID for X6 group embedding. */
@@ -186,7 +216,7 @@ export interface PolyglotDiagramNode {
   /** Interactive bidirectional bindings (momentary, toggle, slider, numeric) */
   interactive?: InteractiveBinding[] | undefined;
   /** Arbitrary domain and visualization data (multiplicity, sections, etc.) */
-  data?: any;
+  data?: Record<string, unknown> | undefined;
 }
 
 export interface PolyglotDiagramEdge {
@@ -199,7 +229,7 @@ export interface PolyglotDiagramEdge {
   router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
   connector?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
   attrs: X6Attrs;
-  labels?: any[] | undefined;
+  labels?: PolyglotEdgeLabel[] | undefined;
   /** Reactive simulation telemetry animation channels */
   animations?: { property: string; variableName: string; transform?: string | undefined }[] | undefined;
 }
@@ -208,7 +238,7 @@ export interface PolyglotDiagramData {
   nodes: PolyglotDiagramNode[];
   edges: PolyglotDiagramEdge[];
   coordinateSystem?: { x: number; y: number; width: number; height: number } | null | undefined;
-  diagramBackground?: any;
+  diagramBackground?: unknown;
   /** Optional: the type of diagram, used by the renderer to select layout algorithms */
   diagramType?: string | undefined;
   /** Layout strategy (dagre, sequence, manual, grid, etc.) */
@@ -217,8 +247,23 @@ export interface PolyglotDiagramData {
   availableViews?: { id: string; label: string; description?: string | undefined }[] | undefined;
 }
 
+export interface PolyglotProjectionConfig {
+  label?: string | undefined;
+  description?: string | undefined;
+  includeRules?: string[] | undefined;
+  excludeRules?: string[] | undefined;
+  groupRules?: string[] | undefined;
+  standaloneRules?: string[] | undefined;
+  stateBubbleRules?: string[] | undefined;
+  controlNodeRules?: string[] | undefined;
+  synthesizePseudoStates?: boolean | undefined;
+  defaultLayout?: string | undefined;
+  filter?: ((sym: SymbolEntry) => boolean) | undefined;
+  [key: string]: unknown;
+}
+
 export interface PolyglotDiagramOptions {
-  customProjections?: Record<string, any> | undefined;
+  customProjections?: Record<string, PolyglotProjectionConfig> | undefined;
   structuralKinds?: Set<string> | string[] | undefined;
   standaloneKinds?: Set<string> | string[] | undefined;
   usageKinds?: Set<string> | string[] | undefined;
@@ -251,8 +296,7 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
   // 1. Procedural 3D Gradients
   const body = node.attrs?.["body"];
   if (body) {
-    const pattern =
-      (body as any).fillPattern || (config as any).fillPattern || (nodeConfig.attrs as any)?.body?.fillPattern;
+    const pattern = body["fillPattern"] || config.fillPattern || nodeConfig.attrs?.["body"]?.["fillPattern"];
     if (pattern === "cylinder-horizontal" || pattern === "HorizontalCylinder") {
       body["fill"] = "url(#grad-cylinder-horizontal)";
     } else if (pattern === "cylinder-vertical" || pattern === "VerticalCylinder") {
@@ -263,31 +307,31 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
   }
 
   // 2. Icon / Bitmap Raster Asset Embedding
-  const rawAttrsIcon = (nodeConfig.attrs as any)?.icon;
+  const rawAttrsIcon = nodeConfig.attrs?.["icon"] as string | Record<string, X6AttrValue> | undefined;
   const iconFromAttrs =
     typeof rawAttrsIcon === "string" && rawAttrsIcon.trim().length > 0
       ? rawAttrsIcon.trim()
       : typeof rawAttrsIcon === "object" && rawAttrsIcon !== null
-        ? typeof rawAttrsIcon.href === "string" && rawAttrsIcon.href.trim().length > 0
-          ? rawAttrsIcon.href.trim()
+        ? typeof rawAttrsIcon["href"] === "string" && rawAttrsIcon["href"].trim().length > 0
+          ? rawAttrsIcon["href"].trim()
           : typeof rawAttrsIcon["xlink:href"] === "string" && rawAttrsIcon["xlink:href"].trim().length > 0
             ? rawAttrsIcon["xlink:href"].trim()
             : undefined
         : undefined;
 
-  const rawMetadataImage = (sym.metadata as any)?.imageSource;
+  const rawMetadataImage = sym.metadata?.["imageSource"];
   const imageSource =
     typeof rawMetadataImage === "string" && rawMetadataImage.trim().length > 0 ? rawMetadataImage.trim() : undefined;
 
-  const rawMetadataIcon = (sym.metadata as any)?.icon;
+  const rawMetadataIcon = sym.metadata?.["icon"];
   const metadataIcon =
     typeof rawMetadataIcon === "string" && rawMetadataIcon.trim().length > 0 ? rawMetadataIcon.trim() : undefined;
 
-  const rawConfigIcon = (config as any)?.icon;
+  const rawConfigIcon = config.icon;
   const configIcon =
     typeof rawConfigIcon === "string" && rawConfigIcon.trim().length > 0 ? rawConfigIcon.trim() : undefined;
 
-  const rawNodeConfigIcon = (nodeConfig as any)?.icon;
+  const rawNodeConfigIcon = nodeConfig.icon;
   const nodeConfigIcon =
     typeof rawNodeConfigIcon === "string" && rawNodeConfigIcon.trim().length > 0 ? rawNodeConfigIcon.trim() : undefined;
 
@@ -297,7 +341,7 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
     if (!Array.isArray(node.markup)) {
       node.markup = node.markup ? [node.markup] : [];
     }
-    if (!node.markup.some((m: any) => m.selector === "icon" || m.tagName === "image")) {
+    if (!node.markup.some((m: X6Markup) => m.selector === "icon" || m.tagName === "image")) {
       node.markup.push({ tagName: "image", selector: "icon" });
     }
     if (!node.attrs) node.attrs = {};
@@ -316,27 +360,27 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
       node.properties.icon = iconSrc;
     }
     if (node.data) {
-      node.data.icon = iconSrc;
+      node.data["icon"] = iconSrc;
     }
   } else {
     // Clean up any empty or unconfigured icon markup/attrs to avoid browser image placeholder artifacts
     if (Array.isArray(node.markup)) {
-      node.markup = node.markup.filter((m: any) => m.selector !== "icon" && m.tagName !== "image");
+      node.markup = node.markup.filter((m: X6Markup) => m.selector !== "icon" && m.tagName !== "image");
     }
-    if (node.attrs && (node.attrs as any).icon) {
-      delete (node.attrs as any).icon;
+    if (node.attrs && node.attrs["icon"]) {
+      delete node.attrs["icon"];
     }
     if (node.properties && "icon" in node.properties) {
-      delete (node.properties as any).icon;
+      delete node.properties.icon;
     }
     if (node.data && "icon" in node.data) {
-      delete (node.data as any).icon;
+      delete node.data["icon"];
     }
   }
 
   // 3. Reactive Dynamics & DynamicSelect Animation Channels
   const animBindings: { property: string; variableName: string; transform?: string | undefined }[] = [];
-  const animCfg = (nodeConfig as any).animation || (config as any).animation;
+  const animCfg = nodeConfig.animation || config.animation;
   if (animCfg?.channels && Array.isArray(animCfg.channels)) {
     for (const ch of animCfg.channels) {
       if (ch.attribute && ch.signal) {
@@ -349,8 +393,9 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
     }
   }
 
-  if (Array.isArray((sym.metadata as any)?.dynamicBindings)) {
-    for (const b of (sym.metadata as any).dynamicBindings) {
+  const dynBindings = sym.metadata?.["dynamicBindings"];
+  if (Array.isArray(dynBindings)) {
+    for (const b of dynBindings as { property?: string; variableName?: string; dynamicExpr?: string }[]) {
       if (b.property && b.variableName) {
         animBindings.push({
           property: b.property,
@@ -361,8 +406,9 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
     }
   }
 
-  if (Array.isArray((sym.metadata as any)?.animations)) {
-    for (const a of (sym.metadata as any).animations) {
+  const metaAnims = sym.metadata?.["animations"];
+  if (Array.isArray(metaAnims)) {
+    for (const a of metaAnims as { property: string; variableName: string; transform?: string | undefined }[]) {
       animBindings.push(a);
     }
   }
@@ -384,8 +430,9 @@ function enrichNodePresentation(node: PolyglotDiagramNode, config: GraphicsConfi
     node.animations = animBindings;
   }
 
-  if (Array.isArray((sym.metadata as any)?.interactive)) {
-    node.interactive = (sym.metadata as any).interactive;
+  const metaInteractive = sym.metadata?.["interactive"];
+  if (Array.isArray(metaInteractive)) {
+    node.interactive = metaInteractive as InteractiveBinding[];
   }
 }
 
@@ -440,14 +487,14 @@ export function buildPolyglotDiagram(
   resourceId?: string,
   resolver?: ScopeResolver,
   diagramType = "All",
-  customProjectionsOrOptions?: Record<string, any> | PolyglotDiagramOptions,
+  customProjectionsOrOptions?: Record<string, PolyglotProjectionConfig> | PolyglotDiagramOptions,
 ): PolyglotDiagramData {
   const opts: PolyglotDiagramOptions =
     customProjectionsOrOptions && "customProjections" in customProjectionsOrOptions
       ? (customProjectionsOrOptions as PolyglotDiagramOptions)
-      : { customProjections: customProjectionsOrOptions };
+      : { customProjections: customProjectionsOrOptions as Record<string, PolyglotProjectionConfig> | undefined };
 
-  const projectionsMap: Record<string, any> = { ...opts.customProjections };
+  const projectionsMap: Record<string, PolyglotProjectionConfig> = { ...opts.customProjections };
 
   // In-Model Projection Discovery: scan for view def / view models
   if (opts.inModelDiscovery) {
@@ -464,19 +511,22 @@ export function buildPolyglotDiagram(
           projectionsMap[sym.name] = {
             label: sym.name,
             description: `In-model view: ${sym.name}`,
-            filter: (s: any) =>
-              exposedNames.size === 0 || exposedNames.has(s.name) || s.id === sym.id || s.parentId === sym.id,
+            filter: (s: SymbolEntry) =>
+              exposedNames.size === 0 ||
+              (s.name !== undefined && exposedNames.has(s.name)) ||
+              s.id === sym.id ||
+              s.parentId === sym.id,
           };
         }
       }
     }
   }
 
-  const DEFAULT_SYSML_PROJECTIONS: Record<string, any> = {
+  const DEFAULT_SYSML_PROJECTIONS: Record<string, PolyglotProjectionConfig> = {
     BDD: {
       label: "Block Definition Diagram",
       excludeRules: ["PartUsage", "PortUsage", "StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage"],
-      filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
+      filter: (sym: SymbolEntry) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
     },
     IBD: {
       label: "Internal Block Diagram",
@@ -488,7 +538,7 @@ export function buildPolyglotDiagram(
         "ExhibitStateUsage",
         "TransitionUsage",
       ],
-      filter: (sym: any) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
+      filter: (sym: SymbolEntry) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
     },
     StateMachine: {
       label: "State Machine Diagram",
@@ -558,7 +608,7 @@ export function buildPolyglotDiagram(
     },
     Package: {
       label: "Package Diagram",
-      filter: (sym: any) =>
+      filter: (sym: SymbolEntry) =>
         sym.ruleName === "Package" ||
         sym.ruleName === "LibraryPackage" ||
         (typeof sym.ruleName === "string" && sym.ruleName.endsWith("Definition")),
@@ -594,7 +644,7 @@ export function buildPolyglotDiagram(
     if (activeProjection) {
       if (activeProjection.includeRules && !activeProjection.includeRules.includes(sym.ruleName)) continue;
       if (activeProjection.excludeRules && activeProjection.excludeRules.includes(sym.ruleName)) continue;
-      if (typeof activeProjection.filter === "function" && !activeProjection.filter(sym as any)) continue;
+      if (typeof activeProjection.filter === "function" && !activeProjection.filter(sym)) continue;
     }
 
     allSymbols.push(sym);
@@ -703,8 +753,8 @@ export function buildPolyglotDiagram(
   }
 
   // Projection-driven group rules
-  if ((activeProjection as any)?.groupRules) {
-    for (const r of (activeProjection as any).groupRules) groupKinds.add(r);
+  if (activeProjection?.groupRules) {
+    for (const r of activeProjection.groupRules) groupKinds.add(r);
   }
 
   // Kinds that should NOT be absorbed into compartment text — they get their own
@@ -714,13 +764,13 @@ export function buildPolyglotDiagram(
     : new Set(["PartUsage", "PartDefinition", "PortUsage", "PortDefinition", "ActorUsage", "StakeholderUsage"]);
 
   // Projection-driven standalone child rules
-  if ((activeProjection as any)?.standaloneRules) {
-    for (const r of (activeProjection as any).standaloneRules) STANDALONE_CHILD_KINDS.add(r);
+  if (activeProjection?.standaloneRules) {
+    for (const r of activeProjection.standaloneRules) STANDALONE_CHILD_KINDS.add(r);
   }
 
   // Projection-driven state bubble and control node rules
-  const STATE_BUBBLE_KINDS = new Set<string>((activeProjection as any)?.stateBubbleRules ?? []);
-  const CONTROL_NODE_KINDS = new Set<string>((activeProjection as any)?.controlNodeRules ?? []);
+  const STATE_BUBBLE_KINDS = new Set<string>(activeProjection?.stateBubbleRules ?? []);
+  const CONTROL_NODE_KINDS = new Set<string>(activeProjection?.controlNodeRules ?? []);
 
   // Generalized port kinds: DSL portRules, config role: "port", or fallback
   const PORT_KINDS = opts.portKinds ? new Set(opts.portKinds) : new Set(["PortUsage", "PortDefinition"]);
@@ -795,7 +845,7 @@ export function buildPolyglotDiagram(
     }
     const sections: Section[] = [];
 
-    const customCompartments = (nodeConfig as any).compartments || (config as any).compartments;
+    const customCompartments = nodeConfig.compartments || config.compartments;
     if (Array.isArray(customCompartments) && customCompartments.length > 0) {
       for (const comp of customCompartments) {
         const query = comp.query;
@@ -1036,8 +1086,8 @@ export function buildPolyglotDiagram(
 
     // Extract colors from the rule's GraphicsConfig (falls back to neutral grey)
     const configAttrs = config.node?.attrs ?? {};
-    const bodyAttrs = configAttrs["body"] as Record<string, any> | undefined;
-    const headerAttrs = configAttrs["header"] as Record<string, any> | undefined;
+    const bodyAttrs = configAttrs["body"];
+    const headerAttrs = configAttrs["header"];
     const strokeColor = (bodyAttrs?.["stroke"] as string) ?? "#757575";
     const fillColor = (bodyAttrs?.["fill"] as string) ?? "#f5f5f5";
     const isDef = sym.ruleName.endsWith("Definition");
@@ -1069,13 +1119,13 @@ export function buildPolyglotDiagram(
       const stickFigurePath =
         "M 15 0 A 5 5 0 1 1 14.99 0 Z M 15 10 L 15 25 M 5 15 L 25 15 M 15 25 L 5 40 M 15 25 L 25 40";
 
-      const actorMarkup: any[] = [
+      const actorMarkup: X6Markup[] = [
         { tagName: "rect", selector: "body" },
         { tagName: "path", selector: "stickFigure" },
         { tagName: "text", selector: "label" },
       ];
 
-      const actorAttrs: Record<string, any> = {
+      const actorAttrs: X6Attrs = {
         body: {
           fill: "transparent",
           stroke: "none",
@@ -1168,7 +1218,7 @@ export function buildPolyglotDiagram(
       for (const childId of childSymbols) {
         const childSym = index.symbols.get(childId);
         if (!childSym) continue;
-        const fm = (childSym.metadata as any)?.fieldName;
+        const fm = childSym.metadata?.["fieldName"];
         if (fm === "entry" || fm === "do" || fm === "exit") {
           actionLines.push(`${fm} / ${childSym.name ?? "..."}`);
         }
@@ -1180,11 +1230,11 @@ export function buildPolyglotDiagram(
       const bubbleWidth = Math.max(140, nameText.length * 9 + 40);
       const bubbleHeight = hasCompartments ? HEADER_H + actionLines.length * LINE_HEIGHT + 12 : 44;
 
-      const stateMarkup: any[] = [
+      const stateMarkup: X6Markup[] = [
         { tagName: "rect", selector: "body" },
         { tagName: "text", selector: "label" },
       ];
-      const stateAttrs: Record<string, any> = {
+      const stateAttrs: X6Attrs = {
         body: {
           fill: fillColor,
           stroke: strokeColor,
@@ -1290,8 +1340,8 @@ export function buildPolyglotDiagram(
         }
       }
 
-      let controlMarkup: any[];
-      let controlAttrs: Record<string, any>;
+      let controlMarkup: X6Markup[];
+      let controlAttrs: X6Attrs;
       let controlWidth: number;
       let controlHeight: number;
 
@@ -1395,7 +1445,7 @@ export function buildPolyglotDiagram(
         config.node.shape === "polygon" ||
         (Array.isArray(config.node.markup) &&
           config.node.markup.some(
-            (m: any) =>
+            (m: X6Markup) =>
               m.selector === "actorHead" ||
               m.tagName === "polygon" ||
               m.tagName === "ellipse" ||
@@ -1409,7 +1459,7 @@ export function buildPolyglotDiagram(
       const SECTION_PAD = 2; // padding above section header
 
       // Build markup array and attrs dynamically
-      const markup: any[] = isEllipse
+      const markup: X6Markup[] = isEllipse
         ? [
             { tagName: "ellipse", selector: "body" },
             { tagName: "text", selector: "stereotype" },
@@ -1424,7 +1474,7 @@ export function buildPolyglotDiagram(
             { tagName: "line", selector: "headerSep" },
           ];
 
-      const rawShortName = (sym as any).attributes?.shortName ?? (sym.metadata as any)?.shortName;
+      const rawShortName = sym.attributes?.["shortName"] ?? sym.metadata?.["shortName"];
       const shortName =
         typeof rawShortName === "string" &&
         rawShortName.trim().length > 0 &&
@@ -1438,7 +1488,7 @@ export function buildPolyglotDiagram(
         markup.push({ tagName: "rect", selector: "idBadgeRect" }, { tagName: "text", selector: "idBadgeText" });
       }
 
-      const attrs: Record<string, any> = {
+      const attrs: X6Attrs = {
         stereotype: {
           text: stereoText,
           fill: headerColor,
@@ -1588,7 +1638,7 @@ export function buildPolyglotDiagram(
         };
       }
 
-      const isParallel = (sym as any).attributes?.isParallel || (sym.metadata as any)?.isParallel;
+      const isParallel = sym.attributes?.["isParallel"] || sym.metadata?.["isParallel"];
       if (isParallel && hasSections && !isEllipse) {
         const midY = (HEADER_HEIGHT + adjustedHeight) / 2;
         markup.push({ tagName: "line", selector: "parallelRegionDivider" });
@@ -1619,24 +1669,26 @@ export function buildPolyglotDiagram(
 
         if (attrs["headerSep"]) {
           const hChord = calcChord(HEADER_HEIGHT);
-          attrs["headerSep"].x1 = hChord.x1;
-          attrs["headerSep"].x2 = hChord.x2;
+          attrs["headerSep"]["x1"] = hChord.x1;
+          attrs["headerSep"]["x2"] = hChord.x2;
         }
 
         for (let si = 0; si < sections.length; si++) {
           const sepId = `sep_${si}`;
           if (attrs[sepId]) {
-            const sChord = calcChord(attrs[sepId].y1);
-            attrs[sepId].x1 = sChord.x1;
-            attrs[sepId].x2 = sChord.x2;
+            const sChord = calcChord(Number(attrs[sepId]["y1"] ?? 0));
+            attrs[sepId]["x1"] = sChord.x1;
+            attrs[sepId]["x2"] = sChord.x2;
           }
         }
       } else {
-        attrs["headerSep"].x2 = adjustedWidth;
+        if (attrs["headerSep"]) {
+          attrs["headerSep"]["x2"] = adjustedWidth;
+        }
         for (let si = 0; si < sections.length; si++) {
           const sepId = `sep_${si}`;
           if (attrs[sepId]) {
-            attrs[sepId].x2 = adjustedWidth;
+            attrs[sepId]["x2"] = adjustedWidth;
           }
         }
       }
@@ -1702,7 +1754,7 @@ export function buildPolyglotDiagram(
         data: {
           ruleName: sym.ruleName,
           sections,
-          multiplicity: (sym.metadata as any)?.multiplicity ?? (sym.name?.includes("[") ? 2 : 1),
+          multiplicity: sym.metadata?.["multiplicity"] ?? (sym.name?.includes("[") ? 2 : 1),
         },
         autoLayout: true,
       };
@@ -1744,10 +1796,10 @@ export function buildPolyglotDiagram(
     // to avoid the green line extending beyond the box
     if (resolvedAttrs && !compartmentText) {
       if (resolvedAttrs["separator"]) {
-        (resolvedAttrs["separator"] as any).display = "none";
+        resolvedAttrs["separator"]["display"] = "none";
       }
       if (resolvedAttrs["compartment"]) {
-        (resolvedAttrs["compartment"] as any).display = "none";
+        resolvedAttrs["compartment"]["display"] = "none";
       }
       // Also shrink height since there's no compartment slot
       if (!hasExplicitVectorGlyph && config.role !== "group") {
@@ -1755,38 +1807,38 @@ export function buildPolyglotDiagram(
       }
     }
     if (resolvedAttrs?.["label"] && nameText) {
-      (resolvedAttrs["label"] as any).text = nameText;
+      resolvedAttrs["label"]["text"] = nameText;
     }
     if (resolvedAttrs?.["tabLabel"] && nameText) {
-      (resolvedAttrs["tabLabel"] as any).text = nameText;
+      resolvedAttrs["tabLabel"]["text"] = nameText;
     }
     if (config.role === "group" && resolvedAttrs?.["tab"]) {
       const tabWidth = Math.max(120, Math.ceil((nameText.length + 4) * 8.5));
-      (resolvedAttrs["tab"] as any).width = tabWidth;
-      (resolvedAttrs["tab"] as any).height = 32;
-      (resolvedAttrs["tab"] as any).fill = (resolvedAttrs["tab"] as any).fill || "#f1f5f9";
-      (resolvedAttrs["tab"] as any).stroke = (resolvedAttrs["tab"] as any).stroke || strokeColor || "#475569";
+      resolvedAttrs["tab"]["width"] = tabWidth;
+      resolvedAttrs["tab"]["height"] = 32;
+      resolvedAttrs["tab"]["fill"] = resolvedAttrs["tab"]["fill"] || "#f1f5f9";
+      resolvedAttrs["tab"]["stroke"] = resolvedAttrs["tab"]["stroke"] || strokeColor || "#475569";
       adjustedWidth = Math.max(adjustedWidth, tabWidth + 24);
     }
     if (resolvedAttrs?.["separator"]) {
-      (resolvedAttrs["separator"] as any).x2 = adjustedWidth;
+      resolvedAttrs["separator"]["x2"] = adjustedWidth;
     }
     if (isEllipse && resolvedAttrs?.["body"]) {
-      (resolvedAttrs["body"] as any).cx = adjustedWidth / 2;
-      (resolvedAttrs["body"] as any).cy = adjustedHeight / 2;
-      (resolvedAttrs["body"] as any).rx = adjustedWidth / 2;
-      (resolvedAttrs["body"] as any).ry = adjustedHeight / 2;
-      (resolvedAttrs["body"] as any).refCx = "50%";
-      (resolvedAttrs["body"] as any).refCy = "50%";
-      (resolvedAttrs["body"] as any).refRx = "50%";
-      (resolvedAttrs["body"] as any).refRy = "50%";
+      resolvedAttrs["body"]["cx"] = adjustedWidth / 2;
+      resolvedAttrs["body"]["cy"] = adjustedHeight / 2;
+      resolvedAttrs["body"]["rx"] = adjustedWidth / 2;
+      resolvedAttrs["body"]["ry"] = adjustedHeight / 2;
+      resolvedAttrs["body"]["refCx"] = "50%";
+      resolvedAttrs["body"]["refCy"] = "50%";
+      resolvedAttrs["body"]["refRx"] = "50%";
+      resolvedAttrs["body"]["refRy"] = "50%";
       if (resolvedAttrs["stereotype"]) {
-        (resolvedAttrs["stereotype"] as any).refX = 0.5;
-        (resolvedAttrs["stereotype"] as any).refY = Math.round(adjustedHeight * 0.28);
+        resolvedAttrs["stereotype"]["refX"] = 0.5;
+        resolvedAttrs["stereotype"]["refY"] = Math.round(adjustedHeight * 0.28);
       }
       if (resolvedAttrs["label"]) {
-        (resolvedAttrs["label"] as any).refX = 0.5;
-        (resolvedAttrs["label"] as any).refY = Math.round(adjustedHeight * 0.55);
+        resolvedAttrs["label"]["refX"] = 0.5;
+        resolvedAttrs["label"]["refY"] = Math.round(adjustedHeight * 0.55);
       }
     }
 
@@ -1822,7 +1874,7 @@ export function buildPolyglotDiagram(
       data: {
         ruleName: sym.ruleName,
         sections,
-        multiplicity: (sym.metadata as any)?.multiplicity ?? (sym.name?.includes("[") ? 2 : 1),
+        multiplicity: sym.metadata?.["multiplicity"] ?? (sym.name?.includes("[") ? 2 : 1),
       },
       autoLayout: true,
     };
@@ -1913,7 +1965,7 @@ export function buildPolyglotDiagram(
 
     for (const [gName, gVal] of Object.entries(groups)) {
       if (gVal && (!gVal.label || !gVal.label.position)) {
-        const pos = typeof gVal.position === "string" ? gVal.position : (gVal.position as any)?.name;
+        const pos = typeof gVal.position === "string" ? gVal.position : gVal.position?.name;
         if (pos === "left" || pos === "right" || pos === "top" || pos === "bottom") {
           gVal.label = { position: { name: pos, args: { y: pos === "bottom" ? 10 : -10 } } };
         } else if (gName === "in") {
@@ -1928,7 +1980,8 @@ export function buildPolyglotDiagram(
     const portItems = parentNode.ports.items ?? [];
 
     // Intelligently assign port side based on causality/direction metadata or naming convention
-    const metaDir = (sym.metadata as any)?.direction ?? (sym as any).attributes?.direction;
+    const rawMetaDir = sym.metadata?.["direction"] ?? sym.attributes?.["direction"];
+    const metaDir = typeof rawMetaDir === "string" ? rawMetaDir : undefined;
     let group: string;
     if (
       metaDir === "in" ||
@@ -1950,7 +2003,7 @@ export function buildPolyglotDiagram(
     }
 
     const groupDef = groups[group];
-    const groupPos = typeof groupDef?.position === "string" ? groupDef.position : (groupDef?.position as any)?.name;
+    const groupPos = typeof groupDef?.position === "string" ? groupDef.position : groupDef?.position?.name;
     const labelSide =
       groupPos === "right" || group === "out"
         ? "right"
@@ -1961,8 +2014,8 @@ export function buildPolyglotDiagram(
             : "left";
 
     const isConjugated = Boolean(
-      (sym.metadata as any)?.isConjugated ||
-      (sym as any).attributes?.isConjugated ||
+      sym.metadata?.["isConjugated"] ||
+      sym.attributes?.["isConjugated"] ||
       portName.startsWith("~") ||
       sym.ruleName === "ConjugatedPortTyping",
     );
@@ -2142,7 +2195,7 @@ export function buildPolyglotDiagram(
     }
 
     const edgeAnimBindings: { property: string; variableName: string; transform?: string | undefined }[] = [];
-    const edgeAnimCfg = (edgeConfig as any).animation || (config as any).animation;
+    const edgeAnimCfg = edgeConfig.animation || config.animation;
     if (edgeAnimCfg?.channels && Array.isArray(edgeAnimCfg.channels)) {
       for (const ch of edgeAnimCfg.channels) {
         if (ch.attribute && ch.signal) {
@@ -2339,20 +2392,20 @@ export function buildPolyglotDiagram(
           const typedLabel = `${sym.name} : ${target.name}`;
           if (usageNode.attrs) {
             if (usageNode.attrs["label"]) {
-              (usageNode.attrs["label"] as any).text = typedLabel;
+              usageNode.attrs["label"]["text"] = typedLabel;
             }
           }
           const neededWidth = Math.ceil(typedLabel.length * 9.5 + 40);
           if (neededWidth > usageNode.width) {
             usageNode.width = neededWidth;
             if (usageNode.attrs) {
-              if (usageNode.attrs["headerBody"] && (usageNode.attrs["headerBody"] as any).d) {
-                (usageNode.attrs["headerBody"] as any).d =
+              if (usageNode.attrs["headerBody"] && usageNode.attrs["headerBody"]["d"]) {
+                usageNode.attrs["headerBody"]["d"] =
                   `M 0 6 A 6 6 0 0 1 6 0 L ${neededWidth - 6} 0 A 6 6 0 0 1 ${neededWidth} 6 L ${neededWidth} 42 L 0 42 Z`;
               }
               for (const [k, v] of Object.entries(usageNode.attrs)) {
                 if ((k === "headerSep" || k.startsWith("sep_")) && typeof v === "object" && v !== null) {
-                  (v as any).x2 = neededWidth;
+                  v["x2"] = neededWidth;
                 }
               }
             }
@@ -2494,13 +2547,13 @@ export function buildPolyglotDiagram(
   }
 
   // ── Post-process: synthesize initial/final pseudo-state nodes when enabled by projection ──
-  if ((activeProjection as any)?.synthesizePseudoStates && edges.length > 0) {
+  if (activeProjection?.synthesizePseudoStates && edges.length > 0) {
     // Analyze edge topology to find states with no incoming/outgoing transitions
     const hasIncoming = new Set<string>();
     const hasOutgoing = new Set<string>();
     for (const edge of edges) {
-      const src = typeof edge.source === "string" ? edge.source : (edge.source as any).cell;
-      const tgt = typeof edge.target === "string" ? edge.target : (edge.target as any).cell;
+      const src = typeof edge.source === "string" ? edge.source : edge.source.cell;
+      const tgt = typeof edge.target === "string" ? edge.target : edge.target.cell;
       if (src && actualNodeIds.has(src)) hasOutgoing.add(src);
       if (tgt && actualNodeIds.has(tgt)) hasIncoming.add(tgt);
     }
@@ -2641,20 +2694,30 @@ export function buildPolyglotDiagram(
 
   // Topological solder dots for multi-connection junctions
   if (opts.solderDots) {
-    const nodeMap = new Map<string, any>(nodes.map((n) => [n.id, n]));
+    const nodeMap = new Map<string, PolyglotDiagramNode>(nodes.map((n) => [n.id, n]));
     const portPoints: { x: number; y: number }[] = [];
 
     for (const n of nodes) {
       if (!n.ports?.items) continue;
-      for (const p of n.ports.items as any[]) {
+      for (const p of n.ports.items) {
         if (p.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
           portPoints.push({ x: (n.x ?? 0) + p.args.x, y: (n.y ?? 0) + p.args.y });
         }
       }
     }
 
-    const resolveEndpoint = (endpoint: any): { x: number; y: number } | null => {
-      if (!endpoint) return null;
+    const resolveEndpoint = (
+      endpoint:
+        | string
+        | {
+            cell?: string | undefined;
+            port?: string | undefined;
+            x?: number | undefined;
+            y?: number | undefined;
+          }
+        | undefined,
+    ): { x: number; y: number } | null => {
+      if (!endpoint || typeof endpoint === "string") return null;
       if (typeof endpoint.x === "number" && typeof endpoint.y === "number") {
         return { x: endpoint.x, y: endpoint.y };
       }
@@ -2662,7 +2725,7 @@ export function buildPolyglotDiagram(
         const n = nodeMap.get(endpoint.cell);
         if (!n) return null;
         if (endpoint.port && n.ports?.items) {
-          const p = (n.ports.items as any[]).find((item: any) => item.id === endpoint.port);
+          const p = n.ports.items.find((item: X6PortItem) => item.id === endpoint.port);
           if (p?.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
             return { x: (n.x ?? 0) + p.args.x, y: (n.y ?? 0) + p.args.y };
           }
@@ -2683,7 +2746,7 @@ export function buildPolyglotDiagram(
         return {
           id: e.id,
           points: pts,
-          color: (e.attrs?.["line"] as any)?.stroke as string,
+          color: e.attrs?.["line"]?.["stroke"] as string | undefined,
         };
       })
       .filter((e) => e.points.length >= 2);
@@ -2699,12 +2762,14 @@ export function buildPolyglotDiagram(
     for (const n of nodes) {
       if (!n.ports?.items || n.ports.items.length === 0) continue;
       const portPoints = n.ports.items
-        .filter((p: any) => p.args && typeof p.args.x === "number" && typeof p.args.y === "number")
-        .map((p: any) => ({
+        .filter((p): p is X6PortItem & { args: { x: number; y: number } } =>
+          Boolean(p.args && typeof p.args.x === "number" && typeof p.args.y === "number"),
+        )
+        .map((p) => ({
           id: p.id || "port",
           x: p.args.x,
           y: p.args.y,
-          side: p.group as any,
+          side: p.group as PortSide | undefined,
         }));
       if (portPoints.length === 0) continue;
 
@@ -2899,16 +2964,12 @@ function collectRefDescendants(parentId: SymbolId, index: SymbolIndex, resolver:
  * Replaces `{{name}}` with the symbol's name, `{{kind}}` with the kind,
  * and `{{compartment}}` with the compartment text (newline-separated attribute names).
  */
-function resolveTemplates(
-  attrs: X6Attrs | Record<string, any> | undefined,
-  sym: SymbolEntry,
-  compartmentText?: string,
-): X6Attrs | undefined {
+function resolveTemplates(attrs: X6Attrs | undefined, sym: SymbolEntry, compartmentText?: string): X6Attrs | undefined {
   if (!attrs) return undefined;
-  const result: Record<string, any> = {};
+  const result: X6Attrs = {};
   for (const [selector, styles] of Object.entries(attrs)) {
     if (typeof styles === "object" && styles !== null) {
-      const resolved: Record<string, any> = {};
+      const resolved: Record<string, X6AttrValue> = {};
       for (const [prop, value] of Object.entries(styles)) {
         if (typeof value === "string") {
           resolved[prop] = value
@@ -3055,12 +3116,96 @@ export function extractDeclarationFromText(text: string): { compType?: string; c
   return {};
 }
 
+export interface RawDSLNode {
+  id: string;
+  typeId?: number | undefined;
+  nodePtr?: number | undefined;
+  name?: string | undefined;
+  label?: string | undefined;
+  compType?: string | undefined;
+  text?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  rotation?: number | undefined;
+  lhs?: string | undefined;
+  rhsText?: string | undefined;
+  rhs?: string[] | undefined;
+  [key: string]: unknown;
+}
+
+export interface RawDSLEdge {
+  id: string;
+  typeId?: number | undefined;
+  source?: string | { cell: string; port?: string | undefined } | undefined;
+  target?: string | { cell: string; port?: string | undefined } | undefined;
+  [key: string]: unknown;
+}
+
+export interface DSLNodeConfig {
+  shape?: string | undefined;
+  role?: string | undefined;
+  stereotype?: string | boolean | undefined;
+  style?:
+    | {
+        fill?: string | undefined;
+        stroke?: string | undefined;
+        strokeWidth?: number | undefined;
+        rx?: number | undefined;
+        ry?: number | undefined;
+        width?: number | undefined;
+        height?: number | undefined;
+        opacity?: number | undefined;
+        textColor?: string | undefined;
+      }
+    | undefined;
+  propertyBindings?: { label?: string | undefined; [key: string]: unknown } | undefined;
+  ports?:
+    | {
+        style?:
+          | {
+              fill?: string | undefined;
+              stroke?: string | undefined;
+              size?: number | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+  [key: string]: unknown;
+}
+
+export interface DSLEdgeConfig {
+  style?:
+    | {
+        router?: string | undefined;
+        connector?: string | undefined;
+        stroke?: string | undefined;
+        strokeWidth?: number | undefined;
+      }
+    | undefined;
+  [key: string]: unknown;
+}
+
+export interface DSLDiagramConfig {
+  nodes?: Record<string, DSLNodeConfig> | undefined;
+  entities?: Record<string, DSLNodeConfig> | undefined;
+  edges?: Record<string, DSLEdgeConfig> | undefined;
+  connections?: Record<string, DSLEdgeConfig> | undefined;
+  projections?: Record<string, PolyglotProjectionConfig> | undefined;
+  views?: Record<string, PolyglotProjectionConfig> | undefined;
+  layout?: string | undefined;
+  [key: string]: unknown;
+}
+
 /**
  * Adapts raw AST diagram records and DSL DiagramConfig into full X6-compatible PolyglotDiagramData.
  */
 export function buildDiagramFromDSL(
-  data: { nodes: any[]; edges: any[] },
-  diagramConfig?: any,
+  data: { nodes: RawDSLNode[]; edges: RawDSLEdge[] },
+  diagramConfig?: DSLDiagramConfig,
   syntaxNames?: Record<number, string> | string[],
   activeView?: string,
   sourceText?: string,
@@ -3071,7 +3216,7 @@ export function buildDiagramFromDSL(
   const rawNodes = data.nodes || [];
   const rawEdges = data.edges || [];
 
-  const getNodeText = (rawNode: any): string => {
+  const getNodeText = (rawNode: RawDSLNode): string => {
     if (rawNode.text) return rawNode.text;
     if (
       sourceText &&
@@ -3091,19 +3236,26 @@ export function buildDiagramFromDSL(
   // Identify container rules (subsystem, group)
   const containerRules = new Set<string>();
   for (const [rName, nCfg] of Object.entries(diagramConfig?.nodes || diagramConfig?.entities || {})) {
-    if ((nCfg as any)?.shape === "subsystem" || (nCfg as any)?.role === "group") {
+    if (nCfg?.shape === "subsystem" || nCfg?.role === "group") {
       containerRules.add(rName);
     }
   }
 
   // 1. Separate containers and component nodes
-  const containerNodes: any[] = [];
-  const componentNodes: any[] = [];
+  const containerNodes: { rawNode: RawDSLNode; ruleName: string }[] = [];
+  const componentNodes: { rawNode: RawDSLNode; ruleName: string }[] = [];
   const componentNameToNodeId = new Map<string, string>();
 
+  const lookupRuleName = (typeId: number | undefined, fallback: string): string => {
+    if (typeId !== undefined && syntaxNames) {
+      const found = syntaxNames[typeId];
+      if (found) return found;
+    }
+    return fallback;
+  };
+
   for (const rawNode of rawNodes) {
-    const ruleName =
-      syntaxNames && (syntaxNames as any)[rawNode.typeId] ? (syntaxNames as any)[rawNode.typeId] : "Node";
+    const ruleName = lookupRuleName(rawNode.typeId, "Node");
 
     // If nodes are explicitly configured in DSL, ignore non-configured wrapper nodes (e.g. Program)
     if (configuredNodeRules.size > 0 && !configuredNodeRules.has(ruleName)) {
@@ -3229,13 +3381,20 @@ export function buildDiagramFromDSL(
     // Determine parent container by byte range
     let parentId: string | undefined = undefined;
     for (const { rawNode: parentRaw } of containerNodes) {
-      if (rawNode.startOffset >= parentRaw.startOffset && rawNode.endOffset <= parentRaw.endOffset) {
+      if (
+        rawNode.startOffset !== undefined &&
+        rawNode.endOffset !== undefined &&
+        parentRaw.startOffset !== undefined &&
+        parentRaw.endOffset !== undefined &&
+        rawNode.startOffset >= parentRaw.startOffset &&
+        rawNode.endOffset <= parentRaw.endOffset
+      ) {
         parentId = parentRaw.id;
         break;
       }
     }
 
-    const portItems: any[] = [];
+    const portItems: X6PortItem[] = [];
     if (nodeConfig?.ports) {
       const portStyle = nodeConfig.ports.style || {};
       const portFill = portStyle.fill || style.stroke || "#38bdf8";
@@ -3258,7 +3417,7 @@ export function buildDiagramFromDSL(
       });
     }
 
-    const portGroups: Record<string, any> = {
+    const portGroups: Record<string, X6PortGroup> = {
       left: {
         position: "left",
         label: { position: { name: "left", args: { y: -10 } } },
@@ -3368,8 +3527,7 @@ export function buildDiagramFromDSL(
   // 4. Build Equations as Directed Edges
   let edgeIdCounter = 0;
   for (const rawNode of rawNodes) {
-    const ruleName =
-      syntaxNames && (syntaxNames as any)[rawNode.typeId] ? (syntaxNames as any)[rawNode.typeId] : "Node";
+    const ruleName = lookupRuleName(rawNode.typeId, "Node");
     if (!configuredEdgeRules.has(ruleName)) continue;
 
     const edgeConfig = diagramConfig?.edges?.[ruleName] || diagramConfig?.connections?.[ruleName];
@@ -3482,8 +3640,7 @@ export function buildDiagramFromDSL(
 
   // 5. Forward any explicit edges if present
   for (const rawEdge of rawEdges) {
-    const edgeRuleName =
-      syntaxNames && (syntaxNames as any)[rawEdge.typeId] ? (syntaxNames as any)[rawEdge.typeId] : "Edge";
+    const edgeRuleName = lookupRuleName(rawEdge.typeId, "Edge");
     const edgeConfig = diagramConfig?.edges?.[edgeRuleName] || diagramConfig?.connections?.[edgeRuleName];
 
     const edgeStyle = edgeConfig?.style || {};
@@ -3501,13 +3658,13 @@ export function buildDiagramFromDSL(
           ? rawEdge.source
           : rawEdge.source?.port
             ? { cell: rawEdge.source.cell, port: rawEdge.source.port }
-            : rawEdge.source?.cell,
+            : (rawEdge.source?.cell ?? ""),
       target:
         typeof rawEdge.target === "string"
           ? rawEdge.target
           : rawEdge.target?.port
             ? { cell: rawEdge.target.cell, port: rawEdge.target.port }
-            : rawEdge.target?.cell,
+            : (rawEdge.target?.cell ?? ""),
       router: { name: routerName },
       connector: { name: connectorName },
       attrs: {

@@ -759,9 +759,11 @@ export function solveRodas4P(problem: DAEProblem | ODEProblem, options: Rodas4PO
   const [t0, tEnd] = problem.tSpan;
   const f = (t: number, y: number[]) => {
     if ("massMatrix" in problem && problem.massMatrix) {
-      return problem.f(t, y, undefined, problem.p as any);
+      const daeProblem = problem as DAEProblem;
+      return daeProblem.f(t, y, undefined, daeProblem.p);
     }
-    return problem.f(t, y, problem.p as any);
+    const odeProblem = problem as ODEProblem;
+    return odeProblem.f(t, y, odeProblem.p);
   };
   const massMatrix = "massMatrix" in problem ? problem.massMatrix : undefined;
   return rodas4p(f, t0, problem.y0, tEnd, undefined, options, massMatrix);
@@ -774,9 +776,11 @@ export function solveRosenbrock23(problem: DAEProblem | ODEProblem, options: Rod
   const [t0, tEnd] = problem.tSpan;
   const f = (t: number, y: number[]) => {
     if ("massMatrix" in problem && problem.massMatrix) {
-      return problem.f(t, y, undefined, problem.p as any);
+      const daeProblem = problem as DAEProblem;
+      return daeProblem.f(t, y, undefined, daeProblem.p);
     }
-    return problem.f(t, y, problem.p as any);
+    const odeProblem = problem as ODEProblem;
+    return odeProblem.f(t, y, odeProblem.p);
   };
   const massMatrix = "massMatrix" in problem ? problem.massMatrix : undefined;
   return rosenbrock23(f, t0, problem.y0, tEnd, undefined, options, massMatrix);

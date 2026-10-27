@@ -49,11 +49,10 @@ export class NodeFsBridge implements FileSystemBridge {
 
   constructor() {
     try {
-      if (typeof process !== "undefined" && process.versions?.node) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        this.fs = require("node:fs") as typeof import("node:fs");
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        this.fileURLToPath = (require("node:url") as typeof import("node:url")).fileURLToPath;
+      if (typeof process !== "undefined" && process.versions?.node && typeof require === "function") {
+        const nodeRequire = require;
+        this.fs = nodeRequire("node:fs") as typeof import("node:fs");
+        this.fileURLToPath = (nodeRequire("node:url") as typeof import("node:url")).fileURLToPath;
       }
     } catch {
       // In browser webworker

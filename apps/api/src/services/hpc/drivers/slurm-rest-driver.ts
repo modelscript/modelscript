@@ -38,6 +38,45 @@ export interface SlurmNodeInfo {
   partitions: string[];
 }
 
+interface SlurmJobEntry {
+  job_state?: string | string[] | undefined;
+  exit_code?: number | { return_code?: number | undefined } | undefined;
+  time?: { elapsed?: number | undefined; total_cpu?: number | undefined } | undefined;
+  time_elapsed?: number | undefined;
+  start_time?: number | undefined;
+  end_time?: number | undefined;
+  job_resources?: { allocated_cpus?: number | undefined; allocated_memory?: number | undefined } | undefined;
+  cpus?: number | undefined;
+  memory?: { max_rss?: number | undefined } | undefined;
+}
+
+interface SlurmJobPollResponse extends SlurmJobEntry {
+  jobs?: SlurmJobEntry[] | undefined;
+  job?: SlurmJobEntry | undefined;
+}
+
+interface SlurmRawPartition {
+  name: string;
+  partition?: { state?: string | undefined } | undefined;
+  state?: string | undefined;
+  nodes?: { total?: number | undefined } | undefined;
+  total_nodes?: number | undefined;
+  cpus?: { total?: number | undefined } | undefined;
+  total_cpus?: number | undefined;
+  maximum_time?: { minutes?: number | undefined } | undefined;
+  max_time?: number | undefined;
+  memory?: { default?: number | undefined } | undefined;
+  default_memory_mb?: number | undefined;
+}
+
+interface SlurmRawNode {
+  name: string;
+  state?: string | string[] | undefined;
+  cpus?: number | undefined;
+  real_memory?: number | undefined;
+  partitions?: string[] | undefined;
+}
+
 /**
  * Slurm HPC Cluster Driver communicating via the official Slurm REST API daemon (slurmrestd).
  * Supports JWT authentication and OpenAPI endpoints (v0.0.38, v0.0.39, v0.0.40).
@@ -73,7 +112,11 @@ export class SlurmRestDriver implements HpcDriver {
     return headers;
   }
 
-  private async request<T = any>(endpoint: string, method = "GET", body?: any): Promise<{ status: number; data: T }> {
+  private async request<T = Record<string, unknown>>(
+    endpoint: string,
+    method = "GET",
+    body?: unknown,
+  ): Promise<{ status: number; data: T }> {
     const url = `${this.baseUrl}/slurm/${this.apiVersion}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -90,7 +133,10 @@ export class SlurmRestDriver implements HpcDriver {
       const res = await this.fetchFn(url, requestInit);
 
       const text = await res.text();
-      let data: any = {};
+      let data: Record<string, unknown> & {
+        errors?: { error?: string | undefined }[] | undefined;
+        error?: string | undefined;
+      } = {};
       try {
         data = text ? JSON.parse(text) : {};
       } catch {
@@ -103,7 +149,7 @@ export class SlurmRestDriver implements HpcDriver {
         throw new Error(errorMsg);
       }
 
-      return { status: res.status, data };
+      return { status: res.status, data: data as unknown as T };
     } finally {
       clearTimeout(timer);
     }
@@ -129,7 +175,11 @@ export class SlurmRestDriver implements HpcDriver {
       },
     };
 
-    const res = await this.request<any>("/job/submit", "POST", payload);
+    const res = await this.request<{
+      job_id?: string | number | undefined;
+      jobs?: { job_id?: string | number | undefined }[] | undefined;
+      job_submit_response?: { job_id?: string | number | undefined } | undefined;
+    }>("/job/submit", "POST", payload);
 
     // Parse job_id from various Slurm REST formats:
     // Format A: { job_id: 12345 }
@@ -161,8 +211,8 @@ export class SlurmRestDriver implements HpcDriver {
 
   public async pollStatus(nativeJobId: string): Promise<{ state: HpcJobState; exitCode?: number | undefined }> {
     try {
-      const res = await this.request<any>(`/job/${nativeJobId}`, "GET");
-      const job = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
+      const res = await this.request<SlurmJobPollResponse>(`/job/${nativeJobId}`, "GET");
+      const job: SlurmJobEntry | undefined = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
 
       if (!job) {
         return { state: "FAILED", exitCode: -1 };
@@ -214,8 +264,8 @@ export class SlurmRestDriver implements HpcDriver {
 
   public async getMetrics(nativeJobId: string, _workingDir: string, profile: ComputeProfile): Promise<HpcUsageMetrics> {
     try {
-      const res = await this.request<any>(`/job/${nativeJobId}`, "GET");
-      const job = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
+      const res = await this.request<SlurmJobPollResponse>(`/job/${nativeJobId}`, "GET");
+      const job: SlurmJobEntry | undefined = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
 
       if (!job) {
         return {
@@ -252,7 +302,7 @@ export class SlurmRestDriver implements HpcDriver {
         gpuSeconds: profile.gpus ? elapsedSeconds * profile.gpus : 0,
         costCredits,
         nativeJobId,
-        exitCode: job.exit_code?.return_code ?? job.exit_code ?? 0,
+        exitCode: (typeof job.exit_code === "object" ? job.exit_code?.return_code : job.exit_code) ?? 0,
       };
     } catch {
       return {
@@ -275,7 +325,10 @@ export class SlurmRestDriver implements HpcDriver {
   public async ping(): Promise<{ ok: boolean; latencyMs: number; version?: string | undefined }> {
     const start = performance.now();
     try {
-      const res = await this.request<any>("/ping", "GET");
+      const res = await this.request<{ meta?: { slurm?: { version?: string | undefined } | undefined } | undefined }>(
+        "/ping",
+        "GET",
+      );
       const latencyMs = Math.round((performance.now() - start) * 10) / 10;
       return {
         ok: true,
@@ -292,9 +345,9 @@ export class SlurmRestDriver implements HpcDriver {
 
   public async getPartitions(): Promise<SlurmPartitionInfo[]> {
     try {
-      const res = await this.request<any>("/partitions", "GET");
+      const res = await this.request<{ partitions?: SlurmRawPartition[] | undefined }>("/partitions", "GET");
       const partitions = res.data.partitions || [];
-      return partitions.map((p: any) => ({
+      return partitions.map((p) => ({
         name: p.name,
         state: (p.partition?.state || p.state || "UP").toUpperCase(),
         totalNodes: p.nodes?.total || p.total_nodes || 0,
@@ -309,15 +362,18 @@ export class SlurmRestDriver implements HpcDriver {
 
   public async getNodes(): Promise<SlurmNodeInfo[]> {
     try {
-      const res = await this.request<any>("/nodes", "GET");
+      const res = await this.request<{ nodes?: SlurmRawNode[] | undefined }>("/nodes", "GET");
       const nodes = res.data.nodes || [];
-      return nodes.map((n: any) => ({
-        name: n.name,
-        state: (n.state?.[0] || n.state || "UNKNOWN").toUpperCase(),
-        cpus: n.cpus || 0,
-        realMemoryMb: n.real_memory || 0,
-        partitions: n.partitions || [],
-      }));
+      return nodes.map((n) => {
+        const rawState = Array.isArray(n.state) ? n.state[0] : n.state;
+        return {
+          name: n.name,
+          state: (rawState || "UNKNOWN").toUpperCase(),
+          cpus: n.cpus || 0,
+          realMemoryMb: n.real_memory || 0,
+          partitions: n.partitions || [],
+        };
+      });
     } catch {
       return [];
     }

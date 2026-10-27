@@ -5,7 +5,7 @@ import { createWasmParser } from "@modelscript/modelica/parser";
 import { initBltWasm } from "@modelscript/runtime";
 import { simulateGrad } from "@modelscript/simulate";
 import { createRequire } from "node:module";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 
 const require = createRequire(import.meta.url);
@@ -28,7 +28,7 @@ export const Grad: CommandModule<{}, GradArgs> = {
   command: "grad <name> <paths..>",
   describe: "Compute exact parameter sensitivities through simulation using continuous adjoints",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
@@ -72,7 +72,7 @@ export const Grad: CommandModule<{}, GradArgs> = {
   handler: async (args) => {
     await initBltWasm();
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
 
     const context = Context.createBatch(new NodeFileSystem());
     for (const p of args.paths) await context.addLibrary(p);

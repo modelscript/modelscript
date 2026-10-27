@@ -6,19 +6,6 @@
 import * as antvLayout from "@antv/layout";
 import * as x6 from "@antv/x6";
 
-const Graph: any = (x6 as any).Graph || class {};
-const Cell: any = (x6 as any).Cell || class {};
-const Selection: any = (x6 as any).Selection || class {};
-const Transform: any = (x6 as any).Transform || class {};
-const DagreLayout: any = (antvLayout as any).DagreLayout || class {};
-
-type Graph = any;
-type Cell = any;
-type Node = any;
-type Edge = any;
-type Selection = any;
-type Transform = any;
-
 import {
   clearActiveDropPlaceholder,
   dropComponentGhost,
@@ -41,14 +28,200 @@ import {
   resolveNodePortWorldPoint,
   simplifyCollinearPoints,
   translateConnectedEdgeStubs,
+  type PointLike,
   type RectLike,
+  type RouterNodeLike,
+  type RouterPortConfig,
 } from "./port-router.js";
+import type { ReactiveAnimationBinding } from "./protocol.js";
 import { applySequenceLayout } from "./sequence-layout.js";
 import { computeEdgeNetIds, computeSolderDots, solderDotToDiagramNode, type EdgePath } from "./solder-dots.js";
 import * as Spinner from "./spinner.js";
-import { applySwimlaneLayout } from "./swimlane-layout.js";
+import { applySwimlaneLayout, type SwimlanePartition } from "./swimlane-layout.js";
 import { animateCells } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
+
+export interface EdgeTerminal {
+  cell?: string | undefined;
+  port?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+}
+
+export interface CellData {
+  properties?:
+    | {
+        className?: string | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        ruleName?: string | undefined;
+        sourceRange?: { startOffset: number; endOffset: number } | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  animations?: ReactiveAnimationBinding[] | undefined;
+  interactive?: InteractiveBinding[] | undefined;
+  kind?: string | undefined;
+  targetModule?: string | undefined;
+  wireId?: string | undefined;
+  collapsed?: boolean | undefined;
+  origWidth?: number | undefined;
+  origHeight?: number | undefined;
+  [key: string]: unknown;
+}
+
+export interface CellView {
+  cell: Cell;
+  container?: Element | null | undefined;
+  routePoints?: PointLike[] | undefined;
+}
+
+export interface Cell {
+  id: string;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  angle?: number | undefined;
+  source?: EdgeTerminal | undefined;
+  target?: EdgeTerminal | undefined;
+  isNode(): boolean;
+  isEdge(): boolean;
+  remove(): void;
+  removeTools(): void;
+  addTools(tools: unknown[]): void;
+  getPosition(): { x: number; y: number };
+  setPosition(x: number, y: number, options?: { silent?: boolean | undefined }): void;
+  position(x: number, y: number): void;
+  getSize(): { width: number; height: number };
+  setSize(width: number, height: number): void;
+  size?: (() => { width: number; height: number }) | undefined;
+  resize?: ((width: number, height: number) => void) | undefined;
+  getAngle(): number;
+  rotate(angle: number, options?: { absolute?: boolean | undefined }): void;
+  translate?: ((dx: number, dy: number) => void) | undefined;
+  getBBox(): RectLike;
+  getData(): CellData | undefined;
+  setData(data: Record<string, unknown>, options?: { overwrite?: boolean | undefined; [key: string]: unknown }): void;
+  setMarkup(markup: unknown): void;
+  setAttrs(attrs: Record<string, unknown>): void;
+  attr(path: string, val?: unknown): unknown;
+  setVisible?: ((visible: boolean) => void) | undefined;
+  addChild(child: Cell): void;
+  getChildren?: (() => Cell[] | null | undefined) | undefined;
+  getPorts?: (() => { id: string; [key: string]: unknown }[]) | undefined;
+  getPortProp?: ((portId: string, prop?: string) => RouterPortConfig | null | undefined) | undefined;
+  getPort?: ((portId: string) => RouterPortConfig | null | undefined) | undefined;
+  getSource(): EdgeTerminal;
+  setSource(source: EdgeTerminal): void;
+  getTarget(): EdgeTerminal;
+  setTarget(target: EdgeTerminal): void;
+  getSourceCellId(): string;
+  getTargetCellId(): string;
+  getSourcePortId?: (() => string | undefined) | undefined;
+  getTargetPortId?: (() => string | undefined) | undefined;
+  getSourceCell?: (() => Cell | null | undefined) | undefined;
+  getTargetCell?: (() => Cell | null | undefined) | undefined;
+  getSourcePoint(): PointLike;
+  getTargetPoint(): PointLike;
+  getVertices(): PointLike[];
+  setVertices(vertices: PointLike[], options?: { ignoreSnap?: boolean | undefined }): void;
+  findView?: ((graph: Graph) => CellView | null | undefined) | undefined;
+}
+
+export type Node = Cell;
+export type Edge = Cell;
+
+export interface Graph {
+  container: HTMLElement;
+  disposed?: boolean | undefined;
+  options?: { width?: number | undefined; height?: number | undefined; [key: string]: unknown } | undefined;
+  isDisposed?: (() => boolean) | undefined;
+  drawBackground(options: { color: string }): void;
+  drawGrid(options: Record<string, unknown>): void;
+  dispose(): void;
+  createEdge(metadata: Record<string, unknown>): Edge;
+  use(plugin: unknown): void;
+  on<T = Record<string, unknown>>(event: string, handler: (args: T) => void): void;
+  addNode(metadata: Record<string, unknown>): Node;
+  getCellById(id?: string): Cell | null;
+  removeCell(cell: unknown): Cell | null;
+  removeCells(cells: Cell[]): Cell[];
+  getCells(): Cell[];
+  getNodes(): Node[];
+  getEdges(): Edge[];
+  getConnectedEdges(node: RouterNodeLike): Edge[];
+  getSelectedCells(): Cell[];
+  unselect(cell: Cell): void;
+  findViewByCell(cell: Cell): CellView | null;
+  scale(): { sx: number; sy: number };
+  translate(tx?: number, ty?: number): { tx: number; ty: number };
+  zoom(factor?: number, options?: { absolute?: boolean | undefined }): number;
+  resize(width: number, height: number): void;
+  zoomToRect(rect: RectLike, options?: Record<string, unknown>): void;
+  zoomToFit(options?: Record<string, unknown>): void;
+  centerContent(): void;
+  batchUpdate(name: string, execute: () => void): void;
+  fromJSON(data: { nodes: unknown[]; edges: unknown[] }): void;
+  clearCells(): void;
+  clientToLocal(x: number, y: number): PointLike;
+}
+
+interface GraphConstructor {
+  new (options: Record<string, unknown>): Graph;
+  registerRouter?: ((name: string, router: unknown, force?: boolean) => void) | undefined;
+  registerConnector?:
+    | ((
+        name: string,
+        connector: (
+          sourcePoint: PointLike,
+          targetPoint: PointLike,
+          routePoints?: PointLike[],
+          args?: { radius?: number | undefined; [key: string]: unknown },
+        ) => string,
+        force?: boolean,
+      ) => void)
+    | undefined;
+}
+
+type PluginConstructor = new (options: Record<string, unknown>) => unknown;
+
+interface DagreLayoutResultNode {
+  id: string;
+  x: number;
+  y: number;
+}
+
+interface DagreLayoutInstance {
+  layout(model: {
+    nodes: {
+      id?: string | undefined;
+      width?: number | undefined;
+      height?: number | undefined;
+      size?: number[] | undefined;
+      [key: string]: unknown;
+    }[];
+    edges: { source: string; target: string }[];
+  }): { nodes?: DagreLayoutResultNode[] | undefined };
+}
+
+type DagreLayoutConstructor = new (options: Record<string, unknown>) => DagreLayoutInstance;
+
+const x6Module = x6 as unknown as {
+  Graph?: GraphConstructor | undefined;
+  Selection?: PluginConstructor | undefined;
+  Transform?: PluginConstructor | undefined;
+};
+const antvLayoutModule = antvLayout as unknown as {
+  DagreLayout?: DagreLayoutConstructor | undefined;
+};
+
+const Graph: GraphConstructor = x6Module.Graph || (class {} as unknown as GraphConstructor);
+const Selection: PluginConstructor = x6Module.Selection || (class {} as unknown as PluginConstructor);
+const Transform: PluginConstructor = x6Module.Transform || (class {} as unknown as PluginConstructor);
+const DagreLayout: DagreLayoutConstructor =
+  antvLayoutModule.DagreLayout || (class {} as unknown as DagreLayoutConstructor);
+
 export {
   clearActiveDropPlaceholder,
   computeEdgeNetIds,
@@ -72,7 +245,12 @@ if (typeof Graph.registerConnector === "function") {
   try {
     Graph.registerConnector(
       "jumpover",
-      (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
+      (
+        sourcePoint: PointLike,
+        targetPoint: PointLike,
+        routePoints: PointLike[] = [],
+        args: { radius?: number | undefined } = {},
+      ) => {
         const points = [sourcePoint, ...routePoints, targetPoint];
         return computeJumpoverPath(points, [], { radius: args.radius ?? 5 });
       },
@@ -84,7 +262,7 @@ if (typeof Graph.registerConnector === "function") {
   try {
     Graph.registerConnector(
       "smooth",
-      (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
+      (sourcePoint: PointLike, targetPoint: PointLike, routePoints: PointLike[] = []) => {
         const points = [sourcePoint, ...routePoints, targetPoint];
         return computeSmoothBezierPath(points);
       },
@@ -96,7 +274,7 @@ if (typeof Graph.registerConnector === "function") {
   try {
     Graph.registerConnector(
       "bezier",
-      (sourcePoint: any, targetPoint: any, routePoints: any[] = []) => {
+      (sourcePoint: PointLike, targetPoint: PointLike, routePoints: PointLike[] = []) => {
         const points = [sourcePoint, ...routePoints, targetPoint];
         return computeSmoothBezierPath(points);
       },
@@ -108,7 +286,12 @@ if (typeof Graph.registerConnector === "function") {
   try {
     Graph.registerConnector(
       "fillet",
-      (sourcePoint: any, targetPoint: any, routePoints: any[] = [], args: any = {}) => {
+      (
+        sourcePoint: PointLike,
+        targetPoint: PointLike,
+        routePoints: PointLike[] = [],
+        args: { radius?: number | undefined } = {},
+      ) => {
         const points = [sourcePoint, ...routePoints, targetPoint];
         return computeFilletedOrthogonalPath(points, args.radius ?? 5);
       },
@@ -117,6 +300,16 @@ if (typeof Graph.registerConnector === "function") {
   } catch {
     // Already registered or duplicate in HMR
   }
+}
+
+export interface DiagramHostMessage {
+  type: string;
+  componentName?: string | undefined;
+  className?: string | undefined;
+  diagramType?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  [key: string]: unknown;
 }
 
 /** Configuration options and host callbacks for the AntV X6 diagram renderer. */
@@ -128,17 +321,17 @@ export interface DiagramRendererOptions {
   /** Whether edges can connect directly to node bodies in addition to port magnets. */
   allowNodeConnection?: boolean | undefined;
   /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
-  onAction?: ((action: any) => void) | undefined;
+  onAction?: ((action: Record<string, unknown> | InteractiveWriteAction) => void) | undefined;
   /** Callback invoked when the selected component node changes (or `null` when deselected). */
   onSelect?: ((id: string | null) => void) | undefined;
   /** Callback invoked to display or update the component properties inspection panel. */
-  onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
+  onShowProperties?: ((nodeId: string, cachedProps?: unknown, isLoading?: boolean) => void) | undefined;
   /** Callback invoked when the user triggers an Undo keyboard shortcut (`Ctrl+Z` / `Cmd+Z`). */
   onUndo?: (() => void) | undefined;
   /** Callback invoked when the user triggers a Redo keyboard shortcut (`Ctrl+Y` / `Cmd+Shift+Z`). */
   onRedo?: (() => void) | undefined;
   /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
-  onMessage?: ((msg: any) => void) | undefined;
+  onMessage?: ((msg: DiagramHostMessage) => void) | undefined;
 }
 
 /** Active diagram renderer configuration options. */
@@ -154,7 +347,7 @@ export function setDiagramOptions(options: DiagramRendererOptions) {
 /**
  * Dispatches a structural or spatial diagram edit action to the registered `onAction` callback.
  */
-function enqueueDiagramAction(action: any) {
+function enqueueDiagramAction(action: Record<string, unknown> | InteractiveWriteAction) {
   if (currentOptions?.onAction) currentOptions.onAction(action);
 }
 
@@ -162,7 +355,7 @@ function enqueueDiagramAction(action: any) {
  * Forwards host-bound messages (`undo`, `redo`, `getProperties`, `revealSource`, `navigateTo`)
  * to the appropriate callback in `currentOptions`.
  */
-function postMessageToHost(msg: any) {
+function postMessageToHost(msg: DiagramHostMessage) {
   if (msg.type === "undo" && currentOptions?.onUndo) {
     currentOptions.onUndo();
     return;
@@ -176,7 +369,7 @@ function postMessageToHost(msg: any) {
       currentOptions.onMessage(msg);
       return;
     }
-    if (currentOptions?.onShowProperties) {
+    if (currentOptions?.onShowProperties && msg.componentName) {
       currentOptions.onShowProperties(msg.componentName, undefined, true);
       return;
     }
@@ -196,7 +389,7 @@ let lastRenderedModule: string | null = null;
 
 /** Cache for on-demand component properties (cleared on diagram re-render) */
 
-const propertyCache = new Map<string, any>();
+const propertyCache = new Map<string, unknown>();
 
 export { translateConnectedEdgeStubs };
 
@@ -204,10 +397,10 @@ export { translateConnectedEdgeStubs };
  * Automatically re-routes an edge with clean, obstacle-avoiding Manhattan A* paths
  * that respect port outward normals and avoid component self-impalement.
  */
-export function rerouteEdgeOrthogonal(edge: any, g: Graph): void {
+export function rerouteEdgeOrthogonal(edge: Edge | null | undefined, g: Graph): void {
   if (!edge || !edge.isEdge()) return;
-  const source = edge.getSource() as any;
-  const target = edge.getTarget() as any;
+  const source = edge.getSource();
+  const target = edge.getTarget();
   const sourceCell = edge.getSourceCell?.() ?? (source?.cell ? g.getCellById?.(source.cell) : null);
   const targetCell = edge.getTargetCell?.() ?? (target?.cell ? g.getCellById?.(target.cell) : null);
   const sourcePoint = resolveNodePortWorldPoint(sourceCell, source?.port, edge.getSourcePoint());
@@ -238,7 +431,7 @@ export function rerouteEdgeOrthogonal(edge: any, g: Graph): void {
   const intermediateVertices = simplifyCollinearPoints(rawRoute);
   edge.setVertices(intermediateVertices, { ignoreSnap: true });
 
-  const points = [sourcePoint, ...intermediateVertices, targetPoint].map((p: any) => ({
+  const points = [sourcePoint, ...intermediateVertices, targetPoint].map((p: PointLike) => ({
     x: Math.round(p.x),
     y: Math.round(-p.y),
   }));
@@ -262,12 +455,12 @@ export function rerouteEdgeOrthogonal(edge: any, g: Graph): void {
 function getConnectedEdges(
   g: Graph,
 
-  node: any,
+  node: Node,
 ): { source: string; target: string; points: { x: number; y: number }[] }[] {
-  return g.getConnectedEdges(node).map((edge: any) => {
-    const source = edge.getSource() as any;
+  return g.getConnectedEdges(node).map((edge: Edge) => {
+    const source = edge.getSource();
 
-    const target = edge.getTarget() as any;
+    const target = edge.getTarget();
     const sourceCell = edge.getSourceCell?.() ?? (source?.cell ? g.getCellById?.(source.cell) : null);
     const targetCell = edge.getTargetCell?.() ?? (target?.cell ? g.getCellById?.(target.cell) : null);
     const explicitVertices = edge.getVertices() || [];
@@ -277,13 +470,13 @@ function getConnectedEdges(
       explicitVertices.length > 0
         ? explicitVertices
         : routePoints && routePoints.length > 0
-          ? routePoints.map((p: any) => ({ x: p.x, y: p.y }))
+          ? routePoints.map((p: PointLike) => ({ x: p.x, y: p.y }))
           : [];
     const sourcePoint = resolveNodePortWorldPoint(sourceCell, source?.port, edge.getSourcePoint());
     const targetPoint = resolveNodePortWorldPoint(targetCell, target?.port, edge.getTargetPoint());
-    const rawPts = [sourcePoint, ...vertices, targetPoint].filter(Boolean);
+    const rawPts = [sourcePoint, ...vertices, targetPoint].filter((p): p is PointLike => Boolean(p));
     const regularized = regularizeOrthogonalPolyline(rawPts, 2, 1.0);
-    const points = regularized.map((p: any) => ({
+    const points = regularized.map((p: PointLike) => ({
       x: Math.round(p.x),
       y: Math.round(-p.y),
     }));
@@ -370,7 +563,7 @@ export function initGraph(isDark: boolean): Graph | null {
     // We don't want runtime drag-to-reparent behavior.
     // Parent-child relationships are strictly defined by semantic children via addChild().
     embedding: { enabled: false },
-    interacting: (cellView: any) => {
+    interacting: (cellView: { cell: { id: string } }) => {
       if (isEphemeralDiagramNode(cellView.cell.id)) {
         return false;
       }
@@ -408,7 +601,13 @@ export function initGraph(isDark: boolean): Graph | null {
         },
       },
       validateMagnet: () => true,
-      validateConnection: ({ sourceCell, targetCell }: any) => {
+      validateConnection: ({
+        sourceCell,
+        targetCell,
+      }: {
+        sourceCell?: { id: string } | null | undefined;
+        targetCell?: { id: string } | null | undefined;
+      }) => {
         if (sourceCell && isEphemeralDiagramNode(sourceCell.id)) return false;
         if (targetCell && isEphemeralDiagramNode(targetCell.id)) return false;
         return true;
@@ -518,19 +717,13 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // ── Placement Mode (Drag and Drop in VS Code) ──
-  let placementData: { className: string; classKind: string; iconSvg?: string | undefined; isDrag?: boolean } | null =
-    null;
+  let placementData: PlacementData | null = null;
 
-  let placementGhost: any = null;
+  let placementGhost: Node | null = null;
   let isPointerOverCanvas = false;
   let lastCanvasPos: { x: number; y: number } | null = null;
 
-  const startPlacement = (data: {
-    className: string;
-    classKind: string;
-    iconSvg?: string | undefined;
-    isDrag?: boolean;
-  }) => {
+  const startPlacement = (data: PlacementData) => {
     ensureDiagramStyles();
     placementData = data;
     isPointerOverCanvas = false;
@@ -623,18 +816,21 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   };
 
-  const handlePointerMove = (x: number, y: number, e?: any) => {
+  const win = typeof window !== "undefined" ? (window as unknown as DiagramWindow) : null;
+
+  const handlePointerMove = (x: number, y: number, e?: { buttons?: number | undefined }) => {
     isPointerOverCanvas = true;
     lastCanvasPos = { x, y };
-    (window as any).__lastCanvasPos = { x, y };
+    if (win) win.__lastCanvasPos = { x, y };
     if (placementData) {
       // If the user was dragging from the library tree and released the mouse button,
       // subsequent pointer movement occurs with buttons === 0. Place immediately!
+      const winEvent = win?.event as { buttons?: number | undefined } | undefined;
       const btns =
         e && typeof e.buttons === "number"
           ? e.buttons
-          : typeof window !== "undefined" && window.event && typeof (window.event as any).buttons === "number"
-            ? (window.event as any).buttons
+          : winEvent && typeof winEvent.buttons === "number"
+            ? winEvent.buttons
             : undefined;
       if (placementData.isDrag && btns === 0) {
         handlePlacementClick(x, y);
@@ -665,8 +861,12 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   };
 
-  g.on("blank:pointermove", ({ x, y, e }: { x: number; y: number; e?: any }) => handlePointerMove(x, y, e));
-  g.on("cell:pointermove", ({ x, y, e }: { x: number; y: number; e?: any }) => handlePointerMove(x, y, e));
+  g.on("blank:pointermove", ({ x, y, e }: { x: number; y: number; e?: { buttons?: number | undefined } | undefined }) =>
+    handlePointerMove(x, y, e),
+  );
+  g.on("cell:pointermove", ({ x, y, e }: { x: number; y: number; e?: { buttons?: number | undefined } | undefined }) =>
+    handlePointerMove(x, y, e),
+  );
   g.on("blank:pointerup", ({ x, y }: { x: number; y: number }) => handlePointerUpOrDrop(x, y));
   g.on("cell:pointerup", ({ x, y }: { x: number; y: number }) => handlePointerUpOrDrop(x, y));
   g.on("blank:mouseleave", () => {
@@ -688,37 +888,38 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // Expose for webview to invoke
+  if (win) {
+    win.__startPlacement = startPlacement;
 
-  (window as any).__startPlacement = startPlacement;
+    win.__movePlacementGhost = handlePointerMove;
 
-  (window as any).__movePlacementGhost = handlePointerMove;
+    win.__hidePlacementGhost = () => {
+      if (placementGhost) {
+        placementGhost.remove();
+        placementGhost = null;
+      }
+    };
 
-  (window as any).__hidePlacementGhost = () => {
-    if (placementGhost) {
-      placementGhost.remove();
-      placementGhost = null;
-    }
-  };
+    win.__clearPlacement = clearPlacement;
 
-  (window as any).__clearPlacement = clearPlacement;
+    win.__handlePlacementClick = handlePlacementClick;
 
-  (window as any).__handlePlacementClick = handlePlacementClick;
+    win.__handleDragEnd = handleDragEnd;
 
-  (window as any).__handleDragEnd = handleDragEnd;
+    win.__setPointerOverCanvas = (over: boolean, pos?: { x: number; y: number }) => {
+      isPointerOverCanvas = over;
+      if (pos) lastCanvasPos = pos;
+    };
 
-  (window as any).__setPointerOverCanvas = (over: boolean, pos?: { x: number; y: number }) => {
-    isPointerOverCanvas = over;
-    if (pos) lastCanvasPos = pos;
-  };
+    win.__getPlacementData = () => placementData;
 
-  (window as any).__getPlacementData = () => placementData;
-
-  (window as any).__rerouteEdgeOrthogonal = (edgeId: string) => {
-    const edge = g.getCellById(edgeId);
-    if (edge && edge.isEdge()) {
-      rerouteEdgeOrthogonal(edge, g);
-    }
-  };
+    win.__rerouteEdgeOrthogonal = (edgeId: string) => {
+      const edge = g.getCellById(edgeId);
+      if (edge && edge.isEdge()) {
+        rerouteEdgeOrthogonal(edge, g);
+      }
+    };
+  }
 
   // ── Diagram-to-code event handlers (matching morsel's diagram.tsx) ──
 
@@ -750,7 +951,16 @@ export function initGraph(isDark: boolean): Graph | null {
         return;
       }
 
-      const items: any[] = [];
+      const items: {
+        name: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        rotation: number;
+        edges?: { source: string; target: string; points: { x: number; y: number }[] }[] | undefined;
+        connectedOnly?: boolean | undefined;
+      }[] = [];
       changedNodes.forEach((id) => {
         const n = g.getCellById(id);
         if (n && n.isNode()) {
@@ -769,10 +979,10 @@ export function initGraph(isDark: boolean): Graph | null {
       for (const item of items) {
         if (item.edges) {
           for (const edge of item.edges) {
-            const srcComp = edge.source.split(".")[0];
-            const tgtComp = edge.target.split(".")[0];
-            if (!movedNames.has(srcComp)) connectedNames.add(srcComp);
-            if (!movedNames.has(tgtComp)) connectedNames.add(tgtComp);
+            const srcComp = edge.source.split(".")[0] ?? "";
+            const tgtComp = edge.target.split(".")[0] ?? "";
+            if (srcComp && !movedNames.has(srcComp)) connectedNames.add(srcComp);
+            if (tgtComp && !movedNames.has(tgtComp)) connectedNames.add(tgtComp);
           }
         }
       }
@@ -804,7 +1014,7 @@ export function initGraph(isDark: boolean): Graph | null {
 
   // Node rotated
 
-  g.on("node:rotated", ({ node }: any) => {
+  g.on("node:rotated", ({ node }: { node: Node }) => {
     if (isRenderingDiagram) return;
     if (isEphemeralDiagramNode(node.id)) return;
     const p = node.getPosition();
@@ -821,7 +1031,7 @@ export function initGraph(isDark: boolean): Graph | null {
 
   // Node resized
 
-  g.on("node:resized", ({ node }: any) => {
+  g.on("node:resized", ({ node }: { node: Node }) => {
     if (isRenderingDiagram) return;
     if (isEphemeralDiagramNode(node.id)) return;
     if (moveTimeout) {
@@ -852,22 +1062,22 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // Cache prior endpoints on edge mousedown, selection, or hover
-  const edgePriorEndpoints = new Map<string, { source: any; target: any }>();
-  g.on("edge:mouseenter", ({ edge }: any) => {
+  const edgePriorEndpoints = new Map<string, { source: EdgeTerminal; target: EdgeTerminal }>();
+  g.on("edge:mouseenter", ({ edge }: { edge: Edge }) => {
     if (edge?.id) edgePriorEndpoints.set(edge.id, { source: edge.getSource(), target: edge.getTarget() });
   });
-  g.on("edge:selected", ({ edge }: any) => {
+  g.on("edge:selected", ({ edge }: { edge: Edge }) => {
     if (edge?.id) edgePriorEndpoints.set(edge.id, { source: edge.getSource(), target: edge.getTarget() });
   });
 
   // Edge connected (handles both new edge creation and terminal dragging reconnection)
 
-  g.on("edge:connected", ({ isNew, edge }: any) => {
+  g.on("edge:connected", ({ isNew, edge }: { isNew?: boolean | undefined; edge: Edge }) => {
     if (isRenderingDiagram) return;
 
-    const source = edge.getSource() as any;
+    const source = edge.getSource();
 
-    const target = edge.getTarget() as any;
+    const target = edge.getTarget();
     if (!source?.cell || !target?.cell) return;
 
     const sourceCell = g.getCellById(source.cell);
@@ -876,8 +1086,8 @@ export function initGraph(isDark: boolean): Graph | null {
     // Resolve source identifier (port or tapped edge net)
     let srcStr = "";
     if (sourceCell?.isEdge()) {
-      const edgeSrc = sourceCell.getSource() as any;
-      const edgeTgt = sourceCell.getTarget() as any;
+      const edgeSrc = sourceCell.getSource();
+      const edgeTgt = sourceCell.getTarget();
       srcStr = edgeSrc?.port
         ? `${edgeSrc.cell}.${edgeSrc.port}`
         : edgeTgt?.port
@@ -892,8 +1102,8 @@ export function initGraph(isDark: boolean): Graph | null {
     // Resolve target identifier (port or tapped edge net)
     let tgtStr = "";
     if (targetCell?.isEdge()) {
-      const edgeSrc = targetCell.getSource() as any;
-      const edgeTgt = targetCell.getTarget() as any;
+      const edgeSrc = targetCell.getSource();
+      const edgeTgt = targetCell.getTarget();
       tgtStr = edgeSrc?.port
         ? `${edgeSrc.cell}.${edgeSrc.port}`
         : edgeTgt?.port
@@ -913,7 +1123,7 @@ export function initGraph(isDark: boolean): Graph | null {
 
     let intermediateVertices = vertices;
     if (vertices.length === 0 && sourcePoint && targetPoint) {
-      const edgeView = g.findViewByCell(edge) as any;
+      const edgeView = g.findViewByCell(edge);
       if (edgeView?.routePoints && edgeView.routePoints.length > 0) {
         intermediateVertices = edgeView.routePoints;
       } else {
@@ -974,66 +1184,70 @@ export function initGraph(isDark: boolean): Graph | null {
 
   // Edge vertices changed: debounced with orthogonal regularization and collinear pruning
   let edgeUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
-  g.on("edge:change:vertices", ({ edge, options }: any) => {
-    if (isRenderingDiagram || options?.ignoreSnap) return;
+  g.on(
+    "edge:change:vertices",
+    ({ edge, options }: { edge: Edge; options?: { ignoreSnap?: boolean | undefined } | undefined }) => {
+      if (isRenderingDiagram || options?.ignoreSnap) return;
 
-    const vertices = edge.getVertices() || [];
-    const sourcePoint = edge.getSourcePoint();
-    const targetPoint = edge.getTargetPoint();
-    if (vertices.length > 0 && sourcePoint && targetPoint) {
-      const fullPolyline = [sourcePoint, ...vertices, targetPoint];
-      const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
-      const newVertices = regularized.slice(1, -1);
+      const vertices = edge.getVertices() || [];
+      const sourcePoint = edge.getSourcePoint();
+      const targetPoint = edge.getTargetPoint();
+      if (vertices.length > 0 && sourcePoint && targetPoint) {
+        const fullPolyline = [sourcePoint, ...vertices, targetPoint];
+        const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
+        const newVertices = regularized.slice(1, -1);
 
-      const changed =
-        newVertices.length !== vertices.length ||
-        newVertices.some(
-          (nv: any, idx: number) => Math.abs(nv.x - vertices[idx].x) > 0.5 || Math.abs(nv.y - vertices[idx].y) > 0.5,
-        );
+        const changed =
+          newVertices.length !== vertices.length ||
+          newVertices.some(
+            (nv: PointLike, idx: number) =>
+              Math.abs(nv.x - (vertices[idx]?.x ?? 0)) > 0.5 || Math.abs(nv.y - (vertices[idx]?.y ?? 0)) > 0.5,
+          );
 
-      if (changed) {
-        edge.setVertices(newVertices, { ignoreSnap: true });
+        if (changed) {
+          edge.setVertices(newVertices, { ignoreSnap: true });
+        }
       }
-    }
 
-    if (edgeUpdateTimeout) clearTimeout(edgeUpdateTimeout);
-    edgeUpdateTimeout = setTimeout(() => {
-      const source = edge.getSource() as any;
+      if (edgeUpdateTimeout) clearTimeout(edgeUpdateTimeout);
+      edgeUpdateTimeout = setTimeout(() => {
+        const source = edge.getSource();
 
-      const target = edge.getTarget() as any;
-      const wireId = edge.getData()?.wireId;
-      if ((source?.cell && target?.cell) || wireId) {
-        const curVertices = edge.getVertices() || [];
-        const srcPt = edge.getSourcePoint();
-        const tgtPt = edge.getTargetPoint();
-        const points = [srcPt, ...curVertices, tgtPt].map((p: any) => ({
-          x: Math.round(p.x),
-          y: Math.round(-p.y),
-        }));
-        const srcStr = source?.cell
-          ? source.port
-            ? `${source.cell}.${source.port}`
-            : String(source.cell)
-          : String(wireId || edge.id);
-        const tgtStr = target?.cell
-          ? target.port
-            ? `${target.cell}.${target.port}`
-            : String(target.cell)
-          : String(wireId || edge.id);
-        enqueueDiagramAction({
-          type: "moveEdge",
-          edges: [
-            {
-              source: srcStr,
-              target: tgtStr,
-              points,
-            },
-          ],
-        });
-      }
-      edgeUpdateTimeout = null;
-    }, 500);
-  });
+        const target = edge.getTarget();
+        const wireId = edge.getData()?.wireId;
+        if ((source?.cell && target?.cell) || wireId) {
+          const curVertices = edge.getVertices() || [];
+          const srcPt = edge.getSourcePoint();
+          const tgtPt = edge.getTargetPoint();
+          const points = [srcPt, ...curVertices, tgtPt].map((p: PointLike) => ({
+            x: Math.round(p.x),
+            y: Math.round(-p.y),
+          }));
+          const srcStr = source?.cell
+            ? source.port
+              ? `${source.cell}.${source.port}`
+              : String(source.cell)
+            : String(wireId || edge.id);
+          const tgtStr = target?.cell
+            ? target.port
+              ? `${target.cell}.${target.port}`
+              : String(target.cell)
+            : String(wireId || edge.id);
+          enqueueDiagramAction({
+            type: "moveEdge",
+            edges: [
+              {
+                source: srcStr,
+                target: tgtStr,
+                points,
+              },
+            ],
+          });
+        }
+        edgeUpdateTimeout = null;
+      }, 500);
+    },
+  );
 
   let isSnappingPortAlignment = false;
   let isAltPressed = false;
@@ -1079,68 +1293,79 @@ export function initGraph(isDark: boolean): Graph | null {
   };
 
   // Synchronize topological solder dots across graph lifecycle and interactive edits
-  g.on("node:change:position", ({ cell, current, previous }: any) => {
-    if (!isRenderingDiagram && !isSnappingPortAlignment && cell && cell.isNode() && current && previous) {
-      if (!isEphemeralDiagramNode(cell.id)) {
-        let snapDx = 0;
-        let snapDy = 0;
-        let guideX: { x: number; y1: number; y2: number } | null = null;
-        let guideY: { y: number; x1: number; x2: number } | null = null;
-        const snapThreshold = 4;
+  g.on(
+    "node:change:position",
+    ({
+      cell,
+      current,
+      previous,
+    }: {
+      cell?: Cell | null | undefined;
+      current?: PointLike | null | undefined;
+      previous?: PointLike | null | undefined;
+    }) => {
+      if (!isRenderingDiagram && !isSnappingPortAlignment && cell && cell.isNode() && current && previous) {
+        if (!isEphemeralDiagramNode(cell.id)) {
+          let snapDx = 0;
+          let snapDy = 0;
+          let guideX: { x: number; y1: number; y2: number } | null = null;
+          let guideY: { y: number; x1: number; x2: number } | null = null;
+          const snapThreshold = 4;
 
-        const connected = g.getConnectedEdges?.(cell) || [];
-        for (const edge of connected) {
-          const src = edge.getSource?.() as any;
-          const tgt = edge.getTarget?.() as any;
-          const isSrc = src?.cell === cell.id;
-          const myPortId = isSrc ? src?.port : tgt?.port;
-          const peerCellId = isSrc ? tgt?.cell : src?.cell;
-          const peerPortId = isSrc ? tgt?.port : src?.port;
-          const peerNode = peerCellId ? g.getCellById?.(peerCellId) : null;
-          if (!myPortId || !peerNode || !peerPortId) continue;
+          const connected = g.getConnectedEdges?.(cell) || [];
+          for (const edge of connected) {
+            const src = edge.getSource?.();
+            const tgt = edge.getTarget?.();
+            const isSrc = src?.cell === cell.id;
+            const myPortId = isSrc ? src?.port : tgt?.port;
+            const peerCellId = isSrc ? tgt?.cell : src?.cell;
+            const peerPortId = isSrc ? tgt?.port : src?.port;
+            const peerNode = peerCellId ? g.getCellById?.(peerCellId) : null;
+            if (!myPortId || !peerNode || !peerPortId) continue;
 
-          const myPt = resolveNodePortWorldPoint(cell, myPortId);
-          const peerPt = resolveNodePortWorldPoint(peerNode, peerPortId);
-          if (!myPt || !peerPt) continue;
+            const myPt = resolveNodePortWorldPoint(cell, myPortId);
+            const peerPt = resolveNodePortWorldPoint(peerNode, peerPortId);
+            if (!myPt || !peerPt) continue;
 
-          const diffX = peerPt.x - myPt.x;
-          if (Math.abs(diffX) <= snapThreshold && (guideX === null || Math.abs(diffX) < Math.abs(snapDx))) {
-            snapDx = diffX;
-            guideX = { x: peerPt.x, y1: myPt.y, y2: peerPt.y };
+            const diffX = peerPt.x - myPt.x;
+            if (Math.abs(diffX) <= snapThreshold && (guideX === null || Math.abs(diffX) < Math.abs(snapDx))) {
+              snapDx = diffX;
+              guideX = { x: peerPt.x, y1: myPt.y, y2: peerPt.y };
+            }
+            const diffY = peerPt.y - myPt.y;
+            if (Math.abs(diffY) <= snapThreshold && (guideY === null || Math.abs(diffY) < Math.abs(snapDy))) {
+              snapDy = diffY;
+              guideY = { y: peerPt.y, x1: myPt.x, x2: peerPt.x };
+            }
           }
-          const diffY = peerPt.y - myPt.y;
-          if (Math.abs(diffY) <= snapThreshold && (guideY === null || Math.abs(diffY) < Math.abs(snapDy))) {
-            snapDy = diffY;
-            guideY = { y: peerPt.y, x1: myPt.x, x2: peerPt.x };
+
+          if (Math.abs(snapDx) > 0.01 || Math.abs(snapDy) > 0.01) {
+            isSnappingPortAlignment = true;
+            cell.setPosition?.(current.x + snapDx, current.y + snapDy);
+            isSnappingPortAlignment = false;
           }
-        }
 
-        if (Math.abs(snapDx) > 0.01 || Math.abs(snapDy) > 0.01) {
-          isSnappingPortAlignment = true;
-          cell.setPosition?.(current.x + snapDx, current.y + snapDy);
-          isSnappingPortAlignment = false;
-        }
+          if (guideX) {
+            renderAlignmentGuide("__alignment_guide_x__", guideX.x, guideX.y1, guideX.x, guideX.y2);
+          } else {
+            const gx = g.getCellById?.("__alignment_guide_x__");
+            if (gx) g.removeCell?.(gx);
+          }
+          if (guideY) {
+            renderAlignmentGuide("__alignment_guide_y__", guideY.x1, guideY.y, guideY.x2, guideY.y);
+          } else {
+            const gy = g.getCellById?.("__alignment_guide_y__");
+            if (gy) g.removeCell?.(gy);
+          }
 
-        if (guideX) {
-          renderAlignmentGuide("__alignment_guide_x__", guideX.x, guideX.y1, guideX.x, guideX.y2);
-        } else {
-          const gx = g.getCellById?.("__alignment_guide_x__");
-          if (gx) g.removeCell?.(gx);
+          const effectiveDx = current.x + snapDx - previous.x;
+          const effectiveDy = current.y + snapDy - previous.y;
+          translateConnectedEdgeStubs(g, cell, effectiveDx, effectiveDy, { forceReroute: isAltPressed });
         }
-        if (guideY) {
-          renderAlignmentGuide("__alignment_guide_y__", guideY.x1, guideY.y, guideY.x2, guideY.y);
-        } else {
-          const gy = g.getCellById?.("__alignment_guide_y__");
-          if (gy) g.removeCell?.(gy);
-        }
-
-        const effectiveDx = current.x + snapDx - previous.x;
-        const effectiveDy = current.y + snapDy - previous.y;
-        translateConnectedEdgeStubs(g, cell, effectiveDx, effectiveDy, { forceReroute: isAltPressed });
       }
-    }
-    scheduleUpdateSolderDots(g);
-  });
+      scheduleUpdateSolderDots(g);
+    },
+  );
   g.on("node:moved", () => {
     clearAlignmentGuides();
     scheduleUpdateSolderDots(g);
@@ -1155,13 +1380,13 @@ export function initGraph(isDark: boolean): Graph | null {
   g.on("edge:removed", () => scheduleUpdateSolderDots(g));
 
   // Quick re-route orthogonal on edge double-click or context menu
-  g.on("edge:dblclick", ({ edge }: { edge: any }) => {
+  g.on("edge:dblclick", ({ edge }: { edge: Edge }) => {
     if (edge && edge.isEdge()) {
       rerouteEdgeOrthogonal(edge, g);
     }
   });
 
-  g.on("edge:contextmenu", ({ edge, e }: { edge: any; e: MouseEvent }) => {
+  g.on("edge:contextmenu", ({ edge, e }: { edge: Edge; e: MouseEvent }) => {
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
@@ -1197,9 +1422,9 @@ export function initGraph(isDark: boolean): Graph | null {
 
       cells.forEach((cell: Cell) => {
         if (cell.isEdge()) {
-          const source = cell.getSource() as any;
+          const source = cell.getSource();
 
-          const target = cell.getTarget() as any;
+          const target = cell.getTarget();
           const wireId = cell.getData()?.wireId;
           if (source?.cell && source?.port && target?.cell && target?.port) {
             edgesToDelete.push({
@@ -1254,9 +1479,9 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   });
 
-  g.on("node:mousedown", ({ node }: any) => {
+  g.on("node:mousedown", ({ node }: { node: Node }) => {
     if (isEphemeralDiagramNode(node.id)) return;
-    const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
+    const interactiveBindings = node.getData()?.interactive;
     if (Array.isArray(interactiveBindings)) {
       for (const binding of interactiveBindings) {
         if (binding.action === "momentary") {
@@ -1267,9 +1492,9 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   });
 
-  g.on("node:mouseup", ({ node }: any) => {
+  g.on("node:mouseup", ({ node }: { node: Node }) => {
     if (isEphemeralDiagramNode(node.id)) return;
-    const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
+    const interactiveBindings = node.getData()?.interactive;
     if (Array.isArray(interactiveBindings)) {
       for (const binding of interactiveBindings) {
         if (binding.action === "momentary") {
@@ -1280,7 +1505,7 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   });
 
-  g.on("node:click", ({ node }: any) => {
+  g.on("node:click", ({ node }: { node: Node }) => {
     if (!graph) return;
     if (isEphemeralDiagramNode(node.id)) {
       selectedNodeId = null;
@@ -1301,19 +1526,19 @@ export function initGraph(isDark: boolean): Graph | null {
     }
 
     // Process interactive bindings on click (toggle, numeric, selector, faceplate)
-    const interactiveBindings: InteractiveBinding[] = data?.interactive;
+    const interactiveBindings = data?.interactive;
     if (Array.isArray(interactiveBindings)) {
       for (const binding of interactiveBindings) {
         if (binding.action === "toggle" || binding.action === "faceplate") {
           const action = defaultInteractiveStateManager.handleInteraction(node, binding, "click");
           if (action) enqueueDiagramAction(action);
         } else if (binding.action === "numeric" || binding.action === "slider") {
-          if (typeof window !== "undefined" && typeof (window as any).prompt === "function") {
+          if (win && typeof win.prompt === "function") {
             const current = defaultInteractiveStateManager.getValue(node.id, binding.variableName, binding.min ?? 0);
             const unitLabel = binding.unit ? ` [${binding.unit}]` : "";
             const rangeLabel =
               binding.min !== undefined && binding.max !== undefined ? ` (${binding.min} - ${binding.max})` : "";
-            const input = (window as any).prompt(
+            const input = win.prompt(
               `Set ${binding.label ?? binding.variableName}${unitLabel}${rangeLabel}:`,
               String(current),
             );
@@ -1432,11 +1657,242 @@ export function initGraph(isDark: boolean): Graph | null {
   return g;
 }
 
+interface PlacementData {
+  className: string;
+  classKind: string;
+  iconSvg?: string | undefined;
+  isDrag?: boolean | undefined;
+}
+
+interface DiagramWindow {
+  __lastCanvasPos?: PointLike | undefined;
+  __startPlacement?: ((data: PlacementData) => void) | undefined;
+  __movePlacementGhost?: ((x: number, y: number, e?: { buttons?: number | undefined }) => void) | undefined;
+  __hidePlacementGhost?: (() => void) | undefined;
+  __clearPlacement?: (() => void) | undefined;
+  __handlePlacementClick?: ((x: number, y: number) => void) | undefined;
+  __handleDragEnd?: (() => void) | undefined;
+  __setPointerOverCanvas?: ((over: boolean, pos?: PointLike) => void) | undefined;
+  __getPlacementData?: (() => PlacementData | null) | undefined;
+  __rerouteEdgeOrthogonal?: ((edgeId: string) => void) | undefined;
+  debugSolderDotsInfo?: string | undefined;
+  prompt?: ((message?: string, _default?: string) => string | null) | undefined;
+  event?: { buttons?: number | undefined } | Event | undefined;
+}
+
+export interface RenderDiagramNodeInput {
+  id: string;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  angle?: number | undefined;
+  zIndex?: number | undefined;
+  opacity?: number | undefined;
+  markup?: unknown;
+  ports?: unknown;
+  properties?:
+    | {
+        className?: string | undefined;
+        name?: string | undefined;
+        description?: string | undefined;
+        ruleName?: string | undefined;
+        sourceRange?: { startOffset: number; endOffset: number } | undefined;
+      }
+    | undefined;
+  animations?:
+    | {
+        componentName?: string | undefined;
+        cellId?: string | undefined;
+        property: string;
+        variableName: string;
+        transform?: string | undefined;
+      }[]
+    | undefined;
+  interactive?: InteractiveBinding[] | undefined;
+  data?:
+    | {
+        properties?:
+          | {
+              className?: string | undefined;
+              name?: string | undefined;
+              description?: string | undefined;
+              ruleName?: string | undefined;
+              sourceRange?: { startOffset: number; endOffset: number } | undefined;
+            }
+          | undefined;
+        kind?: string | undefined;
+        targetModule?: string | undefined;
+      }
+    | Record<string, unknown>
+    | undefined;
+  autoLayout?: boolean | undefined;
+  attrs?: Record<string, Record<string, unknown> | undefined> | undefined;
+  shape?: string | undefined;
+  parent?: string | undefined;
+}
+
+export interface RenderDiagramEdgeInput {
+  id: string;
+  shape?: string | undefined;
+  zIndex?: number | undefined;
+  source: string | { cell: string; port?: string | undefined; x?: number | undefined; y?: number | undefined };
+  target: string | { cell: string; port?: string | undefined; x?: number | undefined; y?: number | undefined };
+  vertices?: { x: number; y: number }[] | undefined;
+  connector?: unknown;
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  attrs?:
+    | {
+        line?: Record<string, unknown> | undefined;
+      }
+    | Record<string, Record<string, unknown> | undefined>
+    | undefined;
+  labels?:
+    | {
+        attrs?:
+          | {
+              text?:
+                | {
+                    text?: string | undefined;
+                    fill?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontFamily?: string | undefined;
+                    fontStyle?: string | undefined;
+                  }
+                | undefined;
+              rect?:
+                | {
+                    fill?: string | undefined;
+                    stroke?: string | undefined;
+                    rx?: number | undefined;
+                    ry?: number | undefined;
+                  }
+                | undefined;
+            }
+          | undefined;
+        position?:
+          | number
+          | { distance?: number | undefined; offset?: number | undefined }
+          | Record<string, unknown>
+          | undefined;
+      }[]
+    | undefined;
+  data?: Record<string, unknown> | undefined;
+}
+
+export interface RenderDiagramInput {
+  nodes: RenderDiagramNodeInput[];
+  edges: RenderDiagramEdgeInput[];
+  diagramType?: string | undefined;
+  partitions?: SwimlanePartition[] | undefined;
+  layout?: string | undefined;
+  coordinateSystem?:
+    | {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }
+    | null
+    | undefined;
+  diagramBackground?: unknown;
+  breadcrumbs?: { id: string; label: string }[] | undefined;
+  metadata?:
+    | {
+        breadcrumbs?: { id: string; label: string }[] | undefined;
+        currentModule?: string | undefined;
+      }
+    | undefined;
+  className?: string | undefined;
+  isLoading?: boolean | undefined;
+}
+
+interface RenderNodeData {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle?: number | undefined;
+  zIndex?: number | undefined;
+  opacity?: number | undefined;
+  markup?: unknown;
+  ports?: unknown;
+  data?: CellData | undefined;
+  autoLayout?: boolean | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
+  shape?: string | undefined;
+  parent?: string | undefined;
+  children?: unknown;
+  [key: string]: unknown;
+}
+
+interface RenderEdgeData {
+  id: string;
+  shape?: string | undefined;
+  zIndex?: number | undefined;
+  source: string | { cell: string; port?: string | undefined; x?: number | undefined; y?: number | undefined };
+  target: string | { cell: string; port?: string | undefined; x?: number | undefined; y?: number | undefined };
+  vertices?: { x: number; y: number }[] | undefined;
+  connector?: unknown;
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  attrs?:
+    | {
+        "z-index"?: string | undefined;
+        line?:
+          | {
+              stroke?: string | undefined;
+              strokeWidth?: number | undefined;
+              strokeDasharray?: string | undefined;
+              targetMarker?: unknown;
+              [key: string]: unknown;
+            }
+          | undefined;
+        [key: string]: Record<string, unknown> | string | undefined;
+      }
+    | undefined;
+  labels?:
+    | {
+        attrs?:
+          | {
+              text?:
+                | {
+                    text?: string | undefined;
+                    fill?: string | undefined;
+                    fontSize?: number | undefined;
+                    fontFamily?: string | undefined;
+                    fontStyle?: string | undefined;
+                    [key: string]: unknown;
+                  }
+                | undefined;
+              rect?:
+                | {
+                    fill?: string | undefined;
+                    stroke?: string | undefined;
+                    rx?: number | undefined;
+                    ry?: number | undefined;
+                    [key: string]: unknown;
+                  }
+                | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        position?:
+          | number
+          | { distance?: number | undefined; offset?: number | undefined; [key: string]: unknown }
+          | undefined;
+        [key: string]: unknown;
+      }[]
+    | undefined;
+  data?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
 /**
  * Renders (or incrementally diffs and updates) a polyglot diagram model onto the AntV X6 graph canvas,
  * executing hierarchical Dagre/sequence/swimlane/TSM layouts and updating topological solder dots.
  */
-export function renderDiagram(data: any, isDark: boolean) {
+export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
   const g = initGraph(isDark);
   if (!g) return;
 
@@ -1448,7 +1904,7 @@ export function renderDiagram(data: any, isDark: boolean) {
   }
 }
 
-function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
+function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
   // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives.
   // Retain the drop placeholder if incoming data does not yet contain the newly dropped component
   // (e.g. while language server is still indexing), preventing any visual gap where the component disappears.
@@ -1471,16 +1927,20 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
   const isComponentPresentInData =
     !activeDrop ||
     isSafetyTimeout ||
-    data?.nodes?.some((n: any) => {
+    data?.nodes?.some((n: RenderDiagramNodeInput) => {
       if (isEphemeralDiagramNode(n.id)) return false;
       if (!existingNonEphemeralNodeIds.has(n.id)) return true;
+      const nDataProps = (n.data as { properties?: { className?: string | undefined } | undefined } | undefined)
+        ?.properties;
       const typeMatch =
-        (n.data?.properties?.className && n.data.properties.className === activeDrop.className) ||
+        (nDataProps?.className && nDataProps.className === activeDrop.className) ||
         (n.properties?.className && n.properties.className === activeDrop.className);
       if (typeMatch) return true;
-      const dx = Math.abs(n.x - activeDrop.x);
-      const dy = Math.abs(n.y - activeDrop.y);
-      const dyInverted = Math.abs(-n.y - activeDrop.y);
+      const nx = n.x ?? 0;
+      const ny = n.y ?? 0;
+      const dx = Math.abs(nx - activeDrop.x);
+      const dy = Math.abs(ny - activeDrop.y);
+      const dyInverted = Math.abs(-ny - activeDrop.y);
       return dx < 40 && (dy < 40 || dyInverted < 40);
     });
 
@@ -1502,17 +1962,17 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
 
   // Build nodes from diagram data
 
-  const nodes: any[] = [];
+  const nodes: RenderNodeData[] = [];
 
-  const edges: any[] = [];
+  const edges: RenderEdgeData[] = [];
 
   for (const node of data.nodes) {
-    const nodeData: any = {
+    const nodeData: RenderNodeData = {
       id: node.id,
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      height: node.height,
+      x: node.x ?? 0,
+      y: node.y ?? 0,
+      width: node.width ?? 0,
+      height: node.height ?? 0,
       angle: node.angle,
       zIndex: node.zIndex,
       opacity: node.opacity,
@@ -1520,21 +1980,21 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
       ports: node.ports,
       data: {
         properties: node.properties,
-        animations: node.animations,
+        animations: node.animations as ReactiveAnimationBinding[] | undefined,
         interactive: node.interactive,
         ...(node.data || {}),
       },
       autoLayout: node.autoLayout,
     };
     // Forward polyglot X6 attrs and shape (selector-based rendering)
-    if (node.attrs) nodeData.attrs = node.attrs;
+    if (node.attrs) nodeData.attrs = node.attrs as Record<string, Record<string, unknown>>;
     if (node.shape) nodeData.shape = node.shape;
     if (node.parent) nodeData.parent = node.parent;
     nodes.push(nodeData);
   }
 
   for (const edge of data.edges) {
-    const edgeData: any = {
+    const edgeData: RenderEdgeData = {
       id: edge.id,
       shape: edge.shape ?? "edge",
       zIndex: edge.zIndex,
@@ -1546,13 +2006,16 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
     };
     // Polyglot edges pass attrs as a full selector-keyed object;
     // Modelica edges have attrs.line specifically
-    if (edge.attrs?.line) {
-      edgeData.attrs = { "z-index": "-10", line: edge.attrs.line };
-    } else if (edge.attrs) {
-      edgeData.attrs = edge.attrs;
+    const edgeAttrs = edge.attrs as
+      | { line?: Record<string, unknown> | undefined; [key: string]: Record<string, unknown> | undefined }
+      | undefined;
+    if (edgeAttrs?.line) {
+      edgeData.attrs = { "z-index": "-10", line: edgeAttrs.line };
+    } else if (edgeAttrs) {
+      edgeData.attrs = edgeAttrs;
     }
     // Forward labels (polyglot edge stereotypes like «connect», «satisfy»)
-    if (edge.labels) edgeData.labels = edge.labels;
+    if (edge.labels) edgeData.labels = edge.labels as RenderEdgeData["labels"];
     if (edge.data) edgeData.data = edge.data;
     edges.push(edgeData);
   }
@@ -1561,7 +2024,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
   if (data.coordinateSystem) {
     const cs = data.coordinateSystem;
 
-    const children: any[] = [
+    const children: unknown[] = [
       {
         tagName: "rect",
         attrs: {
@@ -1648,9 +2111,9 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
   // ── Sequence Diagram: use custom layout instead of Dagre ──
   if (data.diagramType === "Sequence") {
     applySequenceLayout(nodes, edges, isDark);
-  } else if ((data as any).partitions && (data as any).partitions.length > 0) {
-    applySwimlaneLayout({ nodes, edges }, (data as any).partitions);
-  } else if ((data as any).layout === "tsm-orthogonal" || (data as any).layout === "orthogonal") {
+  } else if (data.partitions && data.partitions.length > 0) {
+    applySwimlaneLayout({ nodes, edges }, data.partitions);
+  } else if (data.layout === "tsm-orthogonal" || data.layout === "orthogonal") {
     applyTsmOrthogonalLayout({ nodes, edges });
   } else {
     // ── Layout Strategy ──
@@ -1697,13 +2160,13 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
 
       const subEdges = edges
         .filter((e) => {
-          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
-          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+          const s = typeof e.source === "string" ? e.source : e.source.cell;
+          const t = typeof e.target === "string" ? e.target : e.target.cell;
           return childIds.has(s) && childIds.has(t);
         })
         .map((e) => ({
-          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
-          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+          source: typeof e.source === "string" ? e.source : e.source.cell,
+          target: typeof e.target === "string" ? e.target : e.target.cell,
         }));
 
       // Inject fake edges to wrap isolated nodes into 2 rows for a compact layout
@@ -1716,7 +2179,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
       if (isolatedSub.length > 2) {
         const cols = Math.ceil(Math.sqrt(isolatedSub.length));
         for (let i = 0; i < isolatedSub.length - cols; i++) {
-          subEdges.push({ source: isolatedSub[i], target: isolatedSub[i + cols] });
+          subEdges.push({ source: isolatedSub[i]!, target: isolatedSub[i + cols]! });
         }
       }
 
@@ -1730,13 +2193,13 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
         edges: subEdges,
       };
 
-      const subResult = subDagre.layout(subModel as any);
+      const subResult = subDagre.layout(subModel);
 
       let minX = Infinity;
       let minY = Infinity;
       const layoutCoords = new Map<string, { leftX: number; topY: number }>();
 
-      subResult.nodes?.forEach((laid: any) => {
+      subResult.nodes?.forEach((laid: DagreLayoutResultNode) => {
         const childNode = childNodes.find((c) => c.id === laid.id);
         if (childNode) {
           // Dagre returns coordinates of the center of the node. Convert to top-left for X6.
@@ -1764,9 +2227,8 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
       }
 
       // Expand parent to fit children, respecting any tab width
-      const minParentWidth = (parentNode.attrs?.tab as any)?.width
-        ? Math.round((parentNode.attrs.tab as any).width + 30)
-        : 220;
+      const tabAttr = parentNode.attrs?.["tab"] as { width?: number | undefined } | undefined;
+      const minParentWidth = tabAttr?.width ? Math.round(tabAttr.width + 30) : 220;
       parentNode.width = Math.max(maxRight, minParentWidth);
       parentNode.height = Math.max(maxBottom, 80);
     }
@@ -1774,7 +2236,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
     // ── Phase 2: Top-level Dagre layout with expanded container sizes ──
     const nodesToLayout: string[] = [];
 
-    nodes.forEach((node: any) => {
+    nodes.forEach((node: RenderNodeData) => {
       if (node.autoLayout && !node.parent) {
         nodesToLayout.push(node.id ?? "");
       }
@@ -1793,13 +2255,13 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
 
       const modelEdges = edges
         .filter((e) => {
-          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
-          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+          const s = typeof e.source === "string" ? e.source : e.source.cell;
+          const t = typeof e.target === "string" ? e.target : e.target.cell;
           return nodesToLayout.includes(s) && nodesToLayout.includes(t);
         })
         .map((e) => ({
-          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
-          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+          source: typeof e.source === "string" ? e.source : e.source.cell,
+          target: typeof e.target === "string" ? e.target : e.target.cell,
         }));
 
       // Inject fake edges to wrap isolated top-level packages into 2 rows
@@ -1815,7 +2277,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
       if (isolatedTop.length > 2) {
         const cols = Math.ceil(Math.sqrt(isolatedTop.length));
         for (let i = 0; i < isolatedTop.length - cols; i++) {
-          modelEdges.push({ source: isolatedTop[i], target: isolatedTop[i + cols] });
+          modelEdges.push({ source: isolatedTop[i]!, target: isolatedTop[i + cols]! });
         }
       }
 
@@ -1829,10 +2291,10 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
         edges: modelEdges,
       };
 
-      const newModel = dagreLayout.layout(model as any);
+      const newModel = dagreLayout.layout(model);
 
-      newModel.nodes?.forEach((n: any) => {
-        const node = nodes.find((no: any) => no.id === n.id);
+      newModel.nodes?.forEach((n: DagreLayoutResultNode) => {
+        const node = nodes.find((no: RenderNodeData) => no.id === n.id);
         if (node) {
           node.x = n.x - (node.width ?? 0) / 2;
           node.y = n.y - (node.height ?? 0) / 2;
@@ -1958,23 +2420,24 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
             const vertsChanged =
               curVerts.length !== edgeData.vertices.length ||
               curVerts.some(
-                (v: any, idx: number) =>
-                  Math.abs(v.x - edgeData.vertices[idx].x) > 0.5 || Math.abs(v.y - edgeData.vertices[idx].y) > 0.5,
+                (v: PointLike, idx: number) =>
+                  Math.abs(v.x - (edgeData.vertices![idx]?.x ?? 0)) > 0.5 ||
+                  Math.abs(v.y - (edgeData.vertices![idx]?.y ?? 0)) > 0.5,
               );
             if (vertsChanged) {
               cell.setVertices(edgeData.vertices, { ignoreSnap: true });
             }
           }
           if (edgeData.source && typeof edgeData.source === "object") {
-            const curSrc = cell.getSource() as any;
-            if (curSrc?.cell !== (edgeData.source as any).cell || curSrc?.port !== (edgeData.source as any).port) {
-              cell.setSource(edgeData.source as any);
+            const curSrc = cell.getSource();
+            if (curSrc?.cell !== edgeData.source.cell || curSrc?.port !== edgeData.source.port) {
+              cell.setSource(edgeData.source);
             }
           }
           if (edgeData.target && typeof edgeData.target === "object") {
-            const curTgt = cell.getTarget() as any;
-            if (curTgt?.cell !== (edgeData.target as any).cell || curTgt?.port !== (edgeData.target as any).port) {
-              cell.setTarget(edgeData.target as any);
+            const curTgt = cell.getTarget();
+            if (curTgt?.cell !== edgeData.target.cell || curTgt?.port !== edgeData.target.port) {
+              cell.setTarget(edgeData.target);
             }
           }
           if (edgeData.attrs) {
@@ -2039,7 +2502,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
 
   updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
 
-  const currentModule = data.metadata?.currentModule ?? (data as any).className ?? null;
+  const currentModule = data.metadata?.currentModule ?? data.className ?? null;
   const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
   lastRenderedModule = currentModule;
 
@@ -2072,7 +2535,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
     // Ensure the diagram is properly sized and centered once the layout completes.
     setTimeout(() => {
       try {
-        if (g && (typeof (g as any).isDisposed === "function" ? !(g as any).isDisposed() : true)) {
+        if (g && (typeof g.isDisposed === "function" ? !g.isDisposed() : true)) {
           const cw = g.container?.clientWidth ?? 0;
           const ch = g.container?.clientHeight ?? 0;
           if (cw > 0 && ch > 0) {
@@ -2119,7 +2582,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
   updateSolderDots(g);
   scheduleUpdateSolderDots(g);
   setTimeout(() => {
-    if (graph === g && !(g as any).disposed) {
+    if (graph === g && !g.disposed) {
       updateSolderDots(g);
     }
   }, 50);
@@ -2128,7 +2591,7 @@ function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
 // Handle deferred diagram updates to avoid interrupting active interactions
 let isMouseDown = false;
 
-let pendingDiagramData: any = null;
+let pendingDiagramData: { data: RenderDiagramInput; isDark: boolean } | null = null;
 
 if (typeof document !== "undefined") {
   document.addEventListener(
@@ -2172,6 +2635,7 @@ if (typeof document !== "undefined") {
 if (typeof window !== "undefined") {
   window.addEventListener("message", (event: MessageEvent) => {
     const message = event.data;
+    const win = window as unknown as DiagramWindow;
     switch (message.type) {
       case "loading": {
         Spinner.show();
@@ -2197,7 +2661,7 @@ if (typeof window !== "undefined") {
       }
       case "dragEnd": {
         if (!graph) return;
-        (window as { __handleDragEnd?: (() => void) | undefined }).__handleDragEnd?.();
+        win.__handleDragEnd?.();
         break;
       }
       case "workbenchDragOver": {
@@ -2207,20 +2671,20 @@ if (typeof window !== "undefined") {
           const p = graph.clientToLocal(clientX, clientY);
           const snappedX = Math.round(p.x / 20) * 20;
           const snappedY = Math.round(p.y / 20) * 20;
-          (window as any).__movePlacementGhost?.(snappedX, snappedY);
+          win.__movePlacementGhost?.(snappedX, snappedY);
         }
         break;
       }
       case "workbenchDrop": {
         if (!graph) return;
         const { clientX, clientY } = message;
-        const targetX = typeof clientX === "number" ? clientX : (window as any).__lastCanvasPos?.x;
-        const targetY = typeof clientY === "number" ? clientY : (window as any).__lastCanvasPos?.y;
+        const targetX = typeof clientX === "number" ? clientX : win.__lastCanvasPos?.x;
+        const targetY = typeof clientY === "number" ? clientY : win.__lastCanvasPos?.y;
         if (typeof targetX === "number" && typeof targetY === "number") {
           const p = graph.clientToLocal(targetX, targetY);
-          (window as any).__handlePlacementClick?.(p.x, p.y);
+          win.__handlePlacementClick?.(p.x, p.y);
         } else {
-          (window as any).__handleDragEnd?.();
+          win.__handleDragEnd?.();
         }
         break;
       }
@@ -2230,18 +2694,7 @@ if (typeof window !== "undefined") {
         if (!className) break;
         // Calls the startPlacement function defined inside initGraph
         // which creates the ghost cursor and enters placement mode
-        (
-          window as {
-            __startPlacement?:
-              | ((d: {
-                  className: string;
-                  classKind: string;
-                  iconSvg?: string | undefined;
-                  isDrag?: boolean | undefined;
-                }) => void)
-              | undefined;
-          }
-        ).__startPlacement?.({ className, classKind, iconSvg, isDrag });
+        win.__startPlacement?.({ className, classKind, iconSvg, isDrag });
         break;
       }
       case "empty": {
@@ -2292,11 +2745,11 @@ if (typeof window !== "undefined") {
           })),
         };
 
-        const newModel = dagreLayout.layout(model as any);
+        const newModel = dagreLayout.layout(model);
         const g = graph;
 
         g.batchUpdate("layout", () => {
-          newModel.nodes?.forEach((n: any) => {
+          newModel.nodes?.forEach((n: DagreLayoutResultNode) => {
             const node = g.getCellById(n.id);
             if (node && node.isNode()) {
               node.setPosition(n.x, n.y);
@@ -2308,9 +2761,9 @@ if (typeof window !== "undefined") {
         setTimeout(() => {
           if (graph) {
             const containerW =
-              graph.container.clientWidth > 0 ? graph.container.clientWidth : (graph as any).options?.width || 800;
+              graph.container.clientWidth > 0 ? graph.container.clientWidth : graph.options?.width || 800;
             const containerH =
-              graph.container.clientHeight > 0 ? graph.container.clientHeight : (graph as any).options?.height || 600;
+              graph.container.clientHeight > 0 ? graph.container.clientHeight : graph.options?.height || 600;
             graph.zoomToFit({ padding: 20, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
             graph.centerContent();
           }
@@ -2432,7 +2885,7 @@ function updateBreadcrumbs(breadcrumbs?: { id: string; label: string }[]) {
  * Invokes the registered `onShowProperties` callback to display or update the component inspector.
  */
 
-function showProperties(nodeData: any) {
+function showProperties(nodeData: { id: string; properties?: unknown; isLoading?: boolean | undefined }) {
   if (currentOptions?.onShowProperties) {
     currentOptions.onShowProperties(nodeData.id, nodeData.properties, nodeData.isLoading);
   }
@@ -2445,11 +2898,11 @@ let solderDotsRaf: number | null = null;
  * Schedules a coalesced `requestAnimationFrame` update of topological junction solder dots on the graph.
  */
 export function scheduleUpdateSolderDots(g: Graph) {
-  if (!g || (g as any).disposed) return;
+  if (!g || g.disposed) return;
   if (solderDotsRaf !== null) return;
   solderDotsRaf = requestAnimationFrame(() => {
     solderDotsRaf = null;
-    if (g && !(g as any).disposed) {
+    if (g && !g.disposed) {
       updateSolderDots(g);
     }
   });
@@ -2460,10 +2913,10 @@ export function scheduleUpdateSolderDots(g: Graph) {
  * in the graph, excluding component port pin locations.
  */
 export function updateSolderDots(g: Graph) {
-  if (!g || (g as any).disposed) return;
+  if (!g || g.disposed) return;
 
   const edges = g.getEdges();
-  const existingDots = g.getNodes().filter((n: any) => n.id.startsWith("solder_dot_"));
+  const existingDots = g.getNodes().filter((n: Node) => n.id.startsWith("solder_dot_"));
 
   if (!edges || edges.length === 0) {
     if (existingDots.length > 0) {
@@ -2483,20 +2936,20 @@ export function updateSolderDots(g: Graph) {
     if (!source || !target) continue;
 
     // Collect port positions so solder dots are never placed on component pins
-    const src = edge.getSource() as any;
+    const src = edge.getSource();
     if (src?.port) {
       portPoints.push(source);
     }
-    const tgt = edge.getTarget() as any;
+    const tgt = edge.getTarget();
     if (tgt?.port) {
       portPoints.push(target);
     }
 
-    const edgeView = (edge as any).findView ? (edge as any).findView(g) : null;
+    const edgeView = edge.findView ? edge.findView(g) : null;
     const routePoints = edgeView?.routePoints;
     const vertices =
       routePoints && routePoints.length > 0
-        ? routePoints.map((p: any) => ({ x: p.x, y: p.y }))
+        ? routePoints.map((p: PointLike) => ({ x: p.x, y: p.y }))
         : edge.getVertices() || [];
     const points = [source, ...vertices, target];
 
@@ -2510,17 +2963,17 @@ export function updateSolderDots(g: Graph) {
   // Also collect port coordinates from all component nodes in graph
   for (const node of g.getNodes()) {
     if (isEphemeralDiagramNode(node.id)) continue;
-    const ports = (node as any).getPorts?.() || [];
+    const ports = node.getPorts?.() || [];
     const nodePos = node.getPosition();
     const nodeSize = node.getSize();
-    const angleDeg = (node as any).getAngle?.() ?? 0;
+    const angleDeg = node.getAngle?.() ?? 0;
     const rad = (angleDeg * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
     const cx = (nodeSize?.width ?? 0) / 2;
     const cy = (nodeSize?.height ?? 0) / 2;
     for (const p of ports) {
-      const pos = (node as any).getPortProp?.(p.id, "args");
+      const pos = node.getPortProp?.(p.id, "args");
       if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
         if (!angleDeg) {
           portPoints.push({ x: nodePos.x + pos.x, y: nodePos.y + pos.y });
@@ -2537,7 +2990,7 @@ export function updateSolderDots(g: Graph) {
   }
 
   const dots = computeSolderDots(allPaths, { cellSize: 40, tolerance: 3.0, portPoints });
-  const existingIds = new Set<string>(existingDots.map((n: any) => n.id));
+  const existingIds = new Set<string>(existingDots.map((n: Node) => n.id));
   const newIds = new Set<string>();
 
   const dotSize = 3;
@@ -2559,7 +3012,7 @@ export function updateSolderDots(g: Graph) {
           existing.attr("body/fill", dot.color);
         }
       } else {
-        g.addNode(solderDotToDiagramNode(dot, dotSize));
+        g.addNode(solderDotToDiagramNode(dot, dotSize) as unknown as Record<string, unknown>);
       }
     }
 
@@ -2572,7 +3025,8 @@ export function updateSolderDots(g: Graph) {
   });
 
   if (typeof window !== "undefined") {
-    (window as any).debugSolderDotsInfo = `Edges: ${edges.length}, Paths: ${allPaths.length}, Dots: ${dots.length}`;
+    (window as unknown as DiagramWindow).debugSolderDotsInfo =
+      `Edges: ${edges.length}, Paths: ${allPaths.length}, Dots: ${dots.length}`;
   }
 }
 
@@ -2606,7 +3060,7 @@ export function updateParameterText(nodeId: string, paramName: string, oldValue:
   const svgEl = view.container;
   if (!svgEl) return;
 
-  const texts = svgEl.querySelectorAll("text");
+  const texts = Array.from(svgEl.querySelectorAll("text"));
   for (const textEl of texts) {
     const content = textEl.textContent ?? "";
     if (!content) continue;
@@ -2647,7 +3101,7 @@ export function applySimulationFrame(
  * Toggles the collapsed/expanded visual state of a composite group container node,
  * hiding or restoring its embedded child nodes and resizing the container header.
  */
-export function toggleGroupNodeCollapse(node: any): void {
+export function toggleGroupNodeCollapse(node: Node | null | undefined): void {
   if (!node) return;
   const data = node.getData?.() || {};
   const isCollapsed = Boolean(data.collapsed);
@@ -2656,12 +3110,12 @@ export function toggleGroupNodeCollapse(node: any): void {
   if (!isCollapsed) {
     const currentSize = typeof node.size === "function" ? node.size() : { width: 240, height: 180 };
     node.setData?.({ ...data, collapsed: true, origWidth: currentSize.width, origHeight: currentSize.height });
-    children.forEach((c: any) => c.setVisible?.(false));
+    children.forEach((c: Cell) => c.setVisible?.(false));
     node.resize?.(Math.max(180, currentSize.width), 40);
   } else {
     node.setData?.({ ...data, collapsed: false });
     node.resize?.(data.origWidth || 240, data.origHeight || 180);
-    children.forEach((c: any) => c.setVisible?.(true));
+    children.forEach((c: Cell) => c.setVisible?.(true));
   }
 }
 
@@ -2717,7 +3171,7 @@ export function triggerInteractiveInput(
   if (!graph) return null;
   const node = graph.getCellById(nodeId);
   if (!node || !node.isNode()) return null;
-  const interactiveBindings: InteractiveBinding[] = node.getData()?.interactive;
+  const interactiveBindings = node.getData()?.interactive;
   if (!Array.isArray(interactiveBindings)) return null;
   const binding = interactiveBindings.find((b) => b.variableName === variableName);
   if (!binding) return null;

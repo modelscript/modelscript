@@ -251,10 +251,12 @@ export class OctagonDBM {
   isLeq(other: OctagonDBM): boolean {
     if (this.hasNegativeCycle()) return true;
     if (other.hasNegativeCycle()) return false;
-    const dim = Math.min(this.dim, other.dim);
+    const dim = Math.max(this.dim, other.dim);
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
-        if (this.matrix[i * this.dim + j]! > other.matrix[i * other.dim + j]!) {
+        const valA = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : i === j ? 0 : OCTAGON_INF;
+        const valB = i < other.dim && j < other.dim ? other.matrix[i * other.dim + j]! : i === j ? 0 : OCTAGON_INF;
+        if (valA > valB) {
           return false;
         }
       }

@@ -208,8 +208,11 @@ export class StlMonitor {
     let explanation: string | undefined;
     if (!isSatisfied) {
       explanation =
-        `STL Safety Constraint Violated: margin of safety is negative (${initialRho.toFixed(4)}), ` +
-        `worst violation at t = ${worstTime.toFixed(3)}s (robustness = ${minRho.toFixed(4)})`;
+        initialRho === 0
+          ? `STL Safety Constraint Violated: strict inequality boundary violated (robustness = ${initialRho.toFixed(4)}), ` +
+            `worst violation at t = ${worstTime.toFixed(3)}s (robustness = ${minRho.toFixed(4)})`
+          : `STL Safety Constraint Violated: margin of safety is negative (${initialRho.toFixed(4)}), ` +
+            `worst violation at t = ${worstTime.toFixed(3)}s (robustness = ${minRho.toFixed(4)})`;
     }
 
     return {
@@ -389,7 +392,13 @@ export class StlMonitor {
             j++;
           }
 
-          rho[i] = maxUntil === -Infinity ? -Infinity : maxUntil;
+          if (maxUntil === -Infinity) {
+            const fallbackIdx = j > 0 ? Math.min(j - 1, N - 1) : 0;
+            if (lRho[fallbackIdx]! < minL) minL = lRho[fallbackIdx]!;
+            maxUntil = Math.min(rRho[fallbackIdx]!, minL);
+          }
+
+          rho[i] = maxUntil;
         }
         return rho;
       }

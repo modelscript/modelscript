@@ -126,6 +126,15 @@ export function buildDynamicDocumentSelector(
   return dynamicLanguageSelectors;
 }
 
+type MessageTypeArg = string | { method?: string | undefined };
+
+interface RawLanguageClientRpc {
+  onNotification: (type: unknown, handler: (...args: unknown[]) => void) => vscode.Disposable;
+  onRequest: (type: unknown, handler: (...args: unknown[]) => unknown) => vscode.Disposable;
+  sendRequest: (type: unknown, ...args: unknown[]) => Promise<unknown>;
+  sendNotification: (type: unknown, ...args: unknown[]) => Promise<void>;
+}
+
 export class LspClientManager implements vscode.Disposable {
   private _activeClient: LanguageClient | undefined;
   private _languageWorker: Worker | undefined;
@@ -135,8 +144,8 @@ export class LspClientManager implements vscode.Disposable {
   private _notificationListeners: ((client: LanguageClient) => void)[] = [];
   private _hideTimeout: NodeJS.Timeout | null = null;
   private _outputChannel: vscode.OutputChannel;
-  private _notificationHandlers: Map<string, Set<(...args: any[]) => void>> = new Map();
-  private _requestHandlers: Map<string, (...args: any[]) => any> = new Map();
+  private _notificationHandlers: Map<string, Set<(...args: unknown[]) => void>> = new Map();
+  private _requestHandlers: Map<string, (...args: unknown[]) => unknown> = new Map();
   private _clientDisposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -151,7 +160,7 @@ export class LspClientManager implements vscode.Disposable {
     this._clientProxy = new Proxy({} as LanguageClient, {
       get: (_target, prop, receiver) => {
         if (prop === "onNotification") {
-          return (type: any, handler: any): vscode.Disposable => {
+          return (type: MessageTypeArg, handler: (...args: unknown[]) => void): vscode.Disposable => {
             const key = typeof type === "string" ? type : (type?.method ?? String(type));
             if (!this._notificationHandlers.has(key)) {
               this._notificationHandlers.set(key, new Set());
@@ -159,9 +168,10 @@ export class LspClientManager implements vscode.Disposable {
             this._notificationHandlers.get(key)!.add(handler);
 
             let liveDisposable: vscode.Disposable | undefined;
-            if (this._activeClient && typeof (this._activeClient as any).onNotification === "function") {
+            const activeRpc = this._activeClient as unknown as Partial<RawLanguageClientRpc> | undefined;
+            if (activeRpc && typeof activeRpc.onNotification === "function") {
               try {
-                liveDisposable = (this._activeClient as any).onNotification(type, handler);
+                liveDisposable = activeRpc.onNotification(type, handler);
               } catch (e) {
                 console.warn(`[lsp-client-proxy] Failed to bind immediate notification for '${key}':`, e);
               }
@@ -177,14 +187,15 @@ export class LspClientManager implements vscode.Disposable {
         }
 
         if (prop === "onRequest") {
-          return (type: any, handler: any): vscode.Disposable => {
+          return (type: MessageTypeArg, handler: (...args: unknown[]) => unknown): vscode.Disposable => {
             const key = typeof type === "string" ? type : (type?.method ?? String(type));
             this._requestHandlers.set(key, handler);
 
             let liveDisposable: vscode.Disposable | undefined;
-            if (this._activeClient && typeof (this._activeClient as any).onRequest === "function") {
+            const activeRpc = this._activeClient as unknown as Partial<RawLanguageClientRpc> | undefined;
+            if (activeRpc && typeof activeRpc.onRequest === "function") {
               try {
-                liveDisposable = (this._activeClient as any).onRequest(type, handler);
+                liveDisposable = activeRpc.onRequest(type, handler);
               } catch (e) {
                 console.warn(`[lsp-client-proxy] Failed to bind immediate request for '${key}':`, e);
               }
@@ -200,23 +211,25 @@ export class LspClientManager implements vscode.Disposable {
         }
 
         if (prop === "sendRequest") {
-          return async (type: any, ...args: any[]): Promise<any> => {
-            if (this._activeClient && typeof (this._activeClient as any).sendRequest === "function") {
-              return (this._activeClient as any).sendRequest(type, ...args);
+          return async (type: unknown, ...args: unknown[]): Promise<unknown> => {
+            const activeRpc = this._activeClient as unknown as Partial<RawLanguageClientRpc> | undefined;
+            if (activeRpc && typeof activeRpc.sendRequest === "function") {
+              return activeRpc.sendRequest(type, ...args);
             }
             const client = await this.waitForActiveClient();
-            return (client as any).sendRequest(type, ...args);
+            return (client as unknown as RawLanguageClientRpc).sendRequest(type, ...args);
           };
         }
 
         if (prop === "sendNotification") {
-          return async (type: any, ...args: any[]): Promise<void> => {
-            if (this._activeClient && typeof (this._activeClient as any).sendNotification === "function") {
-              (this._activeClient as any).sendNotification(type, ...args);
+          return async (type: unknown, ...args: unknown[]): Promise<void> => {
+            const activeRpc = this._activeClient as unknown as Partial<RawLanguageClientRpc> | undefined;
+            if (activeRpc && typeof activeRpc.sendNotification === "function") {
+              await activeRpc.sendNotification(type, ...args);
               return;
             }
             const client = await this.waitForActiveClient();
-            (client as any).sendNotification(type, ...args);
+            await (client as unknown as RawLanguageClientRpc).sendNotification(type, ...args);
           };
         }
 
@@ -255,10 +268,11 @@ export class LspClientManager implements vscode.Disposable {
     }
     this._clientDisposables = [];
 
+    const rpcClient = client as unknown as RawLanguageClientRpc;
     for (const [type, handlers] of this._notificationHandlers.entries()) {
       for (const handler of handlers) {
         try {
-          const d = (client as any).onNotification(type, handler);
+          const d = rpcClient.onNotification(type, handler);
           if (d && typeof d.dispose === "function") {
             this._clientDisposables.push(d);
           }
@@ -270,7 +284,7 @@ export class LspClientManager implements vscode.Disposable {
 
     for (const [type, handler] of this._requestHandlers.entries()) {
       try {
-        const d = (client as any).onRequest(type, handler);
+        const d = rpcClient.onRequest(type, handler);
         if (d && typeof d.dispose === "function") {
           this._clientDisposables.push(d);
         }
@@ -408,7 +422,10 @@ export class LspClientManager implements vscode.Disposable {
         (this.context.extension?.packageJSON?.contributes?.languages as { id: string }[] | undefined) || [];
       const langIds = contributedLanguages.map((l) => l.id);
       const payload = buildLspSettingsPayload(langIds.length > 0 ? langIds : undefined);
-      (this._activeClient as any).sendNotification("modelscript/updateSettings", payload);
+      void (this._activeClient as unknown as RawLanguageClientRpc).sendNotification(
+        "modelscript/updateSettings",
+        payload,
+      );
     } catch (e) {
       console.warn("[lsp-client-manager] Failed to sync settings to LSP server:", e);
     }
@@ -465,10 +482,11 @@ export class LspClientManager implements vscode.Disposable {
       this.broadcastStatus("ready", "Language server restarted");
       setTimeout(() => this._statusItem.hide(), 4000);
       vscode.window.showInformationMessage("ModelScript language server restarted successfully.");
-    } catch (err: any) {
+    } catch (err: unknown) {
       this._statusItem.text = "$(error) LSP Restart Failed";
       this.broadcastStatus("error", "Language server restart failed");
-      vscode.window.showErrorMessage(`Failed to restart ModelScript language server: ${err?.message ?? err}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to restart ModelScript language server: ${errMsg}`);
       throw err;
     }
   }

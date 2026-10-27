@@ -119,7 +119,7 @@ export class FixpointSolver {
     private cfg: GenericCFG,
     private transferFn: InstructionTransferFunction,
     thresholds: number[] = [-1, 0, 1, 10, 100, 1000],
-    _maxWideningSteps: number = 20,
+    private maxWideningSteps: number = 20,
     private edgeTransferFn?: EdgeTransferFunction,
   ) {
     this.thresholds = FixpointSolver.extractDynamicThresholds(cfg, thresholds);
@@ -185,10 +185,10 @@ export class FixpointSolver {
 
       // 1. Compute in-state from predecessors
       let currentIn = inStates.get(bId)!;
-      if (bId !== this.cfg.entryBlockId) {
-        let joinedPreds = this.domain.bottom();
+      if (bId !== this.cfg.entryBlockId || block.predecessors.length > 0) {
+        let joinedPreds = bId === this.cfg.entryBlockId ? startState.clone() : this.domain.bottom();
         const preds = block.predecessors;
-        if (preds.length === 1) {
+        if (bId !== this.cfg.entryBlockId && preds.length === 1) {
           // Fast-path: single predecessor avoids redundant join allocations and reduction
           const pId = preds[0]!;
           let pOut = outStates.get(pId);
@@ -219,8 +219,12 @@ export class FixpointSolver {
         }
 
         if (loopHeaders.has(bId) && visits > 2) {
-          // Accelerate fixpoint via widening with thresholds
-          currentIn = this.domain.widen(currentIn, joinedPreds, this.thresholds);
+          if (visits > this.maxWideningSteps) {
+            currentIn = this.domain.top();
+          } else {
+            // Accelerate fixpoint via widening with thresholds
+            currentIn = this.domain.widen(currentIn, joinedPreds, this.thresholds);
+          }
         } else {
           currentIn = joinedPreds;
         }
@@ -256,13 +260,13 @@ export class FixpointSolver {
     // 2. Narrowing Phase (Bounded meet iterations after widening post-fixpoint)
     for (let narrowStep = 0; narrowStep < 2; narrowStep++) {
       for (const bId of rpo) {
-        if (bId === this.cfg.entryBlockId) continue;
         const block = this.cfg.getBlock(bId);
         if (!block) continue;
+        if (bId === this.cfg.entryBlockId && block.predecessors.length === 0) continue;
 
-        let joinedPreds = this.domain.bottom();
+        let joinedPreds = bId === this.cfg.entryBlockId ? startState.clone() : this.domain.bottom();
         const preds = block.predecessors;
-        if (preds.length === 1) {
+        if (bId !== this.cfg.entryBlockId && preds.length === 1) {
           const pId = preds[0]!;
           let pOut = outStates.get(pId);
           if (pOut && !this.domain.isBottom(pOut)) {

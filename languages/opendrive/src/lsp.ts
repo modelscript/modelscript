@@ -213,7 +213,8 @@ export function getOpenDriveHover(content: string, offset: number): LspHover | n
     if (offset >= road.range.startOffset && offset <= road.range.endOffset) {
       // Check geometry hover
       for (let gi = 0; gi < road.planView.length; gi++) {
-        const g = road.planView[gi]!;
+        const g = road.planView[gi];
+        if (!g) continue;
         if (offset >= g.range.startOffset && offset <= g.range.endOffset) {
           const lines = [
             `### OpenDRIVE Geometry **[${gi}]: ${g.type.toUpperCase()}**`,

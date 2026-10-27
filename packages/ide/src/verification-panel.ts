@@ -36,9 +36,9 @@ export class VerificationPanel extends BaseWebviewPanel {
               await this.client.sendRequest("modelscript/runVerification", { uri });
               // Fetch updated requirements to refresh statuses
               const requirements = await this.client.sendRequest<unknown>("modelscript/getRequirements", { uri });
-              let unifiedReport = null;
+              let unifiedReport: unknown = null;
               try {
-                unifiedReport = await this.client.sendRequest<any>("modelscript/verifyAll", {
+                unifiedReport = await this.client.sendRequest<unknown>("modelscript/verifyAll", {
                   uri,
                   options: { all: true },
                 });
@@ -66,7 +66,7 @@ export class VerificationPanel extends BaseWebviewPanel {
             const uri = editor.document.uri.toString();
             this._panel.webview.postMessage({ type: "verificationStarted" });
             try {
-              const b2bResult = await this.client.sendRequest<any>("modelscript/verifyB2B", {
+              const b2bResult = await this.client.sendRequest<unknown>("modelscript/verifyB2B", {
                 uri,
                 format: "dhf",
               });
@@ -88,10 +88,13 @@ export class VerificationPanel extends BaseWebviewPanel {
             }
             const uri = editor.document.uri.toString();
             try {
-              const b2bResult = await this.client.sendRequest<any>("modelscript/verifyB2B", {
-                uri,
-                format: "dhf",
-              });
+              const b2bResult = await this.client.sendRequest<{ formattedOutput?: string | undefined }>(
+                "modelscript/verifyB2B",
+                {
+                  uri,
+                  format: "dhf",
+                },
+              );
               if (b2bResult?.formattedOutput) {
                 const doc = await vscode.workspace.openTextDocument({
                   content: b2bResult.formattedOutput,
@@ -101,8 +104,9 @@ export class VerificationPanel extends BaseWebviewPanel {
               } else {
                 vscode.window.showWarningMessage("No DHF markdown generated.");
               }
-            } catch (e: any) {
-              vscode.window.showErrorMessage(`Export DHF failed: ${e.message}`);
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : String(e);
+              vscode.window.showErrorMessage(`Export DHF failed: ${message}`);
             }
             break;
           }

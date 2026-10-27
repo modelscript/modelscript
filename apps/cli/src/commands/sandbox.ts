@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+type LanguageDefinition = Extract<Parameters<typeof bundleExtension>[0], unknown[]>[number];
+
 interface SandboxArgs {
   entries: string[];
   outdir: string;
@@ -44,7 +46,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url);
 
-      const languageDefs: any[] = [];
+      const languageDefs: LanguageDefinition[] = [];
 
       for (const entryPath of entryList) {
         const absoluteEntry = path.resolve(process.cwd(), entryPath);
@@ -57,7 +59,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
         const lang = Object.values(module).find((val: unknown) => {
           const v = val as Record<string, unknown>;
           return v && v["name"] && v["rules"];
-        }) as any;
+        }) as LanguageDefinition | undefined;
 
         if (lang) {
           languageDefs.push(lang);
@@ -88,7 +90,11 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
   },
 };
 
-export async function startVscodeExtension(outDir: string, grammarDefs: any | any[], openBrowser = false) {
+export async function startVscodeExtension(
+  outDir: string,
+  grammarDefs: LanguageDefinition | LanguageDefinition[],
+  openBrowser = false,
+) {
   const defs = Array.isArray(grammarDefs) ? grammarDefs : [grammarDefs];
   const primaryName = defs[0]?.name || "modelscript";
   const extDir = path.join(outDir, "..", ".vscode-extension");

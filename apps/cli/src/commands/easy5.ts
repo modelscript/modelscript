@@ -368,7 +368,9 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
             break;
           }
           const moText = fs.readFileSync(moPath, "utf-8");
-          const strategy = (argv["strategy"] as any) ?? "target-wins";
+          const strategy =
+            (argv["strategy"] as NonNullable<Parameters<typeof synchronizeModelicaToEasy5>[2]>["strategy"]) ??
+            "target-wins";
           const result = synchronizeModelicaToEasy5(text, moText, { strategy });
 
           process.stdout.write(

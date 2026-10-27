@@ -270,8 +270,10 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
     if (a.isTop || !Number.isFinite(alpha) || !Number.isFinite(zeta) || !Number.isFinite(delta)) {
       return TOP;
     }
-    const c = a.c * alpha + zeta;
-    let err = addUp(addUp(rnd(c), delta), nextUp(Math.abs(alpha) * a.err));
+    const prod = a.c * alpha;
+    const c = prod + zeta;
+    const cRoundErr = addUp(rnd(prod), sumErr(prod, zeta, c));
+    let err = addUp(addUp(cRoundErr, delta), nextUp(Math.abs(alpha) * a.err));
     const terms = new Map<number, number>();
     for (const [k, v] of a.terms) {
       const p = v * alpha;
@@ -446,7 +448,9 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
   }
 
   powInt(a: Aff, n: number): Aff {
+    if (!Number.isInteger(n)) return TOP;
     if (n === 0) return this.constant(1);
+    if (n < 0) return this.div(this.constant(1), this.powInt(a, -n));
     if (n === 1) return a;
     if (n === 2) return this.chebyshevSqr(a);
     return this.lift(

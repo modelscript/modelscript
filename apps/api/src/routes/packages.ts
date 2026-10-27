@@ -3,6 +3,7 @@
 import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import semver from "semver";
 
@@ -1080,7 +1081,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           });
         }
 
-        const kparU8 = (KparPackageAdapter.buildKparArchive as any)(resolvedManifest, files);
+        const buildKpar = KparPackageAdapter.buildKparArchive as unknown as (
+          manifest: CanonicalWorkspaceManifest,
+          files: { path: string; content: string | Uint8Array }[],
+        ) => Uint8Array;
+        const kparU8 = buildKpar(resolvedManifest, files);
         const nodeBuf = Buffer.from(kparU8);
 
         res.setHeader("Content-Type", "application/zip");
@@ -1301,8 +1306,14 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       try {
         // Import dynamically to avoid top-level better-sqlite3 requirement if not needed
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const Database = require("better-sqlite3");
+        const reqModule = createRequire(import.meta.url);
+        const Database = reqModule("better-sqlite3") as new (
+          filename: string,
+          options?: { readonly?: boolean | undefined },
+        ) => {
+          prepare(sql: string): { all(...params: unknown[]): unknown[] };
+          close(): void;
+        };
         const db = new Database(indexPath, { readonly: true });
         try {
           if (keys.length > 0) {
@@ -1376,8 +1387,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
-      if (typeof (res as any).flushHeaders === "function") {
-        (res as any).flushHeaders();
+      const flushableRes = res as Response & { flushHeaders?: (() => void) | undefined };
+      if (typeof flushableRes.flushHeaders === "function") {
+        flushableRes.flushHeaders();
       }
 
       // Send initial snapshot

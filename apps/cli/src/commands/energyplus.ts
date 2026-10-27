@@ -251,7 +251,9 @@ export const EnergyPlusCommand: CommandModule<Record<string, unknown>, Record<st
             process.exit(1);
           }
           const moContent = fs.readFileSync(moPath, "utf-8");
-          const strategy = (argv["strategy"] as any) ?? "target-wins";
+          const strategy =
+            (argv["strategy"] as NonNullable<Parameters<typeof synchronizeModelicaToEnergyPlus>[2]>["strategy"]) ??
+            "target-wins";
           const syncResult = synchronizeModelicaToEnergyPlus(content, moContent, { strategy });
 
           console.log(

@@ -11,12 +11,19 @@ import * as ReactDOM from "react-dom/client";
 import mqtt from "mqtt";
 import "./vr-visualization-webview.css";
 
+interface VtkRenderContext {
+  fullScreenRenderer: { delete(): void };
+  renderer: { resetCamera(): void };
+  renderWindow: { render(): void };
+  reader: { parseAsText(content: string): void };
+}
+
 const App = () => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [time, setTime] = React.useState<number>(0);
   const [participant, setParticipant] = React.useState<string>("Waiting for data...");
 
-  const vtkContext = React.useRef<any>(null);
+  const vtkContext = React.useRef<VtkRenderContext | null>(null);
   const mqttClient = React.useRef<mqtt.MqttClient | null>(null);
 
   React.useEffect(() => {
@@ -81,7 +88,7 @@ const App = () => {
     client.on("message", (topic, payload) => {
       // Topic structure: modelscript/site/default/area/default/line/session123/cell/cfd_provider/vtk
       const parts = topic.split("/");
-      const participantId = parts[parts.length - 2];
+      const participantId = parts[parts.length - 2] ?? "";
       setParticipant(participantId);
 
       // The VTK payload might include the time as a prefix or we just display the latest
@@ -90,9 +97,11 @@ const App = () => {
         const textDecoder = new TextDecoder("utf-8");
         const xmlString = textDecoder.decode(payload);
 
-        vtkContext.current.reader.parseAsText(xmlString);
-        vtkContext.current.renderer.resetCamera();
-        vtkContext.current.renderWindow.render();
+        if (vtkContext.current) {
+          vtkContext.current.reader.parseAsText(xmlString);
+          vtkContext.current.renderer.resetCamera();
+          vtkContext.current.renderWindow.render();
+        }
       } catch (e) {
         console.error("[VR Webview] Failed to parse VTK data:", e);
       }
@@ -110,9 +119,11 @@ const App = () => {
           const textDecoder = new TextDecoder("utf-8");
           const xmlString = textDecoder.decode(u8);
 
-          vtkContext.current.reader.parseAsText(xmlString);
-          vtkContext.current.renderer.resetCamera();
-          vtkContext.current.renderWindow.render();
+          if (vtkContext.current) {
+            vtkContext.current.reader.parseAsText(xmlString);
+            vtkContext.current.renderer.resetCamera();
+            vtkContext.current.renderWindow.render();
+          }
         } catch (e) {
           console.error("Failed to parse VTK data:", e);
         }

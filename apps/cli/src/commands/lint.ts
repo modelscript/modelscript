@@ -3,14 +3,14 @@
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { UnifiedWorkspace } from "@modelscript/runtime";
+import { UnifiedWorkspace, type SymbolEntry, type WorkspaceIndex } from "@modelscript/runtime";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 import { LanguageResolver } from "../util/language-registry.js";
 
@@ -31,6 +31,26 @@ interface LintArgs {
   profile?: "DL" | "EL" | undefined;
   /** Whether to treat warnings as fatal errors with non-zero exit code. */
   strict?: boolean | undefined;
+}
+
+interface LintDiagnosticItem {
+  severity: "error" | "warning" | "info" | "hint" | "notification";
+  lintName: string;
+  code?: string | number | undefined;
+  domain?: string | undefined;
+  message: string;
+  symbolId: number | null;
+  resourceId?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+}
+
+interface CstRootLike {
+  id?: number | undefined;
+  ptr?: number | undefined;
+  text?: string | undefined;
+  hasError?: (() => boolean) | undefined;
+  descendantForIndex?: ((startIndex: number, endIndex: number) => unknown) | undefined;
 }
 
 /**
@@ -120,8 +140,8 @@ const VALID_FEA_CARDS = new Set([
  * Performs lexical and structural linting on an SU2/CFD configuration file (`KEY = VALUE` directives,
  * balanced parentheses, and embedded `{{...}}` parameter expressions).
  */
-function lintCfdText(text: string, resourceId: string): any[] {
-  const diags: any[] = [];
+function lintCfdText(text: string, resourceId: string): LintDiagnosticItem[] {
+  const diags: LintDiagnosticItem[] = [];
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i] ?? "";
@@ -236,8 +256,8 @@ function lintCfdText(text: string, resourceId: string): any[] {
 /**
  * Performs lexical and card-schema linting on a CalculiX/Abaqus `.inp` FEA deck.
  */
-function lintFeaText(text: string, resourceId: string): any[] {
-  const diags: any[] = [];
+function lintFeaText(text: string, resourceId: string): LintDiagnosticItem[] {
+  const diags: LintDiagnosticItem[] = [];
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i] ?? "";
@@ -343,8 +363,8 @@ function lintFeaText(text: string, resourceId: string): any[] {
 /**
  * Validates STEP (ISO 10303-21) entity reference integrity (`#id`) and arity against `STEP_SCHEMA`.
  */
-async function lintStepText(text: string, resourceId: string): Promise<any[]> {
-  const diags: any[] = [];
+async function lintStepText(text: string, resourceId: string): Promise<LintDiagnosticItem[]> {
+  const diags: LintDiagnosticItem[] = [];
   const { parseStepReferences, STEP_SCHEMA } = await import("@modelscript/step");
   const { definitions, references } = parseStepReferences(text);
 
@@ -460,7 +480,7 @@ function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts:
  * `msx lint <path> [paths...]` CLI command module that runs CST, Salsa semantic, abstract-interpretation,
  * and ontology/schema linters across all recognized ModelScript polyglot languages.
  */
-export const Lint: CommandModule<any, LintArgs> = {
+export const Lint: CommandModule<{}, LintArgs> = {
   command: "lint <path> [paths...]",
   describe: "Lint polyglot libraries using QueryEngine and DSL parsers",
   builder: (yargs) => {
@@ -499,7 +519,7 @@ export const Lint: CommandModule<any, LintArgs> = {
         description: "Treat warnings as errors",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<LintArgs>;
   },
   handler: async (args) => {
     const u = new UnifiedWorkspace();
@@ -546,19 +566,19 @@ export const Lint: CommandModule<any, LintArgs> = {
     const hasModelica = modelicaItems.length > 0;
     const hasSysML = sysmlItems.length > 0;
 
-    let mIdx: any = null;
-    let sIdx: any = null;
+    let mIdx: WorkspaceIndex | null = null;
+    let sIdx: WorkspaceIndex | null = null;
 
-    const astMap = new Map<string, any>();
-    const cstDiagnostics: any[] = [];
-    const sysmlCstDiagnostics: any[] = [];
+    const astMap = new Map<string, CstRootLike | undefined>();
+    const cstDiagnostics: LintDiagnosticItem[] = [];
+    const sysmlCstDiagnostics: LintDiagnosticItem[] = [];
 
     if (hasModelica) {
       mIdx = createModelicaWorkspaceIndex();
       const { parser, facade } = await createWasmParser(modelicaWasmPath);
       const { getModelicaErrorCodeDef } = await import("@modelscript/modelica");
       for (const item of modelicaItems) {
-        const ast = parser.parse(item.text)?.rootNode as any;
+        const ast = parser.parse(item.text)?.rootNode as unknown as CstRootLike | undefined;
         astMap.set(item.uri, ast);
         mIdx.register(item.uri, () => ast, item.text);
         if (ast && facade && typeof facade.getDiagnostics === "function") {
@@ -568,12 +588,13 @@ export const Lint: CommandModule<any, LintArgs> = {
             for (const cd of facade.getDiagnostics(rootPtr, 0, 0, item.text)) {
               const codeNum = typeof cd.code === "number" ? cd.code : 1001;
               const def = getModelicaErrorCodeDef(codeNum);
+              const defMsg = (def?.message as ((arg: string) => string) | undefined)?.("Syntax error");
               cstDiagnostics.push({
                 severity: cd.severity === 1 ? "error" : cd.severity === 2 ? "warning" : (def?.severity ?? "info"),
                 lintName: def ? def.rule : `M${codeNum}`,
                 code: codeNum,
                 domain: "modelica",
-                message: cd.message || def?.message("Syntax error") || "Syntax error",
+                message: cd.message || defMsg || "Syntax error",
                 symbolId: null,
                 resourceId: item.uri,
                 startOffset: cd.startOffset ?? 0,
@@ -604,12 +625,12 @@ export const Lint: CommandModule<any, LintArgs> = {
       const sysmlFacade = sysmlResult.facade;
 
       // Load embedded KerML standard library snapshot so standard types (Real, Boolean, ISQ, etc.) resolve
-      loadEmbeddedKerMLStdlib(sIdx, sysmlParser as any);
+      loadEmbeddedKerMLStdlib(sIdx, sysmlParser as unknown as Parameters<typeof loadEmbeddedKerMLStdlib>[1]);
 
       for (const item of sysmlItems) {
         const tree = sysmlParser.parse(item.text);
         if (tree) {
-          const ast = tree.rootNode as any;
+          const ast = tree.rootNode as unknown as CstRootLike | undefined;
           astMap.set(item.uri, ast);
           sIdx.register(item.uri, () => ast, item.text);
           if (ast && sysmlFacade && typeof sysmlFacade.getDiagnostics === "function") {
@@ -619,12 +640,13 @@ export const Lint: CommandModule<any, LintArgs> = {
               for (const cd of sysmlFacade.getDiagnostics(rootPtr, 0, 0, item.text)) {
                 const codeNum = typeof cd.code === "number" ? cd.code : 1001;
                 const def = getSysML2ErrorCodeDef(codeNum);
+                const defMsg = (def?.message as ((arg: string) => string) | undefined)?.("Syntax error");
                 sysmlCstDiagnostics.push({
                   severity: cd.severity === 1 ? "error" : cd.severity === 2 ? "warning" : (def?.severity ?? "error"),
                   lintName: def ? def.rule : `S${codeNum}`,
                   code: codeNum,
                   domain: "sysml2",
-                  message: cd.message || def?.message("Syntax error") || "Syntax error",
+                  message: cd.message || defMsg || "Syntax error",
                   symbolId: null,
                   resourceId: item.uri,
                   startOffset: cd.startOffset ?? 0,
@@ -647,7 +669,11 @@ export const Lint: CommandModule<any, LintArgs> = {
           }
         }
       }
-      u.registerWorkspace("sysml2", sIdx, sysml2LangFallback as any);
+      u.registerWorkspace(
+        "sysml2",
+        sIdx,
+        sysml2LangFallback as unknown as Parameters<UnifiedWorkspace["registerWorkspace"]>[2],
+      );
     }
 
     if (hasSysML && sIdx) {
@@ -657,8 +683,8 @@ export const Lint: CommandModule<any, LintArgs> = {
     const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
     // Implement WorkspaceCSTProvider to enable AST-dependent Salsa queries and formal verifiers
-    const cstProvider = {
-      getText: (startOffset: number, endOffset: number, entry?: any) => {
+    const cstProvider: NonNullable<Parameters<typeof createModelicaQueryEngine>[1]> = {
+      getText: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const modelicaItem = modelicaItems.find((i) => i.uri === uri);
@@ -667,7 +693,7 @@ export const Lint: CommandModule<any, LintArgs> = {
         if (sysmlItem) return sysmlItem.text.slice(startOffset, endOffset);
         return null;
       },
-      getNode: (startOffset: number, endOffset: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
         if (!entry || !entry.resourceId) return null;
         const ast = astMap.get(entry.resourceId);
         if (!ast || typeof ast.descendantForIndex !== "function") return null;
@@ -675,20 +701,20 @@ export const Lint: CommandModule<any, LintArgs> = {
       },
     };
 
-    const diagnostics: any[] = [];
-    let engineM: any = null;
-    let engineS: any = null;
+    const diagnostics: LintDiagnosticItem[] = [];
+    let engineM: ReturnType<typeof createModelicaQueryEngine> | null = null;
+    let engineS: ReturnType<typeof createSysML2QueryEngine> | null = null;
 
     if (hasModelica) {
-      engineM = createModelicaQueryEngine(db, cstProvider as any);
+      engineM = createModelicaQueryEngine(db, cstProvider);
       const diagsM = await engineM.runAllLintsAsync();
       for (const d of diagsM) {
         diagnostics.push({ ...d, domain: "modelica" });
       }
       for (const cd of cstDiagnostics) {
-        const isDup = diagsM.some((sd: any) => {
-          const entry = sd.symbolId ? engineM.toQueryDB().symbol(sd.symbolId) : null;
-          const res = sd.resourceId ?? entry?.resourceId;
+        const isDup = diagsM.some((sd) => {
+          const entry = sd.symbolId ? engineM!.toQueryDB().symbol(sd.symbolId) : null;
+          const res = (sd as { resourceId?: string | undefined }).resourceId ?? entry?.resourceId;
           return (
             res === cd.resourceId &&
             (sd.message === cd.message || (sd.startOffset === cd.startOffset && sd.code === cd.code))
@@ -716,11 +742,11 @@ export const Lint: CommandModule<any, LintArgs> = {
             const algText = algMatch[0];
             const algOffset = match.index + match[0].indexOf(algText);
 
-            let variables: any[] = [];
-            let statements: any[] = [];
+            let variables: ReturnType<typeof ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst> = [];
+            let statements: ReturnType<typeof ModelicaCFGLowerer.parseStatements> = [];
             if (rootNode && findCstNodesByType) {
               const classNodes = findCstNodesByType(rootNode, "class_definition");
-              const classNode = classNodes.find((cn: any) => {
+              const classNode = classNodes.find((cn: CstRootLike) => {
                 const idNode = findCstNodesByType(cn, "identifier")[0];
                 return idNode?.text?.trim() === name;
               });
@@ -770,18 +796,22 @@ export const Lint: CommandModule<any, LintArgs> = {
     }
 
     if (hasSysML) {
-      engineS = createSysML2QueryEngine(db, cstProvider as any);
-      const diagsS: any[] = [];
+      engineS = createSysML2QueryEngine(db, cstProvider);
+      const diagsS: LintDiagnosticItem[] = [];
       for (const item of sysmlItems) {
         const fileDiags = engineS.runAllLints(item.uri);
         for (const d of fileDiags) {
-          diagsS.push({ ...d, domain: "sysml2", resourceId: d.resourceId ?? item.uri });
+          diagsS.push({
+            ...d,
+            domain: "sysml2",
+            resourceId: (d as { resourceId?: string | undefined }).resourceId ?? item.uri,
+          });
         }
       }
       diagnostics.push(...diagsS);
       for (const cd of sysmlCstDiagnostics) {
-        const isDup = diagsS.some((sd: any) => {
-          const entry = sd.symbolId ? engineS.toQueryDB().symbol(sd.symbolId) : null;
+        const isDup = diagsS.some((sd) => {
+          const entry = sd.symbolId ? engineS!.toQueryDB().symbol(sd.symbolId) : null;
           const res = sd.resourceId ?? entry?.resourceId;
           return (
             res === cd.resourceId &&
@@ -805,10 +835,14 @@ export const Lint: CommandModule<any, LintArgs> = {
           const tree = parser.parse(item.text);
           if (tree?.rootNode) {
             const { lintOwl2Document, lowerCstToAxioms } = await import("@modelscript/owl2");
-            const owlDiags = lintOwl2Document(tree.rootNode as any, item.text, {
-              profile: args.profile ?? "DL",
-              checkConsistency: true,
-            });
+            const owlDiags = lintOwl2Document(
+              tree.rootNode as unknown as Parameters<typeof lintOwl2Document>[0],
+              item.text,
+              {
+                profile: args.profile ?? "DL",
+                checkConsistency: true,
+              },
+            );
             for (const od of owlDiags) {
               diagnostics.push({
                 severity: od.severity,
@@ -822,7 +856,10 @@ export const Lint: CommandModule<any, LintArgs> = {
                 endOffset: od.endOffset,
               });
             }
-            const axioms = lowerCstToAxioms(tree.rootNode as any, item.text);
+            const axioms = lowerCstToAxioms(
+              tree.rootNode as unknown as Parameters<typeof lowerCstToAxioms>[0],
+              item.text,
+            );
             if (u.owl2Store && typeof u.owl2Store.setAxioms === "function") {
               u.owl2Store.setAxioms(item.uri, axioms);
             }
@@ -849,7 +886,7 @@ export const Lint: CommandModule<any, LintArgs> = {
               });
             }
             const { lintScadCst } = await import("@modelscript/scad");
-            const scadDiags = lintScadCst(tree.rootNode as any, item.text);
+            const scadDiags = lintScadCst(tree.rootNode as unknown as Parameters<typeof lintScadCst>[0], item.text);
             for (const sd of scadDiags) {
               diagnostics.push({
                 severity: sd.severity,
@@ -1078,13 +1115,13 @@ export const Lint: CommandModule<any, LintArgs> = {
                 endOffset: Math.min(item.text.length, 50),
               });
             }
-          } catch (e: any) {
+          } catch (e: unknown) {
             diagnostics.push({
               severity: "error",
               lintName: "lps-parse-error",
               code: "M8000",
               domain: "lps",
-              message: e?.message ?? "Failed to parse PipelineStudio study",
+              message: e instanceof Error ? e.message : "Failed to parse PipelineStudio study",
               symbolId: null,
               resourceId: filePath,
               startOffset: 0,
@@ -1106,8 +1143,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 sd.endLine ?? sd.line ?? 1,
                 sd.endColumn ?? (sd.column ?? 1) + 5,
               );
-              const codeStr =
-                typeof sd.code === "number" ? `M${sd.code}` : String(sd.code || (sd as any).id || "M7000");
+              const sdWithId = sd as { id?: string | number | undefined };
+              const codeStr = typeof sd.code === "number" ? `M${sd.code}` : String(sd.code || sdWithId.id || "M7000");
               const lintName = sd.rule || codeStr.toLowerCase();
               diagnostics.push({
                 severity: sd.severity,
@@ -1121,13 +1158,13 @@ export const Lint: CommandModule<any, LintArgs> = {
                 endOffset,
               });
             }
-          } catch (e: any) {
+          } catch (e: unknown) {
             diagnostics.push({
               severity: "error",
               lintName: "sima-parse-error",
               code: "M7000",
               domain: "sima",
-              message: e?.message ?? "Failed to parse SIMO/RIFLEX deck",
+              message: e instanceof Error ? e.message : "Failed to parse SIMO/RIFLEX deck",
               symbolId: null,
               resourceId: filePath,
               startOffset: 0,
@@ -1149,8 +1186,8 @@ export const Lint: CommandModule<any, LintArgs> = {
                 gd.endLine ?? gd.line ?? 1,
                 gd.endColumn ?? (gd.column ?? 1) + 5,
               );
-              const codeStr =
-                typeof gd.code === "number" ? `M${gd.code}` : String(gd.code || (gd as any).id || "M9000");
+              const gdWithId = gd as { id?: string | number | undefined };
+              const codeStr = typeof gd.code === "number" ? `M${gd.code}` : String(gd.code || gdWithId.id || "M9000");
               const lintName = gd.rule || codeStr.toLowerCase();
               diagnostics.push({
                 severity: gd.severity,
@@ -1164,13 +1201,13 @@ export const Lint: CommandModule<any, LintArgs> = {
                 endOffset,
               });
             }
-          } catch (e: any) {
+          } catch (e: unknown) {
             diagnostics.push({
               severity: "error",
               lintName: "gtsuite-parse-error",
               code: "M9000",
               domain: "gtsuite",
-              message: e?.message ?? "Failed to parse GT-SUITE model",
+              message: e instanceof Error ? e.message : "Failed to parse GT-SUITE model",
               symbolId: null,
               resourceId: filePath,
               startOffset: 0,
@@ -1195,11 +1232,11 @@ export const Lint: CommandModule<any, LintArgs> = {
             endOffset: item.text.length,
           });
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         diagnostics.push({
           severity: "error",
           lintName: "parser-failure",
-          message: e.message,
+          message: e instanceof Error ? e.message : String(e),
           symbolId: null,
           resourceId: filePath,
           startOffset: 0,
@@ -1222,7 +1259,7 @@ export const Lint: CommandModule<any, LintArgs> = {
       textMap.set(item.uri.replace("file://", ""), item.text);
     }
 
-    const rawFormattedDiags = diagnostics.map((d: any) => {
+    const rawFormattedDiags = diagnostics.map((d) => {
       let entry = null;
       if (engineM && d.symbolId) entry = engineM.toQueryDB().symbol(d.symbolId);
       if (!entry && engineS && d.symbolId) entry = engineS.toQueryDB().symbol(d.symbolId);
@@ -1270,16 +1307,16 @@ export const Lint: CommandModule<any, LintArgs> = {
         console.log(`[${d.resource}:${d.line}:${d.col}] ${d.severity}: [${badge}] ${d.message}`);
       }
 
-      const errors = formattedDiags.filter((d: any) => d.severity === "error").length;
-      const warnings = formattedDiags.filter((d: any) => d.severity !== "error").length;
+      const errors = formattedDiags.filter((d) => d.severity === "error").length;
+      const warnings = formattedDiags.filter((d) => d.severity !== "error").length;
 
       if (errors > 0 || warnings > 0) {
         console.log(`\n${errors} error(s), ${warnings} warning(s) found.`);
       }
     }
 
-    const errorCount = formattedDiags.filter((d: any) => d.severity === "error").length;
-    const warningCount = formattedDiags.filter((d: any) => d.severity === "warning").length;
+    const errorCount = formattedDiags.filter((d) => d.severity === "error").length;
+    const warningCount = formattedDiags.filter((d) => d.severity === "warning").length;
     if (errorCount > 0 || (args.strict && warningCount > 0)) {
       process.exitCode = 1;
     }

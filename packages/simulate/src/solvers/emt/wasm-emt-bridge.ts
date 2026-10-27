@@ -37,8 +37,186 @@ export interface WasmEmtSimulationResult {
   voltages: Float64Array[]; // Array of Float64Array for each node [0..nNodes-1]
 }
 
+export interface WasmEmtExports {
+  memory: WebAssembly.Memory;
+  emt_create(nNodes: number, maxBranches: number, maxSources: number, dt: number): number;
+  emt_add_branch(solverPtr: number, from: number, to: number, r: number, l: number, c: number): number;
+  emt_add_source(
+    solverPtr: number,
+    node: number,
+    vPeakKv: number,
+    freqHz: number,
+    phaseRad: number,
+    gSource: number,
+    type: number,
+  ): number;
+  emt_add_bergeron_line(
+    solverPtr: number,
+    fromNode: number,
+    toNode: number,
+    zc: number,
+    tauSec: number,
+    rTotal: number,
+  ): number;
+  emt_add_transformer_winding(
+    solverPtr: number,
+    pPos: number,
+    pNeg: number,
+    sPos: number,
+    sNeg: number,
+    gLeakage: number,
+    alphaL: number,
+    turnsRatio: number,
+  ): number;
+  emt_add_fault(
+    solverPtr: number,
+    nodeA: number,
+    nodeB: number,
+    startSec: number,
+    endSec: number,
+    gFault: number,
+  ): number;
+  emt_add_breaker(
+    solverPtr: number,
+    fromNode: number,
+    toNode: number,
+    gClosed: number,
+    gOpen: number,
+    closedInitially: boolean,
+    openTimeSec: number,
+    closeTimeSec: number,
+    choppingCurrentAmp: number,
+  ): number;
+  emt_add_saturable_core(
+    solverPtr: number,
+    node: number,
+    lUnsatH: number,
+    lSatH: number,
+    kneeFluxWb: number,
+    remanentFluxWb: number,
+  ): number;
+  emt_add_surge_arrester(solverPtr: number, fromNode: number, toNode: number, vRefVolts: number): number;
+  emt_add_sync_machine(
+    solverPtr: number,
+    nodeA: number,
+    nodeB: number,
+    nodeC: number,
+    sBaseMva: number,
+    vBaseKvLL: number,
+    freqHz: number,
+    xd: number,
+    xq: number,
+    xdPrime: number,
+    xqPrime: number,
+    xdSub: number,
+    td0Prime: number,
+    tq0Prime: number,
+    td0Sub: number,
+    tq0Sub: number,
+    hInertia: number,
+    dampingD: number,
+    pmPu: number,
+    efPu: number,
+  ): number;
+  emt_set_nonlinear_options?(solverPtr: number, maxIterations: number, toleranceVolts: number): void;
+  emt_get_nonlinear_iterations?(solverPtr: number): number;
+  emt_add_converter_bridge(
+    solverPtr: number,
+    nodeA: number,
+    nodeB: number,
+    nodeC: number,
+    nodeDcPos: number,
+    nodeDcNeg: number,
+    modeCode: number,
+    freqHz: number,
+    modulationIndex: number,
+    firingAngleDeg: number,
+    nSubmodulesPerArm: number,
+    cSubmoduleFarad: number,
+    vSmInitVolts: number,
+    lArmHenry: number,
+    rArmOhm: number,
+  ): number;
+  emt_get_converter_dc_voltage_kv?(solverPtr: number, convIdx: number): number;
+  emt_add_induction_machine(
+    solverPtr: number,
+    nodeA: number,
+    nodeB: number,
+    nodeC: number,
+    sBaseMva: number,
+    vBaseKvLL: number,
+    freqHz: number,
+    rsPu: number,
+    xsPu: number,
+    xmPu: number,
+    rrPu: number,
+    xrPu: number,
+    hInertia: number,
+    dampingD: number,
+    tmLoadPu: number,
+    isDfig: boolean,
+    crowbarThresholdPu: number,
+  ): number;
+  emt_get_induction_machine_speed_pu?(solverPtr: number, indIdx: number): number;
+  emt_get_induction_machine_torque_pu?(solverPtr: number, indIdx: number): number;
+  emt_get_induction_machine_crowbar?(solverPtr: number, indIdx: number): number | boolean;
+  emt_add_fd_line(
+    solverPtr: number,
+    fromNode: number,
+    toNode: number,
+    gInf: number,
+    tauSec: number,
+    maxYPoles: number,
+    maxHPoles: number,
+  ): number;
+  emt_add_fd_line_y_pole(solverPtr: number, fdLineIdx: number, poleRad: number, residueSiemens: number): number;
+  emt_add_fd_line_h_pole(solverPtr: number, fdLineIdx: number, poleRad: number, residueDimless: number): number;
+  emt_get_fd_line_hist_from?(solverPtr: number, fdLineIdx: number): number;
+  emt_get_fd_line_hist_to?(solverPtr: number, fdLineIdx: number): number;
+  emt_add_control_block(
+    solverPtr: number,
+    typeCode: number,
+    in1: number,
+    in2: number,
+    p0: number,
+    p1: number,
+    p2: number,
+    minOut: number,
+    maxOut: number,
+  ): number;
+  emt_set_control_input?(solverPtr: number, blkIdx: number, u0: number, u1: number): void;
+  emt_get_control_output?(solverPtr: number, blkIdx: number): number;
+  emt_add_pll(
+    solverPtr: number,
+    nodeA: number,
+    nodeB: number,
+    nodeC: number,
+    vBaseKvLL: number,
+    fNomHz: number,
+    kp: number,
+    ki: number,
+  ): number;
+  emt_get_pll_freq_hz?(solverPtr: number, pllIdx: number): number;
+  emt_get_pll_angle_rad?(solverPtr: number, pllIdx: number): number;
+  emt_get_pll_vd_pu?(solverPtr: number, pllIdx: number): number;
+  emt_get_pll_vq_pu?(solverPtr: number, pllIdx: number): number;
+  emt_build_and_factorize(solverPtr: number): number | boolean;
+  emt_reset?(solverPtr: number): void;
+  emt_alloc_trajectory(solverPtr: number, maxSteps: number): number;
+  emt_step(solverPtr: number): void;
+  emt_run_steps(solverPtr: number, nSteps: number): number;
+  emt_get_voltages_ptr(solverPtr: number): number;
+  emt_get_time(solverPtr: number): number;
+  emt_get_factorization_count?(solverPtr: number): number;
+  emt_get_branch_current(solverPtr: number, branchIdx: number): number;
+  emt_get_arrester_energy?(solverPtr: number, arrIdx: number): number;
+  emt_get_machine_speed_pu?(solverPtr: number, macIdx: number): number;
+  emt_get_machine_angle_deg?(solverPtr: number, macIdx: number): number;
+  emt_get_trajectory_count(solverPtr: number): number;
+}
+
 export class WasmEmtBridge {
-  private readonly wasm: any;
+  private readonly wasm: WasmEmtExports;
   private readonly memory: WebAssembly.Memory;
   private readonly solverPtr: number;
   private readonly nNodes: number;
@@ -47,8 +225,8 @@ export class WasmEmtBridge {
   private trajectoryPtr: number = 0;
   private maxTrajectorySteps: number = 0;
 
-  constructor(nNodes: number, dt: number, maxBranches = 128, maxSources = 32, wasmExports?: any) {
-    this.wasm = wasmExports ?? getDefaultWasmExports();
+  constructor(nNodes: number, dt: number, maxBranches = 128, maxSources = 32, wasmExports?: WasmEmtExports) {
+    this.wasm = (wasmExports ?? getDefaultWasmExports()) as WasmEmtExports;
     if (!this.wasm) {
       throw new Error("Failed to load native WebAssembly runtime exports for WasmEmtBridge");
     }

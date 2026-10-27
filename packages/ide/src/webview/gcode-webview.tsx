@@ -201,25 +201,29 @@ function AnimatedGCode({
 
     let totalVertices = 0;
 
-    object.traverse((child: any) => {
-      if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
-        totalVertices += child.geometry.attributes.position.count;
+    object.traverse((child: THREE.Object3D) => {
+      const lineChild = child as THREE.Line & { isLineSegments?: boolean | undefined };
+      const posAttr = lineChild.geometry?.attributes?.["position"];
+      if ((lineChild.isLine || lineChild.isLineSegments) && posAttr) {
+        totalVertices += posAttr.count;
       }
     });
 
     let currentVertices = Math.floor(totalVertices * progressRef.current);
 
-    object.traverse((child: any) => {
-      if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
-        const count = child.geometry.attributes.position.count;
+    object.traverse((child: THREE.Object3D) => {
+      const lineChild = child as THREE.Line & { isLineSegments?: boolean | undefined };
+      const posAttr = lineChild.geometry?.attributes?.["position"];
+      if ((lineChild.isLine || lineChild.isLineSegments) && posAttr) {
+        const count = posAttr.count;
         if (currentVertices >= count) {
-          child.geometry.setDrawRange(0, count);
+          lineChild.geometry.setDrawRange(0, count);
           currentVertices -= count;
         } else if (currentVertices > 0) {
-          child.geometry.setDrawRange(0, currentVertices);
+          lineChild.geometry.setDrawRange(0, currentVertices);
           currentVertices = 0;
         } else {
-          child.geometry.setDrawRange(0, 0);
+          lineChild.geometry.setDrawRange(0, 0);
         }
       }
     });

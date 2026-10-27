@@ -28,7 +28,7 @@ async function ensureParser(): Promise<void> {
     const { createWasmParser } = await import("@modelscript/modelica/parser");
     const { parser } = await createWasmParser(modelicaWasmPath);
 
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
   })();
   return parserPromise;
 }
@@ -44,6 +44,102 @@ export interface ClassRenderResult {
   diagramSvg: string | null;
 }
 
+interface CstNodeLike {
+  type?: string | undefined;
+  text?: string | undefined;
+  children?: CstNodeLike[] | undefined;
+  parent?: CstNodeLike | undefined;
+}
+
+interface ModificationArgLike {
+  name?: string | undefined;
+  expression?: { toJSON?: unknown } | undefined;
+  value?: { text?: string | undefined } | string | number | boolean | undefined;
+}
+
+interface ModificationLike extends CstNodeLike {
+  modificationArguments?: ModificationArgLike[] | undefined;
+  bindingExpression?: { text?: string | undefined; value?: unknown } | undefined;
+  args?: { name?: string | undefined; value?: { text?: string | undefined } | unknown }[] | undefined;
+}
+
+interface ComponentInputLike {
+  name?: string | undefined;
+  classInstance?: { compositeName?: string | undefined } | null | undefined;
+  declaredType?: { compositeName?: string | undefined } | null | undefined;
+  description?: string | null | undefined;
+  cstNode?: CstNodeLike | null | undefined;
+  abstractSyntaxNode?:
+    | (CstNodeLike & {
+        parent?:
+          | (CstNodeLike & {
+              causality?: { toString(): string } | null | undefined;
+              variability?: { toString(): string } | null | undefined;
+            })
+          | undefined;
+      })
+    | null
+    | undefined;
+  causality?: { toString(): string } | null | undefined;
+  variability?: { toString(): string } | null | undefined;
+  declaration?:
+    | {
+        metadata?:
+          | {
+              causality?: { toString(): string } | null | undefined;
+              variability?: { toString(): string } | null | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+  modification?: ModificationLike | null | undefined;
+}
+
+interface ClassAdapterComponent {
+  id: number;
+  name?: string | undefined;
+  entry: unknown;
+  cstNode: CstNodeLike | null;
+  abstractSyntaxNode: CstNodeLike | null;
+  classInstance: ClassAdapter | null;
+  classKind: string;
+  modification: {
+    expression: { text: string } | undefined;
+    getModificationArgument: (argName: string) => { expression: { text: string } | undefined } | undefined;
+  };
+  parent?: ClassAdapter | undefined;
+  annotation?: ((name: string) => unknown) | undefined;
+}
+
+interface ClassAdapterConnectEq {
+  lhs: string;
+  rhs: string;
+  cstNode: CstNodeLike | null;
+}
+
+interface ClassAdapter {
+  id: number;
+  db: unknown;
+  context: Context;
+  cstNode: CstNodeLike | null;
+  abstractSyntaxNode: CstNodeLike | null;
+  isClassInstance: boolean;
+  name: string;
+  classKind: string;
+  entry: unknown;
+  components: ClassAdapterComponent[];
+  connectEquations: ClassAdapterConnectEq[];
+  extendsClassInstances: { classInstance: ClassAdapter }[];
+  resolveName?: ((parts: string[]) => ClassAdapterComponent | null) | undefined;
+  annotation?:
+    | ((name: string, ctx?: { classInstance?: unknown; modification?: unknown; cstNode?: unknown }) => unknown)
+    | undefined;
+}
+
+type AnnotationEvaluatorConstructor = new (ctx?: unknown) => {
+  evaluate(node: unknown, name: string): ({ info?: string | undefined } & Record<string, unknown>) | null;
+};
+
 function cleanModelicaDescription(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const cleaned = raw
@@ -58,19 +154,22 @@ function cleanModelicaDescription(raw: string | null | undefined): string | null
  * Extract modifier name/value pairs from a modification or CST node.
  */
 
-function extractModifiers(modification: any | null, cstNode?: any): { name: string; value: string | null }[] {
+function extractModifiers(
+  modification: ModificationLike | null | undefined,
+  cstNode?: CstNodeLike | null | undefined,
+): { name: string; value: string | null }[] {
   const result: { name: string; value: string | null }[] = [];
   if (!modification && !cstNode) return result;
 
   if (Array.isArray(modification?.modificationArguments)) {
     for (const arg of modification.modificationArguments) {
-      const name = (arg as any).name;
+      const name = arg.name;
       if (name) {
         let value: string | null = null;
         try {
           const expr = arg.expression;
           if (expr) {
-            const json = (expr as any).toJSON;
+            const json = expr.toJSON;
             value = typeof json === "string" ? json : JSON.stringify(json);
           }
         } catch {
@@ -86,7 +185,7 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
   const targetNode = cstNode ?? modification;
   if (!targetNode) return result;
 
-  const walk = (node: any, depth = 0) => {
+  const walk = (node: CstNodeLike | null | undefined, depth = 0) => {
     if (!node) return;
     if (
       node.type === "annotation_clause" ||
@@ -99,9 +198,10 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
     }
     if (node.type === "element_modification" || node.type === "ElementModification") {
       const nameNode = node.children?.find(
-        (c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier" || c.type === "Identifier",
+        (c: CstNodeLike) =>
+          c.type === "name" || c.type === "Name" || c.type === "identifier" || c.type === "Identifier",
       );
-      const valNode = node.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+      const valNode = node.children?.find((c: CstNodeLike) => c.type === "modification" || c.type === "Modification");
       if (nameNode?.text) {
         result.push({
           name: nameNode.text.trim(),
@@ -113,7 +213,7 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
     // Direct `= expr` or `(start=1) = expr` binding on the component declaration's top-level modification
     if ((node.type === "modification" || node.type === "Modification") && depth <= 3) {
       const directExpr = node.children?.find(
-        (c: any) =>
+        (c: CstNodeLike) =>
           c.type !== "class_modification" &&
           c.type !== "ClassModification" &&
           c.type !== "=" &&
@@ -150,7 +250,7 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
  * Extract metadata for a single component instance.
  */
 
-export function _extractComponentMetadata(component: any): ComponentMetadata | null {
+export function _extractComponentMetadata(component: ComponentInputLike): ComponentMetadata | null {
   const name = component.name;
   if (!name) return null;
 
@@ -170,7 +270,7 @@ export function _extractComponentMetadata(component: any): ComponentMetadata | n
     let p = cst.parent;
     while (p && !causality) {
       if (p.type === "component_clause" || p.type === "ComponentClause") {
-        const tp = p.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix");
+        const tp = p.children?.find((c: CstNodeLike) => c.type === "type_prefix" || c.type === "TypePrefix");
         if (tp?.text?.includes("input")) causality = "input";
         else if (tp?.text?.includes("output")) causality = "output";
         break;
@@ -190,7 +290,7 @@ export function _extractComponentMetadata(component: any): ComponentMetadata | n
     let p = cst.parent;
     while (p && !variability) {
       if (p.type === "component_clause" || p.type === "ComponentClause") {
-        const tp = p.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix");
+        const tp = p.children?.find((c: CstNodeLike) => c.type === "type_prefix" || c.type === "TypePrefix");
         if (tp?.text?.includes("parameter")) variability = "parameter";
         else if (tp?.text?.includes("constant")) variability = "constant";
         else if (tp?.text?.includes("discrete")) variability = "discrete";
@@ -218,8 +318,8 @@ const CLASS_KIND_KEYWORDS = [
   "optimization",
 ];
 
-function classKindFromEntry(entry: any): string {
-  const prefixesText = entry?.metadata?.classPrefixes ?? entry?.metadata?.classKind;
+function classKindFromEntry(entry: { metadata?: Record<string, unknown> | undefined } | null | undefined): string {
+  const prefixesText = entry?.metadata?.["classPrefixes"] ?? entry?.metadata?.["classKind"];
   if (typeof prefixesText !== "string" || !prefixesText) return "class";
   const lower = prefixesText.toLowerCase();
   for (let i = CLASS_KIND_KEYWORDS.length - 1; i >= 0; i--) {
@@ -235,13 +335,16 @@ function resolveSymbolId(context: Context, name: string): number | null {
   const parts = name.split(".");
   const first = parts[0];
   if (!first) return null;
-  let curr = context.queryEngine.index.byName.get(first)?.[0];
+  let curr: number | undefined = context.queryEngine.index.byName.get(first)?.[0];
   if (typeof curr !== "number") return null;
   const db = context.queryEngine.toQueryDB();
   for (let i = 1; i < parts.length; i++) {
     if (typeof curr !== "number") return null;
-    const children: any[] = (db.childrenOf(curr) as any[]) || [];
-    const match = children.find((c: any) => c.name === parts[i]);
+    const children: { id?: number | undefined; name?: string | undefined }[] =
+      (db.childrenOf(curr) as { id?: number | undefined; name?: string | undefined }[] | undefined) || [];
+    const match: { id?: number | undefined; name?: string | undefined } | undefined = children.find(
+      (c: { id?: number | undefined; name?: string | undefined }) => c.name === parts[i],
+    );
     if (!match || typeof match.id !== "number") return null;
     curr = match.id;
   }
@@ -251,36 +354,40 @@ function resolveSymbolId(context: Context, name: string): number | null {
 function buildClassAdapter(
   context: Context,
   symbolId: number,
-  AnnotationEvaluatorClass: any,
+  AnnotationEvaluatorClass: AnnotationEvaluatorConstructor,
   visited = new Set<number>(),
-): any {
+): ClassAdapter | null {
   if (visited.has(symbolId)) return null;
   visited.add(symbolId);
 
   const queryDB = context.queryEngine.toQueryDB();
   const entry = queryDB.symbol(symbolId);
   if (!entry) return null;
-  const cstNode = queryDB.cstNode(symbolId) as any;
+  const cstNode = queryDB.cstNode(symbolId) as CstNodeLike | null;
   const children = queryDB.childrenOf(symbolId) || [];
-  const components: any[] = [];
-  const connectEquations: any[] = [];
-  const extendsClassInstances: any[] = [];
+  const components: ClassAdapterComponent[] = [];
+  const connectEquations: ClassAdapterConnectEq[] = [];
+  const extendsClassInstances: { classInstance: ClassAdapter }[] = [];
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
-      const _childCst = queryDB.cstNode(child.id) as any;
+      const _childCst = queryDB.cstNode(child.id) as CstNodeLike | null;
       void _childCst;
       const childClassId = queryDB.query("classInstance", child.id) as number | undefined;
       const compCls =
         typeof childClassId === "number"
           ? buildClassAdapter(context, childClassId, AnnotationEvaluatorClass, new Set(visited))
           : null;
-      const childMod = queryDB.query("effectiveModification", child.id) as any;
+      const childMod = queryDB.query("effectiveModification", child.id) as ModificationLike | undefined;
       let exprText = childMod?.bindingExpression?.text ?? childMod?.bindingExpression?.value;
       if (exprText === undefined && childMod?.args) {
-        const startArg = childMod.args.find((a: any) => a.name === "start");
+        const startArg = childMod.args.find((a) => a.name === "start");
         if (startArg) {
-          exprText = startArg.value?.text ?? startArg.value;
+          const rawVal = startArg.value;
+          exprText =
+            typeof rawVal === "object" && rawVal !== null && "text" in rawVal
+              ? (rawVal as { text?: string | undefined }).text
+              : rawVal;
         }
       }
       components.push({
@@ -294,9 +401,13 @@ function buildClassAdapter(
         modification: {
           expression: exprText !== undefined ? { text: String(exprText) } : undefined,
           getModificationArgument: (argName: string) => {
-            const foundArg = childMod?.args?.find((a: any) => a.name === argName);
+            const foundArg = childMod?.args?.find((a) => a.name === argName);
             if (foundArg) {
-              const valText = foundArg.value?.text ?? foundArg.value;
+              const rawVal = foundArg.value;
+              const valText =
+                typeof rawVal === "object" && rawVal !== null && "text" in rawVal
+                  ? (rawVal as { text?: string | undefined }).text
+                  : rawVal;
               return { expression: valText !== undefined ? { text: String(valText) } : undefined };
             }
             return undefined;
@@ -304,12 +415,12 @@ function buildClassAdapter(
         },
       });
     } else if (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) {
-      const connCst = queryDB.cstNode(child.id) as any;
+      const connCst = queryDB.cstNode(child.id) as CstNodeLike | null;
       let lhs = "";
       let rhs = "";
       if (connCst) {
         const cRefs = (connCst.children || []).filter(
-          (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+          (c: CstNodeLike) => c.type === "component_reference" || c.type === "ComponentReference",
         );
         if (cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
         if (cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
@@ -322,7 +433,7 @@ function buildClassAdapter(
         cstNode: connCst,
       });
     } else if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
-      let baseSym = queryDB.query("resolvedBaseClass", child.id) as any;
+      let baseSym = queryDB.query("resolvedBaseClass", child.id) as { id?: number | undefined } | null | undefined;
       if (!baseSym && child.name) {
         const baseId = resolveSymbolId(context, child.name);
         if (baseId) baseSym = queryDB.symbol(baseId);
@@ -336,7 +447,7 @@ function buildClassAdapter(
     }
   }
 
-  const adapter: any = {
+  const adapter: ClassAdapter = {
     id: symbolId,
     db: queryDB,
     context,
@@ -351,13 +462,14 @@ function buildClassAdapter(
     extendsClassInstances,
   };
 
-  adapter.resolveName = (parts: string[]): any => {
+  adapter.resolveName = (parts: string[]): ClassAdapterComponent | null => {
     if (!parts || parts.length === 0) return null;
     const [first, ...rest] = parts;
+    if (!first) return null;
     let found = components.find((c) => c.name === first);
     if (!found) {
       for (const ext of extendsClassInstances) {
-        found = ext.classInstance?.resolveName?.([first]);
+        found = ext.classInstance?.resolveName?.([first]) ?? undefined;
         if (found) break;
       }
     }
@@ -373,7 +485,10 @@ function buildClassAdapter(
     comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
   }
 
-  adapter.annotation = (name: string, _ctx?: any) => {
+  adapter.annotation = (
+    name: string,
+    _ctx?: { classInstance?: unknown; modification?: unknown; cstNode?: unknown },
+  ) => {
     if (!cstNode) return null;
     if (_ctx && (_ctx.classInstance || _ctx.modification || _ctx.cstNode)) {
       return new AnnotationEvaluatorClass({ componentInstance: _ctx, classInstance: adapter }).evaluate(cstNode, name);
@@ -405,6 +520,7 @@ export async function processLibrary(
   await ensureParser();
 
   const { renderIcon, renderDiagram, AnnotationEvaluator } = await import("@modelscript/modelica/diagram");
+  const formatXml = xmlFormat as unknown as (xml: string) => string;
 
   const context = new Context(new NodeFileSystem());
 
@@ -455,7 +571,7 @@ export async function processLibrary(
     if (!sym) return;
 
     const className = fqn;
-    const cstNode = queryDB.cstNode(classId) as any;
+    const cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
     const children = queryDB.childrenOf(classId) || [];
 
     if (!processedClassNames.has(className)) {
@@ -469,15 +585,16 @@ export async function processLibrary(
             const baseName = (child.metadata?.["typeSpecifier"] as string) || child.name;
             if (baseName) baseClasses.push(baseName);
           } else if (child.kind === "Component" || child.kind === "Variable") {
-            const compCst = queryDB.cstNode(child.id) as any;
+            const compCst = queryDB.cstNode(child.id) as CstNodeLike | null;
             let compDesc: string | null = cleanModelicaDescription((child.metadata?.["description"] as string) ?? null);
             if (!compDesc && compCst?.children) {
               const descChild = compCst.children.find(
-                (c: any) => c.type === "description" || c.type === "comment" || c.type === "description_string",
+                (c: CstNodeLike) => c.type === "description" || c.type === "comment" || c.type === "description_string",
               );
               const descStrNode =
-                descChild?.children?.find((c: any) => c.type === "description_string" || c.type === "string_comment") ??
-                descChild;
+                descChild?.children?.find(
+                  (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
+                ) ?? descChild;
               if (descStrNode?.text) {
                 compDesc = cleanModelicaDescription(descStrNode.text);
               }
@@ -509,7 +626,7 @@ export async function processLibrary(
         let description: string | null = cleanModelicaDescription((sym.metadata?.["description"] as string) ?? null);
         if (!description && cstNode?.children) {
           // Check for description_string in long_class_specifier or children
-          const walkForDesc = (n: any): string | null => {
+          const walkForDesc = (n: CstNodeLike | null | undefined): string | null => {
             if (!n) return null;
             if (n.type === "annotation_clause" || n.type === "AnnotationClause" || n.type === "composition") {
               return null;
@@ -519,7 +636,7 @@ export async function processLibrary(
             }
             if (n.type === "description" || n.type === "comment") {
               const strNode = n.children?.find(
-                (c: any) => c.type === "description_string" || c.type === "string_comment",
+                (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
               );
               if (strNode?.text) return cleanModelicaDescription(strNode.text);
               return cleanModelicaDescription(n.text);
@@ -537,7 +654,7 @@ export async function processLibrary(
         let documentation: string | null = null;
         if (cstNode) {
           try {
-            const evaluator = new AnnotationEvaluator();
+            const evaluator = new (AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor)();
             const doc = evaluator.evaluate(cstNode, "Documentation");
             if (doc?.info) {
               documentation = doc.info;
@@ -561,18 +678,22 @@ export async function processLibrary(
 
         if (!skipRendering) {
           try {
-            const adapter = buildClassAdapter(context, classId, AnnotationEvaluator);
+            const adapter = buildClassAdapter(
+              context,
+              classId,
+              AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor,
+            );
             if (adapter) {
-              const icon = renderIcon(adapter);
+              const icon = renderIcon(adapter as unknown as Parameters<typeof renderIcon>[0]);
               if (icon) {
-                const svgStr = (xmlFormat as any)(icon.svg());
+                const svgStr = formatXml(icon.svg());
                 if (hasVisualContent(svgStr)) iconSvg = svgStr;
                 icon.remove();
                 icon.clear();
               }
-              const diagram = renderDiagram(adapter);
+              const diagram = renderDiagram(adapter as unknown as Parameters<typeof renderDiagram>[0]);
               if (diagram) {
-                const svgStr = (xmlFormat as any)(diagram.svg());
+                const svgStr = formatXml(diagram.svg());
                 if (hasVisualContent(svgStr)) diagramSvg = svgStr;
                 diagram.remove();
                 diagram.clear();
@@ -580,7 +701,11 @@ export async function processLibrary(
             }
           } catch {}
 
-          const win = (globalThis as any).window;
+          const win = (
+            globalThis as {
+              window?: { document?: { body?: { innerHTML: string } | undefined } | undefined } | undefined;
+            }
+          ).window;
           if (win?.document?.body) {
             win.document.body.innerHTML = "";
           }
@@ -614,7 +739,7 @@ export async function processLibrary(
   }
 
   // Find root classes for this library:
-  const rootSymbols: any[] = [];
+  const rootSymbols: { id: number; name: string }[] = [];
   for (const [_id, sym] of symIndex.symbols.entries()) {
     if (
       sym.kind === "Class" &&

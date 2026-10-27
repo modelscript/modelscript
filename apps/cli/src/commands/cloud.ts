@@ -27,6 +27,43 @@ const c = {
   blue: (s: string) => (useColor() ? `\x1b[34m${s}\x1b[0m` : s),
 };
 
+interface CloudStreamEvent {
+  type?: string | undefined;
+  logs?: string[] | undefined;
+  status?: string | undefined;
+  data?: { status?: string | undefined; error?: string | undefined } | string | undefined;
+}
+
+interface CloudComputeProfile {
+  id: string;
+  name: string;
+  cpus: number;
+  memoryMb: number;
+  gpus?: number | undefined;
+  gpuType?: string | undefined;
+  costCreditsPerHour: number;
+}
+
+interface CloudWalletBalance {
+  userId?: string | undefined;
+  balance?: number | undefined;
+  totalSpent?: number | undefined;
+  totalJobs?: number | undefined;
+}
+
+interface CloudJobSummary {
+  jobId: string;
+  name: string;
+  domain?: string | undefined;
+  profile?: string | undefined;
+  status: string;
+  costCredits?: number | undefined;
+  elapsedSeconds?: number | undefined;
+  usage?: { costCredits?: number | undefined } | undefined;
+  hasResult?: boolean | undefined;
+  error?: string | undefined;
+}
+
 async function streamJobEvents(apiUrl: string, jobId: string, headers: Record<string, string>): Promise<void> {
   const res = await fetch(`${apiUrl}/api/v1/cloud/jobs/${jobId}/events`, {
     headers: { ...headers, Accept: "text/event-stream" },
@@ -51,7 +88,7 @@ async function streamJobEvents(apiUrl: string, jobId: string, headers: Record<st
       const line = part.trim();
       if (!line.startsWith("data:")) continue;
       try {
-        const evt = JSON.parse(line.slice(5).trim()) as any;
+        const evt = JSON.parse(line.slice(5).trim()) as CloudStreamEvent;
         if (evt.type === "init" && Array.isArray(evt.logs)) {
           for (const l of evt.logs) console.log(l);
           if (evt.status === "completed" || evt.status === "failed" || evt.status === "cancelled") {
@@ -60,12 +97,13 @@ async function streamJobEvents(apiUrl: string, jobId: string, headers: Record<st
         } else if (evt.type === "log") {
           console.log(String(evt.data));
         } else if (evt.type === "status") {
-          const st = evt.data?.status;
+          const dataObj = typeof evt.data === "object" && evt.data !== null ? evt.data : undefined;
+          const st = dataObj?.status;
           if (st === "completed") {
             console.log(c.green(`✔ Job ${jobId} completed.`));
             return;
           } else if (st === "failed" || st === "cancelled") {
-            console.error(c.red(`✖ Job ${jobId} ${st}: ${evt.data?.error || ""}`));
+            console.error(c.red(`✖ Job ${jobId} ${st}: ${dataObj?.error || ""}`));
             return;
           }
         }
@@ -135,7 +173,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.error(`Error: Failed to fetch profiles (${res.status} ${res.statusText})`);
             process.exit(1);
           }
-          const data = (await res.json()) as { profiles: any[] };
+          const data = (await res.json()) as { profiles: CloudComputeProfile[] };
           console.log(`\n${c.bold(`ModelScript Cloud Compute Profiles (${apiUrl})`)}\n`);
           console.log(
             `${"PROFILE ID".padEnd(16)} ${"NAME".padEnd(28)} ${"VCPUS".padEnd(8)} ${"RAM".padEnd(10)} ${"GPUS".padEnd(10)} ${"COST (CR/HR)"}`,
@@ -149,8 +187,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             );
           }
           console.log("");
-        } catch (err: any) {
-          console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Failed to connect to ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -168,7 +206,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             }
             process.exit(1);
           }
-          const data = (await res.json()) as any;
+          const data = (await res.json()) as CloudWalletBalance;
           console.log(`\n${c.bold("ModelScript Cloud Credit Wallet")}`);
           console.log(`  User ID:        ${data.userId ?? "Default"}`);
           console.log(`  Current Balance: ${c.green(`${Number(data.balance ?? 0).toFixed(2)} Credits`)}`);
@@ -179,8 +217,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.log(`  Jobs Dispatched: ${data.totalJobs}`);
           }
           console.log("");
-        } catch (err: any) {
-          console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Failed to connect to ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -194,7 +232,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.error(`Error: Failed to list jobs (${res.status} ${res.statusText})`);
             process.exit(1);
           }
-          const data = (await res.json()) as { jobs: any[] };
+          const data = (await res.json()) as { jobs: CloudJobSummary[] };
           console.log(`\n${c.bold(`ModelScript Cloud Jobs (${apiUrl})`)}\n`);
           if (data.jobs.length === 0) {
             console.log("  No active or historical jobs found.\n");
@@ -220,8 +258,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             );
           }
           console.log("");
-        } catch (err: any) {
-          console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Failed to connect to ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -239,7 +277,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.error(`Error: Failed to fetch status for job '${jobId}' (${res.status} ${res.statusText})`);
             process.exit(1);
           }
-          const data = (await res.json()) as any;
+          const data = (await res.json()) as CloudJobSummary;
           console.log(`\n${c.bold(`Job Status: ${data.jobId}`)}`);
           console.log(`  Name:           ${data.name}`);
           console.log(`  Domain:         ${data.domain}`);
@@ -256,8 +294,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.log(`  ${c.red(`Error:          ${data.error}`)}`);
           }
           console.log("");
-        } catch (err: any) {
-          console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Failed to connect to ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -285,8 +323,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.log(l);
           }
           console.log("");
-        } catch (err: any) {
-          console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Failed to connect to ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -308,8 +346,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             process.exit(1);
           }
           console.log(c.green(`✔ Job ${jobId} cancelled successfully.`));
-        } catch (err: any) {
-          console.error(`Failed to connect to ${apiUrl}: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Failed to connect to ${apiUrl}: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -338,8 +376,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           const buf = Buffer.from(await res.arrayBuffer());
           fs.writeFileSync(outPath, buf);
           console.log(c.green(`✔ Result downloaded: ${outPath} (${buf.length} bytes)`));
-        } catch (err: any) {
-          console.error(`Download failed: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;
@@ -366,7 +404,13 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
         console.log(`[Cloud] Dispatching ${domain.toUpperCase()} model '${modelName}' using profile '${profile}'...`);
 
         try {
-          const payload: any = {
+          const payload: {
+            domain: string;
+            name: string;
+            profile: string;
+            deck?: { content: string; format: string } | undefined;
+            sourceContent?: string | undefined;
+          } = {
             domain,
             name: modelName,
             profile,
@@ -384,7 +428,7 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
           });
 
           if (res.status === 402) {
-            const errData = (await res.json().catch(() => ({}))) as any;
+            const errData = (await res.json().catch(() => ({}))) as { message?: string | undefined };
             console.error(c.red(`Payment Required (402) - Insufficient Compute Credits`));
             if (errData.message) console.error(`  ${errData.message}`);
             process.exit(1);
@@ -404,8 +448,8 @@ export const Cloud: CommandModule<Record<string, unknown>, CloudArgs> = {
             console.log(`  Check status: msx cloud status ${data.jobId}`);
             console.log(`  View logs:    msx cloud logs ${data.jobId}`);
           }
-        } catch (err: any) {
-          console.error(`Dispatch failed: ${err.message}`);
+        } catch (err: unknown) {
+          console.error(`Dispatch failed: ${err instanceof Error ? err.message : String(err)}`);
           process.exit(1);
         }
         break;

@@ -429,8 +429,11 @@ export class CaeSweepOrchestrator {
           fields,
           nodeCoordinates: meshPayload.geometry.positions,
         });
-      } catch (err: any) {
-        console.warn(`[CaeSweepOrchestrator] Failed to parse result files for run #${run.runIndex}:`, err.message);
+      } catch (err: unknown) {
+        console.warn(
+          `[CaeSweepOrchestrator] Failed to parse result files for run #${run.runIndex}:`,
+          err instanceof Error ? err.message : String(err),
+        );
       }
     }
 
@@ -497,8 +500,11 @@ export class CaeSweepOrchestrator {
         } else {
           materializedDeck = materializeCalculixDeck(spec.templateDeck, { evaluator: run.parameters });
         }
-      } catch (err: any) {
-        console.warn(`[CaeSweepOrchestrator] Deck materialization error for run #${run.runIndex}:`, err.message);
+      } catch (err: unknown) {
+        console.warn(
+          `[CaeSweepOrchestrator] Deck materialization error for run #${run.runIndex}:`,
+          err instanceof Error ? err.message : String(err),
+        );
       }
 
       fs.mkdirSync(run.resultDir, { recursive: true });
@@ -558,9 +564,9 @@ export class CaeSweepOrchestrator {
             error: run.error,
           });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         run.status = "failed";
-        run.error = err.message || "Execution exception";
+        run.error = (err instanceof Error ? err.message : String(err)) || "Execution exception";
         state.failedRuns++;
         this.emitEvent(sweepId, "run_failed", {
           runIndex: run.runIndex,

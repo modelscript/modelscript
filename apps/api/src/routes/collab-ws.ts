@@ -144,7 +144,24 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
     let joinedPeerId: string | null = null;
 
     ws.on("message", (raw: Buffer | string) => {
-      let msg: any;
+      let msg: {
+        type?: string | undefined;
+        documentUri?: string | undefined;
+        peerId?: string | undefined;
+        displayName?: string | undefined;
+        initialContent?: string | undefined;
+        symbolSpans?: CollabSymbolSpan[] | undefined;
+        color?: string | undefined;
+        cursorOffset?: number | undefined;
+        selectionEndOffset?: number | undefined;
+        line?: number | undefined;
+        column?: number | undefined;
+        baseVersion?: number | undefined;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
+        insertText?: string | undefined;
+        id?: string | undefined;
+      };
       try {
         msg = JSON.parse(typeof raw === "string" ? raw : raw.toString("utf-8"));
       } catch {

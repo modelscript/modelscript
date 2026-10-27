@@ -41,9 +41,9 @@ export function adminRouter(
 
       const reports = database.getModerationQueue(status, limit, offset);
       res.json({ reports, count: reports.length, limit, offset });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] GET /admin/moderation/queue error:", err);
-      res.status(500).json({ error: err.message || "Failed to fetch moderation queue" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch moderation queue" });
     }
   });
 
@@ -101,9 +101,9 @@ export function adminRouter(
         actionExecuted: action || "none",
         tombstoneActivity,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] Resolve report error:", err);
-      res.status(500).json({ error: err.message || "Failed to resolve report" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to resolve report" });
     }
   });
 
@@ -117,9 +117,9 @@ export function adminRouter(
     try {
       const domains = database.listFederationDomains();
       res.json({ domains, count: domains.length });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] GET /admin/federation/domains error:", err);
-      res.status(500).json({ error: err.message || "Failed to list federation domains" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list federation domains" });
     }
   });
 
@@ -158,9 +158,9 @@ export function adminRouter(
         tier,
         reason,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] Set domain tier error:", err);
-      res.status(500).json({ error: err.message || "Failed to set domain tier" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to set domain tier" });
     }
   });
 
@@ -182,9 +182,9 @@ export function adminRouter(
       });
 
       res.json({ success: true, domain: domain.toLowerCase() });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] Delete domain tier error:", err);
-      res.status(500).json({ error: err.message || "Failed to delete domain tier" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete domain tier" });
     }
   });
 
@@ -235,9 +235,9 @@ export function adminRouter(
         tombstonePropagated: Boolean(deleteResult.apId),
         tombstoneActivity,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] Delete post error:", err);
-      res.status(500).json({ error: err.message || "Failed to delete post" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete post" });
     }
   });
 
@@ -254,9 +254,9 @@ export function adminRouter(
 
       const logs = database.getAuditLogs(limit, offset, action);
       res.json({ logs, count: logs.length, limit, offset });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] GET /admin/audit-logs error:", err);
-      res.status(500).json({ error: err.message || "Failed to fetch audit logs" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch audit logs" });
     }
   });
 
@@ -303,9 +303,9 @@ export function adminRouter(
         noticeId: notice.id,
         message: "DMCA takedown notice received and queued for statutory processing.",
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] File DMCA notice error:", err);
-      res.status(500).json({ error: err.message || "Failed to file DMCA notice" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to file DMCA notice" });
     }
   });
 
@@ -317,9 +317,9 @@ export function adminRouter(
       const status = req.query["status"] as string | undefined;
       const notices = database.listDmcaNotices(status);
       res.json({ notices, count: notices.length });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] GET /admin/dmca/notices error:", err);
-      res.status(500).json({ error: err.message || "Failed to list DMCA notices" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list DMCA notices" });
     }
   });
 
@@ -352,9 +352,9 @@ export function adminRouter(
       });
 
       res.json({ success: true, noticeId: id, actionTaken });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[AdminRouter] Resolve DMCA notice error:", err);
-      res.status(500).json({ error: err.message || "Failed to resolve DMCA notice" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to resolve DMCA notice" });
     }
   });
 
@@ -368,8 +368,8 @@ export function adminRouter(
       const runner = database.migrationRunner;
       const status = runner.getStatus(allMigrations);
       res.json(status);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to fetch migration status" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch migration status" });
     }
   });
 
@@ -383,8 +383,8 @@ export function adminRouter(
       const runner = database.migrationRunner;
       const result = await runner.runPending(allMigrations, { dryRun, skipBackup });
       res.json({ success: true, ...result });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to execute database upgrade" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to execute database upgrade" });
     }
   });
 
@@ -396,8 +396,8 @@ export function adminRouter(
       const runner = database.migrationRunner;
       const check = runner.verifyIntegrity();
       res.json(check);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to verify database integrity" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to verify database integrity" });
     }
   });
 
@@ -415,8 +415,8 @@ export function adminRouter(
       }
       const flags = featureFlagService.listAllForAdmin();
       res.json({ flags });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to fetch feature flags" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch feature flags" });
     }
   });
 
@@ -441,7 +441,7 @@ export function adminRouter(
       featureFlagService.setFlag(key, isEnabled, allowedRoles, rolloutPercentage ?? 100);
 
       database.logAudit({
-        actorId: (req as any).user?.id || null,
+        actorId: req.user?.id || null,
         action: "update_feature_flag",
         resourceType: "feature_flag",
         resourceId: key,
@@ -450,8 +450,8 @@ export function adminRouter(
       });
 
       res.json({ success: true, key, isEnabled });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to update feature flag" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update feature flag" });
     }
   });
 

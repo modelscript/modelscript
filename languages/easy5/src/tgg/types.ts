@@ -8,9 +8,9 @@ export interface ReconciledChange {
   target: "parameter" | "state" | "component" | "connection";
   elementId: string;
   property?: string | undefined;
-  sourceOldVal?: any;
-  targetNewVal?: any;
-  reconciledVal?: any;
+  sourceOldVal?: unknown;
+  targetNewVal?: unknown;
+  reconciledVal?: unknown;
   strategy?: "target-wins" | "source-wins" | "physics-simplex" | "manual" | undefined;
 }
 
@@ -22,10 +22,10 @@ export interface SyncOptions {
 
 export interface SyncConflict {
   id: string;
-  sourceVal: any;
-  targetVal: any;
+  sourceVal: unknown;
+  targetVal: unknown;
   isResolved: boolean;
-  resolved?: any;
+  resolved?: unknown;
 }
 
 export interface SyncResult {

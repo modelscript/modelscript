@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { ModelScriptCstNode } from "../queries.js";
+
 export interface ModelicaComponentInfo {
   name: string;
   type: string;
@@ -16,11 +18,14 @@ export interface PolyglotModel {
 /**
  * Extracts high-level component declarations from a Modelica CST root node.
  */
-export function extractModelicaModel(modelicaTreeRoot: any, sourceText: string): PolyglotModel {
+export function extractModelicaModel(
+  modelicaTreeRoot: ModelScriptCstNode | null | undefined,
+  sourceText: string,
+): PolyglotModel {
   const components: ModelicaComponentInfo[] = [];
   let modelName = "AnonymousModel";
 
-  function walk(node: any) {
+  function walk(node: ModelScriptCstNode | null | undefined): void {
     if (!node) return;
 
     if (node.type === "class_definition" || node.type === "model_clause") {
@@ -35,14 +40,17 @@ export function extractModelicaModel(modelicaTreeRoot: any, sourceText: string):
       // Look for component declarations inside
       for (let i = 0; i < node.childCount; i++) {
         const c = node.child(i);
-        if (c.type === "component_declaration" || c.type === "ComponentDeclaration" || c.type === "declaration") {
+        if (
+          c &&
+          (c.type === "component_declaration" || c.type === "ComponentDeclaration" || c.type === "declaration")
+        ) {
           const id = c.childForFieldName?.("identifier") || c.childForFieldName?.("name");
           const name = id ? id.text : "unnamed";
 
           // Check for modification / binding value (e.g. = 100)
           let val: number | undefined = undefined;
           const match = c.text.match(/=\s*([0-9]+(?:\.[0-9]+)?)/);
-          if (match) {
+          if (match?.[1]) {
             val = parseFloat(match[1]);
           }
 

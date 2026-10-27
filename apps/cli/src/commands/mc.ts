@@ -83,7 +83,7 @@ export const MC: CommandModule<{}, McArgs> = {
   }) as CommandModule<{}, McArgs>["builder"],
   handler: async (args) => {
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);

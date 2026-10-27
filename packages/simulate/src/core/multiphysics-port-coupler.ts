@@ -116,7 +116,7 @@ export class MultiphysicsPortCoupler {
   ): void {
     for (const binding of this.bindings.values()) {
       if (binding.role === "fluid_port") {
-        if ("setBoundaryCondition" in continuum && typeof (continuum as any).setBoundaryCondition === "function") {
+        if ("setBoundaryCondition" in continuum && typeof continuum.setBoundaryCondition === "function") {
           const cfd = continuum as ICfdContinuumParticipant;
           const massFlow = oneDStates[`${binding.oneDPortName}.m_flow`] ?? oneDStates[binding.oneDPortName] ?? 0.0;
           const pressure = oneDStates[`${binding.oneDPortName}.p`] ?? 101325.0;
@@ -151,7 +151,7 @@ export class MultiphysicsPortCoupler {
 
     for (const binding of this.bindings.values()) {
       if (binding.role === "fluid_port") {
-        if ("getPatchMetrics" in continuum && typeof (continuum as any).getPatchMetrics === "function") {
+        if ("getPatchMetrics" in continuum && typeof continuum.getPatchMetrics === "function") {
           const cfd = continuum as ICfdContinuumParticipant;
           const metrics = cfd.getPatchMetrics(binding.continuumTagOrPatch);
           this.lastContinuumMetrics.set(binding.continuumTagOrPatch, metrics);
@@ -160,7 +160,7 @@ export class MultiphysicsPortCoupler {
           feedback.set(`${binding.oneDPortName}.m_flow_feedback`, metrics.integratedMassFlow ?? 0.0);
         }
       } else if (binding.role === "mechanical_flange") {
-        if ("getNodeDisplacement" in continuum && typeof (continuum as any).getNodeDisplacement === "function") {
+        if ("getNodeDisplacement" in continuum && typeof continuum.getNodeDisplacement === "function") {
           const fea = continuum as IFeaContinuumParticipant;
           const disp = fea.getNodeDisplacement(binding.continuumTagOrPatch);
           const axis = binding.axis ?? [0, 1, 0];

@@ -13,8 +13,94 @@ import {
   setDiagramOptions,
   updateParameterText,
   validatePropertyValue,
+  type ComponentPropertyData,
+  type PropertyChoiceOption,
+  type PropertyFieldConfig,
+  type PropertyTabConfig,
 } from "@modelscript/diagram";
 import DOMPurify from "dompurify";
+
+interface PlacementPayload {
+  className: string;
+  classKind?: string | undefined;
+  iconSvg?: string | undefined;
+  isDrag?: boolean | undefined;
+}
+
+interface DiagramWindowGlobals extends Window {
+  acquireVsCodeApi?: () => {
+    postMessage(message: unknown): void;
+    getState<T = unknown>(): T | undefined;
+    setState<T = unknown>(state: T): T;
+  };
+  __movePlacementGhost?: ((x: number, y: number, event?: Event) => void) | undefined;
+  __setPointerOverCanvas?: ((over: boolean, pos?: { x: number; y: number }) => void) | undefined;
+  __getPlacementData?: (() => PlacementPayload | null | undefined) | undefined;
+  __hidePlacementGhost?: (() => void) | undefined;
+  __handlePlacementClick?: ((x: number, y: number) => void) | undefined;
+  __startPlacement?: ((data: PlacementPayload) => void) | undefined;
+  __clearPlacement?: (() => void) | undefined;
+}
+
+interface WebviewDiagramAction {
+  type: string;
+  [key: string]: unknown;
+}
+
+interface DropDataTransferOrExtra {
+  className?: string | undefined;
+  iconSvg?: string | undefined;
+  getData?: ((format: string) => string) | undefined;
+}
+
+interface ContextMenuItem {
+  label: string;
+  shortcut?: string | undefined;
+  action: () => void;
+  isDivider?: boolean | undefined;
+}
+
+interface DiagramCellData {
+  definition?: string | undefined;
+  name?: string | undefined;
+  parameters?: Record<string, unknown> | undefined;
+  disabled?: boolean | undefined;
+  properties?: ComponentPropertyData | undefined;
+  targetModule?: string | undefined;
+  isModule?: boolean | undefined;
+  wireId?: string | undefined;
+  [key: string]: unknown;
+}
+
+interface DiagramNodeCell {
+  id: string;
+  isNode(): boolean;
+  getData(): DiagramCellData | undefined;
+  setData(data: DiagramCellData): void;
+  setAttrs(attrs: Record<string, unknown>): void;
+  getAngle(): number;
+  rotate(deg: number): void;
+}
+
+interface DiagramEdgeEndpoint {
+  cell?: string | undefined;
+  port?: string | undefined;
+}
+
+interface DiagramEdgeCell {
+  id: string;
+  getData(): DiagramCellData | undefined;
+  getSource(): DiagramEdgeEndpoint | null | undefined;
+  getTarget(): DiagramEdgeEndpoint | null | undefined;
+}
+
+interface DiagramShowPropertiesInput {
+  id: string;
+  properties?: ComponentPropertyData | undefined;
+  isLoading?: boolean | undefined;
+}
+
+const diagramWindow = window as DiagramWindowGlobals;
 
 function escapeHtml(str: unknown): string {
   if (str === null || str === undefined) return "";
@@ -41,16 +127,16 @@ if (document.readyState === "loading") {
   initPropertiesClose();
 }
 
-const vscode = (window as any).acquireVsCodeApi?.() ?? {
+const vscode = diagramWindow.acquireVsCodeApi?.() ?? {
   postMessage() {
     /* noop fallback */
   },
 };
 
-let pendingDiagramActions: any[] = [];
+let pendingDiagramActions: WebviewDiagramAction[] = [];
 let diagramActionTimer: ReturnType<typeof setTimeout> | null = null;
 
-function enqueueDiagramAction(action: any) {
+function enqueueDiagramAction(action: WebviewDiagramAction) {
   console.log("[diagram.ts] enqueuing diagram action:", action.type, action);
 
   if (action.type === "interactiveWrite") {
@@ -98,11 +184,11 @@ function initDiagramBridge() {
     if (!ghostRafId) {
       ghostRafId = requestAnimationFrame(() => {
         ghostRafId = null;
-        if (lastGhostClientPos && (window as any).__movePlacementGhost) {
+        if (lastGhostClientPos && diagramWindow.__movePlacementGhost) {
           const g = getGraph() ?? initGraph(isDark);
           if (g) {
             const p = g.clientToLocal(lastGhostClientPos.x, lastGhostClientPos.y);
-            (window as any).__movePlacementGhost(snapToGrid(p.x), snapToGrid(p.y), window.event);
+            diagramWindow.__movePlacementGhost(snapToGrid(p.x), snapToGrid(p.y), window.event);
           }
         }
       });
@@ -115,7 +201,7 @@ function initDiagramBridge() {
     "mouseenter",
     () => {
       isPointerOverCanvas = true;
-      (window as any).__setPointerOverCanvas?.(true);
+      diagramWindow.__setPointerOverCanvas?.(true);
     },
     true,
   );
@@ -124,7 +210,7 @@ function initDiagramBridge() {
     "mouseleave",
     () => {
       isPointerOverCanvas = false;
-      (window as any).__setPointerOverCanvas?.(false);
+      diagramWindow.__setPointerOverCanvas?.(false);
     },
     true,
   );
@@ -135,7 +221,7 @@ function initDiagramBridge() {
     lastGhostClientPos = { x: e.clientX, y: e.clientY };
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     updateGhostPosition(e.clientX, e.clientY);
-    (window as any).__setPointerOverCanvas?.(true, { x: e.clientX, y: e.clientY });
+    diagramWindow.__setPointerOverCanvas?.(true, { x: e.clientX, y: e.clientY });
   };
 
   window.addEventListener("dragenter", onDragEnterOrOver, true);
@@ -148,7 +234,7 @@ function initDiagramBridge() {
     (e) => {
       isPointerOverCanvas = true;
       lastGhostClientPos = { x: e.clientX, y: e.clientY };
-      const placementData = (window as any).__getPlacementData?.();
+      const placementData = diagramWindow.__getPlacementData?.();
       if (placementData) {
         // If dragging from the library tree and the mouse button is no longer held down (buttons === 0),
         // the drop has completed! Place the component immediately.
@@ -170,13 +256,13 @@ function initDiagramBridge() {
       // Only hide placement ghost if the pointer has actually exited the webview window bounds!
       if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
         isPointerOverCanvas = false;
-        (window as any).__setPointerOverCanvas?.(false);
+        diagramWindow.__setPointerOverCanvas?.(false);
         if (ghostRafId) {
           cancelAnimationFrame(ghostRafId);
           ghostRafId = null;
         }
 
-        (window as any).__hidePlacementGhost?.();
+        diagramWindow.__hidePlacementGhost?.();
       }
     },
     true,
@@ -184,7 +270,11 @@ function initDiagramBridge() {
 
   let lastDropTimestamp = 0;
 
-  const handleDropOrPlace = (clientX?: number, clientY?: number, dataTransferOrExtra?: any) => {
+  const handleDropOrPlace = (
+    clientX?: number,
+    clientY?: number,
+    dataTransferOrExtra?: DropDataTransferOrExtra | null,
+  ) => {
     const now = Date.now();
     if (now - lastDropTimestamp < 350) return;
     if (ghostRafId) {
@@ -194,7 +284,7 @@ function initDiagramBridge() {
     const targetX = typeof clientX === "number" && clientX > 0 ? clientX : (lastGhostClientPos?.x ?? 0);
     const targetY = typeof clientY === "number" && clientY > 0 ? clientY : (lastGhostClientPos?.y ?? 0);
 
-    const getPlacementData = (window as any).__getPlacementData;
+    const getPlacementData = diagramWindow.__getPlacementData;
     let placementData = getPlacementData ? getPlacementData() : null;
 
     if (!placementData && dataTransferOrExtra) {
@@ -244,16 +334,16 @@ function initDiagramBridge() {
       if (g) {
         const p = g.clientToLocal(targetX, targetY);
         // Delegate to unified handlePlacementClick if present
-        if (typeof (window as any).__handlePlacementClick === "function") {
-          if (!(window as any).__getPlacementData?.()) {
-            (window as any).__startPlacement?.({
+        if (typeof diagramWindow.__handlePlacementClick === "function") {
+          if (!diagramWindow.__getPlacementData?.()) {
+            diagramWindow.__startPlacement?.({
               className: placementData.className,
               classKind: "Component",
               iconSvg: placementData.iconSvg,
               isDrag: true,
             });
           }
-          (window as any).__handlePlacementClick(p.x, p.y);
+          diagramWindow.__handlePlacementClick(p.x, p.y);
           return;
         }
 
@@ -278,7 +368,7 @@ function initDiagramBridge() {
         });
         // Clear placement ghost and state inside diagram-core without removing the drop animation
 
-        (window as any).__clearPlacement?.();
+        diagramWindow.__clearPlacement?.();
       }
     }
   };
@@ -294,7 +384,7 @@ function initDiagramBridge() {
   const onPointerUpOrMouseUp = (e: MouseEvent | PointerEvent) => {
     // Only handle placement on pointerup if placement mode was active
 
-    if ((window as any).__getPlacementData?.()) {
+    if (diagramWindow.__getPlacementData?.()) {
       handleDropOrPlace(e.clientX, e.clientY);
     }
   };
@@ -315,13 +405,13 @@ function initDiagramBridge() {
       handleDropOrPlace(e.data.clientX, e.data.clientY, e.data);
     } else if (e.data.type === "workbenchDragOver" && typeof e.data.clientX === "number") {
       isPointerOverCanvas = true;
-      (window as any).__setPointerOverCanvas?.(true, { x: e.data.clientX, y: e.data.clientY });
+      diagramWindow.__setPointerOverCanvas?.(true, { x: e.data.clientX, y: e.data.clientY });
       updateGhostPosition(e.data.clientX, e.data.clientY);
     } else if (e.data.type === "dragEnd") {
       if (isPointerOverCanvas && lastGhostClientPos) {
         handleDropOrPlace(lastGhostClientPos.x, lastGhostClientPos.y);
       } else {
-        (window as any).__clearPlacement?.();
+        diagramWindow.__clearPlacement?.();
       }
     } else if (e.data.type === "simulationData") {
       currentSimData = e.data.data;
@@ -338,13 +428,13 @@ function initDiagramBridge() {
     container,
     isDark,
     onAction: enqueueDiagramAction,
-    onSelect: (id: unknown) => {
+    onSelect: (id: string | null) => {
       if (!id) {
         currentRenderedNodeId = null;
         document.getElementById("properties-panel")?.classList.remove("open");
       }
     },
-    onShowProperties: (nodeId: unknown, cachedProps: unknown, isLoading?: boolean) => {
+    onShowProperties: (nodeId: string, cachedProps?: ComponentPropertyData, isLoading?: boolean) => {
       if (typeof nodeId === "string" && (nodeId === "__diagram_background__" || nodeId === "__diagram_axes__")) {
         currentRenderedNodeId = null;
         document.getElementById("properties-panel")?.classList.remove("open");
@@ -484,22 +574,22 @@ function initCanvasHud() {
 
   hudGnd?.addEventListener("click", () => {
     setSelectMode();
-    (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
+    diagramWindow.__startPlacement?.({ className: "master:ground", classKind: "Component" });
   });
 
   hudBus?.addEventListener("click", () => {
     setSelectMode();
-    (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
+    diagramWindow.__startPlacement?.({ className: "master:bus", classKind: "Component" });
   });
 
   hudBreaker?.addEventListener("click", () => {
     setSelectMode();
-    (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
+    diagramWindow.__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
   });
 
   hudResistor?.addEventListener("click", () => {
     setSelectMode();
-    (window as any).__startPlacement?.({ className: "master:resistor", classKind: "Component" });
+    diagramWindow.__startPlacement?.({ className: "master:resistor", classKind: "Component" });
   });
 
   hudOmni?.addEventListener("click", (e) => {
@@ -795,11 +885,7 @@ function initContextMenu() {
   document.addEventListener("click", hideMenu);
   window.addEventListener("blur", hideMenu);
 
-  const showMenuAt = (
-    x: number,
-    y: number,
-    items: { label: string; shortcut?: string; action: () => void; isDivider?: boolean }[],
-  ) => {
+  const showMenuAt = (x: number, y: number, items: ContextMenuItem[]) => {
     menu.innerHTML = "";
     for (const item of items) {
       if (item.isDivider) {
@@ -830,7 +916,7 @@ function initContextMenu() {
       return;
     }
 
-    g.on("node:click", ({ node }: any) => {
+    g.on("node:click", ({ node }: { node: DiagramNodeCell }) => {
       const defn = String(node.getData()?.definition || "").toLowerCase();
       const name = String(node.getData()?.name || node.id).toLowerCase();
       if (defn.includes("breaker") || defn.includes("switch") || name.includes("brk") || name.includes("breaker")) {
@@ -858,10 +944,10 @@ function initContextMenu() {
       }
     });
 
-    g.on("node:mouseenter", ({ node, e }: any) => {
+    g.on("node:mouseenter", ({ node, e }: { node: DiagramNodeCell; e: MouseEvent }) => {
       showProbeTooltip(e.clientX, e.clientY, node.id, node.getData()?.name);
     });
-    g.on("node:mousemove", ({ node, e }: any) => {
+    g.on("node:mousemove", ({ node, e }: { node: DiagramNodeCell; e: MouseEvent }) => {
       if (currentSimData) {
         showProbeTooltip(e.clientX, e.clientY, node.id, node.getData()?.name);
       }
@@ -870,11 +956,11 @@ function initContextMenu() {
       hideProbeTooltip();
     });
 
-    g.on("edge:mouseenter", ({ edge, e }: any) => {
+    g.on("edge:mouseenter", ({ edge, e }: { edge: DiagramEdgeCell; e: MouseEvent }) => {
       const wireId = edge.getData()?.wireId || edge.id;
       showProbeTooltip(e.clientX, e.clientY, wireId);
     });
-    g.on("edge:mousemove", ({ edge, e }: any) => {
+    g.on("edge:mousemove", ({ edge, e }: { edge: DiagramEdgeCell; e: MouseEvent }) => {
       if (currentSimData) {
         const wireId = edge.getData()?.wireId || edge.id;
         showProbeTooltip(e.clientX, e.clientY, wireId);
@@ -888,7 +974,7 @@ function initContextMenu() {
       hideProbeTooltip();
     });
 
-    g.on("node:contextmenu", ({ node, e }: any) => {
+    g.on("node:contextmenu", ({ node, e }: { node: DiagramNodeCell; e: MouseEvent }) => {
       if (e && typeof e.preventDefault === "function") e.preventDefault();
       const clientX = e.clientX ?? 100;
       const clientY = e.clientY ?? 100;
@@ -902,7 +988,7 @@ function initContextMenu() {
         String(node.getData()?.parameters?.Status ?? node.getData()?.parameters?.status ?? "closed").toLowerCase() ===
         "open";
 
-      const items: { label: string; shortcut?: string; action: () => void; isDivider?: boolean }[] = [
+      const items: ContextMenuItem[] = [
         {
           label: "Edit Parameters...",
           shortcut: "Space",
@@ -1008,7 +1094,7 @@ function initContextMenu() {
       showMenuAt(clientX, clientY, items);
     });
 
-    g.on("edge:contextmenu", ({ edge, e }: any) => {
+    g.on("edge:contextmenu", ({ edge, e }: { edge: DiagramEdgeCell; e: MouseEvent }) => {
       if (e && typeof e.preventDefault === "function") e.preventDefault();
       const clientX = e.clientX ?? 100;
       const clientY = e.clientY ?? 100;
@@ -1034,8 +1120,8 @@ function initContextMenu() {
           label: "Delete Wire",
           shortcut: "Del",
           action: () => {
-            const source = edge.getSource() as any;
-            const target = edge.getTarget() as any;
+            const source = edge.getSource();
+            const target = edge.getTarget();
             if (source?.cell && source?.port && target?.cell && target?.port) {
               enqueueDiagramAction({
                 type: "disconnect",
@@ -1051,13 +1137,13 @@ function initContextMenu() {
       ]);
     });
 
-    g.on("blank:contextmenu", ({ e }: any) => {
+    g.on("blank:contextmenu", ({ e }: { e: MouseEvent }) => {
       if (e && typeof e.preventDefault === "function") e.preventDefault();
       const clientX = e.clientX ?? 100;
       const clientY = e.clientY ?? 100;
 
       const isPscad = isPscadLanguage(activeLanguage);
-      const menuItems: any[] = [
+      const menuItems: ContextMenuItem[] = [
         {
           label: "Search Component...",
           shortcut: "Shift+A",
@@ -1074,21 +1160,21 @@ function initContextMenu() {
             label: "Insert Ground",
             shortcut: "G",
             action: () => {
-              (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
+              diagramWindow.__startPlacement?.({ className: "master:ground", classKind: "Component" });
             },
           },
           {
             label: "Insert Busbar",
             shortcut: "B",
             action: () => {
-              (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
+              diagramWindow.__startPlacement?.({ className: "master:bus", classKind: "Component" });
             },
           },
           {
             label: "Insert Breaker",
             shortcut: "K",
             action: () => {
-              (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
+              diagramWindow.__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
             },
           },
         );
@@ -1150,7 +1236,7 @@ function showSpotlight(x: number, y: number) {
       };
       row.onclick = () => {
         popover.style.display = "none";
-        (window as any).__startPlacement?.({ className: item.id, classKind: "Component" });
+        diagramWindow.__startPlacement?.({ className: item.id, classKind: "Component" });
       };
       results.appendChild(row);
     });
@@ -1183,7 +1269,7 @@ function showSpotlight(x: number, y: number) {
       const choice = filtered[selectedIdx];
       if (choice) {
         popover.style.display = "none";
-        (window as any).__startPlacement?.({ className: choice.id, classKind: "Component" });
+        diagramWindow.__startPlacement?.({ className: choice.id, classKind: "Component" });
       }
     }
   };
@@ -1214,15 +1300,15 @@ function initKeyboardAccelerators() {
       return;
     }
 
-    const selectedCells = g.getSelectedCells();
-    const selectedNodes = selectedCells.filter((c: any) => c.isNode());
+    const selectedCells = g.getSelectedCells() as DiagramNodeCell[];
+    const selectedNodes = selectedCells.filter((c: DiagramNodeCell) => c.isNode());
 
     // Rotate: R
     if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) {
       if (selectedNodes.length > 0) {
         e.preventDefault();
         const deg = e.shiftKey ? -90 : 90;
-        selectedNodes.forEach((node: any) => {
+        selectedNodes.forEach((node: DiagramNodeCell) => {
           const curAngle = node.getAngle() || 0;
           const newAngle = (((curAngle + deg) % 360) + 360) % 360;
           node.rotate(deg);
@@ -1236,7 +1322,7 @@ function initKeyboardAccelerators() {
     if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey) {
       if (selectedNodes.length > 0) {
         e.preventDefault();
-        selectedNodes.forEach((node: any) => {
+        selectedNodes.forEach((node: DiagramNodeCell) => {
           const current = Boolean(node.getData()?.disabled);
           const target = !current;
           node.setData({ ...node.getData(), disabled: target });
@@ -1258,13 +1344,13 @@ function initKeyboardAccelerators() {
 
       // Quick insert Ground: G
       if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey) {
-        (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
+        diagramWindow.__startPlacement?.({ className: "master:ground", classKind: "Component" });
         return;
       }
 
       // Quick insert Busbar: B
       if (e.key.toLowerCase() === "b" && !e.ctrlKey && !e.metaKey) {
-        (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
+        diagramWindow.__startPlacement?.({ className: "master:bus", classKind: "Component" });
         return;
       }
 
@@ -1301,7 +1387,7 @@ function initKeyboardAccelerators() {
             return;
           }
         }
-        (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
+        diagramWindow.__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
         return;
       }
 
@@ -1338,7 +1424,7 @@ if (document.readyState === "loading") {
 const nodeActiveTabMap = new Map<string, string>();
 let currentRenderedNodeId: string | null = null;
 
-function showProperties(nodeData: any) {
+function showProperties(nodeData: DiagramShowPropertiesInput) {
   const panel = document.getElementById("properties-panel");
   const content = document.getElementById("properties-content");
   const title = document.getElementById("properties-title");
@@ -1425,27 +1511,25 @@ function showProperties(nodeData: any) {
   if (isLoading) {
     html += loadingSpinner;
   } else if (props) {
-    const hasSchemaTabs = props.schema?.tabs && props.schema.tabs.length > 0;
-
-    if (hasSchemaTabs) {
-      const availableTabs = props.schema.tabs.filter((t: any) =>
+    if (props.schema?.tabs && props.schema.tabs.length > 0) {
+      const availableTabs = props.schema.tabs.filter((t: PropertyTabConfig) =>
         evaluatePropertyPredicate(t.visibleIf, props.values || {}),
       );
       let activeTabId = nodeActiveTabMap.get(nodeData.id);
-      if (!activeTabId || !availableTabs.some((t: any) => t.id === activeTabId)) {
+      if (!activeTabId || !availableTabs.some((t: PropertyTabConfig) => t.id === activeTabId)) {
         activeTabId = availableTabs[0]?.id;
         if (activeTabId) {
           nodeActiveTabMap.set(String(nodeData.id), activeTabId);
         }
       }
-      const activeTab = availableTabs.find((t: any) => t.id === activeTabId) || availableTabs[0];
+      const activeTab = availableTabs.find((t: PropertyTabConfig) => t.id === activeTabId) || availableTabs[0];
 
       // Tab navigation bar
       html += `
         <div class="prop-tabs-bar" style="display: flex; gap: 4px; border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #454545); margin-top: 12px; margin-bottom: 12px; overflow-x: auto;">
           ${availableTabs
             .map(
-              (t: any) => `
+              (t: PropertyTabConfig) => `
             <button class="prop-tab-btn" data-tab="${t.id}" style="padding: 6px 10px; background: transparent; border: none; border-bottom: 2px solid ${t.id === activeTabId ? "var(--vscode-panelTitle-activeBorder, #007acc)" : "transparent"}; color: ${t.id === activeTabId ? "var(--vscode-panelTitle-activeForeground, #fff)" : "var(--vscode-descriptionForeground, #888)"}; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;">
               ${t.label}
             </button>
@@ -1489,7 +1573,7 @@ function showProperties(nodeData: any) {
                   <label class="prop-label" title="${escapedDesc}">${escapedLabel}</label>
                   <select class="prop-select prop-input-property" data-prop="${field.key}" style="width: 100%; border-radius: 4px; padding: 4px; background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border: 1px solid var(--vscode-dropdown-border);" ${isDisabled ? "disabled" : ""}>
                     ${field.choices
-                      .map((c: any) => {
+                      .map((c: string | PropertyChoiceOption) => {
                         const cVal = typeof c === "string" ? c : c.value;
                         const cLabel = typeof c === "string" ? c : c.label;
                         return `<option value="${escapeHtml(cVal)}" ${String(cVal) === String(val) ? "selected" : ""}>${escapeHtml(cLabel)}</option>`;
@@ -1543,7 +1627,7 @@ function showProperties(nodeData: any) {
       // Legacy flat parameters fallback
       if (props.parameters && props.parameters.length > 0) {
         html += `<div style="margin-top:24px; margin-bottom:12px; font-weight:600; text-transform:uppercase; font-size:11px; color:var(--vscode-sideBarTitle-foreground)">Parameters</div>`;
-        for (const p of props.parameters as any[]) {
+        for (const p of props.parameters) {
           const escapedValue = escapeHtml(p.value || "");
           const escapedDescParam = escapeHtml(p.description || "");
           const escapedParamName = escapeHtml(p.name);
@@ -1676,7 +1760,7 @@ function showProperties(nodeData: any) {
         props.values[propKey] = newValue;
       }
       if (props?.parameters) {
-        const p = props.parameters.find((param: any) => param.name === propKey);
+        const p = props.parameters.find((param) => param.name === propKey);
         if (p) p.value = String(newValue);
       }
 
@@ -1689,7 +1773,7 @@ function showProperties(nodeData: any) {
         const otherKey = otherInput.getAttribute("data-prop");
         for (const tab of props?.schema?.tabs || []) {
           for (const grp of tab.groups || []) {
-            const f = grp.fields?.find((field: any) => field.key === otherKey);
+            const f = grp.fields?.find((field: PropertyFieldConfig) => field.key === otherKey);
             if (f && props.values) {
               const isEnabled = evaluatePropertyPredicate(f.enabledIf, props.values);
               const isVisible = evaluatePropertyPredicate(f.visibleIf, props.values);

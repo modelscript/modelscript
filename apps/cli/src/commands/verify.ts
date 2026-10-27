@@ -19,7 +19,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 
@@ -62,7 +62,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
   command: "verify [target] [paths..]",
   describe: "Unified formal verification and simulation validation for SysML v2 and Modelica",
 
-  builder: ((yargs: any) => {
+  builder: (yargs) => {
     return yargs
       .positional("target", {
         description: "optional target element, verification case, or model name",
@@ -207,8 +207,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         description: "synchronize verification verdicts directly into digital thread hypergraph",
         type: "boolean",
         default: false,
-      });
-  }) as CommandModule<{}, VerifyArgs>["builder"],
+      }) as unknown as Argv<VerifyArgs>;
+  },
 
   handler: async (args) => {
     const profiler = new Profiler();
@@ -232,7 +232,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     // Load Modelica Parser
     const { parser: modelicaParser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", modelicaParser as any);
+    Context.registerParser(".mo", modelicaParser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     const __filename = fileURLToPath(import.meta.url);
@@ -262,13 +262,22 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         await context.addLibrary(p);
         const text = fs.readFileSync(p, "utf-8");
         combinedSysmlText += "\n" + text;
-        mIdx.register(fileUri, () => modelicaParser.parse(text)?.rootNode as any);
+        mIdx.register(
+          fileUri,
+          () =>
+            modelicaParser.parse(text)?.rootNode as unknown as ReturnType<
+              NonNullable<Parameters<typeof mIdx.register>[1]>
+            >,
+        );
       } else if (p.endsWith(".sysml")) {
         const text = fs.readFileSync(p, "utf-8");
         combinedSysmlText += "\n" + text;
         const tree = sysmlParser.parse(text);
         if (tree) {
-          sysmlIndex.register(fileUri, () => tree.rootNode as any);
+          sysmlIndex.register(
+            fileUri,
+            () => tree.rootNode as unknown as ReturnType<NonNullable<Parameters<typeof sysmlIndex.register>[1]>>,
+          );
         }
       } else {
         await context.addLibrary(p);
@@ -278,7 +287,11 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     const u = new UnifiedWorkspace();
     u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
-    u.registerWorkspace("sysml2", sysmlIndex, sysml2LangFallback as any);
+    u.registerWorkspace(
+      "sysml2",
+      sysmlIndex,
+      sysml2LangFallback as unknown as Parameters<typeof u.registerWorkspace>[2],
+    );
 
     if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
     const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
@@ -286,8 +299,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const { createModelicaQueryEngine } = await import("@modelscript/modelica/factory");
     const sysmlFactory = await import("@modelscript/sysml2/factory");
 
-    u.registerParser(".mo", modelicaParser as any);
-    u.registerParser(".sysml", sysmlParser as any);
+    u.registerParser(".mo", modelicaParser as unknown as Parameters<typeof u.registerParser>[1]);
+    u.registerParser(".sysml", sysmlParser as unknown as Parameters<typeof u.registerParser>[1]);
 
     const ensureDocument = (resId: string) => {
       const p = pathMap.get(resId) || resId.replace("file://", "");
@@ -306,12 +319,20 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const engine = createModelicaQueryEngine(
       unifiedDb,
       {
-        getText: (startOffset: number, endOffset: number, entry?: any) => {
+        getText: (
+          startOffset: number,
+          endOffset: number,
+          entry?: Parameters<NonNullable<typeof u.cstTextProvider>>[2],
+        ) => {
           if (!entry?.resourceId) return null;
           ensureDocument(entry.resourceId);
           return u.cstTextProvider ? u.cstTextProvider(startOffset, endOffset, entry) : null;
         },
-        getNode: (_startOffset: number, _endOffset: number, entry?: any) => {
+        getNode: (
+          _startOffset: number,
+          _endOffset: number,
+          entry?: { id: number; resourceId?: string | undefined },
+        ) => {
           if (!entry?.resourceId) return null;
           ensureDocument(entry.resourceId);
           return u.cstNodeProvider ? u.cstNodeProvider(entry.id) : null;
@@ -325,9 +346,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     context.setQueryEngine(engine);
 
     // Optional Trajectory Simulation
-    let simResult: any = null;
-    let verifyEntry: any = null;
-    let arena: any = null;
+    let simResult: Parameters<typeof UnifiedVerifier.verify>[0]["simulationResult"] = undefined;
+    let verifyEntry: { ruleName: string; id: number } | undefined = undefined;
+    let arena: ReturnType<typeof context.flattenArena> | null = null;
 
     if (args.simulation !== false || args.b2b || args.flowpipe || args.all) {
       // Find candidate verification case if a target name or any verify entry exists
@@ -342,9 +363,16 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       }
 
       if (verifyEntry) {
-        const topo = db.query("extractTopology", verifyEntry.id) as any;
-        if (topo && topo.rootIds?.length > 0) {
-          const rootNode = topo.nodes.get(topo.rootIds[0]);
+        const topo = db.query("extractTopology", verifyEntry.id) as
+          | {
+              rootIds?: number[] | undefined;
+              nodes: Map<number, { targetClassId?: number | undefined }>;
+            }
+          | null
+          | undefined;
+        if (topo && topo.rootIds && topo.rootIds.length > 0) {
+          const firstRootId = topo.rootIds[0];
+          const rootNode = firstRootId !== undefined ? topo.nodes.get(firstRootId) : undefined;
           if (rootNode?.targetClassId) {
             const targetEntry = db.symbol(rootNode.targetClassId);
             profiler.start("flattening");
@@ -389,7 +417,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
           profiler.start("wasm compilation");
           const simulator = new ArenaSimulator(arena);
           simulator.prepare();
-          const modelIdentifier = target || arena.modelName?.replace(/[^a-zA-Z0-9_]/g, "_") || "model";
+          const arenaModelName = (arena as { modelName?: string | undefined }).modelName;
+          const modelIdentifier = target || arenaModelName?.replace(/[^a-zA-Z0-9_]/g, "_") || "model";
           const stateVars = new Set<string>();
           for (const varIdx of simulator.stateVars) {
             stateVars.add(arena.getVarName(varIdx));

@@ -30,7 +30,8 @@ export function lowerRocetsToDae(builder: IDaeBuilder, model: RocetsEngineModel)
     startVal: number = 0.0,
   ): number {
     const key = name.toUpperCase();
-    if (variableMap.has(key)) return variableMap.get(key)!;
+    const mapped = variableMap.get(key);
+    if (mapped !== undefined) return mapped;
 
     const existingIdx = builder.lookupVariable(name);
     if (existingIdx !== -1) {

@@ -118,8 +118,9 @@ function lowerSwcBehavior(
     // If runnable has both read and write access, form continuous behavioral equations
     if (runnable.dataReadAccess.length > 0 && runnable.dataWriteAccess.length > 0) {
       for (let i = 0; i < runnable.dataWriteAccess.length; i++) {
-        const write = runnable.dataWriteAccess[i]!;
-        const read = runnable.dataReadAccess[i % runnable.dataReadAccess.length]!;
+        const write = runnable.dataWriteAccess[i];
+        const read = runnable.dataReadAccess[i % runnable.dataReadAccess.length];
+        if (!write || !read) continue;
 
         const wKey = `${swc.shortName}.${write.port}.${write.dataElement}`;
         const rKey = `${swc.shortName}.${read.port}.${read.dataElement}`;

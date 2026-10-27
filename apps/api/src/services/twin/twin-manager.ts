@@ -75,7 +75,7 @@ export interface ActiveTwinSession {
   lastTelemetryAt: string | null;
   lastAdaptedAt: string | null;
   lastAccessedAt: number;
-  subscribers: Set<(event: any) => void>;
+  subscribers: Set<(event: Record<string, unknown>) => void>;
 }
 
 export class TwinManager {
@@ -91,7 +91,7 @@ export class TwinManager {
     for (const [id, session] of this.sessions.entries()) {
       if (session.subscribers.size === 0 && now - session.lastAccessedAt > maxIdleMs) {
         try {
-          (session.arena as any).dispose?.();
+          (session.arena as { dispose?: () => void }).dispose?.();
         } catch {}
         this.sessions.delete(id);
         evicted++;
@@ -280,7 +280,7 @@ export class TwinManager {
   /**
    * Subscribe to real-time events on a twin session.
    */
-  subscribe(twinId: number, callback: (event: any) => void): () => void {
+  subscribe(twinId: number, callback: (event: Record<string, unknown>) => void): () => void {
     const session = this.sessions.get(twinId);
     if (session) {
       session.subscribers.add(callback);
@@ -293,7 +293,7 @@ export class TwinManager {
   /**
    * Broadcast event to all subscribers of a twin.
    */
-  broadcast(twinId: number, event: any): void {
+  broadcast(twinId: number, event: Record<string, unknown>): void {
     const session = this.sessions.get(twinId);
     if (!session) return;
     for (const cb of session.subscribers) {
@@ -316,7 +316,7 @@ export class TwinManager {
     db: LibraryDatabase,
   ): Promise<{
     timestamp: number;
-    driftEvent: any;
+    driftEvent: ReturnType<CusumDriftDetector["update"]>;
     healthScore: number;
     adaptationTriggered: boolean;
   }> {
@@ -389,7 +389,14 @@ export class TwinManager {
   /**
    * Trigger Moving Horizon Estimation (MHE) calibration over the rolling window.
    */
-  async adaptTwin(twinId: number, reason: string, db: LibraryDatabase, driftEvent?: any): Promise<MheResult> {
+  async adaptTwin(
+    twinId: number,
+    reason: string,
+    db: LibraryDatabase,
+    driftEvent?:
+      | (NonNullable<ReturnType<CusumDriftDetector["update"]>> & { magnitude?: number | undefined })
+      | undefined,
+  ): Promise<MheResult> {
     const session = await this.getOrCreateSession(twinId, db);
     const range = session.buffer.getTimeRange();
     if (!range || range.endTime - range.startTime < 0.2) {
@@ -416,7 +423,9 @@ export class TwinManager {
 
     // Insert into twin_adaptations
     const priorParams = JSON.stringify(
-      Object.fromEntries(Object.entries(result.parameterDeltas).map(([k, d]: [string, any]) => [k, d.prior])),
+      Object.fromEntries(
+        Object.entries(result.parameterDeltas).map(([k, d]: [string, { prior: number }]) => [k, d.prior]),
+      ),
     );
     const updatedParams = JSON.stringify(result.calibratedParameters);
 
@@ -439,7 +448,9 @@ export class TwinManager {
     // Notify social platform & open Physics PR
     const notifier = new SocialTwinNotifier(db);
     const alertScore = driftEvent?.score ?? 4.5;
-    const severity = driftEvent?.severity ?? "medium";
+    const rawSeverity = driftEvent?.severity;
+    const severity: "low" | "medium" | "high" =
+      rawSeverity === "low" || rawSeverity === "high" ? rawSeverity : "medium";
 
     await notifier.notifyDriftAndOpenProposal({
       twinId,

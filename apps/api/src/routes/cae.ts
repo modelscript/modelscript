@@ -233,10 +233,11 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
                 database.releaseUserEscrow(userId, dbJobId, result.error || "CAE job failed");
               }
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             database.updateJobStatus(dbJobId, "FAILED");
             if (userId) {
-              database.releaseUserEscrow(userId, dbJobId, err?.message || "CAE execution exception");
+              const message = err instanceof Error ? err.message : "CAE execution exception";
+              database.releaseUserEscrow(userId, dbJobId, message || "CAE execution exception");
             }
           } finally {
             activeStreamers.delete(dbJobId.toString());
@@ -250,9 +251,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           profile,
           resultDir,
         });
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("POST /cae/jobs ERROR:", err);
-        return res.status(500).json({ error: String(err), stack: (err as any)?.stack });
+        return res.status(500).json({ error: String(err), stack: err instanceof Error ? err.stack : undefined });
       }
       return;
     },
@@ -297,9 +298,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       const limit = Math.min(50, Math.max(1, parseInt(req.query["limit"] as string, 10) || 20));
       const jobs = database.getUserCompletedHpcJobs(userId, limit);
       res.json({ jobs, count: jobs.length });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[CaeRouter] GET /cae/user-jobs error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });
@@ -314,8 +315,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       let connected = true;
       let latencyMs = 0;
       let version: string | undefined;
-      let partitions: any[] = [];
-      let nodes: any[] = [];
+      let partitions: unknown[] = [];
+      let nodes: unknown[] = [];
 
       if (driver instanceof SlurmRestDriver) {
         const pingRes = await driver.ping();
@@ -342,9 +343,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         nodesCount: nodes.length,
         nodes,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[CaeRouter] GET /cae/cluster/status error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -362,12 +363,12 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       };
 
       const resultDir = metadata.resultDir;
-      let jobSpec: any = null;
+      let jobSpec: Partial<CaeJobSpec> | null = null;
       if (resultDir) {
         const specFile = path.join(resultDir, "job_spec.json");
         if (fs.existsSync(specFile)) {
           try {
-            jobSpec = JSON.parse(fs.readFileSync(specFile, "utf8"));
+            jobSpec = JSON.parse(fs.readFileSync(specFile, "utf8")) as Partial<CaeJobSpec>;
           } catch {}
         }
       }
@@ -390,9 +391,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         costCredits: dbJob.cost_credits || 0,
         cpuSeconds: dbJob.cpu_seconds || 0,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[CaeRouter] GET /cae/jobs/:id/reproduce-spec error:", err);
-      res.status(500).json({ error: err.message || String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
     return;
   });
@@ -714,8 +715,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         parameters: Array.from(dataset.parameters),
         scalarOutputs: Array.from(dataset.scalarOutputs),
       });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message || "Failed to extract dataset from sweep." });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to extract dataset from sweep." });
     }
   });
 
@@ -725,8 +726,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       const options = req.body || {};
       const trainResult = await sweepOrchestrator.trainSurrogate(req.params.id, options);
       res.json(trainResult);
-    } catch (err: any) {
-      res.status(400).json({ error: err.message || "Failed to train surrogate from sweep." });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to train surrogate from sweep." });
     }
   });
 

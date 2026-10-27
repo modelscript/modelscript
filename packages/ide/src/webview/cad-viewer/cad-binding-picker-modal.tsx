@@ -88,15 +88,18 @@ export function CadBindingPickerModal({
 
     if (component.dynamicBindings && component.dynamicBindings.length > 0) {
       setBindings(
-        component.dynamicBindings.map((b) => ({
-          property: b.property as DynamicBindingConfig["property"],
-          index: b.index,
-          variable: b.variable,
-          unit: (b as any).unit,
-          scale: (b as any).scale,
-          offset: (b as any).offset,
-          format: (b as any).format,
-        })),
+        component.dynamicBindings.map((b) => {
+          const ext = b as DynamicBindingConfig;
+          return {
+            property: b.property as DynamicBindingConfig["property"],
+            index: b.index,
+            variable: b.variable,
+            unit: ext.unit,
+            scale: ext.scale,
+            offset: ext.offset,
+            format: ext.format,
+          };
+        }),
       );
     } else {
       const initial: DynamicBindingConfig[] = [
@@ -283,7 +286,7 @@ export function CadBindingPickerModal({
                     property: opt.property as DynamicBindingConfig["property"],
                     index: "index" in opt ? opt.index : undefined,
                     unit: "defaultUnit" in opt ? opt.defaultUnit : undefined,
-                    format: "format" in opt ? (opt.format as any) : undefined,
+                    format: "format" in opt ? (opt.format as DynamicBindingConfig["format"]) : undefined,
                   });
                 }}
                 style={{

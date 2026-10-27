@@ -33,7 +33,15 @@ export class ContractHierarchyPanel extends BaseWebviewPanel {
   public static readonly viewType = "modelscript.contractExplorer";
 
   private readonly _client?: LanguageClient | undefined;
-  private _currentHierarchy: any = undefined;
+  private _currentHierarchy:
+    | {
+        system?: ContractNode | undefined;
+        components?: ContractNode[] | undefined;
+        states?: string[] | undefined;
+        transitions?: { name: string; from: string; to: string; guard?: string | undefined }[] | undefined;
+      }
+    | null
+    | undefined = undefined;
   private _targetUri?: string | undefined;
   private _targetContractName?: string | undefined;
   private _refreshTimer?: ReturnType<typeof setTimeout> | undefined;
@@ -245,7 +253,10 @@ export class ContractHierarchyPanel extends BaseWebviewPanel {
 
     if (this._client) {
       try {
-        const result = await this._client.sendRequest<any>("modelscript/getContractHierarchy", {
+        const result = await this._client.sendRequest<{
+          success?: boolean | undefined;
+          hierarchy?: NonNullable<ContractHierarchyPanel["_currentHierarchy"]> | undefined;
+        }>("modelscript/getContractHierarchy", {
           uri: resolvedUri,
           sourceText,
           systemContractName: this._targetContractName,
@@ -334,7 +345,9 @@ export class ContractHierarchyPanel extends BaseWebviewPanel {
       Array.isArray(h.states) && h.states.length > 0 ? h.states : ["START", "DRIVE", "BRAKE", "TRIP"];
     const initState = modelStates[0]!;
     const activeState = modelStates[1] ?? modelStates[0]!;
-    const modelTransitions: { name: string; from: string; to: string; guard?: string }[] = Array.isArray(h.transitions)
+    const modelTransitions: { name: string; from: string; to: string; guard?: string | undefined }[] = Array.isArray(
+      h.transitions,
+    )
       ? h.transitions
       : [];
 

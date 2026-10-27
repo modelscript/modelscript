@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import crypto from "node:crypto";
@@ -19,7 +18,7 @@ export function reposRouter(database: LibraryDatabase): Router {
     try {
       const repos = database.getPopularRepos(limit);
       res.json({ repos });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch popular repositories" });
     }
   });
@@ -32,7 +31,7 @@ export function reposRouter(database: LibraryDatabase): Router {
     try {
       const repos = database.getLinkedRepos(userId);
       res.json({ repos });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch linked repositories" });
     }
   });
@@ -52,7 +51,7 @@ export function reposRouter(database: LibraryDatabase): Router {
     try {
       database.linkRepo(userId, provider, external_repo_id, repo_full_name, default_branch || "main");
       res.status(201).json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to link repository" });
     }
   });
@@ -67,7 +66,7 @@ export function reposRouter(database: LibraryDatabase): Router {
     try {
       database.unlinkRepo(userId, repoId);
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to unlink repository" });
     }
   });
@@ -116,8 +115,8 @@ export function reposRouter(database: LibraryDatabase): Router {
         tagPattern,
       });
       res.status(201).json({ webhook });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to create webhook" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create webhook" });
     }
   });
 
@@ -186,8 +185,8 @@ export function reposRouter(database: LibraryDatabase): Router {
       });
 
       res.status(201).json({ success: true, review: result });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to run bot review" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to run bot review" });
     }
   });
 

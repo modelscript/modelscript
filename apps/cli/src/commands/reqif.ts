@@ -3,7 +3,7 @@
 import { ReqIfParser, type ReqIfRequirement, type ReqIfSpecification } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 interface ReqIfImportArgs {
   file: string;
@@ -40,7 +40,7 @@ const ReqIfImportCommand: CommandModule<{}, ReqIfImportArgs> = {
         description: "Output display format",
         choices: ["table", "json"],
         default: "table",
-      }) as any;
+      }) as unknown as Argv<ReqIfImportArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -125,7 +125,7 @@ const ReqIfExportCommand: CommandModule<{}, ReqIfExportArgs> = {
         description: "Document title for ReqIF specification",
         type: "string",
         default: "Exported Requirements",
-      }) as any;
+      }) as unknown as Argv<ReqIfExportArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -163,7 +163,7 @@ const ReqIfLintCommand: CommandModule<{}, { file: string }> = {
       demandOption: true,
       description: "Path to .reqif file",
       type: "string",
-    }) as any,
+    }) as unknown as Argv<{ file: string }>,
   handler: async (args) => {
     const { parseReqIf, lintReqIf } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -239,7 +239,7 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
         description: "Output format",
         choices: ["pretty", "json"],
         default: "pretty",
-      }) as any,
+      }) as unknown as Argv<ReqIfVerifyArgs>,
   handler: async (args) => {
     const { parseReqIf, verifyReqIfEntailment, verifyReqIfMultiDomain } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -253,7 +253,8 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
     const hasDecks = Boolean(args.deck?.length || args.psse || args.pscad || args.sima || args.fea || args.cfd);
 
     if (hasDecks) {
-      const decks: any = {};
+      type MultiDomainDecks = Parameters<typeof verifyReqIfMultiDomain>[1];
+      const decks: MultiDomainDecks = {};
 
       if (args.psse) {
         const pssePath = path.resolve(process.cwd(), args.psse);
@@ -264,7 +265,7 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
           const solution = solvePowerFlow(psseCase);
           decks.powerGrid = {
             powerFlow: {
-              buses: solution.buses.map((b: any) => ({
+              buses: solution.buses.map((b) => ({
                 busNumber: b.busNumber,
                 name: b.name,
                 vm: b.vm,
@@ -319,7 +320,7 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
                 partName: path.basename(cfdPath, path.extname(cfdPath)),
                 dragCoeff: dragTarget,
                 maxDragCoeff: dragTarget * 1.15,
-                machNumber: cfdModel.machNumber,
+                ...(cfdModel.machNumber !== undefined ? { machNumber: cfdModel.machNumber } : {}),
               },
             ],
           };
@@ -394,7 +395,7 @@ const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string }> = {
       .option("out", {
         description: "Output .sysml file path",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<{ file: string; out?: string }>,
   handler: async (args) => {
     const { parseReqIf, reqifToSysml2 } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -427,7 +428,7 @@ const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: string }> 
       .option("out", {
         description: "Output .mo file path",
         type: "string",
-      }) as any,
+      }) as unknown as Argv<{ file: string; out?: string }>,
   handler: async (args) => {
     const { parseReqIf, reqifToModelicaVerifier } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -458,7 +459,7 @@ export const ReqIf: CommandModule = {
       .command(ReqIfVerifyCommand)
       .command(ReqIfToSysmlCommand)
       .command(ReqIfToModelicaCommand)
-      .demandCommand(1, "Please specify an action (import, export, lint, verify, to-sysml, or to-modelica)") as any;
+      .demandCommand(1, "Please specify an action (import, export, lint, verify, to-sysml, or to-modelica)");
   },
   handler: () => {},
 };

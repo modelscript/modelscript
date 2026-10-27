@@ -55,7 +55,7 @@ export interface Relap5DiagramCell {
   label?: string | undefined;
   source?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
   target?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
-  attrs?: Record<string, unknown> | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
   data?: Record<string, unknown> | undefined;
 }
 
@@ -393,11 +393,10 @@ export function renderRelap5Svg(deck: Relap5DeckLike, options?: Relap5RenderOpti
         };
       }
 
-      const stroke = (c.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
-      const strokeWidth = (c.attrs?.["line"] as any)?.strokeWidth ?? 3;
-      const dash = (c.attrs?.["line"] as any)?.strokeDasharray
-        ? `stroke-dasharray="${(c.attrs?.["line"] as any).strokeDasharray}"`
-        : "";
+      const stroke = (c.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const strokeWidth = (c.attrs?.["line"]?.["strokeWidth"] as number | undefined) ?? 3;
+      const rawDash = c.attrs?.["line"]?.["strokeDasharray"] as string | undefined;
+      const dash = rawDash ? `stroke-dasharray="${rawDash}"` : "";
 
       svg += `  <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" ${dash} stroke-linecap="round" />\n`;
       if (c.label) {
@@ -413,9 +412,9 @@ export function renderRelap5Svg(deck: Relap5DeckLike, options?: Relap5RenderOpti
     if (c.shape === "rect" && c.x !== undefined && c.y !== undefined) {
       const w = c.width ?? 80;
       const h = c.height ?? 160;
-      const fill = (c.attrs?.["body"] as any)?.fill ?? "#0f172a";
-      const stroke = (c.attrs?.["body"] as any)?.stroke ?? "#ef4444";
-      const rx = (c.attrs?.["body"] as any)?.rx ?? 6;
+      const fill = (c.attrs?.["body"]?.["fill"] as string | undefined) ?? "#0f172a";
+      const stroke = (c.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#ef4444";
+      const rx = (c.attrs?.["body"]?.["rx"] as number | undefined) ?? 6;
 
       svg += `  <g>\n`;
       svg += `    <rect x="${c.x}" y="${c.y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="${fill}" stroke="${stroke}" stroke-width="2.5" />\n`;
@@ -443,8 +442,8 @@ export function renderRelap5Svg(deck: Relap5DeckLike, options?: Relap5RenderOpti
       const r = (c.width ?? 44) / 2;
       const cx = c.x + r;
       const cy = c.y + r;
-      const fill = (c.attrs?.["body"] as any)?.fill ?? "#064e3b";
-      const stroke = (c.attrs?.["body"] as any)?.stroke ?? "#10b981";
+      const fill = (c.attrs?.["body"]?.["fill"] as string | undefined) ?? "#064e3b";
+      const stroke = (c.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#10b981";
 
       svg += `  <g>\n`;
       svg += `    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2.5" />\n`;

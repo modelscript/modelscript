@@ -150,7 +150,7 @@ export interface OlgaDiagramCell {
   label?: string | undefined;
   source?: { cell: string; port?: string } | { x: number; y: number } | undefined;
   target?: { cell: string; port?: string } | { x: number; y: number } | undefined;
-  attrs?: Record<string, unknown> | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
   data?: Record<string, unknown> | undefined;
 }
 
@@ -471,14 +471,16 @@ export function renderOlgaSchematicSvg(model: OlgaModelLike): string {
   // Draw connecting lines
   for (const cell of diag.cells) {
     if (cell.shape === "edge" && cell.source && cell.target) {
-      const srcCell = diag.cells.find((c) => c.id === (cell.source as any).cell);
-      const tgtCell = diag.cells.find((c) => c.id === (cell.target as any).cell);
+      const srcCellId = typeof cell.source === "object" && "cell" in cell.source ? cell.source.cell : undefined;
+      const tgtCellId = typeof cell.target === "object" && "cell" in cell.target ? cell.target.cell : undefined;
+      const srcCell = srcCellId ? diag.cells.find((c) => c.id === srcCellId) : undefined;
+      const tgtCell = tgtCellId ? diag.cells.find((c) => c.id === tgtCellId) : undefined;
       if (srcCell && tgtCell && srcCell.x != null && srcCell.y != null && tgtCell.x != null && tgtCell.y != null) {
         const x1 = srcCell.x + (srcCell.width ?? 80);
         const y1 = srcCell.y + (srcCell.height ?? 30) / 2;
         const x2 = tgtCell.x;
         const y2 = tgtCell.y + (tgtCell.height ?? 30) / 2;
-        const stroke = (cell.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
+        const stroke = (cell.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
         svg += `  <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="3" stroke-linecap="round" />\n`;
       }
     }
@@ -506,8 +508,8 @@ export function renderOlgaSchematicSvg(model: OlgaModelLike): string {
         svg += `  <polygon points="${cx - 14},${cy - 14} ${cx + 14},${cy - 8} ${cx + 14},${cy + 8} ${cx - 14},${cy + 14}" fill="#3b0764" stroke="#a855f7" stroke-width="2" />\n`;
         svg += `  <text x="${cx}" y="${cy + 3}" text-anchor="middle" class="sub-text" fill="#c084fc">COMP</text>\n`;
       } else {
-        const stroke = (cell.attrs?.["body"] as any)?.stroke ?? "#38bdf8";
-        const fill = (cell.attrs?.["body"] as any)?.fill ?? "#1e293b";
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+        const fill = (cell.attrs?.["body"]?.["fill"] as string | undefined) ?? "#1e293b";
         svg += `  <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="6" fill="${fill}" stroke="${stroke}" stroke-width="2" />\n`;
         if (cell.label) {
           const parts = cell.label.split("\n");

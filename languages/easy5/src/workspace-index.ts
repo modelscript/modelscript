@@ -34,7 +34,7 @@ export class Easy5WorkspaceIndex implements IWorkspaceIndex {
     return this.fileModels.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any, text?: string): void {
+  public register(uri: string, _loader?: () => unknown, text?: string): void {
     if (text) {
       this.indexFile(uri, text);
     }

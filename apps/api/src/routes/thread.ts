@@ -26,11 +26,28 @@ export interface ThreadMetadata {
   uri?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
-  properties?: Record<string, any> | undefined;
+  properties?: Record<string, unknown> | undefined;
+}
+
+export interface ConflictRegistryEntry {
+  slot: number;
+  threadId: number;
+  sourceDomain: string;
+  sourceValue: number;
+  sourceUnit: string;
+  targetDomain: string;
+  targetValue: number;
+  targetUnit: string;
+  min: number;
+  max: number;
 }
 
 export interface ThreadRouterOptions {
   seedDemoThreads?: boolean;
+}
+
+function isDatabase(val: unknown): val is Database {
+  return Boolean(val && typeof val === "object" && ("saveThreadSnapshot" in val || "createThreadProposal" in val));
 }
 
 export function threadRouter(
@@ -45,19 +62,19 @@ export function threadRouter(
 
   if (arg1 instanceof DigitalThreadHypergraph) {
     hypergraph = arg1;
-    if (arg2 && typeof (arg2 as any).saveThreadSnapshot === "function") {
-      db = arg2 as Database;
+    if (isDatabase(arg2)) {
+      db = arg2;
       options = arg3;
     } else {
-      options = arg2 as ThreadRouterOptions | undefined;
+      options = arg2;
     }
-  } else if (arg1 && typeof (arg1 as any).createThreadProposal === "function") {
-    db = arg1 as Database;
+  } else if (isDatabase(arg1)) {
+    db = arg1;
     hypergraph = new DigitalThreadHypergraph();
     options = arg2 as ThreadRouterOptions | undefined;
   } else {
     hypergraph = new DigitalThreadHypergraph();
-    db = arg2 as Database | undefined;
+    db = isDatabase(arg2) ? arg2 : undefined;
     options = arg3;
   }
 
@@ -71,7 +88,7 @@ export function threadRouter(
   const sseClients = new Set<Response>();
 
   function persistSnapshot(): void {
-    if (!db || typeof (db as any).saveThreadSnapshot !== "function") return;
+    if (!db || typeof db.saveThreadSnapshot !== "function") return;
     try {
       const nodeMetadata: Record<string, ThreadMetadata> = {};
       for (const [k, v] of metadataMap.entries()) {
@@ -100,8 +117,8 @@ export function threadRouter(
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
-    if (typeof (res as any).flushHeaders === "function") {
-      (res as any).flushHeaders();
+    if (typeof res.flushHeaders === "function") {
+      res.flushHeaders();
     }
 
     sseClients.add(res);
@@ -123,26 +140,12 @@ export function threadRouter(
     });
   });
 
-  const conflictRegistry = new Map<
-    string,
-    {
-      slot: number;
-      threadId: number;
-      sourceDomain: string;
-      sourceValue: number;
-      sourceUnit: string;
-      targetDomain: string;
-      targetValue: number;
-      targetUnit: string;
-      min: number;
-      max: number;
-    }
-  >();
+  const conflictRegistry = new Map<string, ConflictRegistryEntry>();
 
   // Hydrate from SQLite snapshot if available, otherwise seed default demonstration threads
   if (hypergraph.getThreadCount() === 0) {
     const savedSnapshot =
-      db && typeof (db as any).loadThreadSnapshot === "function" ? db.loadThreadSnapshot("default") : undefined;
+      db && typeof db.loadThreadSnapshot === "function" ? db.loadThreadSnapshot("default") : undefined;
 
     if (savedSnapshot && savedSnapshot.serializedJson) {
       try {
@@ -159,7 +162,7 @@ export function threadRouter(
         }
         ThreadSerializer.deserialize(savedSnapshot.serializedJson, hypergraph);
 
-        if (db && typeof (db as any).getThreadConflicts === "function") {
+        if (db && typeof db.getThreadConflicts === "function") {
           const dbConflicts = db.getThreadConflicts("default");
           for (const c of dbConflicts) {
             const slot = c.slot ?? 0;
@@ -326,7 +329,7 @@ export function threadRouter(
 
   // ── POST /api/v1/threads/conflicts/reconcile ──────────────────────────
   router.post("/conflicts/reconcile", (req, res) => {
-    const authUser = (req as any).user;
+    const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -368,7 +371,7 @@ export function threadRouter(
       if (strategy === "target-wins") resolvedValue = 12.0;
     }
 
-    if (db && typeof (db as any).resolveThreadConflict === "function") {
+    if (db && typeof db.resolveThreadConflict === "function") {
       db.resolveThreadConflict(conflictId, resolvedValue);
     }
     persistSnapshot();
@@ -489,7 +492,7 @@ export function threadRouter(
       }
       for (const [cId, cEntry] of conflictRegistry.entries()) {
         if (cEntry.threadId === tIdNum || cEntry.slot === slot) {
-          if (db && typeof (db as any).resolveThreadConflict === "function") {
+          if (db && typeof db.resolveThreadConflict === "function") {
             db.resolveThreadConflict(cId, (cEntry.sourceValue + cEntry.targetValue) / 2);
           }
         }
@@ -597,7 +600,7 @@ export function threadRouter(
 
   // ── POST /api/v1/threads/proposals ────────────────────────────────────
   router.post("/proposals", (req, res) => {
-    const authUser = (req as any).user;
+    const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -646,7 +649,7 @@ export function threadRouter(
 
   // ── POST /api/v1/threads/proposals/:id/review ─────────────────────────
   router.post("/proposals/:id/review", (req, res) => {
-    const authUser = (req as any).user;
+    const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -698,8 +701,9 @@ export function threadRouter(
     }
 
     let rel = ThreadRelation.Aligned;
-    if (typeof relation === "string" && (ThreadRelation as any)[relation] !== undefined) {
-      rel = (ThreadRelation as any)[relation];
+    const relLookup = ThreadRelation as unknown as Record<string, ThreadRelation | undefined>;
+    if (typeof relation === "string" && typeof relLookup[relation] === "number") {
+      rel = relLookup[relation];
     } else if (typeof relation === "number") {
       rel = relation as ThreadRelation;
     }
@@ -760,7 +764,7 @@ export function threadRouter(
         max,
       });
 
-      if (db && typeof (db as any).saveThreadConflict === "function") {
+      if (db && typeof db.saveThreadConflict === "function") {
         db.saveThreadConflict({
           conflictId: cId,
           slot,
@@ -810,8 +814,8 @@ export function threadRouter(
         imported: true,
         totalThreads: hypergraph.getThreadCount(),
       });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message || "Failed to import .ms-thread payload" });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to import .ms-thread payload" });
     }
   });
 
@@ -825,7 +829,7 @@ export function threadRouter(
 export function seedDemoThreads(
   hypergraph: DigitalThreadHypergraph,
   metadataMap: Map<string, ThreadMetadata>,
-  conflictRegistry: Map<string, any>,
+  conflictRegistry: Map<string, ConflictRegistryEntry>,
   db?: Database,
   persist?: () => void,
 ): void {
@@ -906,7 +910,7 @@ export function seedDemoThreads(
     max: 48.0,
   });
 
-  if (db && typeof (db as any).saveThreadConflict === "function") {
+  if (db && typeof db.saveThreadConflict === "function") {
     db.saveThreadConflict({
       conflictId: "conflict_bus_voltage",
       slot: s2,

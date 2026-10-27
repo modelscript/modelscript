@@ -11,9 +11,15 @@ import type { LanguageClient } from "vscode-languageclient/browser";
 export function registerMCPTools(context: vscode.ExtensionContext, client: LanguageClient): void {
   // Runtime guard — lm.registerTool is a proposed API, only available with Copilot
 
-  if (typeof (vscode.lm as any)?.registerTool !== "function") {
+  if (typeof vscode.lm?.registerTool !== "function") {
     console.log("[mcp-bridge] vscode.lm.registerTool not available — skipping");
     return;
+  }
+
+  interface ToolActionResult {
+    text?: string | null | undefined;
+    error?: string | undefined;
+    [key: string]: unknown;
   }
 
   // modelscript_flatten
@@ -74,15 +80,15 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
           }>,
         ): Promise<vscode.LanguageModelToolResult> {
           const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
-          let result: any;
+          let result: ToolActionResult | null | undefined;
           try {
-            result = await client.sendRequest<any>("modelscript/executeAction", {
+            result = await client.sendRequest<ToolActionResult>("modelscript/executeAction", {
               actionId: "simulate",
               languageId: lang,
               inputs: options.input,
             });
           } catch {
-            result = await client.sendRequest<any>("modelscript/simulate", options.input);
+            result = await client.sendRequest<ToolActionResult>("modelscript/simulate", options.input);
           }
           if (result?.error) {
             return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${result.error}`)]);
@@ -109,15 +115,15 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
           }>,
         ): Promise<vscode.LanguageModelToolResult> {
           const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
-          let result: any;
+          let result: ToolActionResult | null | undefined;
           try {
-            result = await client.sendRequest<any>("modelscript/executeAction", {
+            result = await client.sendRequest<ToolActionResult>("modelscript/executeAction", {
               actionId: "query",
               languageId: lang,
               inputs: { name: options.input.name },
             });
           } catch {
-            result = await client.sendRequest<any>("modelscript/query", { name: options.input.name });
+            result = await client.sendRequest<ToolActionResult>("modelscript/query", { name: options.input.name });
           }
           if (!result || result.error) {
             return new vscode.LanguageModelToolResult([
@@ -140,15 +146,15 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
           options: vscode.LanguageModelToolInvocationOptions<{ code: string; languageId?: string | undefined }>,
         ): Promise<vscode.LanguageModelToolResult> {
           const lang = options.input.languageId || vscode.window.activeTextEditor?.document.languageId || "modelscript";
-          let result: any;
+          let result: unknown;
           try {
-            result = await client.sendRequest<any>("modelscript/executeAction", {
+            result = await client.sendRequest<unknown>("modelscript/executeAction", {
               actionId: "parse",
               languageId: lang,
               inputs: { code: options.input.code },
             });
           } catch {
-            result = await client.sendRequest<any>("modelscript/parse", { code: options.input.code });
+            result = await client.sendRequest<unknown>("modelscript/parse", { code: options.input.code });
           }
           return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
         },
@@ -213,7 +219,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
         async invoke(
           options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
         ): Promise<vscode.LanguageModelToolResult> {
-          const result = await client.sendRequest<any>("modelscript/closedLoopSynthesize", options.input);
+          const result = await client.sendRequest<unknown>("modelscript/closedLoopSynthesize", options.input);
           return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
         },
       }),
@@ -229,7 +235,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
         async invoke(
           options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
         ): Promise<vscode.LanguageModelToolResult> {
-          const result = await client.sendRequest<any>("modelscript/reconcileConflict", options.input);
+          const result = await client.sendRequest<unknown>("modelscript/reconcileConflict", options.input);
           return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
         },
       }),

@@ -87,6 +87,64 @@ export interface SequenceLayoutResult {
 
 // ── Layout Algorithm ──
 
+export interface SequenceNodeLike {
+  id: string;
+  x: number;
+  y: number;
+  width?: number | undefined;
+  height?: number | undefined;
+  zIndex?: number | undefined;
+  parent?: string | undefined;
+  autoLayout?: boolean | undefined;
+  markup?: unknown;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
+  data?: { properties?: { description?: string | undefined } | undefined; [key: string]: unknown } | undefined;
+  [key: string]: unknown;
+}
+
+export interface SequenceEdgeLike {
+  id: string;
+  source?:
+    | string
+    | { cell?: string | undefined; port?: string | undefined; x?: number | undefined; y?: number | undefined }
+    | undefined;
+  target?:
+    | string
+    | { cell?: string | undefined; port?: string | undefined; x?: number | undefined; y?: number | undefined }
+    | undefined;
+  vertices?: { x: number; y: number }[] | undefined;
+  router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
+  connector?: unknown;
+  attrs?:
+    | {
+        line?:
+          | {
+              stroke?: string | undefined;
+              strokeWidth?: number | undefined;
+              strokeDasharray?: string | undefined;
+              targetMarker?: unknown;
+              [key: string]: unknown;
+            }
+          | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  labels?:
+    | {
+        attrs?:
+          | {
+              text?: { text?: string | undefined; [key: string]: unknown } | undefined;
+              rect?: Record<string, unknown> | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        position?: number | Record<string, unknown> | undefined;
+        [key: string]: unknown;
+      }[]
+    | undefined;
+  [key: string]: unknown;
+}
+
 /**
  * Apply sequence diagram layout to a set of nodes and edges.
  *
@@ -96,9 +154,9 @@ export interface SequenceLayoutResult {
  * @returns      The layout result with lifeline and message positions
  */
 export function computeSequenceLayout(
-  nodes: any[],
+  nodes: SequenceNodeLike[],
 
-  edges: any[],
+  edges: SequenceEdgeLike[],
   config: Partial<SequenceLayoutConfig> = {},
 ): SequenceLayoutResult {
   const cfg = { ...DEFAULT_CONFIG, ...config };
@@ -201,9 +259,9 @@ export function computeSequenceLayout(
  * @returns      The layout result for additional rendering
  */
 export function applySequenceLayout(
-  nodes: any[],
+  nodes: SequenceNodeLike[],
 
-  edges: any[],
+  edges: SequenceEdgeLike[],
   isDark: boolean,
 ): SequenceLayoutResult {
   const layout = computeSequenceLayout(nodes, edges);
@@ -215,7 +273,7 @@ export function applySequenceLayout(
 
   // ── Reposition lifeline header nodes ──
   for (const ll of layout.lifelines) {
-    const node = nodes.find((n: any) => n.id === ll.nodeId);
+    const node = nodes.find((n) => n.id === ll.nodeId);
     if (!node) continue;
 
     // Override position to lifeline layout position
@@ -288,7 +346,7 @@ export function applySequenceLayout(
   }
 
   for (const msg of layout.messages) {
-    const edge = edges.find((e: any) => e.id === msg.edgeId);
+    const edge = edges.find((e) => e.id === msg.edgeId);
     if (!edge) continue;
 
     const srcX = centerXMap.get(msg.sourceId) ?? 0;

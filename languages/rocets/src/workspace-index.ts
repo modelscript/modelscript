@@ -72,7 +72,7 @@ export class RocetsWorkspaceIndex implements IWorkspaceIndex {
       startOffset = 0,
       endOffset = 0,
     ): SymbolId {
-      const symId = (baseId! + localId++) as SymbolId;
+      const symId = ((baseId ?? 0) + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,

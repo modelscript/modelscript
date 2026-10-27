@@ -55,6 +55,13 @@ export function serializeLayout(layout: DiagramLayout): string {
   return JSON.stringify(layout, null, 2) + "\n";
 }
 
+type LegacyPlacementItem = PlacementItem & {
+  componentName?: string | undefined;
+  id?: string | undefined;
+  origin?: { x?: number | undefined; y?: number | undefined } | undefined;
+  extent?: { p1: { x: number; y: number }; p2: { x: number; y: number } } | undefined;
+};
+
 /**
  * Common Layout Storage interface for persisting visual coordinates.
  */
@@ -64,7 +71,7 @@ export interface DiagramLayoutStorage {
   updatePositions(
     uri: string,
     items: PlacementItem[],
-  ): Promise<{ layout?: DiagramLayout | undefined; edits?: any[] | undefined }>;
+  ): Promise<{ layout?: DiagramLayout | undefined; edits?: unknown[] | undefined }>;
   renameElement?(uri: string, oldName: string, newName: string): Promise<boolean>;
   pruneOrphans?(
     uri: string,
@@ -207,22 +214,19 @@ export class SidecarLayoutStorage implements DiagramLayoutStorage {
   async updatePositions(
     uri: string,
     items: PlacementItem[],
-  ): Promise<{ layout?: DiagramLayout | undefined; edits?: any[] | undefined }> {
+  ): Promise<{ layout?: DiagramLayout | undefined; edits?: unknown[] | undefined }> {
     let layout = (await this.loadLayout(uri)) ?? createEmptyLayout();
     const updatedElements = { ...layout.elements };
     const updatedConnections = { ...layout.connections };
 
-    for (const item of items) {
-      const name = item.name ?? (item as any).componentName ?? (item as any).id;
+    for (const rawItem of items) {
+      const item = rawItem as LegacyPlacementItem;
+      const name = item.name ?? item.componentName ?? item.id;
       if (!name) continue;
-      const x = item.x ?? (item as any).origin?.x ?? 0;
-      const y = item.y ?? (item as any).origin?.y ?? 0;
-      const width =
-        item.width ??
-        ((item as any).extent ? Math.abs((item as any).extent.p2.x - (item as any).extent.p1.x) : undefined);
-      const height =
-        item.height ??
-        ((item as any).extent ? Math.abs((item as any).extent.p2.y - (item as any).extent.p1.y) : undefined);
+      const x = item.x ?? item.origin?.x ?? 0;
+      const y = item.y ?? item.origin?.y ?? 0;
+      const width = item.width ?? (item.extent ? Math.abs(item.extent.p2.x - item.extent.p1.x) : undefined);
+      const height = item.height ?? (item.extent ? Math.abs(item.extent.p2.y - item.extent.p1.y) : undefined);
 
       updatedElements[name] = {
         ...updatedElements[name],
@@ -352,7 +356,7 @@ function escapeRegex(str: string): string {
  * via LSP TextEdit mutations (e.g. Modelica `annotation(Placement(...))`).
  */
 export class InlineAnnotationLayoutStorage implements DiagramLayoutStorage {
-  constructor(private readonly editComputer: (uri: string, items: PlacementItem[]) => Promise<any[]> | any[]) {}
+  constructor(private readonly editComputer: (uri: string, items: PlacementItem[]) => Promise<unknown[]> | unknown[]) {}
 
   async loadLayout(_uri: string): Promise<DiagramLayout | null> {
     return null;
@@ -363,7 +367,7 @@ export class InlineAnnotationLayoutStorage implements DiagramLayoutStorage {
   async updatePositions(
     uri: string,
     items: PlacementItem[],
-  ): Promise<{ layout?: DiagramLayout | undefined; edits?: any[] | undefined }> {
+  ): Promise<{ layout?: DiagramLayout | undefined; edits?: unknown[] | undefined }> {
     const edits = await this.editComputer(uri, items);
     return { edits };
   }

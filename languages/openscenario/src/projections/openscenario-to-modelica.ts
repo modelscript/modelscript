@@ -81,9 +81,9 @@ export function openScenarioToModelica(doc: OpenScenarioDocument, modelName = "S
   }
 
   // 5. Inter-vehicle equations
-  if (entityList.length >= 2) {
-    const e1 = entityList[0]!;
-    const e2 = entityList[1]!;
+  const e1 = entityList[0];
+  const e2 = entityList[1];
+  if (e1 && e2) {
     const p1 = e1.name.replace(/[^a-zA-Z0-9_]/g, "_");
     const p2 = e2.name.replace(/[^a-zA-Z0-9_]/g, "_");
 

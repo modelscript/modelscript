@@ -2,9 +2,30 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { OctagonDBM } from "../src/analysis/octagon_dbm.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
+import { TaylorModel } from "../src/analysis/wasm_taylor_model.js";
+import { DAEBuilder, EqKind, VarType, Variability } from "../src/dae/wasm_dae.js";
+import { GenericCFG } from "../src/formal/abstract_interpretation/cfg.js";
+import { FixpointSolver } from "../src/formal/abstract_interpretation/fixpoint_solver.js";
+import { IntervalEnvironment, NumericalInterval } from "../src/formal/abstract_interpretation/interval_domain.js";
+import { ReducedProductState } from "../src/formal/abstract_interpretation/reduced_product.js";
+import { TvpiState } from "../src/formal/abstract_interpretation/tvpi_domain.js";
+import { CegarRefinementSynthesizer } from "../src/formal/candidate_filter.js";
+import { CdclSatSolver, TseitinEncoder } from "../src/formal/cdcl_sat.js";
+import { ChcLowering } from "../src/formal/chc/chc_lowering.js";
+import { ChcSystem } from "../src/formal/chc/chc_system.js";
+import { SpacerEngine } from "../src/formal/chc/spacer_engine.js";
 import { CongruenceClosure } from "../src/formal/craig_interpolator.js";
+import { AffineDomain } from "../src/formal/dae/affine_domain.js";
+import { DaeBltReachabilityEngine } from "../src/formal/dae/dae_blt_reachability.js";
+import { AffineForm } from "../src/formal/dae/dae_interval_evaluator.js";
+import { TaylorDomain } from "../src/formal/dae/taylor_domain.js";
 import { DpllTSolver } from "../src/formal/dpll_t_solver.js";
+import { EventGrammarSolver } from "../src/formal/event_grammar.js";
+import { Hc4Contractor } from "../src/formal/hc4_contractor.js";
+import { IC3Engine } from "../src/formal/ic3_engine.js";
+import { InductiveProver } from "../src/formal/inductive_prover.js";
 import { MultiDomainVerificationCoordinator } from "../src/formal/multidomain_coordinator.js";
 import { MultiPoly, NlsatSolver } from "../src/formal/nlsat_solver.js";
 import {
@@ -14,15 +35,31 @@ import {
   DimensionalTheoryOracle,
   EntailmentTheoryOracle,
   FlowAlgebraOracle,
+  MarineMooringTheoryOracle,
   OntologyTheoryOracle,
+  PowerGridTheoryOracle,
+  SafetyTheoryOracle,
   SpatialPhysicsOracle,
   ToleranceStackOracle,
+  UqTheoryOracle,
 } from "../src/formal/oracles/index.js";
+import { extractExprVariables } from "../src/formal/region_decomposer.js";
+import { RelationalVerifier } from "../src/formal/relational_verifier.js";
 import { assertRequirementsToTheoryCoordinator } from "../src/formal/requirement_binder.js";
+import { SimplificationWaterfall } from "../src/formal/simplification_waterfall.js";
+import { StlMonitor } from "../src/formal/stl_monitor.js";
 import { SemanticTheoryCoordinator } from "../src/formal/theory_coordinator.js";
+import { BlastRadiusRegressionRunner } from "../src/interop/blast_radius_runner.js";
+import { BomSyncManager } from "../src/interop/bom_sync.js";
+import { BrownfieldAlignmentEngine } from "../src/interop/brownfield_alignment.js";
+import { OslcGateway } from "../src/interop/oslc_gateway.js";
 import { PolyglotTransformer } from "../src/interop/polyglot-transformer.js";
+import { ProvenanceGraph } from "../src/interop/provenance.js";
+import { ReqIfParser } from "../src/interop/reqif.js";
 import { PhysicsSimplexReconciler } from "../src/interop/simplex_reconciler.js";
 import { DigitalThreadHypergraph, ThreadDomain } from "../src/interop/thread_hypergraph.js";
+import { ThreadSerializer } from "../src/interop/thread_serializer.js";
+import { TradeStudyEngine } from "../src/interop/trade_study.js";
 import { VCycleVerifier } from "../src/interop/vcycle_verifier.js";
 import { UnifiedVerifier } from "../src/simulation/unified_verifier.js";
 
@@ -928,6 +965,962 @@ describe("Semantic Theory Coordinator Hardening & Soundness", () => {
         { updateHypergraph: true, all: false },
       );
       assert.strictEqual(hg.getThreadCount(), 1, "syncDigitalThread must reuse existing thread slot when present");
+    });
+
+    it("should detect negative-slope Lipschitz violations and tag unary/pow/call AST nodes across RelationalVerifier, RegionDecomposer, and InductiveProver", () => {
+      const rv = new RelationalVerifier();
+      // Transfer function: y = -10 * x => y + 10 * x == 0 (encoded using unary neg: y - (-10 * x) == 0)
+      const transfer = [
+        {
+          expr: {
+            kind: "sub" as const,
+            left: { kind: "var" as const, name: "y" },
+            right: {
+              kind: "neg" as const,
+              child: {
+                kind: "mul" as const,
+                left: { kind: "const" as const, value: 10 },
+                right: { kind: "var" as const, name: "x" },
+              },
+            },
+          },
+          rel: "==" as const,
+          rhs: 0,
+        },
+      ];
+      // With targetL = 2, slope -10 violates |y1 - y2| <= 2 * |x1 - x2|
+      const lipViolated = rv.verifyLipschitz("x", "y", transfer, 2, { min: 0, max: 10 });
+      assert.strictEqual(lipViolated.status, "VIOLATED");
+
+      // With targetL = 12, slope -10 satisfies |y1 - y2| <= 12 * |x1 - x2|
+      const lipVerified = rv.verifyLipschitz("x", "y", transfer, 12, { min: 0, max: 10 });
+      assert.strictEqual(lipVerified.status, "VERIFIED");
+
+      // RegionDecomposer.extractExprVariables must extract variables inside pow and call nodes
+      const extractedVars = new Set<string>();
+      extractExprVariables(
+        {
+          kind: "add",
+          left: {
+            kind: "pow",
+            left: { kind: "var", name: "alpha" },
+            right: { kind: "const", value: 2 },
+          },
+          right: {
+            kind: "call",
+            fn: "hypot",
+            args: [
+              { kind: "var", name: "beta" },
+              { kind: "var", name: "gamma" },
+            ],
+          },
+        },
+        extractedVars,
+      );
+      assert.ok(extractedVars.has("alpha"));
+      assert.ok(extractedVars.has("beta"));
+      assert.ok(extractedVars.has("gamma"));
+
+      // InductiveProver.extractVariableStep must recognize subtraction (x' - (x - 2) == 0) and commutative addition (x' - (3 + x) == 0)
+      const stepSub = (InductiveProver as any).extractVariableStep({
+        expr: {
+          kind: "sub",
+          left: { kind: "var", name: "pos_prime" },
+          right: {
+            kind: "sub",
+            left: { kind: "var", name: "pos" },
+            right: { kind: "const", value: 2 },
+          },
+        },
+        rel: "==",
+        rhs: 0,
+      });
+      assert.deepStrictEqual(stepSub, { variable: "pos", delta: -2 });
+
+      const stepCommAdd = (InductiveProver as any).extractVariableStep({
+        expr: {
+          kind: "sub",
+          left: { kind: "var", name: "pos_prime" },
+          right: {
+            kind: "add",
+            left: { kind: "const", value: 3 },
+            right: { kind: "var", name: "pos" },
+          },
+        },
+        rel: "==",
+        rhs: 0,
+      });
+      assert.deepStrictEqual(stepCommAdd, { variable: "pos", delta: 3 });
+    });
+
+    it("should substitute unary sqr/sqrt nodes in SpacerEngine and enforce initiation & clause deduplication in IC3Engine", () => {
+      // 1. SpacerEngine with unary sqr constraint: Init: x == 2 => Inv(x); Step: Inv(x) & x' == x => Inv(x'); Query: Inv(x) & sqr(x) >= 10 => false
+      const chc = new ChcSystem();
+      chc.addPredicate({ name: "Inv", arity: 1, varNames: ["x"], types: ["real"] });
+      chc.addFact("Inv", ["x"], [{ expr: { kind: "var", name: "x" }, rel: "==", rhs: 2 }]);
+      chc.addRule(
+        { name: "Inv", args: ["x_next"] },
+        [{ name: "Inv", args: ["x"] }],
+        [
+          {
+            expr: {
+              kind: "sub",
+              left: { kind: "var", name: "x_next" },
+              right: { kind: "var", name: "x" },
+            },
+            rel: "==",
+            rhs: 0,
+          },
+        ],
+      );
+      chc.addQuery(
+        [{ name: "Inv", args: ["x"] }],
+        [
+          {
+            expr: { kind: "sqr", child: { kind: "var", name: "x" } },
+            rel: ">=",
+            rhs: 10,
+          },
+        ],
+      );
+
+      const spacer = new SpacerEngine(chc, { maxDepth: 4 });
+      // Seed inductive lemma x <= 2 in frame 1 to verify frame lemma consumption during step induction
+      (spacer as any).addLemmaToFrame("Inv", 1, {
+        expr: { kind: "var", name: "x" },
+        rel: "<=",
+        rhs: 2,
+      });
+      (spacer as any).addLemmaToFrame("Inv", 1, {
+        expr: { kind: "var", name: "x" },
+        rel: ">=",
+        rhs: 2,
+      });
+      const spacerRes = spacer.check();
+      assert.strictEqual(spacerRes.status, "SAFE");
+
+      // 2. IC3Engine: 2-variable discrete system where v1=false, v2=false initially and stays false; safety: ~(v1 & v2)
+      const ic3 = new IC3Engine({
+        stateVars: [1, 2],
+        nextStateVars: [3, 4],
+        initClauses: [[-1], [-2]],
+        transClauses: [
+          [-1, 3],
+          [1, -3],
+          [-2, 4],
+          [2, -4],
+        ],
+        propClauses: [[-1, -2]],
+      });
+      const ic3Res = ic3.verify(10);
+      assert.strictEqual(ic3Res.isProvenInvariant, true);
+      if (ic3Res.invariantClauses) {
+        const serialized = ic3Res.invariantClauses.map((c) =>
+          [...c].sort((a, b) => Math.abs(a) - Math.abs(b)).join(","),
+        );
+        assert.strictEqual(new Set(serialized).size, serialized.length, "invariantClauses must be deduplicated");
+      }
+    });
+
+    it("should eliminate non-middle pivots in TvpiState.close and tighten non-octagon slopes in ReducedProductState.reduce", () => {
+      // 1. TvpiState.close where pivot is lexicographically largest ("z") and variables inserted out of order:
+      // x - z <= 2 (1*x - 1*z <= 2) and z + y <= 5 (1*y + 1*z <= 5) => x + y <= 7
+      const tvpi = TvpiState.top();
+      assert.strictEqual(tvpi.addInequality("z", "x", -1, 1, 2), true);
+      assert.strictEqual(tvpi.addInequality("y", "z", 1, 1, 5), true);
+      // Add contradiction x + y >= 10 (-x - y <= -10) -> must become bottom via transitive closure through pivot "z"!
+      assert.strictEqual(tvpi.addInequality("x", "y", -1, -1, -10), false);
+      assert.strictEqual(tvpi.isBottomState, true);
+
+      // 2. ReducedProductState.reduce tightening Intervals via TVPI arbitrary slope: 2*x + 3*y <= 12 with x in [0, 100], y in [0, 100]
+      const rpTop = ReducedProductState.top(8);
+      const env = IntervalEnvironment.top()
+        .set("x", new NumericalInterval(0, 100))
+        .set("y", new NumericalInterval(0, 100));
+      const tvpi2 = TvpiState.top();
+      tvpi2.addInequality("x", "y", 2, 3, 12);
+      const rp = new ReducedProductState(
+        env,
+        rpTop.octagon,
+        rpTop.varIndices,
+        rpTop.arraySegments,
+        false,
+        tvpi2,
+      ).reduce();
+      assert.strictEqual(rp.isBottom(), false);
+      assert.ok(
+        Math.abs(rp.intervals.get("x").high - 6) < 1e-5,
+        `Expected x.high == 6, got ${rp.intervals.get("x").high}`,
+      );
+      assert.ok(
+        Math.abs(rp.intervals.get("y").high - 4) < 1e-5,
+        `Expected y.high == 4, got ${rp.intervals.get("y").high}`,
+      );
+    });
+
+    it("should contract relational constraints order-independently in ConstraintTheoryOracle and synthesize lower-bound CEGAR cuts", () => {
+      // 1. Assert hyperplane and nonlinear constraints BEFORE interval bounds in ConstraintTheoryOracle
+      const oracle = new ConstraintTheoryOracle();
+      oracle.assertLiteral({
+        id: 1,
+        predicate: "hyperplane",
+        args: [
+          {
+            coeffs: { x: 1, y: 1 },
+            op: "<=",
+            rhs: 10,
+          },
+        ],
+      });
+      oracle.assertLiteral({
+        id: 2,
+        predicate: "interval",
+        args: ["x", 8, 9],
+      });
+      oracle.assertLiteral({
+        id: 3,
+        predicate: "interval",
+        args: ["y", 5, 6],
+      });
+      // Because x in [8, 9] and y in [5, 6], x + y in [13, 15] violates x + y <= 10!
+      // Previously, asserting hyperplane before intervals left x and y uncontracted during checkSat().
+      const satRes = oracle.checkSat();
+      assert.strictEqual(satRes.isSat, false, "ConstraintTheoryOracle must re-contract hyperplane during checkSat()");
+
+      // 2. CegarRefinementSynthesizer with lower-bound breach (actualValue < thresholdValue, e.g. safety_margin = 1.2 < 2.0)
+      // Sensitivity d(margin)/d(thickness) = +0.5 => thickness must INCREASE to raise safety_margin >= 2.0
+      const refinement = CegarRefinementSynthesizer.synthesizeRefinement({
+        candidateId: "cand_low_margin",
+        parameters: { thickness: 4.0 },
+        failedProperty: "Req_MinSafetyMargin",
+        actualValue: 1.2,
+        thresholdValue: 2.0,
+        sensitivityGradients: { thickness: 0.5 },
+      });
+      const suggestedThickness = refinement.suggestedBounds["thickness"];
+      assert.ok(suggestedThickness !== undefined);
+      assert.ok(
+        suggestedThickness.min !== undefined && suggestedThickness.min > 4.0,
+        `Lower-bound breach with positive sensitivity must raise lower bound on thickness (got min=${suggestedThickness.min})`,
+      );
+    });
+
+    it("should reject out-of-domain NaN intervals and unbounded sin/cos loops in Hc4Contractor, normalize strict/negative constraints in SimplificationWaterfall, and check extra variables in OctagonDBM.isLeq", () => {
+      // 1. Hc4Contractor: sqrt(x) <= 2 when x in [-5, -1] must return false (UNSAT) instead of true with [NaN, NaN]
+      const boxNan = new Map<string, Interval>([["x", new Interval(-5, -1)]]);
+      const sqrtOk = Hc4Contractor.revise(
+        {
+          expr: { kind: "sqrt", child: { kind: "var", name: "x" } },
+          rel: "<=",
+          rhs: 2,
+        },
+        boxNan,
+      );
+      assert.strictEqual(sqrtOk, false, "Out-of-domain sqrt([-5, -1]) must return false");
+
+      // Unbounded sin(theta) <= 0.5 with theta in [-Infinity, Infinity] must terminate immediately without hanging
+      const boxUnbounded = new Map<string, Interval>([["theta", new Interval(-Infinity, Infinity)]]);
+      const sinOk = Hc4Contractor.revise(
+        {
+          expr: { kind: "sin", child: { kind: "var", name: "theta" } },
+          rel: "<=",
+          rhs: 0.5,
+        },
+        boxUnbounded,
+      );
+      assert.strictEqual(sinOk, true);
+
+      // 2. SimplificationWaterfall: (-x) < 5 => x > -5, and (10 - 2*x) <= 4 => x >= 3
+      const simpStrict = SimplificationWaterfall.simplifyConstraint({
+        expr: { kind: "neg", child: { kind: "var", name: "x" } },
+        rel: "<",
+        rhs: 5,
+      });
+      assert.strictEqual(simpStrict.rel, ">");
+      assert.strictEqual(simpStrict.rhs, -5);
+
+      const simpNegMul = SimplificationWaterfall.simplifyConstraint({
+        expr: {
+          kind: "sub",
+          left: { kind: "const", value: 10 },
+          right: {
+            kind: "mul",
+            left: { kind: "const", value: 2 },
+            right: { kind: "var", name: "x" },
+          },
+        },
+        rel: "<=",
+        rhs: 4,
+      });
+      assert.strictEqual(simpNegMul.rel, ">=");
+      assert.strictEqual(simpNegMul.rhs, 3);
+
+      // Power identity: (-x)^2 => sqr(x)
+      const simpPow = SimplificationWaterfall.simplifyExpr({
+        kind: "pow",
+        left: { kind: "neg", child: { kind: "var", name: "x" } },
+        right: { kind: "const", value: 2 },
+      });
+      assert.strictEqual(simpPow.kind, "sqr");
+      assert.strictEqual((simpPow as any).child.kind, "var");
+
+      // 3. OctagonDBM.isLeq with differing numVars
+      const dbm1 = new OctagonDBM(1);
+      const dbm2 = new OctagonDBM(2);
+      dbm2.assumeInterval(1, 0, 10); // Constrain var 1 in dbm2
+      assert.strictEqual(
+        dbm1.isLeq(dbm2),
+        false,
+        "dbm1 (unconstrained on var 1) must not be <= dbm2 (constrained on var 1)",
+      );
+    });
+
+    it("should rank maximize objectives in TradeStudyEngine.evolve, scale BOM mass by density ratio in BomSyncManager, and clamp STL until at trace horizon", async () => {
+      // 1. TradeStudyEngine.evolve with a maximize objective (maximize efficiency = x, minimize mass = 10 - x)
+      const ts = new TradeStudyEngine("WingTrade", [
+        { name: "efficiency", sense: "maximize" },
+        { name: "mass", sense: "minimize" },
+      ]);
+      const tsRes = await ts.evolve({
+        variables: [{ name: "x", min: 1, max: 9 }],
+        populationSize: 10,
+        generations: 3,
+        evaluate: (p) => ({
+          efficiency: p["x"]!,
+          mass: 10 - p["x"]!,
+        }),
+      });
+      // Since efficiency = x (maximize) and mass = 10 - x (minimize) both improve as x increases,
+      // the single optimum is near x = 9 and the Pareto front must prefer high x (not inverted!)
+      assert.ok(tsRes.kneePoint.objectives["efficiency"]! > 5.0);
+
+      // 2. BomSyncManager.updateItemMaterial without volumeM3 must scale massKg by density ratio
+      const bom = new BomSyncManager();
+      bom.registerItem({
+        id: "PART_BRKT",
+        sysmlPart: "Bracket",
+        description: "Mounting bracket",
+        quantity: 2,
+        material: "Aluminum 6061",
+        massKg: 2.7, // 0.001 m^3 at 2700 kg/m^3
+      });
+      const delta = bom.updateItemMaterial("PART_BRKT", "Titanium-Ti6Al4V");
+      // Titanium density (4430) > Aluminum 6061 density (2700) => deltaMass must be positive!
+      assert.ok(delta.deltaMass > 3.0, `Expected positive deltaMass when switching Al -> Ti, got ${delta.deltaMass}`);
+
+      // 3. StlMonitor: strict inequality boundary violation (x > 5 when x == 5) and until horizon clamping
+      const trace = {
+        time: new Float64Array([0, 1, 2]),
+        signals: {
+          x: new Float64Array([5, 6, 7]),
+          y: new Float64Array([1, 2, 3]),
+        },
+      };
+      const strictRes = StlMonitor.evaluate(StlMonitor.predicate("x", ">", 5), trace);
+      assert.strictEqual(strictRes.isSatisfied, false);
+      assert.ok(strictRes.diagnosticExplanation?.includes("strict inequality boundary violated"));
+
+      const untilRes = StlMonitor.evaluate(
+        {
+          kind: "until",
+          interval: [0.5, 1.5],
+          left: StlMonitor.predicate("x", ">=", 4),
+          right: StlMonitor.predicate("y", ">=", 2),
+        },
+        trace,
+      );
+      assert.strictEqual(untilRes.isSatisfied, true);
+      assert.ok(Number.isFinite(untilRes.robustnessTrajectory[2]!), "Until robustness at trace horizon must be finite");
+    });
+
+    it("should enforce loop minRep & prefix-closure in EventGrammarSolver, reject missing lineage in ProvenanceGraph, import all 16 domains in OslcGateway, and parse signed/scientific ReqIF limits", () => {
+      // 1. EventGrammarSolver: loop with minRep=2, maxRep=3 must have exactly 2 traces (2 reps or 3 reps, prefix-closed)
+      // and respect "follows" / "includes" coordinations
+      const egRes = EventGrammarSolver.explore(
+        {
+          name: "LoopAndCoordModel",
+          actors: {
+            Controller: {
+              kind: "loop",
+              name: "RetryLoop",
+              minRep: 2,
+              maxRep: 3,
+              children: [{ kind: "atomic", name: "Ping" }],
+            },
+            Monitor: {
+              kind: "optional",
+              name: "OptMon",
+              children: [{ kind: "atomic", name: "Ack" }],
+            },
+          },
+          coordinations: [
+            {
+              sourceActor: "Monitor",
+              sourceEvent: "Ack",
+              targetActor: "Controller",
+              targetEvent: "Ping",
+              relation: "includes",
+            },
+            {
+              sourceActor: "Monitor",
+              sourceEvent: "Ack",
+              targetActor: "Controller",
+              targetEvent: "Ping",
+              relation: "follows",
+            },
+          ],
+        },
+        { scope: 3 },
+      );
+      // Every trace must have at least 2 Ping occurrences, prefix-closed (occurrence 1 & 2, or 1, 2, & 3),
+      // and because Ack includes Ping and Ack follows Ping, Ack must be active and ordered after all Pings
+      assert.strictEqual(egRes.totalTracesFound, 2);
+      for (const tr of egRes.traces) {
+        const pings = tr.events.filter((e) => e.eventName === "Ping");
+        assert.ok(pings.length >= 2, `Expected at least minRep=2 Ping events, got ${pings.length}`);
+        // Prefix-closure: occurrences must be [1, 2] or [1, 2, 3]
+        const occs = pings.map((p) => p.occurrence).sort((a, b) => a - b);
+        for (let i = 0; i < occs.length; i++) {
+          assert.strictEqual(occs[i], i + 1);
+        }
+        const ack = tr.events.find((e) => e.eventName === "Ack");
+        assert.ok(ack, "Expected Ack to be included whenever Ping is active");
+      }
+
+      // 2. ProvenanceGraph: verifyLineage must reject non-existent root or dangling wasDerivedFrom parent
+      const prov = new ProvenanceGraph();
+      assert.strictEqual(prov.verifyLineage("NON_EXISTENT").isValid, false);
+      prov.addEntity({
+        id: "ENT_CHILD",
+        type: "SimulationTrace",
+        domain: "Modelica",
+        version: "1.0",
+        timestamp: new Date().toISOString(),
+        wasDerivedFrom: ["MISSING_PARENT"],
+      });
+      assert.strictEqual(prov.verifyLineage("ENT_CHILD").isValid, false);
+      prov.addEntity({
+        id: "MISSING_PARENT",
+        type: "Requirement",
+        domain: "SysMLv2",
+        version: "1.0",
+        timestamp: new Date().toISOString(),
+      });
+      const validLin = prov.verifyLineage("ENT_CHILD");
+      assert.strictEqual(validLin.isValid, true);
+      assert.deepStrictEqual(validLin.rootEntities, ["MISSING_PARENT"]);
+
+      // 3. OslcGateway.importHypergraph: must import nodes across all 16 domains (including Safety=10 and Software=15)
+      const hg = new DigitalThreadHypergraph();
+      const slot = hg.createThread(1);
+      hg.bindDomainNode(slot, ThreadDomain.SysML2, 101);
+      hg.bindDomainNode(slot, ThreadDomain.Safety, 202);
+      hg.bindDomainNode(slot, ThreadDomain.Software, 303);
+      const gateway = new OslcGateway("https://oslc.example.com");
+      gateway.importHypergraph(hg);
+      assert.strictEqual(gateway.getAllArchitectureElements().length, 3);
+
+      // 4. ReqIfParser: signed negative and scientific notation limitValue in both parse() and fromSysML2()
+      const sysml = `
+        requirement def <REQ_COLD> ColdStartReq {
+          doc /* Cold start temperature >= -40.5 */
+          attribute limitValue : Real = -40.5;
+          attribute comparator : String = ">=";
+        }
+        requirement def <REQ_LEAK> LeakRateReq {
+          doc /* Leak rate <= 1.5e-4 */
+          attribute limitValue : Real = 1.5e-4;
+          attribute comparator : String = "<=";
+        }
+      `;
+      const parsedFromSysml = ReqIfParser.fromSysML2(sysml);
+      assert.strictEqual(parsedFromSysml.requirements.length, 2);
+      assert.strictEqual(parsedFromSysml.requirements[0]!.limitValue, -40.5);
+      assert.strictEqual(parsedFromSysml.requirements[1]!.limitValue, 1.5e-4);
+
+      const xml = ReqIfParser.emit({
+        id: "S1",
+        title: "ThermalSpec",
+        requirements: [
+          {
+            id: "REQ_MIN_TEMP",
+            name: "MinOperatingTemp",
+            text: "Operating temperature minimum -55.0 degC",
+            attributes: {},
+          },
+        ],
+      });
+      const parsedFromXml = ReqIfParser.parse(xml);
+      assert.strictEqual(parsedFromXml.requirements[0]!.limitValue, -55.0);
+      assert.strictEqual(parsedFromXml.requirements[0]!.comparator, ">=");
+    });
+
+    it("should include assumptions in ChcLowering initial facts, preserve stateEnclosures on BLT cache hits, avoid double-counting AffineForm.mul remainder, and compute 16-domain blast radius", () => {
+      // 1. ChcLowering.fromContract: initial fact must include assumptions so step-0 guarantees on inputs hold
+      const contractChc = ChcLowering.fromContract({
+        name: "VoltageRegulator",
+        inputs: ["u"],
+        states: ["x"],
+        outputs: ["y"],
+        init: [
+          { expr: { kind: "var", name: "x" }, rel: "==", rhs: 0 },
+          {
+            expr: {
+              kind: "sub",
+              left: { kind: "var", name: "y" },
+              right: { kind: "var", name: "u" },
+            },
+            rel: "==",
+            rhs: 0,
+          },
+        ],
+        assumptions: [
+          { expr: { kind: "var", name: "u" }, rel: ">=", rhs: 10 },
+          { expr: { kind: "var", name: "u" }, rel: "<=", rhs: 12 },
+          { expr: { kind: "var", name: "u_prime" }, rel: ">=", rhs: 10 },
+          { expr: { kind: "var", name: "u_prime" }, rel: "<=", rhs: 12 },
+        ],
+        transition: [
+          {
+            expr: {
+              kind: "sub",
+              left: { kind: "var", name: "x_prime" },
+              right: { kind: "var", name: "x" },
+            },
+            rel: "==",
+            rhs: 0,
+          },
+          {
+            expr: {
+              kind: "sub",
+              left: { kind: "var", name: "y_prime" },
+              right: { kind: "var", name: "u_prime" },
+            },
+            rel: "==",
+            rhs: 0,
+          },
+        ],
+        guarantees: [{ expr: { kind: "var", name: "y" }, rel: ">=", rhs: 10 }],
+      });
+      const spacerRes = new SpacerEngine(contractChc, { maxDepth: 3 }).check();
+      assert.strictEqual(spacerRes.status, "SAFE");
+
+      // 2. DaeBltReachabilityEngine: RHS der(x) (`2.0 = der(x)`) and stateEnclosures preserved on second cached verify()
+      const arena = new DAEBuilder();
+      const xIdx = arena.addVariable("x", VarType.Real, Variability.Continuous);
+      const xExpr = arena.addNameExpr("x");
+      const derXExpr = arena.addDerExpr(xExpr);
+      const twoExpr = arena.addRealLiteral(2.0);
+      // Equation: 2.0 = der(x) (der(x) on RHS)
+      arena.addEquation(EqKind.Simple, twoExpr, derXExpr);
+
+      const bltEngine = new DaeBltReachabilityEngine(arena, {
+        timeHorizon: 1.0,
+        initialBounds: new Map([[xIdx, new NumericalInterval(1, 3)]]),
+      });
+      const bltLayout = {
+        blocks: [{ eqIdxs: [0], vars: [xIdx] }],
+      } as any;
+      const run1 = bltEngine.verify(bltLayout);
+      assert.strictEqual(run1.recomputedBlocks, 1);
+      assert.ok(run1.stateEnclosures.has(xIdx), "First run must compute stateEnclosures for RHS der(x)");
+      const run2 = bltEngine.verify(bltLayout);
+      assert.strictEqual(run2.cachedBlocks, 1);
+      assert.ok(run2.stateEnclosures.has(xIdx), "Cached second run must preserve stateEnclosures");
+      assert.ok(Math.abs(run2.stateEnclosures.get(xIdx)!.low - 1) < 1e-9);
+      assert.ok(Math.abs(run2.stateEnclosures.get(xIdx)!.high - 5) < 1e-9);
+
+      // 3. AffineForm.mul: should not double-count this.r * other.r when multiplying forms with remainder
+      const affA = new AffineForm(2, new Map(), 1); // 2 +/- 1 -> [1, 3]
+      const affB = new AffineForm(3, new Map(), 2); // 3 +/- 2 -> [1, 5]
+      const affProd = affA.mul(affB);
+      // Exact remainder: |2|*2 + |3|*1 + (0 + 1)*(0 + 2) = 4 + 3 + 2 = 9 (not 9 + 1*2 = 11!)
+      assert.strictEqual(affProd.c0, 6);
+      assert.strictEqual(affProd.r, 9);
+
+      // 4. BlastRadiusRegressionRunner: 16-domain skippedJobsCount and .reqif / .fmu extension support
+      const hg = new DigitalThreadHypergraph();
+      const runner = new BlastRadiusRegressionRunner();
+      const slot = hg.createThread(1);
+      const reqPath = "specs/safety.reqif";
+      runner.registerMapping(reqPath, ThreadDomain.Requirements, 501, "SafetySpec");
+      hg.bindDomainNode(slot, ThreadDomain.Requirements, 501);
+      hg.bindDomainNode(slot, ThreadDomain.Verification, 601);
+      const plan = runner.plan(hg, [{ path: reqPath, changeType: "modified" }]);
+      assert.strictEqual(plan.staleDomains.length, 2);
+      assert.strictEqual(plan.skippedJobsCount, 14); // 16 total domains - 2 stale domains = 14
+    });
+
+    it("should seed all 16 domains and avoid alphanumeric nodeId collisions in BrownfieldAlignmentEngine, and track multi-arg Call / IfElse dependencies in DaeBltReachabilityEngine", () => {
+      // 1. BrownfieldAlignmentEngine: 16-domain seeding (Safety, Software) and distinct nodeIds for "Motor_01" vs "Pump_01" and "Mtr_00" > 0
+      const aligner = new BrownfieldAlignmentEngine({ minConfidence: 0.5 });
+      const hg = new DigitalThreadHypergraph();
+      const seedRes = aligner.applySeeds(
+        [
+          {
+            sourceId: "Motor_01",
+            sourceName: "TractionMotor",
+            sourceDomain: "SysML2",
+            targetId: "Mtr_00",
+            targetName: "TractionMotorSafetyMonitor",
+            targetDomain: "Safety",
+            confidence: 0.92,
+            breakdown: { tokenScore: 0.9, trigramScore: 0.9, structuralScore: 1, acronymBonus: 0.1 },
+            reasoning: "Seed alignment",
+          },
+          {
+            sourceId: "Pump_01",
+            sourceName: "CoolantPump",
+            sourceDomain: "SysML2",
+            targetId: "Sw_PumpCtrl_01",
+            targetName: "CoolantPumpSoftware",
+            targetDomain: "Software",
+            confidence: 0.91,
+            breakdown: { tokenScore: 0.9, trigramScore: 0.9, structuralScore: 1, acronymBonus: 0.1 },
+            reasoning: "Seed alignment",
+          },
+        ],
+        hg,
+      );
+      // Because "Motor_01" and "Pump_01" must NOT collide onto nodeId=1, 2 distinct threads must be created!
+      assert.strictEqual(seedRes.seededCount, 2);
+      assert.strictEqual(seedRes.threadsCreated, 2);
+      // And "Mtr_00" in Safety (domain 10) and "Sw_PumpCtrl_01" in Software (domain 15) must be bound (> 0)
+      assert.ok(hg.getDomainNode(0, ThreadDomain.Safety) > 0, "Expected non-zero Safety nodeId for 'Mtr_00'");
+      assert.ok(
+        hg.getDomainNode(1, ThreadDomain.Software) > 0,
+        "Expected non-zero Software nodeId for 'Sw_PumpCtrl_01'",
+      );
+
+      // 2. DaeBltReachabilityEngine: block fingerprint must track variables inside IfElse and multi-arg Call expressions
+      const arena = new DAEBuilder();
+      const uIdx = arena.addVariable("u", VarType.Real, Variability.Continuous);
+      const yIdx = arena.addVariable("y", VarType.Real, Variability.Continuous);
+      const uExpr = arena.addNameExpr("u");
+      const yExpr = arena.addNameExpr("y");
+      const condExpr = arena.addBoolLiteral(true);
+      const zeroExpr = arena.addRealLiteral(0.0);
+      // Equation 0: u = 2.0
+      arena.addEquation(EqKind.Simple, uExpr, arena.addRealLiteral(2.0));
+      // Equation 1: y = if true then u else 0.0 (u is inside IfElse true-branch, left child)
+      const ifElseExpr = arena.addIfElseExpr(condExpr, uExpr, zeroExpr);
+      arena.addEquation(EqKind.Simple, yExpr, ifElseExpr);
+
+      const bltEngine = new DaeBltReachabilityEngine(arena);
+      const layout1 = {
+        blocks: [{ eqIdxs: [1], vars: [yIdx] }],
+      } as any;
+
+      // First run with u in [1, 2] -> recomputes block 0
+      bltEngine.evaluator.setVarBound(uIdx, new NumericalInterval(1, 2));
+      const res1 = bltEngine.verify(layout1);
+      assert.strictEqual(res1.recomputedBlocks, 1);
+
+      // Second run with identical u in [1, 2] -> hits cache
+      const res2 = bltEngine.verify(layout1);
+      assert.strictEqual(res2.cachedBlocks, 1);
+
+      // Third run after changing u's bound to [5, 6] -> must invalidate cache for block 0 because y's IfElse depends on u!
+      bltEngine.evaluator.setVarBound(uIdx, new NumericalInterval(5, 6));
+      const res3 = bltEngine.verify(layout1);
+      assert.strictEqual(
+        res3.recomputedBlocks,
+        1,
+        "Changing bound of variable inside IfElse must invalidate BLT block cache",
+      );
+    });
+
+    it("should compute ISO 26262-5 LFM & exact VOTING_K_OF_N DP in SafetyTheoryOracle, preserve parallel circuits in PowerGridTheoryOracle, check damaged/uplift limits in MarineMooringTheoryOracle, evaluate point-mass bounds in UqTheoryOracle, and avoid alphanumeric collisions in ThreadSerializer", () => {
+      // 1. SafetyTheoryOracle: high-coverage single-point fault (dc = 0.995) + covered dual-point faults (dc = 0.95)
+      // must achieve actualLfm >= 0.90 (not 1 - 0.995 = 0.005!) and pass ASIL_D
+      const safety = new SafetyTheoryOracle(1000);
+      safety.registerFailureMode({
+        id: "FM_MCU",
+        componentName: "MCU",
+        modeName: "CoreLockstepFault",
+        failureRatePerHour: 1e-9, // 1 FIT
+        safetyMechanism: "DualCoreLockstep",
+        diagnosticCoverage: 0.995,
+      });
+      safety.registerFailureMode({
+        id: "FM_SENS_A",
+        componentName: "SensorA",
+        modeName: "Drift",
+        failureRatePerHour: 5e-9,
+        safetyMechanism: "PlausibilityCheck",
+        diagnosticCoverage: 0.95,
+      });
+      safety.registerFailureMode({
+        id: "FM_SENS_B",
+        componentName: "SensorB",
+        modeName: "Drift",
+        failureRatePerHour: 5e-9,
+        safetyMechanism: "PlausibilityCheck",
+        diagnosticCoverage: 0.95,
+      });
+      safety.registerFtaNode({
+        id: "N_MCU",
+        name: "MCU_Fault",
+        gateType: "PRIMARY_EVENT",
+        children: [],
+        failureModeId: "FM_MCU",
+      });
+      safety.registerFtaNode({
+        id: "N_SA",
+        name: "SA_Fault",
+        gateType: "PRIMARY_EVENT",
+        children: [],
+        failureModeId: "FM_SENS_A",
+      });
+      safety.registerFtaNode({
+        id: "N_SB",
+        name: "SB_Fault",
+        gateType: "PRIMARY_EVENT",
+        children: [],
+        failureModeId: "FM_SENS_B",
+      });
+      safety.registerFtaNode({
+        id: "N_VOTE",
+        name: "SensorDualFault",
+        gateType: "VOTING_K_OF_N",
+        k: 2,
+        children: ["N_SA", "N_SB"],
+      });
+      safety.registerFtaNode({
+        id: "N_TOP",
+        name: "TopHazard",
+        gateType: "OR",
+        children: ["N_MCU", "N_VOTE"],
+      });
+      safety.registerHazard({
+        id: "H1",
+        name: "UnintendedAcceleration",
+        asilLevel: "ASIL_D",
+        targetPmhfFit: 10,
+        targetSpfm: 0.99,
+        targetLfm: 0.9,
+        rootNodeId: "N_TOP",
+      });
+      const safetySat = safety.checkSat();
+      assert.strictEqual(safetySat.isSat, true, `Expected ASIL-D compliance, got: ${safetySat.conflict?.explanation}`);
+
+      // Exact VOTING_K_OF_N (2-of-2) where one child has lambda=0 (Q=0) and one has lambda=1 (Q~1): Q_vote must be 0!
+      safety.registerFailureMode({
+        id: "FM_ZERO",
+        componentName: "IdealRef",
+        modeName: "NeverFails",
+        failureRatePerHour: 0,
+      });
+      safety.registerFtaNode({
+        id: "N_ZERO",
+        name: "ZeroEvt",
+        gateType: "PRIMARY_EVENT",
+        children: [],
+        failureModeId: "FM_ZERO",
+      });
+      safety.registerFtaNode({
+        id: "N_VOTE_HETERO",
+        name: "HeteroVote2of2",
+        gateType: "VOTING_K_OF_N",
+        k: 2,
+        children: ["N_SA", "N_ZERO"],
+      });
+      assert.strictEqual(safety.evaluateNodeUnreliability("N_VOTE_HETERO", 1000), 0);
+
+      // 2. PowerGridTheoryOracle: parallel circuits between bus 1 and bus 2 must not overwrite each other
+      const grid = new PowerGridTheoryOracle();
+      grid.assertBranchLoading({
+        fromBus: 1,
+        toBus: 2,
+        circuitId: "1",
+        actualMva: 120,
+        rateMva: 100,
+        loadingPercent: 120,
+      });
+      grid.assertBranchLoading({
+        fromBus: 1,
+        toBus: 2,
+        circuitId: "2",
+        actualMva: 60,
+        rateMva: 100,
+        loadingPercent: 60,
+      });
+      assert.strictEqual(grid.checkSat().isSat, false, "Overloaded circuit 1 must not be overwritten by circuit 2");
+
+      // 3. MarineMooringTheoryOracle: damaged SF violation without explicit passedDamaged=false
+      const mooring = new MarineMooringTheoryOracle();
+      mooring.assertMooringLine({
+        lineId: "L1",
+        mbl: 10000,
+        tensionIntact: 5000,
+        safetyFactorIntact: 2.0,
+        passedIntact: true,
+        safetyFactorDamaged: 1.05, // < 1.25 required for Class 2
+        consequenceClass: 2,
+      });
+      assert.strictEqual(mooring.checkSat().isSat, false, "Damaged line SF 1.05 < 1.25 must fail checkSat()");
+
+      // 4. UqTheoryOracle: point-mass normal distribution (stdDev = 0) at threshold must evaluate P(X >= 45) = 1.0
+      const uq = new UqTheoryOracle();
+      uq.assertLiteral({
+        id: 1,
+        predicate: "distribution",
+        args: ["temp", "normal", 45.0, 0.0],
+      });
+      uq.assertLiteral({
+        id: 2,
+        predicate: "probBound",
+        args: ["temp", ">=", 45.0, 0.01],
+      });
+      assert.strictEqual(uq.checkSat().isSat, false, "Point mass at 45.0 has P(temp >= 45.0) = 1.0 > 0.01");
+
+      // 5. DigitalThreadHypergraph & ThreadSerializer: markConflict clears isSynced, and alphanumeric threadIds don't collide
+      const hg = new DigitalThreadHypergraph();
+      const s0 = hg.createThread(10);
+      assert.strictEqual(hg.isSynced(s0), true);
+      hg.markConflict(s0);
+      assert.strictEqual(hg.isSynced(s0), false);
+      assert.strictEqual(hg.getRecord(s0)!.isSynced, false);
+
+      const deserialized = ThreadSerializer.deserialize(
+        JSON.stringify({
+          "@context": {},
+          "@type": "ms:DigitalThreadCollection",
+          version: "1.0",
+          generatedAt: new Date().toISOString(),
+          threads: [
+            { threadId: "Thread_A1", revision: 1, status: "synced", domains: { sysml2: "Block_A1", safety: "Haz_00" } },
+            {
+              threadId: "Thread_B1",
+              revision: 1,
+              status: "synced",
+              domains: { sysml2: "Block_B1", software: "Sw_00" },
+            },
+          ],
+        }),
+      );
+      assert.strictEqual(
+        deserialized.getThreadCount(),
+        2,
+        "'Thread_A1' and 'Thread_B1' must not collide onto threadId=1",
+      );
+      assert.ok(deserialized.getDomainNode(0, ThreadDomain.Safety) > 0);
+      assert.ok(deserialized.getDomainNode(1, ThreadDomain.Software) > 0);
+    });
+
+    it("should handle decision backjumps below assumptionLevel in CdclSatSolver, avoid TseitinEncoder cardinality var collisions, widen FixpointSolver loops at entryBlockId, and evaluate negative powInt in AffineDomain/TaylorDomain", () => {
+      // 1. CdclSatSolver: conflict at decision level > assumptionLevel whose learned clause has backtrackLevel < assumptionLevel
+      const sat = new CdclSatSolver();
+      // Clauses (-2 | 3) and (-2 | -3) force 2 = false via conflict when 2 = true is branched on.
+      // Variable 1 is unconstrained by these clauses.
+      sat.addClause([-2, 3]);
+      sat.addClause([-2, -3]);
+      const resUnderAssump = sat.solve([1, 4]);
+      assert.strictEqual(resUnderAssump.status, "SAT", "Formula under assumptions [1, 4] must be SAT with 2 = false");
+      assert.strictEqual(resUnderAssump.model?.get(1), true);
+      assert.strictEqual(resUnderAssump.model?.get(4), true);
+      assert.strictEqual(resUnderAssump.model?.get(2), false);
+
+      // 2. TseitinEncoder: encodeAtMostK([1, 2, 3], 1) on a fresh encoder must not collide counter vars with 1, 2, 3
+      const enc = new TseitinEncoder();
+      const atMost1Clauses = enc.encodeAtMostK([1, 2, 3], 1);
+      const cardSat = new CdclSatSolver();
+      for (const cl of atMost1Clauses) {
+        cardSat.addClause(cl);
+      }
+      assert.strictEqual(
+        cardSat.solve([1, 3]).status,
+        "UNSAT",
+        "Having both 1 and 3 true must violate AtMost1([1, 2, 3])",
+      );
+      assert.strictEqual(
+        cardSat.solve([1, -2, -3]).status,
+        "SAT",
+        "Having only 1 true must satisfy AtMost1([1, 2, 3])",
+      );
+
+      // 3. GenericCFG.computeRPO & FixpointSolver: unreachable blocks must follow entryBlockId, and loop header at entryBlockId must widen back-edges
+      const cfg = new GenericCFG(0);
+      const b0 = cfg.createBlock("loop_header_entry");
+      const b1 = cfg.createBlock("loop_body");
+      const b2 = cfg.createBlock("loop_exit");
+      const bDead = cfg.createBlock("unreachable_block");
+      assert.strictEqual(b0.id, 0);
+      assert.strictEqual(bDead.id, 3);
+      b1.instructions.push({
+        id: 1,
+        opcode: "assign",
+        targetVar: "i",
+        operands: ["i", "+", 1],
+      });
+      cfg.addEdge(b0.id, b1.id, "true_branch", "i < 5");
+      cfg.addEdge(b0.id, b2.id, "false_branch", "i >= 5");
+      cfg.addEdge(b1.id, b0.id, "loop_back");
+
+      const rpo = cfg.computeRPO();
+      assert.strictEqual(rpo[0], 0, "Entry block 0 must be first in RPO even when unreachable blocks exist");
+      assert.strictEqual(rpo[rpo.length - 1], bDead.id, "Unreachable block must be placed at the end of RPO");
+
+      const initState = ReducedProductState.top();
+      initState.intervals.set("i", new NumericalInterval(0, 0));
+
+      const fpSolver = new FixpointSolver(
+        cfg,
+        (inst, state) => {
+          const next = state.clone();
+          if (inst.opcode === "assign" && inst.targetVar === "i") {
+            const cur = next.intervals.get("i");
+            next.intervals.set("i", new NumericalInterval(cur.low + 1, cur.high + 1));
+          }
+          return next;
+        },
+        [0, 5, 10],
+        20,
+        (edge, state) => {
+          const next = state.clone();
+          const cur = next.intervals.get("i");
+          if (edge.conditionExpr === "i < 5") {
+            const hi = Math.min(cur.high, 4);
+            if (cur.low > hi) return ReducedProductState.bottom();
+            next.intervals.set("i", new NumericalInterval(cur.low, hi));
+          } else if (edge.conditionExpr === "i >= 5") {
+            const lo = Math.max(cur.low, 5);
+            if (lo > cur.high) return ReducedProductState.bottom();
+            next.intervals.set("i", new NumericalInterval(lo, cur.high));
+          }
+          return next;
+        },
+      );
+      const fpSummary = fpSolver.solve(initState);
+      const headerIn = fpSummary.blockEntryStates.get(b0.id)!.intervals.get("i");
+      assert.ok(
+        headerIn.low <= 0 && headerIn.high >= 5,
+        `Entry loop header must join/widen back-edge up to >= 5, got [${headerIn.low}, ${headerIn.high}]`,
+      );
+      const exitIn = fpSummary.blockEntryStates.get(b2.id)!.intervals.get("i");
+      assert.strictEqual(
+        exitIn.isBottom(),
+        false,
+        "Loop exit block must be reachable after widening entry loop header",
+      );
+
+      // 4. AffineDomain.powInt and TaylorDomain.powInt for negative integer exponent n = -2
+      const affDom = new AffineDomain();
+      const xAff = affDom.fromInterval(new Interval(2, 4));
+      const invSqAff = affDom.toInterval(affDom.powInt(xAff, -2));
+      assert.ok(
+        invSqAff.lo <= 1 / 16 && invSqAff.hi >= 1 / 4,
+        `Affine powInt([2, 4], -2) must enclose [0.0625, 0.25], got [${invSqAff.lo}, ${invSqAff.hi}]`,
+      );
+
+      const boxes = [new Interval(2, 4)];
+      const tmDom = new TaylorDomain(boxes, 3);
+      const xTm = TaylorModel.variable(0, 1, boxes, 3);
+      const invSqTm = tmDom.toInterval(tmDom.powInt(xTm, -2));
+      assert.ok(
+        invSqTm.lo <= 1 / 16 && invSqTm.hi >= 1 / 4,
+        `Taylor powInt([2, 4], -2) must enclose [0.0625, 0.25], got [${invSqTm.lo}, ${invSqTm.hi}]`,
+      );
     });
   });
 });

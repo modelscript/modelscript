@@ -9,7 +9,7 @@ export interface BlockDescriptor {
   description: string;
   ports: Easy5Port[];
   defaultParameters: Record<string, number | number[] | string>;
-  stateCount?: number | ((params: Record<string, any>) => number) | undefined;
+  stateCount?: number | ((params: Record<string, number | number[] | string | unknown>) => number) | undefined;
 }
 
 export const GP_BLOCK_DESCRIPTORS: Record<string, BlockDescriptor> = {
@@ -81,7 +81,7 @@ export const GP_BLOCK_DESCRIPTORS: Record<string, BlockDescriptor> = {
       NUM: [1.0],
       DEN: [1.0, 1.0],
     },
-    stateCount: (params: Record<string, any>) => {
+    stateCount: (params: Record<string, number | number[] | string | unknown>) => {
       const den = Array.isArray(params["DEN"]) ? params["DEN"] : [1.0, 1.0];
       return Math.max(0, den.length - 1);
     },

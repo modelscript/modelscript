@@ -60,16 +60,21 @@ export function interpolatePerformanceMap(map: RocetsPerformanceMap, speedRpm: n
 
   // Clamp indices
   let sIdx = 0;
-  while (sIdx < speeds.length - 2 && speedRpm > speeds[sIdx + 1]!) {
+  while (sIdx < speeds.length - 2 && speedRpm > (speeds[sIdx + 1] ?? Infinity)) {
     sIdx++;
   }
   let fIdx = 0;
-  while (fIdx < flows.length - 2 && flowKgS > flows[fIdx + 1]!) {
+  while (fIdx < flows.length - 2 && flowKgS > (flows[fIdx + 1] ?? Infinity)) {
     fIdx++;
   }
 
-  const sFrac = Math.max(0, Math.min(1, (speedRpm - speeds[sIdx]!) / Math.max(1, speeds[sIdx + 1]! - speeds[sIdx]!)));
-  const fFrac = Math.max(0, Math.min(1, (flowKgS - flows[fIdx]!) / Math.max(1e-3, flows[fIdx + 1]! - flows[fIdx]!)));
+  const s0 = speeds[sIdx] ?? 0;
+  const s1 = speeds[sIdx + 1] ?? s0 + 1;
+  const f0 = flows[fIdx] ?? 0;
+  const f1 = flows[fIdx + 1] ?? f0 + 1;
+
+  const sFrac = Math.max(0, Math.min(1, (speedRpm - s0) / Math.max(1, s1 - s0)));
+  const fFrac = Math.max(0, Math.min(1, (flowKgS - f0) / Math.max(1e-3, f1 - f0)));
 
   const h00 = map.headOrPressureRatio[sIdx]?.[fIdx] ?? 1000;
   const h01 = map.headOrPressureRatio[sIdx]?.[fIdx + 1] ?? h00;

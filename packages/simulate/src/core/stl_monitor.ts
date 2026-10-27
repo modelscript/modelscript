@@ -219,6 +219,21 @@ export class LemireMinMaxQueue {
   }
 }
 
+export interface StlWasmExports {
+  memory?: WebAssembly.Memory | undefined;
+  __new?: ((size: number, id: number) => number) | undefined;
+  alloc?: ((size: number) => number) | undefined;
+  stl_eval_always?:
+    | ((timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void)
+    | undefined;
+  stl_eval_eventually?:
+    | ((timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void)
+    | undefined;
+  stl_eval_until?:
+    | ((timePtr: number, lPtr: number, rPtr: number, n: number, a: number, b: number, outPtr: number) => void)
+    | undefined;
+}
+
 /**
  * Zero-copy in-WASM evaluation of temporal operators for STL formulas using compiled kernels.
  * Returns null if WASM is unavailable or formula is not accelerated by WASM.
@@ -226,9 +241,9 @@ export class LemireMinMaxQueue {
 export function evaluateFormulaSignalWasm(
   formula: STLFormula,
   samples: { t: number; y: number[] | Float64Array }[],
-  customWasm?: any,
+  customWasm?: StlWasmExports | null,
 ): SignalPoint[] | null {
-  const wasm = customWasm ?? getDefaultWasmExports();
+  const wasm = customWasm ?? (getDefaultWasmExports() as StlWasmExports | null | undefined);
   if (!wasm || typeof wasm.stl_eval_always !== "function" || !wasm.memory) {
     return null;
   }
@@ -264,7 +279,7 @@ export function evaluateFormulaSignalWasm(
     if (formula.op === "globally") {
       wasm.stl_eval_always(timePtr, valPtr, N, a, bFinite, outPtr);
     } else {
-      wasm.stl_eval_eventually(timePtr, valPtr, N, a, bFinite, outPtr);
+      wasm.stl_eval_eventually!(timePtr, valPtr, N, a, bFinite, outPtr);
     }
 
     const res: SignalPoint[] = new Array(N);
@@ -298,7 +313,7 @@ export function evaluateFormulaSignalWasm(
       rView[i] = rightSig[i]!.v;
     }
 
-    wasm.stl_eval_until(timePtr, lPtr, rPtr, N, a, bFinite, outPtr);
+    wasm.stl_eval_until!(timePtr, lPtr, rPtr, N, a, bFinite, outPtr);
 
     const res: SignalPoint[] = new Array(N);
     for (let i = 0; i < N; i++) {
@@ -318,7 +333,7 @@ export function evaluateFormulaSignalWasm(
 export function evaluateFormulaSignal(
   formula: STLFormula,
   samples: { t: number; y: number[] | Float64Array }[],
-  options?: { preferWasm?: boolean | undefined; wasmExports?: any },
+  options?: { preferWasm?: boolean | undefined; wasmExports?: StlWasmExports | null | undefined },
 ): SignalPoint[] {
   if (samples.length === 0) return [];
 

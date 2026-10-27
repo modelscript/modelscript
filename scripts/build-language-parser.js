@@ -213,33 +213,50 @@ fs.writeFileSync(path.join(distSrcGenDir, "bindings.js"), result.javascriptWrapp
 fs.writeFileSync(path.join(distSrcGenDir, "bindings.d.ts"), result.javascriptWrapper.dts);
 
 // 3. Compile parser.ts to WebAssembly with asc
-const ascPath = path.resolve(__dirname, "../../node_modules/.bin/asc");
 const parserTs = path.join(asGenDir, "parser.ts");
 const outWasm = path.join(__dirname, "dist", "parser.wasm");
+const isWin = process.platform === "win32";
+const ascPath = path.resolve(__dirname, "../../node_modules/.bin", isWin ? "asc.cmd" : "asc");
+const ascExec = fs.existsSync(ascPath) ? ascPath : (isWin ? "npx.cmd" : "npx");
+const ascArgs = fs.existsSync(ascPath)
+  ? [
+      parserTs,
+      "-o",
+      outWasm,
+      "--exportRuntime",
+      "--enable",
+      "threads",
+      "--enable",
+      "simd",
+      "--optimize",
+      "--runtime",
+      "stub",
+      ${extraAscFlags.map((f) => JSON.stringify(f)).join(", ")}
+    ]
+  : [
+      "asc",
+      parserTs,
+      "-o",
+      outWasm,
+      "--exportRuntime",
+      "--enable",
+      "threads",
+      "--enable",
+      "simd",
+      "--optimize",
+      "--runtime",
+      "stub",
+      ${extraAscFlags.map((f) => JSON.stringify(f)).join(", ")}
+    ];
 
-execFileSync(
-  ascPath,
-  [
-    parserTs,
-    "-o",
-    outWasm,
-    "--exportRuntime",
-    "--enable",
-    "threads",
-    "--enable",
-    "simd",
-    "--optimize",
-    "--runtime",
-    "stub",
-    ${extraAscFlags.map((f) => JSON.stringify(f)).join(", ")}
-  ],
-  { stdio: "inherit" }
-);
+execFileSync(ascExec, ascArgs, { stdio: "inherit", shell: isWin });
 `;
 
   fs.writeFileSync(buildScriptPath, buildScriptContent);
+  const isWin = process.platform === "win32";
+  const npxBin = isWin ? "npx.cmd" : "npx";
   try {
-    execFileSync("npx", ["tsx", buildScriptPath], { stdio: "inherit", cwd: dir });
+    execFileSync(npxBin, ["tsx", buildScriptPath], { stdio: "inherit", cwd: dir, shell: isWin });
     persistCache(currentHash);
   } finally {
     if (fs.existsSync(buildScriptPath)) {

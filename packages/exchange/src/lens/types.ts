@@ -117,6 +117,8 @@ export interface PackageJsonProjection {
         globalAssetId: string;
         variants?: string[] | undefined;
         submodels?: string[] | undefined;
+        languages?: string[] | undefined;
+        nativeFormat?: string | undefined;
       }
     | undefined;
   [key: string]: unknown;

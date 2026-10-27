@@ -148,10 +148,19 @@ export async function createStripePaymentIntent(
   };
 }
 
+export interface StripeWebhookObject {
+  id?: string | undefined;
+  amount?: number | undefined;
+  reason?: string | undefined;
+  customer_id?: number | undefined;
+  metadata?: { userId?: string | undefined } | undefined;
+  [key: string]: unknown;
+}
+
 export interface StripeWebhookEvent {
   type: string;
   data: {
-    object: Record<string, any>;
+    object: StripeWebhookObject;
   };
 }
 
@@ -162,8 +171,8 @@ export function handleStripeWebhookEvent(
   event: StripeWebhookEvent,
   database: LibraryDatabase,
   guard: PaymentFraudGuard = defaultPaymentGuard,
-): { handled: boolean; action: string; userId?: number | undefined; details?: Record<string, any> | undefined } {
-  const obj = event.data?.object || {};
+): { handled: boolean; action: string; userId?: number | undefined; details?: Record<string, unknown> | undefined } {
+  const obj: StripeWebhookObject = event.data?.object || {};
   const userId = (obj["metadata"]?.userId ? parseInt(obj["metadata"].userId, 10) : undefined) || obj["customer_id"];
 
   switch (event.type) {

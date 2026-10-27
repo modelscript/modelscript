@@ -109,11 +109,16 @@ export class SafetyTheoryOracle implements TheoryOracle {
   private failureModes = new Map<string, ComponentFailureMode>();
   private ftaNodes = new Map<string, FtaNode>();
   private hazards = new Map<string, SystemHazard>();
+  private baseFailureModes = new Map<string, ComponentFailureMode>();
+  private baseFtaNodes = new Map<string, FtaNode>();
+  private baseHazards = new Map<string, SystemHazard>();
+  private sharedEqualities: SharedEquality[] = [];
   private activeLiterals: TheoryLiteral[] = [];
   private levelStack: {
     failureModes: Map<string, ComponentFailureMode>;
     ftaNodes: Map<string, FtaNode>;
     hazards: Map<string, SystemHazard>;
+    sharedEqualities: SharedEquality[];
     activeLiterals: TheoryLiteral[];
   }[] = [];
   private missionTimeHours = 10000; // 10,000 hours typical automotive/aerospace life
@@ -123,24 +128,71 @@ export class SafetyTheoryOracle implements TheoryOracle {
   }
 
   public registerFailureMode(mode: ComponentFailureMode): void {
-    this.failureModes.set(mode.id, mode);
+    this.baseFailureModes.set(mode.id, { ...mode });
+    this.failureModes.set(mode.id, { ...mode });
   }
 
   public registerFtaNode(node: FtaNode): void {
-    this.ftaNodes.set(node.id, node);
+    this.baseFtaNodes.set(node.id, { ...node, children: [...node.children] });
+    this.ftaNodes.set(node.id, { ...node, children: [...node.children] });
   }
 
   public registerHazard(hazard: SystemHazard): void {
-    this.hazards.set(hazard.id, hazard);
+    this.baseHazards.set(hazard.id, { ...hazard });
+    this.hazards.set(hazard.id, { ...hazard });
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.activeLiterals.push(lit);
+    const { predicate, args } = lit;
+    if (predicate === "failureMode" && args[0]) {
+      const mode = args[0] as ComponentFailureMode;
+      this.failureModes.set(mode.id, { ...mode });
+    } else if (predicate === "ftaNode" && args[0]) {
+      const node = args[0] as FtaNode;
+      this.ftaNodes.set(node.id, { ...node, children: [...node.children] });
+    } else if (predicate === "hazard" && args[0]) {
+      const hazard = args[0] as SystemHazard;
+      this.hazards.set(hazard.id, { ...hazard });
+    }
     return true;
   }
 
   public retractLiteral(litId: number): void {
-    this.activeLiterals = this.activeLiterals.filter((l) => l.id !== litId);
+    const idx = this.activeLiterals.findIndex((l) => l.id === litId);
+    if (
+      idx === -1 &&
+      !this.sharedEqualities.some((eq) => (eq.justifications ?? eq.justification ?? []).includes(litId))
+    ) {
+      return;
+    }
+    const remainingLits = this.activeLiterals.filter((l) => l.id !== litId);
+    const remainingEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
+    const savedStack = this.levelStack;
+    this.failureModes.clear();
+    for (const [k, v] of this.baseFailureModes) {
+      this.failureModes.set(k, { ...v });
+    }
+    this.ftaNodes.clear();
+    for (const [k, v] of this.baseFtaNodes) {
+      this.ftaNodes.set(k, { ...v, children: [...v.children] });
+    }
+    this.hazards.clear();
+    for (const [k, v] of this.baseHazards) {
+      this.hazards.set(k, { ...v });
+    }
+    this.activeLiterals = [];
+    this.sharedEqualities = [];
+    this.levelStack = savedStack;
+    for (const lit of remainingLits) {
+      this.assertLiteral(lit);
+    }
+    for (const eq of remainingEqs) {
+      this.onSharedEquality(eq);
+    }
   }
 
   public pushLevel(): void {
@@ -152,6 +204,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
       failureModes: fmSnap,
       ftaNodes: new Map(this.ftaNodes),
       hazards: new Map(this.hazards),
+      sharedEqualities: [...this.sharedEqualities],
       activeLiterals: [...this.activeLiterals],
     });
   }
@@ -162,6 +215,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
     this.failureModes = top.failureModes;
     this.ftaNodes = top.ftaNodes;
     this.hazards = top.hazards;
+    this.sharedEqualities = top.sharedEqualities;
     this.activeLiterals = top.activeLiterals;
   }
 
@@ -170,11 +224,16 @@ export class SafetyTheoryOracle implements TheoryOracle {
     this.failureModes.clear();
     this.ftaNodes.clear();
     this.hazards.clear();
+    this.baseFailureModes.clear();
+    this.baseFtaNodes.clear();
+    this.baseHazards.clear();
+    this.sharedEqualities = [];
     this.levelStack = [];
   }
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA) return;
+    this.sharedEqualities.push(eq);
     for (const [fmId, fm] of this.failureModes) {
       if (eq.varA === `${fmId}.baseFitRate` || eq.varA === `${fmId}.fit` || eq.varA === fmId) {
         if (eq.bounds && Number.isFinite(eq.bounds[1])) {
@@ -186,6 +245,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
 
   public propagateEqualities(): SharedEquality[] {
     const equalities: SharedEquality[] = [];
+    const justs = this.activeLiterals.map((l) => l.id);
     for (const [hId, hazard] of this.hazards) {
       const report = this.evaluateHazard(hazard);
       equalities.push({
@@ -195,6 +255,8 @@ export class SafetyTheoryOracle implements TheoryOracle {
         bounds: [report.actualPmhfFit, report.actualPmhfFit],
         sourceOracle: this.name,
         explanation: `Calculated PMHF metric for hazard '${hazard.name}'`,
+        justifications: justs,
+        justification: justs,
       });
     }
     return equalities;
@@ -360,7 +422,8 @@ export class SafetyTheoryOracle implements TheoryOracle {
   /**
    * Recursively evaluates probability of failure for a node over mission time T.
    */
-  public evaluateNodeUnreliability(nodeId: string, T: number): number {
+  public evaluateNodeUnreliability(nodeId: string, T: number, visited = new Set<string>()): number {
+    if (visited.has(nodeId)) return 0.0;
     const node = this.ftaNodes.get(nodeId);
     if (!node) return 0.0;
 
@@ -373,48 +436,52 @@ export class SafetyTheoryOracle implements TheoryOracle {
       return 1.0 - Math.exp(-lambda * T);
     }
 
-    if (node.gateType === "OR") {
-      let prodReliability = 1.0;
-      for (const childId of node.children) {
-        const qChild = this.evaluateNodeUnreliability(childId, T);
-        prodReliability *= 1.0 - qChild;
+    visited.add(nodeId);
+    try {
+      if (node.gateType === "OR") {
+        let prodReliability = 1.0;
+        for (const childId of node.children) {
+          const qChild = this.evaluateNodeUnreliability(childId, T, visited);
+          prodReliability *= 1.0 - qChild;
+        }
+        return 1.0 - prodReliability;
       }
-      return 1.0 - prodReliability;
-    }
 
-    if (node.gateType === "AND") {
-      let prodQ = 1.0;
-      for (const childId of node.children) {
-        prodQ *= this.evaluateNodeUnreliability(childId, T);
+      if (node.gateType === "AND") {
+        let prodQ = 1.0;
+        for (const childId of node.children) {
+          prodQ *= this.evaluateNodeUnreliability(childId, T, visited);
+        }
+        return prodQ;
       }
-      return prodQ;
-    }
 
-    if (node.gateType === "VOTING_K_OF_N") {
-      const k = node.k ?? 2;
-      const childQs = node.children.map((cid) => this.evaluateNodeUnreliability(cid, T));
-      // Approximation for small identical probabilities
-      const qAvg = childQs.reduce((a, b) => a + b, 0) / (childQs.length || 1);
-      const n = childQs.length;
-      let qVote = 0.0;
-      for (let j = k; j <= n; j++) {
-        const nChooseJ = this.nChooseK(n, j);
-        qVote += nChooseJ * Math.pow(qAvg, j) * Math.pow(1 - qAvg, n - j);
+      if (node.gateType === "VOTING_K_OF_N") {
+        const k = node.k ?? 2;
+        const childQs = node.children.map((cid) => this.evaluateNodeUnreliability(cid, T, visited));
+        const n = childQs.length;
+        if (k <= 0) return 1.0;
+        if (k > n) return 0.0;
+        // Exact Poisson-binomial DP over heterogeneous child probabilities
+        const dp = new Float64Array(n + 1);
+        dp[0] = 1.0;
+        for (let i = 0; i < n; i++) {
+          const q = childQs[i]!;
+          for (let j = i + 1; j >= 1; j--) {
+            dp[j] = dp[j]! * (1.0 - q) + dp[j - 1]! * q;
+          }
+          dp[0] = dp[0]! * (1.0 - q);
+        }
+        let qVote = 0.0;
+        for (let j = k; j <= n; j++) {
+          qVote += dp[j]!;
+        }
+        return Math.min(1.0, qVote);
       }
-      return Math.min(1.0, qVote);
+    } finally {
+      visited.delete(nodeId);
     }
 
     return 0.0;
-  }
-
-  private nChooseK(n: number, k: number): number {
-    if (k < 0 || k > n) return 0;
-    if (k === 0 || k === n) return 1;
-    let res = 1;
-    for (let i = 1; i <= k; i++) {
-      res = (res * (n - i + 1)) / i;
-    }
-    return res;
   }
 
   /**
@@ -445,6 +512,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
     let sumLatentLambda = 0.0;
 
     const fmeaRows: FmeaRow[] = [];
+    const mitigatedSpfLabels = new Set<string>();
 
     for (const [, fm] of this.failureModes) {
       const lambda = fm.failureRatePerHour;
@@ -452,15 +520,30 @@ export class SafetyTheoryOracle implements TheoryOracle {
       sumTotalLambda += lambda;
 
       const dc = fm.diagnosticCoverage ?? 0.0;
-      const isSpf = singlePoints.some((sp) => sp.includes(fm.componentName) || sp.includes(fm.modeName));
+      const fmLabel = `${fm.componentName}.${fm.modeName}`;
+      const isSpf = singlePoints.some(
+        (sp) => sp === fmLabel || sp.includes(fm.componentName) || sp.includes(fm.modeName),
+      );
+      const isMpf =
+        !isSpf &&
+        mcs.some(
+          (cs) =>
+            cs.length >= 2 && cs.some((p) => p === fmLabel || p.includes(fm.componentName) || p.includes(fm.modeName)),
+        );
 
       if (isSpf) {
-        if (dc > 0) {
+        if (dc > 0 || Boolean(fm.safetyMechanism)) {
           sumResidualLambda += lambda * (1.0 - dc);
-          sumLatentLambda += lambda * dc;
+          for (const sp of singlePoints) {
+            if (sp === fmLabel || sp.includes(fm.componentName) || sp.includes(fm.modeName)) {
+              mitigatedSpfLabels.add(sp);
+            }
+          }
         } else {
           sumSpfLambda += lambda;
         }
+      } else if (isMpf) {
+        sumLatentLambda += lambda * (1.0 - dc);
       }
 
       // FMEA ratings
@@ -497,7 +580,9 @@ export class SafetyTheoryOracle implements TheoryOracle {
     }
 
     const actualSpfm = sumTotalLambda > 0 ? 1.0 - (sumSpfLambda + sumResidualLambda) / sumTotalLambda : 1.0;
-    const actualLfm = sumTotalLambda > 0 ? 1.0 - sumLatentLambda / sumTotalLambda : 1.0;
+    const mpfDenom = sumTotalLambda - sumSpfLambda - sumResidualLambda;
+    const actualLfm = mpfDenom > 0 ? 1.0 - sumLatentLambda / mpfDenom : 1.0;
+    const unmitigatedSinglePoints = singlePoints.filter((sp) => !mitigatedSpfLabels.has(sp));
 
     // Check violations
     const violations: string[] = [];
@@ -514,9 +599,9 @@ export class SafetyTheoryOracle implements TheoryOracle {
         `LFM ${(actualLfm * 100).toFixed(1)}% falls below target ${(hazard.targetLfm * 100).toFixed(1)}%`,
       );
     }
-    if (hazard.asilLevel === "ASIL_D" && singlePoints.length > 0) {
+    if (hazard.asilLevel === "ASIL_D" && unmitigatedSinglePoints.length > 0) {
       violations.push(
-        `ASIL-D prohibits unmitigated Single Points of Failure (detected ${singlePoints.length} SPF: ${singlePoints.join(", ")})`,
+        `ASIL-D prohibits unmitigated Single Points of Failure (detected ${unmitigatedSinglePoints.length} SPF: ${unmitigatedSinglePoints.join(", ")})`,
       );
     }
 

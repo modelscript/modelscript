@@ -258,7 +258,7 @@ function parseDurationSeconds(val: unknown): number {
   if (typeof val === "string") {
     const m = /(?:T|TIME)#(\d+)(ms|s|m|h)?/i.exec(val);
     if (m) {
-      const n = parseInt(m[1]!, 10);
+      const n = parseInt(m[1] ?? "0", 10);
       const u = (m[2] ?? "ms").toLowerCase();
       if (u === "ms") return n / 1000;
       if (u === "s") return n;

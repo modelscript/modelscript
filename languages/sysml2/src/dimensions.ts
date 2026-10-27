@@ -6,7 +6,7 @@
  */
 
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
-import { findCstDescendants, findFirstDescendant } from "./flattener/cst-lowerer.js";
+import { findCstDescendants, findFirstDescendant, type SysmlCstNode } from "./flattener/cst-lowerer.js";
 
 export type DimensionVector = readonly [
   L: number, // Length [m]
@@ -272,7 +272,11 @@ export interface DimensionInferenceResult {
 /**
  * Infers the physical dimension of an expression CST node and checks for dimensional consistency.
  */
-export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number | null): DimensionInferenceResult {
+export function inferExpressionDimension(
+  db: QueryDB,
+  node: SysmlCstNode | null | undefined,
+  scopeId: number | null,
+): DimensionInferenceResult {
   if (!node) return { dimension: DIMENSIONLESS };
 
   switch (node.type) {
@@ -377,9 +381,9 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "AdditiveExpression": {
-      const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+      const operands: SysmlCstNode[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
       const operators: string[] = node.childrenForFieldName
-        ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || "+")
+        ? node.childrenForFieldName("operator").map((c: SysmlCstNode) => c.text?.trim() || "+")
         : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
@@ -407,9 +411,9 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "MultiplicativeExpression": {
-      const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+      const operands: SysmlCstNode[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
       const operators: string[] = node.childrenForFieldName
-        ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || "*")
+        ? node.childrenForFieldName("operator").map((c: SysmlCstNode) => c.text?.trim() || "*")
         : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
@@ -464,7 +468,7 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "RelationalExpression": {
-      const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+      const operands: SysmlCstNode[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
       if (operands.length < 2) return { dimension: DIMENSIONLESS };
 
       const left = inferExpressionDimension(db, operands[0], scopeId);
@@ -488,7 +492,7 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
     }
 
     case "EqualityExpression": {
-      const operands: any[] = [];
+      const operands: SysmlCstNode[] = [];
       for (const child of node.children || []) {
         if (
           child.type !== "EqualityOperator" &&
@@ -588,10 +592,10 @@ export function inferExpressionDimension(db: QueryDB, node: any, scopeId: number
   }
 }
 
-function extractReferencedName(node: any): string | null {
+function extractReferencedName(node: SysmlCstNode): string | null {
   if (node.type === "FeatureReferenceExpression") {
     const text = node.text?.trim() || "";
-    return text.replace(/^[:.]+/, "").split(".")[0];
+    return text.replace(/^[:.]+/, "").split(".")[0] ?? null;
   }
   const text = node.text?.trim() || "";
   if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(text)) {
@@ -626,7 +630,11 @@ function resolveFeatureTypeEntry(db: QueryDB, entry: SymbolEntry): SymbolEntry |
 /**
  * Infers the dimension of a unit expression (e.g. `kg`, `m/s`, `m²`, `m^2`).
  */
-export function inferUnitDimension(db: QueryDB, node: any, scopeId?: number | null): DimensionInferenceResult {
+export function inferUnitDimension(
+  db: QueryDB,
+  node: SysmlCstNode | null | undefined,
+  scopeId?: number | null,
+): DimensionInferenceResult {
   if (!node) return { dimension: DIMENSIONLESS };
 
   switch (node.type) {
@@ -669,7 +677,7 @@ export function inferUnitDimension(db: QueryDB, node: any, scopeId?: number | nu
 
     case "FeatureReferenceExpression":
     default: {
-      const rawText = (node.text?.trim() || "").replace(/^[:.]+/, "").split(".")[0];
+      const rawText = (node.text?.trim() || "").replace(/^[:.]+/, "").split(".")[0] ?? "";
       // Handle superscripts directly (e.g. m², m³)
       if (rawText.endsWith("²") || rawText.endsWith("\u00B2")) {
         const baseName = rawText.slice(0, -1);

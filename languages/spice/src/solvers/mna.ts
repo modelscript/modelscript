@@ -57,7 +57,8 @@ function flattenInstance(
   const resolveNode = (formalNode: string): string => {
     const upper = formalNode.toUpperCase();
     if (upper === "0" || upper === "GND") return "0";
-    if (nodeMap.has(upper)) return nodeMap.get(upper)!;
+    const mapped = nodeMap.get(upper);
+    if (mapped !== undefined) return mapped;
     return `${currentPrefix}.${formalNode}`;
   };
 
@@ -168,8 +169,8 @@ export class DenseLU {
           lu[i * n + c] = lu[maxRow * n + c] ?? 0;
           lu[maxRow * n + c] = tmp;
         }
-        const tmpP = piv[i]!;
-        piv[i] = piv[maxRow]!;
+        const tmpP = piv[i] ?? 0;
+        piv[i] = piv[maxRow] ?? 0;
         piv[maxRow] = tmpP;
       }
 
@@ -196,7 +197,7 @@ export class DenseLU {
 
     // Apply permutation vector: outX[i] = b[piv[i]]
     for (let i = 0; i < n; i++) {
-      outX[i] = b[piv[i]!] ?? 0;
+      outX[i] = b[piv[i] ?? 0] ?? 0;
     }
 
     // Forward substitution: L * y = P * b (unit lower triangular: diag(L) = 1)

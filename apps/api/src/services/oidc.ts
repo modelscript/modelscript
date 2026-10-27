@@ -14,6 +14,15 @@ export interface OidcClaims {
   roles?: string[] | undefined;
 }
 
+interface DecodedOidcPayload {
+  sub?: string | undefined;
+  email?: string | undefined;
+  name?: string | undefined;
+  preferred_username?: string | undefined;
+  groups?: string | string[] | undefined;
+  roles?: string | string[] | undefined;
+}
+
 export class OidcService {
   private issuerUrl: string;
   private clientId: string;
@@ -76,7 +85,7 @@ export class OidcService {
       throw new Error(`OIDC token exchange failed (${response.status}): ${errText}`);
     }
 
-    const data = (await response.json()) as any;
+    const data = (await response.json()) as { id_token: string; access_token: string };
     return {
       idToken: data.id_token,
       accessToken: data.access_token,
@@ -112,7 +121,9 @@ export class OidcService {
       if (!jwksRes.ok) {
         throw new Error(`Failed to fetch JWKS from ${config.jwks_uri}`);
       }
-      const jwks = (await jwksRes.json()) as { keys?: any[] | undefined };
+      const jwks = (await jwksRes.json()) as {
+        keys?: (crypto.JsonWebKeyInput["key"] & { kty?: string | undefined; kid?: string | undefined })[] | undefined;
+      };
       if (!Array.isArray(jwks.keys)) {
         throw new Error("Invalid JWKS payload: missing keys array");
       }
@@ -129,7 +140,7 @@ export class OidcService {
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (process.env["NODE_ENV"] === "test") {
         return "dummy-secret";
       }
@@ -164,20 +175,22 @@ export class OidcService {
       throw new Error("Invalid ID token: unsigned tokens (alg=none) are strictly rejected");
     }
 
-    let decoded: any;
+    let rawDecoded: string | jwt.JwtPayload;
 
     if (process.env["NODE_ENV"] === "test" && header.alg.startsWith("HS")) {
-      decoded = jwt.verify(idToken, "dummy-secret", {
+      rawDecoded = jwt.verify(idToken, "dummy-secret", {
         algorithms: ["HS256"],
       });
     } else {
       const pemKey = await this.getSigningKey(header.kid);
-      decoded = jwt.verify(idToken, pemKey, {
+      rawDecoded = jwt.verify(idToken, pemKey, {
         algorithms: ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
         audience: this.clientId || undefined,
         issuer: this.issuerUrl || undefined,
       });
     }
+
+    const decoded = typeof rawDecoded === "object" && rawDecoded !== null ? (rawDecoded as DecodedOidcPayload) : null;
 
     if (!decoded || !decoded.sub || !decoded.email) {
       throw new Error("Invalid OIDC ID token: missing required sub or email claim");
@@ -199,8 +212,8 @@ export class OidcService {
 
   public extractClaims(idToken: string): OidcClaims {
     // Synchronous claim extraction
-    const decoded = jwt.decode(idToken) as any;
-    if (!decoded || !decoded.sub || !decoded.email) {
+    const decoded = jwt.decode(idToken) as DecodedOidcPayload | null;
+    if (!decoded || typeof decoded !== "object" || !decoded.sub || !decoded.email) {
       throw new Error("Invalid OIDC ID token: missing required sub or email claim");
     }
 
@@ -221,7 +234,7 @@ export class OidcService {
   public async handleOidcLogin(
     database: LibraryDatabase,
     claims: OidcClaims,
-  ): Promise<{ token: string; user: any; isNewUser: boolean }> {
+  ): Promise<{ token: string; user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>; isNewUser: boolean }> {
     const userGroups = [...(claims.groups || []), ...(claims.roles || [])];
     const isAdmin =
       userGroups.includes(this.adminGroup) || userGroups.includes("admin") || userGroups.includes("administrators");

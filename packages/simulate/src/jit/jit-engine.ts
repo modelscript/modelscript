@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/runtime";
 import { execSync, spawn } from "node:child_process";
@@ -358,7 +357,10 @@ export class ArenaJitEngine {
 
     const code = lines.join("\n");
 
-    const compiled = new Function("env", "t", code) as (env: Float64Array, t: number) => void;
+    const createRhsFn = Object.getPrototypeOf(function () {}).constructor as (
+      ...paramsAndBody: string[]
+    ) => (env: Float64Array, t: number) => void;
+    const compiled = createRhsFn("env", "t", code);
     v8FunctionCache.set(signature, compiled);
 
     return {

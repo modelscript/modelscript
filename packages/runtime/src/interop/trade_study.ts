@@ -191,8 +191,8 @@ export class TradeStudyEngine {
             } else {
               if (va < vb) aDominatesB = false;
               if (va > vb) atLeastOneBetterA = true;
-              if (vb > va) bDominatesA = false;
-              if (vb < va) atLeastOneBetterB = true;
+              if (vb < va) bDominatesA = false;
+              if (vb > va) atLeastOneBetterB = true;
             }
           }
 
@@ -534,18 +534,28 @@ export class TradeStudyEngine {
     if (this.objectives.length === 2) {
       const obj0 = this.objectives[0]!;
       const obj1 = this.objectives[1]!;
-      paretoFront.sort((a, b) => (a.objectives[obj0.name] ?? 0) - (b.objectives[obj0.name] ?? 0));
 
       const b0 = bounds[obj0.name]!;
       const b1 = bounds[obj1.name]!;
       const span0 = b0.max - b0.min || 1.0;
       const span1 = b1.max - b1.min || 1.0;
 
+      const norm0 = (pt: ParetoPoint) =>
+        obj0.sense === "minimize"
+          ? ((pt.objectives[obj0.name] ?? b0.max) - b0.min) / span0
+          : (b0.max - (pt.objectives[obj0.name] ?? b0.min)) / span0;
+      const height1 = (pt: ParetoPoint) =>
+        obj1.sense === "minimize"
+          ? (b1.max - (pt.objectives[obj1.name] ?? b1.max)) / span1
+          : ((pt.objectives[obj1.name] ?? b1.min) - b1.min) / span1;
+
+      paretoFront.sort((a, b) => norm0(a) - norm0(b));
+
       for (let i = 0; i < paretoFront.length - 1; i++) {
         const p1 = paretoFront[i]!;
         const p2 = paretoFront[i + 1]!;
-        const w = Math.abs((p2.objectives[obj0.name]! - p1.objectives[obj0.name]!) / span0);
-        const h = Math.abs((b1.max - p1.objectives[obj1.name]!) / span1);
+        const w = Math.abs(norm0(p2) - norm0(p1));
+        const h = Math.abs(height1(p1));
         hv += w * h;
       }
     }

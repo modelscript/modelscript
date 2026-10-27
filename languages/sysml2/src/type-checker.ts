@@ -5,6 +5,7 @@ import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { kermlStdlibEntries } from "../src-gen/kerml-snapshot.js";
 import { KNOWN_DIMENSIONS } from "./dimensions.js";
 import { SysML2ErrorCode } from "./errors.js";
+import type { SysmlCstNode } from "./flattener/cst-lowerer.js";
 
 const STDLIB_PACKAGES = new Set<string>([
   "ScalarValues",
@@ -243,7 +244,11 @@ export function isTypeAssignable(
 /**
  * Statically infers the type of an expression AST node.
  */
-export function inferExpressionType(db: QueryDB, node: any, scopeId: number | null): TypeInferenceResult {
+export function inferExpressionType(
+  db: QueryDB,
+  node: SysmlCstNode | null | undefined,
+  scopeId: number | null,
+): TypeInferenceResult {
   if (!node) return {};
 
   const type = node.type;
@@ -276,8 +281,9 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
   // Feature references (variables, ports, parameters)
   if (type === "FeatureReferenceExpression" || type === "FeatureReferenceMember" || type === "FeatureReference") {
     let refName: string | null = null;
-    if (node.childForFieldName && node.childForFieldName("memberElement")) {
-      refName = node.childForFieldName("memberElement").text?.trim() ?? null;
+    const memberElem = node.childForFieldName ? node.childForFieldName("memberElement") : null;
+    if (memberElem) {
+      refName = memberElem.text?.trim() ?? null;
     } else if (node.text) {
       refName = node.text.trim();
     }
@@ -298,9 +304,9 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
 
   // Additive & Multiplicative Arithmetic
   if (type === "AdditiveExpression" || type === "MultiplicativeExpression" || type === "ExponentiationExpression") {
-    const operands: any[] = node.childrenForFieldName
+    const operands: SysmlCstNode[] = node.childrenForFieldName
       ? node.childrenForFieldName("operand")
-      : (node.children?.filter((c: any) => c.type.includes("Expression")) ?? []);
+      : (node.children?.filter((c: SysmlCstNode) => c.type.includes("Expression")) ?? []);
 
     if (operands.length < 2) {
       const single = operands[0] ?? node.children?.[0];
@@ -336,9 +342,9 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
 
   // Boolean Logic (and, or, xor, implies)
   if (type === "AndExpression" || type === "OrExpression" || type === "XorExpression" || type === "ImpliesExpression") {
-    const operands: any[] = node.childrenForFieldName
+    const operands: SysmlCstNode[] = node.childrenForFieldName
       ? node.childrenForFieldName("operand")
-      : (node.children?.filter((c: any) => c.type.includes("Expression")) ?? []);
+      : (node.children?.filter((c: SysmlCstNode) => c.type.includes("Expression")) ?? []);
 
     for (const opNode of operands) {
       const res = inferExpressionType(db, opNode, scopeId);
@@ -390,13 +396,14 @@ export function inferExpressionType(db: QueryDB, node: any, scopeId: number | nu
   }
 
   // Transparent wrapper unwrapping
-  if (node.childCount === 1) {
-    return inferExpressionType(db, node.child(0), scopeId);
+  const count = node.childCount ?? 0;
+  if (count === 1) {
+    return inferExpressionType(db, node.child ? node.child(0) : node.children?.[0], scopeId);
   }
 
-  for (let i = 0; i < node.childCount; i++) {
-    const c = node.child(i);
-    if (c.type && (c.type.includes("Expression") || c.type.includes("Literal") || c.type.includes("Value"))) {
+  for (let i = 0; i < count; i++) {
+    const c = node.child ? node.child(i) : node.children?.[i];
+    if (c?.type && (c.type.includes("Expression") || c.type.includes("Literal") || c.type.includes("Value"))) {
       const res = inferExpressionType(db, c, scopeId);
       if (res.typeName || res.error) return res;
     }
@@ -571,10 +578,10 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
   if (!declaredTypeName) return null;
 
   // 2. Locate expression node in CST
-  const cst = db.cstNode(self.id) as any;
+  const cst = db.cstNode(self.id) as SysmlCstNode | null | undefined;
   if (!cst) return null;
 
-  let exprNode: any = null;
+  let exprNode: SysmlCstNode | null | undefined = null;
   for (const child of cst.children || []) {
     if (child.type === "OwnedExpression" || child.type === "ResultExpressionMember") {
       exprNode = child.type === "ResultExpressionMember" ? child.childForFieldName?.("ownedRelatedElement") : child;
@@ -582,7 +589,7 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
     }
     if (child.type === "FeatureValue" || child.type === "_ValuePart" || child.type === "ValuePart") {
       exprNode =
-        child.children?.find((c: any) => c.type === "OwnedExpression") ||
+        child.children?.find((c: SysmlCstNode) => c.type === "OwnedExpression") ||
         child.childForFieldName?.("ownedRelatedElement") ||
         child;
       break;

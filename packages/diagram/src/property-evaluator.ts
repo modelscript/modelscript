@@ -7,7 +7,7 @@
  * and identifier resolution against component property values.
  */
 
-export type PropertyContextValues = Record<string, any>;
+export type PropertyContextValues = Record<string, unknown>;
 
 type TokenType =
   | "NUMBER"
@@ -29,7 +29,7 @@ type TokenType =
 
 interface Token {
   type: TokenType;
-  value: any;
+  value: string | number | null;
   pos: number;
 }
 
@@ -169,13 +169,13 @@ class ExpressionParser {
     throw new Error(`Unexpected token ${token.type} (expected ${type}) at pos ${token.pos}`);
   }
 
-  public parse(): any {
+  public parse(): unknown {
     const res = this.parseOr();
     return res;
   }
 
   // expr -> orExpr
-  private parseOr(): any {
+  private parseOr(): unknown {
     let left = this.parseAnd();
     while (this.current.type === "OR") {
       this.eat("OR");
@@ -186,7 +186,7 @@ class ExpressionParser {
   }
 
   // andExpr -> compExpr ( AND compExpr )*
-  private parseAnd(): any {
+  private parseAnd(): unknown {
     let left = this.parseComp();
     while (this.current.type === "AND") {
       this.eat("AND");
@@ -197,8 +197,8 @@ class ExpressionParser {
   }
 
   // compExpr -> unaryExpr ( ( == | != | < | <= | > | >= ) unaryExpr )?
-  private parseComp(): any {
-    let left = this.parseUnary();
+  private parseComp(): unknown {
+    const left = this.parseUnary();
     if (
       this.current.type === "EQ" ||
       this.current.type === "NEQ" ||
@@ -234,7 +234,7 @@ class ExpressionParser {
   }
 
   // unaryExpr -> ( NOT ) unaryExpr | primary
-  private parseUnary(): any {
+  private parseUnary(): unknown {
     if (this.current.type === "NOT") {
       this.eat("NOT");
       return !this.toBoolean(this.parseUnary());
@@ -242,7 +242,7 @@ class ExpressionParser {
     return this.parsePrimary();
   }
 
-  private parsePrimary(): any {
+  private parsePrimary(): unknown {
     const token = this.current;
     if (token.type === "NUMBER") {
       this.eat("NUMBER");
@@ -259,13 +259,13 @@ class ExpressionParser {
       return val;
     }
     if (token.type === "IDENT") {
-      const ident = token.value;
+      const ident = String(token.value);
       this.eat("IDENT");
 
       // Check function call: size(cT, 1) or len(x)
       if (this.current.type === "LPAREN") {
         this.eat("LPAREN");
-        const args: any[] = [];
+        const args: unknown[] = [];
         if ((this.current.type as TokenType) !== "RPAREN") {
           args.push(this.parseOr());
           while ((this.current.type as TokenType) === "COMMA") {
@@ -288,13 +288,13 @@ class ExpressionParser {
     throw new Error(`Unexpected token ${token.type} at pos ${token.pos}`);
   }
 
-  private toBoolean(val: any): boolean {
+  private toBoolean(val: unknown): boolean {
     if (val === true || val === "true" || val === 1) return true;
     if (val === false || val === "false" || val === 0 || val === null || val === undefined || val === "") return false;
     return Boolean(val);
   }
 
-  private resolveIdentifier(ident: string): any {
+  private resolveIdentifier(ident: string): unknown {
     if (ident in this.values) {
       return this.values[ident];
     }
@@ -306,7 +306,7 @@ class ExpressionParser {
     return undefined;
   }
 
-  private evaluateFunction(name: string, args: any[]): any {
+  private evaluateFunction(name: string, args: unknown[]): number {
     const fn = name.toLowerCase();
     if (fn === "size") {
       const target = args[0];
@@ -334,7 +334,7 @@ class ExpressionParser {
  * Returns true if predicate is satisfied (or if predicate is empty/absent).
  */
 export function evaluatePropertyPredicate(
-  predicate: string | ((ctx: any) => boolean) | undefined | null,
+  predicate: string | ((ctx: PropertyContextValues) => boolean) | undefined | null,
   values: PropertyContextValues = {},
 ): boolean {
   if (predicate === undefined || predicate === null || predicate === "") {

@@ -70,7 +70,7 @@ export interface AnimatableCell {
   id?: string | undefined;
   getData?: (() => { animations?: ReactiveAnimationBinding[] | undefined } | undefined) | undefined;
   rotate?: ((angle: number, options?: { absolute?: boolean | undefined }) => void) | undefined;
-  attr?: ((path: string, val: any) => void) | undefined;
+  attr?: ((path: string, val: unknown) => void) | undefined;
   setVisible?: ((visible: boolean) => void) | undefined;
   translate?: ((dx: number, dy: number) => void) | undefined;
 }

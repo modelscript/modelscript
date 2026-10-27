@@ -80,7 +80,7 @@ export function tokenizeVerilogA(source: string): Token[] {
   let col = 1;
 
   function advance(): string {
-    const ch = source[idx++]!;
+    const ch = source[idx++] ?? "\0";
     if (ch === "\n") {
       line++;
       col = 1;
@@ -91,11 +91,11 @@ export function tokenizeVerilogA(source: string): Token[] {
   }
 
   function peek(): string {
-    return idx < len ? source[idx]! : "\0";
+    return idx < len ? (source[idx] ?? "\0") : "\0";
   }
 
   function peekNext(): string {
-    return idx + 1 < len ? source[idx + 1]! : "\0";
+    return idx + 1 < len ? (source[idx + 1] ?? "\0") : "\0";
   }
 
   function isWhitespace(ch: string): boolean {
@@ -359,11 +359,35 @@ export class VerilogAParser {
   }
 
   private peek(): Token {
-    return this.tokens[this.current] ?? this.tokens[this.tokens.length - 1]!;
+    return (
+      this.tokens[this.current] ??
+      this.tokens[this.tokens.length - 1] ?? {
+        type: "EOF",
+        value: "",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+        startOffset: 0,
+        endOffset: 0,
+      }
+    );
   }
 
   private lastToken(): Token {
-    return this.tokens[Math.max(0, this.current - 1)] ?? this.tokens[0]!;
+    return (
+      this.tokens[Math.max(0, this.current - 1)] ??
+      this.tokens[0] ?? {
+        type: "EOF",
+        value: "",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+        startOffset: 0,
+        endOffset: 0,
+      }
+    );
   }
 
   private isAtEnd(): boolean {

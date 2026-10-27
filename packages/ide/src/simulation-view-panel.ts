@@ -140,10 +140,13 @@ export class SimulationViewPanel extends BaseWebviewPanel {
     try {
       this._panel.webview.postMessage({ type: "setLoading", data: true });
 
-      const response = await this._client.sendRequest<any>("modelscript/getStudyParameters", {
-        className: this._className,
-        documentUri: this._documentUri,
-      });
+      const response = await this._client.sendRequest<Record<string, unknown> | undefined>(
+        "modelscript/getStudyParameters",
+        {
+          className: this._className,
+          documentUri: this._documentUri,
+        },
+      );
 
       if (response) {
         this._panel.webview.postMessage({

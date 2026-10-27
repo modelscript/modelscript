@@ -331,9 +331,11 @@ export class VirtualPlc {
 
     if (expr.kind === "identifier") {
       const name = expr.name;
-      if (this.variables.has(name)) return this.variables.get(name)!;
-      if (this.variables.has(`${pou.name}.${name}`)) {
-        return this.variables.get(`${pou.name}.${name}`)!;
+      const directVal = this.variables.get(name);
+      if (directVal !== undefined) return directVal;
+      const scopedVal = this.variables.get(`${pou.name}.${name}`);
+      if (scopedVal !== undefined) {
+        return scopedVal;
       }
       return 0;
     }
@@ -341,7 +343,8 @@ export class VirtualPlc {
     if (expr.kind === "member") {
       const objName = (expr.object as { name?: string }).name ?? "";
       const key = `${objName}.${expr.property}`;
-      if (this.variables.has(key)) return this.variables.get(key)!;
+      const memberVal = this.variables.get(key);
+      if (memberVal !== undefined) return memberVal;
       return 0;
     }
 
@@ -408,7 +411,7 @@ export class VirtualPlc {
       let result = 0;
       const m = /(?:T|TIME)#(\d+)(ms|s|m|h)?/i.exec(val);
       if (m) {
-        const n = parseInt(m[1]!, 10);
+        const n = parseInt(m[1] ?? "0", 10);
         const u = (m[2] ?? "ms").toLowerCase();
         if (u === "ms") result = n;
         else if (u === "s") result = n * 1000;

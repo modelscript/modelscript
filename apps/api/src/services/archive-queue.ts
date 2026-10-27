@@ -167,9 +167,9 @@ export class ArchiveQueue {
           job.filePath = targetFile;
           job.completedAt = new Date().toISOString();
           job.expiresAt = new Date(Date.now() + this.ttlMs).toISOString();
-        } catch (err: any) {
+        } catch (err: unknown) {
           job.status = "failed";
-          job.error = err.message || "Archive compilation failed";
+          job.error = (err instanceof Error ? err.message : String(err)) || "Archive compilation failed";
           job.completedAt = new Date().toISOString();
           job.expiresAt = new Date(Date.now() + this.ttlMs).toISOString();
         } finally {

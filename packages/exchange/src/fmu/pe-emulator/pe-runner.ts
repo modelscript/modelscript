@@ -27,7 +27,7 @@ export interface PeDllFmuRunnerOptions {
 }
 
 export class PeDllFmuRunner implements WasmFmuRunner {
-  readonly instance: any = null;
+  readonly instance: WebAssembly.Instance | null = null;
   readonly loader: PeLoader;
   readonly memory: GuestMemorySpace;
   readonly cruntime: CRuntimeManager;

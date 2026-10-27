@@ -383,6 +383,7 @@ export function analyzeConflict(conflictClausePtr: u32): u32 {
     learntSize = 0;
     let pathCount: u32 = 0;
     let btLevel: u32 = 0;
+    let btIdx: u32 = 0;
     
     let resolvePtr = conflictClausePtr;
     let trailIdx: i32 = trailTop as i32 - 1;
@@ -404,8 +405,12 @@ export function analyzeConflict(conflictClausePtr: u32): u32 {
             if (decisionLevels[v] == currentDecisionLevel) {
                 pathCount++;
             } else if (decisionLevels[v] > 0) {
-                learntBuf[learntSize++] = lit;
-                if (decisionLevels[v] > btLevel) btLevel = decisionLevels[v];
+                let idx = learntSize++;
+                learntBuf[idx] = lit;
+                if (decisionLevels[v] > btLevel) {
+                    btLevel = decisionLevels[v];
+                    btIdx = idx;
+                }
             }
         }
         
@@ -432,6 +437,14 @@ export function analyzeConflict(conflictClausePtr: u32): u32 {
     }
     learntBuf[0] = p ^ 1;
     learntSize++;
+    if (learntSize > 2) {
+        let maxPos = btIdx + 1;
+        if (maxPos > 1 && maxPos < learntSize) {
+            let tmp = learntBuf[1];
+            learntBuf[1] = learntBuf[maxPos];
+            learntBuf[maxPos] = tmp;
+        }
+    }
     
     for (let i: u32 = 0; i < learntSize; i++) {
         seen[learntBuf[i] >> 1] = 0;
@@ -640,26 +653,38 @@ export function registerEufEquality(satVar: u32, t1: u32, t2: u32): void {
 }
 
 function checkTheoryEUF(): u32 {
+    initEGraph();
     for (let i: u32 = 0; i < trailTop; i++) {
         let lit = assignmentTrail[i];
         let v = lit >> 1;
         let t1 = satVarToEufT1[v];
         let t2 = satVarToEufT2[v];
-        if (t1 != 0 && t2 != 0) {
-            let sign = lit & 1;
-            if (sign == 0) {
-                ufUnion(t1, t2);
-            } else {
-                if (ufFind(t1) == ufFind(t2)) {
-                    let conflictClausePtr = satArenaOffset;
-                    let cl = SatClause.at(conflictClausePtr);
-                    cl.size = 2;
-                    cl.isLearned = 1;
-                    cl.lit0 = (v << 1);
-                    cl.lit1 = (v << 1) ^ 1;
-                    satArenaOffset += 16;
-                    return conflictClausePtr;
+        if (t1 != 0 && t2 != 0 && (lit & 1) == 0) {
+            ufUnion(t1, t2);
+        }
+    }
+    for (let i: u32 = 0; i < trailTop; i++) {
+        let lit = assignmentTrail[i];
+        let v = lit >> 1;
+        let t1 = satVarToEufT1[v];
+        let t2 = satVarToEufT2[v];
+        if (t1 != 0 && t2 != 0 && (lit & 1) != 0) {
+            if (ufFind(t1) == ufFind(t2)) {
+                let conflictClausePtr = satArenaOffset;
+                let cl = SatClause.at(conflictClausePtr);
+                let count: u32 = 0;
+                cl.setLit(count++, lit ^ 1);
+                for (let j: u32 = 0; j < trailTop; j++) {
+                    let eLit = assignmentTrail[j];
+                    let ev = eLit >> 1;
+                    if ((eLit & 1) == 0 && satVarToEufT1[ev] != 0 && satVarToEufT2[ev] != 0) {
+                        cl.setLit(count++, eLit ^ 1);
+                    }
                 }
+                cl.size = count;
+                cl.isLearned = 1;
+                satArenaOffset += 8 + count * 4;
+                return conflictClausePtr;
             }
         }
     }
@@ -667,6 +692,7 @@ function checkTheoryEUF(): u32 {
 }
 
 function backtrackEufTheory(level: u32): void {
+    initEGraph();
 }
 
 export function solveDPLL(constraintRootId: u32 = 0): boolean {

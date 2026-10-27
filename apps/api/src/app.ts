@@ -442,8 +442,8 @@ graph TD
   app.use(
     express.json({
       limit: "50mb",
-      verify: (req, _res, buf) => {
-        (req as any).rawBody = buf;
+      verify: (req: express.Request, _res, buf) => {
+        req.rawBody = buf;
       },
     }),
   );
@@ -462,7 +462,7 @@ graph TD
         }
       }
     }
-    (req as any).cookies = cookies;
+    req.cookies = cookies;
     next();
   });
 
@@ -555,7 +555,10 @@ graph TD
 
   // Feature flags endpoint (evaluated for requesting user)
   app.get("/api/v1/flags", optionalAuth, (req, res) => {
-    res.json(featureFlagService.getAllFlagsForUser((req as any).user));
+    const reqWithUser = req as typeof req & {
+      user?: Parameters<typeof featureFlagService.getAllFlagsForUser>[0];
+    };
+    res.json(featureFlagService.getAllFlagsForUser(reqWithUser.user));
   });
 
   // Auth routes

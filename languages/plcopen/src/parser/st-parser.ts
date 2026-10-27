@@ -109,7 +109,7 @@ export function tokenizeStructuredText(source: string): StToken[] {
   let col = 1;
 
   function advance(): string {
-    const ch = source[idx++]!;
+    const ch = source[idx++] ?? "\0";
     if (ch === "\n") {
       line++;
       col = 1;
@@ -120,11 +120,11 @@ export function tokenizeStructuredText(source: string): StToken[] {
   }
 
   function peek(): string {
-    return idx < len ? source[idx]! : "\0";
+    return idx < len ? (source[idx] ?? "\0") : "\0";
   }
 
   function peekNext(): string {
-    return idx + 1 < len ? source[idx + 1]! : "\0";
+    return idx + 1 < len ? (source[idx + 1] ?? "\0") : "\0";
   }
 
   while (idx < len) {
@@ -403,11 +403,35 @@ export class StructuredTextParser {
   }
 
   private current(): StToken {
-    return this.tokens[this.pos] ?? this.tokens[this.tokens.length - 1]!;
+    return (
+      this.tokens[this.pos] ??
+      this.tokens[this.tokens.length - 1] ?? {
+        type: "EOF",
+        value: "",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+        startOffset: 0,
+        endOffset: 0,
+      }
+    );
   }
 
   private peekNext(): StToken {
-    return this.tokens[this.pos + 1] ?? this.tokens[this.tokens.length - 1]!;
+    return (
+      this.tokens[this.pos + 1] ??
+      this.tokens[this.tokens.length - 1] ?? {
+        type: "EOF",
+        value: "",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+        startOffset: 0,
+        endOffset: 0,
+      }
+    );
   }
 
   private checkKeyword(keyword: string): boolean {

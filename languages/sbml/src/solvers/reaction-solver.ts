@@ -51,22 +51,22 @@ function compileMathExpr(formula: string): ExprEvaluator {
   let pos = 0;
 
   while (pos < clean.length) {
-    const ch = clean[pos]!;
+    const ch = clean[pos] ?? "";
 
     if (/[0-9.]/.test(ch)) {
       let numStr = "";
-      while (pos < clean.length && /[0-9.eE+-]/.test(clean[pos]!)) {
+      while (pos < clean.length && /[0-9.eE+-]/.test(clean[pos] ?? "")) {
         if ((clean[pos] === "+" || clean[pos] === "-") && !/[eE]/.test(clean[pos - 1] ?? "")) {
           break;
         }
-        numStr += clean[pos]!;
+        numStr += clean[pos] ?? "";
         pos++;
       }
       tokens.push({ type: "NUM", value: numStr });
     } else if (/[a-zA-Z_]/.test(ch)) {
       let idStr = "";
-      while (pos < clean.length && /[a-zA-Z0-9_]/.test(clean[pos]!)) {
-        idStr += clean[pos]!;
+      while (pos < clean.length && /[a-zA-Z0-9_]/.test(clean[pos] ?? "")) {
+        idStr += clean[pos] ?? "";
         pos++;
       }
       tokens.push({ type: "ID", value: idStr });
@@ -93,11 +93,11 @@ function compileMathExpr(formula: string): ExprEvaluator {
   // Recursive-descent parser
   let tokenIdx = 0;
   const peek = (): Token | undefined => tokens[tokenIdx];
-  const consume = (): Token => tokens[tokenIdx++]!;
+  const consume = (): Token => tokens[tokenIdx++] ?? { type: "NUM", value: "0" };
 
   function parseExpression(): ExprEvaluator {
     let left = parseTerm();
-    while (peek() && peek()!.type === "OP" && (peek()!.value === "+" || peek()!.value === "-")) {
+    while (peek()?.type === "OP" && (peek()?.value === "+" || peek()?.value === "-")) {
       const op = consume().value;
       const right = parseTerm();
       const prevLeft = left;
@@ -112,7 +112,7 @@ function compileMathExpr(formula: string): ExprEvaluator {
 
   function parseTerm(): ExprEvaluator {
     let left = parseFactor();
-    while (peek() && peek()!.type === "OP" && (peek()!.value === "*" || peek()!.value === "/")) {
+    while (peek()?.type === "OP" && (peek()?.value === "*" || peek()?.value === "/")) {
       const op = consume().value;
       const right = parseFactor();
       const prevLeft = left;
@@ -130,7 +130,7 @@ function compileMathExpr(formula: string): ExprEvaluator {
 
   function parseFactor(): ExprEvaluator {
     const base = parseUnary();
-    if (peek() && peek()!.type === "OP" && peek()!.value === "^") {
+    if (peek()?.type === "OP" && peek()?.value === "^") {
       consume(); // '^'
       const exp = parseFactor(); // right-associative
       return (env) => Math.pow(base(env), exp(env));
@@ -139,7 +139,7 @@ function compileMathExpr(formula: string): ExprEvaluator {
   }
 
   function parseUnary(): ExprEvaluator {
-    if (peek() && peek()!.type === "OP" && (peek()!.value === "+" || peek()!.value === "-")) {
+    if (peek()?.type === "OP" && (peek()?.value === "+" || peek()?.value === "-")) {
       const op = consume().value;
       const operand = parseUnary();
       if (op === "-") {
@@ -163,7 +163,7 @@ function compileMathExpr(formula: string): ExprEvaluator {
     if (tok.type === "LPAREN") {
       consume(); // '('
       const sub = parseExpression();
-      if (peek() && peek()!.type === "RPAREN") {
+      if (peek()?.type === "RPAREN") {
         consume(); // ')'
       }
       return sub;
@@ -174,17 +174,17 @@ function compileMathExpr(formula: string): ExprEvaluator {
       const id = tok.value;
 
       // Function call: func(arg1, arg2, ...)
-      if (peek() && peek()!.type === "LPAREN") {
+      if (peek()?.type === "LPAREN") {
         consume(); // '('
         const args: ExprEvaluator[] = [];
-        if (!peek() || peek()!.type !== "RPAREN") {
+        if (peek() && peek()?.type !== "RPAREN") {
           args.push(parseExpression());
-          while (peek() && peek()!.type === "COMMA") {
+          while (peek()?.type === "COMMA") {
             consume(); // ','
             args.push(parseExpression());
           }
         }
-        if (peek() && peek()!.type === "RPAREN") {
+        if (peek()?.type === "RPAREN") {
           consume(); // ')'
         }
 
@@ -274,10 +274,8 @@ export function solveReactions(doc: SbmlDocument, options?: ReactionSolverOption
         rates[rId] = compiled.evaluator(env);
       } else {
         // Fallback: mass action kinetics with default k = 1.0
-        let kFwd = 1.0;
-        let kRev = 0.1;
-        if (globalParams[`k_${rId}`] !== undefined) kFwd = globalParams[`k_${rId}`]!;
-        if (globalParams[`kr_${rId}`] !== undefined) kRev = globalParams[`kr_${rId}`]!;
+        const kFwd = globalParams[`k_${rId}`] ?? 1.0;
+        const kRev = globalParams[`kr_${rId}`] ?? 0.1;
 
         let fwdRate = kFwd;
         for (const ref of r.reactants) {

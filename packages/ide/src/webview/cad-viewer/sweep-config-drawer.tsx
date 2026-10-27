@@ -14,8 +14,8 @@ export interface SweepRunInfo {
   runIndex: number;
   status: string;
   parameters: Record<string, number>;
-  scalars?: Record<string, any>;
-  durationMs?: number;
+  scalars?: Record<string, unknown> | undefined;
+  durationMs?: number | undefined;
 }
 
 export interface ActiveSweepState {
@@ -471,7 +471,7 @@ export const SweepConfigDrawer: React.FC<SweepConfigDrawerProps> = ({
           </label>
           <select
             value={strategy}
-            onChange={(e) => setStrategy(e.target.value as any)}
+            onChange={(e) => setStrategy(e.target.value as "lhs" | "sobol" | "grid" | "random")}
             style={{
               width: "100%",
               background: "#1e293b",

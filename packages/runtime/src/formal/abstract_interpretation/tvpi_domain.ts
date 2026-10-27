@@ -132,12 +132,37 @@ export class TvpiPlanarPolygon {
     const na = dirA / norm;
     const nb = dirB / norm;
 
-    // Check direct matching constraint
+    // Track direct matching constraint bound
+    let directBound = Infinity;
     for (const c of this.constraints) {
       const dot = na * c.a + nb * c.b;
       if (dot > 1 - 1e-7) {
-        return c.c * norm;
+        directBound = Math.min(directBound, c.c * norm);
       }
+    }
+
+    // Check if the recession cone { r | forall c: c.a * r_x + c.b * r_y <= 0 } contains any ray with dir . r > 0
+    const candidateRays: [number, number][] = [[na, nb]];
+    for (const c of this.constraints) {
+      candidateRays.push([-c.b, c.a], [c.b, -c.a]);
+    }
+    let hasUnboundedRay = false;
+    for (const [rx, ry] of candidateRays) {
+      if (na * rx + nb * ry <= 1e-9) continue;
+      let inRecessionCone = true;
+      for (const c of this.constraints) {
+        if (c.a * rx + c.b * ry > 1e-9) {
+          inRecessionCone = false;
+          break;
+        }
+      }
+      if (inRecessionCone) {
+        hasUnboundedRay = true;
+        break;
+      }
+    }
+    if (hasUnboundedRay) {
+      return Infinity;
     }
 
     // Vertex intersection evaluation over bounding polygon
@@ -173,10 +198,10 @@ export class TvpiPlanarPolygon {
         const val = dirA * vx + dirB * vy;
         if (val > maxVal) maxVal = val;
       }
-      return maxVal;
+      return Math.min(directBound, maxVal);
     }
 
-    return Infinity;
+    return directBound;
   }
 
   meet(other: TvpiPlanarPolygon): TvpiPlanarPolygon {
@@ -326,22 +351,28 @@ export class TvpiState {
       if (u) allVars.add(u);
       if (v) allVars.add(v);
     }
-    const varList = Array.from(allVars);
+    const varList = Array.from(allVars).sort();
 
-    // Triple propagation: (u, v) and (v, w) -> (u, w)
+    // Triple propagation across all pivot variables v for every ordered pair (u, w) with u < w:
+    // (u, v) and (v, w) -> (u, w)
     let changed = true;
     let passes = 0;
     while (changed && passes++ < 2) {
       changed = false;
       for (let i = 0; i < varList.length; i++) {
-        for (let j = i + 1; j < varList.length; j++) {
-          for (let k = j + 1; k < varList.length; k++) {
-            const u = varList[i]!;
+        for (let k = i + 1; k < varList.length; k++) {
+          const u = varList[i]!;
+          const w = varList[k]!;
+          for (let j = 0; j < varList.length; j++) {
+            if (j === i || j === k) continue;
             const v = varList[j]!;
-            const w = varList[k]!;
 
-            const { poly: pUV } = this.getPolygon(u, v);
-            const { poly: pVW } = this.getPolygon(v, w);
+            const { key: keyUV, swapped: swapUV } = TvpiState.pairKey(u, v);
+            const { key: keyVW, swapped: swapVW } = TvpiState.pairKey(v, w);
+            const pUV = this.pairs.get(keyUV);
+            const pVW = this.pairs.get(keyVW);
+            if (!pUV || !pVW) continue;
+
             const { poly: pUW } = this.getPolygon(u, w);
 
             if (pUV.isBottomState || pVW.isBottomState || pUW.isBottomState) {
@@ -351,15 +382,21 @@ export class TvpiState {
 
             // Fourier-Motzkin elimination of intermediate variable v
             for (const c1 of pUV.constraints) {
-              // a1 * u + b1 * v <= c1
+              // uCoeff * u + vCoeff1 * v <= c1.c
+              const uCoeff = swapUV ? c1.b : c1.a;
+              const vCoeff1 = swapUV ? c1.a : c1.b;
+              if (Math.abs(vCoeff1) < 1e-9) continue;
+
               for (const c2 of pVW.constraints) {
-                // b2 * v + d2 * w <= c2
-                if (c1.b * c2.a < -1e-9) {
+                // vCoeff2 * v + wCoeff * w <= c2.c
+                const vCoeff2 = swapVW ? c2.b : c2.a;
+                const wCoeff = swapVW ? c2.a : c2.b;
+                if (vCoeff1 * vCoeff2 < -1e-9) {
                   // Opposite signs on v: eliminate v
-                  const m1 = Math.abs(c2.a);
-                  const m2 = Math.abs(c1.b);
-                  const newA = m1 * c1.a;
-                  const newD = m2 * c2.b;
+                  const m1 = Math.abs(vCoeff2);
+                  const m2 = Math.abs(vCoeff1);
+                  const newA = m1 * uCoeff;
+                  const newD = m2 * wCoeff;
                   const newC = m1 * c1.c + m2 * c2.c;
 
                   const oldCount = pUW.constraints.length;

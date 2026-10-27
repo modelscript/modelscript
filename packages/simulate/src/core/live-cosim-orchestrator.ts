@@ -575,11 +575,15 @@ export class LiveCoSimOrchestrator {
     // 5. Package synchronized multi-physics state
     let activeFidelity: "continuum" | "surrogate" | undefined;
     let surrogateConfidence: number | undefined;
-    if ("getActiveFidelity" in this.cfdProvider && typeof (this.cfdProvider as any).getActiveFidelity === "function") {
-      activeFidelity = (this.cfdProvider as any).getActiveFidelity();
+    const fidelityProvider = this.cfdProvider as {
+      getActiveFidelity?: (() => "continuum" | "surrogate") | undefined;
+      getLastConfidence?: (() => number) | undefined;
+    };
+    if (typeof fidelityProvider.getActiveFidelity === "function") {
+      activeFidelity = fidelityProvider.getActiveFidelity();
     }
-    if ("getLastConfidence" in this.cfdProvider && typeof (this.cfdProvider as any).getLastConfidence === "function") {
-      surrogateConfidence = (this.cfdProvider as any).getLastConfidence();
+    if (typeof fidelityProvider.getLastConfidence === "function") {
+      surrogateConfidence = fidelityProvider.getLastConfidence();
     }
 
     let dispSign = totalThrustN < 0 ? -1.0 : 1.0;
@@ -734,11 +738,15 @@ export class LiveCoSimOrchestrator {
 
     let activeFidelity: "continuum" | "surrogate" | undefined;
     let surrogateConfidence: number | undefined;
-    if ("getActiveFidelity" in this.cfdProvider && typeof (this.cfdProvider as any).getActiveFidelity === "function") {
-      activeFidelity = (this.cfdProvider as any).getActiveFidelity();
+    const fidelityProvider = this.cfdProvider as {
+      getActiveFidelity?: (() => "continuum" | "surrogate") | undefined;
+      getLastConfidence?: (() => number) | undefined;
+    };
+    if (typeof fidelityProvider.getActiveFidelity === "function") {
+      activeFidelity = fidelityProvider.getActiveFidelity();
     }
-    if ("getLastConfidence" in this.cfdProvider && typeof (this.cfdProvider as any).getLastConfidence === "function") {
-      surrogateConfidence = (this.cfdProvider as any).getLastConfidence();
+    if (typeof fidelityProvider.getLastConfidence === "function") {
+      surrogateConfidence = fidelityProvider.getLastConfidence();
     }
 
     let dispSign = totalThrustN < 0 ? -1.0 : 1.0;

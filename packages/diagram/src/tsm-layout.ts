@@ -28,9 +28,19 @@
  * - Incorporates node padding, port snapping, and bend penalty heuristics for fast interactive re-layout.
  */
 
+interface TsmWasmExports {
+  __new: (size: number, id: number) => number;
+  memory: { buffer: ArrayBufferLike };
+  diagram_tsm_compact_1d: (n: number, coordsPtr: number, outPtr: number) => void;
+}
+
 function tryCompactTsm1DWasm(coords: Int32Array): Int32Array | null {
-  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
-  if (!wasm || typeof wasm.diagram_tsm_compact_1d !== "function") return null;
+  const wasm =
+    typeof globalThis !== "undefined"
+      ? (globalThis as { __modelscript_wasm_exports__?: Partial<TsmWasmExports> | undefined })
+          .__modelscript_wasm_exports__
+      : null;
+  if (!wasm || typeof wasm.diagram_tsm_compact_1d !== "function" || !wasm.__new || !wasm.memory) return null;
   const n = coords.length;
   if (n === 0) return new Int32Array(0);
   const coordsPtr = wasm.__new(n * 4, 0);
@@ -50,7 +60,7 @@ export interface TsmNode {
   y?: number | undefined;
   parent?: string | undefined;
   autoLayout?: boolean | undefined;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface TsmEdge {
@@ -58,7 +68,7 @@ export interface TsmEdge {
   source: string | { cell: string; port?: string | undefined };
   target: string | { cell: string; port?: string | undefined };
   vertices?: { x: number; y: number }[] | undefined;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface TsmOptions {
@@ -523,9 +533,9 @@ export class TsmOrthogonalLayout {
  * Convenience helper to apply TSM Orthogonal layout.
  */
 export function applyTsmOrthogonalLayout(
-  model: { nodes: any[]; edges: any[] },
+  model: { nodes: TsmNode[]; edges: TsmEdge[] },
   options?: TsmOptions,
-): { nodes: any[]; edges: any[] } {
+): { nodes: TsmNode[]; edges: TsmEdge[] } {
   const engine = new TsmOrthogonalLayout(options);
   return engine.layout(model);
 }

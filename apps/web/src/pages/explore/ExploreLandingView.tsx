@@ -441,7 +441,10 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                           color: "var(--color-accent-cyan)",
                         }}
                       >
-                        <dom.icon size={16} />
+                        {(() => {
+                          const IconComp = dom.icon;
+                          return IconComp ? <IconComp size={16} /> : null;
+                        })()}
                       </div>
                       <span
                         style={{

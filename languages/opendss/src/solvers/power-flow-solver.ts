@@ -107,7 +107,8 @@ export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1
 
   for (const [, xfmr] of deck.transformers) {
     for (let w = 0; w < xfmr.buses.length; w++) {
-      const bName = xfmr.buses[w]!;
+      const bName = xfmr.buses[w];
+      if (!bName) continue;
       const kv = xfmr.kvs[w] ?? 12.47;
       if (!buses.has(bName)) {
         buses.set(bName, {
@@ -142,9 +143,9 @@ export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1
   }
 
   for (const [, xfmr] of deck.transformers) {
-    if (xfmr.buses.length >= 2) {
-      const b1 = xfmr.buses[0]!;
-      const b2 = xfmr.buses[1]!;
+    const b1 = xfmr.buses[0];
+    const b2 = xfmr.buses[1];
+    if (b1 && b2) {
       adj.get(b1)?.push({ to: b2, kind: "transformer", ref: xfmr });
       adj.get(b2)?.push({ to: b1, kind: "transformer", ref: xfmr });
     }
@@ -162,7 +163,8 @@ export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1
   visited.add(baseBus);
 
   while (queue.length > 0) {
-    const parent = queue.shift()!;
+    const parent = queue.shift();
+    if (!parent) break;
     for (const edge of adj.get(parent) ?? []) {
       if (!visited.has(edge.to)) {
         visited.add(edge.to);
@@ -205,7 +207,8 @@ export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1
     // 1. Backward Sweep: Aggregate downstream active and reactive branch flows
     const branchFlows = new Map<DirectedBranch, { pKw: number; qKvar: number }>();
     for (let i = treeBranches.length - 1; i >= 0; i--) {
-      const branch = treeBranches[i]!;
+      const branch = treeBranches[i];
+      if (!branch) continue;
       const childBus = buses.get(branch.toBus);
       let pKw = childBus ? childBus.kwLoad - childBus.kwGen : 0;
       let qKvar = childBus ? childBus.kvarLoad : 0;

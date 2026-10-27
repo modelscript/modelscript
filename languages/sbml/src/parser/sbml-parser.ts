@@ -102,8 +102,8 @@ function mathMlToInfix(elem: XmlElement): string {
   }
 
   if (name === "apply") {
-    if (elem.children.length === 0) return "";
-    const opElem = elem.children[0]!;
+    const opElem = elem.children[0];
+    if (!opElem) return "";
     const op = opElem.name.toLowerCase();
     const args = elem.children.slice(1).map(mathMlToInfix);
 

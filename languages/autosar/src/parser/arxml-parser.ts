@@ -36,7 +36,7 @@ function offsetToPosition(offset: number, lineStarts: number[]): { line: number;
   let high = lineStarts.length - 1;
   while (low <= high) {
     const mid = (low + high) >> 1;
-    if (lineStarts[mid]! <= offset) {
+    if ((lineStarts[mid] ?? 0) <= offset) {
       low = mid + 1;
     } else {
       high = mid - 1;

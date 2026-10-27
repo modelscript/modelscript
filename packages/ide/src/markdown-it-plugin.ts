@@ -166,15 +166,61 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+interface MarkdownItToken {
+  type: string;
+  tag: string;
+  nesting: number;
+  content: string;
+  attrs: [string, string][] | null;
+  map: [number, number] | null;
+  markup: string;
+  info: string;
+  meta: unknown;
+  block: boolean;
+  hidden: boolean;
+  children?: MarkdownItToken[] | null | undefined;
+}
+
+interface MarkdownItBlockState {
+  bMarks: number[];
+  tShift: number[];
+  eMarks: number[];
+  src: string;
+  line: number;
+  push(type: string, tag: string, nesting: number): MarkdownItToken;
+}
+
+interface MarkdownItCoreState {
+  tokens: MarkdownItToken[];
+  Token: new (type: string, tag: string, nesting: number) => MarkdownItToken;
+}
+
+interface MarkdownItLike {
+  block: {
+    ruler: {
+      before(
+        beforeName: string,
+        ruleName: string,
+        fn: (state: MarkdownItBlockState, startLine: number, endLine: number, silent: boolean) => boolean,
+      ): void;
+    };
+  };
+  core: {
+    ruler: {
+      push(ruleName: string, fn: (state: MarkdownItCoreState) => void): void;
+    };
+  };
+}
+
 export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResolver) {
-  return function extendMarkdownIt(md: any) {
+  return function extendMarkdownIt(md: MarkdownItLike) {
     // ── Block rule: ::diagram{target="X"} ──
     md.block.ruler.before(
       "paragraph",
       "modelscript_diagram",
-      (state: any, startLine: number, _endLine: number, silent: boolean) => {
-        const pos = state.bMarks[startLine] + state.tShift[startLine];
-        const max = state.eMarks[startLine];
+      (state: MarkdownItBlockState, startLine: number, _endLine: number, silent: boolean) => {
+        const pos = state.bMarks[startLine]! + state.tShift[startLine]!;
+        const max = state.eMarks[startLine]!;
         const src = state.src.slice(pos, max);
         if (!src.startsWith("::diagram")) return false;
         const match = /^::diagram\{target="([^"]+)"\}/.exec(src);
@@ -234,9 +280,9 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
     md.block.ruler.before(
       "paragraph",
       "modelscript_requirements",
-      (state: any, startLine: number, _endLine: number, silent: boolean) => {
-        const pos = state.bMarks[startLine] + state.tShift[startLine];
-        const max = state.eMarks[startLine];
+      (state: MarkdownItBlockState, startLine: number, _endLine: number, silent: boolean) => {
+        const pos = state.bMarks[startLine]! + state.tShift[startLine]!;
+        const max = state.eMarks[startLine]!;
         const src = state.src.slice(pos, max);
         if (!src.startsWith("::requirements")) return false;
         const match = /^::requirements\{target="([^"]+)"\}/.exec(src);
@@ -268,19 +314,19 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
     // Runs AFTER inline parsing to handle {{ var }} patterns that get split
     // across multiple text tokens by markdown-it's inline parser (because
     // '{' is a terminator character that splits text tokens).
-    md.core.ruler.push("modelscript_vars", (state: any) => {
+    md.core.ruler.push("modelscript_vars", (state: MarkdownItCoreState) => {
       const varRegex = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
 
       for (const blockToken of state.tokens) {
         if (blockToken.type !== "inline" || !blockToken.children) continue;
 
-        const children: any[] = blockToken.children;
+        const children: MarkdownItToken[] = blockToken.children;
 
         // Step 1: Merge adjacent text tokens so {{ var }} is in one token.
-        const merged: any[] = [];
+        const merged: MarkdownItToken[] = [];
         for (const tok of children) {
-          if (tok.type === "text" && merged.length > 0 && merged[merged.length - 1].type === "text") {
-            merged[merged.length - 1].content += tok.content;
+          if (tok.type === "text" && merged.length > 0 && merged[merged.length - 1]!.type === "text") {
+            merged[merged.length - 1]!.content += tok.content;
           } else {
             // Clone the token to avoid mutating the original
             const clone = new state.Token(tok.type, tok.tag, tok.nesting);
@@ -296,7 +342,7 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
         }
 
         // Step 2: Find {{ var }} in merged text tokens and split into styled spans.
-        const result: any[] = [];
+        const result: MarkdownItToken[] = [];
         for (const tok of merged) {
           if (tok.type !== "text" || !tok.content.includes("{{")) {
             result.push(tok);
@@ -327,11 +373,11 @@ export function createMarkdownItPlugin(resolver: MarkdownResolver = defaultResol
               ["class", `modelscript-var${isResolved ? " modelscript-var-editable" : ""}`],
               ["data-name", varName],
               ...(isResolved
-                ? [
+                ? ([
                     ["data-mutable", "true"],
                     ["data-value", String(resolved)],
                     ["title", `Click to edit ${varName} (writeback to source)`],
-                  ]
+                  ] as [string, string][])
                 : []),
             ];
             result.push(open);

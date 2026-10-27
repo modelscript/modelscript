@@ -194,14 +194,14 @@ export class Hc4Contractor {
    * Backward contractors: given desired bound on node output, contract child nodes.
    */
   public static contractNode(node: ExprNode, target: Interval, box: Map<string, Interval>): boolean {
-    if (target.lo > target.hi) return false; // Inconsistent
+    if (Number.isNaN(target.lo) || Number.isNaN(target.hi) || target.lo > target.hi) return false; // Inconsistent
 
     switch (node.kind) {
       case "var": {
         const current = box.get(node.name) ?? new Interval(-Infinity, Infinity);
         const intersectedLo = Math.max(current.lo, target.lo);
         const intersectedHi = Math.min(current.hi, target.hi);
-        if (intersectedLo > intersectedHi) return false;
+        if (Number.isNaN(intersectedLo) || Number.isNaN(intersectedHi) || intersectedLo > intersectedHi) return false;
         box.set(node.name, new Interval(intersectedLo, intersectedHi));
         return true;
       }
@@ -330,10 +330,18 @@ export class Hc4Contractor {
         // z = sin(child) => child ∈ arcsin(target) ∩ child_current
         // Multi-period: for each 2kπ period overlapping child, compute both branches
         const childCurrent = Hc4Contractor.evalInterval(node.child, box);
+        if (Number.isNaN(childCurrent.lo) || Number.isNaN(childCurrent.hi)) return false;
         const tLo = Math.max(-1, target.lo);
         const tHi = Math.min(1, target.hi);
         if (tLo > tHi) return false;
         if (tLo > 1 || tHi < -1) return false;
+        if (
+          !Number.isFinite(childCurrent.lo) ||
+          !Number.isFinite(childCurrent.hi) ||
+          childCurrent.hi - childCurrent.lo >= 4 * Math.PI
+        ) {
+          return true;
+        }
 
         const asinLo = Math.asin(tLo);
         const asinHi = Math.asin(tHi);
@@ -373,10 +381,18 @@ export class Hc4Contractor {
         // z = cos(child) => child ∈ arccos(target) ∩ child_current
         // Multi-period: for each 2kπ period, compute both branches of arccos
         const childCurrent = Hc4Contractor.evalInterval(node.child, box);
+        if (Number.isNaN(childCurrent.lo) || Number.isNaN(childCurrent.hi)) return false;
         const tLo = Math.max(-1, target.lo);
         const tHi = Math.min(1, target.hi);
         if (tLo > tHi) return false;
         if (tLo > 1 || tHi < -1) return false;
+        if (
+          !Number.isFinite(childCurrent.lo) ||
+          !Number.isFinite(childCurrent.hi) ||
+          childCurrent.hi - childCurrent.lo >= 4 * Math.PI
+        ) {
+          return true;
+        }
 
         // arccos is monotonically decreasing: arccos(tHi) <= arccos(tLo)
         const acosLo = Math.acos(tHi); // Smaller angle
@@ -477,6 +493,9 @@ export class Hc4Contractor {
    */
   public static revise(constraint: NonlinearConstraint, box: Map<string, Interval>): boolean {
     const exprInterval = Hc4Contractor.evalInterval(constraint.expr, box);
+    if (Number.isNaN(exprInterval.lo) || Number.isNaN(exprInterval.hi) || exprInterval.lo > exprInterval.hi) {
+      return false;
+    }
 
     let targetInterval: Interval;
     switch (constraint.rel) {
@@ -515,7 +534,7 @@ export class Hc4Contractor {
 
     const intersectedLo = Math.max(exprInterval.lo, targetInterval.lo);
     const intersectedHi = Math.min(exprInterval.hi, targetInterval.hi);
-    if (intersectedLo > intersectedHi) return false; // Inconsistent
+    if (Number.isNaN(intersectedLo) || Number.isNaN(intersectedHi) || intersectedLo > intersectedHi) return false; // Inconsistent
 
     return Hc4Contractor.contractNode(constraint.expr, new Interval(intersectedLo, intersectedHi), box);
   }

@@ -31,6 +31,8 @@ export interface ParsedSuccession {
   endOffset?: number | undefined;
 }
 
+export type FumlActionBehavior = NonNullable<Parameters<WasmFumlEngine["addNode"]>[2]>;
+
 export class SysML2FumlBridge {
   /**
    * Compiles SysML v2 action / activity model into an executable WasmFumlEngine.
@@ -38,24 +40,17 @@ export class SysML2FumlBridge {
    */
   static compile(
     input: string | QueryDB,
-    customBehaviorsOrSymbol?:
-      | Record<string, (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined>
-      | SymbolEntry,
-    customBehaviors?: Record<
-      string,
-      (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined
-    >,
+    customBehaviorsOrSymbol?: Record<string, FumlActionBehavior> | SymbolEntry,
+    customBehaviors?: Record<string, FumlActionBehavior>,
   ): WasmFumlEngine {
     const engine = new WasmFumlEngine();
 
     let graph: ActivityGraph;
-    let behaviors:
-      | Record<string, (inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined>
-      | undefined;
+    let behaviors: Record<string, FumlActionBehavior> | undefined;
 
     if (typeof input === "string") {
       graph = extractActivityGraphFromText(input);
-      behaviors = customBehaviorsOrSymbol as Record<string, any>;
+      behaviors = customBehaviorsOrSymbol as Record<string, FumlActionBehavior> | undefined;
     } else {
       const db = input as QueryDB;
       const rootSym = customBehaviorsOrSymbol as SymbolEntry;
@@ -163,7 +158,11 @@ export class SysML2FumlBridge {
 /**
  * Bytecode-driven discrete expression evaluator for fUML assignments using DAEBuilder arena execution.
  */
-function evaluateDiscreteAssignment(target: string, expr: string, context: Record<string, any>): any {
+function evaluateDiscreteAssignment(
+  target: string,
+  expr: string,
+  context: Record<string, unknown>,
+): number | boolean | string | undefined {
   const trimmed = expr.trim();
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;

@@ -11,6 +11,9 @@
  */
 
 import { ScadErrorCode } from "./errors.js";
+import type { ScadCstNode } from "./patcher.js";
+
+export type ScadConstValue = number | string | boolean | undefined | ScadConstValue[];
 
 /**
  * Diagnostic emitted by the OpenSCAD semantic linter with 0-indexed byte offsets and 1-indexed line/column spans.
@@ -150,8 +153,8 @@ interface CallableSignature {
   name: string;
   params: string[];
   requiredParams: Set<string>;
-  defaultExprs: Map<string, any>;
-  bodyNode: any;
+  defaultExprs: Map<string, ScadCstNode>;
+  bodyNode: ScadCstNode | null;
   declScope: LintScope;
 }
 
@@ -159,7 +162,7 @@ interface CallableSignature {
  * Lexical scope frame tracking variable bindings, constant-folded values, and callable signatures during linting.
  */
 class LintScope {
-  public vars = new Map<string, { value: any; node: any }>();
+  public vars = new Map<string, { value: ScadConstValue; node: ScadCstNode | null }>();
   public modules = new Map<string, CallableSignature>();
   public functions = new Map<string, CallableSignature>();
 
@@ -177,7 +180,7 @@ class LintScope {
   /**
    * Retrieves the constant-folded value of `name` if statically known, or `undefined` otherwise.
    */
-  getVarValue(name: string): any {
+  getVarValue(name: string): ScadConstValue {
     if (name === "PI") return Math.PI;
     if (name === "true") return true;
     if (name === "false") return false;
@@ -241,21 +244,21 @@ class LineLocator {
 /**
  * Returns the 0-indexed start byte offset of a CST node.
  */
-function getNodeStart(node: any): number {
+function getNodeStart(node: ScadCstNode | null | undefined): number {
   return node?.startIndex ?? node?.startOffset ?? 0;
 }
 
 /**
  * Returns the 0-indexed end byte offset of a CST node.
  */
-function getNodeEnd(node: any): number {
+function getNodeEnd(node: ScadCstNode | null | undefined): number {
   return node?.endIndex ?? node?.endOffset ?? 0;
 }
 
 /**
  * Finds the first direct child of `node` whose CST type matches `targetType`.
  */
-function findChildByType(node: any, targetType: string): any {
+function findChildByType(node: ScadCstNode | null | undefined, targetType: string): ScadCstNode | null {
   if (!node) return null;
   for (let i = 0; i < node.childCount; i++) {
     const c = node.child(i);
@@ -268,16 +271,16 @@ function findChildByType(node: any, targetType: string): any {
  * Extracts ordered parameter names, identifier AST nodes, required parameters, and default expressions
  * from a `ParameterList` CST node.
  */
-function parseParameterList(paramListNode: any): {
+function parseParameterList(paramListNode: ScadCstNode | null | undefined): {
   params: string[];
-  paramNodes: Map<string, any>;
+  paramNodes: Map<string, ScadCstNode>;
   requiredParams: Set<string>;
-  defaultExprs: Map<string, any>;
+  defaultExprs: Map<string, ScadCstNode>;
 } {
   const params: string[] = [];
-  const paramNodes = new Map<string, any>();
+  const paramNodes = new Map<string, ScadCstNode>();
   const requiredParams = new Set<string>();
-  const defaultExprs = new Map<string, any>();
+  const defaultExprs = new Map<string, ScadCstNode>();
   if (!paramListNode) return { params, paramNodes, requiredParams, defaultExprs };
 
   for (let i = 0; i < paramListNode.childCount; i++) {
@@ -304,15 +307,15 @@ function parseParameterList(paramListNode: any): {
  */
 interface ParsedArg {
   name?: string | undefined;
-  nameNode?: any;
-  valueNode: any;
-  argNode: any;
+  nameNode?: ScadCstNode | undefined;
+  valueNode: ScadCstNode;
+  argNode: ScadCstNode;
 }
 
 /**
  * Separates an `ArgumentList` CST node into positional arguments, named arguments, and the complete ordered list.
  */
-function parseArgumentList(argListNode: any): {
+function parseArgumentList(argListNode: ScadCstNode | null | undefined): {
   positional: ParsedArg[];
   named: Map<string, ParsedArg>;
   all: ParsedArg[];
@@ -353,13 +356,18 @@ function parseArgumentList(argListNode: any): {
 /**
  * Run semantic lints on a parsed OpenSCAD CST root node.
  */
-export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[] {
+export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText?: string): ScadDiagnostic[] {
   if (!rootNode) return [];
   const rawText = sourceText ?? rootNode.tree?.sourceCode ?? rootNode.text ?? "";
   const locator = new LineLocator(rawText);
   const diagnostics: ScadDiagnostic[] = [];
 
-  const emit = (node: any, code: string, severity: "error" | "warning" | "info", message: string) => {
+  const emit = (
+    node: ScadCstNode | null | undefined,
+    code: string,
+    severity: "error" | "warning" | "info",
+    message: string,
+  ) => {
     const startOffset = getNodeStart(node);
     const endOffset = Math.max(startOffset + 1, getNodeEnd(node));
     const startPos = locator.offsetToPos(startOffset);
@@ -384,7 +392,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
    * Constant-fold / evaluate an expression when possible (without side effects).
    * Returns `undefined` when the value depends on unknown/dynamic terms.
    */
-  const tryEvalExpr = (exprNode: any, scope: LintScope, depth = 0): any => {
+  const tryEvalExpr = (exprNode: ScadCstNode | null | undefined, scope: LintScope, depth = 0): ScadConstValue => {
     if (!exprNode || depth > 16) return undefined;
     const type = exprNode.type;
 
@@ -426,7 +434,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     }
 
     if (type === "VectorLiteral") {
-      const elements: any[] = [];
+      const elements: ScadConstValue[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
         if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
@@ -437,7 +445,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     }
 
     if (type === "BinaryExpression") {
-      const exprChildren: any[] = [];
+      const exprChildren: ScadCstNode[] = [];
       let op = "";
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
@@ -487,8 +495,8 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
   /**
    * Unwrap `Expression` / `PrimaryExpression` wrappers to check if an expression is a `VectorLiteral`.
    */
-  const unwrapVectorLiteral = (node: any): any | null => {
-    let cur = node;
+  const unwrapVectorLiteral = (node: ScadCstNode | null | undefined): ScadCstNode | null => {
+    let cur: ScadCstNode | null | undefined = node;
     while (cur && (cur.type === "Expression" || cur.type === "PrimaryExpression") && cur.childCount === 1) {
       cur = cur.child(0);
     }
@@ -501,7 +509,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
    * ONLY the offending component expression `-5`.
    */
   const checkPositiveDimension = (
-    exprNode: any,
+    exprNode: ScadCstNode | null | undefined,
     scope: LintScope,
     primitiveName: string,
     paramLabel: string,
@@ -510,7 +518,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     if (!exprNode) return;
     const vecNode = unwrapVectorLiteral(exprNode);
     if (vecNode) {
-      const elemNodes: any[] = [];
+      const elemNodes: ScadCstNode[] = [];
       for (let i = 0; i < vecNode.childCount; i++) {
         const c = vecNode.child(i);
         if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
@@ -549,12 +557,13 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
       );
     } else if (Array.isArray(val)) {
       for (let i = 0; i < val.length; i++) {
-        if (typeof val[i] === "number" && (!Number.isFinite(val[i]) || val[i] <= 0)) {
+        const comp = val[i];
+        if (typeof comp === "number" && (!Number.isFinite(comp) || comp <= 0)) {
           emit(
             exprNode,
             "SCAD_INVALID_DIMENSION",
             "error",
-            `Invalid non-positive dimension (${val[i]}) in '${primitiveName}' parameter '${paramLabel}[${i}]': dimensions must be > 0.`,
+            `Invalid non-positive dimension (${comp}) in '${primitiveName}' parameter '${paramLabel}[${i}]': dimensions must be > 0.`,
           );
         }
       }
@@ -565,7 +574,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
    * Check an expression tree for undefined variables, undefined function calls,
    * argument mismatches on user-defined functions, and division by zero.
    */
-  const checkExpression = (exprNode: any, scope: LintScope) => {
+  const checkExpression = (exprNode: ScadCstNode | null | undefined, scope: LintScope) => {
     if (!exprNode) return;
     const type = exprNode.type;
 
@@ -635,7 +644,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     }
 
     if (type === "BinaryExpression") {
-      const exprChildren: any[] = [];
+      const exprChildren: ScadCstNode[] = [];
       let op = "";
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
@@ -666,7 +675,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
   };
 
   const validateCallArguments = (
-    calleeNode: any,
+    calleeNode: ScadCstNode | null | undefined,
     sig: CallableSignature,
     parsedArgs: { positional: ParsedArg[]; named: Map<string, ParsedArg>; all: ParsedArg[] },
     kindLabel: "module" | "function",
@@ -717,7 +726,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
    * Pre-collect declarations in a statement list (OpenSCAD hoists declarations within a block)
    * and check for duplicate declarations in the same scope.
    */
-  const hoistDeclarations = (statements: any[], scope: LintScope) => {
+  const hoistDeclarations = (statements: ScadCstNode[], scope: LintScope) => {
     const seenVars = new Set<string>();
     const seenModules = new Set<string>();
     const seenFunctions = new Set<string>();
@@ -822,7 +831,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     }
   };
 
-  const checkPrimarySolid = (solidNode: any, scope: LintScope) => {
+  const checkPrimarySolid = (solidNode: ScadCstNode | null | undefined, scope: LintScope) => {
     if (!solidNode) return;
     const inner = solidNode.type === "PrimarySolid" ? solidNode.child(0) : solidNode;
     if (!inner) return;
@@ -927,7 +936,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
     }
   };
 
-  const checkStatement = (rawStmt: any, scope: LintScope) => {
+  const checkStatement = (rawStmt: ScadCstNode | null | undefined, scope: LintScope) => {
     if (!rawStmt) return;
     const stmt = rawStmt.type === "Statement" ? rawStmt.child(0) : rawStmt;
     if (!stmt) return;
@@ -983,7 +992,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
 
     if (type === "BlockStatement") {
       const blockScope = new LintScope(scope);
-      const childStmts: any[] = [];
+      const childStmts: ScadCstNode[] = [];
       for (let i = 0; i < stmt.childCount; i++) {
         const c = stmt.child(i);
         if (c && c.type === "Statement") childStmts.push(c);
@@ -1080,7 +1089,7 @@ export function lintScadCst(rootNode: any, sourceText?: string): ScadDiagnostic[
   };
 
   const rootScope = new LintScope(null);
-  const topStmts: any[] = [];
+  const topStmts: ScadCstNode[] = [];
   for (let i = 0; i < rootNode.childCount; i++) {
     const c = rootNode.child(i);
     if (c && c.type === "Statement") topStmts.push(c);

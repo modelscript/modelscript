@@ -199,8 +199,8 @@ export const Build: CommandModule<{}, BuildArgs> = {
         console.log(
           `✔ Automatically registered language '${manifest.name}' [${manifest.id}] in ~/.modelscript/languages/`,
         );
-      } catch (err: any) {
-        console.warn(`Could not auto-register language: ${err.message}`);
+      } catch (err: unknown) {
+        console.warn(`Could not auto-register language: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   },

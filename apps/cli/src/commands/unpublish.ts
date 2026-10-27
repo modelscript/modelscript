@@ -129,7 +129,7 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
       if (!res.ok) {
         let errMessage = res.statusText;
         try {
-          const json = (await res.json()) as any;
+          const json = (await res.json()) as { error?: string | undefined };
           if (json.error) errMessage = json.error;
         } catch {
           // ignore parsing error if it's not JSON
@@ -138,7 +138,7 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
         process.exit(1);
       }
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as { message?: string | undefined };
       console.log(`✅ ${data.message || "Unpublished successfully."}`);
     } catch (e) {
       console.error(`Error connecting to registry: ${(e as Error).message}`);

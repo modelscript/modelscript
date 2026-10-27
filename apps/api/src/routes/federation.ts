@@ -9,7 +9,20 @@ import { sendSignedRequest } from "../util/activitypub-crypto.js";
 import { ed25519PemToMultibase } from "../util/multikey.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 
-export function serializeArtifactAttachment(artifact: any, publicUrl: string): Record<string, unknown> | null {
+export interface ArtifactAttachmentInput {
+  id: number | string;
+  title?: string | null | undefined;
+  view_type: string;
+  source_type?: string | null | undefined;
+  view_config?: string | Record<string, unknown> | null | undefined;
+  remote_origin_url?: string | null | undefined;
+  thumbnail_url?: string | null | undefined;
+}
+
+export function serializeArtifactAttachment(
+  artifact: ArtifactAttachmentInput | null | undefined,
+  publicUrl: string,
+): Record<string, unknown> | null {
   if (!artifact) return null;
   let parsedConfig: Record<string, unknown> = {};
   try {
@@ -63,7 +76,11 @@ export function serializeArtifactAttachment(artifact: any, publicUrl: string): R
 export async function resolveActorHandle(
   handleOrUrl: string,
   db: LibraryDatabase,
-): Promise<{ user: any; actor: Record<string, unknown>; actorUrl: string }> {
+): Promise<{
+  user: ReturnType<LibraryDatabase["getUserById"]>;
+  actor: Record<string, unknown>;
+  actorUrl: string;
+}> {
   let actorUrl = handleOrUrl.trim();
   if (!actorUrl.startsWith("http://") && !actorUrl.startsWith("https://")) {
     const cleanHandle = actorUrl.startsWith("acct:")
@@ -85,9 +102,11 @@ export async function resolveActorHandle(
       throw new Error(`WebFinger lookup failed for ${cleanHandle}`);
     }
 
-    const wfData = (await wfRes.json()) as any;
+    const wfData = (await wfRes.json()) as {
+      links?: { rel?: string | undefined; type?: string | undefined; href?: string | undefined }[] | undefined;
+    };
     const selfLink = wfData.links?.find(
-      (l: any) => l.rel === "self" && (l.type === "application/activity+json" || l.type === "application/ld+json"),
+      (l) => l.rel === "self" && (l.type === "application/activity+json" || l.type === "application/ld+json"),
     );
 
     if (!selfLink || !selfLink.href) {
@@ -573,9 +592,11 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         user: resolved.user,
         actor: resolved.actor,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[FederationResolve] Error:", err);
-      res.status(500).json({ error: err.message || "Failed to resolve remote actor" });
+      res
+        .status(500)
+        .json({ error: (err instanceof Error ? err.message : String(err)) || "Failed to resolve remote actor" });
     }
   };
 
@@ -633,7 +654,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         };
 
         const targetInbox =
-          (remoteActorProfile?.["endpoints"] as any)?.sharedInbox ||
+          (remoteActorProfile?.["endpoints"] as { sharedInbox?: string | undefined } | undefined)?.sharedInbox ||
           (remoteActorProfile?.["sharedInbox"] as string) ||
           (remoteActorProfile?.["inbox"] as string) ||
           `${remoteActorUrl}/inbox`;
@@ -769,7 +790,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         const existing = db.getPostByApId(note.id);
         if (!existing) {
           const content = note.content || "";
-          const isSilenced = (req as any).isDomainSilenced ? 1 : 0;
+          const isSilenced = (req as Request & { isDomainSilenced?: boolean | undefined }).isDomainSilenced ? 1 : 0;
 
           // Ingest engineering media attachments into artifact_views
           let artifactViewId: number | undefined;

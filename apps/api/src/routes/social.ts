@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
-import type { Request, Response, Router } from "express";
+import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "fs";
 import path from "path";
@@ -16,7 +15,7 @@ import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
 
 // OptionalAuth middleware to allow endpoints to work for both logged in and out users
-const optionalAuth = (req: Request, res: Response, next: any) => {
+const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
   if (req.headers.authorization) {
     return requireAuth(req, res, next);
   }
@@ -25,9 +24,35 @@ const optionalAuth = (req: Request, res: Response, next: any) => {
 
 const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^[\]\r\n]*)\])?\{([^{}\r\n]*)\}/g;
 
+type NormalizedNotebookCell =
+  | { id: string; type: "markdown"; content: string }
+  | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined };
+
+interface RawNotebookCell {
+  id?: string | undefined;
+  type?: string | undefined;
+  content?: unknown;
+  artifactId?: unknown;
+  title?: unknown;
+  caption?: unknown;
+}
+
+interface RawNotebookInput {
+  isNotebook?: boolean | undefined;
+  title?: unknown;
+  summary?: unknown;
+  difficulty?: unknown;
+  series?: unknown;
+  seriesPart?: unknown;
+  dialect?: unknown;
+  companionRepo?: unknown;
+  estimatedReadMinutes?: unknown;
+  cells?: RawNotebookCell[] | undefined;
+}
+
 function parseNotebookPayload(
   rawContent: string | null | undefined,
-  rawNotebook: any,
+  rawNotebook: RawNotebookInput | null | undefined,
   fallbackArtifactId?: number,
 ): {
   effectiveContent: string | null | undefined;
@@ -41,10 +66,7 @@ function parseNotebookPayload(
     dialect?: string | undefined;
     companionRepo?: string | undefined;
     estimatedReadMinutes?: number | undefined;
-    cells: Array<
-      | { id: string; type: "markdown"; content: string }
-      | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
-    >;
+    cells: NormalizedNotebookCell[];
     artifactIds: number[];
   } | null;
 } {
@@ -62,7 +84,7 @@ function parseNotebookPayload(
       ? { series: rawNotebook.series.trim() }
       : {}),
     ...(Number.isFinite(Number(rawNotebook?.seriesPart)) && Number(rawNotebook?.seriesPart) > 0
-      ? { seriesPart: Number(rawNotebook.seriesPart) }
+      ? { seriesPart: Number(rawNotebook?.seriesPart) }
       : {}),
     ...(typeof rawNotebook?.dialect === "string" && rawNotebook.dialect.trim()
       ? { dialect: rawNotebook.dialect.trim() }
@@ -71,18 +93,15 @@ function parseNotebookPayload(
       ? { companionRepo: rawNotebook.companionRepo.trim() }
       : {}),
     ...(Number.isFinite(Number(rawNotebook?.estimatedReadMinutes)) && Number(rawNotebook?.estimatedReadMinutes) > 0
-      ? { estimatedReadMinutes: Number(rawNotebook.estimatedReadMinutes) }
+      ? { estimatedReadMinutes: Number(rawNotebook?.estimatedReadMinutes) }
       : {}),
   };
 
   if (inputCells && inputCells.length > 0) {
-    const normalizedCells: Array<
-      | { id: string; type: "markdown"; content: string }
-      | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
-    > = [];
+    const normalizedCells: NormalizedNotebookCell[] = [];
     const artifactIds: number[] = [];
 
-    inputCells.forEach((cell: any, idx: number) => {
+    inputCells.forEach((cell: RawNotebookCell, idx: number) => {
       if (cell?.type === "markdown") {
         normalizedCells.push({
           id: cell.id || `md-${idx}`,
@@ -138,10 +157,7 @@ function parseNotebookPayload(
 
   if (typeof rawContent === "string" && rawContent.includes("::artifact")) {
     ARTIFACT_DIRECTIVE_RE.lastIndex = 0;
-    const cells: Array<
-      | { id: string; type: "markdown"; content: string }
-      | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined }
-    > = [];
+    const cells: NormalizedNotebookCell[] = [];
     const artifactIds: number[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -237,9 +253,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 
     const explicitArtifactId = raw_artifact_view_id ?? artifactId;
     const rawNotebookInput =
-      topLevelNotebook ||
-      (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells } : null) ||
-      (typeof rawMetadata === "object" && rawMetadata !== null ? (rawMetadata as any).notebook : null);
+      (topLevelNotebook as RawNotebookInput | undefined) ||
+      (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells as RawNotebookCell[] } : null) ||
+      (typeof rawMetadata === "object" && rawMetadata !== null
+        ? ((rawMetadata as Record<string, unknown>)["notebook"] as RawNotebookInput | undefined)
+        : null);
 
     const { effectiveContent: content, notebookMeta } = parseNotebookPayload(
       rawContent,
@@ -248,8 +266,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     );
 
     const artifact_view_id = explicitArtifactId ?? notebookMeta?.artifactIds?.[0];
-    const metadata = {
-      ...(typeof rawMetadata === "object" && rawMetadata !== null ? rawMetadata : {}),
+    const metadata: Record<string, unknown> = {
+      ...(typeof rawMetadata === "object" && rawMetadata !== null ? (rawMetadata as Record<string, unknown>) : {}),
       ...(notebookMeta ? { notebook: notebookMeta } : {}),
       ...(content_warning ? { contentWarning: content_warning } : {}),
       ...(client_signature ? { clientSignature: client_signature, client_signature } : {}),
@@ -339,7 +357,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
               if (fullAuthor && content) {
                 // Find remote followers
                 const remoteFollowers = database.getRemoteFollowersInboxes(authorId);
-                const mentionTags: any[] = [];
+                const mentionTags: { type: "Mention"; href: string; name: string }[] = [];
                 const additionalInboxes: {
                   inbox_url: string;
                   shared_inbox_url?: string | undefined;
@@ -359,8 +377,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                             href: resolved.actorUrl,
                             name: `@${resolved.user.username}`,
                           });
+                          const endpoints = resolved.actor?.["endpoints"] as
+                            | { sharedInbox?: string | undefined }
+                            | undefined;
                           const inbox =
-                            (resolved.actor?.["endpoints"] as any)?.sharedInbox ||
+                            endpoints?.sharedInbox ||
                             (resolved.actor?.["sharedInbox"] as string) ||
                             (resolved.actor?.["inbox"] as string) ||
                             `${resolved.actorUrl}/inbox`;
@@ -368,9 +389,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                           additionalInboxes.push({
                             inbox_url: inbox,
                             shared_inbox_url:
-                              (resolved.actor?.["endpoints"] as any)?.sharedInbox ||
-                              (resolved.actor?.["sharedInbox"] as string) ||
-                              undefined,
+                              endpoints?.sharedInbox || (resolved.actor?.["sharedInbox"] as string) || undefined,
                             remote_domain: domain,
                           });
                         }
@@ -394,7 +413,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                   const apPostId = `${fullAuthor.actor_url}/posts/${id}`;
                   const ccList = [`${fullAuthor.actor_url}/followers`, ...mentionTags.map((m) => m.href)];
 
-                  const noteObject: any = {
+                  const noteObject: Record<string, unknown> = {
                     id: apPostId,
                     type: "Note",
                     published: new Date().toISOString(),
@@ -404,16 +423,18 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     cc: ccList,
                   };
 
-                  if (content_warning || (metadata as any)?.contentWarning) {
-                    noteObject.summary = content_warning || (metadata as any)?.contentWarning;
+                  const metaCw =
+                    typeof metadata["contentWarning"] === "string" ? metadata["contentWarning"] : undefined;
+                  if (content_warning || metaCw) {
+                    noteObject["summary"] = content_warning || metaCw;
                   }
 
                   if (mentionTags.length > 0) {
-                    noteObject.tag = mentionTags;
+                    noteObject["tag"] = mentionTags;
                   }
 
                   if (client_signature && key_id_string) {
-                    noteObject.proof = {
+                    noteObject["proof"] = {
                       type: "RsaSignature2017",
                       creator: `${fullAuthor.actor_url}#${key_id_string}`,
                       created: new Date().toISOString(),
@@ -438,7 +459,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                       })
                       .filter(Boolean);
                     if (attachments.length > 0) {
-                      noteObject.attachment = attachments;
+                      noteObject["attachment"] = attachments;
                     }
                   }
 
@@ -544,7 +565,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                           database.updatePostArtifactViewId(id, newArtifactId);
                         }
                       }
-                    } catch (err) {
+                    } catch {
                       // Ignore fetch errors
                     }
                   })();
@@ -599,14 +620,16 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 
       const explicitArtifactId = raw_artifact_view_id ?? artifactId;
       const rawNotebookInput =
-        topLevelNotebook ||
-        (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells } : null) ||
-        (typeof rawMetadata === "object" && rawMetadata !== null ? (rawMetadata as any).notebook : null);
+        (topLevelNotebook as RawNotebookInput | undefined) ||
+        (Array.isArray(topLevelCells) ? { isNotebook: true, cells: topLevelCells as RawNotebookCell[] } : null) ||
+        (typeof rawMetadata === "object" && rawMetadata !== null
+          ? ((rawMetadata as Record<string, unknown>)["notebook"] as RawNotebookInput | undefined)
+          : null);
 
       const { effectiveContent: content, notebookMeta } = parseNotebookPayload(
         rawContent !== undefined ? rawContent : existingPost.content,
         rawNotebookInput,
-        explicitArtifactId !== undefined ? explicitArtifactId : existingPost.artifact_view_id,
+        explicitArtifactId !== undefined ? explicitArtifactId : (existingPost.artifact_view_id ?? undefined),
       );
 
       const artifact_view_id =
@@ -635,9 +658,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 
       const updatedPost = database.getPost(postId, userId);
       res.json({ post: updatedPost });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("PUT /posts/:id error:", err);
-      res.status(500).json({ error: err.message || "Failed to update post" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update post" });
     }
   };
 
@@ -693,9 +716,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       }
 
       res.json({ success: true, postId });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("DELETE /posts/:id error:", err);
-      res.status(500).json({ error: err.message || "Failed to delete post" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete post" });
     }
   });
 
@@ -775,7 +798,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
       res.json({ post });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch post" });
     }
   });
@@ -816,7 +839,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 
       database.incrementPostView(postId, countryCode, regionCode);
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to increment view" });
     }
   });
@@ -842,7 +865,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         location_stats: locationStats,
         region_stats: regionStats,
       });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch analytics" });
     }
   });
@@ -856,7 +879,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getReplies(postId, currentUserId, limit);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch replies" });
     }
   });
@@ -870,7 +893,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getPostParents(postId, currentUserId);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch parents" });
     }
   });
@@ -887,7 +910,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getHomeTimeline(userId, limit, offset, artifactType, tag);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to get timeline" });
     }
   });
@@ -905,7 +928,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getFollowingTimeline(userId, limit, sort, offset, artifactType, tag);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to get following timeline" });
     }
   });
@@ -922,7 +945,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getFederatedTimeline(currentUserId, limit, offset, artifactType, tag);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to get federated timeline" });
     }
   });
@@ -939,7 +962,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getExploreTimeline(currentUserId, limit, offset, artifactType, tag);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to get explore timeline" });
     }
   });
@@ -956,7 +979,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getUserTimeline(username, currentUserId, limit, type);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to get user timeline" });
     }
   });
@@ -970,7 +993,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const liked = database.toggleLike(userId, postId);
       res.json({ liked });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to toggle like" });
     }
   });
@@ -984,7 +1007,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const bookmarked = database.toggleBookmark(userId, postId);
       res.json({ bookmarked });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to toggle bookmark" });
     }
   });
@@ -998,7 +1021,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const reposted = database.toggleRepost(userId, postId);
       res.json({ reposted });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to toggle repost" });
     }
   });
@@ -1046,9 +1069,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         status: report.status,
         message: "Report submitted successfully. Content will be reviewed by moderation.",
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("POST /posts/:id/report error:", err);
-      res.status(500).json({ error: err.message || "Failed to submit report" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to submit report" });
     }
   });
 
@@ -1061,9 +1084,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const quotes = database.getQuotes(postId, userId);
       res.json({ quotes, posts: quotes });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("GET /posts/:id/quotes error:", err);
-      res.status(500).json({ error: err.message || "Failed to fetch quotes" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch quotes" });
     }
   });
 
@@ -1076,9 +1099,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const reposts = database.getReposts(postId, userId);
       res.json({ reposts, posts: reposts });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("GET /posts/:id/reposts error:", err);
-      res.status(500).json({ error: err.message || "Failed to fetch reposts" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch reposts" });
     }
   });
 
@@ -1094,7 +1117,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
       res.json({ artifactView });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch artifact view" });
     }
   });
@@ -1129,8 +1152,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
 
-      const ownerId = (artifact as any).creator_id ?? (artifact as any).author_id;
-      if (req.user && ownerId && ownerId !== req.user.id && (req.user as any).role !== "admin") {
+      const ownerId = artifact.creator_id ?? artifact.author_id;
+      if (req.user && ownerId && ownerId !== req.user.id && req.user.role !== "admin") {
         res.status(403).json({ error: "Forbidden: Not the owner of this artifact view" });
         return;
       }
@@ -1156,7 +1179,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       database.updateArtifactThumbnail(id, thumbnailUrl);
 
       res.json({ success: true, thumbnailUrl });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[socialRouter] Error saving artifact thumbnail:", err);
       res.status(500).json({ error: "Failed to save thumbnail" });
     }
@@ -1167,15 +1190,15 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     rawViewConfig: unknown,
     title?: string,
   ): Promise<{ viewConfigStr: string; thumbnailUrl?: string | undefined }> {
-    let parsed: Record<string, any> = {};
+    let parsed: Record<string, unknown> = {};
     if (typeof rawViewConfig === "string") {
       try {
-        parsed = JSON.parse(rawViewConfig);
+        parsed = JSON.parse(rawViewConfig) as Record<string, unknown>;
       } catch {
         return { viewConfigStr: rawViewConfig };
       }
     } else if (rawViewConfig && typeof rawViewConfig === "object") {
-      parsed = { ...(rawViewConfig as Record<string, any>) };
+      parsed = { ...(rawViewConfig as Record<string, unknown>) };
     }
 
     const inlineCode =
@@ -1200,10 +1223,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         const tempPath = path.join(uploadDir, tempName);
         fs.writeFileSync(tempPath, inlineCode, "utf-8");
         try {
+          const parsedTitle = typeof parsed["title"] === "string" ? parsed["title"] : undefined;
           const preprocessed = await pregenerateServerSvgThumbnail(
             tempPath,
             artifactType,
-            title || parsed["title"] || "model",
+            title || parsedTitle || "model",
             uploadDir,
           );
           if (preprocessed.viewConfigAdditions) {
@@ -1213,7 +1237,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
             parsed["svg"] = preprocessed.svg;
           }
           if (preprocessed.metadata) {
-            parsed["metadata"] = { ...(parsed["metadata"] || {}), ...preprocessed.metadata };
+            const existingMeta =
+              typeof parsed["metadata"] === "object" && parsed["metadata"] !== null
+                ? (parsed["metadata"] as Record<string, unknown>)
+                : {};
+            parsed["metadata"] = { ...existingMeta, ...preprocessed.metadata };
           }
           if (preprocessed.thumbnailUrl) {
             thumbnailUrl = preprocessed.thumbnailUrl;
@@ -1255,7 +1283,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       }
 
       res.status(201).json({ id, thumbnail_url: thumbnailUrl || null });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to create artifact view" });
     }
   });
@@ -1278,8 +1306,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
 
-      const ownerId = (existing as any).creator_id ?? (existing as any).author_id;
-      if (req.user && ownerId && ownerId !== req.user.id && (req.user as any).role !== "admin") {
+      const ownerId = existing.creator_id ?? existing.author_id;
+      if (req.user && ownerId && ownerId !== req.user.id && req.user.role !== "admin") {
         res.status(403).json({ error: "Forbidden: Not the owner of this artifact view" });
         return;
       }
@@ -1291,8 +1319,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
 
-      const effectiveType = artifact_type || (existing as any).view_type || "modelica-code";
-      const effectiveTitle = title || (existing as any).title || "Model";
+      const effectiveType = artifact_type || existing.view_type || "modelica-code";
+      const effectiveTitle = title || existing.title || "Model";
 
       const { viewConfigStr, thumbnailUrl } = await enrichInlineArtifactConfig(
         effectiveType,
@@ -1329,7 +1357,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 
     try {
       const job = database.getJob(Number(jobId));
-      if (req.user && job && job.user_id && job.user_id !== req.user.id && (req.user as any).role !== "admin") {
+      if (req.user && job && job.user_id && job.user_id !== req.user.id && req.user.role !== "admin") {
         return res.status(403).json({ error: "Forbidden: Job belongs to another user" });
       }
 
@@ -1348,9 +1376,11 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         suggestedCaption: result.suggestedCaption,
         viewConfig: result.viewConfig,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[SocialRouter] POST /artifact-views/from-hpc-job error:", err);
-      res.status(500).json({ error: err.message || "Failed to create artifact view from HPC job" });
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Failed to create artifact view from HPC job",
+      });
     }
     return;
   });
@@ -1364,7 +1394,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getBookmarks(userId, limit);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch bookmarks" });
     }
   });
@@ -1380,7 +1410,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       const notifications = database.getNotifications(userId, limit, category);
       const unreadCount = database.getUnreadNotificationCount(userId);
       res.json({ notifications, unreadCount });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch notifications" });
     }
   });
@@ -1394,7 +1424,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       database.markNotificationsRead(userId, category);
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to mark notifications read" });
     }
   });
@@ -1407,7 +1437,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const topics = database.getTopTrendingTopics(limit);
       res.json({ topics });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch trending topics" });
     }
   });
@@ -1425,7 +1455,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const posts = database.getTopicPosts(concept, currentUserId, limit, offset, artifactType);
       res.json({ posts });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to get topic posts" });
     }
   });
@@ -1461,7 +1491,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
             res.status(400).json({ error: "Could not find YouTube channel for that handle" });
             return;
           }
-        } catch (e) {
+        } catch {
           res.status(500).json({ error: "Error contacting YouTube" });
           return;
         }
@@ -1540,7 +1570,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         feed = database.getRssFeedByUrl(targetUrl);
       }
 
-      database.subscribeToRssFeed(userId, feed.id);
+      if (feed) {
+        database.subscribeToRssFeed(userId, feed.id);
+      }
 
       // Trigger RSS worker asynchronously to fetch items right away
       import("../util/rss-worker.js")
@@ -1550,9 +1582,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         .catch(console.error);
 
       res.status(200).json({ success: true, feed });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      res.status(500).json({ error: err.message || "Failed to subscribe to RSS feed" });
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to subscribe to RSS feed" });
     }
   });
 
@@ -1564,7 +1596,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       const feeds = database.getUserRssSubscriptions(userId);
       res.json({ feeds });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch feeds" });
     }
   });
@@ -1578,7 +1610,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     try {
       database.unsubscribeFromRssFeed(userId, feedId);
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to unsubscribe from feed" });
     }
   });

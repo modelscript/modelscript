@@ -40,6 +40,8 @@ export interface HybridReachabilityBridgeOptions {
   reachabilityEngine?: "taylor" | "zonotope" | undefined;
   useConstrainedZonotopes?: boolean | undefined;
   maxConstrainedGenerators?: number | undefined;
+  useQrPreconditioning?: boolean | undefined;
+  maxJumps?: number | undefined;
   linearMatrixA?: number[][] | undefined;
   linearMatrixB?: number[][] | undefined;
 }
@@ -221,15 +223,22 @@ function buildHybridModeFromLoweredDae(
  * Executes validated hybrid flowpipe reachability verification for a SysML v2 model.
  */
 export async function verifyHybridSysml2Reachability(
-  queryDB: any,
+  queryDB:
+    | {
+        allEntries?(): { ruleName?: string | undefined; name?: string | undefined }[];
+        source?: string | undefined;
+        doc?: { text?: string | undefined } | undefined;
+      }
+    | null
+    | undefined,
   options: HybridReachabilityBridgeOptions = {},
 ): Promise<HybridReachabilityBridgeResult> {
   const dt = options.dt ?? 0.05;
   const order = options.order ?? 2;
   const adaptive = options.adaptive ?? true;
   const tol = options.tol ?? 1e-4;
-  const useQrPreconditioning = (options as any).useQrPreconditioning ?? true;
-  const maxJumps = (options as any).maxJumps ?? 16;
+  const useQrPreconditioning = options.useQrPreconditioning ?? true;
+  const maxJumps = options.maxJumps ?? 16;
 
   let tSpan: [number, number] = [0, 5];
   if (Array.isArray(options.timeSpan) && options.timeSpan.length === 2) {

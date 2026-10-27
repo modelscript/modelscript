@@ -107,9 +107,12 @@ self.onmessage = async (event: MessageEvent) => {
 
         const wasmModule = await WebAssembly.instantiate(binary, { env });
 
-        wasmInstance = wasmModule as any;
+        wasmInstance =
+          "instance" in wasmModule
+            ? (wasmModule.instance as WebAssembly.Instance)
+            : (wasmModule as WebAssembly.Instance);
 
-        wasmExports = wasmInstance!.exports;
+        wasmExports = wasmInstance.exports;
 
         const exports = wasmExports as {
           initModel: () => void;

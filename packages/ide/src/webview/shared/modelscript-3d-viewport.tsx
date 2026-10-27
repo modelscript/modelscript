@@ -49,7 +49,7 @@ function CameraPersistenceController({
   onCameraChange?: ((state: CameraState) => void) | undefined;
 }) {
   const { camera } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<React.ComponentRef<typeof OrbitControls> | null>(null);
 
   // Restore initial camera if provided
   useEffect(() => {
@@ -68,10 +68,10 @@ function CameraPersistenceController({
 
   const handleEnd = useCallback(() => {
     if (!onCameraChange) return;
-    const target = controlsRef.current?.target ?? [0, 0, 0];
+    const target = controlsRef.current?.target;
     onCameraChange({
       position: [camera.position.x, camera.position.y, camera.position.z],
-      target: [target.x ?? target[0] ?? 0, target.y ?? target[1] ?? 0, target.z ?? target[2] ?? 0],
+      target: target ? [target.x, target.y, target.z] : [0, 0, 0],
       zoom: "zoom" in camera ? (camera as THREE.OrthographicCamera).zoom : 1,
     });
   }, [camera, onCameraChange]);
@@ -185,7 +185,7 @@ export const ModelScript3DViewport: React.FC<ModelScript3DViewportProps> = ({
             onClick={() => {
               if (canvasRef.current) {
                 const gl = canvasRef.current.getContext("webgl2") || canvasRef.current.getContext("webgl");
-                if (gl && !(gl as any).isContextLost?.()) {
+                if (gl && !gl.isContextLost()) {
                   setContextLost(false);
                 }
               }

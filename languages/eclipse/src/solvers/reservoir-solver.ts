@@ -52,11 +52,13 @@ function interpolatePvdo(
   pvdo: { pressure: number; fvf: number; viscosity?: number | undefined }[],
   p: number,
 ): { bo: number; muO: number } {
-  if (!pvdo || pvdo.length === 0) return { bo: 1.25, muO: 1.0 };
-  if (p <= pvdo[0]!.pressure) return { bo: pvdo[0]!.fvf, muO: pvdo[0]!.viscosity ?? 1.0 };
+  const first = pvdo?.[0];
+  if (!first) return { bo: 1.25, muO: 1.0 };
+  if (p <= first.pressure) return { bo: first.fvf, muO: first.viscosity ?? 1.0 };
   for (let i = 0; i < pvdo.length - 1; i++) {
-    const p1 = pvdo[i]!;
-    const p2 = pvdo[i + 1]!;
+    const p1 = pvdo[i];
+    const p2 = pvdo[i + 1];
+    if (!p1 || !p2) continue;
     if (p >= p1.pressure && p <= p2.pressure) {
       const frac = (p - p1.pressure) / (p2.pressure - p1.pressure || 1e-6);
       const bo = p1.fvf + frac * (p2.fvf - p1.fvf);
@@ -66,7 +68,7 @@ function interpolatePvdo(
       return { bo, muO };
     }
   }
-  const last = pvdo[pvdo.length - 1]!;
+  const last = pvdo[pvdo.length - 1] ?? first;
   return { bo: last.fvf, muO: last.viscosity ?? 1.0 };
 }
 
@@ -74,14 +76,16 @@ function interpolateSwof(
   swof: { saturation: number; krPhase: number; krowPhase: number }[],
   sw: number,
 ): { krw: number; kro: number } {
-  if (!swof || swof.length === 0) {
+  const first = swof?.[0];
+  if (!first) {
     const swNorm = Math.max(0, Math.min(1, sw));
     return { krw: Math.pow(swNorm, 2), kro: Math.pow(1 - swNorm, 2) };
   }
-  if (sw <= swof[0]!.saturation) return { krw: swof[0]!.krPhase, kro: swof[0]!.krowPhase };
+  if (sw <= first.saturation) return { krw: first.krPhase, kro: first.krowPhase };
   for (let i = 0; i < swof.length - 1; i++) {
-    const pt1 = swof[i]!;
-    const pt2 = swof[i + 1]!;
+    const pt1 = swof[i];
+    const pt2 = swof[i + 1];
+    if (!pt1 || !pt2) continue;
     if (sw >= pt1.saturation && sw <= pt2.saturation) {
       const frac = (sw - pt1.saturation) / (pt2.saturation - pt1.saturation || 1e-6);
       return {
@@ -90,7 +94,7 @@ function interpolateSwof(
       };
     }
   }
-  const last = swof[swof.length - 1]!;
+  const last = swof[swof.length - 1] ?? first;
   return { krw: last.krPhase, kro: last.krowPhase };
 }
 
@@ -159,7 +163,8 @@ export function solveReservoirDepletion(
     for (let d = options.stepDays; d <= options.totalDays; d += options.stepDays) {
       timeSteps.push(d);
     }
-    if (timeSteps.length === 0 || timeSteps[timeSteps.length - 1]! < options.totalDays) {
+    const lastStep = timeSteps[timeSteps.length - 1];
+    if (lastStep === undefined || lastStep < options.totalDays) {
       timeSteps.push(options.totalDays);
     }
   } else if (deck.timeSteps.length > 0) {
@@ -172,7 +177,7 @@ export function solveReservoirDepletion(
   let currentDay = 0;
 
   for (let sIdx = 0; sIdx < timeSteps.length; sIdx++) {
-    const targetDay = timeSteps[sIdx]!;
+    const targetDay = timeSteps[sIdx] ?? currentDay;
     const dtDays = targetDay - currentDay;
     currentDay = targetDay;
 
@@ -196,7 +201,7 @@ export function solveReservoirDepletion(
       // Current average water saturation in reservoir at the producer drainage zone
       // Advances with cumulative oil recovery and Buckley-Leverett waterflood displacement
       const recoveryFrac = stoiip > 0 ? (cumOil + stepOil) / stoiip : 0.0;
-      const maxSw = deck.props.swof.length > 0 ? deck.props.swof[deck.props.swof.length - 1]!.saturation : 0.8;
+      const maxSw = deck.props.swof[deck.props.swof.length - 1]?.saturation ?? 0.8;
       const displaceableMobileFraction = Math.max(0.1, 1.0 - swc - 0.2);
       const avgSw = Math.min(maxSw, swc + (maxSw - swc) * Math.min(1.0, recoveryFrac / displaceableMobileFraction));
       const { krw, kro } = interpolateSwof(deck.props.swof, avgSw);

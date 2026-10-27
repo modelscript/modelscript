@@ -805,7 +805,7 @@ export class CloudOpenFoamProvider extends BaseCfdProvider {
         await fetch(`${this.endpointUrl.replace(/\/$/, "")}/geometry`, {
           method: "POST",
           headers: { "Content-Type": "application/octet-stream" },
-          body: stepFileData as any,
+          body: stepFileData as unknown as BodyInit,
         });
       } catch {
         // Offline fallback to localSolver

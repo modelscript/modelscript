@@ -99,8 +99,9 @@ export async function simulateCloud(
       },
       body: JSON.stringify(payload),
     });
-  } catch (err: any) {
-    const msg = `Error: Could not connect to ModelScript API at ${apiUrl}: ${err.message}`;
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const msg = `Error: Could not connect to ModelScript API at ${apiUrl}: ${errMsg}`;
     if (options.exitOnError) {
       console.error(msg);
       process.exit(1);
@@ -118,7 +119,12 @@ export async function simulateCloud(
   }
 
   if (res.status === 402) {
-    const errData = (await res.json().catch(() => ({}))) as any;
+    const errData = (await res.json().catch(() => ({}))) as {
+      message?: string | undefined;
+      required?: number | string | undefined;
+      balance?: number | string | undefined;
+      profile?: string | undefined;
+    };
     const msg = `Payment Required (402) - Insufficient Compute Credits: ${errData.message || "Balance too low"}. Required: ${errData.required ?? "?"}, Balance: ${errData.balance ?? "?"}`;
     if (options.exitOnError) {
       console.error("\x1b[31mError: Payment Required (402) - Insufficient Compute Credits\x1b[0m");
@@ -175,7 +181,17 @@ export async function simulateCloud(
       continue;
     }
 
-    const statusData = (await statusRes.json()) as any;
+    const statusData = (await statusRes.json()) as {
+      status?: string | undefined;
+      error?: string | undefined;
+      usage?:
+        | {
+            costCredits?: number | string | undefined;
+            exitCode?: number | undefined;
+            runtimeSeconds?: number | undefined;
+          }
+        | undefined;
+    };
     const elapsedSec = ((Date.now() - startWait) / 1000).toFixed(1);
     const normalizedStatus = String(statusData.status || "").toLowerCase();
 
@@ -223,10 +239,11 @@ export async function simulateCloud(
         console.log(`  Time steps recorded: ${lines.length - 1}`);
       }
 
+      const rawCredits = statusData.usage?.costCredits;
       return {
         jobId,
         resultPath: outFilePath,
-        costCredits: statusData.usage?.costCredits,
+        costCredits: rawCredits !== undefined ? Number(rawCredits) : undefined,
         runtimeSeconds: parseFloat(elapsedSec),
         csvContent: csvData,
       };

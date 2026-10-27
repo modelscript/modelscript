@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable */
 /**
  * examples/sysml2/language.ts — SysML v2 language definition
  *
@@ -21,6 +20,7 @@ import {
   resolveTypeDimension,
 } from "./dimensions.js";
 import { SysML2ErrorCode } from "./errors.js";
+import type { SysmlCstNode } from "./flattener/cst-lowerer.js";
 import { LoopInvariantAnalyzer } from "./loop-invariant-analyzer.js";
 import { emitAxioms } from "./reasoner-bridge.js";
 import {
@@ -57,6 +57,7 @@ import {
   tggTypeMap,
   token,
   warning,
+  type LintResult,
 } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 
@@ -93,12 +94,45 @@ const metaStr = (self: SymbolEntry, key: string): string | null => (meta(self)?.
 
 // ---- shared symbol helpers ----
 
+interface SysmlRuleSelf {
+  declaredName?: string | undefined;
+  isAbstract?: boolean | string | undefined;
+  isVariation?: boolean | string | undefined;
+  declaredShortName?: string | undefined;
+  direction?: string | undefined;
+  isDerived?: boolean | string | undefined;
+  isEnd?: boolean | string | undefined;
+  isRef?: boolean | string | undefined;
+  isOrdered?: boolean | string | undefined;
+  isNonunique?: boolean | string | undefined;
+  isConstant?: boolean | string | undefined;
+  isStandard?: boolean | string | undefined;
+  importedNamespace?: string | undefined;
+  isImportAll?: boolean | string | undefined;
+  isRecursive?: boolean | string | undefined;
+  guard?: unknown;
+  isParallel?: boolean | string | undefined;
+  trigger?: unknown;
+  effect?: unknown;
+  ownedMultiplicity?:
+    | {
+        ownedRelatedElement?:
+          | {
+              lowerBound?: unknown;
+              upperBound?: unknown;
+            }
+          | undefined;
+      }
+    | undefined;
+  [key: string]: unknown;
+}
+
 /** Shared symbol lambda for all Definition rules.
  *  Captures modifier fields as attributes from CST nodes. */
-const defAttrs = (_defKind: string) => (self: any) => ({
+const defAttrs = (_defKind: string) => (self: SysmlRuleSelf) => ({
   kind: "Definition" as const,
   name: self.declaredName,
-  exports: ["body"] as any[],
+  exports: ["body"],
   attributes: {
     isAbstract: self.isAbstract,
     isVariation: self.isVariation,
@@ -108,7 +142,7 @@ const defAttrs = (_defKind: string) => (self: any) => ({
 
 /** Shared symbol lambda for all Usage rules.
  *  Captures all modifier fields from _usage_modifier as CST attributes. */
-const usageAttrs = (_usageKind: string) => (self: any) => ({
+const usageAttrs = (_usageKind: string) => (self: SysmlRuleSelf) => ({
   kind: "Usage" as const,
   name: self.declaredName,
   attributes: {
@@ -193,8 +227,8 @@ const definitionStructuralQueries = {
       }
 
       // Check implements in SysML itself (or modelica index)
-      let implementsTarget = (entry.metadata as any)?.implementsTarget as string | undefined;
-      const ann = (entry.metadata as any)?.annotationClause as string | undefined;
+      let implementsTarget = entry.metadata?.["implementsTarget"] as string | undefined;
+      const ann = entry.metadata?.["annotationClause"] as string | undefined;
       if (!implementsTarget && ann) {
         const match = ann.match(/SysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/);
         if (match) implementsTarget = match[1];
@@ -726,12 +760,12 @@ const extractNameChain = (node: CSTNode): string[] => {
   if (node.type === "FeatureReferenceExpression") {
     const rel =
       node.childForFieldName("ownedRelationship") ||
-      node.children.find((c: any) => c.type === "FeatureReferenceMember") ||
+      node.children.find((c) => c.type === "FeatureReferenceMember") ||
       node.children[0];
     if (rel) {
       const memberElement =
         rel.childForFieldName("memberElement") ||
-        rel.children.find((c: any) => c.type === "QualifiedName") ||
+        rel.children.find((c) => c.type === "QualifiedName") ||
         rel.children[0];
       if (memberElement) {
         const name = extractQualifiedName(memberElement) || memberElement.text.trim();
@@ -1072,7 +1106,7 @@ const evaluateResultExpression = (db: QueryDB, self: SymbolEntry, evalScopeId?: 
   // Navigate to the OwnedExpression inside
   const ownedRelElem =
     resultMember.childForFieldName("ownedRelatedElement") ||
-    resultMember.children.find((c: any) => c.type === "OwnedExpression") ||
+    resultMember.children.find((c) => c.type === "OwnedExpression") ||
     resultMember.children[0];
   if (!ownedRelElem) return undefined;
 
@@ -1163,6 +1197,14 @@ const evaluateConstraintBody = (db: QueryDB, self: SymbolEntry, evalScopeId?: nu
   return null;
 };
 
+interface ActiveSimulationResult {
+  trajectory?:
+    | {
+        signals?: { name?: string | undefined; values?: number[] | undefined }[] | undefined;
+      }
+    | undefined;
+}
+
 /** Constraint-specific queries */
 const constraintEvalQueries = {
   /** Evaluate the constraint body and return true/false/null */
@@ -1171,7 +1213,11 @@ const constraintEvalQueries = {
   /** Dynamic simulation-backed validation via VerificationRunner */
   dynamicConstraintResult: (db: QueryDB, self: SymbolEntry) => {
     // Re-evaluates automatically when SimulationResult inputs (Salsa queries) change
-    const simResult = (db as any).query?.("activeSimulation") ?? (db as any).activeSimulation;
+    const dbWithSim = db as unknown as {
+      query?(name: string): ActiveSimulationResult | undefined;
+      activeSimulation?: ActiveSimulationResult | undefined;
+    };
+    const simResult = dbWithSim.query?.("activeSimulation") ?? dbWithSim.activeSimulation;
     if (simResult && simResult.trajectory) {
       const traj = simResult.trajectory;
       const staticRes = evaluateConstraintBody(db, self);
@@ -1180,7 +1226,7 @@ const constraintEvalQueries = {
       if (Array.isArray(traj.signals)) {
         for (const sig of traj.signals) {
           if (sig.name && sig.values && (sig.name === self.name || sig.name.endsWith(`.${self.name}`))) {
-            const hasViolation = sig.values.some((v: number) => !Boolean(v));
+            const hasViolation = sig.values.some((v: number) => !v);
             if (hasViolation) return false;
           }
         }
@@ -1716,18 +1762,18 @@ const usageLints = {
     const targetDim = resolveTypeDimension(db, typeName);
     if (!targetDim || isDimensionless(targetDim)) return null;
 
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SysmlCstNode | null;
     if (!cst) return null;
 
-    let exprNode: any = null;
+    let exprNode: SysmlCstNode | null | undefined = null;
     for (const child of cst.children || []) {
       if (child.type === "OwnedExpression" || child.type === "ResultExpressionMember") {
-        exprNode = child.type === "ResultExpressionMember" ? child.childForFieldName("ownedRelatedElement") : child;
+        exprNode = child.type === "ResultExpressionMember" ? child.childForFieldName?.("ownedRelatedElement") : child;
         break;
       }
       if (child.type === "FeatureValue" || child.type === "_ValuePart" || child.type === "ValuePart") {
         exprNode =
-          child.children?.find((c: any) => c.type === "OwnedExpression") ||
+          child.children?.find((c: SysmlCstNode) => c.type === "OwnedExpression") ||
           child.childForFieldName?.("ownedRelatedElement") ||
           child;
         break;
@@ -1776,10 +1822,10 @@ const constraintLints = {
     return null;
   },
   dimensionalConstraint: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SysmlCstNode | null;
     if (!cst) return null;
 
-    let exprNode: any = null;
+    let exprNode: SysmlCstNode | null | undefined = null;
     for (const child of cst.children || []) {
       if (child.type === "OwnedExpression" || child.type === "ExpressionBody") {
         exprNode = child;
@@ -1787,7 +1833,7 @@ const constraintLints = {
       }
       if (child.type === "ResultExpressionMember") {
         exprNode =
-          child.children?.find((c: any) => c.type === "OwnedExpression") ||
+          child.children?.find((c: SysmlCstNode) => c.type === "OwnedExpression") ||
           child.childForFieldName?.("ownedRelatedElement") ||
           child;
         break;
@@ -2366,7 +2412,7 @@ const actionCommonLints = {
     if (dtMap.size === 0 && /\bdecide\b/.test(text)) {
       dtMap = DecisionTableVerifier.verifyAllDecisionsFromText(text);
     }
-    const results: any[] = [];
+    const results: LintResult[] = [];
     for (const [decideName, dtRes] of dtMap) {
       if (!dtRes.isDeterministic && dtRes.overlappingBranches.length > 0) {
         const pairStr = dtRes.overlappingBranches.map((o) => `'${o.branchA}' and '${o.branchB}'`).join(", ");
@@ -2566,6 +2612,12 @@ const collectDescendants = (db: QueryDB, parentId: number, ruleNames: string[]):
   return results;
 };
 
+interface TaxonomyEntry {
+  iri?: string | undefined;
+  directSuperClasses?: Iterable<string> | undefined;
+  allSuperClasses?: Iterable<string> | undefined;
+}
+
 const traceabilityQueries = {
   allRequirements: (db: QueryDB, self: SymbolEntry) =>
     collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]),
@@ -2598,7 +2650,7 @@ const traceabilityQueries = {
     );
   },
   inferredTaxonomy: (db: QueryDB, self: SymbolEntry) => {
-    const axioms = emitAxioms(db, self) as any[];
+    const axioms = emitAxioms(db, self) as Parameters<TableauReasoner["loadOntology"]>[0];
     // Instantiate a stateless fast reasoner for this query
     const reasoner = new TableauReasoner();
     // Bypass async init() by loading ontology directly; TableauReasoner init() does nothing for sync operations
@@ -2614,10 +2666,10 @@ const traceabilityQueries = {
       rootId = curr.parentId;
       curr = db.symbol(curr.parentId)!;
     }
-    const taxonomy = db.query("inferredTaxonomy", rootId) as any;
+    const taxonomy = db.query<TaxonomyEntry[] | Map<string, TaxonomyEntry> | undefined>("inferredTaxonomy", rootId);
     const iri = `sysml:${self.name || `anon_${self.id}`}`;
     const node = Array.isArray(taxonomy)
-      ? taxonomy.find((n: any) => n.iri === iri)
+      ? taxonomy.find((n: TaxonomyEntry) => n.iri === iri)
       : taxonomy?.get
         ? taxonomy.get(iri)
         : undefined;
@@ -2652,8 +2704,8 @@ const packageTraceabilityModel = {
     unsatisfiedRequirements: "SemanticNode[]" as const,
     verifiedRequirements: "SemanticNode[]" as const,
     unverifiedRequirements: "SemanticNode[]" as const,
-    emitAxioms: "any[]" as const,
-    inferredTaxonomy: "any" as const,
+    emitAxioms: "OntologyAxiom[]" as const,
+    inferredTaxonomy: "TaxonomyEntry[]" as const,
     inferredSuperClasses: "string[]" as const,
   },
 };
@@ -2703,7 +2755,10 @@ const packageTraceabilityLints = {
     const consistency = reasoner.checkConsistency();
     if (!consistency.isConsistent) {
       const core = consistency.minimalConflictCore;
-      const detail = core && core.length > 0 ? `: conflicting axioms [${core.map((a: any) => a.type).join(", ")}]` : "";
+      const detail =
+        core && core.length > 0
+          ? `: conflicting axioms [${core.map((a: { type?: string | undefined }) => a.type).join(", ")}]`
+          : "";
       return error(SysML2ErrorCode.ONTOLOGICAL_INCONSISTENCY.message(self.name || "package", detail), {
         code: SysML2ErrorCode.ONTOLOGICAL_INCONSISTENCY.code,
         field: "declaredName",
@@ -2780,7 +2835,7 @@ const stateMachineCommonLints = {
     const hasTransitions = db.childrenOf(self.id).some((c) => c.ruleName === "TransitionUsage");
     if (!hasTransitions) return null;
     const smResult = verifyAllStateMachineTransitions(db, self.name);
-    const results: any[] = [];
+    const results: LintResult[] = [];
     for (const diag of smResult.diagnostics) {
       if (diag.type === "nondeterminism") {
         results.push(
@@ -3037,7 +3092,7 @@ const sysmlEdgeGraphics = (opts: {
   label?: string | undefined;
   stroke?: string | undefined;
   strokeDasharray?: string | undefined;
-  targetMarker?: any;
+  targetMarker?: string | number | Record<string, unknown> | undefined;
   router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
   connector?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
 }): GraphicsConfig => ({
@@ -3078,6 +3133,17 @@ const sysmlEdgeGraphics = (opts: {
   },
 });
 
+interface SysmlActionWorkspaceManager {
+  globalSysml2QueryEngine?: { toQueryDB(): QueryDB } | undefined;
+  getFileContent?: ((uri: string) => Promise<string> | string) | undefined;
+}
+
+interface SysmlActionContext {
+  uri?: string | undefined;
+  queryDB?: QueryDB | undefined;
+  workspaceManager?: SysmlActionWorkspaceManager | undefined;
+}
+
 /**
  * Complete SysML v2 & KerML declarative language definition for ModelScript.
  *
@@ -3111,7 +3177,7 @@ export const sysml2Language = language({
         theories: ["LRA", "EUF"],
         maxSimplexVars: 500,
       },
-    } as any,
+    } as unknown as { maxFacts?: number | undefined },
   },
 
   // Relational Octagon abstract domain (±x ± y <= c) for static interval and difference bound analysis
@@ -3195,7 +3261,7 @@ export const sysml2Language = language({
       inputs: {
         partName: { type: "string", description: "Part name to verify" },
       },
-      execute: async (ctx: any, params: { partName?: string | undefined }) => {
+      execute: async (ctx: SysmlActionContext, params: { partName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { checkRequirementConsistency } = await import("./smt-bridge.js");
@@ -3228,7 +3294,7 @@ export const sysml2Language = language({
       inputs: {
         stateName: { type: "string", description: "State or package name to verify" },
       },
-      execute: async (ctx: any, params: { stateName?: string | undefined }) => {
+      execute: async (ctx: SysmlActionContext, params: { stateName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { verifyAllStateMachineTransitions } = await import("./state-machine-verifier.js");
@@ -3257,7 +3323,7 @@ export const sysml2Language = language({
       inputs: {
         connectionName: { type: "string", description: "Connection or package name to verify" },
       },
-      execute: async (ctx: any, params: { connectionName?: string | undefined }) => {
+      execute: async (ctx: SysmlActionContext, params: { connectionName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { verifyAllInterfaceContracts } = await import("./contract-verifier.js");
@@ -3286,7 +3352,7 @@ export const sysml2Language = language({
       inputs: {
         scope: { type: "string", description: "Target package or part scope" },
       },
-      execute: async (ctx: any, params: { scope?: string | undefined }) => {
+      execute: async (ctx: SysmlActionContext, params: { scope?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { exportToSmtLib } = await import("./exporters/smtlib-exporter.js");
@@ -3314,7 +3380,7 @@ export const sysml2Language = language({
       inputs: {
         stateMachineName: { type: "string", description: "State machine name" },
       },
-      execute: async (ctx: any, params: { stateMachineName?: string | undefined }) => {
+      execute: async (ctx: SysmlActionContext, params: { stateMachineName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { exportToNuXmv } = await import("./exporters/nuxmv-exporter.js");
@@ -3344,8 +3410,12 @@ export const sysml2Language = language({
         hazardName: { type: "string", description: "Target hazard name or condition" },
         maxOrder: { type: "number", description: "Maximum cut set order to explore", default: 4 },
       },
-      execute: async (ctx: any, params: { hazardName?: string | undefined; maxOrder?: number | undefined }) => {
+      execute: async (
+        ctx: SysmlActionContext,
+        params: { hazardName?: string | undefined; maxOrder?: number | undefined },
+      ) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
+        if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { analyzeSafetyAndFaultTree } = await import("./safety-analyzer.js");
         return analyzeSafetyAndFaultTree(queryDB, {
           maxOrder: params?.maxOrder,
@@ -3385,7 +3455,7 @@ export const sysml2Language = language({
         },
       },
       execute: async (
-        ctx: any,
+        ctx: SysmlActionContext,
         params: {
           modelName?: string | undefined;
           timeSpan?: string | undefined;
@@ -3396,6 +3466,7 @@ export const sysml2Language = language({
         },
       ) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
+        if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { verifyHybridSysml2Reachability } = await import("./hybrid-flowpipe-bridge.js");
         return verifyHybridSysml2Reachability(queryDB, params);
       },
@@ -3426,7 +3497,7 @@ export const sysml2Language = language({
         stopTime: { type: "number", description: "Simulation stop time", default: 10 },
       },
       execute: async (
-        ctx: any,
+        ctx: SysmlActionContext,
         params: {
           name?: string | undefined;
           startTime?: number | undefined;
@@ -3442,7 +3513,9 @@ export const sysml2Language = language({
         if (ctx.uri && ctx.workspaceManager?.getFileContent) {
           sourceText = await ctx.workspaceManager.getFileContent(ctx.uri);
         } else if (params?.name && queryDB) {
-          const entry = queryDB.allEntries().find((e: any) => e.name === params.name);
+          const entry = queryDB
+            .allEntries()
+            .find((e): e is SymbolEntry & { source?: string | undefined } => e.name === params.name);
           if (entry?.source) sourceText = entry.source;
         }
 
@@ -3488,18 +3561,18 @@ export const sysml2Language = language({
       inputs: {
         actionName: { type: "string", description: "Target action or activity name" },
       },
-      execute: async (ctx: any, params: { actionName?: string | undefined }) => {
+      execute: async (ctx: SysmlActionContext, params: { actionName?: string | undefined }) => {
         const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
         if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
         const { checkActivitySoundnessForSymbol } = await import("./activity-soundness.js");
         const actions = queryDB
           .allEntries()
           .filter(
-            (e: any) =>
+            (e: SymbolEntry) =>
               (e.ruleName === "ActionDefinition" || e.ruleName === "ActionUsage") &&
               (!params?.actionName || e.name === params.actionName),
           );
-        return actions.map((act: any) => checkActivitySoundnessForSymbol(queryDB, act));
+        return actions.map((act: SymbolEntry) => checkActivitySoundnessForSymbol(queryDB, act));
       },
       ui: {
         editorTitle: {
@@ -3969,10 +4042,10 @@ export const sysml2Language = language({
           optional($["_Identification"]!),
           field("body", $["_PackageBody"]!),
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Package",
           name: self.declaredName,
-          exports: ["body"] as any[],
+          exports: ["body"],
         }),
         queries: packageTraceabilityQueries,
         model: packageTraceabilityModel,
@@ -3990,10 +4063,10 @@ export const sysml2Language = language({
           optional($["_Identification"]!),
           field("body", $["_PackageBody"]!),
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Package",
           name: self.declaredName,
-          exports: ["body"] as any[],
+          exports: ["body"],
           attributes: { isStandard: self.isStandard },
         }),
         queries: packageTraceabilityQueries,
@@ -4079,7 +4152,7 @@ export const sysml2Language = language({
           $["_ImportPrefix"]!,
           choice($["_ImportedNamespace"]!, field("ownedRelatedElement", $["FilterPackage"]!)),
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Import",
           name: self.importedNamespace,
           attributes: {
@@ -4462,7 +4535,7 @@ export const sysml2Language = language({
           optional($["_SubclassificationPart"]!),
           field("body", $["_EnumerationBody"]!),
         ),
-        symbol: (self: any) => ({ kind: "Enumeration", name: self.declaredName, exports: ["body"] as any[] }),
+        symbol: (self: SysmlRuleSelf) => ({ kind: "Enumeration", name: self.declaredName, exports: ["body"] }),
         queries: definitionStructuralQueries,
         model: {
           name: "EnumerationNode" as const,
@@ -4731,7 +4804,7 @@ export const sysml2Language = language({
           optional(seq("if", field("guard", $["OwnedExpression"]!))),
           $["_DefinitionBody"]!,
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           ...usageAttrs("succession")(self),
           attributes: {
             ...usageAttrs("succession")(self).attributes,
@@ -5385,7 +5458,7 @@ export const sysml2Language = language({
         model: requirementDefinitionModel,
         lints: {
           ...requirementDefinitionLintsEnhanced,
-          evolutionCheck: (_db: any, self: any, previous?: any) => {
+          evolutionCheck: (_db: QueryDB, self: SymbolEntry, previous?: SymbolEntry) => {
             if (previous) {
               const prevIsAbstract = (previous.metadata as Record<string, unknown>)?.["isAbstract"];
               const currIsAbstract = (self.metadata as Record<string, unknown>)?.["isAbstract"];
@@ -5950,10 +6023,10 @@ export const sysml2Language = language({
           optional($["_SubclassificationPart"]!),
           choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($["_StateBodyItem"]!), "}")),
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Definition" as const,
           name: self.declaredName,
-          exports: [] as any[],
+          exports: [],
           attributes: {
             isAbstract: self.isAbstract,
             isVariation: self.isVariation,
@@ -6003,7 +6076,7 @@ export const sysml2Language = language({
           optional($["_ValuePart"]!),
           choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($["_StateBodyItem"]!), "}")),
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Usage" as const,
           name: self.declaredName,
           attributes: {
@@ -6029,7 +6102,7 @@ export const sysml2Language = language({
           optional($["_ValuePart"]!),
           choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($["_StateBodyItem"]!), "}")),
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Usage" as const,
           name: self.declaredName,
           attributes: {
@@ -6064,7 +6137,7 @@ export const sysml2Language = language({
           $["ConnectorEndMember"]!,
           $["_ActionBody"]!,
         ),
-        symbol: (self: any) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           ...usageAttrs("transition")(self),
           attributes: {
             ...usageAttrs("transition")(self).attributes,

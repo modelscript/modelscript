@@ -14,6 +14,7 @@ interface SimulationData {
   t: number[];
   y: number[][];
   states: string[];
+  variableMetadata?: Record<string, { unit?: string | undefined; description?: string | undefined }> | undefined;
   sweepResults?: { value: number; y: number[][] }[];
   comtrade?: { cfg: string; dat: string };
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] };
@@ -2242,7 +2243,7 @@ function buildTreeView(variables: string[]): void {
 
     const label = document.createElement("span");
     label.className = "tree-label";
-    const varMeta = node.isVariable ? (currentData as any)?.variableMetadata?.[node.fullName] : undefined;
+    const varMeta = node.isVariable ? currentData?.variableMetadata?.[node.fullName] : undefined;
     label.textContent = varMeta?.unit ? `${node.name} [${varMeta.unit}]` : node.name;
     label.title = varMeta?.description
       ? `${node.fullName}${varMeta.unit ? ` [${varMeta.unit}]` : ""} — ${varMeta.description}`

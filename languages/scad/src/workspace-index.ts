@@ -61,7 +61,7 @@ export class ScadWorkspaceIndex implements IWorkspaceIndex {
     return this.fileInfos.get(uri)?.dependencies ?? [];
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -71,12 +71,14 @@ export class ScadWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => unknown): void {
     this._version++;
     if (loader) {
       try {
         const res = loader();
-        const text = typeof res === "string" ? res : (res?.sourceText ?? res?.text);
+        const obj =
+          typeof res === "object" && res !== null ? (res as { sourceText?: unknown; text?: unknown }) : undefined;
+        const text = typeof res === "string" ? res : (obj?.sourceText ?? obj?.text);
         if (typeof text === "string") {
           this.indexFile(uri, text);
         }

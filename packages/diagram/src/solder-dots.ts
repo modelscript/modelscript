@@ -361,7 +361,7 @@ function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderD
       x: Math.round(snapX * 10) / 10,
       y: Math.round(snapY * 10) / 10,
       color,
-      edgeIds: incidentEdgeIds as any,
+      edgeIds: incidentEdgeIds,
     });
   }
 
@@ -371,7 +371,7 @@ function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderD
 /**
  * Converts a SolderDot into an AntV X6 node suitable for serialization.
  */
-export function solderDotToDiagramNode(dot: SolderDot, size = 3): any {
+export function solderDotToDiagramNode(dot: SolderDot, size = 3) {
   const r = size / 2;
   return {
     id: dot.id,

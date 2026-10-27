@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DpllTSolver, Interval, type ExprNode, type NonlinearConstraint, type QueryDB } from "@modelscript/runtime";
-import { findFirstDescendant } from "./flattener/cst-lowerer.js";
+import { findFirstDescendant, type SysmlCstNode } from "./flattener/cst-lowerer.js";
 import { getSysmlParser } from "./sysml2-dae-lowerer.js";
 
 /**
@@ -113,19 +113,18 @@ function isIdentifier(s: string): boolean {
 /**
  * Converts a CST expression node into an ExprNode for formal solvers (DPLL(T) / HC4-Revise).
  */
-function cstToExprNode(node: any): ExprNode | undefined {
+function cstToExprNode(node: SysmlCstNode | null | undefined): ExprNode | undefined {
   if (!node) return undefined;
   while (
-    node &&
-    (node.type === "OwnedExpression" ||
-      node.type === "SequenceExpression" ||
-      node.type === "ResultExpressionMember" ||
-      node.type === "_Expression" ||
-      node.type === "_BaseExpression")
+    node.type === "OwnedExpression" ||
+    node.type === "SequenceExpression" ||
+    node.type === "ResultExpressionMember" ||
+    node.type === "_Expression" ||
+    node.type === "_BaseExpression"
   ) {
-    const inner =
+    const inner: SysmlCstNode | null | undefined =
       node.childForFieldName?.("ownedRelatedElement") ||
-      (node.childCount > 0 ? (node.child ? node.child(0) : node.children[0]) : null);
+      ((node.childCount ?? 0) > 0 ? (node.child ? node.child(0) : node.children?.[0]) : null);
     if (inner && inner !== node) {
       node = inner;
     } else {
@@ -133,12 +132,14 @@ function cstToExprNode(node: any): ExprNode | undefined {
     }
   }
 
+  const count = node.childCount ?? 0;
+
   // Parenthesized: ( expr )
-  if (node.childCount >= 3) {
-    const first = node.child ? node.child(0) : node.children[0];
-    const last = node.child ? node.child(node.childCount - 1) : node.children[node.childCount - 1];
+  if (count >= 3) {
+    const first = node.child ? node.child(0) : node.children?.[0];
+    const last = node.child ? node.child(count - 1) : node.children?.[count - 1];
     if (first?.text === "(" && last?.text === ")") {
-      const inner = node.child ? node.child(1) : node.children[1];
+      const inner = node.child ? node.child(1) : node.children?.[1];
       return cstToExprNode(inner);
     }
   }
@@ -165,9 +166,9 @@ function cstToExprNode(node: any): ExprNode | undefined {
   }
 
   // Function calls: sin(x), cos(x), sqrt(x), sqr(x)
-  if (node.childCount >= 3 && (node.child ? node.child(1)?.text === "(" : node.children[1]?.text === "(")) {
-    const fnName = (node.child ? node.child(0)?.text : node.children[0]?.text)?.toLowerCase();
-    const arg = cstToExprNode(node.child ? node.child(2) : node.children[2]);
+  if (count >= 3 && (node.child ? node.child(1)?.text === "(" : node.children?.[1]?.text === "(")) {
+    const fnName = (node.child ? node.child(0)?.text : node.children?.[0]?.text)?.toLowerCase();
+    const arg = cstToExprNode(node.child ? node.child(2) : node.children?.[2]);
     if (arg) {
       if (fnName === "sin") return { kind: "sin", child: arg };
       if (fnName === "cos") return { kind: "cos", child: arg };
@@ -178,9 +179,9 @@ function cstToExprNode(node: any): ExprNode | undefined {
 
   // Field-based AdditiveExpression or MultiplicativeExpression
   if (node.type === "AdditiveExpression" || node.type === "MultiplicativeExpression") {
-    const operands: any[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+    const operands: SysmlCstNode[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
     const operators: string[] = node.childrenForFieldName
-      ? node.childrenForFieldName("operator").map((c: any) => c.text?.trim() || "+")
+      ? node.childrenForFieldName("operator").map((c: SysmlCstNode) => c.text?.trim() || "+")
       : [];
     if (operands.length >= 2 && operators.length >= 1) {
       let current = cstToExprNode(operands[0]);
@@ -198,10 +199,10 @@ function cstToExprNode(node: any): ExprNode | undefined {
   }
 
   // Binary expression
-  if (node.childCount >= 3) {
-    const op = node.child ? node.child(1)?.text : node.children[1]?.text;
-    const left = cstToExprNode(node.child ? node.child(0) : node.children[0]);
-    const right = cstToExprNode(node.child ? node.child(2) : node.children[2]);
+  if (count >= 3) {
+    const op = node.child ? node.child(1)?.text : node.children?.[1]?.text;
+    const left = cstToExprNode(node.child ? node.child(0) : node.children?.[0]);
+    const right = cstToExprNode(node.child ? node.child(2) : node.children?.[2]);
     if (left && right && op) {
       if (op === "+") return { kind: "add", left, right };
       if (op === "-") return { kind: "sub", left, right };
@@ -219,9 +220,9 @@ function cstToExprNode(node: any): ExprNode | undefined {
   }
 
   // Unary expression
-  if (node.childCount === 2) {
-    const op = node.child ? node.child(0)?.text : node.children[0]?.text;
-    const operand = cstToExprNode(node.child ? node.child(1) : node.children[1]);
+  if (count === 2) {
+    const op = node.child ? node.child(0)?.text : node.children?.[0]?.text;
+    const operand = cstToExprNode(node.child ? node.child(1) : node.children?.[1]);
     if (op === "-" && operand) {
       if (operand.kind === "const") return { kind: "const", value: -operand.value };
       return { kind: "neg", child: operand };
@@ -253,13 +254,13 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
           findFirstDescendant(tree.rootNode, "ResultExpressionMember");
         if (retNode) {
           const exprChild =
-            retNode.childCount > 1
+            (retNode.childCount ?? 0) > 1
               ? retNode.child
                 ? retNode.child(1)
-                : retNode.children[1]
+                : retNode.children?.[1]
               : retNode.child
                 ? retNode.child(0)
-                : retNode.children[0];
+                : retNode.children?.[0];
           const node = cstToExprNode(exprChild);
           if (node) return node;
         }

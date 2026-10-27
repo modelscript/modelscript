@@ -61,7 +61,7 @@ export interface SwmmDiagramCell {
   label?: string | undefined;
   source?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
   target?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
-  attrs?: Record<string, unknown> | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
   data?: Record<string, unknown> | undefined;
 }
 
@@ -369,8 +369,8 @@ export function renderSwmmSvg(model: SwmmModelLike, options?: SwmmRenderOptions)
       const x2 = tgt.x + (tgt.width ?? 30) / 2;
       const y2 = tgt.y! + (tgt.height ?? 30) / 2;
 
-      const color = (c.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
-      const strokeWidth = (c.attrs?.["line"] as any)?.strokeWidth ?? 3;
+      const color = (c.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const strokeWidth = (c.attrs?.["line"]?.["strokeWidth"] as number | undefined) ?? 3;
 
       svg += `    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" marker-end="url(#conduit-arrow)">\n`;
       svg += `      <title>Conduit: ${c.label ?? ""}</title>\n`;

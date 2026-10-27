@@ -1,5 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export interface ScadCstTree {
+  sourceCode?: string | undefined;
+  mem32?: Uint32Array | undefined;
+  _encoding?: number | undefined;
+  facade?:
+    | {
+        syntaxNames?: string[] | undefined;
+        exports?:
+          | {
+              getFatPaddingPtr?: ((rPad: number) => number) | undefined;
+            }
+          | undefined;
+        getInputEncoding?: (() => number) | undefined;
+      }
+    | undefined;
+}
+
+export interface ScadCstNode {
+  readonly type: string;
+  readonly text: string;
+  readonly childCount: number;
+  child(index: number): ScadCstNode | null;
+  readonly children?: readonly ScadCstNode[] | undefined;
+  readonly startIndex?: number | undefined;
+  readonly endIndex?: number | undefined;
+  readonly startOffset?: number | undefined;
+  readonly endOffset?: number | undefined;
+  readonly ptr?: number | undefined;
+  readonly _startOffset?: number | undefined;
+  readonly _cachedPad?: number | undefined;
+  readonly tree?: ScadCstTree | undefined;
+}
+
 export interface PatchResult {
   updatedSource: string;
   replacedRange: { startOffset: number; endOffset: number };
@@ -11,7 +44,7 @@ export class ScadPatcher {
   /**
    * Patches a specific CST node by replacing its exact byte slice in the source string.
    */
-  public static patchNode(source: string, node: any, newValue: string | number): PatchResult {
+  public static patchNode(source: string, node: ScadCstNode, newValue: string | number): PatchResult {
     const startOffset = node.startIndex ?? node.startOffset ?? 0;
     const endOffset = node.endIndex ?? node.endOffset ?? 0;
     const oldValue = source.slice(startOffset, endOffset);
@@ -33,7 +66,7 @@ export class ScadPatcher {
    */
   public static patchVariable(
     source: string,
-    rootNode: any,
+    rootNode: ScadCstNode,
     varName: string,
     newValue: number | string,
   ): PatchResult | null {
@@ -41,7 +74,7 @@ export class ScadPatcher {
     if (!varDeclNode) return null;
 
     // Find the Expression node on the right hand side of '='
-    let valueNode: any = null;
+    let valueNode: ScadCstNode | null = null;
     let foundEquals = false;
 
     for (let i = 0; i < varDeclNode.childCount; i++) {
@@ -67,7 +100,7 @@ export class ScadPatcher {
    */
   public static patchTransformArgument(
     source: string,
-    rootNode: any,
+    rootNode: ScadCstNode,
     targetMethod: string,
     argIndex: number,
     newVec: [number, number, number],
@@ -102,7 +135,7 @@ export class ScadPatcher {
    */
   public static patchVectorComponent(
     source: string,
-    rootNode: any,
+    rootNode: ScadCstNode,
     targetMethod: string,
     argIndex: number,
     compIndex: number,
@@ -124,7 +157,7 @@ export class ScadPatcher {
         const vecNode = this.findDescendantByType(arg, "VectorLiteral");
         if (!vecNode) return null;
 
-        const exprs: any[] = [];
+        const exprs: ScadCstNode[] = [];
         for (let j = 0; j < vecNode.childCount; j++) {
           const c = vecNode.child(j);
           if (c && (c.type === "Expression" || c.type.endsWith("Expression") || c.type === "NUMBER")) {
@@ -132,7 +165,7 @@ export class ScadPatcher {
           }
         }
         if (compIndex >= 0 && compIndex < exprs.length) {
-          return this.patchNode(source, exprs[compIndex], String(newValue));
+          return this.patchNode(source, exprs[compIndex]!, String(newValue));
         }
       }
       currentArgIdx++;
@@ -176,7 +209,7 @@ export class ScadPatcher {
    */
   public static patchOrInsertTransform(
     source: string,
-    rootNode: any,
+    rootNode: ScadCstNode,
     targetMethod: "translate" | "rotate" | "scale",
     newVec: [number, number, number],
     sourceMetadata?: {
@@ -238,7 +271,7 @@ export class ScadPatcher {
     return this.patchTransformArgument(source, rootNode, targetMethod, sourceMetadata?.argIndex ?? 0, newVec);
   }
 
-  private static findVariableDeclaration(containerNode: any, varName: string): any {
+  private static findVariableDeclaration(containerNode: ScadCstNode, varName: string): ScadCstNode | null {
     for (let i = 0; i < containerNode.childCount; i++) {
       const c = containerNode.child(i);
       if (!c) continue;
@@ -259,10 +292,10 @@ export class ScadPatcher {
   }
 
   private static findMethodOrOpCall(
-    node: any,
+    node: ScadCstNode | null | undefined,
     name: string,
     targetRange?: { startOffset: number; endOffset: number },
-  ): any {
+  ): ScadCstNode | null {
     if (!node) return null;
 
     if (targetRange) {
@@ -282,10 +315,10 @@ export class ScadPatcher {
   }
 
   private static findMethodOrOpCallInRange(
-    node: any,
+    node: ScadCstNode | null | undefined,
     name: string,
     targetRange: { startOffset: number; endOffset: number },
-  ): any {
+  ): ScadCstNode | null {
     if (!node) return null;
 
     const startOffset = node.startIndex ?? node.startOffset ?? 0;
@@ -313,7 +346,7 @@ export class ScadPatcher {
     return null;
   }
 
-  private static findChildByType(node: any, type: string): any {
+  private static findChildByType(node: ScadCstNode | null | undefined, type: string): ScadCstNode | null {
     if (!node) return null;
     for (let i = 0; i < node.childCount; i++) {
       const c = node.child(i);
@@ -322,7 +355,7 @@ export class ScadPatcher {
     return null;
   }
 
-  private static findDescendantByType(node: any, type: string): any {
+  private static findDescendantByType(node: ScadCstNode | null | undefined, type: string): ScadCstNode | null {
     if (!node) return null;
     if (node.type === type) return node;
     for (let i = 0; i < node.childCount; i++) {

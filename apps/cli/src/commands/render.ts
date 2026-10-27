@@ -75,7 +75,8 @@ export const Render: CommandModule<{}, RenderArgs> = {
     const emitSvg = (rawSvg: string) => {
       let formatted = rawSvg;
       try {
-        formatted = (xmlFormat as any)(rawSvg);
+        const formatXml = xmlFormat as unknown as (xml: string) => string;
+        formatted = formatXml(rawSvg);
       } catch {
         // fallback to unformatted if xmlFormat fails
       }
@@ -127,10 +128,14 @@ export const Render: CommandModule<{}, RenderArgs> = {
       const { buildOWL2DiagramData, lowerCstToAxioms } = await import("@modelscript/owl2");
       const { TableauReasoner } = await import("@modelscript/runtime");
       const owl2WasmPath = require.resolve("@modelscript/owl2/parser.wasm");
-      const { parser } = await createDslParser(owl2WasmPath, { SYNTAX_NAMES, FIELD_NAMES } as any);
+      const { parser } = await createDslParser(owl2WasmPath, { SYNTAX_NAMES, FIELD_NAMES } as unknown as Parameters<
+        typeof createDslParser
+      >[1]);
       const text = fs.readFileSync(primaryFile, "utf-8");
       const tree = parser.parse(text);
-      const axioms = tree ? lowerCstToAxioms(tree.rootNode as any, text) : [];
+      const axioms = tree
+        ? lowerCstToAxioms(tree.rootNode as unknown as Parameters<typeof lowerCstToAxioms>[0], text)
+        : [];
       const inferredSubClassOf: { subClassIri: string; superClassIri: string }[] = [];
       try {
         const reasoner = new TableauReasoner();
@@ -147,7 +152,13 @@ export const Render: CommandModule<{}, RenderArgs> = {
       } catch {
         // ignore reasoner errors during CLI rendering
       }
-      const data = (buildOWL2DiagramData as any)(axioms, undefined, args.view || "All", { inferredSubClassOf });
+      const buildOwl2Diagram = buildOWL2DiagramData as unknown as (
+        axioms: unknown,
+        rootIri: string | undefined,
+        view: string,
+        options: { inferredSubClassOf: { subClassIri: string; superClassIri: string }[] },
+      ) => DiagramData;
+      const data = buildOwl2Diagram(axioms, undefined, args.view || "All", { inferredSubClassOf });
       emitSvg(renderDiagramDataToSvg(data, svgOpts));
       return;
     }
@@ -158,7 +169,9 @@ export const Render: CommandModule<{}, RenderArgs> = {
       const { FIELD_NAMES, SYNTAX_NAMES } = await import("@modelscript/sysml2/parser");
       const { buildSysML2DiagramData, createSysML2WorkspaceIndex } = await import("@modelscript/sysml2/factory");
       const sysmlWasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
-      const { parser } = await createDslParser(sysmlWasmPath, { SYNTAX_NAMES, FIELD_NAMES } as any);
+      const { parser } = await createDslParser(sysmlWasmPath, { SYNTAX_NAMES, FIELD_NAMES } as unknown as Parameters<
+        typeof createDslParser
+      >[1]);
       const wsIndex = createSysML2WorkspaceIndex();
       let targetUri = "";
       for (const fp of filePaths) {
@@ -168,18 +181,23 @@ export const Render: CommandModule<{}, RenderArgs> = {
         const text = fs.readFileSync(abs, "utf-8");
         wsIndex.register(uri, () => {
           const tree = parser.parse(text);
-          return tree ? (tree.rootNode as any) : null;
+          return tree ? tree.rootNode : null;
         });
       }
       const unified = wsIndex.toUnified();
-      const data = buildSysML2DiagramData(unified, targetUri, undefined, args.view || "All");
-      emitSvg(renderDiagramDataToSvg(data as any, svgOpts));
+      const data = buildSysML2DiagramData(
+        unified as unknown as Parameters<typeof buildSysML2DiagramData>[0],
+        targetUri,
+        undefined,
+        args.view || "All",
+      );
+      emitSvg(renderDiagramDataToSvg(data as unknown as DiagramData, svgOpts));
       return;
     }
 
     // 5. Modelica (.mo) — Default
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of filePaths) await context.addLibrary(p);

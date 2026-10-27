@@ -8,6 +8,19 @@ interface WhoAmIArgs {
   json?: boolean | undefined;
 }
 
+interface WhoAmIUser {
+  username: string;
+  display_name?: string | undefined;
+  email: string;
+  role?: string | undefined;
+  totp_enabled?: boolean | undefined;
+}
+
+interface WhoAmIResponse {
+  error?: string | undefined;
+  user?: WhoAmIUser | undefined;
+}
+
 export const WhoAmI: CommandModule<{}, WhoAmIArgs> = {
   command: "whoami",
   describe: "Display information about the currently authenticated user",
@@ -22,7 +35,7 @@ export const WhoAmI: CommandModule<{}, WhoAmIArgs> = {
         description: "Output in JSON format",
         type: "boolean",
         default: false,
-      }) as any;
+      });
   },
   handler: async (args) => {
     const token = getToken();
@@ -54,13 +67,17 @@ export const WhoAmI: CommandModule<{}, WhoAmIArgs> = {
           }
           process.exit(1);
         }
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as WhoAmIResponse;
         console.error(`Failed to fetch user profile: ${data.error || res.statusText}`);
         process.exit(1);
       }
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as WhoAmIResponse;
       const user = data.user;
+      if (!user) {
+        console.error("Failed to fetch user profile: missing user payload");
+        process.exit(1);
+      }
 
       if (args.json) {
         console.log(

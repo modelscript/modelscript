@@ -16,7 +16,7 @@ export async function ensureModelicaParser(): Promise<void> {
   const require = createRequire(import.meta.url);
   const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
   const { parser } = await createWasmParser(modelicaWasmPath);
-  Context.registerParser(".mo", parser as any);
+  Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
   wasmParserInitialized = true;
 }
 

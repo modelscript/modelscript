@@ -83,11 +83,12 @@ export function verifyReqIfEntailment(doc: ReqIfDocument): ReqIfEntailmentReport
 
   for (const q of queries) {
     const parentObj = doc.specObjects.get(q.parentId);
-    if (!parentObj || !parentObj.contract) continue;
+    const parentContract = parentObj?.contract;
+    if (!parentObj || !parentContract) continue;
 
     const validChildren = q.childIds.filter((cid) => {
       const c = doc.specObjects.get(cid);
-      return c && c.contract && c.contract.variable === parentObj.contract!.variable;
+      return c && c.contract && c.contract.variable === parentContract.variable;
     });
 
     if (validChildren.length === 0) continue;

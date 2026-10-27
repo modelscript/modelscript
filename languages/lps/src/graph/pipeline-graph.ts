@@ -183,7 +183,9 @@ export class PipelineGraph {
     ];
 
     while (queue.length > 0) {
-      const { current, path, visited } = queue.shift()!;
+      const item = queue.shift();
+      if (!item) break;
+      const { current, path, visited } = item;
       if (current === toNode && path.length > 0) {
         results.push(path);
         continue;
@@ -216,7 +218,8 @@ export class PipelineGraph {
       const q = [s.name];
       reachable.add(s.name);
       while (q.length > 0) {
-        const curr = q.shift()!;
+        const curr = q.shift();
+        if (curr === undefined) break;
         const outLinks = this.outbound.get(curr) ?? [];
         for (const l of outLinks) {
           if (!reachable.has(l.toNode)) {

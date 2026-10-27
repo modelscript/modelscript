@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import type { DiagramEditorProvider } from "../diagram-editor-provider.js";
 import { ExperimentsTreeProvider } from "../experiments-tree.js";
-import { LibraryTreeProvider } from "../library-tree-provider.js";
+import { type LibraryTreeItem, LibraryTreeProvider } from "../library-tree-provider.js";
 import { MqttTreeProvider } from "../mqtt-tree-provider.js";
 import { OWL2ClassHierarchyProvider } from "../owl2-class-hierarchy-provider.js";
 import { OWL2PropertyHierarchyProvider } from "../owl2-property-hierarchy-provider.js";
@@ -14,7 +14,7 @@ import { registerScmTreeView } from "../scm-tree-view.js";
 export class TreeViewController implements vscode.Disposable {
   private _disposables: vscode.Disposable[] = [];
   public readonly libraryTreeProvider: LibraryTreeProvider;
-  public libraryTreeView?: vscode.TreeView<any> | undefined;
+  public libraryTreeView?: vscode.TreeView<LibraryTreeItem> | undefined;
   public mqttTreeProvider?: MqttTreeProvider | undefined;
   public experimentsTreeProvider?: ExperimentsTreeProvider | undefined;
 

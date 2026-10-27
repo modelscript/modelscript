@@ -197,9 +197,9 @@ export class CandidateTradeStudyPanel extends BaseWebviewPanel {
                       safetyMarginPct: parseFloat(row["safetyMarginPct"] || "15.0"),
                       rank: parseInt(row["rank"] || "1", 10),
                       isParetoOptimal: row["isParetoOptimal"] === "true" || row["isParetoOptimal"] === "1",
-                      tier1Status: (row["tier1Status"] as any) || "passed",
-                      tier2Status: (row["tier2Status"] as any) || "passed",
-                      tier3Status: (row["tier3Status"] as any) || "unverified",
+                      tier1Status: (row["tier1Status"] as TradeStudyCandidate["tier1Status"]) || "passed",
+                      tier2Status: (row["tier2Status"] as TradeStudyCandidate["tier2Status"]) || "passed",
+                      tier3Status: (row["tier3Status"] as TradeStudyCandidate["tier3Status"]) || "unverified",
                       parameters: {},
                     });
                   }
@@ -208,8 +208,10 @@ export class CandidateTradeStudyPanel extends BaseWebviewPanel {
                     vscode.window.showInformationMessage(`Imported ${imported.length} candidates from CSV.`);
                   }
                 }
-              } catch (err: any) {
-                vscode.window.showErrorMessage(`Failed to import candidates: ${err?.message || err}`);
+              } catch (err: unknown) {
+                vscode.window.showErrorMessage(
+                  `Failed to import candidates: ${err instanceof Error ? err.message : String(err)}`,
+                );
               }
             }
             break;
@@ -440,11 +442,11 @@ export class CandidateTradeStudyPanel extends BaseWebviewPanel {
         `Dispatched Candidate '${cand.name}' to Cloud HPC (Job ID: ${res.jobId}). Opening Cloud Job Monitor...`,
       );
       CloudJobPanel.createOrShow(this._extensionUri, this._client);
-    } catch (err: any) {
+    } catch (err: unknown) {
       cand.tier3Status = "unverified";
       this.refresh();
       const choice = await vscode.window.showWarningMessage(
-        `Could not dispatch to Cloud HPC: ${err?.message || "Endpoint unreachable"}. Open Cloud Job Dispatch panel to configure remote endpoints or run locally?`,
+        `Could not dispatch to Cloud HPC: ${err instanceof Error ? err.message : "Endpoint unreachable"}. Open Cloud Job Dispatch panel to configure remote endpoints or run locally?`,
         "Open Cloud Dispatch",
         "Run Locally Instead",
       );

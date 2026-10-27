@@ -140,10 +140,10 @@ export function solvePointKinetics(deck: Relap5Deck, options?: KineticsSolverOpt
     const deriv = (curN: number, curC: number[], curTf: number, curTm: number, curRho: number) => {
       let sumDecay = 0;
       for (let i = 0; i < 6; i++) {
-        sumDecay += groups[i]!.decayConstant * curC[i]!;
+        sumDecay += (groups[i]?.decayConstant ?? 0) * (curC[i] ?? 0);
       }
       const dn = ((curRho - beta) / Lambda) * curN + sumDecay;
-      const dC = groups.map((g, i) => (g.fraction / Lambda) * curN - g.decayConstant * curC[i]!);
+      const dC = groups.map((g, i) => (g.fraction / Lambda) * curN - g.decayConstant * (curC[i] ?? 0));
       const qTrans = UA * (curTf - curTm);
       const dTf = (P0 * curN - qTrans) / Cfuel;
       const dTm = (qTrans - P0 * curN * 0.95) / Cmod;
@@ -155,21 +155,21 @@ export function solvePointKinetics(deck: Relap5Deck, options?: KineticsSolverOpt
 
     // k2
     const n2 = Math.max(0, n + 0.5 * dt * k1.dn);
-    const C2 = C.map((c, i) => Math.max(0, c + 0.5 * dt * k1.dC[i]!));
+    const C2 = C.map((c, i) => Math.max(0, c + 0.5 * dt * (k1.dC[i] ?? 0)));
     const Tf2 = Tfuel + 0.5 * dt * k1.dTf;
     const Tm2 = Tmod + 0.5 * dt * k1.dTm;
     const k2 = deriv(n2, C2, Tf2, Tm2, rho);
 
     // k3
     const n3 = Math.max(0, n + 0.5 * dt * k2.dn);
-    const C3 = C.map((c, i) => Math.max(0, c + 0.5 * dt * k2.dC[i]!));
+    const C3 = C.map((c, i) => Math.max(0, c + 0.5 * dt * (k2.dC[i] ?? 0)));
     const Tf3 = Tfuel + 0.5 * dt * k2.dTf;
     const Tm3 = Tmod + 0.5 * dt * k2.dTm;
     const k3 = deriv(n3, C3, Tf3, Tm3, rho);
 
     // k4
     const n4 = Math.max(0, n + dt * k3.dn);
-    const C4 = C.map((c, i) => Math.max(0, c + dt * k3.dC[i]!));
+    const C4 = C.map((c, i) => Math.max(0, c + dt * (k3.dC[i] ?? 0)));
     const Tf4 = Tfuel + dt * k3.dTf;
     const Tm4 = Tmod + dt * k3.dTm;
     const k4 = deriv(n4, C4, Tf4, Tm4, rho);
@@ -177,7 +177,10 @@ export function solvePointKinetics(deck: Relap5Deck, options?: KineticsSolverOpt
     // Update state
     n = Math.max(0, n + (dt / 6) * (k1.dn + 2 * k2.dn + 2 * k3.dn + k4.dn));
     for (let i = 0; i < 6; i++) {
-      C[i] = Math.max(0, C[i]! + (dt / 6) * (k1.dC[i]! + 2 * k2.dC[i]! + 2 * k3.dC[i]! + k4.dC[i]!));
+      C[i] = Math.max(
+        0,
+        (C[i] ?? 0) + (dt / 6) * ((k1.dC[i] ?? 0) + 2 * (k2.dC[i] ?? 0) + 2 * (k3.dC[i] ?? 0) + (k4.dC[i] ?? 0)),
+      );
     }
     Tfuel = Tfuel + (dt / 6) * (k1.dTf + 2 * k2.dTf + 2 * k3.dTf + k4.dTf);
     Tmod = Tmod + (dt / 6) * (k1.dTm + 2 * k2.dTm + 2 * k3.dTm + k4.dTm);

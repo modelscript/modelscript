@@ -5,7 +5,15 @@ import { createRoot } from "react-dom/client";
 import type { ReplayTraceData } from "../trace-replay-panel.js";
 import { TimeSeriesViewer, type DataSeries } from "./shared/index.js";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
 
 export function TraceReplayApp() {
   const [trace, setTrace] = useState<ReplayTraceData | null>(null);

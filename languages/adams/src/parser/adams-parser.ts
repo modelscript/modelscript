@@ -301,8 +301,7 @@ function parseParams(paramStr: string): Map<string, string[]> {
         firstCh !== undefined &&
         ((firstCh >= "0" && firstCh <= "9") || firstCh === "." || firstCh === "+" || firstCh === "-");
       if (activeKey && MULTI_VALUE_KEYS.has(activeKey) && isNum) {
-        const list = map.get(activeKey)!;
-        list.push(part);
+        map.get(activeKey)?.push(part);
       } else {
         activeKey = "";
         const flagKey = part.toUpperCase();

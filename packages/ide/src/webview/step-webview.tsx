@@ -4,7 +4,25 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import StepViewer, { type StepMeshPayload } from "./step-viewer/step-viewer";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
+
+interface RawStepMesh {
+  id: number;
+  name: string;
+  type: string;
+  color?: [number, number, number] | undefined;
+  vertices?: Float32Array | Record<string, number> | number[] | undefined;
+  normals?: Float32Array | Record<string, number> | number[] | undefined;
+  indices?: Uint32Array | Record<string, number> | number[] | undefined;
+}
 
 function App() {
   const [meshes, setMeshes] = useState<StepMeshPayload[]>([]);
@@ -28,7 +46,7 @@ function App() {
       if (message.type === "stepMeshes") {
         // postMessage serializes typed arrays to plain objects — convert back
 
-        const rawMeshes: StepMeshPayload[] = (message.data || []).map((m: any) => ({
+        const rawMeshes: StepMeshPayload[] = ((message.data as RawStepMesh[]) || []).map((m) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),
           normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(Object.values(m.normals || {})),

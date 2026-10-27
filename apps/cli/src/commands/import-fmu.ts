@@ -21,7 +21,7 @@ import {
 } from "@modelscript/exchange/fmu";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 export interface ImportFmuArgs {
   fmu: string;
@@ -98,7 +98,7 @@ export const ImportFmu: CommandModule<{}, ImportFmuArgs> = {
   aliases: ["fmu-import"],
   describe: "Import an FMU archive and generate an acausal or causal Modelica wrapper",
 
-  builder: ((yargs: any) => {
+  builder: ((yargs: Argv) => {
     return yargs
       .positional("fmu", {
         demandOption: true,
@@ -121,7 +121,7 @@ export const ImportFmu: CommandModule<{}, ImportFmuArgs> = {
         type: "boolean",
         default: false,
       });
-  }) as any,
+  }) as CommandModule<{}, ImportFmuArgs>["builder"],
 
   handler: async (args) => {
     const code = await runImportFmu(args);

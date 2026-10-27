@@ -100,11 +100,14 @@ export type EmulatorWorkerResponse =
 
 let workerRunner: UniversalBinaryRunner | null = null;
 
-if (
-  typeof self !== "undefined" &&
-  typeof (self as any).postMessage === "function" &&
-  typeof (self as any).importScripts === "function"
-) {
+interface WorkerGlobalScopeLike {
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
+  importScripts?: (...urls: string[]) => void;
+}
+
+const workerSelf = typeof self !== "undefined" ? (self as unknown as WorkerGlobalScopeLike) : undefined;
+
+if (workerSelf && typeof workerSelf.postMessage === "function" && typeof workerSelf.importScripts === "function") {
   self.addEventListener("message", (evt: MessageEvent<EmulatorWorkerRequest>) => {
     const msg = evt.data;
     try {
@@ -117,7 +120,7 @@ if (
           const arch =
             workerRunner.loader instanceof UniversalBinaryRunner
               ? "x86_64"
-              : (workerRunner.cpu as any).abi === "aapcs64"
+              : workerRunner.cpu.abi === "aapcs64"
                 ? "aarch64"
                 : "x86_64";
 
@@ -126,9 +129,9 @@ if (
             id: msg.id,
             format: workerRunner.format,
             architecture: arch,
-            abi: workerRunner.cpu.abi as any,
+            abi: workerRunner.cpu.abi as "win64" | "systemv" | "aapcs64",
           };
-          (self as any).postMessage(res);
+          workerSelf.postMessage(res);
           break;
         }
 
@@ -172,7 +175,7 @@ if (
               outputs: lastOutputs,
               batch: { times: batchResult.timeBuffer, series },
             };
-            (self as any).postMessage(res, transferables);
+            workerSelf.postMessage(res, transferables);
           } else {
             const outputs = workerRunner.step(msg.currentTime, msg.dt, msg.inputs);
             const res: EmulatorStepResponse = {
@@ -181,7 +184,7 @@ if (
               time: workerRunner.getTime(),
               outputs,
             };
-            (self as any).postMessage(res);
+            workerSelf.postMessage(res);
           }
           break;
         }
@@ -200,7 +203,7 @@ if (
             id: msg.id,
             value: val,
           };
-          (self as any).postMessage(res);
+          workerSelf.postMessage(res);
           break;
         }
 
@@ -212,13 +215,13 @@ if (
           break;
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errRes: EmulatorErrorResponse = {
         type: "ERROR",
         id: msg.id,
-        error: err?.message || String(err),
+        error: err instanceof Error ? err.message : String(err),
       };
-      (self as any).postMessage(errRes);
+      workerSelf.postMessage(errRes);
     }
   });
 }
@@ -226,10 +229,13 @@ if (
 // ── Client Interface (Browser WebWorker & Node.js Universal Client) ────────────
 
 export class EmulatorWorkerClient implements WasmFmuRunner {
-  readonly instance: any = null;
+  readonly instance: WebAssembly.Instance | null = null;
   private worker: Worker | null = null;
   private inProcessRunner: UniversalBinaryRunner | null = null;
-  private readonly pendingRequests = new Map<string, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private readonly pendingRequests = new Map<
+    string,
+    { resolve: (val: EmulatorWorkerResponse) => void; reject: (err: Error) => void }
+  >();
   private nextRequestId = 1;
   private currentTime = 0.0;
   private isTerminated = false;
@@ -248,8 +254,8 @@ export class EmulatorWorkerClient implements WasmFmuRunner {
     if (typeof Worker === "undefined") {
       this.inProcessRunner = new UniversalBinaryRunner(rawBuf, options);
       this.format = this.inProcessRunner.format;
-      this.abi = this.inProcessRunner.cpu.abi as any;
-      this.architecture = (this.inProcessRunner.cpu as any).abi === "aapcs64" ? "aarch64" : "x86_64";
+      this.abi = this.inProcessRunner.cpu.abi as "win64" | "systemv" | "aapcs64";
+      this.architecture = this.inProcessRunner.cpu.abi === "aapcs64" ? "aarch64" : "x86_64";
     }
   }
 
@@ -274,7 +280,7 @@ export class EmulatorWorkerClient implements WasmFmuRunner {
       this.inProcessRunner = new UniversalBinaryRunner(rawBuf, this.options);
       this.inProcessRunner.init(0.0);
       this.format = this.inProcessRunner.format;
-      this.abi = this.inProcessRunner.cpu.abi as any;
+      this.abi = this.inProcessRunner.cpu.abi as "win64" | "systemv" | "aapcs64";
       return;
     }
 
@@ -467,7 +473,7 @@ export class EmulatorWorkerClient implements WasmFmuRunner {
 
   private sendRequest<T>(req: EmulatorWorkerRequest): Promise<T> {
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(req.id, { resolve, reject });
+      this.pendingRequests.set(req.id, { resolve: resolve as (val: EmulatorWorkerResponse) => void, reject });
       this.worker?.postMessage(req);
     });
   }

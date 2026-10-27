@@ -155,15 +155,21 @@ export class ReqIfParser {
       let limitValue = extractedLimit;
       let comparator = extractedComparator;
       if (comparator === undefined || limitValue === undefined) {
-        const compMatch = text.match(/(?:>=|<=|>|<|==|!=|\bexceed\b|\bat least\b|\bmaximum\b|\bminimum\b)\s*([\d.]+)/i);
+        const compMatch = text.match(
+          /(?:>=|<=|==|!=|>|<|\bexceed\b|\bat least\b|\bmaximum\b|\bminimum\b)\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/i,
+        );
         if (compMatch) {
           if (limitValue === undefined) {
             limitValue = parseFloat(compMatch[1]!);
           }
           if (comparator === undefined) {
-            if (text.includes(">=") || text.includes("at least")) comparator = ">=";
-            else if (text.includes("<=") || text.includes("maximum")) comparator = "<=";
-            else if (text.includes(">") || text.includes("exceed")) comparator = ">";
+            const lowerText = text.toLowerCase();
+            if (text.includes(">=") || lowerText.includes("at least") || lowerText.includes("minimum"))
+              comparator = ">=";
+            else if (text.includes("<=") || lowerText.includes("maximum")) comparator = "<=";
+            else if (text.includes("!=") || lowerText.includes("not equal")) comparator = "!=";
+            else if (text.includes("==")) comparator = "==";
+            else if (text.includes(">") || lowerText.includes("exceed")) comparator = ">";
             else if (text.includes("<")) comparator = "<";
             else comparator = "<=";
           }
@@ -481,12 +487,13 @@ export class ReqIfParser {
       relations: [],
     };
 
-    // 1. Match requirement defs
-    const defHeaderRegex = /\brequirement\s+def\s+([a-zA-Z0-9_]+)\s*\{/g;
+    // 1. Match requirement defs (with optional <shortName>)
+    const defHeaderRegex = /\brequirement\s+def\s+(?:<([a-zA-Z0-9_.-]+)>\s+)?([a-zA-Z0-9_]+)\s*\{/g;
     let headerMatch: RegExpExecArray | null;
 
     while ((headerMatch = defHeaderRegex.exec(sysmlSource)) !== null) {
-      const id = headerMatch[1]!;
+      const id = headerMatch[1] || headerMatch[2]!;
+      const reqName = headerMatch[2]!;
       const bodyStart = headerMatch.index + headerMatch[0].length;
       let depth = 1;
       let pos = bodyStart;
@@ -507,13 +514,13 @@ export class ReqIfParser {
         }
       }
 
-      const limitMatch = body.match(/attribute\s+limitValue\s*:\s*Real\s*=\s*([0-9.]+)/);
+      const limitMatch = body.match(/attribute\s+limitValue\s*:\s*Real\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
       const compMatch = body.match(/attribute\s+comparator\s*:\s*String\s*=\s*"([^"]+)"/);
       const asilMatch = body.match(/attribute\s+asil\s*:\s*String\s*=\s*"([^"]+)"/);
 
       spec.requirements.push({
         id,
-        name: id,
+        name: reqName,
         text,
         attributes: {},
         limitValue: limitMatch ? parseFloat(limitMatch[1]!) : undefined,

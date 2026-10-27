@@ -13,7 +13,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Deploy a new operational digital twin instance bound to a hardware serial number.
    */
   router.post("/", async (req: Request, res: Response): Promise<void> => {
-    const authUser = (req as any).user;
+    const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       res.status(401).json({ error: "Authentication required" });
       return;
@@ -115,7 +115,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Ingest real-time telemetry sample batch or single point.
    */
   router.post("/:id/telemetry", async (req: Request, res: Response): Promise<void> => {
-    const authUser = (req as any).user;
+    const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       res.status(401).json({ error: "Authentication required" });
       return;
@@ -131,7 +131,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
 
     try {
       if (Array.isArray(samples)) {
-        let lastResult: any;
+        let lastResult: Awaited<ReturnType<typeof twinManager.ingestTelemetry>> | undefined;
         for (const sample of samples) {
           lastResult = await twinManager.ingestTelemetry(
             twinId,
@@ -209,7 +209,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Trigger on-demand MHE calibration (manual override).
    */
   router.post("/:id/adapt", async (req: Request, res: Response): Promise<void> => {
-    const authUser = (req as any).user;
+    const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       res.status(401).json({ error: "Authentication required" });
       return;
@@ -284,7 +284,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Approve a Physics PR: commits calibrated parameters to active baseline.
    */
   router.post("/:id/proposals/:proposalId/approve", async (req: Request, res: Response): Promise<void> => {
-    const authUser = (req as any).user;
+    const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       res.status(401).json({ error: "Authentication required" });
       return;
@@ -327,7 +327,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Reject a Physics PR with explanation notes.
    */
   router.post("/:id/proposals/:proposalId/reject", (req: Request, res: Response): void => {
-    const authUser = (req as any).user;
+    const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
     if (!authUser && process.env["NODE_ENV"] === "production") {
       res.status(401).json({ error: "Authentication required" });
       return;

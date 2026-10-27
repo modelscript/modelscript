@@ -34,7 +34,7 @@ export class ElementTableProvider extends BaseCustomEditorProvider {
     // Fetch and send table data
     const sendData = async () => {
       try {
-        const table = await this.client.sendRequest<any>("modelscript/getElementsTable", {
+        const table = await this.client.sendRequest<unknown>("modelscript/getElementsTable", {
           uri,
           metaclass: currentMetaclass,
         });
@@ -125,7 +125,7 @@ export class ElementTableProvider extends BaseCustomEditorProvider {
         case "getCompletions": {
           const { requestId, attributeName, prefix } = msg;
           try {
-            const completions = await this.client.sendRequest<any[]>("modelscript/tableCellComplete", {
+            const completions = await this.client.sendRequest<unknown[]>("modelscript/tableCellComplete", {
               uri,
               metaclass: currentMetaclass,
               attributeName,

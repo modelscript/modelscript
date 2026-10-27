@@ -107,7 +107,8 @@ export function lowerRelap5ToDae(deck: Relap5Deck, options?: Relap5DaeOptions): 
           ];
 
     for (let i = 0; i < 6; i++) {
-      const grp = groups[i]!;
+      const grp = groups[i];
+      if (!grp) continue;
       const cInit = grp.fraction / (k.promptGenerationTime * grp.decayConstant);
       const cVar = dae.addVariable(`C_${i + 1}`, VarType.Real, Variability.Continuous, Causality.Local, cInit);
       cVars.push(cVar);

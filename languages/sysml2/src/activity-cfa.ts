@@ -446,15 +446,18 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       rule === "DefaultReferenceUsage"
     ) {
       const text = (db.cstText(child.startOffset, child.endOffset, child) || "").trim();
-      const metaDir = (child.metadata as any)?.direction;
+      const rawMetaDir = child.metadata?.["direction"];
+      const metaDir = typeof rawMetaDir === "string" ? rawMetaDir : undefined;
       const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
       const dir =
-        rule === "ReturnParameterMember" ? "out" : ((metaDir || dirMatch?.[1]) as "in" | "out" | "inout" | undefined);
+        rule === "ReturnParameterMember"
+          ? "out"
+          : ((metaDir || dirMatch?.[1]) as "in" | "out" | "inout" | "return" | undefined);
       if (dir) {
         const hasDefault = /=|:=|\bdefault\b/.test(text);
         declaredOutputs.push({
           name,
-          direction: dir === ("return" as any) ? "out" : dir,
+          direction: dir === "return" ? "out" : dir,
           hasDefault,
           startOffset: child.startOffset,
           endOffset: child.endOffset,
@@ -479,7 +482,8 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       for (const pin of childSymbols) {
         if (!pin.name || pin.name === "<anonymous>") continue;
         const text = (db.cstText(pin.startOffset, pin.endOffset, pin) || "").trim();
-        const metaDir = (pin.metadata as any)?.direction;
+        const rawPinMetaDir = pin.metadata?.["direction"];
+        const metaDir = typeof rawPinMetaDir === "string" ? rawPinMetaDir : undefined;
         const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
         const isParamRule = pin.ruleName === "ParameterMember" || pin.ruleName === "ReturnParameterMember";
         if (!isParamRule && !metaDir && !dirMatch) continue;
@@ -508,9 +512,20 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       }
 
       // 1. Direct CST node inspection for pins and assignments if available
-      const cstNode = (db as any).cstNode?.(child.id);
+      interface CstInspectNode {
+        type?: string | undefined;
+        name?: string | undefined;
+        text?: string | undefined;
+        startIndex?: number | undefined;
+        endIndex?: number | undefined;
+        children?: CstInspectNode[] | undefined;
+        childCount?: number | undefined;
+        child?(i: number): CstInspectNode | null | undefined;
+        childForFieldName?(name: string): { text?: string | undefined } | null | undefined;
+      }
+      const cstNode = (db as { cstNode?(id: number): CstInspectNode | null | undefined }).cstNode?.(child.id);
       if (cstNode) {
-        const walkCst = (n: any) => {
+        const walkCst = (n: CstInspectNode | null | undefined) => {
           if (!n) return;
           const nt = (n.type || "").toLowerCase();
           if (
@@ -551,7 +566,7 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
           }
           if (Array.isArray(n.children)) {
             for (const c of n.children) walkCst(c);
-          } else if (typeof n.childCount === "number") {
+          } else if (typeof n.childCount === "number" && typeof n.child === "function") {
             for (let i = 0; i < n.childCount; i++) walkCst(n.child(i));
           }
         };
@@ -571,7 +586,7 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         if (p > s) typeMatchVal = headerSlice.slice(s, p);
       }
       const typingChild = childSymbols.find((c) => c.ruleName === "OwnedFeatureTyping" && c.name);
-      const calleeTypeName = (child as any).typeName || typingChild?.name || typeMatchVal;
+      const calleeTypeName = (child as { typeName?: string | undefined }).typeName || typingChild?.name || typeMatchVal;
       const isInvocation = rule === "PerformActionUsage" || Boolean(calleeTypeName);
 
       // Extract inline pins from bodySlice

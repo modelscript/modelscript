@@ -4,7 +4,9 @@ import { buildParser, bundleExtension, type ExtensionGeneratedFile } from "@mode
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
+
+type LanguageDefinition = Extract<Parameters<typeof bundleExtension>[0], unknown[]>[number];
 
 export interface GenerateArgs {
   target?: string | undefined;
@@ -14,7 +16,7 @@ export interface GenerateArgs {
   vsix?: boolean | undefined;
 }
 
-export const Generate: CommandModule<any, any> = {
+export const Generate: CommandModule<{}, GenerateArgs> = {
   command: "generate [target] [entries..]",
   describe: "Generate parser tables or a full VS Code extension from DSL language specs",
   builder: (yargs) => {
@@ -44,26 +46,25 @@ export const Generate: CommandModule<any, any> = {
         description: "Package into a .vsix extension bundle",
         type: "boolean",
         default: false,
-      });
+      }) as unknown as Argv<GenerateArgs>;
   },
   handler: async (args) => {
     try {
-      const isExtension = args["target"] === "extension";
-      const outDir = args["outdir"];
+      const isExtension = args.target === "extension";
+      const outDir = args.outdir;
       const absoluteOutDir = path.resolve(process.cwd(), outDir);
 
-      const rawEntries =
-        args["entries"] && args["entries"].length > 0 ? args["entries"] : [args["entry"] || "src/language.ts"];
+      const rawEntries = args.entries && args.entries.length > 0 ? args.entries : [args.entry || "src/language.ts"];
       // If target was not 'extension' or 'parser', it might be the entry file path
       let entryList =
-        args["target"] && args["target"] !== "extension" && args["target"] !== "parser"
-          ? [args["target"], ...rawEntries.filter((e: string) => e !== args["target"])]
+        args.target && args.target !== "extension" && args.target !== "parser"
+          ? [args.target, ...rawEntries.filter((e: string) => e !== args.target)]
           : rawEntries;
 
       // Auto-discover all workspace languages when running `generate extension` from monorepo root without explicit entries
       if (
         isExtension &&
-        (!args["entries"] || args["entries"].length === 0) &&
+        (!args.entries || args.entries.length === 0) &&
         !fs.existsSync(path.resolve(process.cwd(), entryList[0] || "src/language.ts")) &&
         fs.existsSync(path.resolve(process.cwd(), "languages"))
       ) {
@@ -91,7 +92,7 @@ export const Generate: CommandModule<any, any> = {
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url);
 
-      const languageDefs: any[] = [];
+      const languageDefs: LanguageDefinition[] = [];
       for (const entryPath of entryList) {
         const absoluteEntry = path.resolve(process.cwd(), entryPath);
         if (!fs.existsSync(absoluteEntry)) {
@@ -108,7 +109,7 @@ export const Generate: CommandModule<any, any> = {
             typeof v["name"] === "string" &&
             (v["rules"] || v["lsp"] || v["extensions"] || v["fileExtensions"] || v["primitives"])
           );
-        }) as any;
+        }) as LanguageDefinition | undefined;
 
         if (lang) languageDefs.push(lang);
       }
@@ -174,7 +175,7 @@ export const Generate: CommandModule<any, any> = {
           console.log("Note: Run 'npx esbuild src/extension.ts' inside the output directory to compile the bundle.");
         }
 
-        if (args["vsix"]) {
+        if (args.vsix) {
           console.log("Packaging into .vsix...");
           try {
             execSync(`npx @vscode/vsce package --no-dependencies`, { cwd: absoluteOutDir, stdio: "inherit" });
@@ -186,7 +187,7 @@ export const Generate: CommandModule<any, any> = {
         console.log(`VS Code extension generated successfully at: ${absoluteOutDir}`);
       } else {
         // Default: Generate parser tables for primary language
-        const primaryLang = languageDefs[0];
+        const primaryLang = languageDefs[0]!;
         const { parserInfo, assemblyScriptFiles, javascriptWrapper } = buildParser(primaryLang);
 
         if (!fs.existsSync(absoluteOutDir)) {

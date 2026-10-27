@@ -404,7 +404,7 @@ export class BoundaryTestSynthesizer {
           error: errMsg,
           durationMs: dur,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         failedCount++;
         results.push({
           testId: tc.id,
@@ -412,7 +412,7 @@ export class BoundaryTestSynthesizer {
           passed: false,
           inputs: tc.inputs,
           expectedOutcome: tc.expectedOutcome,
-          error: err.message || String(err),
+          error: err instanceof Error ? err.message : String(err),
           durationMs: performance.now() - t0,
         });
       }

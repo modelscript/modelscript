@@ -58,7 +58,7 @@ export interface AspenDiagramCell {
   source?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
   target?: { cell: string; port?: string | undefined } | { x: number; y: number } | undefined;
   vertices?: { x: number; y: number }[] | undefined;
-  attrs?: Record<string, unknown> | undefined;
+  attrs?: Record<string, Record<string, unknown>> | undefined;
   data?: Record<string, unknown> | undefined;
 }
 
@@ -485,7 +485,7 @@ export function renderAspenSvg(model: AspenModelLike, options?: AspenRenderOptio
       const x2 = tgt.x;
       const y2 = tgt.y! + (tgt.height ?? 60) / 2;
 
-      const color = (c.attrs?.["line"] as any)?.stroke ?? "#38bdf8";
+      const color = (c.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
 
       // Compute orthogonal A* route around intermediate unit op obstacles
       const obstacles = diag.cells
@@ -545,7 +545,7 @@ export function renderAspenSvg(model: AspenModelLike, options?: AspenRenderOptio
       const r = (c.width ?? 24) / 2;
       const cx = c.x + r;
       const cy = c.y + r;
-      const stroke = (c.attrs?.["body"] as any)?.stroke ?? "#38bdf8";
+      const stroke = (c.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#38bdf8";
 
       svg += `    <g>\n`;
       svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="${isDark ? "#0f172a" : "#e2e8f0"}" stroke="${stroke}" stroke-width="1.5" />\n`;

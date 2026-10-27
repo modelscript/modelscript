@@ -47,7 +47,7 @@ export function scriptsRouter(db: LibraryDatabase) {
         const template = db.getScriptTemplate(id);
         if (!template) return res.status(404).json({ error: "Template not found" });
 
-        const reqUser = (req as any).user as AuthUser | undefined;
+        const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
         const userId = reqUser?.id;
         if (!userId) {
           return res.status(401).json({ error: "Authentication required" });
@@ -120,7 +120,7 @@ export function scriptsRouter(db: LibraryDatabase) {
     try {
       const limit = parseInt(req.query["limit"] as string) || 50;
       const offset = parseInt(req.query["offset"] as string) || 0;
-      const reqUser = (req as any).user as AuthUser | undefined;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const userId = isAdmin ? null : (reqUser?.id ?? null);
       const jobs = db.getJobs(limit, offset, userId);
@@ -135,7 +135,7 @@ export function scriptsRouter(db: LibraryDatabase) {
     try {
       const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
-      const reqUser = (req as any).user as AuthUser | undefined;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
 
       if (job) {
@@ -299,7 +299,7 @@ export function scriptsRouter(db: LibraryDatabase) {
           if (event.type === "log") {
             res.write(`event: log\ndata: ${JSON.stringify(String(event.data) + "\n")}\n\n`);
           } else if (event.type === "status") {
-            const st = (event.data as any)?.status || cloudJob.status;
+            const st = (event.data as { status?: string | undefined } | null | undefined)?.status || cloudJob.status;
             res.write(
               `event: status\ndata: ${JSON.stringify({
                 job: {

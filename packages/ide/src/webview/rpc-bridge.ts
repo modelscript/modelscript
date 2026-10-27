@@ -33,13 +33,13 @@ export class WebviewRpcBridge implements vscode.Disposable {
   private _pendingRequests = new Map<
     string,
     {
-      resolve: (value: any) => void;
-      reject: (reason: any) => void;
+      resolve: (value: unknown) => void;
+      reject: (reason: unknown) => void;
       timer: ReturnType<typeof setTimeout>;
     }
   >();
-  private _requestHandlers = new Map<string, (params: any) => Promise<any> | any>();
-  private _notificationHandlers = new Map<string, Set<(payload: any) => void>>();
+  private _requestHandlers = new Map<string, (params: unknown) => Promise<unknown> | unknown>();
+  private _notificationHandlers = new Map<string, Set<(payload: unknown) => void>>();
   private _disposables: vscode.Disposable[] = [];
   private _nextRequestId = 1;
 
@@ -79,7 +79,11 @@ export class WebviewRpcBridge implements vscode.Disposable {
         reject(new Error(`RPC Request '${method}' timed out after ${timeoutMs}ms.`));
       }, timeoutMs);
 
-      this._pendingRequests.set(id, { resolve, reject, timer });
+      this._pendingRequests.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+        timer,
+      });
 
       this._webview.postMessage({
         id,
@@ -108,10 +112,11 @@ export class WebviewRpcBridge implements vscode.Disposable {
     method: string,
     handler: (params: TParams) => Promise<TResult> | TResult,
   ): vscode.Disposable {
-    this._requestHandlers.set(method, handler);
+    const wrappedHandler = handler as (params: unknown) => Promise<unknown> | unknown;
+    this._requestHandlers.set(method, wrappedHandler);
     return {
       dispose: () => {
-        if (this._requestHandlers.get(method) === handler) {
+        if (this._requestHandlers.get(method) === wrappedHandler) {
           this._requestHandlers.delete(method);
         }
       },
@@ -127,11 +132,12 @@ export class WebviewRpcBridge implements vscode.Disposable {
       handlers = new Set();
       this._notificationHandlers.set(event, handlers);
     }
-    handlers.add(handler);
+    const wrappedHandler = handler as (payload: unknown) => void;
+    handlers.add(wrappedHandler);
 
     return {
       dispose: () => {
-        handlers?.delete(handler);
+        handlers?.delete(wrappedHandler);
         if (handlers && handlers.size === 0) {
           this._notificationHandlers.delete(event);
         }
@@ -141,7 +147,7 @@ export class WebviewRpcBridge implements vscode.Disposable {
 
   private async handleIncomingMessage(rawMsg: unknown): Promise<void> {
     if (!rawMsg || typeof rawMsg !== "object") return;
-    const msg = rawMsg as Record<string, any>;
+    const msg = rawMsg as Record<string, unknown>;
 
     // Handle Response to our outgoing request
     if (msg.type === "response" && typeof msg.id === "string") {
@@ -150,7 +156,7 @@ export class WebviewRpcBridge implements vscode.Disposable {
         clearTimeout(pending.timer);
         this._pendingRequests.delete(msg.id);
         if (msg.error) {
-          pending.reject(new Error(msg.error));
+          pending.reject(new Error(String(msg.error)));
         } else {
           pending.resolve(msg.result);
         }
@@ -177,11 +183,11 @@ export class WebviewRpcBridge implements vscode.Disposable {
           type: "response",
           result,
         } as RpcResponseMessage);
-      } catch (err: any) {
+      } catch (err: unknown) {
         this._webview.postMessage({
           id: msg.id,
           type: "response",
-          error: err?.message || String(err),
+          error: err instanceof Error ? err.message : String(err),
         } as RpcResponseMessage);
       }
       return;

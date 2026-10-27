@@ -17,7 +17,19 @@
  * use the mean-value form  f(x) ∈ f(m) + α·(x − m) ± rad(f'(X))·r  or a constant interval fallback.
  */
 
-import { addUp, ivAbs, ivAdd, ivDiv, ivMul, ivPowInt, ivSub, nextUp, subUp } from "../../analysis/outward_rounding.js";
+import {
+  addDown,
+  addUp,
+  ivAbs,
+  ivAdd,
+  ivDiv,
+  ivMul,
+  ivPowInt,
+  ivSub,
+  nextUp,
+  subDown,
+  subUp,
+} from "../../analysis/outward_rounding.js";
 import { Interval } from "../../analysis/wasm_interval.js";
 import { TaylorModel } from "../../analysis/wasm_taylor_model.js";
 import type { ArenaEvalEnv } from "./arena_eval.js";
@@ -59,8 +71,8 @@ export class TaylorDomain implements ExprDomain<TaylorModel> {
   }
 
   private slack(tm: TaylorModel, scaleMag: number, opCount: number): TaylorModel {
-    const s = nextUp(K * (opCount + 1) * EPS * scaleMag) + TINY;
-    tm.remainder = new Interval(tm.remainder.lo - s, tm.remainder.hi + s);
+    const s = addUp(nextUp(K * (opCount + 1) * EPS * scaleMag), TINY);
+    tm.remainder = new Interval(subDown(tm.remainder.lo, s), addUp(tm.remainder.hi, s));
     return tm;
   }
 
@@ -82,7 +94,7 @@ export class TaylorDomain implements ExprDomain<TaylorModel> {
 
   private withRemainder(tm: TaylorModel, extra: Interval): TaylorModel {
     const res = tm.clone();
-    res.remainder = new Interval(res.remainder.lo + extra.lo, res.remainder.hi + extra.hi);
+    res.remainder = new Interval(addDown(res.remainder.lo, extra.lo), addUp(res.remainder.hi, extra.hi));
     return res;
   }
 
@@ -190,10 +202,23 @@ export class TaylorDomain implements ExprDomain<TaylorModel> {
   }
 
   powInt(a: TaylorModel, n: number): TaylorModel {
+    if (!Number.isInteger(n)) return this.top();
     if (n === 0) return this.constant(1);
-    let result = a;
-    for (let i = 1; i < n; i++) result = this.mul(result, a);
-    return result;
+    if (n === 1) return a;
+    if (n < 0) return this.div(this.constant(1), this.powInt(a, -n));
+    let result: TaylorModel | null = null;
+    let base = a;
+    let exp = n;
+    while (exp > 0) {
+      if ((exp & 1) === 1) {
+        result = result === null ? base : this.mul(result, base);
+      }
+      exp = Math.floor(exp / 2);
+      if (exp > 0) {
+        base = this.mul(base, base);
+      }
+    }
+    return result!;
   }
 
   private native(a: TaylorModel, fn: (t: TaylorModel) => TaylorModel, fallback: () => TaylorModel): TaylorModel {

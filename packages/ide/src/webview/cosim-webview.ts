@@ -559,10 +559,24 @@ let totalFrames = 0;
 let fpsCounter = 0;
 let lastFpsTime = performance.now();
 
-let activeSerialPort: any = null;
+interface WebSerialPort {
+  open(options: { baudRate: number }): Promise<void>;
+  close(): Promise<void>;
+  readable?: ReadableStream<Uint8Array> | null | undefined;
+}
+
+interface NavigatorWithSerial {
+  serial?:
+    | {
+        requestPort(): Promise<WebSerialPort>;
+      }
+    | undefined;
+}
+
+let activeSerialPort: WebSerialPort | null = null;
 
 async function connectWebSerial(): Promise<void> {
-  const nav = navigator as any;
+  const nav = navigator as unknown as NavigatorWithSerial;
   if (!nav.serial) {
     showError("WebSerial API is not supported or accessible in this browser.");
     return;
@@ -587,8 +601,8 @@ async function connectWebSerial(): Promise<void> {
     });
 
     void readSerialStream(activeSerialPort);
-  } catch (err: any) {
-    showError(`Failed to connect serial device: ${err.message || err}`);
+  } catch (err: unknown) {
+    showError(`Failed to connect serial device: ${err instanceof Error ? err.message : String(err)}`);
     if (btnConnectHardware) btnConnectHardware.disabled = false;
   }
 }
@@ -610,7 +624,7 @@ async function disconnectWebSerial(): Promise<void> {
   vscode.postMessage({ type: "hardwareDisconnected" });
 }
 
-async function readSerialStream(port: any): Promise<void> {
+async function readSerialStream(port: WebSerialPort): Promise<void> {
   while (port.readable && activeSerialPort === port) {
     const reader = port.readable.getReader();
     try {
@@ -629,8 +643,8 @@ async function readSerialStream(port: any): Promise<void> {
           }
         }
       }
-    } catch (err: any) {
-      console.warn("Serial read loop terminated:", err.message);
+    } catch (err: unknown) {
+      console.warn("Serial read loop terminated:", err instanceof Error ? err.message : String(err));
       break;
     } finally {
       try {

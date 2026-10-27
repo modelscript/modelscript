@@ -127,7 +127,8 @@ export class OpenDriveWorkspaceIndex implements IWorkspaceIndex {
 
       // Index Geometries within Road
       for (let gi = 0; gi < road.planView.length; gi++) {
-        const g = road.planView[gi]!;
+        const g = road.planView[gi];
+        if (!g) continue;
         const gId = idCounter++ as SymbolId;
         roadChildren.push(gId);
 
@@ -253,8 +254,9 @@ export class OpenDriveWorkspaceIndex implements IWorkspaceIndex {
 
     for (const fileIndex of this.fileIndices.values()) {
       const candidates = fileIndex.byName.get(name);
-      if (candidates && candidates.length > 0) {
-        const found = fileIndex.symbols.get(candidates[0]!);
+      const firstCandidate = candidates?.[0];
+      if (firstCandidate !== undefined) {
+        const found = fileIndex.symbols.get(firstCandidate);
         if (found) return found;
       }
     }

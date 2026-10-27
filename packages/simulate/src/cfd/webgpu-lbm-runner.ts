@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/// <reference types="@webgpu/types" />
 import {
   CfdFieldArena,
   D3Q19_CX as CX,
@@ -35,17 +36,17 @@ export class WebGPULbmRunner {
   private currentPing: boolean = true;
 
   // WebGPU compute resources
-  private gpuDevice: any = null;
-  private gpuPipeline: any = null;
-  private gpuUniformBuffer: any = null;
-  private gpuCellTypesBuffer: any = null;
-  private gpuPingBuffer: any = null;
-  private gpuPongBuffer: any = null;
-  private gpuMacroBuffer: any = null;
-  private gpuDeltaWallBuffer: any = null;
-  private gpuDragOutputBuffer: any = null;
-  private gpuBindGroup0: any = null;
-  private gpuBindGroup1: any = null;
+  private gpuDevice: GPUDevice | null = null;
+  private gpuPipeline: GPUComputePipeline | null = null;
+  private gpuUniformBuffer: GPUBuffer | null = null;
+  private gpuCellTypesBuffer: GPUBuffer | null = null;
+  private gpuPingBuffer: GPUBuffer | null = null;
+  private gpuPongBuffer: GPUBuffer | null = null;
+  private gpuMacroBuffer: GPUBuffer | null = null;
+  private gpuDeltaWallBuffer: GPUBuffer | null = null;
+  private gpuDragOutputBuffer: GPUBuffer | null = null;
+  private gpuBindGroup0: GPUBindGroup | null = null;
+  private gpuBindGroup1: GPUBindGroup | null = null;
   private gpuInitialized: boolean = false;
 
   public setMovingWallVelocity(vel: [number, number, number]): void {
@@ -73,7 +74,10 @@ export class WebGPULbmRunner {
     if (this.gpuInitialized) {
       return true;
     }
-    const nav = typeof globalThis !== "undefined" ? (globalThis as any).navigator : undefined;
+    const nav =
+      typeof globalThis !== "undefined"
+        ? (globalThis as { navigator?: { gpu?: GPU | undefined } | undefined }).navigator
+        : undefined;
     if (!nav?.gpu) {
       return false;
     }
@@ -114,7 +118,7 @@ export class WebGPULbmRunner {
         size: n * 4,
         usage: 0x0080 | 0x0008, // STORAGE | COPY_DST
       });
-      device.queue.writeBuffer(this.gpuCellTypesBuffer, 0, this.arena.cellTypes);
+      device.queue.writeBuffer(this.gpuCellTypesBuffer, 0, this.arena.cellTypes as Uint32Array<ArrayBuffer>);
 
       // 3. Ping & Pong distribution storage buffers
       this.gpuPingBuffer = device.createBuffer({
@@ -122,7 +126,7 @@ export class WebGPULbmRunner {
         size: fBytes,
         usage: 0x0080 | 0x0008 | 0x0004, // STORAGE | COPY_DST | COPY_SRC
       });
-      device.queue.writeBuffer(this.gpuPingBuffer, 0, this.arena.f0);
+      device.queue.writeBuffer(this.gpuPingBuffer, 0, this.arena.f0 as Float32Array<ArrayBuffer>);
 
       this.gpuPongBuffer = device.createBuffer({
         label: "LBM Pong SoA",
@@ -130,7 +134,7 @@ export class WebGPULbmRunner {
         usage: 0x0080 | 0x0008 | 0x0004, // STORAGE | COPY_DST | COPY_SRC
       });
       if (this.arena.f1) {
-        device.queue.writeBuffer(this.gpuPongBuffer, 0, this.arena.f1);
+        device.queue.writeBuffer(this.gpuPongBuffer, 0, this.arena.f1 as Float32Array<ArrayBuffer>);
       }
 
       // 4. Macro fields storage buffer [vx, vy, vz, rho]
@@ -148,7 +152,7 @@ export class WebGPULbmRunner {
         usage: 0x0080 | 0x0008, // STORAGE | COPY_DST
       });
       if (this.arena.deltaWall) {
-        device.queue.writeBuffer(this.gpuDeltaWallBuffer, 0, this.arena.deltaWall);
+        device.queue.writeBuffer(this.gpuDeltaWallBuffer, 0, this.arena.deltaWall as Float32Array<ArrayBuffer>);
       }
 
       // 6. Drag output & macroscopic reduction storage buffer [Fx, Fy, Fz, maxVel, pDrop]
@@ -208,7 +212,7 @@ export class WebGPULbmRunner {
     const { nx, ny, nz, dx, dt, tau, density } = this.config;
     const inletV = this.config.inletVelocity ?? [1.0, 0, 0];
     const cs = this.config.smagorinskyConstant ?? 0.14;
-    const device = this.gpuDevice;
+    const device = this.gpuDevice!;
 
     // Update uniform buffer
     const uniformData = new ArrayBuffer(80);
@@ -236,7 +240,7 @@ export class WebGPULbmRunner {
     uViewU32[18] = this.currentPing ? 0 : 1;
     uViewU32[19] = 0;
 
-    device.queue.writeBuffer(this.gpuUniformBuffer, 0, uniformData);
+    device.queue.writeBuffer(this.gpuUniformBuffer!, 0, uniformData);
 
     const workgroupsX = Math.ceil(nx / 8);
     const workgroupsY = Math.ceil(ny / 8);
@@ -252,14 +256,14 @@ export class WebGPULbmRunner {
     const commandEncoder = device.createCommandEncoder();
     for (let s = 0; s < numSteps; s++) {
       const pass = commandEncoder.beginComputePass();
-      pass.setPipeline(this.gpuPipeline);
-      pass.setBindGroup(0, this.currentPing ? this.gpuBindGroup0 : this.gpuBindGroup1);
+      pass.setPipeline(this.gpuPipeline!);
+      pass.setBindGroup(0, this.currentPing ? this.gpuBindGroup0! : this.gpuBindGroup1!);
       pass.dispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ);
       pass.end();
       this.currentPing = !this.currentPing;
     }
 
-    commandEncoder.copyBufferToBuffer(this.gpuMacroBuffer, 0, readbackMacro, 0, macroBytes);
+    commandEncoder.copyBufferToBuffer(this.gpuMacroBuffer!, 0, readbackMacro, 0, macroBytes);
     device.queue.submit([commandEncoder.finish()]);
 
     // Read back macroFields [vx, vy, vz, rho] from GPU to CPU arrays

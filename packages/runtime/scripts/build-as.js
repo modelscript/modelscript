@@ -58,13 +58,14 @@ function isWasmUpToDate() {
 }
 
 async function runAscTarget(target) {
-  const ascBin = path.resolve(packageRoot, "../../node_modules/.bin/asc");
-  const bin = fs.existsSync(ascBin) ? ascBin : "npx";
+  const isWin = process.platform === "win32";
+  const ascBin = path.resolve(packageRoot, "../../node_modules/.bin", isWin ? "asc.cmd" : "asc");
+  const bin = fs.existsSync(ascBin) ? ascBin : isWin ? "npx.cmd" : "npx";
   const args = fs.existsSync(ascBin)
     ? ["assembly/index.ts", "--target", target]
     : ["asc", "assembly/index.ts", "--target", target];
 
-  return execFileAsync(bin, args, { cwd: packageRoot });
+  return execFileAsync(bin, args, { cwd: packageRoot, shell: isWin });
 }
 
 async function main() {

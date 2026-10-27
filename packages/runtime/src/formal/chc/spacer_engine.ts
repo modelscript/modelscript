@@ -74,7 +74,11 @@ function substituteExpr(expr: ExprNode, map: Map<string, string>): ExprNode {
     case "const":
       return expr;
     case "neg":
-      return { kind: "neg", child: substituteExpr(expr.child, map) };
+    case "sqr":
+    case "sqrt":
+    case "sin":
+    case "cos":
+      return { kind: expr.kind, child: substituteExpr(expr.child, map) };
     case "add":
     case "sub":
     case "mul":
@@ -185,7 +189,7 @@ export class SpacerEngine {
     const problem: SmtProblem = {
       clauses,
       theoryLiterals: theoryLits,
-      useNlsat: false,
+      useNlsat: true,
     };
 
     const solver = new DpllTSolver(problem);
@@ -366,13 +370,22 @@ export class SpacerEngine {
         const headDecl = this.chc.getPredicate(rule.head!.name)!;
         for (const q of queries) {
           if (q.bodyPredicates.some((bp) => bp.name === rule.head?.name)) {
-            // 1. Collect body predicate contract guarantees instantiated with rule body args
+            // 1. Collect body predicate contract guarantees & synthesized frame lemmas instantiated with rule body args
             const bodyGuarantees: NonlinearConstraint[] = [];
             for (const bp of rule.bodyPredicates) {
               const bDecl = this.chc.getPredicate(bp.name)!;
               const substToBodyArgs = new Map<string, string>();
               for (let i = 0; i < bp.args.length; i++) {
                 substToBodyArgs.set(bDecl.varNames[i]!, bp.args[i]!);
+              }
+
+              for (const frameLemma of this.getFrame(bp.name, depth)) {
+                bodyGuarantees.push(substituteConstraint(frameLemma, substToBodyArgs));
+              }
+              if (depth > 1) {
+                for (const frameLemma of this.getFrame(bp.name, depth - 1)) {
+                  bodyGuarantees.push(substituteConstraint(frameLemma, substToBodyArgs));
+                }
               }
 
               const bpQueries = queries.filter((bq) => bq.bodyPredicates.some((b) => b.name === bp.name));
@@ -385,6 +398,10 @@ export class SpacerEngine {
                   } else if (bc.rel === "<=" || bc.rel === "<") {
                     bodyGuarantees.push(
                       substituteConstraint({ expr: bc.expr, rel: ">=", rhs: bc.rhs }, substToBodyArgs),
+                    );
+                  } else if (bc.rel === "!=") {
+                    bodyGuarantees.push(
+                      substituteConstraint({ expr: bc.expr, rel: "==", rhs: bc.rhs }, substToBodyArgs),
                     );
                   }
                 }

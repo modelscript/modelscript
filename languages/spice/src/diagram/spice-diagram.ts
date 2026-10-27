@@ -154,19 +154,25 @@ export function buildSpiceDiagram(circuit: SpiceCircuitLike): SpiceDiagramGraph 
   const netToComponents = new Map<string, { compName: string; pinIndex: number }[]>();
   for (const comp of circuit.components) {
     for (let p = 0; p < comp.nodes.length; p++) {
-      const net = comp.nodes[p]!;
-      if (!netToComponents.has(net)) netToComponents.set(net, []);
-      netToComponents.get(net)!.push({ compName: comp.name, pinIndex: p });
+      const net = comp.nodes[p];
+      if (!net) continue;
+      let list = netToComponents.get(net);
+      if (!list) {
+        list = [];
+        netToComponents.set(net, list);
+      }
+      list.push({ compName: comp.name, pinIndex: p });
     }
   }
 
   let wireIdx = 1;
   for (const [netName, pins] of netToComponents.entries()) {
-    if (pins.length < 2) continue;
+    const root = pins[0];
+    if (!root || pins.length < 2) continue;
 
-    const root = pins[0]!;
     for (let j = 1; j < pins.length; j++) {
-      const target = pins[j]!;
+      const target = pins[j];
+      if (!target) continue;
       const isGround = netName === "0" || netName.toLowerCase() === "gnd";
 
       cells.push({

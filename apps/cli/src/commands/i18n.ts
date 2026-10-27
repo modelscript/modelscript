@@ -6,7 +6,7 @@ import modelicaLang from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 
 const require = createRequire(import.meta.url);
@@ -32,11 +32,11 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
         alias: "o",
         description: "path to the output .pot file",
         type: "string",
-      }) as any;
+      }) as unknown as Argv<I18nArgs>;
   },
   handler: async (args) => {
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
     const i18nConfig = extractI18nConfig(modelicaLang);
@@ -49,7 +49,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
           if (uri.startsWith(library.path)) {
             const tree = context.getTree(uri);
             if (tree?.rootNode) {
-              extractor.extract(tree.rootNode as any, uri);
+              extractor.extract(tree.rootNode as unknown as Parameters<typeof extractor.extract>[0], uri);
             }
           }
         }

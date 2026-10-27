@@ -12,7 +12,7 @@ import { exec, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 const require = createRequire(import.meta.url);
 
@@ -92,7 +92,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         description: "Automatically open generated visual HTML in default web browser",
         type: "boolean",
         default: false,
-      }) as any;
+      }) as unknown as Argv<PrDiffArgs>;
   },
   handler: async (args) => {
     const cwd = process.cwd();
@@ -149,8 +149,9 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
     const isSysml = targetFile.endsWith(".sysml");
 
     // 3. Parse ASTs and Build Diagrams
-    let baseDiagram: any = null;
-    let headDiagram: any = null;
+    type DiffDiagramInput = Parameters<typeof buildVisualDiffGraph>[0];
+    let baseDiagram: DiffDiagramInput = null;
+    let headDiagram: DiffDiagramInput = null;
 
     if (isSysml) {
       let sysmlWasmPath: string;
@@ -168,7 +169,12 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         const baseWIdx = createSysML2WorkspaceIndex();
         baseWIdx.register(targetFile, () => baseAst);
         const baseIndex = await baseWIdx.toUnifiedAsync();
-        baseDiagram = buildSysML2DiagramData(baseIndex, targetFile, undefined, viewName);
+        baseDiagram = buildSysML2DiagramData(
+          baseIndex as unknown as Parameters<typeof buildSysML2DiagramData>[0],
+          targetFile,
+          undefined,
+          viewName,
+        ) as unknown as DiffDiagramInput;
       }
 
       if (headContent) {
@@ -176,14 +182,19 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         const headWIdx = createSysML2WorkspaceIndex();
         headWIdx.register(targetFile, () => headAst);
         const headIndex = await headWIdx.toUnifiedAsync();
-        headDiagram = buildSysML2DiagramData(headIndex, targetFile, undefined, viewName);
+        headDiagram = buildSysML2DiagramData(
+          headIndex as unknown as Parameters<typeof buildSysML2DiagramData>[0],
+          targetFile,
+          undefined,
+          viewName,
+        ) as unknown as DiffDiagramInput;
       }
     } else {
       const { GenericModelicaBridge } = await import("@modelscript/sysml2");
-      const buildMoDiagram = (src: string) => {
+      const buildMoDiagram = (src: string): DiffDiagramInput => {
         if (!src.trim()) return null;
         const parsed = GenericModelicaBridge.parseModelicaToSysML2(src);
-        const nodes: any[] = [];
+        const nodes: Array<{ id: string; type: string; properties: { values: Record<string, unknown> } }> = [];
         for (const attr of parsed.attributes) {
           nodes.push({
             id: attr.name,
@@ -227,7 +238,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
           source: c.source.split(".")[0] || c.source,
           target: c.target.split(".")[0] || c.target,
         }));
-        return { nodes, edges };
+        return { nodes, edges } as unknown as DiffDiagramInput;
       };
       baseDiagram = buildMoDiagram(baseContent);
       headDiagram = buildMoDiagram(headContent);

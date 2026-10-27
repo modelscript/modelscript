@@ -228,9 +228,10 @@ function isConvexPolygon(vertices: IdfVertex3D[]): boolean {
 
   let normalSign: number | null = null;
   for (let i = 0; i < n; i++) {
-    const p0 = vertices[i]!;
-    const p1 = vertices[(i + 1) % n]!;
-    const p2 = vertices[(i + 2) % n]!;
+    const p0 = vertices[i];
+    const p1 = vertices[(i + 1) % n];
+    const p2 = vertices[(i + 2) % n];
+    if (!p0 || !p1 || !p2) continue;
 
     const v1x = p1.x - p0.x;
     const v1y = p1.y - p0.y;

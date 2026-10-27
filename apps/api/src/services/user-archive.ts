@@ -74,7 +74,7 @@ export interface UserArchiveBundle {
  * Gathers complete user data for GDPR Art. 20 / CCPA portability requests.
  */
 export function gatherUserDataBundle(database: LibraryDatabase, userId: number): UserArchiveBundle | null {
-  const user = database.getUserById(userId) as any;
+  const user = database.getUserById(userId) as unknown as UserArchiveBundle["user"] | undefined;
   if (!user) return null;
 
   const archiveData = database.getUserArchiveData(userId);

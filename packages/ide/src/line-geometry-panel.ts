@@ -45,7 +45,7 @@ export class LineGeometryPanel {
     _client?: LanguageClient,
     targetUri?: string,
     componentName?: string,
-    initialParams?: Record<string, any>,
+    initialParams?: Record<string, unknown>,
   ): LineGeometryPanel {
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
 
@@ -74,7 +74,7 @@ export class LineGeometryPanel {
     panel: vscode.WebviewPanel,
     targetUri?: string,
     componentName?: string,
-    initialParams?: Record<string, any>,
+    initialParams?: Record<string, unknown>,
   ) {
     this._panel = panel;
     this._targetUri = targetUri;
@@ -101,7 +101,7 @@ export class LineGeometryPanel {
     this.update(targetUri, componentName, initialParams);
   }
 
-  public update(targetUri?: string, componentName?: string, initialParams?: Record<string, any>): void {
+  public update(targetUri?: string, componentName?: string, initialParams?: Record<string, unknown>): void {
     if (targetUri) this._targetUri = targetUri;
     if (componentName) {
       this._componentName = componentName;
@@ -118,11 +118,11 @@ export class LineGeometryPanel {
     conductor_height: number;
     conductor_radius: number;
     soil_resistivity: number;
-    model_type?: string;
-    y0?: number;
-    tau?: number;
-    num_poles?: number;
-    [key: string]: any;
+    model_type?: string | undefined;
+    y0?: number | undefined;
+    tau?: number | undefined;
+    num_poles?: number | undefined;
+    [key: string]: unknown;
   }): Promise<void> {
     if (!this._targetUri || !this._componentName) {
       vscode.window.showWarningMessage("No active PSCAD document or component target to update.");
@@ -141,7 +141,7 @@ export class LineGeometryPanel {
       }
 
       // Generate text edits for each parameter update
-      const actions: any[] = [
+      const actions: Parameters<typeof planDiagramActions>[1] = [
         { type: "updateParameter", name: this._componentName, parameter: "R", value: params.R.toFixed(5) },
         { type: "updateParameter", name: this._componentName, parameter: "L", value: params.L.toFixed(6) },
         { type: "updateParameter", name: this._componentName, parameter: "C", value: params.C.toExponential(4) },
@@ -228,8 +228,8 @@ export class LineGeometryPanel {
       } else {
         vscode.window.showErrorMessage(`Failed to apply parameters to '${this._componentName}'.`);
       }
-    } catch (e: any) {
-      vscode.window.showErrorMessage(`Error applying line parameters: ${e?.message ?? e}`);
+    } catch (e: unknown) {
+      vscode.window.showErrorMessage(`Error applying line parameters: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -242,7 +242,7 @@ export class LineGeometryPanel {
     }
   }
 
-  private getHtmlForWebview(initialParams?: Record<string, any>): string {
+  private getHtmlForWebview(initialParams?: Record<string, unknown>): string {
     const nonce = getNonce();
 
     // Default configuration

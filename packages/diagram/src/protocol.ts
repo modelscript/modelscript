@@ -79,7 +79,7 @@ export type PropertyFieldKind =
 
 export interface PropertyChoiceOption {
   label: string;
-  value: any;
+  value: unknown;
   description?: string | undefined;
   icon?: string | undefined;
 }
@@ -88,7 +88,7 @@ export interface PropertyFieldValidation {
   min?: number | undefined;
   max?: number | undefined;
   pattern?: string | undefined;
-  validate?: ((value: any, ctx: any) => string | null) | undefined;
+  validate?: ((value: unknown, ctx: Record<string, unknown>) => string | null) | undefined;
 }
 
 export interface PropertyFieldConfig {
@@ -97,7 +97,7 @@ export interface PropertyFieldConfig {
   kind: PropertyFieldKind;
   description?: string | undefined;
   placeholder?: string | undefined;
-  defaultValue?: any;
+  defaultValue?: unknown;
   unit?: string | undefined;
   choices?: (string | PropertyChoiceOption)[] | undefined;
   enabledIf?: string | undefined;
@@ -166,7 +166,7 @@ export interface ComponentPropertyData {
   /** Structured schema-driven property definition */
   schema?: EntityPropertySchema | undefined;
   /** Property values map (key -> value) */
-  values?: Record<string, any> | undefined;
+  values?: Record<string, unknown> | undefined;
   /** Validation error map (key -> error message) */
   errors?: Record<string, string> | undefined;
 }
@@ -176,6 +176,8 @@ export interface DiagramPort {
   group: string;
   args: { x: number; y: number; angle: number };
   markup: X6Markup;
+  isConjugated?: boolean | undefined;
+  direction?: "in" | "out" | "inout" | string | undefined;
 }
 
 export interface ReactiveAnimationBinding {
@@ -185,8 +187,128 @@ export interface ReactiveAnimationBinding {
   transform?: string | undefined;
 }
 
+export interface DiagramNodeAttrs {
+  body?:
+    | {
+        fill?: string | undefined;
+        stroke?: string | undefined;
+        strokeWidth?: number | undefined;
+        strokeDasharray?: string | undefined;
+        rx?: number | undefined;
+        ry?: number | undefined;
+        fillPattern?: string | undefined;
+        opacity?: number | undefined;
+        filter?: string | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  label?:
+    | {
+        text?: string | undefined;
+        fill?: string | undefined;
+        fontSize?: number | undefined;
+        fontWeight?: string | number | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  header?:
+    | {
+        text?: string | undefined;
+        fill?: string | undefined;
+        fontSize?: number | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  icon?:
+    | {
+        href?: string | undefined;
+        "xlink:href"?: string | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  tab?:
+    | {
+        width?: number | undefined;
+        height?: number | undefined;
+        fill?: string | undefined;
+        stroke?: string | undefined;
+        rx?: number | undefined;
+        ry?: number | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  tabStereotype?:
+    | {
+        text?: string | undefined;
+        fill?: string | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  tabLabel?:
+    | {
+        text?: string | undefined;
+        fill?: string | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  [key: string]: Record<string, unknown> | undefined;
+}
+
+export interface DiagramNodeData {
+  fillPattern?: string | undefined;
+  ruleName?: string | undefined;
+  multiplicity?: number | undefined;
+  icon?: string | undefined;
+  sections?: { header: string; entries: string[] }[] | undefined;
+  swimlane?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface DiagramEdgeStyle {
+  connector?: string | undefined;
+  router?: string | undefined;
+  strokeDasharray?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface DiagramEdgeLabel {
+  attrs?:
+    | {
+        text?:
+          | {
+              text?: string | undefined;
+              fill?: string | undefined;
+              fontSize?: number | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        label?:
+          | {
+              text?: string | undefined;
+              [key: string]: unknown;
+            }
+          | undefined;
+        rect?: Record<string, unknown> | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  position?: number | Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
+export type DiagramEdgeMarker =
+  | string
+  | {
+      name?: string | undefined;
+      width?: number | undefined;
+      height?: number | undefined;
+      [key: string]: unknown;
+    }
+  | null;
+
 export interface DiagramNode {
   id: string;
+  shape?: string | undefined;
   x: number;
   y: number;
   width: number;
@@ -194,7 +316,7 @@ export interface DiagramNode {
   angle: number;
   opacity: number;
   zIndex: number;
-  markup: X6Markup;
+  markup: X6Markup | X6Markup[];
   ports: {
     items: DiagramPort[];
     groups: Record<string, { position: string; zIndex: number }>;
@@ -208,8 +330,8 @@ export interface DiagramNode {
         entries: string[];
       }[]
     | undefined;
-  attrs?: any;
-  data?: any;
+  attrs?: DiagramNodeAttrs | undefined;
+  data?: DiagramNodeData | undefined;
 }
 
 export interface DiagramEdge {
@@ -221,16 +343,16 @@ export interface DiagramEdge {
   router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
   zIndex: number;
   animations?: ReactiveAnimationBinding[] | undefined;
-  style?: any;
-  labels?: any[] | undefined;
-  data?: any;
+  style?: DiagramEdgeStyle | undefined;
+  labels?: DiagramEdgeLabel[] | undefined;
+  data?: Record<string, unknown> | undefined;
   attrs: {
     line: {
       stroke: string;
       strokeWidth: number;
       strokeDasharray?: string | undefined;
-      sourceMarker?: any;
-      targetMarker?: any;
+      sourceMarker?: DiagramEdgeMarker | undefined;
+      targetMarker?: DiagramEdgeMarker | undefined;
       "vector-effect": string;
       "pointer-events": string;
     };
@@ -301,7 +423,7 @@ export type DiagramEditAction =
   | { type: "updateName"; oldName: string; newName: string }
   | { type: "updateDescription"; name: string; description: string }
   | { type: "updateParameter"; name: string; parameter: string; value: string }
-  | { type: "updateProperty"; name: string; key: string; value: any; previousValue?: any };
+  | { type: "updateProperty"; name: string; key: string; value: unknown; previousValue?: unknown };
 
 // ── SVG Export Options ──
 
@@ -320,7 +442,7 @@ export interface DiagramPaletteItem {
   className: string;
   iconSvg?: string | undefined;
   description?: string | undefined;
-  defaultProps?: Record<string, any> | undefined;
+  defaultProps?: Record<string, unknown> | undefined;
 }
 
 export interface DiagramPaletteCategory {

@@ -67,8 +67,8 @@ export interface SyncElementDiff {
   name?: string | undefined;
   metaclass: string;
   changeType: "added" | "modified" | "deleted" | "unchanged";
-  local?: Record<string, any> | undefined;
-  remote?: Record<string, any> | undefined;
+  local?: SysmlxElement | undefined;
+  remote?: SysmlxElement | undefined;
   conflicts?: string[] | undefined;
 }
 
@@ -101,6 +101,34 @@ export interface SyncPushResult {
     modified: number;
     deleted: number;
   };
+}
+
+interface RawRemoteElement {
+  "@id"?: string | undefined;
+  id?: string | undefined;
+  "@type"?: string | undefined;
+  type?: string | undefined;
+  name?: string | undefined;
+  qualifiedName?: string | undefined;
+  isAbstract?: boolean | undefined;
+  owner?: { "@id"?: string | undefined; id?: string | undefined } | string | null | undefined;
+  ownerId?: string | undefined;
+  ownedElement?: ({ "@id"?: string | undefined; id?: string | undefined } | string)[] | undefined;
+  superclasses?: string[] | undefined;
+  attributes?: Record<string, unknown> | undefined;
+}
+
+interface TwcApiResponse {
+  revision?: string | undefined;
+  revisionId?: string | undefined;
+  "@context"?: string | undefined;
+  "@graph"?: SysmlxDocument["@graph"] | undefined;
+  elements?: RawRemoteElement[] | undefined;
+}
+
+interface MmsApiResponse {
+  commitId?: string | undefined;
+  elements?: RawRemoteElement[] | undefined;
 }
 
 // --- Teamwork Cloud Client ---
@@ -154,28 +182,40 @@ export class TeamworkCloudClient {
       throw new Error(`Teamwork Cloud API error (${resp.status} ${resp.statusText}) from ${url}${detail}`);
     }
 
-    const data: any = await resp.json();
-    const revision = resp.headers.get("X-TWC-Revision") || data.revision || options.revision || "rev-latest";
+    const data = (await resp.json()) as TwcApiResponse | RawRemoteElement[];
+    const dataObj = Array.isArray(data) ? undefined : data;
+    const revision = resp.headers.get("X-TWC-Revision") || dataObj?.revision || options.revision || "rev-latest";
 
     // Normalize response into a SysmlxDocument
     let doc: SysmlxDocument;
-    if (data["@graph"]) {
-      doc = data as SysmlxDocument;
-    } else if (Array.isArray(data.elements || data)) {
-      const rawElems: any[] = data.elements || data;
-      const elements: SysmlxElement[] = rawElems.map((e) => ({
-        "@id": e["@id"] || e.id || `urn:uuid:${randomUUID()}`,
-        "@type": e["@type"] || e.type || "Element",
-        name: e.name,
-        qualifiedName: e.qualifiedName || e.name,
-        isAbstract: e.isAbstract,
-        owner: e.owner ? { "@id": e.owner["@id"] || e.owner.id || e.owner } : null,
-        ownedElement: e.ownedElement
-          ? e.ownedElement.map((oe: any) => ({ "@id": oe["@id"] || oe.id || oe }))
-          : undefined,
-        superclasses: e.superclasses,
-        attributes: e.attributes || {},
-      }));
+    if (dataObj && dataObj["@graph"]) {
+      doc = dataObj as unknown as SysmlxDocument;
+    } else if (Array.isArray(dataObj?.elements || data)) {
+      const rawElems: RawRemoteElement[] = (Array.isArray(data) ? data : dataObj?.elements) ?? [];
+      const elements: SysmlxElement[] = rawElems.map((e) => {
+        const ownerVal = e.owner;
+        const ownerId =
+          typeof ownerVal === "string"
+            ? ownerVal
+            : ownerVal && typeof ownerVal === "object"
+              ? ownerVal["@id"] || ownerVal.id
+              : undefined;
+        return {
+          "@id": e["@id"] || e.id || `urn:uuid:${randomUUID()}`,
+          "@type": e["@type"] || e.type || "Element",
+          name: e.name,
+          qualifiedName: e.qualifiedName || e.name,
+          isAbstract: e.isAbstract,
+          owner: ownerId ? { "@id": ownerId } : null,
+          ownedElement: e.ownedElement
+            ? e.ownedElement.map((oe) => ({
+                "@id": typeof oe === "string" ? oe : oe["@id"] || oe.id || "",
+              }))
+            : undefined,
+          superclasses: e.superclasses,
+          attributes: e.attributes || {},
+        };
+      });
       doc = {
         "@context": OMG_SYSML2_CONTEXT,
         metadata: {
@@ -229,7 +269,7 @@ export class TeamworkCloudClient {
       throw new Error(`Teamwork Cloud commit failed (${resp.status} ${resp.statusText})${detail}`);
     }
 
-    const resJson: any = await resp.json().catch(() => ({}));
+    const resJson = (await resp.json().catch(() => ({}))) as TwcApiResponse;
     const newRev = resJson.revisionId || resJson.revision || `rev-${Date.now()}`;
     const committedCount = diff.addedCount + diff.modifiedCount + diff.deletedCount;
 
@@ -287,9 +327,14 @@ export class OpenMbeeMmsClient {
       throw new Error(`OpenMBEE MMS API error (${resp.status} ${resp.statusText}) from ${url}${detail}`);
     }
 
-    const data: any = await resp.json();
-    const rawElements: any[] = Array.isArray(data.elements) ? data.elements : Array.isArray(data) ? data : [];
-    const revision = data.commitId || options.revision || `mms-rev-${Date.now()}`;
+    const data = (await resp.json()) as MmsApiResponse | RawRemoteElement[];
+    const dataObj = Array.isArray(data) ? undefined : data;
+    const rawElements: RawRemoteElement[] = Array.isArray(dataObj?.elements)
+      ? dataObj.elements
+      : Array.isArray(data)
+        ? data
+        : [];
+    const revision = dataObj?.commitId || options.revision || `mms-rev-${Date.now()}`;
 
     const elements: SysmlxElement[] = rawElements.map((mmsElem) => {
       const id = mmsElem.id || mmsElem["@id"] || `urn:uuid:${randomUUID()}`;
@@ -379,7 +424,7 @@ export class OpenMbeeMmsClient {
       throw new Error(`OpenMBEE MMS commit failed (${resp.status} ${resp.statusText})${detail}`);
     }
 
-    const resJson: any = await resp.json().catch(() => ({}));
+    const resJson = (await resp.json().catch(() => ({}))) as MmsApiResponse;
     const newRev = resJson.commitId || `mms-commit-${Date.now()}`;
     const committedCount = elementsToPost.length + diff.deletedCount;
 

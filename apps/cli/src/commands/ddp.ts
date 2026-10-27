@@ -9,7 +9,15 @@ import {
 } from "@modelscript/exchange";
 import fs from "node:fs";
 import path from "node:path";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
+
+interface DdpArtifactItem {
+  id: string;
+  path: string;
+  format?: string | undefined;
+  contentType?: string | undefined;
+  description?: string | undefined;
+}
 
 interface DdpInspectArgs {
   file: string;
@@ -42,7 +50,7 @@ const DdpInspectCommand: CommandModule<{}, DdpInspectArgs> = {
         description: "Output format",
         choices: ["table", "json"],
         default: "table",
-      }) as any;
+      }) as unknown as Argv<DdpInspectArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -86,7 +94,7 @@ const DdpInspectCommand: CommandModule<{}, DdpInspectArgs> = {
     }
 
     console.log("\n\x1b[1m--- Domain Artifacts ---\x1b[0m");
-    const printCategory = (label: string, items?: any[]) => {
+    const printCategory = (label: string, items?: DdpArtifactItem[]) => {
       if (!items || items.length === 0) return;
       console.log(`\x1b[33m[${label}]\x1b[0m (${items.length} items):`);
       for (const it of items) {
@@ -135,7 +143,7 @@ const DdpPackCommand: CommandModule<{}, DdpPackArgs> = {
         alias: "f",
         description: "Additional files to bundle into package",
         type: "array",
-      }) as any;
+      }) as unknown as Argv<DdpPackArgs>;
   },
   handler: async (args) => {
     const manifestPath = path.resolve(process.cwd(), args.manifest);
@@ -232,7 +240,7 @@ const DdpToAasxCommand: CommandModule<{}, DdpToAasxArgs> = {
         description: "Asset kind (Type or Instance)",
         choices: ["Type", "Instance"],
         default: "Type",
-      }) as any;
+      }) as unknown as Argv<DdpToAasxArgs>;
   },
   handler: async (args) => {
     const filePath = path.resolve(process.cwd(), args.file);
@@ -269,7 +277,7 @@ export const Ddp: CommandModule = {
       .command(DdpInspectCommand)
       .command(DdpPackCommand)
       .command(DdpToAasxCommand)
-      .demandCommand(1, "Please specify an action (inspect, pack, or to-aasx)") as any;
+      .demandCommand(1, "Please specify an action (inspect, pack, or to-aasx)");
   },
   handler: () => {},
 };

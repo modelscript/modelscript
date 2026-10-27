@@ -34,6 +34,10 @@ declare module "express" {
     tokenScopes?: string[] | undefined;
     tokenPackagePattern?: string | undefined;
     tokenId?: number | undefined;
+    cookies?: Record<string, string> | undefined;
+    rawBody?: Buffer | string | undefined;
+    isDomainSilenced?: boolean | undefined;
+    database?: LibraryDatabase | undefined;
   }
 }
 
@@ -77,7 +81,7 @@ function extractTokenFromRequest(req: Request): string | undefined {
   if (authHeader && authHeader.startsWith("Bearer ")) {
     return authHeader.substring(7);
   }
-  const cookies = (req as any).cookies;
+  const cookies = req.cookies;
   if (cookies && typeof cookies["modelscript_token"] === "string" && cookies["modelscript_token"].length > 0) {
     return cookies["modelscript_token"];
   }

@@ -183,14 +183,14 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
     rhs.set(baseRhs);
 
     // Stamp precomputed non-linear semiconductor models (D, Q, M) with zero lookup overhead
-    for (let i = 0; i < precomputedDiodes.length; i++) {
-      stampPrecomputedDiode(matrix, rhs, precomputedDiodes[i]!, solution);
+    for (const diode of precomputedDiodes) {
+      stampPrecomputedDiode(matrix, rhs, diode, solution);
     }
-    for (let i = 0; i < precomputedBjts.length; i++) {
-      stampPrecomputedBjt(matrix, rhs, precomputedBjts[i]!, solution);
+    for (const bjt of precomputedBjts) {
+      stampPrecomputedBjt(matrix, rhs, bjt, solution);
     }
-    for (let i = 0; i < precomputedMosfets.length; i++) {
-      stampPrecomputedMosfet(matrix, rhs, precomputedMosfets[i]!, solution);
+    for (const mosfet of precomputedMosfets) {
+      stampPrecomputedMosfet(matrix, rhs, mosfet, solution);
     }
 
     // Solve linear system in-place

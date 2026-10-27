@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 export interface LspArgs {
   stdio: boolean;
   port?: number | undefined;
 }
 
-export const Lsp: CommandModule<any, any> = {
+export const Lsp: CommandModule<{}, LspArgs> = {
   command: "lsp",
   describe: "Start the ModelScript polyglot Language Server (over stdio for editor integration)",
   builder: (yargs) => {
@@ -20,7 +20,7 @@ export const Lsp: CommandModule<any, any> = {
       .option("port", {
         description: "Run language server over a TCP port",
         type: "number",
-      });
+      }) as unknown as Argv<LspArgs>;
   },
   handler: async (_args) => {
     const { startNodeServer } = await import("@modelscript/lsp");

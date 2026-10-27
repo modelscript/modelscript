@@ -29,7 +29,7 @@ export interface BlinkWasmRunnerOptions extends UniversalFmuRunnerOptions {
  * and Windows PE .dll binaries with complete CPU ABI emulation.
  */
 export class BlinkWasmRunner implements WasmFmuRunner {
-  readonly instance: any = null;
+  readonly instance: WebAssembly.Instance | null = null;
   readonly engineName = "BlinkWasmRunner";
   readonly isWasmEngine = true;
 

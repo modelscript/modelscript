@@ -124,10 +124,12 @@ export function getOpenDssDocumentSymbols(text: string): LspDocumentSymbol[] {
       },
       children: [],
     };
+    const rootChildren: LspDocumentSymbol[] = [];
+    rootSymbol.children = rootChildren;
 
     // Transformers
     for (const [id, xfmr] of deck.transformers) {
-      rootSymbol.children!.push({
+      rootChildren.push({
         name: `Transformer.${id}`,
         detail: `[${xfmr.buses.join(" -> ")}] (${xfmr.kvs.join("kV / ")}kV)`,
         kind: LspSymbolKind.Class,
@@ -144,7 +146,7 @@ export function getOpenDssDocumentSymbols(text: string): LspDocumentSymbol[] {
 
     // Lines
     for (const [id, line] of deck.lines) {
-      rootSymbol.children!.push({
+      rootChildren.push({
         name: `Line.${id}`,
         detail: `(${line.bus1} -> ${line.bus2}, L=${line.length})`,
         kind: LspSymbolKind.Class,
@@ -161,7 +163,7 @@ export function getOpenDssDocumentSymbols(text: string): LspDocumentSymbol[] {
 
     // Loads
     for (const [id, load] of deck.loads) {
-      rootSymbol.children!.push({
+      rootChildren.push({
         name: `Load.${id}`,
         detail: `(Bus: ${load.bus1}, P=${load.kw}kW, Q=${load.kvar}kvar)`,
         kind: LspSymbolKind.Variable,
@@ -178,7 +180,7 @@ export function getOpenDssDocumentSymbols(text: string): LspDocumentSymbol[] {
 
     // PV Systems
     for (const [id, pv] of deck.pvSystems) {
-      rootSymbol.children!.push({
+      rootChildren.push({
         name: `PVSystem.${id}`,
         detail: `(Bus: ${pv.bus1}, Pmpp=${pv.pmpp}kW, S=${pv.kva}kVA)`,
         kind: LspSymbolKind.Field,

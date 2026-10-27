@@ -14,7 +14,7 @@ class MemoryStream extends Duplex {
     // pushing occurs via peer's _write.
   }
 
-  override _write(chunk: any, _encoding: string, callback: (error?: Error | null) => void): void {
+  override _write(chunk: unknown, _encoding: string, callback: (error?: Error | null) => void): void {
     if (this.peer) {
       this.peer.push(chunk);
     }
@@ -39,8 +39,9 @@ export class BrowserBroker implements EmbeddedBroker {
   public readonly aedes: Aedes;
 
   constructor() {
-    const AedesConstructor = (aedes as any).default || aedes;
-    this.aedes = new (AedesConstructor as new () => Aedes)();
+    const aedesMod = aedes as unknown as { default?: new () => Aedes } & (new () => Aedes);
+    const AedesConstructor = aedesMod.default || aedesMod;
+    this.aedes = new AedesConstructor();
   }
 
   async start(): Promise<void> {
@@ -68,7 +69,7 @@ export class BrowserBroker implements EmbeddedBroker {
 
     // Attach the server end to Aedes connection handler
 
-    this.aedes.handle(serverStream as any);
+    this.aedes.handle(serverStream as unknown as Parameters<Aedes["handle"]>[0]);
 
     return clientStream;
   }

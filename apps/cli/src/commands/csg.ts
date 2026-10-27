@@ -37,7 +37,7 @@ export const BuildCSG: CommandModule<{}, CSGArgs> = {
   },
   handler: async (args) => {
     const { parser } = await createWasmParser(modelicaWasmPath);
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = new Context(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);

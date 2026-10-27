@@ -54,8 +54,8 @@ export class S3StorageDriver implements StorageDriver {
       }
       const arrayBuf = await res.arrayBuffer();
       return Buffer.from(arrayBuf);
-    } catch (err: any) {
-      if (err.status === 404) return null;
+    } catch (err: unknown) {
+      if ((err as { status?: number | undefined })?.status === 404) return null;
       throw err;
     }
   }

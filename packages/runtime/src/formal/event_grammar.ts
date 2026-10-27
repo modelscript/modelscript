@@ -116,6 +116,7 @@ export class EventGrammarSolver {
     const allInstances: FlatInstance[] = [];
     const sequenceOrderPairs: [string, string][] = [];
     const alternativeGroups: string[][] = [];
+    const loopGroups: { parentInstId: string; minRep: number; repInsts: string[][] }[] = [];
     const parentChildPairs: [string, string][] = [];
 
     let instCounter = 0;
@@ -183,11 +184,14 @@ export class EventGrammarSolver {
 
         case "loop": {
           const maxRep = Math.min(scope, node.maxRep ?? scope);
+          const minRep = Math.min(maxRep, Math.max(0, node.minRep ?? 1));
           let prevLoopInsts: string[] = [];
+          const repInsts: string[][] = [];
           for (let rep = 1; rep <= maxRep; rep++) {
             const child = node.children?.[0];
             if (child) {
               const cInsts = unrollNode(child, actor, instId, rep);
+              repInsts.push(cInsts);
               if (prevLoopInsts.length > 0) {
                 for (const p of prevLoopInsts) {
                   for (const c of cInsts) {
@@ -197,6 +201,9 @@ export class EventGrammarSolver {
               }
               prevLoopInsts = cInsts;
             }
+          }
+          if (repInsts.length > 0) {
+            loopGroups.push({ parentInstId: instId, minRep, repInsts });
           }
           return [instId];
         }
@@ -281,6 +288,27 @@ export class EventGrammarSolver {
           .map((c) => actVarMap.get(c.instId)!);
         for (const cVar of seqChildren) {
           baseClauses.push([-pVar, cVar]);
+        }
+      }
+    }
+
+    // C. Loop: parent active => first minRep iterations active, and iterations are prefix-closed (rep_{r+1} => rep_r)
+    for (const lg of loopGroups) {
+      const pVar = actVarMap.get(lg.parentInstId)!;
+      for (let r = 0; r < lg.repInsts.length; r++) {
+        const curVars = lg.repInsts[r]!.map((id) => actVarMap.get(id)!);
+        if (r < lg.minRep) {
+          for (const cVar of curVars) {
+            baseClauses.push([-pVar, cVar]);
+          }
+        }
+        if (r > 0) {
+          const prevVars = lg.repInsts[r - 1]!.map((id) => actVarMap.get(id)!);
+          for (const cVar of curVars) {
+            for (const prevVar of prevVars) {
+              baseClauses.push([-cVar, prevVar]);
+            }
+          }
         }
       }
     }
@@ -461,8 +489,13 @@ export class EventGrammarSolver {
           if (coord.relation === "precedes") {
             const p = getPrecVar(s.instId, t.instId);
             baseClauses.push([-sAct, -tAct, p]);
+          } else if (coord.relation === "follows") {
+            const p = getPrecVar(t.instId, s.instId);
+            baseClauses.push([-sAct, -tAct, p]);
           } else if (coord.relation === "mutex") {
             baseClauses.push([-sAct, -tAct]);
+          } else if (coord.relation === "includes") {
+            baseClauses.push([-tAct, sAct]);
           } else if (coord.relation === "equals") {
             baseClauses.push([-sAct, tAct]);
             baseClauses.push([-tAct, sAct]);
@@ -508,7 +541,8 @@ export class EventGrammarSolver {
 
       if (activeInsts.length === 0) {
         // Enforce at least one event active and continue
-        sat.addClause(allInstances.map((i) => actVarMap.get(i.instId)!));
+        if (allInstances.length === 0) break;
+        blockingClauses.push(allInstances.map((i) => actVarMap.get(i.instId)!));
         continue;
       }
 

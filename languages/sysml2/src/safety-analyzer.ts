@@ -406,7 +406,11 @@ export function extractSysML2FailureModes(queryDB: QueryDB): {
       const gateType = String(
         sym.metadata?.["logic"] || sym.metadata?.["gate"] || sym.metadata?.["causesHazardLogic"] || "",
       ).toLowerCase();
-      const votingK = sym.metadata?.["kOfN"] ?? sym.metadata?.["threshold"] ?? (sym.metadata?.["voting"] as any)?.k;
+      const votingMeta = sym.metadata?.["voting"];
+      const votingK =
+        sym.metadata?.["kOfN"] ??
+        sym.metadata?.["threshold"] ??
+        (votingMeta && typeof votingMeta === "object" ? (votingMeta as { k?: unknown }).k : undefined);
 
       let causesHazard: (active: Set<string>) => boolean;
       let description = sym.metadata?.["description"] as string | undefined;
@@ -961,8 +965,8 @@ export function extractSysML2ControlLoops(queryDB: QueryDB): ControlLoop[] {
   for (const sym of symbols) {
     const name = sym.name || "";
     const lower = name.toLowerCase();
-    const ruleName = ((sym as any).ruleName || (sym as any).kind || "").toString();
-    const meta = (sym.metadata || {}) as Record<string, any>;
+    const ruleName = (sym.ruleName || sym.kind || "").toString();
+    const meta: Record<string, unknown> = sym.metadata || {};
 
     // 1. Check explicit structural connection / flow symbols
     if (
@@ -1026,7 +1030,11 @@ export function extractSysML2ControlLoops(queryDB: QueryDB): ControlLoop[] {
   }
 
   // 3. Also check source text for `connect A.out to B.in` or `flow of X from A to B`
-  const srcText: string = (queryDB as any)?.source || (queryDB as any)?.doc?.text || "";
+  const dbWithSrc = queryDB as QueryDB & {
+    source?: string | undefined;
+    doc?: { text?: string | undefined } | undefined;
+  };
+  const srcText: string = dbWithSrc?.source || dbWithSrc?.doc?.text || "";
   if (srcText) {
     const words: string[] = [];
     let i = 0;

@@ -4,14 +4,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import StepViewer, { type StepMeshPayload } from "./step-viewer/step-viewer";
 
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as {
+    acquireVsCodeApi?: () => {
+      postMessage(message: unknown): void;
+      getState<T = unknown>(): T | undefined;
+      setState<T = unknown>(state: T): T;
+    };
+  }
+).acquireVsCodeApi?.();
+
+interface RawStepMesh {
+  id: number;
+  name: string;
+  type: string;
+  color?: [number, number, number] | undefined;
+  vertices?: Float32Array | Record<string, number> | number[] | undefined;
+  normals?: Float32Array | Record<string, number> | number[] | undefined;
+  indices?: Uint32Array | Record<string, number> | number[] | undefined;
+}
 
 /* ─── types ─── */
 interface MsimConfig {
   type?: string;
   stepFile?: string;
   workflowClass?: string;
-  parameters?: Record<string, any>;
+  parameters?: Record<string, string | number>;
   mesh?: { min?: number; max?: number; algorithm?: string; order?: number };
   material?: { name?: string; E?: number; nu?: number; density?: number };
   loads?: { type?: string; face?: string; value?: number[] }[];
@@ -76,16 +94,16 @@ function App() {
   }, []);
 
   const updateField = useCallback(
-    (path: string, value: any) => {
+    (path: string, value: unknown) => {
       const c = JSON.parse(JSON.stringify(configRef.current)) as Record<string, unknown>;
       const keys = path.split(".");
 
-      let obj: any = c;
+      let obj: Record<string, unknown> = c;
       for (let i = 0; i < keys.length - 1; i++) {
         const k = keys[i] as string;
         if (k === "__proto__" || k === "constructor" || k === "prototype") return;
-        if (!obj[k]) obj[k] = {};
-        obj = obj[k];
+        if (!obj[k] || typeof obj[k] !== "object") obj[k] = {};
+        obj = obj[k] as Record<string, unknown>;
       }
       const lastKey = keys[keys.length - 1] as string;
       if (lastKey === "__proto__" || lastKey === "constructor" || lastKey === "prototype") return;
@@ -108,7 +126,7 @@ function App() {
     const handleMessage = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === "stepMeshes") {
-        const raw: StepMeshPayload[] = (msg.data || []).map((m: any) => ({
+        const raw: StepMeshPayload[] = ((msg.data as RawStepMesh[]) || []).map((m) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),
           normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(Object.values(m.normals || {})),

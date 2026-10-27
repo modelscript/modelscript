@@ -259,7 +259,18 @@ export function verifyNpmPackDryRun(pkgDir: string): PackViolation[] {
     const parsed = JSON.parse(res.stdout) as { files?: { path: string }[] }[];
     const packedFiles = new Set((parsed[0]?.files || []).map((f) => f.path.replace(/\\/g, "/")));
 
-    for (const expTarget of collectExportTargets(pkg["exports"])) {
+    const declaredTargets = new Set<string>(collectExportTargets(pkg["exports"]));
+    if (typeof pkg["main"] === "string") declaredTargets.add(pkg["main"]);
+    if (typeof pkg["types"] === "string") declaredTargets.add(pkg["types"]);
+    if (typeof pkg["bin"] === "string") {
+      declaredTargets.add(pkg["bin"]);
+    } else if (pkg["bin"] && typeof pkg["bin"] === "object") {
+      for (const binTarget of Object.values(pkg["bin"] as Record<string, unknown>)) {
+        if (typeof binTarget === "string") declaredTargets.add(binTarget);
+      }
+    }
+
+    for (const expTarget of declaredTargets) {
       const clean = expTarget.replace(/^\.\//, "");
       if (!packedFiles.has(clean)) {
         violations.push({
@@ -280,6 +291,36 @@ export function verifyNpmPackDryRun(pkgDir: string): PackViolation[] {
   return violations;
 }
 
+export const CORE_PACK_TARGETS = [
+  "packages/dsl",
+  "packages/runtime",
+  "packages/simulate",
+  "packages/cad",
+  "packages/exchange",
+  "packages/mcp",
+  "packages/diagram",
+  "packages/lsp",
+  "languages/modelica",
+  "apps/cli",
+] as const;
+
+export const ESM_IMPORT_TARGETS = [
+  "packages/dsl",
+  "packages/runtime",
+  "packages/simulate",
+  "packages/cad",
+  "packages/exchange",
+  "packages/mcp",
+  "packages/diagram",
+  "packages/lsp",
+  "languages/modelica",
+] as const;
+
+const ESM_IMPORT_ENTRYPOINTS: Record<string, string> = {
+  "packages/diagram": "dist/polyglot-diagram-builder.js",
+  "languages/modelica": "dist/src/index.js",
+};
+
 export async function verifyCoreEsmImports(pkgDirs: string[]): Promise<{
   violations: PackViolation[];
   importedCount: number;
@@ -289,7 +330,9 @@ export async function verifyCoreEsmImports(pkgDirs: string[]): Promise<{
 
   for (const pkgDir of pkgDirs) {
     const pkgJsonPath = path.join(pkgDir, "package.json");
-    const entryPath = path.join(pkgDir, "dist", "index.js");
+    const relDir = path.relative(REPO_ROOT, pkgDir).replace(/\\/g, "/");
+    const relEntry = ESM_IMPORT_ENTRYPOINTS[relDir] ?? "dist/index.js";
+    const entryPath = path.join(pkgDir, relEntry);
     if (!fs.existsSync(pkgJsonPath) || !fs.existsSync(entryPath)) continue;
 
     const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as Record<string, unknown>;
@@ -335,13 +378,8 @@ async function run(): Promise<void> {
   }
   allViolations.push(...overrideResult.violations);
 
-  // Run npm pack --dry-run verification on core foundational packages if built
-  const corePublishableDirs = [
-    path.join(REPO_ROOT, "packages", "dsl"),
-    path.join(REPO_ROOT, "packages", "runtime"),
-    path.join(REPO_ROOT, "languages", "modelica"),
-    path.join(REPO_ROOT, "apps", "cli"),
-  ];
+  // Run npm pack --dry-run verification on core publishable SDK packages if built
+  const corePublishableDirs = CORE_PACK_TARGETS.map((rel) => path.join(REPO_ROOT, rel));
   let packedChecked = 0;
   for (const dir of corePublishableDirs) {
     if (fs.existsSync(path.join(dir, "dist"))) {
@@ -350,11 +388,7 @@ async function run(): Promise<void> {
     }
   }
 
-  const esmSmokeDirs = [
-    path.join(REPO_ROOT, "packages", "dsl"),
-    path.join(REPO_ROOT, "packages", "runtime"),
-    path.join(REPO_ROOT, "languages", "modelica"),
-  ];
+  const esmSmokeDirs = ESM_IMPORT_TARGETS.map((rel) => path.join(REPO_ROOT, rel));
   const esmResult = await verifyCoreEsmImports(esmSmokeDirs);
   allViolations.push(...esmResult.violations);
 

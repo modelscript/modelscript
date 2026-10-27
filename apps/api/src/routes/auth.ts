@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable */
 
 import bcrypt from "bcryptjs";
 import express, { Router as createRouter, type Request, type Response, type Router } from "express";
@@ -187,7 +186,16 @@ export function authRouter(database: LibraryDatabase): Router {
           console.error("[Auth] Failed to dispatch verification email:", err);
         });
 
-        const { password_hash: _, github_token, gitlab_token, ...safeUser } = user as any;
+        const {
+          password_hash: _,
+          github_token: _gh,
+          gitlab_token: _gl,
+          ...safeUser
+        } = user as typeof user & {
+          password_hash?: unknown;
+          github_token?: unknown;
+          gitlab_token?: unknown;
+        };
 
         // In production mode, never expose verificationToken in the JSON response payload
         const isProduction = process.env["NODE_ENV"] === "production";
@@ -245,8 +253,8 @@ export function authRouter(database: LibraryDatabase): Router {
         message: "If an account exists with this email address, a verification link has been sent.",
         ...(tokenPayload ? { verificationToken: tokenPayload } : {}),
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to resend verification email" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to resend verification email" });
     }
   });
 
@@ -433,7 +441,14 @@ export function authRouter(database: LibraryDatabase): Router {
         details: { method: "password" },
       });
 
-      const { password_hash, github_token, gitlab_token, totp_secret: _, backup_codes: __, ...safeUser } = user as any;
+      const {
+        password_hash,
+        github_token: _gh,
+        gitlab_token: _gl,
+        totp_secret: _,
+        backup_codes: __,
+        ...safeUser
+      } = user;
 
       res.json({
         token,
@@ -556,7 +571,14 @@ export function authRouter(database: LibraryDatabase): Router {
         details: { method: usedBackupCode ? "2fa_backup_code" : "2fa_totp" },
       });
 
-      const { password_hash, github_token, gitlab_token, totp_secret: _, backup_codes: __, ...safeUser } = user as any;
+      const {
+        password_hash,
+        github_token: _gh,
+        gitlab_token: _gl,
+        totp_secret: _,
+        backup_codes: __,
+        ...safeUser
+      } = user;
 
       res.json({
         token: sessionToken,
@@ -599,8 +621,8 @@ export function authRouter(database: LibraryDatabase): Router {
         otpAuthUri,
         otpauthUri: otpAuthUri,
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to initialize 2FA setup" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to initialize 2FA setup" });
     }
   });
 
@@ -655,8 +677,8 @@ export function authRouter(database: LibraryDatabase): Router {
         message: "Two-Factor Authentication enabled successfully.",
         backupCodes: plainCodes,
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to activate 2FA" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to activate 2FA" });
     }
   });
 
@@ -724,8 +746,8 @@ export function authRouter(database: LibraryDatabase): Router {
         success: true,
         message: "Two-factor authentication has been disabled.",
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to disable 2FA" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to disable 2FA" });
     }
   });
 
@@ -738,7 +760,7 @@ export function authRouter(database: LibraryDatabase): Router {
     clearSessionCookie(res);
     const clientIp = getClientIp(req);
     database.logAudit({
-      actorId: (req as any).user?.id ?? null,
+      actorId: req.user?.id ?? null,
       action: "auth_logout",
       resourceType: "auth",
       ipAddress: clientIp,
@@ -790,8 +812,8 @@ export function authRouter(database: LibraryDatabase): Router {
         message: "If an account exists with this email address, a password reset link has been sent.",
         ...(tokenPayload ? { resetToken: tokenPayload } : {}),
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to process password reset request" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to process password reset request" });
     }
   });
 
@@ -855,8 +877,8 @@ export function authRouter(database: LibraryDatabase): Router {
         success: true,
         message: "Your password has been reset successfully. Please sign in with your new password.",
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to reset password" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to reset password" });
     }
   });
 
@@ -1154,8 +1176,8 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       // Handle Normal Login/Signup
-      let oauthAcc = database.getOAuthAccount(provider, providerUserId);
-      let userId = oauthAcc?.user_id;
+      const oauthAcc = database.getOAuthAccount(provider, providerUserId);
+      const userId = oauthAcc?.user_id;
       let user;
 
       if (userId) {
@@ -1190,7 +1212,7 @@ export function authRouter(database: LibraryDatabase): Router {
           id: fullUser.id,
           username: fullUser.username,
           email: fullUser.email,
-          tokenVersion: (fullUser as any).token_version ?? 1,
+          tokenVersion: ("token_version" in fullUser ? fullUser.token_version : undefined) ?? 1,
         },
         JWT_SECRET,
         {
@@ -1251,8 +1273,8 @@ export function authRouter(database: LibraryDatabase): Router {
 
       const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
       res.redirect(`${frontendUrl}/oauth/callback?token=${result.token}`);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "OIDC authentication failed" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "OIDC authentication failed" });
     }
   });
 
@@ -1267,8 +1289,8 @@ export function authRouter(database: LibraryDatabase): Router {
       const claims = await defaultOidcService.verifyIdToken(idToken);
       const result = await defaultOidcService.handleOidcLogin(database, claims);
       res.json(result);
-    } catch (err: any) {
-      res.status(401).json({ error: err.message || "Invalid OIDC token payload" });
+    } catch (err: unknown) {
+      res.status(401).json({ error: err instanceof Error ? err.message : "Invalid OIDC token payload" });
     }
   });
 
@@ -1282,7 +1304,14 @@ export function authRouter(database: LibraryDatabase): Router {
         res.status(404).json({ error: "User not found" });
         return;
       }
-      const { password_hash, github_token, gitlab_token, totp_secret: _, backup_codes: __, ...safeUser } = user as any;
+      const {
+        password_hash,
+        github_token: _gh,
+        gitlab_token: _gl,
+        totp_secret: _,
+        backup_codes: __,
+        ...safeUser
+      } = user;
       res.json({
         user: {
           ...safeUser,
@@ -1290,7 +1319,7 @@ export function authRouter(database: LibraryDatabase): Router {
           totp_enabled: Boolean(user.totp_enabled),
         },
       });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch user profile" });
     }
   });
@@ -1442,8 +1471,8 @@ export function authRouter(database: LibraryDatabase): Router {
         message: "All other sessions have been revoked.",
         token: newToken,
       });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to revoke sessions" });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to revoke sessions" });
     }
   });
 
@@ -1455,7 +1484,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const settingsStr = database.getNotificationSettings(req.user!.id);
       const settings = settingsStr ? JSON.parse(settingsStr) : {};
       res.json(settings);
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch notification settings" });
     }
   });
@@ -1468,7 +1497,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const settingsStr = JSON.stringify(req.body);
       database.updateNotificationSettings(req.user!.id, settingsStr);
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to update notification settings" });
     }
   });
@@ -1480,7 +1509,7 @@ export function authRouter(database: LibraryDatabase): Router {
     try {
       const keys = database.getPublicKeysForUser(req.user!.id);
       res.json({ keys });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch public keys" });
     }
   });
@@ -1498,7 +1527,7 @@ export function authRouter(database: LibraryDatabase): Router {
     try {
       const result = database.addPublicKeyForUser(req.user!.id, key_id_string, public_key_pem, device_name);
       res.status(201).json({ id: result.id, key_id_string, device_name });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to add public key" });
     }
   });
@@ -1510,7 +1539,7 @@ export function authRouter(database: LibraryDatabase): Router {
     try {
       database.revokePublicKey(req.user!.id, Number(req.params["id"]));
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to revoke public key" });
     }
   });
@@ -1552,7 +1581,7 @@ export function authRouter(database: LibraryDatabase): Router {
       ];
 
       res.json({ providers });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to fetch connected accounts" });
     }
   });
@@ -1579,7 +1608,7 @@ export function authRouter(database: LibraryDatabase): Router {
         details: { provider },
       });
       res.json({ success: true });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to unlink account" });
     }
   });
@@ -1592,7 +1621,7 @@ export function authRouter(database: LibraryDatabase): Router {
     try {
       const tokens = database.listApiTokens(req.user!.id);
       res.json({ tokens });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to list API tokens" });
     }
   });
@@ -1674,7 +1703,7 @@ export function authRouter(database: LibraryDatabase): Router {
         expiresAt,
         message: "Save this token now; you will not be able to see it again.",
       });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to create API token" });
     }
   });
@@ -1709,7 +1738,7 @@ export function authRouter(database: LibraryDatabase): Router {
       });
 
       res.json({ success: true, message: "Token revoked successfully" });
-    } catch (err) {
+    } catch {
       res.status(500).json({ error: "Failed to revoke API token" });
     }
   });

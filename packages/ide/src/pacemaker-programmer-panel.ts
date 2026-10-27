@@ -132,9 +132,9 @@ export class PacemakerProgrammerPanel extends BaseWebviewPanel {
 
     if (this.client && typeof this.client.onNotification === "function") {
       this._disposables.push(
-        this.client.onNotification("modelscript/pacemakerTelemetry", (data: any) => {
+        this.client.onNotification("modelscript/pacemakerTelemetry", (data: unknown) => {
           if (data && typeof data === "object") {
-            this.updateTelemetry(data);
+            this.updateTelemetry(data as Partial<PacemakerTelemetry>);
           }
         }),
       );
@@ -161,7 +161,7 @@ export class PacemakerProgrammerPanel extends BaseWebviewPanel {
       this._state.parameters.mode = value as PacemakerMode;
     } else if (name in this._state.parameters) {
       const numVal = typeof value === "string" ? parseFloat(value) : value;
-      (this._state.parameters as Record<string, any>)[name] = numVal;
+      (this._state.parameters as unknown as Record<string, number | PacemakerMode>)[name] = numVal;
     }
 
     // Forward to client or active simulation if available

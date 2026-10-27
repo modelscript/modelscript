@@ -12,7 +12,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandModule } from "yargs";
+import type { Argv, CommandModule } from "yargs";
 
 export interface ExportFormalArgs {
   paths: string[];
@@ -86,7 +86,7 @@ export const ExportFormal: CommandModule<{}, ExportFormalArgs> = {
         array: true,
         description: "Parametric optimization objectives to maximize in SMT-LIB2",
         type: "string",
-      }) as any;
+      }) as unknown as Argv<ExportFormalArgs>;
   },
 
   handler: async (args) => {
@@ -115,7 +115,10 @@ export const ExportFormal: CommandModule<{}, ExportFormalArgs> = {
       const tree = sysmlParser.parse(text);
       if (tree) {
         const fileUri = "file://" + resolvedPath;
-        sysmlIndex.register(fileUri, () => tree.rootNode as any);
+        sysmlIndex.register(
+          fileUri,
+          () => tree.rootNode as unknown as ReturnType<NonNullable<Parameters<typeof sysmlIndex.register>[1]>>,
+        );
       }
     }
 

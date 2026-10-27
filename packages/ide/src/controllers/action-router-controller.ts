@@ -16,21 +16,67 @@ const STATIC_ACTION_COMMANDS = new Set([
   "modelscript.previewCsg",
 ]);
 
+interface DynamicActionDescriptor {
+  id: string;
+  title?: string | undefined;
+  category?: string | undefined;
+  languageId?: string | undefined;
+}
+
+type ActionCommandArgs =
+  | vscode.Uri
+  | ({
+      uri?: string | undefined;
+      documentText?: string | undefined;
+      name?: string | undefined;
+    } & Record<string, unknown>);
+
+type PhaseMapValue = Partial<Record<"a" | "b" | "c", Iterable<number> | ArrayLike<number>>>;
+
+interface EmtSimulationResultPayload {
+  time?: number[] | Float64Array | ArrayBufferView | undefined;
+  t?: number[] | Float64Array | ArrayBufferView | undefined;
+  busPhaseVoltages?: Map<string, PhaseMapValue> | Record<string, PhaseMapValue> | undefined;
+  busVoltages?:
+    | Map<string, Iterable<number> | ArrayLike<number>>
+    | Record<string, Iterable<number> | ArrayLike<number>>
+    | undefined;
+  branchPhaseCurrents?: Map<string, PhaseMapValue> | Record<string, PhaseMapValue> | undefined;
+  branchCurrents?:
+    | Map<string, Iterable<number> | ArrayLike<number>>
+    | Record<string, Iterable<number> | ArrayLike<number>>
+    | undefined;
+  comtrade?: { cfg: string; dat: string } | undefined;
+  pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+}
+
+interface EmtActionExecuteResponse extends EmtSimulationResultPayload {
+  simulationResult?: EmtSimulationResultPayload | undefined;
+  settings?: { timeStepUs?: number | undefined; durationSec?: number | undefined } | undefined;
+  project?: string | undefined;
+  complianceReport?:
+    | {
+        overallCompliance?: boolean | undefined;
+        clauses?: unknown[] | undefined;
+      }
+    | undefined;
+}
+
 export async function registerDynamicActions(
   context: vscode.ExtensionContext,
   client: LanguageClient,
-  safeRegisterCommand: (commandId: string, callback: (...args: any[]) => any) => vscode.Disposable,
+  safeRegisterCommand: (commandId: string, callback: (...args: never[]) => unknown) => vscode.Disposable,
 ): Promise<void> {
   try {
-    const actions = await client.sendRequest<any[]>("modelscript/listActions", {});
+    const actions = await client.sendRequest<DynamicActionDescriptor[]>("modelscript/listActions", {});
     if (!Array.isArray(actions)) return;
 
     for (const action of actions) {
       if (!action.id) continue;
       try {
         const cmdId = `modelscript.action.${action.id}`;
-        const handler = async (args?: any) => {
-          let targetDoc = vscode.window.activeTextEditor?.document;
+        const handler = async (args?: ActionCommandArgs) => {
+          const targetDoc = vscode.window.activeTextEditor?.document;
           let targetUri = (args instanceof vscode.Uri ? args.toString() : args?.uri) ?? targetDoc?.uri.toString();
           if (!targetUri) {
             const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
@@ -38,7 +84,8 @@ export async function registerDynamicActions(
               targetUri = tab.input.uri.toString();
             }
           }
-          const inputs = typeof args === "object" && args && !(args instanceof vscode.Uri) ? { ...args } : {};
+          const inputs: { documentText?: string | undefined; name?: string | undefined } & Record<string, unknown> =
+            typeof args === "object" && args && !(args instanceof vscode.Uri) ? { ...args } : {};
           if (!inputs.documentText) {
             if (targetDoc) {
               inputs.documentText = targetDoc.getText();
@@ -126,7 +173,7 @@ export async function registerDynamicActions(
                   cancellable: false,
                 },
                 async () => {
-                  const res = await client.sendRequest<any>("modelscript/executeAction", {
+                  const res = await client.sendRequest<EmtActionExecuteResponse>("modelscript/executeAction", {
                     actionId: action.id,
                     uri: targetUri,
                     languageId: action.languageId ?? targetDoc?.languageId ?? "pscad",
@@ -148,11 +195,11 @@ export async function registerDynamicActions(
                       const yRows: number[][] = [];
 
                       if (simRes.busPhaseVoltages) {
-                        const mapEntries =
+                        const mapEntries: [string, PhaseMapValue][] =
                           simRes.busPhaseVoltages instanceof Map
                             ? Array.from(simRes.busPhaseVoltages.entries())
                             : Object.entries(simRes.busPhaseVoltages);
-                        for (const [bus, phases] of mapEntries as [string, any][]) {
+                        for (const [bus, phases] of mapEntries) {
                           for (const ph of ["a", "b", "c"] as const) {
                             if (phases?.[ph]) {
                               stateNames.push(`v_${bus}_${ph}`);
@@ -161,22 +208,22 @@ export async function registerDynamicActions(
                           }
                         }
                       } else if (simRes.busVoltages) {
-                        const mapEntries =
+                        const mapEntries: [string, Iterable<number> | ArrayLike<number>][] =
                           simRes.busVoltages instanceof Map
                             ? Array.from(simRes.busVoltages.entries())
                             : Object.entries(simRes.busVoltages);
-                        for (const [bus, arr] of mapEntries as [string, any][]) {
+                        for (const [bus, arr] of mapEntries) {
                           stateNames.push(`v_${bus}`);
                           yRows.push(Array.from(arr));
                         }
                       }
 
                       if (simRes.branchPhaseCurrents) {
-                        const mapEntries =
+                        const mapEntries: [string, PhaseMapValue][] =
                           simRes.branchPhaseCurrents instanceof Map
                             ? Array.from(simRes.branchPhaseCurrents.entries())
                             : Object.entries(simRes.branchPhaseCurrents);
-                        for (const [branch, phases] of mapEntries as [string, any][]) {
+                        for (const [branch, phases] of mapEntries) {
                           for (const ph of ["a", "b", "c"] as const) {
                             if (phases?.[ph]) {
                               stateNames.push(`i_${branch}_${ph}`);
@@ -185,11 +232,11 @@ export async function registerDynamicActions(
                           }
                         }
                       } else if (simRes.branchCurrents) {
-                        const mapEntries =
+                        const mapEntries: [string, Iterable<number> | ArrayLike<number>][] =
                           simRes.branchCurrents instanceof Map
                             ? Array.from(simRes.branchCurrents.entries())
                             : Object.entries(simRes.branchCurrents);
-                        for (const [branch, arr] of mapEntries as [string, any][]) {
+                        for (const [branch, arr] of mapEntries) {
                           stateNames.push(`i_${branch}`);
                           yRows.push(Array.from(arr));
                         }
@@ -244,8 +291,9 @@ export async function registerDynamicActions(
                   return res;
                 },
               );
-            } catch (simErr: any) {
-              vscode.window.showErrorMessage(`Simulation failed: ${simErr?.message ?? simErr}`);
+            } catch (simErr: unknown) {
+              const errMsg = simErr instanceof Error ? simErr.message : String(simErr);
+              vscode.window.showErrorMessage(`Simulation failed: ${errMsg}`);
               throw simErr;
             }
           }

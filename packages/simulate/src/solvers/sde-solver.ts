@@ -90,10 +90,23 @@ export function eulerMaruyama(problem: SDEProblem, options: SDEOptions = {}): SD
   const m = problem.mBrownian ?? n;
   const dW = new Float64Array(m);
 
-  const wasm: any = getDefaultWasmExports();
+  interface SdeWasmExports {
+    memory: WebAssembly.Memory;
+    __new?: (size: number, id: number) => number;
+    sde_euler_maruyama_step?: (
+      n: number,
+      yPtr: number,
+      driftPtr: number,
+      diffPtr: number,
+      dWPtr: number,
+      dt: number,
+      yNextPtr: number,
+    ) => void;
+  }
+  const wasm = getDefaultWasmExports() as SdeWasmExports | null;
   const useWasmEm =
     noiseType === "diagonal" &&
-    wasm &&
+    wasm !== null &&
     typeof wasm.sde_euler_maruyama_step === "function" &&
     typeof wasm.__new === "function" &&
     n > 0;
@@ -102,8 +115,8 @@ export function eulerMaruyama(problem: SDEProblem, options: SDEOptions = {}): SD
     diffPtr = 0,
     dWPtr = 0,
     yNextPtr = 0;
-  if (useWasmEm) {
-    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+  if (useWasmEm && wasm?.__new) {
+    const alloc = (bytes: number): number => wasm.__new!(bytes, 0);
     yPtr = alloc(n * 8);
     driftPtr = alloc(n * 8);
     diffPtr = alloc(n * 8);
@@ -127,7 +140,7 @@ export function eulerMaruyama(problem: SDEProblem, options: SDEOptions = {}): SD
     const yNext = new Array<number>(n);
     if (noiseType === "diagonal") {
       const gVec = diffusion as number[];
-      if (useWasmEm) {
+      if (useWasmEm && wasm?.sde_euler_maruyama_step) {
         const buf = wasm.memory.buffer;
         const yV = new Float64Array(buf, yPtr, n);
         const fV = new Float64Array(buf, driftPtr, n);

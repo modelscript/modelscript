@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { defaultArchiveExportLimiter } from "../middleware/archive-limiter.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
@@ -147,7 +147,7 @@ export function usersRouter(
       try {
         const followers = database.getUserFollowers(userId);
         for (const f of followers) {
-          if ((f as any).actor_url && (f as any).remote_domain && (f as any).inbox_url) {
+          if (f.actor_url && f.remote_domain && f.inbox_url) {
             const deleteActivity = {
               "@context": "https://www.w3.org/ns/activitystreams",
               id: `${actorUrl}#delete-${Date.now()}`,
@@ -159,8 +159,8 @@ export function usersRouter(
               "Delete",
               deleteActivity.id,
               deleteActivity,
-              (f as any).inbox_url,
-              (f as any).remote_domain,
+              f.inbox_url,
+              f.remote_domain,
             );
           }
         }
@@ -526,7 +526,6 @@ export function usersRouter(
     }
 
     // Generate a secure API token for the bot
-    const crypto = require("crypto");
     const rawToken = crypto.randomBytes(32).toString("hex");
     const tokenPrefix = "ms_bot_";
     const fullToken = `${tokenPrefix}${rawToken}`;
@@ -608,8 +607,8 @@ export function usersRouter(
     try {
       const solutions = database.getUserSolutions(username);
       res.json({ solutions });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user solutions" });
     }
   });
 

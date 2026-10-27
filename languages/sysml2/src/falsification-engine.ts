@@ -509,12 +509,16 @@ export class RequirementFalsifier {
         }
 
         if (mFit < 0) {
+          const evalResWithIdx = evalRes as {
+            violationIndex?: number | undefined;
+            violationTime?: number | undefined;
+          };
           const traceRecord = TraceRecordNormalizer.fromFalsificationTrajectory({
             times: traj.times,
             signals: traj.signals,
             parameters: bestParams || mRec,
             minRobustness,
-            violatingTimeIndex: (evalRes as any).violationIndex ?? (evalRes as any).violationTime,
+            violatingTimeIndex: evalResWithIdx.violationIndex ?? evalResWithIdx.violationTime,
           });
 
           return {

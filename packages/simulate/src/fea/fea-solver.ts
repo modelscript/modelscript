@@ -227,7 +227,12 @@ export class FeaSolver {
 
   private static wasmCorotScratch?:
     | {
-        wasm: any;
+        wasm: {
+          memory: WebAssembly.Memory;
+          __new: (bytes: number, id: number) => number;
+          __pin?: ((ptr: number) => void) | undefined;
+          fea_compute_corotational_rotation: (coordsPtr: number, uElemPtr: number, rPtr: number) => void;
+        };
         coordsPtr: number;
         uElemPtr: number;
         rPtr: number;
@@ -246,16 +251,25 @@ export class FeaSolver {
     const n2 = elements[e * npe + 2]!;
     const n3 = elements[e * npe + 3]!;
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as
+      | {
+          memory: WebAssembly.Memory;
+          __new?: ((bytes: number, id: number) => number) | undefined;
+          __pin?: ((ptr: number) => void) | undefined;
+          fea_compute_corotational_rotation?: ((coordsPtr: number, uElemPtr: number, rPtr: number) => void) | undefined;
+        }
+      | null
+      | undefined;
     if (wasm && typeof wasm.fea_compute_corotational_rotation === "function" && typeof wasm.__new === "function") {
-      if (!FeaSolver.wasmCorotScratch || FeaSolver.wasmCorotScratch.wasm !== wasm) {
+      const validWasm = wasm as NonNullable<typeof FeaSolver.wasmCorotScratch>["wasm"];
+      if (!FeaSolver.wasmCorotScratch || FeaSolver.wasmCorotScratch.wasm !== validWasm) {
         const alloc = (bytes: number): number => {
-          const ptr = wasm.__new(bytes, 0);
-          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          const ptr = validWasm.__new(bytes, 0);
+          if (typeof validWasm.__pin === "function") validWasm.__pin(ptr);
           return ptr;
         };
         FeaSolver.wasmCorotScratch = {
-          wasm,
+          wasm: validWasm,
           coordsPtr: alloc(12 * 8),
           uElemPtr: alloc(12 * 8),
           rPtr: alloc(9 * 8),
@@ -806,7 +820,27 @@ export class FeaSolver {
 
   private static wasmPcgBuffers?:
     | {
-        wasm: any;
+        wasm: {
+          memory: WebAssembly.Memory;
+          __new: (bytes: number, id: number) => number;
+          __pin?: ((ptr: number) => void) | undefined;
+          __unpin?: ((ptr: number) => void) | undefined;
+          fea_solve_csr_pcg: (
+            n: number,
+            rowOffsetsPtr: number,
+            colIndicesPtr: number,
+            valuesPtr: number,
+            diagInvPtr: number,
+            bPtr: number,
+            xPtr: number,
+            rPtr: number,
+            zPtr: number,
+            pPtr: number,
+            apPtr: number,
+            tol: number,
+            maxIters: number,
+          ) => void;
+        };
         capN: number;
         capNnz: number;
         owner: FeaSolver | null;
@@ -826,32 +860,42 @@ export class FeaSolver {
   private solvePcg(b: Float64Array, x: Float64Array, tol: number, maxIters: number): void {
     const n = this.numDofs;
     const nnz = this.values.length;
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as
+      | {
+          memory: WebAssembly.Memory;
+          __new?: ((bytes: number, id: number) => number) | undefined;
+          __pin?: ((ptr: number) => void) | undefined;
+          __unpin?: ((ptr: number) => void) | undefined;
+          fea_solve_csr_pcg?: NonNullable<typeof FeaSolver.wasmPcgBuffers>["wasm"]["fea_solve_csr_pcg"] | undefined;
+        }
+      | null
+      | undefined;
 
     if (wasm && typeof wasm.fea_solve_csr_pcg === "function" && typeof wasm.__new === "function" && n > 0 && nnz > 0) {
+      const validWasm = wasm as NonNullable<typeof FeaSolver.wasmPcgBuffers>["wasm"];
       const prev = FeaSolver.wasmPcgBuffers;
-      if (!prev || prev.wasm !== wasm || prev.capN < n || prev.capNnz < nnz) {
-        if (prev && prev.wasm === wasm && typeof wasm.__unpin === "function") {
-          wasm.__unpin(prev.rowOffsetsPtr);
-          wasm.__unpin(prev.colIndicesPtr);
-          wasm.__unpin(prev.valuesPtr);
-          wasm.__unpin(prev.diagInvPtr);
-          wasm.__unpin(prev.bPtr);
-          wasm.__unpin(prev.xPtr);
-          wasm.__unpin(prev.rPtr);
-          wasm.__unpin(prev.zPtr);
-          wasm.__unpin(prev.pPtr);
-          wasm.__unpin(prev.apPtr);
+      if (!prev || prev.wasm !== validWasm || prev.capN < n || prev.capNnz < nnz) {
+        if (prev && prev.wasm === validWasm && typeof validWasm.__unpin === "function") {
+          validWasm.__unpin(prev.rowOffsetsPtr);
+          validWasm.__unpin(prev.colIndicesPtr);
+          validWasm.__unpin(prev.valuesPtr);
+          validWasm.__unpin(prev.diagInvPtr);
+          validWasm.__unpin(prev.bPtr);
+          validWasm.__unpin(prev.xPtr);
+          validWasm.__unpin(prev.rPtr);
+          validWasm.__unpin(prev.zPtr);
+          validWasm.__unpin(prev.pPtr);
+          validWasm.__unpin(prev.apPtr);
         }
-        const capN = prev && prev.wasm === wasm ? Math.max(prev.capN, n) : n;
-        const capNnz = prev && prev.wasm === wasm ? Math.max(prev.capNnz, nnz) : nnz;
+        const capN = prev && prev.wasm === validWasm ? Math.max(prev.capN, n) : n;
+        const capNnz = prev && prev.wasm === validWasm ? Math.max(prev.capNnz, nnz) : nnz;
         const alloc = (bytes: number): number => {
-          const ptr = wasm.__new(bytes, 0);
-          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          const ptr = validWasm.__new(bytes, 0);
+          if (typeof validWasm.__pin === "function") validWasm.__pin(ptr);
           return ptr;
         };
         FeaSolver.wasmPcgBuffers = {
-          wasm,
+          wasm: validWasm,
           capN,
           capNnz,
           owner: null,

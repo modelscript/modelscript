@@ -90,7 +90,7 @@ export class SoilThermalEngine {
     const nextTemps = [...state.shellTempsK];
 
     const rInner = pipe.diameter / 2.0;
-    const rOuter = state.shellRadiiM[0]!;
+    const rOuter = state.shellRadiiM[0] ?? rInner * 1.05;
     const kSteel = 45.0; // Carbon steel thermal conductivity (W/m*K)
     const hInternal = 500.0; // Fluid-to-wall convective heat transfer coefficient (W/m2*K)
 
@@ -101,34 +101,35 @@ export class SoilThermalEngine {
     const uPipePerM = 1.0 / (rConv + rCondPipe);
 
     // Heat flux into innermost soil node 0
-    const qInWatts = uPipePerM * (fluidTempK - state.shellTempsK[0]!);
+    const t0 = state.shellTempsK[0] ?? ambientT;
+    const qInWatts = uPipePerM * (fluidTempK - t0);
 
     // Finite difference update for each soil shell
     for (let k = 0; k < numShells; k++) {
-      const rK = state.shellRadiiM[k]!;
-      const rKPlus = state.shellRadiiM[k + 1]!;
+      const rK = state.shellRadiiM[k] ?? rOuter;
+      const rKPlus = state.shellRadiiM[k + 1] ?? rK + 0.1;
+      const tK = state.shellTempsK[k] ?? ambientT;
+      const tKPlus = state.shellTempsK[k + 1] ?? ambientT;
 
       // Shell volume per meter: pi * (r_{k+1}^2 - r_k^2)
       const shellVol = Math.PI * (Math.pow(rKPlus, 2) - Math.pow(rK, 2));
       const heatCap = shellVol * soilProps.density * soilProps.specificHeat;
 
       // Conductive heat flux between shell k and shell k+1
-      const qCondToNext =
-        ((2.0 * Math.PI * soilProps.thermalConductivity) / Math.log(rKPlus / rK)) *
-        (state.shellTempsK[k]! - state.shellTempsK[k + 1]!);
+      const qCondToNext = ((2.0 * Math.PI * soilProps.thermalConductivity) / Math.log(rKPlus / rK)) * (tK - tKPlus);
 
       if (k === 0) {
         // Node 0 receives qInWatts and loses qCondToNext
         const netQ = qInWatts - qCondToNext;
-        nextTemps[k] = state.shellTempsK[k]! + (netQ / heatCap) * dtSeconds;
+        nextTemps[k] = tK + (netQ / heatCap) * dtSeconds;
       } else {
         // Node k receives from k-1 and loses to k+1
-        const rKMinus = state.shellRadiiM[k - 1]!;
+        const rKMinus = state.shellRadiiM[k - 1] ?? rInner;
+        const tKMinus = state.shellTempsK[k - 1] ?? ambientT;
         const qCondFromPrev =
-          ((2.0 * Math.PI * soilProps.thermalConductivity) / Math.log(rK / rKMinus)) *
-          (state.shellTempsK[k - 1]! - state.shellTempsK[k]!);
+          ((2.0 * Math.PI * soilProps.thermalConductivity) / Math.log(rK / rKMinus)) * (tKMinus - tK);
         const netQ = qCondFromPrev - qCondToNext;
-        nextTemps[k] = state.shellTempsK[k]! + (netQ / heatCap) * dtSeconds;
+        nextTemps[k] = tK + (netQ / heatCap) * dtSeconds;
       }
     }
 
@@ -184,8 +185,8 @@ export class SoilThermalEngine {
       if (step % recordInterval === 0 || step === totalSteps) {
         timesHours.push(tHours);
         fluidTempsK.push(currentFluidT);
-        innerSoilTempsK.push(state.shellTempsK[0]!);
-        outerSoilTempsK.push(state.shellTempsK[state.shellTempsK.length - 1]!);
+        innerSoilTempsK.push(state.shellTempsK[0] ?? ambientGroundTempK);
+        outerSoilTempsK.push(state.shellTempsK[state.shellTempsK.length - 1] ?? ambientGroundTempK);
       }
 
       // Step soil diffusion

@@ -368,17 +368,33 @@ export class BrownfieldAlignmentEngine {
       if (lower.includes("req")) return ThreadDomain.Requirements;
       if (lower.includes("fea")) return ThreadDomain.FEA;
       if (lower.includes("cfd")) return ThreadDomain.CFD;
-      if (lower.includes("bom")) return ThreadDomain.BOM;
+      if (lower.includes("bom") && !lower.includes("sbom")) return ThreadDomain.BOM;
       if (lower.includes("fmu")) return ThreadDomain.FMU;
+      if (lower.includes("gdt") || lower.includes("gd&t") || lower.includes("tolerance")) return ThreadDomain.GDT;
+      if (lower.includes("telem") || lower.includes("mdf") || lower.includes("sensor")) return ThreadDomain.Telemetry;
+      if (lower.includes("safe") || lower.includes("asil") || lower.includes("fta") || lower.includes("hazard"))
+        return ThreadDomain.Safety;
+      if (lower.includes("surrogate") || lower.includes("rom") || lower.includes("pod")) return ThreadDomain.Surrogate;
+      if (lower.includes("manuf") || lower.includes("gcode") || lower.includes("cmm") || lower.includes("cam"))
+        return ThreadDomain.Manufacturing;
+      if (lower.includes("cost") || lower.includes("carbon") || lower.includes("lca")) return ThreadDomain.CostCarbon;
+      if (lower.includes("verif") || lower.includes("test") || lower.includes("compliance"))
+        return ThreadDomain.Verification;
+      if (lower.includes("soft") || lower.includes("firmware") || lower.includes("code") || lower.includes("sbom"))
+        return ThreadDomain.Software;
       return ThreadDomain.SysML2;
     };
 
     const resolveNodeId = (id: string | number): number => {
-      if (typeof id === "number") return id;
-      const match = id.match(/\d+/);
-      return match
-        ? parseInt(match[0], 10)
-        : Math.abs(id.split("").reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0) % 65535);
+      if (typeof id === "number") return id > 0 ? id : 1;
+      if (/^[1-9]\d*$/.test(id)) {
+        return parseInt(id, 10);
+      }
+      let hash = 5381;
+      for (let i = 0; i < id.length; i++) {
+        hash = ((hash << 5) + hash + id.charCodeAt(i)) | 0;
+      }
+      return (Math.abs(hash) % 65534) + 1;
     };
 
     for (const cand of candidates) {

@@ -18,8 +18,8 @@ import type {
 export interface PropertyChangeEvent {
   componentId: string;
   key: string;
-  value: any;
-  previousValue: any;
+  value: unknown;
+  previousValue: unknown;
   isValid: boolean;
   error?: string | null | undefined;
 }
@@ -31,7 +31,7 @@ export class PropertySheetController {
   private properties: ComponentPropertyData | null = null;
   private isLoading = false;
   private activeTabMap = new Map<string, string>();
-  private values: Record<string, any> = {};
+  private values: Record<string, unknown> = {};
   private errors: Record<string, string> = {};
   private listeners: Set<PropertySheetListener> = new Set();
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -98,11 +98,11 @@ export class PropertySheetController {
     return this.isLoading;
   }
 
-  public getValues(): Record<string, any> {
+  public getValues(): Record<string, unknown> {
     return { ...this.values };
   }
 
-  public getValue(key: string, defaultValue?: any): any {
+  public getValue(key: string, defaultValue?: unknown): unknown {
     return this.values[key] ?? defaultValue ?? "";
   }
 
@@ -154,7 +154,7 @@ export class PropertySheetController {
     return evaluatePropertyPredicate(field.enabledIf, this.values);
   }
 
-  public updateValue(key: string, newValue: any, onChangeCallback?: (event: PropertyChangeEvent) => void) {
+  public updateValue(key: string, newValue: unknown, onChangeCallback?: (event: PropertyChangeEvent) => void) {
     if (!this.componentId) return;
 
     const prevValue = this.values[key];

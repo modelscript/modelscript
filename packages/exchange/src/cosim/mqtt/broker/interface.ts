@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Aedes } from "aedes";
+import type { Duplex } from "stream";
 
 /**
  * Universal interface for an embedded MQTT broker.
@@ -22,5 +23,5 @@ export interface EmbeddedBroker {
    * without a physical WebSocket URL.
    */
 
-  createClientStream?(): any;
+  createClientStream?(): Duplex;
 }

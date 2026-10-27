@@ -153,7 +153,9 @@ export class CadViewerPanel extends BaseWebviewPanel {
       }
       // Send a custom request to the language server to get the cad components
 
-      const cadComponents = await this._client.sendRequest<any[]>("modelscript/getCadComponents", { uri });
+      const cadComponents = await this._client.sendRequest<
+        { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
+      >("modelscript/getCadComponents", { uri });
 
       const documentUri = vscode.Uri.parse(uri);
       for (const comp of cadComponents) {
@@ -161,7 +163,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
         if (typeof comp.cad === "string") {
           const match = comp.cad.match(/uri\s*=\s*"([^"]+)"/);
           if (match) {
-            const cadUri = match[1];
+            const cadUri = match[1]!;
             if (!cadUri.includes("://") && !cadUri.startsWith("data:") && !cadUri.startsWith("#")) {
               const fileUri = vscode.Uri.joinPath(documentUri, "..", cadUri);
               try {
@@ -388,7 +390,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
    */
   public async handleCommitCadBinding(payload: {
     componentName: string;
-    bindings: any[];
+    bindings: Parameters<typeof import("@modelscript/cad").patchModelicaCadAnnotation>[2]["bindings"];
     uri?: string | undefined;
   }): Promise<void> {
     if (!payload) return;

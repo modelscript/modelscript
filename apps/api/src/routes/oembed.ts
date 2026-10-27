@@ -77,17 +77,21 @@ export function oembedRouter(database: LibraryDatabase): Router {
       try {
         const post = database.getPost(postId);
         if (post) {
+          const postExt = post as typeof post & {
+            author?: { display_name?: string | undefined; username?: string | undefined } | undefined;
+            artifact_id?: number | string | null | undefined;
+          };
           title = post.title || post.content?.slice(0, 60) || title;
-          const author = post.display_name || post.username || post.author?.display_name || post.author?.username;
+          const author = post.display_name || post.username || postExt.author?.display_name || postExt.author?.username;
           if (author) {
             authorName = author;
-            authorUrl = `${host}/u/${post.username || post.author?.username || ""}`;
+            authorUrl = `${host}/u/${post.username || postExt.author?.username || ""}`;
           }
           if (post.thumbnail_url) {
             thumbnailUrl = post.thumbnail_url;
           }
-          if (!embedSrc && (post.artifact_id || post.artifact_view_id)) {
-            const artId = post.artifact_id || post.artifact_view_id;
+          if (!embedSrc && (postExt.artifact_id || post.artifact_view_id)) {
+            const artId = postExt.artifact_id || post.artifact_view_id;
             embedSrc = `${host}/embed/playground#m=artifact-${artId}`;
           }
         }

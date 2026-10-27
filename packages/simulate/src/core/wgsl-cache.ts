@@ -36,20 +36,26 @@ async function computeHash(buffers: GPUArenaBuffers): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+interface BrowserCacheGlobal {
+  crypto?: Crypto | undefined;
+  indexedDB?: IDBFactory | undefined;
+}
+
 /**
  * Attempt to retrieve a cached WGSL shader string for this model topology.
  */
 export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | null> {
-  const glob = typeof globalThis !== "undefined" ? (globalThis as any) : undefined;
+  const glob = typeof globalThis !== "undefined" ? (globalThis as BrowserCacheGlobal) : undefined;
   if (!glob || !glob.crypto || !glob.crypto.subtle || !glob.indexedDB) {
     return null;
   }
 
   try {
     const hash = await computeHash(buffers);
+    const idb = glob.indexedDB;
 
     return new Promise((resolve) => {
-      const req = glob.indexedDB.open(DB_NAME, 1);
+      const req = idb.open(DB_NAME, 1);
 
       req.onupgradeneeded = () => {
         const db = req.result;
@@ -83,16 +89,17 @@ export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | 
  * Persist the generated WGSL string to IndexedDB.
  */
 export async function setCachedWGSL(buffers: GPUArenaBuffers, wgsl: string): Promise<void> {
-  const glob = typeof globalThis !== "undefined" ? (globalThis as any) : undefined;
+  const glob = typeof globalThis !== "undefined" ? (globalThis as BrowserCacheGlobal) : undefined;
   if (!glob || !glob.crypto || !glob.crypto.subtle || !glob.indexedDB) {
     return;
   }
 
   try {
     const hash = await computeHash(buffers);
+    const idb = glob.indexedDB;
 
     return new Promise((resolve) => {
-      const req = glob.indexedDB.open(DB_NAME, 1);
+      const req = idb.open(DB_NAME, 1);
       req.onsuccess = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {

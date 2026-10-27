@@ -108,6 +108,50 @@ export interface PscadProjectLike {
   definitions?: Map<string, PscadDefinitionLike> | undefined;
 }
 
+import type { X6Markup } from "./polyglot-diagram-builder.js";
+
+export interface X6MarkupAttr {
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  cx?: number | undefined;
+  cy?: number | undefined;
+  r?: number | undefined;
+  rx?: number | undefined;
+  ry?: number | undefined;
+  x1?: number | undefined;
+  y1?: number | undefined;
+  x2?: number | undefined;
+  y2?: number | undefined;
+  d?: string | undefined;
+  points?: string | undefined;
+  transform?: string | undefined;
+  fill?: string | undefined;
+  stroke?: string | undefined;
+  strokeWidth?: number | undefined;
+  "stroke-width"?: number | undefined;
+  strokeDasharray?: string | undefined;
+  "stroke-dasharray"?: string | undefined;
+  text?: string | undefined;
+  fontSize?: number | undefined;
+  "font-size"?: number | undefined;
+  fontWeight?: string | number | undefined;
+  "font-weight"?: string | number | undefined;
+  fontFamily?: string | undefined;
+  fontStyle?: string | undefined;
+  textAnchor?: string | undefined;
+  "text-anchor"?: string | undefined;
+  textVerticalAnchor?: string | undefined;
+  "text-vertical-anchor"?: string | undefined;
+  refX?: number | string | undefined;
+  refY?: number | string | undefined;
+  refWidth?: number | string | undefined;
+  cursor?: string | undefined;
+  targetMarker?: { name: string; width?: number; height?: number } | null | undefined;
+  [key: string]: unknown;
+}
+
 export interface X6CellData {
   id: string;
   shape: string;
@@ -116,14 +160,14 @@ export interface X6CellData {
   width?: number | undefined;
   height?: number | undefined;
   angle?: number | undefined;
-  markup?: any[] | undefined;
-  attrs?: Record<string, any> | undefined;
-  ports?: any;
-  properties?: Record<string, any> | undefined;
-  source?: any;
-  target?: any;
+  markup?: X6Markup[] | undefined;
+  attrs?: Record<string, X6MarkupAttr> | undefined;
+  ports?: { groups?: Record<string, unknown>; items?: Record<string, unknown>[] } | undefined;
+  properties?: Record<string, unknown> | undefined;
+  source?: { cell?: string; port?: string; x?: number; y?: number } | undefined;
+  target?: { cell?: string; port?: string; x?: number; y?: number } | undefined;
   vertices?: { x: number; y: number }[] | undefined;
-  data?: Record<string, any> | undefined;
+  data?: Record<string, unknown> | undefined;
   zIndex?: number | undefined;
   opacity?: number | undefined;
   diffStatus?: "added" | "removed" | "modified" | "unchanged" | undefined;
@@ -188,13 +232,13 @@ function normalizeFill(color?: string): string {
  * Supports relational comparisons (==, !=, <, <=, >, >=), logic (&&, ||, !),
  * parentheses, and case-insensitive parameter lookup with fallback to 0.
  */
-export function evalPscadCond(expr: string, params: Record<string, any> | Map<string, any>): boolean {
+export function evalPscadCond(expr: string, params: Record<string, unknown> | Map<string, unknown>): boolean {
   const trimmed = expr.trim();
   if (!trimmed || trimmed === "true" || trimmed === "1") return true;
   if (trimmed === "false" || trimmed === "0") return false;
 
   // Build lowercase lookup table for case-insensitive parameter matching
-  const lowerMap = new Map<string, any>();
+  const lowerMap = new Map<string, unknown>();
   if (params instanceof Map) {
     for (const [k, v] of params.entries()) {
       lowerMap.set(k.toLowerCase(), v);
@@ -286,7 +330,7 @@ export function evalPscadCond(expr: string, params: Record<string, any> | Map<st
     return Boolean(leftVal);
   }
 
-  function parseAtom(): any {
+  function parseAtom(): unknown {
     const t = peek();
     if (!t) return 0;
     if (t === "(") {
@@ -334,17 +378,17 @@ export function evalPscadCond(expr: string, params: Record<string, any> | Map<st
 
 function parseSvgXmlToMarkup(
   svgXml: string,
-  params: Record<string, any>,
+  params: Record<string, unknown>,
   cellWidth: number,
   cellHeight: number,
   cellAngle: number = 0,
   isMirrored: boolean = false,
   cleanDefn?: string,
-): { markup: any[]; attrs: Record<string, any> } | undefined {
+): { markup: X6Markup[]; attrs: Record<string, X6MarkupAttr> } | undefined {
   const centerX = Math.round(cellWidth / 2);
   const centerY = Math.round(cellHeight / 2);
 
-  const lowerMap = new Map<string, any>();
+  const lowerMap = new Map<string, unknown>();
   for (const [k, v] of Object.entries(params)) {
     lowerMap.set(k.toLowerCase(), v);
   }
@@ -367,8 +411,8 @@ function parseSvgXmlToMarkup(
     }
   }
 
-  const markup: any[] = [];
-  const attrs: Record<string, any> = {};
+  const markup: X6Markup[] = [];
+  const attrs: Record<string, X6MarkupAttr> = {};
   let elemCounter = 1;
   let isCondActive = true;
 
@@ -767,12 +811,12 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
           title: s.text,
         });
 
-        const cardMarkup: any[] = [
+        const cardMarkup: X6Markup[] = [
           { tagName: "rect", selector: "body" },
           { tagName: "rect", selector: "headerBg" },
           { tagName: "line", selector: "headerDivider" },
         ];
-        const cardAttrs: Record<string, any> = {
+        const cardAttrs: Record<string, X6MarkupAttr> = {
           body: {
             fill: "var(--vscode-editor-background, #ffffff)",
             stroke: "var(--vscode-widget-border, #cbd5e1)",
@@ -922,8 +966,8 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         )
       : undefined;
 
-    let markup: any[] | undefined = undefined;
-    let attrs: Record<string, any> | undefined = undefined;
+    let markup: X6Markup[] | undefined = undefined;
+    let attrs: Record<string, X6MarkupAttr> | undefined = undefined;
     let width = cmp.width && cmp.width > 0 ? cmp.width : 60;
     let height = cmp.height && cmp.height > 0 ? cmp.height : 40;
 
@@ -1163,7 +1207,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     }
 
     // Build ports if present
-    const portGroups: Record<string, any> = {
+    const portGroups: Record<string, unknown> = {
       left: {
         position: "left",
         attrs: {
@@ -1194,7 +1238,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       },
     };
 
-    const portItems: any[] = [];
+    const portItems: Record<string, unknown>[] = [];
     if (cmp.ports && cmp.ports.length > 0) {
       const seenPortIds = new Set<string>();
       for (const p of cmp.ports) {
@@ -1756,18 +1800,19 @@ export function renderPscadSvg(
 
   let elementsSvg = "";
 
-  const renderCellSvg = (c: any): string => {
+  const renderCellSvg = (c: X6CellData): string => {
     if (c.x === undefined || c.y === undefined) return "";
     const w = c.width ?? 60;
     const h = c.height ?? 60;
 
     if (c.data?.["kind"] === "junction") {
       if (project.projectType === "library") return "";
-      const jx = c.data["position"]?.x ?? c.x + 2.5;
-      const jy = c.data["position"]?.y ?? c.y + 2.5;
+      const pos = c.data["position"] as { x?: number; y?: number } | undefined;
+      const jx = pos?.x ?? c.x + 2.5;
+      const jy = pos?.y ?? c.y + 2.5;
       return `  <circle cx="${jx}" cy="${jy}" r="2.5" fill="${isDark ? "#f8fafc" : "#0f172a"}" />\n`;
     } else if (c.data?.["kind"] === "bus") {
-      const vbase = c.data["vbase"] ?? 230;
+      const vbase = Number(c.data["vbase"] ?? 230);
       const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
       let res = `  <g transform="translate(${c.x}, ${c.y})">\n`;
       res += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
@@ -1775,7 +1820,7 @@ export function renderPscadSvg(
       res += `  </g>\n`;
       return res;
     } else if (c.data?.["kind"] === "sticky") {
-      const lines = (c.data["text"] || "").split("\n");
+      const lines = String(c.data["text"] || "").split("\n");
       const isBanner = w > 400;
       const fill = isBanner ? "#fffbeb" : "#fef3c7";
       const stroke = isBanner ? "#f59e0b" : "#d97706";
@@ -1792,7 +1837,10 @@ export function renderPscadSvg(
       const rotStr = c.angle ? ` rotate(${c.angle}, ${w / 2}, ${h / 2})` : "";
       let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}">\n`;
       for (const m of c.markup) {
-        const merged = { ...(m.attrs || {}), ...(c.attrs?.[m.selector] || {}) };
+        const merged: X6MarkupAttr = {
+          ...(m.attrs || {}),
+          ...(m.selector ? c.attrs?.[m.selector] : undefined),
+        };
         if (merged.fill === "none" && (merged.fontSize === 0 || merged["font-size"] === 0)) continue;
         if (m.tagName === "rect") {
           const rx = merged.rx ? ` rx="${merged.rx}"` : "";
@@ -1835,10 +1883,12 @@ export function renderPscadSvg(
         } else if (m.tagName === "text") {
           const textVal = escapeHtml(String(merged.text ?? ""));
           if (!textVal) continue;
+          const refXNum = merged.refX !== undefined ? Number(merged.refX) : undefined;
+          const refYNum = merged.refY !== undefined ? Number(merged.refY) : undefined;
           const tx =
-            merged.refX !== undefined ? (merged.refX <= 1 ? merged.refX * w : merged.refX) : (merged.x ?? w / 2);
+            refXNum !== undefined && !isNaN(refXNum) ? (refXNum <= 1 ? refXNum * w : refXNum) : (merged.x ?? w / 2);
           const ty =
-            merged.refY !== undefined ? (merged.refY <= 1 ? merged.refY * h : merged.refY) : (merged.y ?? h + 10);
+            refYNum !== undefined && !isNaN(refYNum) ? (refYNum <= 1 ? refYNum * h : refYNum) : (merged.y ?? h + 10);
           const fill = resolveVar(merged.fill, isDark) ?? (isDark ? "#f8fafc" : "#0f172a");
           const fs = merged.fontSize ?? merged["font-size"] ?? 9;
           const fw = merged.fontWeight ?? merged["font-weight"] ?? "bold";
@@ -1876,8 +1926,8 @@ export function renderPscadSvg(
   // 2. Render edges (wires and dividers) so they sit ON TOP of card backgrounds
   for (const c of diag.cells) {
     if (c.shape === "edge" && c.source && c.target) {
-      const srcPt = c.data?.["sourcePoint"] ?? c.source;
-      const tgtPt = c.data?.["targetPoint"] ?? c.target;
+      const srcPt = (c.data?.["sourcePoint"] as { x?: number; y?: number } | undefined) ?? c.source;
+      const tgtPt = (c.data?.["targetPoint"] as { x?: number; y?: number } | undefined) ?? c.target;
       if (srcPt?.x === undefined || tgtPt?.x === undefined) continue;
       let pathData = `M ${srcPt.x} ${srcPt.y}`;
       if (c.vertices) {
@@ -1928,7 +1978,7 @@ export function diffPscadProjects(
   modifiedComponents: {
     id: string;
     name: string;
-    changedParams: { param: string; oldValue: any; newValue: any }[];
+    changedParams: { param: string; oldValue: string | number | undefined; newValue: string | number | undefined }[];
   }[];
   diffSummary: string;
 } {
@@ -1940,7 +1990,7 @@ export function diffPscadProjects(
   const modifiedComponents: {
     id: string;
     name: string;
-    changedParams: { param: string; oldValue: any; newValue: any }[];
+    changedParams: { param: string; oldValue: string | number | undefined; newValue: string | number | undefined }[];
   }[] = [];
 
   for (const [id, newC] of newCompMap) {
@@ -1948,7 +1998,11 @@ export function diffPscadProjects(
       addedComponents.push(newC);
     } else {
       const oldC = oldCompMap.get(id)!;
-      const changedParams: { param: string; oldValue: any; newValue: any }[] = [];
+      const changedParams: {
+        param: string;
+        oldValue: string | number | undefined;
+        newValue: string | number | undefined;
+      }[] = [];
 
       for (const [key, newVal] of Object.entries(newC.parameters)) {
         const oldVal = oldC.parameters[key];

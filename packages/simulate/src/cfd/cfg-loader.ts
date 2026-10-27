@@ -50,8 +50,9 @@ export function loadCfgToLbm(cfgContent: string, options: LoadCfgOptions = {}): 
   const tauRaw = 3.0 * nu_lb + 0.5;
   const tau = Math.max(0.505, Math.min(1.5, tauRaw));
 
+  const extraParsed = parsed as { solver?: string | undefined; kindTurbModel?: string | undefined };
   const solverOrTurb =
-    `${parsed.mathProblem ?? ""} ${(parsed as any).solver ?? ""} ${(parsed as any).kindTurbModel ?? ""} ${text}`.toUpperCase();
+    `${parsed.mathProblem ?? ""} ${extraParsed.solver ?? ""} ${extraParsed.kindTurbModel ?? ""} ${text}`.toUpperCase();
   const isTurbulent =
     tauRaw < 0.505 ||
     solverOrTurb.includes("RANS") ||

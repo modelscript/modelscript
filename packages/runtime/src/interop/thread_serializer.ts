@@ -137,9 +137,20 @@ export class ThreadSerializer {
       throw new Error("Invalid .ms-thread file: missing 'threads' array");
     }
 
+    const resolveNumericId = (id: string | number): number => {
+      if (typeof id === "number") return id > 0 ? id : 1;
+      if (/^[1-9]\d*$/.test(id)) {
+        return parseInt(id, 10);
+      }
+      let hash = 5381;
+      for (let i = 0; i < id.length; i++) {
+        hash = ((hash << 5) + hash + id.charCodeAt(i)) | 0;
+      }
+      return (Math.abs(hash) % 65534) + 1;
+    };
+
     for (const t of parsed.threads) {
-      const threadIdNum =
-        typeof t.threadId === "number" ? t.threadId : parseInt(String(t.threadId).replace(/\D/g, "") || "1", 10);
+      const threadIdNum = resolveNumericId(t.threadId);
 
       let rel = ThreadRelation.Aligned;
       if (typeof t.relation === "string") {
@@ -154,8 +165,7 @@ export class ThreadSerializer {
       for (const [domName, rawNodeId] of Object.entries(t.domains || {})) {
         const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()];
         if (domIdx !== undefined) {
-          const nodeId =
-            typeof rawNodeId === "number" ? rawNodeId : parseInt(String(rawNodeId).replace(/\D/g, "") || "1", 10);
+          const nodeId = resolveNumericId(rawNodeId);
           hg.bindDomainNode(slot, domIdx, nodeId);
         }
       }

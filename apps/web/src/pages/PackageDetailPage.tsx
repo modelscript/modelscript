@@ -300,7 +300,12 @@ const PackageDetailPage: React.FC = () => {
         <TabBar>
           {TABS.map((tab) => (
             <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
-              {tab.icon}
+              {React.isValidElement(tab.icon)
+                ? tab.icon
+                : typeof tab.icon === "function" ||
+                    (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
+                  ? React.createElement(tab.icon as any, { size: 16 })
+                  : tab.icon}
               <span>{tab.label}</span>
               {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
                 <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>

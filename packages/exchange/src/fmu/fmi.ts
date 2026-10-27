@@ -24,6 +24,7 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import type { Fmi3Result } from "./fmi3.js";
 import type { SolverOptions } from "./solver-options.js";
 
 // ── Public interface ──
@@ -119,7 +120,7 @@ export interface FmuResult {
   /** External C source files to include in CMake build (from `external "C"` annotations). */
   externalSources?: string[] | undefined;
   /** FMI 3.0 result if generated. */
-  fmi3Result?: any;
+  fmi3Result?: Fmi3Result | undefined;
 }
 
 /**

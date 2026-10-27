@@ -103,7 +103,7 @@ export function extractRequestCountry(req: Request): string | undefined {
     return customCountry.toUpperCase().trim();
   }
 
-  const user = (req as any).user;
+  const user = (req as Request & { user?: { id?: number | undefined; country?: string | undefined } | undefined }).user;
   if (user?.country) {
     return String(user.country).toUpperCase().trim();
   }
@@ -162,7 +162,7 @@ export function enforceExportCompliance(databaseGetter?: () => LibraryDatabase |
 
       if (db) {
         db.logAudit({
-          actorId: (req as any).user?.id || null,
+          actorId: (req as Request & { user?: { id?: number | undefined } | undefined }).user?.id || null,
           action: "export_control_blocked",
           resourceType: "compliance",
           resourceId: `${country || ""}:${region || ""}`,

@@ -84,15 +84,50 @@ export interface Tsit5Result extends CommonSolverResult {
 export type Tsit5EventFunction = (t: number, y: number[]) => number;
 export type Tsit5EventCallback = (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[];
 
+interface Tsit5WasmExports {
+  memory: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  dde_hermite_interpolate?: (
+    n: number,
+    y0Ptr: number,
+    y1Ptr: number,
+    f0Ptr: number,
+    f1Ptr: number,
+    h: number,
+    theta: number,
+    outPtr: number,
+  ) => void;
+  tsit5_combine_stage?: (
+    n: number,
+    yPtr: number,
+    kBasePtr: number,
+    aRowPtr: number,
+    s: number,
+    h: number,
+    yStagePtr: number,
+  ) => void;
+  tsit5_compute_step_and_error?: (
+    n: number,
+    yPtr: number,
+    kBasePtr: number,
+    b5Ptr: number,
+    ePtr: number,
+    h: number,
+    atol: number,
+    rtol: number,
+    yNewPtr: number,
+  ) => number;
+}
+
 /**
  * 4th-order continuous Hermite interpolant for Tsit5 dense output.
  * Evaluates the solution at t0 + theta * h, where theta in [0, 1].
  */
 export function tsit5Interpolate(y0: number[], y1: number[], k: number[][], h: number, theta: number): number[] {
   const n = y0.length;
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as Tsit5WasmExports | null;
   if (wasm && typeof wasm.dde_hermite_interpolate === "function" && typeof wasm.__new === "function" && n > 0) {
-    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+    const alloc = (bytes: number): number => wasm.__new!(bytes, 0);
     const y0Ptr = alloc(n * 8);
     const y1Ptr = alloc(n * 8);
     const f0Ptr = alloc(n * 8);
@@ -224,7 +259,7 @@ export function tsit5(
   const yNew = new Array<number>(n);
 
   // WebAssembly Linear Memory Acceleration for Tsit5 stages and embedded error
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as Tsit5WasmExports | null;
   const hasWasm = Boolean(
     wasm &&
     typeof wasm.tsit5_combine_stage === "function" &&
@@ -241,8 +276,8 @@ export function tsit5(
   let b5Ptr = 0;
   let ePtr = 0;
 
-  if (hasWasm) {
-    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+  if (hasWasm && wasm?.__new) {
+    const alloc = (bytes: number): number => wasm.__new!(bytes, 0);
     yPtr = alloc(n * 8);
     kBasePtr = alloc(7 * n * 8);
     yStagePtr = alloc(n * 8);
@@ -288,7 +323,7 @@ export function tsit5(
 
     let maxErrorRatio = 0.0;
 
-    if (hasWasm) {
+    if (hasWasm && wasm?.tsit5_combine_stage && wasm.tsit5_compute_step_and_error) {
       const kView = new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n);
       const stageOutView = new Float64Array(wasm.memory.buffer, yStagePtr, n);
 
@@ -487,7 +522,7 @@ export function tsit5(
           stats.fEvals++;
           prevEventVals = computeEventValuesWithProbe(t, y);
 
-          if (hasWasm) {
+          if (hasWasm && wasm) {
             new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
             new Float64Array(wasm.memory.buffer, kBasePtr, n).set(kBuffer.subarray(0, n));
           }
@@ -523,7 +558,7 @@ export function tsit5(
         y[i] = yNew[i]!;
       }
 
-      if (hasWasm) {
+      if (hasWasm && wasm) {
         new Float64Array(wasm.memory.buffer, yPtr, n).set(new Float64Array(wasm.memory.buffer, yNewPtr, n));
       }
 
@@ -542,7 +577,7 @@ export function tsit5(
       // FSAL: k[0] of next step is k[6] of current step
       k[0] = k[6]!;
       kBuffer.copyWithin(0, 6 * n, 7 * n);
-      if (hasWasm) {
+      if (hasWasm && wasm) {
         new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n).copyWithin(0, 6 * n, 7 * n);
       }
 

@@ -82,6 +82,86 @@ export type ComputeCreditDeductor = (params: {
 }) => Promise<void>;
 
 /**
+ * Competing cross-domain parameter values and admissible physics bounds for a conflicted slot.
+ */
+export interface PolyglotConflictData {
+  sourceDomain: string;
+  sourceValue: number;
+  sourceUnit: string;
+  targetDomain: string;
+  targetValue: number;
+  targetUnit: string;
+  min: number;
+  max: number;
+}
+
+/**
+ * Synchronization descriptor for a single domain node in a digital thread.
+ */
+export interface PolyglotThreadNodeDescriptor {
+  element: string;
+  nodeId?: number | undefined;
+  kind?: string | undefined;
+  status?: string | undefined;
+  symbolId?: number | undefined;
+  file?: string | undefined;
+  satisfies?: string | undefined;
+}
+
+/**
+ * Structured diagnosis report for a cross-domain digital thread conflict.
+ */
+export interface PolyglotConflictDiagnosis {
+  conflictId: string;
+  slot?: number | undefined;
+  status: string;
+  strategy: string;
+  sourceProposal: { domain: string; value: number; unit: string };
+  targetProposal: { domain: string; value: number; unit: string };
+  physicsEnvelope: { min: number; max: number };
+  simplexConsensus: number;
+  recommendation: string;
+}
+
+/**
+ * Result of reconciling a conflicted digital thread slot.
+ */
+export interface PolyglotReconciliationResult {
+  conflictId: string;
+  status: string;
+  strategy: string;
+  resolvedValue: number;
+  isSynchronized: boolean;
+}
+
+/**
+ * Interface for the active Polyglot MCP host managing digital thread conflicts.
+ */
+export interface PolyglotHostLike {
+  registerConflict?: ((conflictId: string, slot: number, data: PolyglotConflictData) => void) | undefined;
+  getThread?: ((elementId: string) => Record<string, PolyglotThreadNodeDescriptor> | undefined) | undefined;
+  diagnoseConflict?: ((conflictId: string) => PolyglotConflictDiagnosis) | undefined;
+  reconcileSlot?:
+    | ((conflictId: string, strategy: string, customValue?: number | undefined) => PolyglotReconciliationResult)
+    | undefined;
+}
+
+/**
+ * Structural representation of a Modelica class or component element returned by `Context.query()`.
+ */
+export interface QueriedModelicaElement {
+  name?: string | undefined;
+  kind?: string | undefined;
+  classKind?: string | undefined;
+  description?: string | null | undefined;
+  type?: string | undefined;
+  isClassInstance?: boolean | undefined;
+  isComponentInstance?: boolean | undefined;
+  classInstance?: { name?: string | undefined } | null | undefined;
+  elements?: Iterable<QueriedModelicaElement> | undefined;
+}
+
+/**
  * Shared server context — holds the current compiler Context,
  * lazily populated by the modelica_load tool, and optional
  * quota and accounting hooks for hosted execution.
@@ -106,8 +186,8 @@ export interface ServerContext {
   /** Optional social bridge for reading discussions and posting replies. */
   socialBridge?:
     | {
-        getPost: (postId: number) => Promise<any>;
-        getReplies: (postId: number) => Promise<any[]>;
+        getPost: (postId: number) => Promise<unknown>;
+        getReplies: (postId: number) => Promise<unknown[]>;
         createPost: (params: {
           authorId: number;
           content: string;
