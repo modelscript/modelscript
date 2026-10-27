@@ -59,7 +59,7 @@ export function runLanguageParserBuild(options) {
     if (!fs.existsSync(targetPath)) return;
     const stat = fs.statSync(targetPath);
     if (!stat.isDirectory()) {
-      hash.update(targetPath);
+      hash.update(path.relative(dir, targetPath).replace(/\\/g, "/"));
       hash.update(fs.readFileSync(targetPath));
       return;
     }
@@ -177,16 +177,21 @@ export function runLanguageParserBuild(options) {
 
   // Compile parser and WASM via tsx runner script inside .cache/ so project root is not mutated
   fs.mkdirSync(cacheDir, { recursive: true });
-  const resolvedLanguageModule = path.resolve(dir, languageModule).replace(/\\/g, "/");
+  const langModule =
+    languageModule ?? (fs.existsSync(path.join(dir, "src", "language.ts")) ? "./src/language.js" : "./language.js");
+  let relLanguageModule = path.relative(cacheDir, path.resolve(dir, langModule)).replace(/\\/g, "/");
+  if (!relLanguageModule.startsWith(".")) {
+    relLanguageModule = "./" + relLanguageModule;
+  }
   const buildScriptPath = path.join(cacheDir, "build-parser.ts");
   const buildScriptContent = `// SPDX-License-Identifier: AGPL-3.0-or-later
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
-import { ${languageExportName} } from "${resolvedLanguageModule}";
+import { ${languageExportName} } from "${relLanguageModule}";
 
-const __dirname = path.resolve("${dir.replace(/\\/g, "/")}");
+const __dirname = ${JSON.stringify(path.resolve(dir))};
 const languagePath = fs.existsSync(path.join(__dirname, "src", "language.ts"))
   ? path.join(__dirname, "src", "language.ts")
   : path.join(__dirname, "language.ts");
@@ -249,7 +254,7 @@ const ascArgs = fs.existsSync(ascPath)
       ${extraAscFlags.map((f) => JSON.stringify(f)).join(", ")}
     ];
 
-execFileSync(ascExec, ascArgs, { stdio: "inherit", shell: isWin });
+execFileSync(ascExec, ascArgs, { stdio: "inherit", shell: isWin, cwd: __dirname });
 `;
 
   fs.writeFileSync(buildScriptPath, buildScriptContent);

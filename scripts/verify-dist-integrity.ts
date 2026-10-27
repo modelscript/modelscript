@@ -44,7 +44,7 @@ function getWorkspacePackages(): string[] {
   return packagePaths;
 }
 
-export function checkDistIntegrity(pkgJsonPath: string): Violation[] {
+export function checkDistIntegrity(pkgJsonPath: string, options?: { isExplicitProject?: boolean }): Violation[] {
   const violations: Violation[] = [];
   const pkgDir = path.dirname(pkgJsonPath);
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
@@ -53,6 +53,30 @@ export function checkDistIntegrity(pkgJsonPath: string): Violation[] {
 
   // Only check packages that have or produce a dist/ directory
   if (!fs.existsSync(distDir)) {
+    if (options?.isExplicitProject) {
+      violations.push({
+        package: pkgName,
+        rule: "unbuilt-explicit-project",
+        message: `Package "${pkgName}" was specified in --projects but has no dist/ directory.`,
+      });
+    }
+    return violations;
+  }
+
+  // A package is only considered built if its dist directory contains compiled JS/MJS/CJS output,
+  // rather than only pre-cached binary assets (e.g. .wasm restored from CI cache before build).
+  const hasCompiledOutput = fs.readdirSync(distDir, { recursive: true }).some((f) => {
+    const s = String(f);
+    return s.endsWith(".js") || s.endsWith(".mjs") || s.endsWith(".cjs");
+  });
+  if (!hasCompiledOutput) {
+    if (options?.isExplicitProject) {
+      violations.push({
+        package: pkgName,
+        rule: "unbuilt-explicit-project",
+        message: `Package "${pkgName}" was specified in --projects but has no compiled output (.js/.mjs) in dist/.`,
+      });
+    }
     return violations;
   }
 
@@ -127,11 +151,19 @@ export function checkDistIntegrity(pkgJsonPath: string): Violation[] {
 }
 
 function run(): void {
+  const args = process.argv.slice(2);
+  const projectsArg = args.find((a) => a.startsWith("--projects="));
+  const allowedProjects = projectsArg ? new Set(projectsArg.slice("--projects=".length).split(",")) : null;
+
   const packagePaths = getWorkspacePackages();
   const allViolations: Violation[] = [];
 
   for (const pkgPath of packagePaths) {
-    const violations = checkDistIntegrity(pkgPath);
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    if (allowedProjects && !allowedProjects.has(pkg.name)) {
+      continue;
+    }
+    const violations = checkDistIntegrity(pkgPath, { isExplicitProject: Boolean(allowedProjects) });
     allViolations.push(...violations);
   }
 
