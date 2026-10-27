@@ -78,6 +78,12 @@ function enqueueDiagramAction(action: any) {
   }, delay);
 }
 
+let activeLanguage = "modelica";
+
+function isPscadLanguage(lang?: string): boolean {
+  return Boolean(lang && /^(pscad|pscx|pslx|pswx|psmx)$/i.test(lang));
+}
+
 // Global initialization
 function initDiagramBridge() {
   const container = document.getElementById("container");
@@ -241,6 +247,20 @@ function initDiagramBridge() {
       const g = getGraph() ?? initGraph(isDark);
       if (g) {
         const p = g.clientToLocal(targetX, targetY);
+        // Delegate to unified handlePlacementClick if present
+        if (typeof (window as any).__handlePlacementClick === "function") {
+          if (!(window as any).__getPlacementData?.()) {
+            (window as any).__startPlacement?.({
+              className: placementData.className,
+              classKind: "Component",
+              iconSvg: placementData.iconSvg,
+              isDrag: true,
+            });
+          }
+          (window as any).__handlePlacementClick(p.x, p.y);
+          return;
+        }
+
         const snappedX = snapToGrid(p.x);
         const snappedY = snapToGrid(p.y);
         const { width, height } = getTypicalNodeSize(g);
@@ -273,30 +293,29 @@ function initDiagramBridge() {
     handleDropOrPlace(e.clientX, e.clientY, e.dataTransfer);
   };
 
-  window.addEventListener("drop", onDrop, true);
   window.addEventListener("drop", onDrop, false);
-  container.addEventListener("drop", onDrop, true);
-  container.addEventListener("drop", onDrop, false);
 
   const onPointerUpOrMouseUp = (e: MouseEvent | PointerEvent) => {
-    // Only handle placement on mouseup/pointerup if placement mode was active
+    // Only handle placement on pointerup if placement mode was active
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).__getPlacementData?.()) {
       handleDropOrPlace(e.clientX, e.clientY);
     }
   };
 
-  window.addEventListener("mouseup", onPointerUpOrMouseUp, true);
-  window.addEventListener("mouseup", onPointerUpOrMouseUp, false);
-  window.addEventListener("pointerup", onPointerUpOrMouseUp, true);
   window.addEventListener("pointerup", onPointerUpOrMouseUp, false);
-  container.addEventListener("mouseup", onPointerUpOrMouseUp, true);
-  container.addEventListener("pointerup", onPointerUpOrMouseUp, true);
 
   // Handle messages forwarded from the top-level workbench or extension host
   window.addEventListener("message", (e) => {
     if (!e.data || typeof e.data !== "object") return;
-    if (e.data.type === "workbenchDrop") {
+    if (e.data.type === "setLanguage") {
+      activeLanguage = e.data.language || "modelica";
+      const isPscad = isPscadLanguage(activeLanguage);
+      const canvasHud = document.getElementById("canvas-hud");
+      if (canvasHud) {
+        canvasHud.style.display = isPscad ? "flex" : "none";
+      }
+    } else if (e.data.type === "workbenchDrop") {
       handleDropOrPlace(e.data.clientX, e.data.clientY, e.data);
     } else if (e.data.type === "workbenchDragOver" && typeof e.data.clientX === "number") {
       isPointerOverCanvas = true;
@@ -1042,7 +1061,8 @@ function initContextMenu() {
       const clientX = e.clientX ?? 100;
       const clientY = e.clientY ?? 100;
 
-      showMenuAt(clientX, clientY, [
+      const isPscad = isPscadLanguage(activeLanguage);
+      const menuItems: any[] = [
         {
           label: "Search Component...",
           shortcut: "Shift+A",
@@ -1050,28 +1070,36 @@ function initContextMenu() {
             showSpotlight(clientX, clientY);
           },
         },
-        { isDivider: true, label: "", action: () => {} },
-        {
-          label: "Insert Ground",
-          shortcut: "G",
-          action: () => {
-            (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
+      ];
+
+      if (isPscad) {
+        menuItems.push(
+          { isDivider: true, label: "", action: () => {} },
+          {
+            label: "Insert Ground",
+            shortcut: "G",
+            action: () => {
+              (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
+            },
           },
-        },
-        {
-          label: "Insert Busbar",
-          shortcut: "B",
-          action: () => {
-            (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
+          {
+            label: "Insert Busbar",
+            shortcut: "B",
+            action: () => {
+              (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
+            },
           },
-        },
-        {
-          label: "Insert Breaker",
-          shortcut: "K",
-          action: () => {
-            (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
+          {
+            label: "Insert Breaker",
+            shortcut: "K",
+            action: () => {
+              (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
+            },
           },
-        },
+        );
+      }
+
+      menuItems.push(
         { isDivider: true, label: "", action: () => {} },
         {
           label: "Zoom to Fit",
@@ -1080,7 +1108,9 @@ function initContextMenu() {
             g.zoomToFit({ padding: 30, maxScale: 1.5 });
           },
         },
-      ]);
+      );
+
+      showMenuAt(clientX, clientY, menuItems);
     });
   };
 
@@ -1222,67 +1252,70 @@ function initKeyboardAccelerators() {
       }
     }
 
-    // Wire mode: W
-    if (e.key.toLowerCase() === "w" && !e.ctrlKey && !e.metaKey) {
-      const hudWire = document.getElementById("hud-wire");
-      hudWire?.click();
-      return;
-    }
-
-    // Quick insert Ground: G
-    if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey) {
-      (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
-      return;
-    }
-
-    // Quick insert Busbar: B
-    if (e.key.toLowerCase() === "b" && !e.ctrlKey && !e.metaKey) {
-      (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
-      return;
-    }
-
-    // Quick toggle or insert Breaker: K
-    if (e.key.toLowerCase() === "k" && !e.ctrlKey && !e.metaKey) {
-      if (selectedNodes.length > 0) {
-        const node = selectedNodes[0]!;
-        const defn = String(node.getData()?.definition || "").toLowerCase();
-        const name = String(node.getData()?.name || node.id).toLowerCase();
-        if (defn.includes("breaker") || defn.includes("switch") || name.includes("brk")) {
-          e.preventDefault();
-          const isCurrentlyOpen =
-            String(
-              node.getData()?.parameters?.Status ?? node.getData()?.parameters?.status ?? "closed",
-            ).toLowerCase() === "open";
-          const targetStatus = isCurrentlyOpen ? "Closed" : "Open";
-          const curData = node.getData() || {};
-          node.setData({
-            ...curData,
-            parameters: {
-              ...curData.parameters,
-              Status: targetStatus,
-            },
-          });
-          node.setAttrs({
-            body: { stroke: targetStatus === "Closed" ? "#10b981" : "#ef4444" },
-          });
-          vscode.postMessage({
-            type: "toggleBreakerState",
-            name: node.id,
-            componentName: curData.name || node.id,
-            targetStatus,
-          });
-          return;
-        }
+    const isPscad = isPscadLanguage(activeLanguage);
+    if (isPscad) {
+      // Wire mode: W
+      if (e.key.toLowerCase() === "w" && !e.ctrlKey && !e.metaKey) {
+        const hudWire = document.getElementById("hud-wire");
+        hudWire?.click();
+        return;
       }
-      (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
-      return;
-    }
 
-    // Run simulation: F5
-    if (e.key === "F5") {
-      e.preventDefault();
-      vscode.postMessage({ type: "runSimulation" });
-      return;
+      // Quick insert Ground: G
+      if (e.key.toLowerCase() === "g" && !e.ctrlKey && !e.metaKey) {
+        (window as any).__startPlacement?.({ className: "master:ground", classKind: "Component" });
+        return;
+      }
+
+      // Quick insert Busbar: B
+      if (e.key.toLowerCase() === "b" && !e.ctrlKey && !e.metaKey) {
+        (window as any).__startPlacement?.({ className: "master:bus", classKind: "Component" });
+        return;
+      }
+
+      // Quick toggle or insert Breaker: K
+      if (e.key.toLowerCase() === "k" && !e.ctrlKey && !e.metaKey) {
+        if (selectedNodes.length > 0) {
+          const node = selectedNodes[0]!;
+          const defn = String(node.getData()?.definition || "").toLowerCase();
+          const name = String(node.getData()?.name || node.id).toLowerCase();
+          if (defn.includes("breaker") || defn.includes("switch") || name.includes("brk")) {
+            e.preventDefault();
+            const isCurrentlyOpen =
+              String(
+                node.getData()?.parameters?.Status ?? node.getData()?.parameters?.status ?? "closed",
+              ).toLowerCase() === "open";
+            const targetStatus = isCurrentlyOpen ? "Closed" : "Open";
+            const curData = node.getData() || {};
+            node.setData({
+              ...curData,
+              parameters: {
+                ...curData.parameters,
+                Status: targetStatus,
+              },
+            });
+            node.setAttrs({
+              body: { stroke: targetStatus === "Closed" ? "#10b981" : "#ef4444" },
+            });
+            vscode.postMessage({
+              type: "toggleBreakerState",
+              name: node.id,
+              componentName: curData.name || node.id,
+              targetStatus,
+            });
+            return;
+          }
+        }
+        (window as any).__startPlacement?.({ className: "master:breaker3", classKind: "Component" });
+        return;
+      }
+
+      // Run simulation: F5
+      if (e.key === "F5") {
+        e.preventDefault();
+        vscode.postMessage({ type: "runSimulation" });
+        return;
+      }
     }
 
     // Open properties: Space

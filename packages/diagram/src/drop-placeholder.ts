@@ -35,6 +35,7 @@ export interface ActiveDropPlaceholder {
 
 let activeDropPlaceholder: ActiveDropPlaceholder | null = null;
 let lastDropPlaceholderTime = 0;
+let dropSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function getLastDropPlaceholderTime(): number {
   return lastDropPlaceholderTime;
@@ -46,6 +47,10 @@ export function getActiveDropPlaceholder(): ActiveDropPlaceholder | null {
 
 export function clearActiveDropPlaceholder(): void {
   activeDropPlaceholder = null;
+  if (dropSafetyTimer !== null) {
+    clearTimeout(dropSafetyTimer);
+    dropSafetyTimer = null;
+  }
 }
 
 /**
@@ -195,13 +200,28 @@ export function dropComponentGhost(
 ) {
   ensureDiagramStyles();
   lastDropPlaceholderTime = Date.now();
+  const initialTimestamp = activeDropPlaceholder?.timestamp ?? Date.now();
   activeDropPlaceholder = {
     x,
     y,
     className,
     iconSvg: iconSvg ?? undefined,
-    timestamp: Date.now(),
+    timestamp: initialTimestamp,
   };
+
+  if (dropSafetyTimer !== null) {
+    clearTimeout(dropSafetyTimer);
+  }
+  dropSafetyTimer = setTimeout(() => {
+    try {
+      const existing = g.getCellById?.("__drop_placeholder__");
+      if (existing) g.removeCell?.(existing);
+    } catch {
+      // ignore
+    }
+    clearActiveDropPlaceholder();
+  }, 3500);
+
   const strokeColor = isDark ? "#cccccc" : "#333333";
   const fillColor = isDark ? "rgba(204, 204, 204, 0.15)" : "rgba(51, 51, 51, 0.08)";
 

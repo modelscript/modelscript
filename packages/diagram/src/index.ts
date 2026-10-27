@@ -621,13 +621,14 @@ export function initGraph(isDark: boolean): Graph | null {
     if (now - lastPlacementTimestamp < 350) return;
     if (placementData) {
       lastPlacementTimestamp = now;
+      const dataToPlace = placementData;
+      clearPlacement();
       const snappedX = Math.round(x / 20) * 20;
       const snappedY = Math.round(y / 20) * 20;
       const { width, height } = getTypicalNodeSize(g);
       // Trigger the bounce animation placeholder while the action is processed
-      dropComponentGhost(g, snappedX, snappedY, placementData.className, placementData.iconSvg, isDark, width, height);
-      enqueueDiagramAction({ type: "addComponent", className: placementData.className, x: snappedX, y: snappedY });
-      clearPlacement();
+      dropComponentGhost(g, snappedX, snappedY, dataToPlace.className, dataToPlace.iconSvg, isDark, width, height);
+      enqueueDiagramAction({ type: "addComponent", className: dataToPlace.className, x: snappedX, y: snappedY });
     }
   };
 
@@ -1162,7 +1163,6 @@ export function initGraph(isDark: boolean): Graph | null {
   g.on("edge:connected", () => scheduleUpdateSolderDots(g));
   g.on("edge:added", () => scheduleUpdateSolderDots(g));
   g.on("edge:removed", () => scheduleUpdateSolderDots(g));
-  g.on("render:done", () => scheduleUpdateSolderDots(g));
 
   // Quick re-route orthogonal on edge double-click or context menu
   g.on("edge:dblclick", ({ edge }: { edge: any }) => {
@@ -1482,16 +1482,21 @@ function renderDiagramInternal(
   // 1. data.nodes contains a non-ephemeral node that did not exist in existing cells, OR
   // 2. data.nodes contains a node close to activeDrop.x, activeDrop.y, OR
   // 3. more than 5 seconds have passed (safety timeout)
-  const isSafetyTimeout = activeDrop ? Date.now() - activeDrop.timestamp > 5000 : false;
+  const isSafetyTimeout = activeDrop ? Date.now() - activeDrop.timestamp > 3000 : false;
   const isComponentPresentInData =
     !activeDrop ||
     isSafetyTimeout ||
     data?.nodes?.some((n: any) => {
       if (isEphemeralDiagramNode(n.id)) return false;
       if (!existingNonEphemeralNodeIds.has(n.id)) return true;
+      const typeMatch =
+        (n.data?.properties?.className && n.data.properties.className === activeDrop.className) ||
+        (n.properties?.className && n.properties.className === activeDrop.className);
+      if (typeMatch) return true;
       const dx = Math.abs(n.x - activeDrop.x);
       const dy = Math.abs(n.y - activeDrop.y);
-      return dx < 35 && dy < 35;
+      const dyInverted = Math.abs(-n.y - activeDrop.y);
+      return dx < 40 && (dy < 40 || dyInverted < 40);
     });
 
   if (activeDrop && !isComponentPresentInData) {
@@ -1921,6 +1926,11 @@ function renderDiagramInternal(
       [...existingEdgeIds].some((id) => !newEdgeIds.has(id));
 
     if (!topologyChanged) {
+      if (activeDrop && isComponentPresentInData) {
+        const ph = g.getCellById("__drop_placeholder__");
+        if (ph) g.removeCell(ph);
+        clearActiveDropPlaceholder();
+      }
       // ── Fast path: incremental update ──
       g.batchUpdate("diagram-diff", () => {
         for (const nodeData of nodes) {
@@ -2367,6 +2377,11 @@ if (typeof window !== "undefined") {
         const toolbar = document.getElementById("toolbar");
         if (toolbar) {
           toolbar.style.display = message.language === "sysml" ? "flex" : "none";
+        }
+        const isPscad = Boolean(message.language && /^(pscad|pscx|pslx|pswx|psmx)$/i.test(message.language));
+        const canvasHud = document.getElementById("canvas-hud");
+        if (canvasHud) {
+          canvasHud.style.display = isPscad ? "flex" : "none";
         }
         break;
       }

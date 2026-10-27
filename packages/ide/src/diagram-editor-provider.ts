@@ -114,7 +114,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let diagramEditQueue = Promise.resolve();
     let isSpatialEditPending = false;
     let lastOptimisticEditTime = 0;
-    let lastDiagramEditTime = 0;
     let isAddComponentPending = false;
     let hasRenderedDiagramOnce = false;
     // True when a text-change-triggered update has been scheduled (debounced or immediate).
@@ -505,7 +504,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               if (actions.some((a: any) => a.type === "addComponent")) {
                 isAddComponentPending = true;
               }
-              lastDiagramEditTime = Date.now();
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -591,7 +589,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         // and hide the spinner once the semantic pipeline has completed validating the edit.
         isSpatialEditPending = true;
         lastOptimisticEditTime = Date.now();
-        lastDiagramEditTime = Date.now();
         return;
       }
 
@@ -601,13 +598,10 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         // Semantic edit — immediate refresh without full-page spinner if in-place bounce placeholder is active
         const hasPlaceholder = isAddComponentPending;
         isAddComponentPending = false;
-        lastOptimisticEditTime = Date.now();
-        lastDiagramEditTime = Date.now();
         immediateUpdate(!hasPlaceholder);
         return;
       }
       if (hint === "debounced") {
-        lastDiagramEditTime = Date.now();
         textChangeUpdatePending = true;
         debouncedUpdate();
         return;
@@ -622,8 +616,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
     // React to semantic pipeline completions from the language server
     const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
-      const timeSinceEdit = Date.now() - Math.max(lastOptimisticEditTime, lastDiagramEditTime);
-      if (isSpatialEditPending || timeSinceEdit < 1500) {
+      if (isSpatialEditPending || (lastOptimisticEditTime > 0 && Date.now() - lastOptimisticEditTime < 800)) {
         isSpatialEditPending = false;
         webviewPanel.webview.postMessage({ type: "stopLoading" }); // Hide spinner when edit finishes
         return;
@@ -631,7 +624,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       // Skip if a text-change-triggered update is already pending —
       // it will fire soon and produce the same result without double work.
       if (textChangeUpdatePending) return;
-      debouncedUpdate(500, false);
+      debouncedUpdate(100, false);
     });
 
     // Make sure we get rid of the listeners when our editor is closed.
@@ -933,7 +926,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       left: 50%;
       transform: translateX(-50%);
       z-index: 150;
-      display: flex;
+      display: none;
       align-items: center;
       gap: 3px;
       background: var(--vscode-editorWidget-background, rgba(30, 41, 59, 0.9));
@@ -1152,7 +1145,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   </style>
 </head>
 <body>
-  <div id="canvas-hud" class="canvas-hud">
+  <div id="canvas-hud" class="canvas-hud" style="display: none;">
     <button id="hud-select" class="hud-btn active" title="Select Tool (V)">↖</button>
     <div class="hud-divider"></div>
     <button id="hud-wire" class="hud-btn" title="Orthogonal Wire Tool (W)">⚡ Wire</button>
