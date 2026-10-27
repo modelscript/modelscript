@@ -129,3 +129,34 @@ export interface SspSystem {
   /** Optional `<ssd:SystemGeometry>` extent. */
   geometry?: SspElementGeometry | undefined;
 }
+
+/** A single parameter mapping entry from SSM. */
+export interface SspParameterMappingEntry {
+  source: string;
+  target: string;
+  factor?: number | undefined;
+  offset?: number | undefined;
+  line?: number | undefined;
+}
+
+/** Parameter mapping definition from SystemStructureParameterMapping (.ssm). */
+export interface SspParameterMapping {
+  version?: string | undefined;
+  mappings: SspParameterMappingEntry[];
+}
+
+/** A single signal dictionary entry from SSB. */
+export interface SspSignalDictionaryEntry {
+  name: string;
+  type: SspConnectorType;
+  unit?: string | undefined;
+  description?: string | undefined;
+  line?: number | undefined;
+}
+
+/** Signal dictionary definition from SystemStructureSignalDictionary (.ssb). */
+export interface SspSignalDictionary {
+  version?: string | undefined;
+  name?: string | undefined;
+  entries: SspSignalDictionaryEntry[];
+}

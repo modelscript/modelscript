@@ -514,11 +514,15 @@ export function adaptModelicaPackageMo(
   // Extract uses(Lib(version="..."))
   const usesBlockMatch = packageMoContent.match(/\buses\s*\(([\s\S]*?)\)\s*(?:,|\))/);
   if (usesBlockMatch?.[1]) {
-    const depRegex = /([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*version\s*=\s*"([^"]+)"/g;
-    let m: RegExpExecArray | null;
-    while ((m = depRegex.exec(usesBlockMatch[1])) !== null) {
-      if (m[1] && m[2]) {
-        dependencies[m[1]] = m[2];
+    for (const part of usesBlockMatch[1].split(",")) {
+      const trimmed = part.trim();
+      const parenIdx = trimmed.indexOf("(");
+      if (parenIdx > 0) {
+        const depName = trimmed.slice(0, parenIdx).trim();
+        const verMatch = trimmed.slice(parenIdx).match(/\bversion\s*=\s*"([^"]+)"/i);
+        if (depName && verMatch?.[1]) {
+          dependencies[depName] = verMatch[1];
+        }
       }
     }
   }
@@ -616,22 +620,24 @@ export function adaptRosOrGazeboXml(
   dependencies: Record<string, string>;
 } {
   const getTag = (tag: string): string | undefined => {
-    const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+    const m = xml.match(new RegExp(`<${tag}\\b[^>]*>([^<]*)<\\/${tag}>`, "i"));
     return m?.[1]?.trim() || undefined;
   };
   const name = getTag("name") || fallbackName;
   const version = normalizeToSemver(getTag("version"), fallbackVersion);
   const description = getTag("description");
   const license = getTag("license");
-  const maintainerMatch = xml.match(/<maintainer(?:\s+email="([^"]*)")?[^>]*>([\s\S]*?)<\/maintainer>/i);
+  const maintainerMatch = xml.match(/<maintainer\b([^>]*)>([^<]*)<\/maintainer>/i);
+  const maintainerEmail = maintainerMatch?.[1]?.match(/\bemail="([^"]*)"/i)?.[1];
+  const maintainerName = maintainerMatch?.[2]?.trim();
   const author = maintainerMatch
-    ? maintainerMatch[1]
-      ? `${maintainerMatch[2]?.trim()} <${maintainerMatch[1]}>`
-      : maintainerMatch[2]?.trim()
+    ? maintainerEmail
+      ? `${maintainerName} <${maintainerEmail}>`
+      : maintainerName
     : getTag("author");
 
   const dependencies: Record<string, string> = {};
-  const depRegex = /<(?:depend|exec_depend|build_depend)[^>]*>([\s\S]*?)<\/(?:depend|exec_depend|build_depend)>/gi;
+  const depRegex = /<(?:depend|exec_depend|build_depend)\b[^>]*>([^<]*)<\/(?:depend|exec_depend|build_depend)>/gi;
   let m: RegExpExecArray | null;
   while ((m = depRegex.exec(xml)) !== null) {
     const dep = m[1]?.trim();
@@ -668,12 +674,23 @@ export function adaptFpmToml(
   const author = getField("author") || getField("maintainer");
   const dependencies: Record<string, string> = {};
 
-  const depSection = toml.match(/^\s*\[dependencies\]\s*([\s\S]*?)(?=^\s*\[|$)/m)?.[1];
-  if (depSection) {
-    const lineRegex = /^\s*([A-Za-z0-9_-]+)\s*=\s*(.+)$/gm;
-    let m: RegExpExecArray | null;
-    while ((m = lineRegex.exec(depSection)) !== null) {
-      if (m[1]) dependencies[m[1]] = "*";
+  let inDependencies = false;
+  for (const rawLine of toml.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line.startsWith("[") && line.endsWith("]")) {
+      const section = line.slice(1, -1).trim();
+      inDependencies = section.toLowerCase() === "dependencies";
+      continue;
+    }
+    if (inDependencies) {
+      if (!line || line.startsWith("#")) continue;
+      const eqIdx = line.indexOf("=");
+      if (eqIdx !== -1) {
+        const key = line.slice(0, eqIdx).trim();
+        if (/^[A-Za-z0-9_-]+$/.test(key)) {
+          dependencies[key] = "*";
+        }
+      }
     }
   }
 
@@ -873,8 +890,8 @@ export function detectAndAdaptArchiveManifest(
     if (!detectedLangs.includes("sbml")) detectedLangs.push("sbml");
   } else if (reqifEntry) {
     format = "reqifz";
-    const titleMatch = reqifEntry.content.match(/<TITLE>([\s\S]*?)<\/TITLE>/i);
-    const commentMatch = reqifEntry.content.match(/<COMMENT>([\s\S]*?)<\/COMMENT>/i);
+    const titleMatch = reqifEntry.content.match(/<TITLE\b[^>]*>([^<]*)<\/TITLE>/i);
+    const commentMatch = reqifEntry.content.match(/<COMMENT\b[^>]*>([^<]*)<\/COMMENT>/i);
     name = titleMatch?.[1]?.trim().replace(/\s+/g, "-") || fallbackName;
     description = commentMatch?.[1]?.trim() || titleMatch?.[1]?.trim() || `OMG ReqIF Requirements Package (${name})`;
     main = reqifEntry.path;
@@ -882,8 +899,8 @@ export function detectAndAdaptArchiveManifest(
   } else if (slxEntry) {
     format = "slx";
     const coreProps = findShallowest((_b, p) => p.endsWith("metadata/coreProperties.xml"));
-    const titleMatch = coreProps?.content.match(/<dc:title>([\s\S]*?)<\/dc:title>/i);
-    const creatorMatch = coreProps?.content.match(/<dc:creator>([\s\S]*?)<\/dc:creator>/i);
+    const titleMatch = coreProps?.content.match(/<dc:title\b[^>]*>([^<]*)<\/dc:title>/i);
+    const creatorMatch = coreProps?.content.match(/<dc:creator\b[^>]*>([^<]*)<\/dc:creator>/i);
     const verMatch = slxEntry.content.match(/<P\s+Name="ModelVersionFormat">([^<]+)<\/P>/i);
     name = titleMatch?.[1]?.trim() || fallbackName;
     version = normalizeToSemver(verMatch?.[1]?.replace(/[^0-9.]/g, ""), fallbackVersion);

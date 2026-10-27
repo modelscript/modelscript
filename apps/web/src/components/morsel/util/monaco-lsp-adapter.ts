@@ -724,7 +724,7 @@ const XML_MONARCH: Monaco.languages.IMonarchLanguage = {
     ],
     comment: [
       [/[^-]+/, "comment"],
-      [/-->/, "comment", "@pop"],
+      [/--!?>/, "comment", "@pop"],
       [/-/, "comment"],
     ],
   },

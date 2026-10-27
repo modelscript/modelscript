@@ -116,7 +116,7 @@
     "capabilities": {
       "parse": true,
       "lint": true,
-      "dae": false,
+      "dae": true,
       "simulate": false,
       "projections": [
         "FMU",

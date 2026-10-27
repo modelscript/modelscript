@@ -124,8 +124,7 @@ function cell(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\|/g, "\\|")
-    .replace(/[{}$*_`\\[\]]/g, (c) => `&#${c.charCodeAt(0)};`)
+    .replace(/[{}$*_`\\|\[\]]/g, (c) => `&#${c.charCodeAt(0)};`)
     .replace(/&lt;([A-Za-z_$][\w$]*)&gt;/g, "<code>&lt;$1&gt;</code>");
 }
 

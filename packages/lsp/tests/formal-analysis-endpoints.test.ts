@@ -116,8 +116,18 @@ action def SpeedGovernor {
       const handler = handlers.get("modelscript/getContractHierarchy");
       assert.ok(handler, "modelscript/getContractHierarchy handler must be registered");
 
-      const result = await handler({
+      // Governor.sysml without contracts and without powertrain in name should yield empty hierarchy
+      const emptyResult = await handler({
         uri: docUri,
+      });
+      assert.strictEqual(emptyResult.success, true);
+      assert.ok(emptyResult.hierarchy, "Must return hierarchy");
+      assert.strictEqual(emptyResult.hierarchy.components.length, 0);
+      assert.ok(emptyResult.hierarchy.summary?.includes("No assume-guarantee contracts"));
+
+      // Fallback Powertrain demo contract hierarchy when URI includes powertrain
+      const result = await handler({
+        uri: "file:///workspace/Powertrain.sysml",
       });
 
       assert.strictEqual(result.success, true);

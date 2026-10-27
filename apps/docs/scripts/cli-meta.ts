@@ -48,20 +48,62 @@ const STR = /"((?:[^"\\]|\\.)*)"/g;
 export function readRegistrations(): Registration[] {
   const main = fs.readFileSync(path.join(cliRoot, "main.ts"), "utf8");
   const out: Registration[] = [];
+  const strings = (s: string | undefined) => [...(s ?? "").matchAll(STR)].map((x) => (x[1] ?? "").replace(/\\"/g, '"'));
+
   for (const chunk of main.split(/\blazy\(/).slice(1)) {
-    const m =
-      /^\s*(\[(?:\s*"[^"]*"\s*,?)+\s*\]|"[^"]*")\s*,\s*((?:"(?:[^"\\]|\\.)*"\s*\+?\s*)+),\s*\(\)\s*=>\s*import\("(\.\/commands\/[^"]+)\.js"\)\s*,\s*"([A-Za-z0-9_]+)"\s*(?:,\s*(\[(?:\s*"[^"]*"\s*,?)+\s*\]|"[^"]*"))?/.exec(
-        chunk,
-      );
-    if (!m) continue;
-    const strings = (s: string | undefined) =>
-      [...(s ?? "").matchAll(STR)].map((x) => (x[1] ?? "").replace(/\\"/g, '"'));
+    const marker = 'import("./commands/';
+    const markerIdx = chunk.indexOf(marker);
+    if (markerIdx === -1) continue;
+
+    const afterMarker = chunk.slice(markerIdx + marker.length);
+    const jsIdx = afterMarker.indexOf('.js")');
+    if (jsIdx === -1) continue;
+    const cmdName = afterMarker.slice(0, jsIdx);
+    const importPath = `./commands/${cmdName}`;
+
+    const tail = afterMarker.slice(jsIdx + 5);
+    const exportMatch = tail.match(/^\s*,\s*"([A-Za-z0-9_]+)"/);
+    if (!exportMatch) continue;
+    const exportName = exportMatch[1] ?? "";
+
+    const afterExport = tail.slice(exportMatch[0].length);
+    const endOfCall = afterExport.indexOf("),");
+    const aliasPart = endOfCall !== -1 ? afterExport.slice(0, endOfCall) : afterExport;
+    const aliases = strings(aliasPart);
+
+    const before = chunk
+      .slice(0, markerIdx)
+      .trim()
+      .replace(/(?:async\s*)?\(\)\s*=>\s*$/, "")
+      .trim()
+      .replace(/,\s*$/, "");
+
+    let arg1End = -1;
+    let inQuote = false;
+    let bracketDepth = 0;
+    for (let i = 0; i < before.length; i++) {
+      const ch = before[i];
+      if (ch === '"' && before[i - 1] !== "\\") {
+        inQuote = !inQuote;
+      } else if (!inQuote) {
+        if (ch === "[") bracketDepth++;
+        else if (ch === "]") bracketDepth--;
+        else if (ch === "," && bracketDepth === 0) {
+          arg1End = i;
+          break;
+        }
+      }
+    }
+    if (arg1End === -1) continue;
+    const rawSpecs = before.slice(0, arg1End);
+    const rawDescribe = before.slice(arg1End + 1);
+
     out.push({
-      specs: strings(m[1]),
-      describe: strings(m[2]).join(""),
-      importPath: m[3] ?? "",
-      exportName: m[4] ?? "",
-      aliases: strings(m[5]),
+      specs: strings(rawSpecs),
+      describe: strings(rawDescribe).join(""),
+      importPath,
+      exportName,
+      aliases,
     });
   }
   return out;

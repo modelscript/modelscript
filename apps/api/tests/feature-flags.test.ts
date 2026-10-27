@@ -64,6 +64,7 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(guestRes.body.morsel_playground, true);
     assert.strictEqual(guestRes.body.package_browser, true);
     assert.strictEqual(guestRes.body.cad_step_viewer, true);
+    assert.strictEqual(guestRes.body.heavy_vscode_ide, true);
 
     // Gated flags must be false for guest
     assert.strictEqual(guestRes.body.cae_cloud_solver, false);
@@ -72,7 +73,6 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(guestRes.body.cosim_mqtt, false);
     assert.strictEqual(guestRes.body.activitypub_federation, false);
     assert.strictEqual(guestRes.body.sysml2_omg_api, false);
-    assert.strictEqual(guestRes.body.heavy_vscode_ide, false);
     assert.strictEqual(guestRes.body.experimental_viewers, false);
 
     // Regular user evaluation

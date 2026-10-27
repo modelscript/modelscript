@@ -6970,7 +6970,7 @@ The `@modelscript/rocets` thermo engine provides:
 | `M8001` | error | `unconnected-fluid-port` | Fluid port '<comp>.<port>' is not connected in the propellant flow circuit. |
 | `M8002` | error | `fluid-type-mismatch` | Incompatible fluid stream connection '<conn>': cannot mix '<fromFluid>' into '<toFluid>' without a combustion chamber. |
 | `M8003` | error | `shaft-power-imbalance` | Turbopump shaft '<shaftId>' power imbalance: <reason>. |
-| `M8004` | error | `unbalanced-flow-split` | Mass conservation failure at junction '<junct>': inlet and outlet flow mismatch exceeds tolerance (\|\u0394m\| = <value> kg/s). |
+| `M8004` | error | `unbalanced-flow-split` | Mass conservation failure at junction '<junct>': inlet and outlet flow mismatch exceeds tolerance (\|\\u0394m\| = <value> kg/s). |
 | `M8005` | warning | `pump-cavitation-risk` | Pump '<pumpId>' inlet suction pressure is below required NPSH margin (margin: <value> kPa). Cavitation risk. |
 | `M8006` | error | `negative-chamber-pressure` | Non-physical pressure at '<comp>': computed pressure is <val> Pa (must be > 0). |
 | `M8007` | warning | `combustion-temperature-limit` | Gas temperature at '<comp>' (<value> K) exceeds throat thermal structural limit (<limitK> K). |
@@ -7659,20 +7659,20 @@ flowchart TD
 ### Diagnostics for GT-SUITE (15 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
-| `M9001` | warning | `cfl-acoustic-violation` | Pipe '<pipeId>' cell length violates acoustic CFL condition: simulation dt (<value> \xB5s) exceeds stability limit (<value> \xB5s). |
-| `M9002` | warning | `compressor-surge-hazard` | Compressor '<compId>' operating point (PR = <value>, \u1E41 = <value> kg/s) falls into the aerodynamic surge region. |
+| `M9001` | warning | `cfl-acoustic-violation` | Pipe '<pipeId>' cell length violates acoustic CFL condition: simulation dt (<value> \\xB5s) exceeds stability limit (<value> \\xB5s). |
+| `M9002` | warning | `compressor-surge-hazard` | Compressor '<compId>' operating point (PR = <value>, \\u1E41 = <value> kg/s) falls into the aerodynamic surge region. |
 | `M9003` | warning | `compressor-choke-limit` | Compressor '<compId>' mass flow (<value> kg/s) exceeds maximum choke/stonewall sonic flow capacity. |
 | `M9004` | error | `valve-profile-overlap-error` | Valve '<valveId>' kinematic profile defect: <reason>. |
 | `M9005` | error | `compression-ratio-invalid` | Cylinder '<cylId>' compression ratio (<value>) is physically unrealistic (must be between 6.0 and 26.0). |
 | `M9006` | error | `unconnected-plenum-node` | Flow split or plenum '<plenumId>' has no connected flow paths or boundary conditions. |
 | `M9007` | warning | `discharge-coefficient-out-of-bounds` | Valve or orifice '<valveId>' discharge coefficient (<value>) is non-physical (must satisfy 0.0 < Cd <= 1.0). |
-| `M9008` | warning | `knock-margin-deficit` | Cylinder '<cylId>' operates in severe autoignition/knock hazard (CR = <value>, ignition anchor = <value>\xB0 CA BTDC). |
+| `M9008` | warning | `knock-margin-deficit` | Cylinder '<cylId>' operates in severe autoignition/knock hazard (CR = <value>, ignition anchor = <value>\\xB0 CA BTDC). |
 | `M9009` | error | `missing-boundary-pressure` | Environment node '<envId>' has invalid or uninitialized static pressure (<= 0 Pa). |
 | `M9010` | warning | `turbine-expansion-ratio-excess` | Turbine '<turbId>' expansion ratio (<value>) exceeds single-stage choked limit (> 4.5). |
 | `M9011` | warning | `intercooler-effectiveness-invalid` | Intercooler '<icId>' thermal effectiveness (<value>) violates 2nd Law of Thermodynamics (must satisfy 0.0 < eff <= 1.0). |
 | `M9012` | error | `air-fuel-equivalence-out-of-bounds` | Air-fuel equivalence ratio lambda (<value>) is outside combustible flammability limits (0.50 <= lambda <= 2.50). |
 | `M9013` | error | `negative-pipe-dimensions` | Pipe '<pipeId>' has non-positive <dim> (<value> m). |
-| `M9014` | error | `injector-timing-conflict` | Injector '<injId>' start of injection (<value>\xB0 CA) falls outside valid cycle window (-360\xB0 to +720\xB0). |
+| `M9014` | error | `injector-timing-conflict` | Injector '<injId>' start of injection (<value>\\xB0 CA) falls outside valid cycle window (-360\\xB0 to +720\\xB0). |
 | `M9015` | warning | `isolated-shaft-inertia` | Turbocharger shaft '<shaftId>' has no linked compressor or turbine rotating components. |
 
 ---
@@ -8650,12 +8650,12 @@ ModelScript includes automated pre-flight linter diagnostics and limit verificat
 | `M7001` | error | `cfl-condition-violation` | Simulation timestep maxDt (<maxDt> s) violates convective/acoustic CFL stability limit (<value> s). |
 | `M7002` | error | `invalid-pipe-dimensions` | Pipe section '<sectionId>' has invalid geometry: <reason>. |
 | `M7003` | error | `missing-boundary-condition` | Flowpath '<flowpath>' has no defined <missing> boundary condition. |
-| `M7004` | warning | `steep-elevation-warning` | Pipe section '<sectionId>' has steep inclination (<value>\xB0), risking hydrodynamic slugging. |
+| `M7004` | warning | `steep-elevation-warning` | Pipe section '<sectionId>' has steep inclination (<value>\\xB0), risking hydrodynamic slugging. |
 | `M7005` | error | `fully-closed-choke-hazard` | Choke valve '<chokeName>' is fully closed (opening = 0) with no active bypass route. |
 | `M7006` | warning | `severe-slugging-hazard` | Severe slugging geometry detected on flowpath '<flowpath>' (seabed dip to steep riser). |
 | `M7007` | error | `pig-stuck-hazard` | Pig '<pigName>' required differential pressure (<value> bar) exceeds maximum available (<value> bar). |
 | `M7008` | error | `pvt-table-missing-or-invalid` | PVT fluid table validation error: <detail>. |
-| `M7009` | warning | `wax-deposition-risk` | Fluid temperature (<value>\xB0C) on flowpath '<flowpath>' drops below Wax Appearance Temperature (<value>\xB0C). |
+| `M7009` | warning | `wax-deposition-risk` | Fluid temperature (<value>\\xB0C) on flowpath '<flowpath>' drops below Wax Appearance Temperature (<value>\\xB0C). |
 | `M7010` | warning | `sand-erosion-or-dropout-hazard` | Sand transport issue on section '<sectionId>': <reason>. |
 | `M7011` | error | `sour-service-metallurgy-violation` | H2S partial pressure (<value> bar) on flowpath '<flowpath>' violates NACE MR0175 material limit (<value> bar). |
 | `M7012` | warning | `asphaltene-precipitation-hazard` | Operating pressure (<value> bar) on flowpath '<flowpath>' enters Asphaltene Onset Pressure envelope (<value> bar). |
@@ -9017,15 +9017,15 @@ Automates invocation of local Emerson PipelineStudio CLI engines (`tgnet.exe` / 
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M8001` | error | `maop-exceeded` | Pipe '<pipeName>' operating pressure (<value> bar) exceeds Maximum Allowable Operating Pressure (<value> bar). |
-| `M8002` | error | `compressor-surge-hazard` | Compressor '<compName>' operating flow (<value> m\xB3/h) is below the aerodynamic surge limit (<value> m\xB3/h). |
-| `M8003` | warning | `compressor-stonewall-limit` | Compressor '<compName>' throughput (<value> m\xB3/h) approaches sonic choke/stonewall limit (<value> m\xB3/h). |
+| `M8002` | error | `compressor-surge-hazard` | Compressor '<compName>' operating flow (<value> m\\xB3/h) is below the aerodynamic surge limit (<value> m\\xB3/h). |
+| `M8003` | warning | `compressor-stonewall-limit` | Compressor '<compName>' throughput (<value> m\\xB3/h) approaches sonic choke/stonewall limit (<value> m\\xB3/h). |
 | `M8004` | error | `unconnected-pipeline-node` | Node '<nodeName>' is isolated and has no connecting pipes or equipment links. |
 | `M8005` | error | `delivery-pressure-deficit` | Delivery node '<nodeName>' is hydraulically unreachable from any supply or storage cavern. |
 | `M8006` | warning | `erosional-velocity-hazard` | Gas velocity in pipe '<pipeName>' (<value> m/s) exceeds API RP 14E erosional limit (<value> m/s). |
 | `M8007` | error | `liquid-column-separation` | Transient pressure in pipe '<pipeName>' (<value> bar) drops below liquid vapor pressure (<value> bar), risking cavitation. |
 | `M8008` | warning | `hydrogen-embrittlement-risk` | Hydrogen blend fraction in pipe '<pipeName>' (<value>%) exceeds 10% on steel without fracture toughness certification. |
 | `M8009` | warning | `batch-transmix-excess` | Batch transmix interface on pipe '<pipeName>' exceeds allowable contamination threshold: <detail>. |
-| `M8010` | warning | `joule-thomson-freezing` | Joule-Thomson throttling across regulator '<regName>' reduces outlet temperature to <value>\xB0C, risking ice/hydrate blockage. |
+| `M8010` | warning | `joule-thomson-freezing` | Joule-Thomson throttling across regulator '<regName>' reduces outlet temperature to <value>\\xB0C, risking ice/hydrate blockage. |
 | `M8011` | error | `pump-npsh-deficit` | Pump '<pumpName>' net positive suction head available (<value> m) is below required NPSHr (<value> m). |
 | `M8012` | warning | `line-pack-depletion-risk` | Network total line pack is depleting rapidly: <detail>. |
 
@@ -9424,12 +9424,12 @@ flowchart TD
 | `M7004` | error | `unconnected-attachment-node` | Mooring line '<line>' references unresolved fairlead attachment '<fairleadId>' not found on any vessel. |
 | `M7005` | warning | `rao-frequency-extrapolation` | Environmental wave peak frequency (<value> rad/s) is outside hydrodynamic RAO table range [<value>, <value>] rad/s. |
 | `M7006` | error | `invalid-stiffness-hierarchy` | Non-physical cross-sectional stiffness on segment '<seg>': <prop> (<val>) must be strictly positive. |
-| `M7007` | warning | `unphysical-seabed-friction` | Unrealistic seabed friction coefficient (\u03BC = <value>): expected value between 0.0 and 2.0. |
+| `M7007` | warning | `unphysical-seabed-friction` | Unrealistic seabed friction coefficient (\\u03BC = <value>): expected value between 0.0 and 2.0. |
 | `M7008` | error | `missing-hydrostatic-matrix` | Vessel '<vessel>' has zero or missing hydrostatic restoring matrix C; floating body cannot equilibrate in heave/roll/pitch. |
 | `M7009` | error | `duplicate-line-identifier` | Duplicate line identifier '<id>' declared in the slender system. |
 | `M7010` | warning | `slack-compression-hazard` | Mooring line '<line>' has negligible pre-tension under severe sea state (Hs > 8m), risking compression slack-snap loading. |
 | `M7011` | warning | `morison-drag-unspecified` | Segment '<seg>' in wave zone has zero Morison drag coefficient (Cd = 0); hydrodynamic damping will be neglected. |
-| `M7012` | warning | `anchor-uplift-warning` | Catenary line '<line>' exhibits vertical uplift angle (<value>\xB0) at anchor; drag-embedment anchors will pull out. |
+| `M7012` | warning | `anchor-uplift-warning` | Catenary line '<line>' exhibits vertical uplift angle (<value>\\xB0) at anchor; drag-embedment anchors will pull out. |
 | `M7013` | error | `mass-matrix-asymmetric` | Vessel '<vessel>' structural mass matrix is asymmetric at index (<r>, <c>). |
 | `M7014` | warning | `qtf-symmetry-violation` | Vessel '<vessel>' 2nd-order drift force QTF matrix violates conjugate symmetry. |
 | `M7015` | error | `exceeds-minimum-bend-radius` | Line '<line>' minimum radius of curvature (<value> m) is below allowable MBR (<value> m). |
@@ -10082,7 +10082,7 @@ msx adams mobility ExcavatorMechanism.adm
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M7301` | error | `overconstrained-mobility` | Mechanism is overconstrained according to Grübler-Kutzbach criterion (Mobility = <mobility> < 0). |
-| `M7302` | warning | `gimbal-lock-orientation` | Euler orientation angles for marker '<markerId>' indicate near-gimbal-lock singularity (psi = <value>\xB0). |
+| `M7302` | warning | `gimbal-lock-orientation` | Euler orientation angles for marker '<markerId>' indicate near-gimbal-lock singularity (psi = <value>\\xB0). |
 | `M7303` | error | `dangling-marker-reference` | <source> references non-existent marker '<targetId>'. |
 | `M7304` | error | `non-physical-inertia-tensor` | Part '<partId>' has non-physical inertia tensor: <reason>. |
 | `M7305` | error | `massless-part-floating` | Moving part '<partId>' has zero or negative mass without kinematic grounding. |
@@ -11672,22 +11672,22 @@ Legacy scientific subroutines. **10 rules** · `@modelscript/fortran` · Source:
 
 Liquid rocket engine transients. **14 rules** · `@modelscript/rocets` · Source: `languages/rocets/src/lints/index.ts` · [Language guide](../languages/rocets.md)
 
-| Code                                   | Rule                           | Severity                                | Message                                                                                                                                                                         |
-| :------------------------------------- | :----------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | ----------------------------------- |
-| <span id="rocets-m8001"></span>`M8001` | `unconnected-fluid-port`       | [error]    | Fluid port '<code>&lt;comp&gt;</code>.<code>&lt;port&gt;</code>' is not connected in the propellant flow circuit.                                                               |
-| <span id="rocets-m8002"></span>`M8002` | `fluid-type-mismatch`          | [error]    | Incompatible fluid stream connection '<code>&lt;conn&gt;</code>': cannot mix '<code>&lt;fromFluid&gt;</code>' into '<code>&lt;toFluid&gt;</code>' without a combustion chamber. |
-| <span id="rocets-m8003"></span>`M8003` | `shaft-power-imbalance`        | [error]    | Turbopump shaft '<code>&lt;shaftId&gt;</code>' power imbalance: <code>&lt;reason&gt;</code>.                                                                                    |
-| <span id="rocets-m8004"></span>`M8004` | `unbalanced-flow-split`        | [error]    | Mass conservation failure at junction '<code>&lt;junct&gt;</code>': inlet and outlet flow mismatch exceeds tolerance (&#92;                                                     | &#92;u0394m&#92; | = <code>&lt;value&gt;</code> kg/s). |
-| <span id="rocets-m8005"></span>`M8005` | `pump-cavitation-risk`         | [warning] | Pump '<code>&lt;pumpId&gt;</code>' inlet suction pressure is below required NPSH margin (margin: <code>&lt;value&gt;</code> kPa). Cavitation risk.                              |
-| <span id="rocets-m8006"></span>`M8006` | `negative-chamber-pressure`    | [error]    | Non-physical pressure at '<code>&lt;comp&gt;</code>': computed pressure is <code>&lt;val&gt;</code> Pa (must be &gt; 0).                                                        |
-| <span id="rocets-m8007"></span>`M8007` | `combustion-temperature-limit` | [warning] | Gas temperature at '<code>&lt;comp&gt;</code>' (<code>&lt;value&gt;</code> K) exceeds throat thermal structural limit (<code>&lt;limitK&gt;</code> K).                          |
-| <span id="rocets-m8008"></span>`M8008` | `invalid-valve-schedule`       | [error]    | Invalid valve actuation profile for '<code>&lt;valveId&gt;</code>': <code>&lt;reason&gt;</code>.                                                                                |
-| <span id="rocets-m8009"></span>`M8009` | `choked-flow-inconsistency`    | [warning] | Supersonic nozzle expansion at '<code>&lt;comp&gt;</code>' is not choked (pressure ratio Pc/Pa = <code>&lt;value&gt;</code> &lt; 1.89).                                         |
-| <span id="rocets-m8010"></span>`M8010` | `user-fortran-routine-error`   | [error]    | Fortran user routine in component '<code>&lt;comp&gt;</code>' has syntax or semantic error: <code>&lt;msg&gt;</code>.                                                           |
-| <span id="rocets-m8011"></span>`M8011` | `extreme-mixture-ratio`        | [warning] | Engine mixture ratio (O/F = <code>&lt;value&gt;</code>) at '<code>&lt;comp&gt;</code>' is outside stable combustion limits.                                                     |
-| <span id="rocets-m8012"></span>`M8012` | `missing-fluid-table`          | [error]    | Propellant fluid table for '<code>&lt;fluid&gt;</code>' is not loaded in the session.                                                                                           |
-| <span id="rocets-m8013"></span>`M8013` | `turbine-overspeed-hazard`     | [warning] | Turbopump shaft '<code>&lt;shaft&gt;</code>' speed (<code>&lt;value&gt;</code> RPM) exceeds maximum burst rating (<code>&lt;maxRpm&gt;</code> RPM).                             |
-| <span id="rocets-m8014"></span>`M8014` | `closed-flow-circuit`          | [error]    | Pump '<code>&lt;pumpId&gt;</code>' discharge is completely blocked with no open valve or recirculation path.                                                                    |
+| Code                                   | Rule                           | Severity                                | Message                                                                                                                                                                           |
+| :------------------------------------- | :----------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="rocets-m8001"></span>`M8001` | `unconnected-fluid-port`       | [error]    | Fluid port '<code>&lt;comp&gt;</code>.<code>&lt;port&gt;</code>' is not connected in the propellant flow circuit.                                                                 |
+| <span id="rocets-m8002"></span>`M8002` | `fluid-type-mismatch`          | [error]    | Incompatible fluid stream connection '<code>&lt;conn&gt;</code>': cannot mix '<code>&lt;fromFluid&gt;</code>' into '<code>&lt;toFluid&gt;</code>' without a combustion chamber.   |
+| <span id="rocets-m8003"></span>`M8003` | `shaft-power-imbalance`        | [error]    | Turbopump shaft '<code>&lt;shaftId&gt;</code>' power imbalance: <code>&lt;reason&gt;</code>.                                                                                      |
+| <span id="rocets-m8004"></span>`M8004` | `unbalanced-flow-split`        | [error]    | Mass conservation failure at junction '<code>&lt;junct&gt;</code>': inlet and outlet flow mismatch exceeds tolerance (&#124;&#92;u0394m&#124; = <code>&lt;value&gt;</code> kg/s). |
+| <span id="rocets-m8005"></span>`M8005` | `pump-cavitation-risk`         | [warning] | Pump '<code>&lt;pumpId&gt;</code>' inlet suction pressure is below required NPSH margin (margin: <code>&lt;value&gt;</code> kPa). Cavitation risk.                                |
+| <span id="rocets-m8006"></span>`M8006` | `negative-chamber-pressure`    | [error]    | Non-physical pressure at '<code>&lt;comp&gt;</code>': computed pressure is <code>&lt;val&gt;</code> Pa (must be &gt; 0).                                                          |
+| <span id="rocets-m8007"></span>`M8007` | `combustion-temperature-limit` | [warning] | Gas temperature at '<code>&lt;comp&gt;</code>' (<code>&lt;value&gt;</code> K) exceeds throat thermal structural limit (<code>&lt;limitK&gt;</code> K).                            |
+| <span id="rocets-m8008"></span>`M8008` | `invalid-valve-schedule`       | [error]    | Invalid valve actuation profile for '<code>&lt;valveId&gt;</code>': <code>&lt;reason&gt;</code>.                                                                                  |
+| <span id="rocets-m8009"></span>`M8009` | `choked-flow-inconsistency`    | [warning] | Supersonic nozzle expansion at '<code>&lt;comp&gt;</code>' is not choked (pressure ratio Pc/Pa = <code>&lt;value&gt;</code> &lt; 1.89).                                           |
+| <span id="rocets-m8010"></span>`M8010` | `user-fortran-routine-error`   | [error]    | Fortran user routine in component '<code>&lt;comp&gt;</code>' has syntax or semantic error: <code>&lt;msg&gt;</code>.                                                             |
+| <span id="rocets-m8011"></span>`M8011` | `extreme-mixture-ratio`        | [warning] | Engine mixture ratio (O/F = <code>&lt;value&gt;</code>) at '<code>&lt;comp&gt;</code>' is outside stable combustion limits.                                                       |
+| <span id="rocets-m8012"></span>`M8012` | `missing-fluid-table`          | [error]    | Propellant fluid table for '<code>&lt;fluid&gt;</code>' is not loaded in the session.                                                                                             |
+| <span id="rocets-m8013"></span>`M8013` | `turbine-overspeed-hazard`     | [warning] | Turbopump shaft '<code>&lt;shaft&gt;</code>' speed (<code>&lt;value&gt;</code> RPM) exceeds maximum burst rating (<code>&lt;maxRpm&gt;</code> RPM).                               |
+| <span id="rocets-m8014"></span>`M8014` | `closed-flow-circuit`          | [error]    | Pump '<code>&lt;pumpId&gt;</code>' discharge is completely blocked with no open valve or recirculation path.                                                                      |
 
 ## CCSDS {#ccsds}
 
@@ -12045,18 +12045,18 @@ I/O buffer behavioral models. **9 rules** · `@modelscript/ibis` · Source: `lan
 
 RF & signal-integrity S-parameters. **10 rules** · `@modelscript/touchstone` · Source: `languages/touchstone/src/errors.ts` · [Language guide](../languages/touchstone.md)
 
-| Code                                       | Rule                            | Severity                                | Message                                                                                                                                          |
-| :----------------------------------------- | :------------------------------ | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| <span id="touchstone-m8301"></span>`M8301` | `passivity-violation`           | [error]    | N-port scattering matrix violates passivity criterion (spectral norm <code>&lt;norm&gt;</code> &gt; 1.0) at frequency <code>&lt;freq&gt;</code>. |
-| <span id="touchstone-m8302"></span>`M8302` | `causality-violation`           | [error]    | Kramers-Kronig causality relation violated across frequency sweep: '<code>&lt;detail&gt;</code>'.                                                |
-| <span id="touchstone-m8304"></span>`M8304` | `frequency-grid-non-monotonic`  | [error]    | Frequency grid is not monotonically increasing: step from <code>&lt;prevFreq&gt;</code> to <code>&lt;currFreq&gt;</code> is non-increasing.      |
-| <span id="touchstone-m8306"></span>`M8306` | `missing-option-line`           | [warning] | Missing '#' option line; defaulting to '# GHz S MA R 50'.                                                                                        |
-| <span id="touchstone-m8307"></span>`M8307` | `invalid-parameter-format`      | [error]    | Invalid Touchstone parameter token or format '<code>&lt;token&gt;</code>'.                                                                       |
-| <span id="touchstone-m8308"></span>`M8308` | `incomplete-matrix-data`        | [error]    | Incomplete N-port matrix row: expected <code>&lt;expected&gt;</code> values, received <code>&lt;received&gt;</code>.                             |
-| <span id="touchstone-m8309"></span>`M8309` | `negative-reference-resistance` | [error]    | Reference resistance '<code>&lt;r&gt;</code>' must be strictly positive.                                                                         |
-| <span id="touchstone-m8310"></span>`M8310` | `asymmetric-reciprocal-network` | [warning] | Asymmetry in reciprocal S-parameter network: &#92;                                                                                               | S<code>&lt;i&gt;</code><code>&lt;j&gt;</code> - S<code>&lt;j&gt;</code><code>&lt;i&gt;</code>&#92; | = <code>&lt;diff&gt;</code> exceeds threshold. |
-| <span id="touchstone-m8311"></span>`M8311` | `no-frequency-points`           | [error]    | Touchstone file contains no valid frequency parameter points.                                                                                    |
-| <span id="touchstone-m8312"></span>`M8312` | `duplicate-frequency-point`     | [error]    | Duplicate frequency sample point '<code>&lt;freq&gt;</code>' encountered in sweep.                                                               |
+| Code                                       | Rule                            | Severity                                | Message                                                                                                                                                                                               |
+| :----------------------------------------- | :------------------------------ | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="touchstone-m8301"></span>`M8301` | `passivity-violation`           | [error]    | N-port scattering matrix violates passivity criterion (spectral norm <code>&lt;norm&gt;</code> &gt; 1.0) at frequency <code>&lt;freq&gt;</code>.                                                      |
+| <span id="touchstone-m8302"></span>`M8302` | `causality-violation`           | [error]    | Kramers-Kronig causality relation violated across frequency sweep: '<code>&lt;detail&gt;</code>'.                                                                                                     |
+| <span id="touchstone-m8304"></span>`M8304` | `frequency-grid-non-monotonic`  | [error]    | Frequency grid is not monotonically increasing: step from <code>&lt;prevFreq&gt;</code> to <code>&lt;currFreq&gt;</code> is non-increasing.                                                           |
+| <span id="touchstone-m8306"></span>`M8306` | `missing-option-line`           | [warning] | Missing '#' option line; defaulting to '# GHz S MA R 50'.                                                                                                                                             |
+| <span id="touchstone-m8307"></span>`M8307` | `invalid-parameter-format`      | [error]    | Invalid Touchstone parameter token or format '<code>&lt;token&gt;</code>'.                                                                                                                            |
+| <span id="touchstone-m8308"></span>`M8308` | `incomplete-matrix-data`        | [error]    | Incomplete N-port matrix row: expected <code>&lt;expected&gt;</code> values, received <code>&lt;received&gt;</code>.                                                                                  |
+| <span id="touchstone-m8309"></span>`M8309` | `negative-reference-resistance` | [error]    | Reference resistance '<code>&lt;r&gt;</code>' must be strictly positive.                                                                                                                              |
+| <span id="touchstone-m8310"></span>`M8310` | `asymmetric-reciprocal-network` | [warning] | Asymmetry in reciprocal S-parameter network: &#124;S<code>&lt;i&gt;</code><code>&lt;j&gt;</code> - S<code>&lt;j&gt;</code><code>&lt;i&gt;</code>&#124; = <code>&lt;diff&gt;</code> exceeds threshold. |
+| <span id="touchstone-m8311"></span>`M8311` | `no-frequency-points`           | [error]    | Touchstone file contains no valid frequency parameter points.                                                                                                                                         |
+| <span id="touchstone-m8312"></span>`M8312` | `duplicate-frequency-point`     | [error]    | Duplicate frequency sample point '<code>&lt;freq&gt;</code>' encountered in sweep.                                                                                                                    |
 
 ## URDF / Xacro {#urdf}
 

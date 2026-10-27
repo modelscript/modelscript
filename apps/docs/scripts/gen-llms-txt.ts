@@ -118,7 +118,7 @@ function formatLintBlock(slug: string): string {
   lines.push("| Code | Severity | Identifier | Summary |");
   lines.push("| :--- | :--- | :--- | :--- |");
   for (const r of cat.rules) {
-    const msg = (r.description || r.message || "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+    const msg = (r.description || r.message || "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ");
     lines.push(`| \`${r.code}\` | ${r.severity} | \`${r.rule}\` | ${msg} |`);
   }
   lines.push("");
@@ -177,7 +177,11 @@ function cleanMarkdown(raw: string): string {
   );
 
   // 8. Strip HTML comments
-  text = text.replace(/<!--[\s\S]*?-->/g, "");
+  let prevText: string;
+  do {
+    prevText = text;
+    text = text.replace(/<!--[\s\S]*?--!?>/g, "");
+  } while (text !== prevText);
 
   // 9. Normalize multiple blank lines
   text = text.replace(/\n{3,}/g, "\n\n").trim();

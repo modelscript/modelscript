@@ -20,7 +20,11 @@ import type {
   SspDefaultExperiment,
   SspElementGeometry,
   SspParameterBinding,
+  SspParameterMapping,
+  SspParameterMappingEntry,
   SspParameterValue,
+  SspSignalDictionary,
+  SspSignalDictionaryEntry,
   SspSystem,
 } from "./types.js";
 
@@ -435,4 +439,260 @@ function parseDefaultExperiment(
   if (stopTimeStr !== undefined) exp.stopTime = parseFloat(stopTimeStr);
 
   return exp;
+}
+
+/**
+ * Parse SSM (System Structure Parameter Mapping) XML.
+ *
+ * @param xml The raw XML content of an .ssm file
+ * @returns Parameter mapping definition
+ */
+export function parseSsm(xml: string): SspParameterMapping {
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
+  const version = root ? (getAttr(root, "version") ?? "1.0") : "1.0";
+  const lineStarts = computeLineStarts(xml);
+
+  const mappings: SspParameterMappingEntry[] = [];
+  if (!root) return { version, mappings };
+
+  const mapElements = findDescendants(root, (e) => matchName(e.name, "MappingEntry"));
+  for (const mEl of mapElements) {
+    const source = getAttr(mEl, "source") ?? "";
+    const target = getAttr(mEl, "target") ?? "";
+    const factorStr = getAttr(mEl, "factor");
+    const offsetStr = getAttr(mEl, "offset");
+    const line = offsetToLine(lineStarts, mEl.start);
+
+    const factor = factorStr !== undefined ? parseFloat(factorStr) : undefined;
+    const offset = offsetStr !== undefined ? parseFloat(offsetStr) : undefined;
+
+    mappings.push({
+      source,
+      target,
+      ...(factor !== undefined && !Number.isNaN(factor) ? { factor } : {}),
+      ...(offset !== undefined && !Number.isNaN(offset) ? { offset } : {}),
+      line,
+    });
+  }
+
+  return { version, mappings };
+}
+
+/**
+ * Parse SSB (System Structure Signal Dictionary) XML.
+ *
+ * @param xml The raw XML content of an .ssb file
+ * @returns Signal dictionary definition
+ */
+export function parseSsb(xml: string): SspSignalDictionary {
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
+  const version = root ? (getAttr(root, "version") ?? "1.0") : "1.0";
+  const name = root ? (getAttr(root, "name") ?? "SignalDictionary") : "SignalDictionary";
+  const lineStarts = computeLineStarts(xml);
+
+  const entries: SspSignalDictionaryEntry[] = [];
+  if (!root) return { version, name, entries };
+
+  const entryElements = findDescendants(root, (e) => matchName(e.name, "DictionaryEntry"));
+  for (const eEl of entryElements) {
+    const entryName = getAttr(eEl, "name") ?? "";
+    const desc = getAttr(eEl, "description");
+    const line = offsetToLine(lineStarts, eEl.start);
+
+    // Check children for type
+    const realEl = getChild(eEl, "Real");
+    const intEl = getChild(eEl, "Integer");
+    const boolEl = getChild(eEl, "Boolean");
+    const strEl = getChild(eEl, "String");
+    const enumEl = getChild(eEl, "Enumeration");
+
+    let finalType: SspConnectorType = "Real";
+    let finalUnit: string | undefined;
+
+    if (realEl) {
+      finalType = "Real";
+      finalUnit = getAttr(realEl, "unit");
+    } else if (intEl) {
+      finalType = "Integer";
+    } else if (boolEl) {
+      finalType = "Boolean";
+    } else if (strEl) {
+      finalType = "String";
+    } else if (enumEl) {
+      finalType = "Enumeration";
+    }
+
+    entries.push({
+      name: entryName,
+      type: finalType,
+      ...(finalUnit ? { unit: finalUnit } : {}),
+      ...(desc ? { description: desc } : {}),
+      line,
+    });
+  }
+
+  return { version, name, entries };
+}
+
+/**
+ * Serialize an SspSystem back to valid SystemStructure.ssd XML.
+ */
+export function serializeSsd(system: SspSystem): string {
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push('<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"');
+  lines.push('                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"');
+  lines.push(`                                name="${escapeXml(system.name)}"`);
+  lines.push(`                                version="${system.version || "1.0"}"`);
+  if (system.description) {
+    lines.push(`                                description="${escapeXml(system.description)}"`);
+  }
+  lines.push(">");
+
+  lines.push(`  <ssd:System name="${escapeXml(system.name)}">`);
+
+  // Connectors
+  if (system.connectors && system.connectors.length > 0) {
+    lines.push("    <ssd:Connectors>");
+    for (const c of system.connectors) {
+      lines.push(`      <ssd:Connector name="${escapeXml(c.name)}" kind="${c.kind}">`);
+      const uAttr = c.unit ? ` unit="${escapeXml(c.unit)}"` : "";
+      lines.push(`        <ssc:${c.type}${uAttr} />`);
+      lines.push("      </ssd:Connector>");
+    }
+    lines.push("    </ssd:Connectors>");
+  }
+
+  // Elements (Components)
+  if (system.components.length > 0) {
+    lines.push("    <ssd:Elements>");
+    for (const cmp of system.components) {
+      const typeAttr = cmp.type ? ` type="${escapeXml(cmp.type)}"` : "";
+      lines.push(`      <ssd:Component name="${escapeXml(cmp.name)}" source="${escapeXml(cmp.source)}"${typeAttr}>`);
+      if (cmp.connectors.length > 0) {
+        lines.push("        <ssd:Connectors>");
+        for (const c of cmp.connectors) {
+          lines.push(`          <ssd:Connector name="${escapeXml(c.name)}" kind="${c.kind}">`);
+          const uAttr = c.unit ? ` unit="${escapeXml(c.unit)}"` : "";
+          lines.push(`            <ssc:${c.type}${uAttr} />`);
+          lines.push("          </ssd:Connector>");
+        }
+        lines.push("        </ssd:Connectors>");
+      }
+      lines.push("      </ssd:Component>");
+    }
+    lines.push("    </ssd:Elements>");
+  }
+
+  // Connections
+  if (system.connections.length > 0) {
+    lines.push("    <ssd:Connections>");
+    for (const conn of system.connections) {
+      lines.push(
+        `      <ssd:Connection startElement="${escapeXml(conn.startElement)}" startConnector="${escapeXml(conn.startConnector)}" endElement="${escapeXml(conn.endElement)}" endConnector="${escapeXml(conn.endConnector)}" />`,
+      );
+    }
+    lines.push("    </ssd:Connections>");
+  }
+
+  // ParameterBindings
+  if (system.parameterBindings.length > 0) {
+    for (const pb of system.parameterBindings) {
+      const pfxAttr = pb.prefix ? ` prefix="${escapeXml(pb.prefix)}"` : "";
+      const srcAttr = pb.source ? ` source="${escapeXml(pb.source)}"` : "";
+      lines.push(`    <ssd:ParameterBinding${pfxAttr}${srcAttr}>`);
+      if (pb.values && pb.values.length > 0) {
+        lines.push(
+          '      <ssd:ParameterValues xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues">',
+        );
+        lines.push("        <ssv:Parameters>");
+        for (const v of pb.values) {
+          lines.push(`          <ssv:Parameter name="${escapeXml(v.name)}">`);
+          lines.push(`            <ssv:${v.type} value="${v.value}" />`);
+          lines.push("          </ssv:Parameter>");
+        }
+        lines.push("        </ssv:Parameters>");
+        lines.push("      </ssd:ParameterValues>");
+      }
+      lines.push("    </ssd:ParameterBinding>");
+    }
+  }
+
+  // DefaultExperiment
+  if (system.defaultExperiment) {
+    const sStart =
+      system.defaultExperiment.startTime !== undefined ? ` startTime="${system.defaultExperiment.startTime}"` : "";
+    const sStop =
+      system.defaultExperiment.stopTime !== undefined ? ` stopTime="${system.defaultExperiment.stopTime}"` : "";
+    lines.push(`    <ssd:DefaultExperiment${sStart}${sStop} />`);
+  }
+
+  lines.push("  </ssd:System>");
+  lines.push("</ssd:SystemStructureDescription>");
+  return lines.join("\n");
+}
+
+/**
+ * Serialize parameter values to valid SSV XML.
+ */
+export function serializeSsv(params: SspParameterValue[], name: string = "DefaultParams"): string {
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push('<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"');
+  lines.push('                  version="1.0"');
+  lines.push(`                  name="${escapeXml(name)}">`);
+  lines.push("  <ssv:Parameters>");
+  for (const p of params) {
+    lines.push(`    <ssv:Parameter name="${escapeXml(p.name)}">`);
+    lines.push(`      <ssv:${p.type} value="${p.value}" />`);
+    lines.push("    </ssv:Parameter>");
+  }
+  lines.push("  </ssv:Parameters>");
+  lines.push("</ssv:ParameterSet>");
+  return lines.join("\n");
+}
+
+/**
+ * Serialize parameter mapping to valid SSM XML.
+ */
+export function serializeSsm(mapping: SspParameterMapping): string {
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push('<ssm:ParameterMapping xmlns:ssm="http://ssp-standard.org/SSP1/SystemStructureParameterMapping"');
+  lines.push(`                      version="${mapping.version || "1.0"}">`);
+  for (const m of mapping.mappings) {
+    const fAttr = m.factor !== undefined ? ` factor="${m.factor}"` : "";
+    const oAttr = m.offset !== undefined ? ` offset="${m.offset}"` : "";
+    lines.push(
+      `  <ssm:MappingEntry source="${escapeXml(m.source)}" target="${escapeXml(m.target)}"${fAttr}${oAttr} />`,
+    );
+  }
+  lines.push("</ssm:ParameterMapping>");
+  return lines.join("\n");
+}
+
+/**
+ * Serialize signal dictionary to valid SSB XML.
+ */
+export function serializeSsb(dictionary: SspSignalDictionary): string {
+  const lines: string[] = [];
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+  lines.push('<ssb:SignalDictionary xmlns:ssb="http://ssp-standard.org/SSP1/SystemStructureSignalDictionary"');
+  lines.push(`                       name="${escapeXml(dictionary.name || "Dictionary")}"`);
+  lines.push(`                       version="${dictionary.version || "1.0"}">`);
+  for (const e of dictionary.entries) {
+    const uAttr = e.unit ? ` unit="${escapeXml(e.unit)}"` : "";
+    const dAttr = e.description ? ` description="${escapeXml(e.description)}"` : "";
+    lines.push(`  <ssb:DictionaryEntry name="${escapeXml(e.name)}"${dAttr}>`);
+    lines.push(`    <ssb:${e.type}${uAttr} />`);
+    lines.push("  </ssb:DictionaryEntry>");
+  }
+  lines.push("</ssb:SignalDictionary>");
+  return lines.join("\n");
+}
+
+function escapeXml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

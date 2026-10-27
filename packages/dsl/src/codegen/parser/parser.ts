@@ -463,74 +463,133 @@ export function generateParserTables(
     return targets;
   };
 
-  // Bounded 64-step Bellman-Ford minimum repair distance reachability relaxation:
-  // Iteratively relaxes `reachabilityMatrix[stateId, t]` (up to `MAX_REACHABILITY_DEPTH = min(64, stateCount)` hops)
-  // to compute the minimum number of token insertions required to reach a valid shift of terminal `t` from `stateId`:
-  // - Across a `SHIFT` transition `stateId -> nextState`: adds `+1` token insertion cost (`1 + baseCost`).
-  // - Across a `REDUCE` action to post-reduction GOTO target `nextState`: adds `0` cost if `t` matches the reduction's
-  //   valid lookahead symbol (`sym === "$default" || t === symId`), or `Math.max(1, baseCost)` otherwise.
-  // - Across a non-terminal `GOTO` transition `stateId -> nextState`: adds `Math.max(1, minYieldLength(sym))`.
-  let matrixChanged = true;
-  for (let iter = 0; iter < MAX_REACHABILITY_DEPTH; iter++) {
-    if (!matrixChanged) break;
-    matrixChanged = false;
-    const newMatrix = new Uint8Array(reachabilityMatrix);
-    for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
-      const actions = table.actionTable.get(stateId);
-      const gotos = table.gotoTable.get(stateId);
-      if (actions) {
-        for (const [sym, acts] of actions.entries()) {
-          const symId = sym === "$default" ? 0 : (symToInt.get(sym) ?? -1);
-          for (const act of acts) {
-            if (act.type === 0 && act.target !== undefined) {
-              // SHIFT transition: consuming the shifted terminal costs 1 repair step plus remaining distance from `nextState`.
-              const nextState = act.target;
-              for (let t = 1; t <= maxTerminalId; t++) {
-                const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t]!;
-                if (baseCost >= 254) continue;
-                const altCost = 1 + baseCost;
-                if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]!) {
-                  newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
-                  matrixChanged = true;
-                }
-              }
-            } else if (act.type === 1 && act.target !== undefined) {
-              // REDUCE action: 0-cost lookahead step only for the reduction's valid lookahead terminal(s),
-              // and only to valid post-reduction GOTO target states.
-              const targets = getReduceTargets(stateId, act.target);
-              for (const nextState of targets) {
-                for (let t = 1; t <= maxTerminalId; t++) {
-                  const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t]!;
-                  if (baseCost >= 254) continue;
-                  const altCost = sym === "$default" || t === symId ? baseCost : Math.max(1, baseCost);
-                  if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]!) {
-                    newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
-                    matrixChanged = true;
-                  }
-                }
-              }
+  // Precompute aggregated transitions per state for fast Bellman-Ford propagation
+  interface ShiftEdge {
+    nextState: number;
+    cost: number;
+  }
+  interface ReduceEdge {
+    nextStates: number[];
+    isDefault: boolean;
+    symId: number;
+  }
+
+  const stride = maxTerminalId + 1;
+  const stateShiftEdges: ShiftEdge[][] = [];
+  const stateReduceEdges: ReduceEdge[][] = [];
+
+  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
+    const shiftEdges: ShiftEdge[] = [];
+    const reduceEdges: ReduceEdge[] = [];
+    stateShiftEdges.push(shiftEdges);
+    stateReduceEdges.push(reduceEdges);
+
+    const actions = table.actionTable.get(stateId);
+    const gotos = table.gotoTable.get(stateId);
+
+    // Shifts: deduplicate nextState, keeping min cost = 1
+    const shiftTargets = new Set<number>();
+    if (actions) {
+      for (const [, acts] of actions.entries()) {
+        for (const act of acts) {
+          if (act.type === 0 && act.target !== undefined) {
+            shiftTargets.add(act.target);
+          }
+        }
+      }
+    }
+    for (const target of shiftTargets) {
+      shiftEdges.push({ nextState: target, cost: 1 });
+    }
+
+    // Gotos: deduplicate nextState, keeping min yield cost
+    if (gotos) {
+      const gotoMinCost = new Map<number, number>();
+      for (const [sym, nextState] of gotos.entries()) {
+        const yieldLen = minYieldMap.get(sym)?.length ?? 1;
+        const cost = Math.max(1, yieldLen);
+        const existing = gotoMinCost.get(nextState);
+        if (existing === undefined || cost < existing) {
+          gotoMinCost.set(nextState, cost);
+        }
+      }
+      for (const [nextState, cost] of gotoMinCost.entries()) {
+        shiftEdges.push({ nextState, cost });
+      }
+    }
+
+    // Reduces: pre-resolve targets and lookahead matching
+    if (actions) {
+      for (const [sym, acts] of actions.entries()) {
+        const symId = sym === "$default" ? 0 : (symToInt.get(sym) ?? -1);
+        for (const act of acts) {
+          if (act.type === 1 && act.target !== undefined) {
+            const targets = getReduceTargets(stateId, act.target);
+            if (targets.length > 0) {
+              reduceEdges.push({
+                nextStates: targets,
+                isDefault: sym === "$default",
+                symId,
+              });
             }
           }
         }
       }
-      if (gotos) {
-        // Non-terminal GOTO transition: weighted by the minimum terminal yield length of `sym`.
-        for (const [sym, nextState] of gotos.entries()) {
-          const yieldLen = minYieldMap.get(sym)?.length ?? 1;
-          const cost = Math.max(1, yieldLen);
+    }
+  }
+
+  // Alternating forward-backward Gauss-Seidel Bellman-Ford reachability relaxation:
+  // Updates propagate in-place across the automaton graph in alternating sweeps,
+  // converging in a fraction of iterations compared to Jacobi relaxation.
+  for (let iter = 0; iter < MAX_REACHABILITY_DEPTH; iter++) {
+    let matrixChanged = false;
+    const forward = iter % 2 === 0;
+    const startState = forward ? 0 : table.actionTable.size - 1;
+    const endState = forward ? table.actionTable.size : -1;
+    const step = forward ? 1 : -1;
+
+    for (let stateId = startState; stateId !== endState; stateId += step) {
+      const stateOffset = stateId * stride;
+
+      // Relax across SHIFT and non-terminal GOTO edges
+      const shifts = stateShiftEdges[stateId] ?? [];
+      for (let i = 0; i < shifts.length; i++) {
+        const edge = shifts[i]!;
+        const nextOffset = edge.nextState * stride;
+        const cost = edge.cost;
+        for (let t = 1; t <= maxTerminalId; t++) {
+          const baseCost = reachabilityMatrix[nextOffset + t]!;
+          if (baseCost >= 254) continue;
+          const altCost = cost + baseCost;
+          if (altCost < reachabilityMatrix[stateOffset + t]!) {
+            reachabilityMatrix[stateOffset + t] = altCost;
+            matrixChanged = true;
+          }
+        }
+      }
+
+      // Relax across REDUCE transitions
+      const reduces = stateReduceEdges[stateId] ?? [];
+      for (let i = 0; i < reduces.length; i++) {
+        const edge = reduces[i]!;
+        const isDef = edge.isDefault;
+        const symId = edge.symId;
+        for (let j = 0; j < edge.nextStates.length; j++) {
+          const nextOffset = edge.nextStates[j]! * stride;
           for (let t = 1; t <= maxTerminalId; t++) {
-            const baseCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t]!;
+            const baseCost = reachabilityMatrix[nextOffset + t]!;
             if (baseCost >= 254) continue;
-            const altCost = Math.min(254, cost + baseCost);
-            if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]!) {
-              newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
+            const altCost = isDef || t === symId ? baseCost : baseCost === 0 ? 1 : baseCost;
+            if (altCost < reachabilityMatrix[stateOffset + t]!) {
+              reachabilityMatrix[stateOffset + t] = altCost;
               matrixChanged = true;
             }
           }
         }
       }
     }
-    reachabilityMatrix.set(newMatrix);
+
+    if (!matrixChanged) break;
   }
   // Build Precomputed 1-Token Repair Table (Phase 2)
   const precomputedRepairs = new Uint16Array(table.actionTable.size * (maxTerminalId + 1));
@@ -671,6 +730,20 @@ export function generateParserTables(
 
   let maxSyntheticDepth = 0;
 
+  // Pre-index productions by left symbol for O(1) rule lookup
+  const prodsByLeft = new Map<string, typeof grammar.productions>();
+  for (const p of grammar.productions) {
+    let list = prodsByLeft.get(p.left);
+    if (!list) {
+      list = [];
+      prodsByLeft.set(p.left, list);
+    }
+    list.push(p);
+  }
+
+  const memoFields = new Map<string, Map<number, { index: number; expectedType: number }[]>>();
+  const activeInStack = new Set<string>();
+
   /**
    * Computes the mapping from `fieldId` to candidate `(childIndex, expectedType)` pairs for
    * all productions of `symName`.
@@ -687,28 +760,29 @@ export function generateParserTables(
    *   pushes the synthetic intermediate child node onto its traversal stack, and continues
    *   searching `type_fields[childType]` for `fieldId` until it reaches the concrete leaf field.
    */
-  function getFieldsForSymbol(
-    symName: string,
-    visited = new Set<string>(),
-    depth = 0,
-  ): Map<number, { index: number; expectedType: number }[]> {
+  function getFieldsForSymbol(symName: string, depth = 0): Map<number, { index: number; expectedType: number }[]> {
     if (depth > maxSyntheticDepth) {
       maxSyntheticDepth = depth;
     }
-    const map = new Map<number, { index: number; expectedType: number }[]>();
-    if (visited.has(symName)) return map;
-    visited.add(symName);
+    const cached = memoFields.get(symName);
+    if (cached) return cached;
+    if (activeInStack.has(symName)) return new Map();
+    activeInStack.add(symName);
 
-    const symId = symToInt.get(symName) || 0;
-    for (const p of grammar.productions) {
-      if ((symToInt.get(p.left) || 0) === symId) {
+    const map = new Map<number, { index: number; expectedType: number }[]>();
+    const prods = prodsByLeft.get(symName);
+    if (prods) {
+      for (const p of prods) {
         // 1. Direct fields attached to this production rule.
         if (p.fields) {
           for (const f of p.fields) {
-            if (!map.has(f.fieldId)) map.set(f.fieldId, []);
+            let list = map.get(f.fieldId);
+            if (!list) {
+              list = [];
+              map.set(f.fieldId, list);
+            }
             const childSym = p.right[f.index]!;
             const expectedType = symToInt.get(childSym) || 0;
-            const list = map.get(f.fieldId)!;
             if (!list.some((e) => e.index === f.index && e.expectedType === expectedType)) {
               list.push({ index: f.index, expectedType });
             }
@@ -719,13 +793,16 @@ export function generateParserTables(
         for (let i = 0; i < p.right.length; i++) {
           const childSym = p.right[i]!;
           if (childSym.startsWith("_")) {
-            const childFields = getFieldsForSymbol(childSym, new Set(visited), depth + 1);
+            const childFields = getFieldsForSymbol(childSym, depth + 1);
             const expectedType = symToInt.get(childSym) || 0;
             for (const fieldId of childFields.keys()) {
-              if (!map.has(fieldId)) map.set(fieldId, []);
-              const list = map.get(fieldId)!;
+              let list = map.get(fieldId);
+              if (!list) {
+                list = [];
+                map.set(fieldId, list);
+              }
               const idx = i | 0x8000;
-              if (!list.some((e) => e.index === idx && e.expectedType === expectedType)) {
+              if (!list.some((existing) => existing.index === idx && existing.expectedType === expectedType)) {
                 list.push({ index: idx, expectedType });
               }
             }
@@ -733,6 +810,8 @@ export function generateParserTables(
         }
       }
     }
+    activeInStack.delete(symName);
+    memoFields.set(symName, map);
     return map;
   }
 

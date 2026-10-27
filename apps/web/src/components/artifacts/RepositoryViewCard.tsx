@@ -70,14 +70,29 @@ export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConf
   const navigate = useNavigate();
 
   const rawUrl = String(viewConfig.cloneUrl || viewConfig.repoUrl || viewConfig.url || "");
-  const urlMatch = rawUrl.match(/(?:github\.com|gitlab\.com|gitea\.[^/]+)\/([^/]+)\/([^/.]+)/i);
-  const namespace = viewConfig.namespace || urlMatch?.[1] || "user";
-  const project = (viewConfig.project || urlMatch?.[2] || "repository").replace(/\.git$/i, "");
+  let hostname = "";
+  let pathSegments: string[] = [];
+  try {
+    const normalized = rawUrl.startsWith("git@")
+      ? `ssh://${rawUrl.replace(":", "/")}`
+      : rawUrl.includes("://")
+        ? rawUrl
+        : `https://${rawUrl}`;
+    const parsed = new URL(normalized);
+    hostname = parsed.hostname.toLowerCase();
+    pathSegments = parsed.pathname.split("/").filter(Boolean);
+  } catch {
+    // Ignore invalid URLs
+  }
+
+  const namespace = viewConfig.namespace || pathSegments[0] || "user";
+  const project = (viewConfig.project || pathSegments[1] || "repository").replace(/\.git$/i, "");
   const fullName = `${namespace}/${project}`;
   const description = viewConfig.description || "Engineering model repository.";
-  const provider =
-    viewConfig.provider ||
-    (rawUrl.includes("github.com") ? "github" : rawUrl.includes("gitlab.com") ? "gitlab" : "internal");
+
+  const isGitHub = hostname === "github.com" || hostname.endsWith(".github.com");
+  const isGitLab = hostname === "gitlab.com" || hostname.endsWith(".gitlab.com");
+  const provider = viewConfig.provider || (isGitHub ? "github" : isGitLab ? "gitlab" : "internal");
   const branch = viewConfig.defaultBranch || "main";
 
   const handleOpenIde = (e: React.MouseEvent) => {
