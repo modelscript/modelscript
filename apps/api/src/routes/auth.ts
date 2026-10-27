@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 
 import type { LibraryDatabase } from "../database.js";
-import { JWT_SECRET, requireAuth } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, isAccountBlocked, requireAuth } from "../middleware/auth-middleware.js";
 
 import { defaultLoginLimiter } from "../middleware/login-limiter.js";
 import { defaultRegistrationLimiter } from "../middleware/registration-limiter.js";
@@ -383,7 +383,7 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      if (user.status === "suspended" || user.status === "frozen") {
+      if (isAccountBlocked(user.status)) {
         database.logAudit({
           actorId: user.id,
           action: "auth_login_failure",
@@ -454,8 +454,10 @@ export function authRouter(database: LibraryDatabase): Router {
         token,
         user: {
           ...safeUser,
+          banner_url: user.banner_url ?? null,
+          credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
-          totp_enabled: false,
+          totp_enabled: Boolean(user.totp_enabled),
         },
       });
     } catch (err) {
@@ -504,7 +506,7 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      if (user.status === "suspended" || user.status === "frozen") {
+      if (isAccountBlocked(user.status)) {
         res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
         return;
       }
@@ -584,8 +586,10 @@ export function authRouter(database: LibraryDatabase): Router {
         token: sessionToken,
         user: {
           ...safeUser,
+          banner_url: user.banner_url ?? null,
+          credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
-          totp_enabled: true,
+          totp_enabled: Boolean(user.totp_enabled),
         },
         usedBackupCode,
       });
@@ -640,7 +644,11 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(400).json({ error: "Provided secret does not match active 2FA setup session" });
       return;
     }
-    const resolvedSecret = pendingSecret || (typeof secret === "string" && secret.trim() ? secret.trim() : undefined);
+    const clientSuppliedSecret =
+      process.env["NODE_ENV"] !== "production" && typeof secret === "string" && secret.trim()
+        ? secret.trim()
+        : undefined;
+    const resolvedSecret = pendingSecret || clientSuppliedSecret;
 
     if (!resolvedSecret) {
       res.status(400).json({ error: "Secret is required" });
@@ -787,7 +795,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const user = database.getUserByEmail(cleanEmail);
       let resetToken: string | undefined;
 
-      if (user && user.status !== "suspended" && user.status !== "frozen") {
+      if (user && !isAccountBlocked(user.status)) {
         resetToken = signPasswordResetToken(user.id, user.email, user.token_version ?? 1, user.password_hash);
 
         database.logAudit({
@@ -849,7 +857,7 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      if (user.status === "suspended" || user.status === "frozen") {
+      if (isAccountBlocked(user.status)) {
         res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
         return;
       }
@@ -950,7 +958,14 @@ export function authRouter(database: LibraryDatabase): Router {
       typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
     const cookieHeader = req.headers.cookie || "";
     const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
-    const cookieToken = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : "";
+    let cookieToken = "";
+    if (cookieMatch?.[1]) {
+      try {
+        cookieToken = decodeURIComponent(cookieMatch[1]);
+      } catch {
+        cookieToken = cookieMatch[1];
+      }
+    }
     const authHeader = req.headers.authorization || "";
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     const token = (req.query["token"] as string) || cookieToken || bearerToken;
@@ -968,7 +983,20 @@ export function authRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
+      const decoded = jwt.verify(token, JWT_SECRET) as {
+        id: number;
+        scope?: string | undefined;
+        tokenVersion?: number | undefined;
+      };
+      if (decoded.scope === "2fa_challenge") {
+        res.redirect(`${frontendUrl}/settings?error=InvalidToken`);
+        return;
+      }
+      const user = database.getUserById(decoded.id);
+      if (!user || isAccountBlocked(user.status) || (decoded.tokenVersion ?? 1) !== (user.token_version ?? 1)) {
+        res.redirect(`${frontendUrl}/settings?error=InvalidToken`);
+        return;
+      }
       const signedState = jwt.sign({ action: "link", userId: decoded.id, provider }, JWT_SECRET, { expiresIn: "10m" });
       if (clientId) {
         const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
@@ -996,7 +1024,14 @@ export function authRouter(database: LibraryDatabase): Router {
       typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
     const cookieHeader = req.headers.cookie || "";
     const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
-    const cookieToken = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : "";
+    let cookieToken = "";
+    if (cookieMatch?.[1]) {
+      try {
+        cookieToken = decodeURIComponent(cookieMatch[1]);
+      } catch {
+        cookieToken = cookieMatch[1];
+      }
+    }
     const authHeader = req.headers.authorization || "";
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     const token = bearerToken || cookieToken || (req.body && req.body.token);
@@ -1013,7 +1048,20 @@ export function authRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
+      const decoded = jwt.verify(token, JWT_SECRET) as {
+        id: number;
+        scope?: string | undefined;
+        tokenVersion?: number | undefined;
+      };
+      if (decoded.scope === "2fa_challenge") {
+        res.status(401).json({ error: "Two-factor authentication required" });
+        return;
+      }
+      const user = database.getUserById(decoded.id);
+      if (!user || isAccountBlocked(user.status) || (decoded.tokenVersion ?? 1) !== (user.token_version ?? 1)) {
+        res.status(403).json({ error: "Account is inactive or token is invalid" });
+        return;
+      }
       const signedState = jwt.sign({ action: "link", userId: decoded.id, provider }, JWT_SECRET, { expiresIn: "10m" });
       if (clientId) {
         const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
@@ -1315,6 +1363,8 @@ export function authRouter(database: LibraryDatabase): Router {
       res.json({
         user: {
           ...safeUser,
+          banner_url: user.banner_url ?? null,
+          credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
           totp_enabled: Boolean(user.totp_enabled),
         },
@@ -1651,11 +1701,21 @@ export function authRouter(database: LibraryDatabase): Router {
       "packages:yank",
       "packages:manage",
     ]);
+    const userRecord = database.getUserById(req.user!.id);
+    const isAdminUser =
+      userRecord?.account_type === "admin" ||
+      req.user!.account_type === "admin" ||
+      req.user!.accountType === "admin" ||
+      req.user!.role === "admin";
     for (const scope of scopes) {
       if (typeof scope !== "string" || !validScopes.has(scope)) {
         res
           .status(400)
           .json({ error: `Invalid scope: '${scope}'. Valid scopes: ${Array.from(validScopes).join(", ")}` });
+        return;
+      }
+      if ((scope === "admin" || scope === "*") && !isAdminUser) {
+        res.status(403).json({ error: `Insufficient privileges to mint token with '${scope}' scope` });
         return;
       }
     }

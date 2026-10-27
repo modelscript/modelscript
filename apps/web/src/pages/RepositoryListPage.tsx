@@ -23,7 +23,7 @@ const TabBar = styled.div`
   z-index: 10;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  background: rgba(6, 8, 15, 0.85);
+  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
 `;
 
 const Tab = styled.button<{ $active?: boolean | undefined }>`

@@ -29,6 +29,7 @@ export class SqliteMigrationRunner {
   }
 
   getApplied(): MigrationRecord[] {
+    this.#ensureLedgerTable();
     return this.#db
       .prepare(`SELECT id, name, checksum, applied_at, execution_ms FROM _modelscript_migrations ORDER BY id ASC`)
       .all() as MigrationRecord[];

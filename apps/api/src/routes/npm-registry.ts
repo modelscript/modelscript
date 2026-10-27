@@ -7,19 +7,32 @@
  * directly to the configured GitLab CE instance.
  */
 
-import type { Request, Response, Router } from "express";
+import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
 import type { LibraryStorage } from "../storage.js";
 
-const GITLAB_URL = process.env["GITLAB_URL"] || "https://gitlab.com";
-const GITLAB_TOKEN = process.env["GITLAB_TOKEN"] || "";
+function isModelScriptAuthHeader(authHeader: string): boolean {
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (token.startsWith("ms_pat_") || token.startsWith("ms_bot_")) {
+    return true;
+  }
+  // 3-part JWT starting with eyJ
+  if (/^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*$/.test(token)) {
+    return true;
+  }
+  return false;
+}
 
 export function npmRegistryRouter(database: LibraryDatabase, storage?: LibraryStorage): Router {
   const router = createRouter();
 
-  router.use(async (req: Request, res: Response) => {
+  router.use(async (req: Request, res: Response, next: NextFunction) => {
     try {
+      if (req.baseUrl === "" && req.path.startsWith("/api/")) {
+        return next();
+      }
+
       const cleanPath = req.path.replace(/^\/api\/v1\/npm\b/, "") || "/";
 
       // Handle local npm registry search endpoint
@@ -33,74 +46,85 @@ export function npmRegistryRouter(database: LibraryDatabase, storage?: LibrarySt
       // Extract package name from path (e.g. /Modelica, /%40org%2Fpkg, or /@org/pkg)
       const segments = cleanPath.split("/").filter(Boolean);
       let decodedName: string | null = null;
-      if (segments.length === 1 && segments[0] !== "-") {
-        decodedName = decodeURIComponent(segments[0]!);
-      } else if (
-        segments.length === 2 &&
-        segments[0] !== "-" &&
-        segments[1] !== "-" &&
-        decodeURIComponent(segments[0]!).startsWith("@")
-      ) {
-        decodedName = `${decodeURIComponent(segments[0]!)}/${decodeURIComponent(segments[1]!)}`;
+      try {
+        if (segments.length === 1 && segments[0] !== "-") {
+          decodedName = decodeURIComponent(segments[0]!);
+        } else if (
+          segments.length === 2 &&
+          segments[0] !== "-" &&
+          segments[1] !== "-" &&
+          decodeURIComponent(segments[0]!).startsWith("@")
+        ) {
+          decodedName = `${decodeURIComponent(segments[0]!)}/${decodeURIComponent(segments[1]!)}`;
+        }
+      } catch {
+        decodedName = null;
       }
 
-      if (decodedName) {
-        const hostUrl = `${req.protocol}://${req.get("host")}`;
-        const localPackument = database.buildPackument(decodedName, `${hostUrl}/api/v1/npm`);
-        if (localPackument) {
-          return res.json(localPackument);
-        }
+      if (!decodedName) {
+        return res.status(404).json({ error: "Not found" });
+      }
 
-        // Fallback if package archive exists in storage while background indexing is still in progress
-        const storedVersions = storage ? storage.versions(decodedName) : [];
-        if (storedVersions.length > 0) {
-          const pkgRecord = database.getPackage(decodedName);
-          const versionsObj: Record<string, unknown> = {};
-          const timeObj: Record<string, string> = {};
-          for (const v of storedVersions) {
-            const rel = database.getLibraryRelease(decodedName, v);
-            if (rel?.published_at) timeObj[v] = rel.published_at;
-            versionsObj[v] = {
-              _id: `${decodedName}@${v}`,
-              name: decodedName,
-              version: v,
-              description: pkgRecord?.description ?? undefined,
-              license: pkgRecord?.license ?? undefined,
-              dist: {
-                shasum: rel?.content_hash?.replace(/^sha256:/, "") ?? "",
-                tarball: `${hostUrl}/api/v1/libraries/${encodeURIComponent(decodedName)}/${encodeURIComponent(v)}/download`,
-              },
-            };
-          }
-          return res.json({
-            _id: decodedName,
+      const hostUrl = `${req.protocol}://${req.get("host")}`;
+      const localPackument = database.buildPackument(decodedName, `${hostUrl}/api/v1/npm`);
+      if (localPackument) {
+        return res.json(localPackument);
+      }
+
+      // Fallback if package archive exists in storage while background indexing is still in progress
+      const storedVersions = storage ? storage.versions(decodedName) : [];
+      if (storedVersions.length > 0) {
+        const pkgRecord = database.getPackage(decodedName);
+        const versionsObj: Record<string, unknown> = {};
+        const timeObj: Record<string, string> = {};
+        for (const v of storedVersions) {
+          const rel = database.getLibraryRelease(decodedName, v);
+          if (rel?.published_at) timeObj[v] = rel.published_at;
+          versionsObj[v] = {
+            _id: `${decodedName}@${v}`,
             name: decodedName,
-            description: pkgRecord?.description ?? null,
-            "dist-tags": { latest: storedVersions[0]! },
-            versions: versionsObj,
-            time: timeObj,
-            readme: pkgRecord?.readme ?? "",
-            license: pkgRecord?.license ?? null,
-          });
+            version: v,
+            description: pkgRecord?.description ?? undefined,
+            license: pkgRecord?.license ?? undefined,
+            dist: {
+              shasum: rel?.content_hash?.replace(/^sha256:/, "") ?? "",
+              tarball: `${hostUrl}/api/v1/libraries/${encodeURIComponent(decodedName)}/${encodeURIComponent(v)}/download`,
+            },
+          };
         }
+        return res.json({
+          _id: decodedName,
+          name: decodedName,
+          description: pkgRecord?.description ?? null,
+          "dist-tags": { latest: storedVersions[0]! },
+          versions: versionsObj,
+          time: timeObj,
+          readme: pkgRecord?.readme ?? "",
+          license: pkgRecord?.license ?? null,
+        });
+      }
 
-        // Do not proxy internal prepackaged libraries to the external registry
-        if (decodedName === "SysML" || decodedName === "Modelica" || decodedName.startsWith("ModelScript")) {
-          return res.status(404).json({ error: "Package not found or still processing" });
-        }
+      // Do not proxy internal prepackaged libraries to the external registry
+      if (decodedName === "SysML" || decodedName === "Modelica" || decodedName.startsWith("ModelScript")) {
+        return res.status(404).json({ error: "Package not found or still processing" });
+      }
+
+      const gitlabToken = process.env["GITLAB_TOKEN"] || "";
+      if (process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true" || !gitlabToken) {
+        return res.status(404).json({ error: "Package not found" });
       }
 
       // GitLab NPM Package Registry Endpoint
-      const targetUrl = `${GITLAB_URL}/api/v4/packages/npm${cleanPath}`;
+      const gitlabUrl = process.env["GITLAB_URL"] || "https://gitlab.com";
+      const targetUrl = `${gitlabUrl}/api/v4/packages/npm${cleanPath}`;
 
       const headers = new Headers();
 
-      // Forward client's Authorization header (e.g., from npm login)
-      // Fallback to the configured GITLAB_TOKEN if no auth is provided
-      if (req.headers.authorization) {
+      // Forward client's Authorization header only if it is not a ModelScript token
+      if (req.headers.authorization && !isModelScriptAuthHeader(req.headers.authorization)) {
         headers.set("Authorization", req.headers.authorization);
-      } else if (GITLAB_TOKEN) {
-        headers.set("Authorization", `Bearer ${GITLAB_TOKEN}`);
+      } else if (gitlabToken) {
+        headers.set("Authorization", `Bearer ${gitlabToken}`);
       }
 
       if (req.headers["content-type"]) {

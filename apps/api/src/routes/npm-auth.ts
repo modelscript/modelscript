@@ -17,7 +17,7 @@ import { Router as createRouter } from "express";
 import jwt from "jsonwebtoken";
 
 import type { LibraryDatabase } from "../database.js";
-import { JWT_SECRET } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
 import { defaultRegistrationLimiter } from "../middleware/registration-limiter.js";
 import { defaultMailer } from "../services/mailer.js";
 import { enforceExportCompliance } from "../util/compliance.js";
@@ -70,6 +70,11 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
           const valid = await bcrypt.compare(password, fullUser.password_hash);
           if (!valid) {
             res.status(401).json({ error: "Invalid credentials" });
+            return;
+          }
+
+          if (isAccountBlocked(fullUser.status)) {
+            res.status(403).json({ error: `Account is ${fullUser.status}. Please contact support.` });
             return;
           }
 
@@ -173,7 +178,28 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
 
     try {
       const token = authHeader.substring(7);
-      const decoded = jwt.verify(token, JWT_SECRET) as { username: string };
+      const decoded = jwt.verify(token, JWT_SECRET) as {
+        id?: number | undefined;
+        username: string;
+        scope?: string | undefined;
+        tokenVersion?: number | undefined;
+      };
+      if (decoded.scope === "2fa_challenge") {
+        res.status(401).json({ error: "Two-factor authentication required" });
+        return;
+      }
+      const user =
+        decoded.id !== undefined ? database.getUserById(decoded.id) : database.getUserByUsername(decoded.username);
+      if (user) {
+        if (isAccountBlocked(user.status)) {
+          res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
+          return;
+        }
+        if ((decoded.tokenVersion ?? 1) !== (user.token_version ?? 1)) {
+          res.status(401).json({ error: "Session has expired or was revoked" });
+          return;
+        }
+      }
       res.json({ username: decoded.username });
     } catch {
       res.status(401).json({ error: "Invalid or expired token" });

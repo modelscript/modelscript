@@ -3,7 +3,16 @@
 import { Flash, Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { blockUser, followUser, getUserProfile, muteUser, reportUser, unblockUser, unfollowUser } from "../api";
+import {
+  blockUser,
+  followUser,
+  getUserProfile,
+  muteUser,
+  reportUser,
+  unblockUser,
+  unfollowUser,
+  unmuteUser,
+} from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ProfilePosts from "../components/ProfilePosts";
@@ -63,8 +72,13 @@ const ProfilePage: React.FC = () => {
   const handleMuteToggle = async () => {
     if (!token || !username) return;
     try {
-      const data = await muteUser(username);
-      setIsMuted(Boolean(data.muted));
+      if (isMuted) {
+        await unmuteUser(username);
+        setIsMuted(false);
+      } else {
+        await muteUser(username);
+        setIsMuted(true);
+      }
     } catch (err: any) {
       setActionError(err.message || "Failed to mute user");
     } finally {
@@ -90,6 +104,9 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     async function fetchProfile() {
       if (!username) return;
+      setLoading(true);
+      setActionError(null);
+      setProfile(null);
       try {
         const data = await getUserProfile(username);
         setProfile(data.profile);
@@ -160,7 +177,7 @@ const ProfilePage: React.FC = () => {
         onBlock={handleBlock}
         onOpenUnblockModal={() => setShowUnblockModal(true)}
         onOpenReportModal={() => setShowReportModal(true)}
-        onEditProfile={() => navigate("/settings")}
+        onEditProfile={() => navigate("/settings/profile")}
       />
 
       <TabBar role="tablist" aria-label="Profile tabs">

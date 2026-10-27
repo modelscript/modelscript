@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronRightIcon } from "@primer/octicons-react";
+import { ArrowLeftIcon, ChevronRightIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
@@ -49,6 +49,24 @@ const DetailColumn = styled.div<{ $hideOnMobile: boolean }>`
 
   @media (max-width: 900px) {
     display: ${(props) => (props.$hideOnMobile ? "none" : "flex")};
+  }
+`;
+
+const MobileBackBar = styled.button`
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+
+  @media (max-width: 900px) {
+    display: flex;
   }
 `;
 
@@ -156,6 +174,22 @@ const SettingsPage: React.FC = () => {
       setSearchParams({ tab });
     }
   };
+
+  const handleMobileOrAccountBack = () => {
+    if (typeof window !== "undefined" && window.innerWidth <= 900) {
+      setMobileShowMenu(true);
+    } else {
+      handleTabChange("account");
+    }
+  };
+
+  const needsMobileBackBar =
+    activeTab === "notifications" ||
+    activeTab === "display" ||
+    activeTab === "contentPreferences" ||
+    activeTab === "other" ||
+    activeTab === "privacy" ||
+    activeTab === "modelingPreferences";
 
   return (
     <SettingsContainer>
@@ -297,11 +331,17 @@ const SettingsPage: React.FC = () => {
       </MenuColumn>
 
       <DetailColumn $hideOnMobile={mobileShowMenu}>
+        {needsMobileBackBar && (
+          <MobileBackBar type="button" onClick={() => setMobileShowMenu(true)}>
+            <ArrowLeftIcon size={18} />
+            <span>Back to Settings</span>
+          </MobileBackBar>
+        )}
         {(activeTab === "account" || activeTab === "accountInfo" || activeTab === "changePassword") && (
-          <AccountTab subView={activeTab} onNavigate={handleTabChange} />
+          <AccountTab subView={activeTab} onNavigate={handleTabChange} onBack={() => setMobileShowMenu(true)} />
         )}
         {activeTab === "connectedAccounts" && <ConnectedAccountsTab onBack={() => handleTabChange("account")} />}
-        {activeTab === "security" && <SecurityTab onBack={() => handleTabChange("account")} />}
+        {activeTab === "security" && <SecurityTab onBack={handleMobileOrAccountBack} />}
         {(activeTab === "notifications" || activeTab === "notificationFilters") && (
           <NotificationFiltersTab subView={activeTab} onNavigate={handleTabChange} />
         )}
@@ -312,9 +352,9 @@ const SettingsPage: React.FC = () => {
           <PrivacyTab subView={activeTab} onNavigate={handleTabChange} />
         )}
         {activeTab === "dataArchive" && <DataArchiveTab onBack={() => handleTabChange("privacy")} />}
-        {activeTab === "billing" && <BillingTab onBack={() => handleTabChange("account")} />}
-        {activeTab === "bots" && <BotsTab onBack={() => handleTabChange("account")} />}
-        {activeTab === "tokens" && <TokensTab onBack={() => handleTabChange("account")} />}
+        {activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}
+        {activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
+        {activeTab === "tokens" && <TokensTab onBack={handleMobileOrAccountBack} />}
         {activeTab === "modelingPreferences" && <ModelingPreferencesTab />}
       </DetailColumn>
     </SettingsContainer>

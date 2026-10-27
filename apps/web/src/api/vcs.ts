@@ -126,8 +126,8 @@ export const getGitlabTree = async (
 ): Promise<GitlabTreeNode[]> => {
   if (provider === "github") {
     const url = path
-      ? `https://api.github.com/repos/${projectIdOrPath}/contents/${path}?ref=${ref}`
-      : `https://api.github.com/repos/${projectIdOrPath}/contents?ref=${ref}`;
+      ? `https://api.github.com/repos/${projectIdOrPath}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`
+      : `https://api.github.com/repos/${projectIdOrPath}/contents?ref=${encodeURIComponent(ref)}`;
     const { data } = await axios.get(url);
     const items = Array.isArray(data) ? data : [data];
     return items.map((item: any) => ({
@@ -154,7 +154,9 @@ export const getGitlabFileRaw = async (
   provider: string = "gitlab",
 ): Promise<string> => {
   if (provider === "github") {
-    const { data } = await axios.get(`https://raw.githubusercontent.com/${projectIdOrPath}/${ref}/${filePath}`);
+    const { data } = await axios.get(
+      `https://raw.githubusercontent.com/${projectIdOrPath}/${encodeURIComponent(ref)}/${encodeURIComponent(filePath)}`,
+    );
     return typeof data === "string" ? data : JSON.stringify(data, null, 2);
   }
   const { data } = await api.get<string>(
@@ -170,7 +172,9 @@ export const getGitlabCommits = async (
   provider: string = "gitlab",
 ): Promise<GitlabCommit[]> => {
   if (provider === "github") {
-    const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}/commits?sha=${refName}`);
+    const { data } = await axios.get(
+      `https://api.github.com/repos/${projectIdOrPath}/commits?sha=${encodeURIComponent(refName)}`,
+    );
     return data.map((c: any) => ({
       id: c.sha,
       short_id: c.sha.substring(0, 8),

@@ -2,7 +2,7 @@
 
 import { GizmoHelper, GizmoViewport, Grid, OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
 
@@ -53,6 +53,26 @@ const FallbackContainer = styled.div`
 `;
 
 const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[] }> = ({ nodes, links }) => {
+  const linkGeometries = useMemo(() => {
+    return links.map((link) => {
+      const [x1, y1, z1] = link.from;
+      const [x2, y2, z2] = link.to;
+      const p1 = new THREE.Vector3(x1, z1, -y1);
+      const p2 = new THREE.Vector3(x2, z2, -y2);
+      const curve = new THREE.LineCurve3(p1, p2);
+      const geom = new THREE.TubeGeometry(curve, 1, 0.03, 8, false);
+      return { link, geom };
+    });
+  }, [links]);
+
+  useEffect(() => {
+    return () => {
+      for (const item of linkGeometries) {
+        item.geom.dispose();
+      }
+    };
+  }, [linkGeometries]);
+
   return (
     <>
       <ambientLight intensity={0.7} />
@@ -95,24 +115,11 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
       })}
 
       {/* Render Joint/Spring links */}
-      {links.map((link) => {
-        const [x1, y1, z1] = link.from;
-        const [x2, y2, z2] = link.to;
-        const p1 = new THREE.Vector3(x1, z1, -y1);
-        const p2 = new THREE.Vector3(x2, z2, -y2);
-
-        const curve = new THREE.LineCurve3(p1, p2);
-        const geom = new THREE.TubeGeometry(curve, 1, 0.03, 8, false);
-
-        return (
-          <mesh key={link.id} geometry={geom}>
-            <meshStandardMaterial
-              color={link.color || (link.type === "joint" ? "#f0883e" : "#a371f7")}
-              roughness={0.3}
-            />
-          </mesh>
-        );
-      })}
+      {linkGeometries.map(({ link, geom }) => (
+        <mesh key={link.id} geometry={geom}>
+          <meshStandardMaterial color={link.color || (link.type === "joint" ? "#f0883e" : "#a371f7")} roughness={0.3} />
+        </mesh>
+      ))}
 
       <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>

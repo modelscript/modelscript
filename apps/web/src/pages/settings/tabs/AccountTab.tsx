@@ -32,9 +32,10 @@ import {
 export interface AccountTabProps {
   subView: "account" | "accountInfo" | "changePassword";
   onNavigate: (tab: any) => void;
+  onBack?: (() => void) | undefined;
 }
 
-export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate }) => {
+export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onBack }) => {
   const { user, isAdmin, updateToken } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
@@ -182,6 +183,18 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate }) =
             <span>Account information</span>
           </Box>
         </Header>
+        <DetailItem $clickable onClick={() => navigate("/settings/profile")}>
+          <DetailIcon>
+            <PersonIcon size={20} />
+          </DetailIcon>
+          <DetailText>
+            <DetailTitle>Edit Public Profile (Bio, Avatar, Banner)</DetailTitle>
+            <DetailSubtitle>
+              Update your public display name, bio, location, website, avatar, and banner.
+            </DetailSubtitle>
+          </DetailText>
+          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+        </DetailItem>
         {accountInfoMode === "password" ? (
           <Box p={4}>
             <h2 style={{ margin: "0 0 16px 0", fontSize: "24px" }}>Confirm your password</h2>
@@ -349,13 +362,35 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate }) =
 
   return (
     <>
-      <Header>Your Account</Header>
+      <Header>
+        {onBack && (
+          <Box
+            display="flex"
+            alignItems="center"
+            sx={{ cursor: "pointer", "@media (min-width: 901px)": { display: "none" } }}
+            onClick={onBack}
+          >
+            <ArrowLeftIcon size={20} />
+          </Box>
+        )}
+        <span>Your Account</span>
+      </Header>
       <Box px={3} pb={3}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
           See information about your account, download an archive of your data, or learn about your account deactivation
           options.
         </DetailSubtitle>
       </Box>
+      <DetailItem $clickable onClick={() => navigate("/settings/profile")}>
+        <DetailIcon>
+          <PersonIcon size={20} />
+        </DetailIcon>
+        <DetailText>
+          <DetailTitle>Edit Public Profile (Bio, Avatar, Banner)</DetailTitle>
+          <DetailSubtitle>Update your public display name, bio, location, website, avatar, and banner.</DetailSubtitle>
+        </DetailText>
+        <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+      </DetailItem>
       <DetailItem $clickable onClick={() => onNavigate("accountInfo")}>
         <DetailIcon>
           <PersonIcon size={20} />

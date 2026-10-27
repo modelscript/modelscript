@@ -272,6 +272,10 @@ export class OidcService {
         database.setUserAccountType(user.id, "admin");
         user.account_type = "admin";
       }
+      const existingLink = database.getOAuthAccountByUserId(user.id, "oidc");
+      if (!existingLink) {
+        database.linkOAuthAccount(user.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
+      }
       database.updateOAuthTokens(user.id, "oidc", "linked_oidc", undefined, undefined);
       const sessionToken = jwt.sign(
         {
@@ -311,6 +315,7 @@ export class OidcService {
       termsAcceptedAt: new Date().toISOString(),
     });
 
+    database.linkOAuthAccount(created.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
     database.updateOAuthTokens(created.id, "oidc", "linked_oidc", undefined, undefined);
 
     database.logAudit({

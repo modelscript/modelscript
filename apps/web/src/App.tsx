@@ -11,7 +11,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import { ToastProvider } from "./components/ToastContext";
-import { FeatureFlagProvider, useFeatureFlag } from "./FeatureFlagContext";
+import { FeatureFlagProvider, useFeatureFlag, useFeatureFlags } from "./FeatureFlagContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
 import { ThemeContextProvider, useTheme } from "./theme";
 
@@ -192,7 +192,7 @@ function GlobalModals() {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        onOpenCompose={() => window.dispatchEvent(new CustomEvent("modelscript:open-compose"))}
+        onOpenCompose={(detail?: any) => window.dispatchEvent(new CustomEvent("modelscript:open-compose", { detail }))}
       />
       <KeyboardShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
     </>
@@ -210,10 +210,11 @@ function PreserveParamsNavigate({ to }: { to: string }) {
 function App() {
   const { theme } = useTheme();
   const { user, isLoading } = useAuth();
+  const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
 
-  if (isLoading) {
+  if (isLoading || isFlagsLoading) {
     return <div style={{ minHeight: "100vh", backgroundColor: "var(--color-canvas-default)" }} />;
   }
 

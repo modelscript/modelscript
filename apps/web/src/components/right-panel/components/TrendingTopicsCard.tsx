@@ -42,94 +42,99 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
       </Heading>
       <Box display="flex" flexDirection="column">
         {visibleTrending.length > 0 ? (
-          visibleTrending.map((topic) => (
-            <TrendingItem key={topic.id ?? topic.concept}>
-              <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
-                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
-                  {topic.location ? `Trending in ${topic.location}` : "Trending"}
-                </div>
-                <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
-                  {topic.display_name}
-                </Text>
-              </Box>
-              <Box position="relative">
-                <KebabButton
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    setActiveTrendMenu(activeTrendMenu === topic.id ? null : topic.id);
-                  }}
-                >
-                  <KebabHorizontalIcon size={16} />
-                </KebabButton>
-                {activeTrendMenu === topic.id && (
-                  <>
-                    <div
-                      style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setActiveTrendMenu(null);
-                      }}
-                    />
-                    <Box
-                      position="absolute"
-                      top="100%"
-                      right="0"
-                      bg="var(--color-bg-primary)"
-                      border="1px solid var(--color-border)"
-                      borderRadius="12px"
-                      boxShadow="0 4px 12px rgba(0,0,0,0.15)"
-                      p={2}
-                      zIndex={100}
-                      minWidth="280px"
-                      display="flex"
-                      flexDirection="column"
-                      gap={1}
-                    >
-                      {[
-                        "Not interested in this",
-                        "The associated content is not relevant",
-                        "This trend is a duplicate",
-                        "This trend is abusive or harmful",
-                        "This trend is spam",
-                      ].map((label, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDismissedIds((prev) => new Set(prev).add(topic.id ?? topic.concept));
-                            setActiveTrendMenu(null);
-                            toast.info("Thanks for your feedback — trend hidden.");
-                          }}
-                          style={{
-                            padding: "10px 12px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "14px",
-                            fontWeight: "bold",
-                            color: "var(--color-text-primary)",
-                            borderRadius: "8px",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <span style={{ fontSize: "16px", color: "var(--color-text-muted)", lineHeight: 1 }}>☹️</span>
-                          {label}
-                        </button>
-                      ))}
-                    </Box>
-                  </>
-                )}
-              </Box>
-            </TrendingItem>
-          ))
+          visibleTrending.map((topic) => {
+            const topicKey = topic.id ?? topic.concept;
+            return (
+              <TrendingItem key={topicKey}>
+                <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
+                    {topic.location ? `Trending in ${topic.location}` : "Trending"}
+                  </div>
+                  <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
+                    {topic.display_name}
+                  </Text>
+                </Box>
+                <Box position="relative">
+                  <KebabButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setActiveTrendMenu(activeTrendMenu === topicKey ? null : topicKey);
+                    }}
+                  >
+                    <KebabHorizontalIcon size={16} />
+                  </KebabButton>
+                  {activeTrendMenu === topicKey && (
+                    <>
+                      <div
+                        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setActiveTrendMenu(null);
+                        }}
+                      />
+                      <Box
+                        position="absolute"
+                        top="100%"
+                        right="0"
+                        bg="var(--color-bg-primary)"
+                        border="1px solid var(--color-border)"
+                        borderRadius="12px"
+                        boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                        p={2}
+                        zIndex={100}
+                        minWidth="280px"
+                        display="flex"
+                        flexDirection="column"
+                        gap={1}
+                      >
+                        {[
+                          "Not interested in this",
+                          "The associated content is not relevant",
+                          "This trend is a duplicate",
+                          "This trend is abusive or harmful",
+                          "This trend is spam",
+                        ].map((label, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDismissedIds((prev) => new Set(prev).add(topicKey));
+                              setActiveTrendMenu(null);
+                              toast.info("Thanks for your feedback — trend hidden.");
+                            }}
+                            style={{
+                              padding: "10px 12px",
+                              background: "none",
+                              border: "none",
+                              textAlign: "left",
+                              cursor: "pointer",
+                              fontSize: "14px",
+                              fontWeight: "bold",
+                              color: "var(--color-text-primary)",
+                              borderRadius: "8px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                          >
+                            <span style={{ fontSize: "16px", color: "var(--color-text-muted)", lineHeight: 1 }}>
+                              ☹️
+                            </span>
+                            {label}
+                          </button>
+                        ))}
+                      </Box>
+                    </>
+                  )}
+                </Box>
+              </TrendingItem>
+            );
+          })
         ) : (
           <Box display="flex" flexDirection="column" gap={1} py={1}>
             {[

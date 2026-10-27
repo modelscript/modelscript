@@ -122,12 +122,15 @@ export function scriptsRouter(db: LibraryDatabase) {
       const offset = parseInt(req.query["offset"] as string) || 0;
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
+      if (!isAdmin && !reqUser?.id && process.env["NODE_ENV"] === "production") {
+        return res.json({ jobs: [] });
+      }
       const userId = isAdmin ? null : (reqUser?.id ?? null);
       const jobs = db.getJobs(limit, offset, userId);
-      res.json({ jobs });
+      return res.json({ jobs });
     } catch (error) {
       console.error("Error fetching jobs:", error);
-      res.status(500).json({ error: "Failed to fetch jobs" });
+      return res.status(500).json({ error: "Failed to fetch jobs" });
     }
   });
 

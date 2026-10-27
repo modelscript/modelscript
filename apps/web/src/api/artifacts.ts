@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import axios from "axios";
 import { encodePackagePath } from "../util/url";
 import { api } from "./client";
 
@@ -26,8 +25,8 @@ export interface ArtifactViewerInfo {
  */
 export const getArtifactViewers = async (name: string, version: string): Promise<ArtifactViewerInfo[]> => {
   try {
-    const { data } = await axios.get<{ artifacts: ArtifactViewerInfo[] }>(
-      `/api/v1/packages/${encodePackagePath(name)}/${encodeURIComponent(version)}/artifacts`,
+    const { data } = await api.get<{ artifacts: ArtifactViewerInfo[] }>(
+      `/packages/${encodePackagePath(name)}/${encodeURIComponent(version)}/artifacts`,
     );
     return data?.artifacts || [];
   } catch {

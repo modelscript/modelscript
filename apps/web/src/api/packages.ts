@@ -127,7 +127,7 @@ export interface LibraryListItem {
 export const getLibraries = async (q?: string) => {
   try {
     const { data } = await api.get<{ packages: LibraryListItem[] }>("/libraries", { params: { q } });
-    if (data.packages && data.packages.length > 0) {
+    if (Array.isArray(data.packages)) {
       return data.packages;
     }
   } catch (err) {

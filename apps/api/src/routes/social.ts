@@ -1,26 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { NextFunction, Request, Response, Router } from "express";
+import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "fs";
+import { fileURLToPath } from "node:url";
 import path from "path";
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
-import { requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
-
-// OptionalAuth middleware to allow endpoints to work for both logged in and out users
-const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (req.headers.authorization) {
-    return requireAuth(req, res, next);
-  }
-  next();
-};
 
 const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^[\]\r\n]*)\])?\{([^{}\r\n]*)\}/g;
 
@@ -1166,7 +1159,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       const base64Data = matches ? matches[2]! : rawData.replace(/^data:.*?;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
 
-      const outDir = path.resolve(process.cwd(), "apps/api/public/thumbnails");
+      const outDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../public/thumbnails");
       if (!fs.existsSync(outDir)) {
         fs.mkdirSync(outDir, { recursive: true });
       }

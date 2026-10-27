@@ -132,19 +132,47 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   }, [isOpen, forkedFromArtifactId]);
 
   const currentCode = useMemo(() => {
-    const config =
-      typeof currentArtifact?.view_config === "string"
-        ? JSON.parse(currentArtifact.view_config || "{}")
-        : currentArtifact?.view_config || {};
-    return config.code || "// No code available for forked model\n";
+    let config: any = {};
+    const raw = currentArtifact?.view_config ?? (currentArtifact as any)?.viewConfigJson;
+    if (typeof raw === "string") {
+      try {
+        config = JSON.parse(raw || "{}");
+      } catch {
+        config = {};
+      }
+    } else if (raw && typeof raw === "object") {
+      config = raw;
+    }
+    return (
+      config.code ||
+      config.modelicaCode ||
+      config.sysmlCode ||
+      config.stepCode ||
+      config.scadCode ||
+      "// No code available for forked model\n"
+    );
   }, [currentArtifact]);
 
   const parentCode = useMemo(() => {
-    const config =
-      typeof parentArtifact?.view_config === "string"
-        ? JSON.parse(parentArtifact.view_config || "{}")
-        : parentArtifact?.view_config || {};
-    return config.code || "// No code available for upstream model\n";
+    let config: any = {};
+    const raw = parentArtifact?.view_config ?? (parentArtifact as any)?.viewConfigJson;
+    if (typeof raw === "string") {
+      try {
+        config = JSON.parse(raw || "{}");
+      } catch {
+        config = {};
+      }
+    } else if (raw && typeof raw === "object") {
+      config = raw;
+    }
+    return (
+      config.code ||
+      config.modelicaCode ||
+      config.sysmlCode ||
+      config.stepCode ||
+      config.scadCode ||
+      "// No code available for upstream model\n"
+    );
   }, [parentArtifact]);
 
   const parameterDeltas = useMemo<ParameterDelta[]>(() => {

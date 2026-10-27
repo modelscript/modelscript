@@ -52,6 +52,20 @@ function walkDir(dir: string, callback: (relPath: string, content: string) => vo
   }
 }
 
+function walkDirBuffer(dir: string, callback: (relPath: string, content: Uint8Array) => void, baseDir = dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkDirBuffer(fullPath, callback, baseDir);
+    } else {
+      const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
+      const content = new Uint8Array(fs.readFileSync(fullPath));
+      callback(relPath, content);
+    }
+  }
+}
+
 async function resolveCanonicalManifest(
   storage: LibraryStorage,
   database: LibraryDatabase,
@@ -722,11 +736,33 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const canManage = Boolean(req.user && database.canUserManagePackage(name, req.user.id));
 
       const pkgRecord = database.getPackage(name);
+      let manifestAuthor: unknown;
+      let manifestLicense: string | undefined;
+      if (pkgRecord) {
+        const pkgVer = database.getPackageVersion(pkgRecord.id, version);
+        if (pkgVer?.manifest) {
+          try {
+            const parsedManifest = JSON.parse(pkgVer.manifest) as { author?: unknown; license?: string };
+            manifestAuthor = parsedManifest.author;
+            manifestLicense = parsedManifest.license;
+          } catch {}
+        }
+      }
+      const resolvedLicense = pkgRecord?.license ?? manifestLicense ?? undefined;
+      const resolvedAuthor =
+        typeof manifestAuthor === "string"
+          ? manifestAuthor
+          : typeof (manifestAuthor as { name?: string } | null)?.name === "string"
+            ? (manifestAuthor as { name: string }).name
+            : undefined;
+
       if (pkgRecord?.description) {
         res.json({
           name,
           version,
           description: pkgRecord.description,
+          license: resolvedLicense,
+          author: resolvedAuthor,
           modelicaVersion: version,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -750,6 +786,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           name,
           version,
           description: parsed.description ?? pkgRecord?.description ?? null,
+          license: resolvedLicense,
+          author: resolvedAuthor,
           modelicaVersion: parsed.version,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -768,6 +806,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           name,
           version,
           description: pkgRecord?.description ?? null,
+          license: resolvedLicense,
+          author: resolvedAuthor,
           modelicaVersion: null,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -1074,7 +1114,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
         const files: { path: string; content: string | Uint8Array }[] = [];
         if (extractedDir && fs.existsSync(extractedDir)) {
-          walkDir(extractedDir, (relPath, content) => {
+          walkDirBuffer(extractedDir, (relPath, content) => {
             if (relPath !== ".meta.json" && relPath !== ".Index.json") {
               files.push({ path: relPath, content });
             }
@@ -1136,7 +1176,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         // Collect files from extracted directory
         const files: AasxFileEntry[] = [];
         if (extractedDir && fs.existsSync(extractedDir)) {
-          walkDir(extractedDir, (relPath, content) => {
+          walkDirBuffer(extractedDir, (relPath, content) => {
             files.push({ path: relPath, data: content });
           });
         }
@@ -1696,8 +1736,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const filePath = path.join(extractedDir, resourcePath);
 
       // Security: ensure the resolved path is within the extracted directory
+      const safeBase = path.resolve(extractedDir);
       const resolved = path.resolve(filePath);
-      if (!resolved.startsWith(path.resolve(extractedDir))) {
+      if (resolved !== safeBase && !resolved.startsWith(safeBase + path.sep)) {
         res.status(403).json({ error: "Access denied" });
         return;
       }
@@ -1742,7 +1783,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       // If not cached yet, attempt on-demand conversion from extracted STEP file
       try {
         const extractedDir = storage.getExtractedPath(name, version);
-        const stepFilePath = path.join(extractedDir, relPath);
+        const safeBase = path.resolve(extractedDir);
+        const stepFilePath = path.resolve(extractedDir, relPath);
+        if (stepFilePath !== safeBase && !stepFilePath.startsWith(safeBase + path.sep)) {
+          res.status(403).json({ error: "Access denied" });
+          return;
+        }
         if (fs.existsSync(stepFilePath)) {
           const fileBuf = fs.readFileSync(stepFilePath);
           const text = fileBuf.toString("utf-8");

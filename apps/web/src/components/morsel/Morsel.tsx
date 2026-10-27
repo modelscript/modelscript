@@ -41,6 +41,7 @@ export interface MorselEditorProps {
   initialCode?: string | undefined;
   embed?: boolean | undefined;
   initialDialect?: string | undefined;
+  initialLanguage?: string | undefined;
   initialView?: string | undefined;
   initialAnchor?:
     | {
@@ -61,7 +62,8 @@ const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
 
 export default function MorselEditor(props: MorselEditorProps) {
   const toast = useToast();
-  const initialLangInfo = getLanguageInfo(props.initialDialect);
+  const resolvedInitialDialect = props.initialDialect ?? props.initialLanguage;
+  const initialLangInfo = getLanguageInfo(resolvedInitialDialect);
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
   const [diagramType, setDiagramType] = useState<string>(initialLangInfo.diagramTypes?.[0]?.id ?? "diagram");
   const [sidecarContent, setSidecarContent] = useState<string | undefined>(undefined);
@@ -82,12 +84,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const content = props.initialCode ?? decodedContent ?? initialLangInfo.defaultCode;
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
-
-  useEffect(() => {
-    if (props.initialCode && editor && editor.getValue() !== props.initialCode) {
-      editor.setValue(props.initialCode);
-    }
-  }, [props.initialCode, editor]);
 
   const initialIsCad =
     props.initialView === "cad-only" || (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
@@ -128,11 +124,23 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [contextVersion, setContextVersion] = useState(0);
 
+  useEffect(() => {
+    if (props.initialCode !== undefined) {
+      setLastLoadedContent(props.initialCode);
+      if (editor && editor.getValue() !== props.initialCode) {
+        editor.setValue(props.initialCode);
+        didOpen(documentUriRef.current, props.initialCode, dialect);
+        codeEditorRef.current?.sync();
+        setContextVersion((v) => v + 1);
+      }
+    }
+  }, [props.initialCode, editor, dialect]);
+
   const NARROW_BREAKPOINT = 768;
   const isNarrow = windowWidth < NARROW_BREAKPOINT;
 
   const handleSelectComponent = useCallback(
-    (name: string | null) => {
+    (name: string | null, cachedProps?: any[], isLoading?: boolean) => {
       if (!name || name === "__diagram_background__" || name === "__diagram_axes__") {
         setSelectedComponent(null);
         setSelectedComponentProperties(null);
@@ -140,6 +148,12 @@ export default function MorselEditor(props: MorselEditorProps) {
         return;
       }
       setSelectedComponent(name);
+
+      if (cachedProps !== undefined) {
+        setSelectedComponentProperties(cachedProps);
+        setIsPropertiesLoading(Boolean(isLoading));
+        return;
+      }
 
       // Show lightweight properties immediately while full schema loads
       const initialProps = diagramData?.nodes?.find((n: any) => n.id === name)?.properties ?? null;
@@ -164,7 +178,9 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const {
     simulationVariables,
+    setSimulationVariables,
     selectedSimulationVariables,
+    setSelectedSimulationVariables,
     handleToggleSimulationVariable,
     handleVariablesLoaded,
     simulationParameters,
@@ -465,6 +481,9 @@ export default function MorselEditor(props: MorselEditorProps) {
         document.body.classList.remove("tree-visible");
       }
     }
+    return () => {
+      document.body.classList.remove("tree-visible");
+    };
   }, [treeVisible, props.embed]);
 
   useEffect(() => {
@@ -611,10 +630,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   );
 
   useEffect(() => {
-    if (props.initialDialect && props.initialDialect !== dialect) {
-      handleSelectDialect(props.initialDialect);
+    if (resolvedInitialDialect && resolvedInitialDialect !== dialect) {
+      handleSelectDialect(resolvedInitialDialect);
     }
-  }, [props.initialDialect, dialect, handleSelectDialect]);
+  }, [resolvedInitialDialect, dialect, handleSelectDialect]);
 
   const loadClass = async (className: string, kind?: string) => {
     // Store the name so the diagram tab auto-selects if it's a model/block
@@ -675,15 +694,21 @@ export default function MorselEditor(props: MorselEditorProps) {
   const handleTreeHighlight = useCallback((_name: string | null) => {}, []);
 
   useEffect(() => {
+    if (props.embed) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      return "";
+      const currentVal = editorRef.current?.getValue();
+      const baseline = props.initialCode ?? lastLoadedContentRef.current;
+      if (currentVal !== undefined && baseline !== undefined && currentVal !== baseline) {
+        event.preventDefault();
+        return "";
+      }
+      return undefined;
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, []);
+  }, [props.embed, props.initialCode]);
 
   // Fetch diagram data via LSP when selected component, diagram type, or file changes
   useEffect(() => {
@@ -1006,12 +1031,21 @@ export default function MorselEditor(props: MorselEditorProps) {
             onOpenFile={() => setIsOpenFileDialogOpen(true)}
             onSaveModel={async () => {
               const currentContent = editor?.getValue() || "";
+              props.onSave?.(currentContent);
               const ext = getLanguageExtension(dialect);
               let filename = `model.${ext}`;
               if ((dialect === "modelica" || dialect === "modelscript") && codeEditorRef.current) {
                 const synced = await codeEditorRef.current.sync();
                 if ((synced as any)?.[0]?.name) {
                   filename = `${(synced as any)[0].name}.${ext}`;
+                }
+              }
+              if (filename === `model.${ext}`) {
+                const nameMatch = /(?:model|package|block|class|connector|record|function)\s+([A-Za-z_]\w*)/.exec(
+                  currentContent,
+                );
+                if (nameMatch?.[1]) {
+                  filename = `${nameMatch[1]}.${ext}`;
                 }
               }
               const blob = new Blob([currentContent], { type: "text/plain" });
@@ -1082,9 +1116,27 @@ export default function MorselEditor(props: MorselEditorProps) {
           experimentOverrides={experimentOverrides}
           content={content}
           onCloudResultLoaded={(data) => {
-            setLocalSimulationData(data.series);
+            if (Array.isArray(data?.t) && Array.isArray(data?.y)) {
+              const states: string[] = Array.isArray(data.states) ? data.states : [];
+              const rowMajorY = data.t.map((_: number, tIdx: number) =>
+                data.y.map((col: number[]) => col?.[tIdx] ?? 0),
+              );
+              const chartRows: Record<string, number | string>[] = data.t.map((tVal: number, tIdx: number) => {
+                const row: Record<string, number | string> = { time: tVal };
+                states.forEach((st: string, sIdx: number) => {
+                  row[st] = rowMajorY[tIdx]?.[sIdx] ?? 0;
+                });
+                return row;
+              });
+              const varNames = states.filter((s: string) => s !== "time");
+              setSimulationVariables(varNames);
+              setSelectedSimulationVariables(varNames.slice(0, 6));
+              setLocalSimulationData(chartRows);
+            } else if (Array.isArray(data?.series)) {
+              setLocalSimulationData(data.series);
+            }
             setShowResultsView(true);
-            setSimulationStatus({ status: "success", error: null });
+            setSimulationStatus({ status: "completed", error: null });
             setIsCloudModalOpen(false);
           }}
         />

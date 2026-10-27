@@ -653,9 +653,14 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
         profile: selectedProfileId,
       };
 
-      // 1. Fetch step file blob
-      const stepRes = await fetch(stepUrl);
-      const stepBlob = await stepRes.blob();
+      // 1. Fetch step file blob or construct from inline STEP code
+      let stepBlob: Blob;
+      if (!stepUrl && viewConfig?.code) {
+        stepBlob = new Blob([String(viewConfig.code)], { type: "text/plain" });
+      } else {
+        const stepRes = await fetch(stepUrl);
+        stepBlob = await stepRes.blob();
+      }
 
       // 2. Upload geometry to get hash
       const formData = new FormData();

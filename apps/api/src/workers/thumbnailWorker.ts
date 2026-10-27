@@ -55,9 +55,10 @@ export function generateThumbnail(artifactId: number, anchor?: string): Promise<
 }
 
 async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
+  let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
     console.log(`[Thumbnail Worker] Launching headless browser for artifact ${artifactId}`);
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: true,
       args: [
         "--no-sandbox",
@@ -110,8 +111,6 @@ async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise
     const thumbnailUrlLight = await captureTheme("light");
     const thumbnailUrlDark = await captureTheme("dark");
 
-    await browser.close();
-
     getDatabase().updateArtifactThumbnail(artifactId, thumbnailUrlLight, thumbnailUrlDark);
     console.log(`[Thumbnail Worker] Successfully updated database for artifact ${artifactId}`);
 
@@ -119,5 +118,9 @@ async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise
   } catch (err) {
     console.error(`[Thumbnail Worker] Error generating thumbnail for ${artifactId}:`, err);
     return null;
+  } finally {
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
   }
 }

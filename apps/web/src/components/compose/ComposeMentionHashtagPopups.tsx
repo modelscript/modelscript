@@ -93,7 +93,7 @@ export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsPr
             <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--color-text-muted)" }}>TRENDING TOPICS</span>
           </Box>
           {hashtagSuggestions.map((t) => {
-            const tag = t.displayName || t.concept;
+            const tag = t.display_name || t.displayName || t.concept;
             return (
               <Box
                 key={t.concept}

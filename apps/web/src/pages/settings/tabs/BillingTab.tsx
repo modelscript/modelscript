@@ -108,10 +108,15 @@ const TxBadge = styled.span<{ $type: string }>`
   background: ${(props) =>
     props.$type === "initial_grant"
       ? "rgba(35, 134, 54, 0.2)"
-      : props.$type === "topup"
+      : props.$type === "topup" || props.$type === "top_up"
         ? "rgba(6, 182, 212, 0.15)"
         : "rgba(218, 54, 51, 0.2)"};
-  color: ${(props) => (props.$type === "initial_grant" ? "#3fb950" : props.$type === "topup" ? "#22d3ee" : "#f85149")};
+  color: ${(props) =>
+    props.$type === "initial_grant"
+      ? "#3fb950"
+      : props.$type === "topup" || props.$type === "top_up"
+        ? "#22d3ee"
+        : "#f85149"};
 `;
 
 export interface BillingTabProps {
@@ -161,10 +166,20 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
         prev
           ? {
               ...prev,
-              wallet: updatedWallet as unknown as BillingSummaryView["wallet"],
+              wallet: {
+                ...prev.wallet,
+                balance:
+                  typeof (updatedWallet as any).newBalance === "number"
+                    ? (updatedWallet as any).newBalance
+                    : ((updatedWallet as any).balance ?? prev.wallet.balance),
+              },
             }
           : null,
       );
+      getUserBillingSummary()
+        .then((data) => setBillingSummary(data as BillingSummaryView))
+        .catch(() => {});
+      window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
       setTopUpSuccess(`Successfully credited +${amount.toFixed(2)} compute credits to your wallet.`);
     } catch {
       setError("Top-up request failed. Please check payment method and try again.");

@@ -26,8 +26,10 @@ export function rdfRouter(database: LibraryDatabase): Router {
    *   - text/turtle (default)
    *   - application/n-triples
    */
-  router.get("/:name/:version/rdf", (req: Request, res: Response): void => {
-    const name = req.params["name"];
+  router.get(["/:name/:version/rdf", "/:scope/:name/:version/rdf"], (req: Request, res: Response): void => {
+    const scope = req.params["scope"];
+    const rawName = req.params["name"];
+    const name = typeof scope === "string" && typeof rawName === "string" ? `${scope}/${rawName}` : rawName;
     const version = req.params["version"];
 
     if (typeof name !== "string" || typeof version !== "string") {

@@ -115,7 +115,10 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
 
   const handleExportSvg = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const svgEl = containerRef.current?.querySelector("svg");
+    const svgEl =
+      containerRef.current?.querySelector(".x6-graph-svg") ||
+      containerRef.current?.querySelector("svg.morsel-diagram-svg") ||
+      Array.from(containerRef.current?.querySelectorAll("svg") || []).find((el) => (el.clientWidth || 0) > 48);
     if (svgEl) {
       const serializer = new XMLSerializer();
       const svgStr = serializer.serializeToString(svgEl);

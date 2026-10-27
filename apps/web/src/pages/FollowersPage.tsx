@@ -54,7 +54,7 @@ const TabBar = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  background: rgba(6, 8, 15, 0.85);
+  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
   backdrop-filter: blur(12px);
   z-index: 9;
 `;

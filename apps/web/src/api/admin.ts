@@ -116,7 +116,7 @@ export const setAdminFederationDomainTier = async (
 export const deleteAdminFederationDomainTier = async (
   domain: string,
 ): Promise<{ success: boolean; domain: string }> => {
-  const { data } = await api.delete(`/admin/federation/domains/${domain}`);
+  const { data } = await api.delete(`/admin/federation/domains/${encodeURIComponent(domain)}`);
   return data;
 };
 

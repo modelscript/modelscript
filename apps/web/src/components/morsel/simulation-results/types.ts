@@ -20,6 +20,7 @@ export interface CustomInspectionTooltipProps {
   isNormalized: boolean;
   isComparingBaseline: boolean;
   colorMode: "light" | "dark";
+  rawData?: Record<string, number | string>[] | undefined;
 }
 
 export interface VariableStatEntry {

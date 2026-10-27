@@ -17,14 +17,10 @@ import "./setup.js";
 import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/exchange/cosim";
 import { createApp } from "./app.js";
 import { attachCollabWebSocket } from "./routes/collab-ws.js";
-import { locationService } from "./services/location.js";
 
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 const mqttUrl = process.env["MQTT_BROKER_URL"];
 const timescaleUrl = process.env["TIMESCALE_URL"];
-
-// ── Initialize IP Geolocation ──
-locationService.init().catch((err) => console.error("Location service failed to initialize:", err));
 
 // ── TimescaleDB pool (optional — only if TIMESCALE_URL is set) ──
 
@@ -124,6 +120,14 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(app.locals["rssWorkerInterval"]);
   }
 
+  if (app.locals["logPurgeInterval"]) {
+    clearInterval(app.locals["logPurgeInterval"]);
+  }
+
+  if (app.locals["federationWorker"]) {
+    app.locals["federationWorker"].stop();
+  }
+
   if (app.locals["botMentionWorker"]) {
     app.locals["botMentionWorker"].stop();
   }
@@ -155,6 +159,14 @@ async function shutdown(signal: string): Promise<void> {
     try {
       await dbPool.end();
       console.log("TimescaleDB pool closed.");
+    } catch {
+      // Best-effort
+    }
+  }
+
+  if (app.locals["database"]) {
+    try {
+      app.locals["database"].close();
     } catch {
       // Best-effort
     }

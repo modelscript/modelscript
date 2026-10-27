@@ -396,23 +396,31 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
             const numberOfIntervals = payload.experiment?.numberOfIntervals ?? 500;
             const tolerance = payload.experiment?.tolerance ?? 1e-6;
 
+            const safeModelName = String(name).replace(/[^a-zA-Z0-9_.]/g, "") || "Model";
             const simArgs = [
-              name,
-              `startTime=${startTime}`,
-              `stopTime=${stopTime}`,
-              `numberOfIntervals=${numberOfIntervals}`,
-              `tolerance=${tolerance}`,
+              safeModelName,
+              `startTime=${Number(startTime) || 0}`,
+              `stopTime=${Number(stopTime) || 10}`,
+              `numberOfIntervals=${Math.max(1, Math.floor(Number(numberOfIntervals) || 500))}`,
+              `tolerance=${Number(tolerance) || 1e-6}`,
               `outputFormat="csv"`,
             ];
             if (payload.parameters && Object.keys(payload.parameters).length > 0) {
               const overrides = Object.entries(payload.parameters)
-                .map(([k, v]) => `${k}=${v}`)
+                .map(([k, v]) => {
+                  const safeKey = String(k).replace(/[^a-zA-Z0-9_.[\]]/g, "");
+                  const safeVal = String(v).replace(/["\r\n;\\]/g, "");
+                  return safeKey ? `${safeKey}=${safeVal}` : "";
+                })
+                .filter(Boolean)
                 .join(",");
-              simArgs.push(`simflags="-override=${overrides}"`);
+              if (overrides) {
+                simArgs.push(`simflags="-override=${overrides}"`);
+              }
             }
 
             const mosContents = `
-loadFile("${adhocMoPath}");
+loadFile("${adhocMoPath.replace(/\\/g, "/").replace(/"/g, "")}");
 simulate(${simArgs.join(", ")});
 getErrorString();
 `;
@@ -757,6 +765,38 @@ getErrorString();
     }
 
     res.json({ success: true, message: `Job ${job.jobId} cancelled.` });
+  });
+
+  // ── 10. POST /api/v1/cloud/jobs/:id/retry ──
+  // Re-dispatch a failed or cancelled cloud job
+  router.post("/cloud/jobs/:id/retry", (req: Request, res: Response): void => {
+    const existing = activeJobs.get(req.params["id"] as string);
+    if (!existing) {
+      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
+      return;
+    }
+
+    const newJobId = `cloud-${existing.domain}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const retried: CloudJobRecord = {
+      jobId: newJobId,
+      domain: existing.domain,
+      name: existing.name,
+      profile: existing.profile,
+      status: "queued",
+      startTime: Date.now(),
+      logs: [`[Cloud] Retried from job ${existing.jobId}`],
+      subscribers: [],
+      userId: existing.userId,
+    };
+    activeJobs.set(newJobId, retried);
+
+    res.status(202).json({
+      success: true,
+      jobId: newJobId,
+      previousJobId: existing.jobId,
+      status: "queued",
+      streamUrl: `/api/v1/cloud/jobs/${newJobId}/events`,
+    });
   });
 
   return router;

@@ -4,6 +4,7 @@ import React, { useContext, useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
 import { ComposeContext } from "../components/ComposeContext";
+import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { compressMorselPayload, decompressMorselPayload } from "../components/morsel/util/permalink";
 import { useToast } from "../components/ToastContext";
@@ -20,6 +21,7 @@ import {
   HERO_EXAMPLES,
   type HeroExample,
   type MorselDecodedPayload,
+  PLAYGROUND_LANGUAGES,
   PlaygroundContainer,
   PlaygroundNavbar,
   PlaygroundShareModal,
@@ -298,14 +300,18 @@ export const PlaygroundPage: React.FC = () => {
     if (langParam) {
       setCurrentLang(langParam);
       const matchingExample = HERO_EXAMPLES.find((ex) => ex.lang === langParam);
-      if (matchingExample) {
-        setCurrentCode(matchingExample.code);
-        setCurrentTitle(titleParam || matchingExample.title);
+      const langInfo = getLanguageInfo(langParam);
+      const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === langParam);
+      const nextCode = matchingExample?.code || langInfo?.defaultCode;
+      const nextTitle = titleParam || matchingExample?.title || langOpt?.label || langInfo?.name;
+      if (nextCode) {
+        setCurrentCode(nextCode);
+        if (nextTitle) setCurrentTitle(nextTitle);
         setPayload({
           v: 1,
           lang: langParam,
-          code: matchingExample.code,
-          title: titleParam || matchingExample.title,
+          code: nextCode,
+          title: nextTitle,
         });
       } else if (titleParam) {
         setCurrentTitle(titleParam);
@@ -359,11 +365,11 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleSelectLang = (nextLang: string) => {
     setCurrentLang(nextLang);
-    // If current code matches one of the unmodified starter examples, load the starter example for nextLang if available
-    const isCurrentStarter = HERO_EXAMPLES.some((ex) => ex.code.trim() === currentCode.trim());
     const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
-    const nextCode = isCurrentStarter && nextStarter ? nextStarter.code : currentCode;
-    const nextTitle = isCurrentStarter && nextStarter ? nextStarter.title : currentTitle;
+    const langInfo = getLanguageInfo(nextLang);
+    const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === nextLang);
+    const nextCode = nextStarter?.code || langInfo?.defaultCode || currentCode;
+    const nextTitle = nextStarter?.title || langOpt?.label || langInfo?.label || langInfo?.name || currentTitle;
 
     if (nextCode !== currentCode) setCurrentCode(nextCode);
     if (nextTitle !== currentTitle) setCurrentTitle(nextTitle);

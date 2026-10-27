@@ -4,7 +4,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
-import { requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
 
 export function reposRouter(database: LibraryDatabase): Router {
@@ -26,8 +26,29 @@ export function reposRouter(database: LibraryDatabase): Router {
   /**
    * GET /api/v1/repos
    */
-  router.get("/", requireAuth, (req: Request, res: Response) => {
-    const userId = req.user!.id;
+  router.get("/", optionalAuth, (req: Request, res: Response) => {
+    const queryUsername = typeof req.query["username"] === "string" ? req.query["username"].trim() : "";
+    if (queryUsername) {
+      const targetUser = database.getUserByUsername(queryUsername);
+      if (!targetUser) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      try {
+        const repos = database.getUserRepos(targetUser.id);
+        res.json({ repos });
+      } catch {
+        res.status(500).json({ error: "Failed to fetch linked repositories" });
+      }
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const userId = req.user.id;
     try {
       const repos = database.getLinkedRepos(userId);
       res.json({ repos });

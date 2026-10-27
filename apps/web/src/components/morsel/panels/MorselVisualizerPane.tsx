@@ -204,7 +204,7 @@ export interface MorselVisualizerPaneProps {
   setSelectedComponent: (comp: string | null) => void;
   isDiagramLoading: boolean;
   setIsDiagramLoading: (loading: boolean) => void;
-  handleSelectComponent: (name: string | null) => void;
+  handleSelectComponent: (name: string | null, cachedProps?: any[], isLoading?: boolean) => void;
   enqueueDiagramAction: (action: any) => void;
   editor: editor.ICodeEditor | null;
   editorRef: React.RefObject<editor.ICodeEditor | null>;
@@ -854,15 +854,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 }}
               />
               <PropertiesWidget
-                key={selectedComponent || "none"}
                 properties={selectedComponentProperties}
                 isLoading={isPropertiesLoading}
                 width={propertiesWidth}
                 translations={translations}
                 onNameChange={async (newName) => {
                   if (!selectedComponent || !editor) return;
+                  const oldName = selectedComponent;
                   if (expectedComponentNameRef) expectedComponentNameRef.current = newName;
-                  enqueueDiagramAction({ type: "updateName", oldName: selectedComponent, newName });
+                  setSelectedComponent(newName);
+                  enqueueDiagramAction({ type: "updateName", oldName, newName });
                 }}
                 onDescriptionChange={async (newDescription) => {
                   if (!selectedComponent || !editor) return;
@@ -900,58 +901,35 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         </div>
 
         {/* 3D CAD Viewer pane */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: showCadView && !showAnalysisView ? "flex" : "none",
-            flexDirection: "column",
-            overflow: "hidden",
-            minHeight: 0,
-            zIndex: showCadView && !showAnalysisView ? 2 : 0,
-            backgroundColor: "var(--color-canvas-default)",
-          }}
-        >
+        {showCadView && !showAnalysisView && (
           <div
             style={{
               position: "absolute",
-              top: 12,
-              left: 12,
-              zIndex: 10,
+              inset: 0,
               display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 12px",
-              borderRadius: 20,
-              background: colorMode === "dark" ? "rgba(22, 27, 34, 0.85)" : "rgba(255, 255, 255, 0.9)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid rgba(6, 182, 212, 0.4)",
-              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
-              fontSize: 12,
-              color: "var(--color-fg-default)",
-              pointerEvents: "none",
+              flexDirection: "column",
+              overflow: "hidden",
+              minHeight: 0,
+              zIndex: 2,
+              backgroundColor: "var(--color-canvas-default)",
             }}
           >
-            <span style={{ fontSize: 14 }}>🧵</span>
-            <span style={{ fontWeight: 600 }}>Digital Thread CAD Twin</span>
-            <span style={{ color: "#3fb950", fontSize: 11, fontWeight: 600 }}>✔ Unit Parity Active</span>
+            <Suspense fallback={null}>
+              <CadViewerPanel
+                components={cadComponents}
+                selectedName={selectedComponent}
+                onSelect={(name) => {
+                  setSelectedComponent(name || null);
+                }}
+                dark={colorMode === "dark"}
+                animationController={animationControllerRef.current}
+                availableVariables={simulationVariables}
+                onSaveBindings={handleSaveCadBindings}
+                vtkBuffer={vtkBuffer ?? undefined}
+              />
+            </Suspense>
           </div>
-
-          <Suspense fallback={null}>
-            <CadViewerPanel
-              components={cadComponents}
-              selectedName={selectedComponent}
-              onSelect={(name) => {
-                setSelectedComponent(name || null);
-              }}
-              dark={colorMode === "dark"}
-              animationController={animationControllerRef.current}
-              availableVariables={simulationVariables}
-              onSaveBindings={handleSaveCadBindings}
-              vtkBuffer={vtkBuffer ?? undefined}
-            />
-          </Suspense>
-        </div>
+        )}
 
         {/* Simulation Results and Cosimulation Pane */}
         <div

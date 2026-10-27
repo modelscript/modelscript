@@ -43,6 +43,30 @@ declare module "express" {
 
 export { JWT_SECRET };
 
+export function isAccountBlocked(status?: string | null): boolean {
+  return status === "suspended" || status === "suspended_dispute" || status === "frozen" || status === "deleted";
+}
+
+function parseBotScopes(rawScopes?: string | null): string[] {
+  if (!rawScopes || typeof rawScopes !== "string") return [];
+  const trimmed = rawScopes.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((s) => String(s).trim()).filter(Boolean);
+      }
+    } catch {
+      // fall back to comma split
+    }
+  }
+  return trimmed
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function matchesPackagePattern(packageName: string, pattern?: string | null | undefined): boolean {
   if (!pattern || pattern === "*") return true;
   if (pattern.endsWith("*")) {
@@ -89,7 +113,11 @@ function extractTokenFromRequest(req: Request): string | undefined {
   if (rawCookieHeader) {
     const match = rawCookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
     if (match && match[1]) {
-      return decodeURIComponent(match[1]);
+      try {
+        return decodeURIComponent(match[1]);
+      } catch {
+        return match[1];
+      }
     }
   }
   if (typeof req.query["token"] === "string" && req.query["token"].length > 0) {
@@ -151,13 +179,15 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
     return false;
   }
 
-  // Validate proxy source IP
+  // Validate proxy source IP (only consult x-forwarded-for in test mode to prevent spoofing in production)
   const clientIp =
-    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    (process.env["NODE_ENV"] === "test"
+      ? (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+      : undefined) ||
+    req.socket?.remoteAddress ||
     req.ip ||
-    req.socket.remoteAddress ||
-    "127.0.0.1";
-  if (!isIpTrustedProxy(clientIp)) {
+    "";
+  if (!clientIp || !isIpTrustedProxy(clientIp)) {
     console.warn(`[EnterpriseAuth] Rejected header auth from untrusted IP: ${clientIp}`);
     return false;
   }
@@ -216,7 +246,7 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
     user.account_type = "admin";
   }
 
-  if (user.status === "suspended" || user.status === "frozen" || user.status === "deleted") {
+  if (isAccountBlocked(user.status)) {
     return false;
   }
 
@@ -265,7 +295,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     }
 
     const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
-    if (!user || user.status === "deleted" || user.status === "suspended" || user.status === "frozen") {
+    if (!user || isAccountBlocked(user.status)) {
       res.status(401).json({ error: "User account inactive or not found" });
       return;
     }
@@ -288,15 +318,26 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const botUser = sharedAuthDatabase.getUserByBotTokenHash(tokenHash);
 
-    if (!botUser) {
+    if (!botUser || isAccountBlocked(botUser.status)) {
       res.status(401).json({ error: "Invalid bot token" });
       return;
     }
+
+    if (botUser.owner_id) {
+      const owner = sharedAuthDatabase.getUserById(botUser.owner_id);
+      if (owner && isAccountBlocked(owner.status)) {
+        res.status(403).json({ error: `Bot owner account is ${owner.status}.` });
+        return;
+      }
+    }
+
+    sharedAuthDatabase.touchBotLastUsed(botUser.id);
 
     req.user = {
       ...botUser,
       accountType: botUser.account_type,
     };
+    req.tokenScopes = parseBotScopes(botUser.bot_scopes);
     next();
     return;
   }
@@ -324,7 +365,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         return;
       }
 
-      if (user.status === "suspended" || user.status === "frozen") {
+      if (isAccountBlocked(user.status)) {
         res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
         return;
       }
@@ -392,7 +433,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       }
       if (!expired) {
         const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
-        if (user && user.status !== "suspended" && user.status !== "frozen" && user.status !== "deleted") {
+        if (user && !isAccountBlocked(user.status)) {
           req.user = {
             ...user,
             accountType: user.account_type || "user",
@@ -407,6 +448,31 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     return;
   }
 
+  // Check if it's a bot token
+  if (token.startsWith("ms_bot_") && sharedAuthDatabase) {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const botUser = sharedAuthDatabase.getUserByBotTokenHash(tokenHash);
+    if (botUser && !isAccountBlocked(botUser.status)) {
+      let ownerBlocked = false;
+      if (botUser.owner_id) {
+        const owner = sharedAuthDatabase.getUserById(botUser.owner_id);
+        if (owner && isAccountBlocked(owner.status)) {
+          ownerBlocked = true;
+        }
+      }
+      if (!ownerBlocked) {
+        sharedAuthDatabase.touchBotLastUsed(botUser.id);
+        req.user = {
+          ...botUser,
+          accountType: botUser.account_type,
+        };
+        req.tokenScopes = parseBotScopes(botUser.bot_scopes);
+      }
+    }
+    next();
+    return;
+  }
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string | undefined };
     if (decoded.scope === "2fa_challenge") {
@@ -415,12 +481,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     }
     if (sharedAuthDatabase) {
       const user = sharedAuthDatabase.getUserById(decoded.id);
-      if (
-        user &&
-        user.status !== "suspended" &&
-        user.status !== "frozen" &&
-        (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)
-      ) {
+      if (user && !isAccountBlocked(user.status) && (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)) {
         decoded.accountType = user.account_type || decoded.accountType || decoded.role || "user";
         decoded.account_type = decoded.accountType;
         req.user = decoded;

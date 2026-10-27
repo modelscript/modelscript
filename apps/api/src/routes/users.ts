@@ -504,7 +504,11 @@ export function usersRouter(
    */
   router.get("/me/bots", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const bots = database.getUserBots(userId);
+    const bots = database.getUserBots(userId).map((b) => ({
+      ...b,
+      has_bot_api_key: Boolean(b.bot_api_key),
+      bot_api_key: b.bot_api_key ? "••••••••" : null,
+    }));
     res.json({ bots });
   });
 
@@ -580,7 +584,17 @@ export function usersRouter(
       endpointUrl: endpoint_url,
     });
 
-    res.json({ success: true, bot: database.getBotById(botId) });
+    const updatedBot = database.getBotById(botId);
+    res.json({
+      success: true,
+      bot: updatedBot
+        ? {
+            ...updatedBot,
+            has_bot_api_key: Boolean(updatedBot.bot_api_key),
+            bot_api_key: updatedBot.bot_api_key ? "••••••••" : null,
+          }
+        : null,
+    });
   });
 
   /**
@@ -597,6 +611,23 @@ export function usersRouter(
 
     database.deleteBot(userId, botId);
     res.json({ success: true });
+  });
+
+  /**
+   * GET /api/v1/users/:username/repos
+   */
+  router.get("/:username/repos", optionalAuth, (req: Request, res: Response) => {
+    const targetUser = database.getUserByUsername(req.params["username"] as string);
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    try {
+      const repos = database.getUserRepos(targetUser.id);
+      res.json({ repos });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user repositories" });
+    }
   });
 
   /**

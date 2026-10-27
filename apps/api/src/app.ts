@@ -93,7 +93,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // Support legacy signature: createApp(storage?)
   const opts: AppOptions = options instanceof LibraryStorage ? { storage: options } : (options ?? {});
 
-  const libraryStorage = opts.storage ?? new LibraryStorage();
+  const libraryStorage = opts.storage ?? LibraryStorage.fromEnv();
   const jobQueue = opts.jobQueue ?? new JobQueue();
   app.locals["jobQueue"] = jobQueue;
 
@@ -458,7 +458,11 @@ graph TD
         if (idx !== -1) {
           const key = pair.slice(0, idx).trim();
           const val = pair.slice(idx + 1).trim();
-          cookies[key] = decodeURIComponent(val);
+          try {
+            cookies[key] = decodeURIComponent(val);
+          } catch {
+            cookies[key] = val;
+          }
         }
       }
     }
@@ -579,12 +583,14 @@ graph TD
   app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
+  const sparqlGuard = [optionalAuth, requireFeatureFlag(() => featureFlagService, "sparql_rdf_endpoints")];
+  const sparqlHandler = sparqlRouter(database);
+  app.use("/api/v1/libraries/sparql", ...sparqlGuard, sparqlHandler);
   app.use(
-    "/api/v1/libraries/sparql",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "sparql_rdf_endpoints"),
-    sparqlRouter(database),
+    ["/api/v1/libraries/:name/:version/sparql", "/api/v1/libraries/:scope/:name/:version/sparql"],
+    ...sparqlGuard,
   );
+  app.use("/api/v1/libraries", sparqlHandler);
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", physicsRouter(jobQueue, database));
 

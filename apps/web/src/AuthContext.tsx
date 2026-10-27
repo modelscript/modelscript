@@ -141,9 +141,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshWallet]);
 
-  // On mount, validate stored token
+  // Validate stored or newly set token when user is not yet populated
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+    if (user) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     api
       .get("/auth/me")
       .then((res) => {
@@ -157,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       })
       .finally(() => setIsLoading(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, user]);
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post("/auth/login", { email, password });
@@ -196,10 +204,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         acceptTerms,
         captchaToken,
       });
-      setToken(data.token);
-      setUser(data.user);
-      if (typeof data.user?.credit_balance === "number") {
-        setCreditBalance(data.user.credit_balance);
+      if (data.token) {
+        setToken(data.token);
+        setUser(data.user);
+        if (typeof data.user?.credit_balance === "number") {
+          setCreditBalance(data.user.credit_balance);
+        }
       }
       return data;
     },
@@ -207,7 +217,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateToken = useCallback((newToken: string | null) => {
-    setToken(newToken);
+    if (newToken) {
+      localStorage.setItem(TOKEN_KEY, newToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+      setToken(newToken);
+      api
+        .get("/auth/me")
+        .then((res) => {
+          if (res.data?.user) {
+            setUser(res.data.user);
+            if (typeof res.data.user.credit_balance === "number") {
+              setCreditBalance(res.data.user.credit_balance);
+            }
+          }
+        })
+        .catch(() => {});
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      delete api.defaults.headers.common["Authorization"];
+      setToken(null);
+      setUser(null);
+    }
   }, []);
 
   const logout = useCallback(() => {

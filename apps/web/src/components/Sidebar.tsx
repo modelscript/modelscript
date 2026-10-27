@@ -8,6 +8,7 @@ import {
   HomeIcon,
   KebabHorizontalIcon,
   PackageIcon,
+  PersonIcon,
   PlayIcon,
   PlusIcon,
   RepoIcon,
@@ -476,6 +477,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     communityLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications", shortcut: "g n" });
     communityLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
     communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
+    communityLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
   }
 
   const studioLinks: { to: string; icon: any; label: string; shortcut?: string }[] = [

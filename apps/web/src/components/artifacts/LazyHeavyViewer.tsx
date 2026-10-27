@@ -127,7 +127,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     return () => observer.disconnect();
   }, [isActive, isFullScreen]);
 
-  const containerHeight = isFullScreen ? "100%" : "420px";
+  const containerHeight = isFullScreen ? "100%" : "450px";
 
   if (isActive || isFullScreen) {
     return (
@@ -137,7 +137,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           width: "100%",
           maxWidth: "100%",
           height: containerHeight,
-          minHeight: isFullScreen ? "420px" : undefined,
+          minHeight: isFullScreen ? "450px" : undefined,
           position: "relative",
           overflow: "hidden",
           boxSizing: "border-box",
@@ -150,11 +150,20 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              const canvas = containerRef.current?.querySelector("canvas");
+              if (canvas) {
+                try {
+                  const snap = canvas.toDataURL("image/webp", 0.85);
+                  if (snap) setFrozenSnapshot(snap);
+                } catch {
+                  // Ignore canvas snapshot error
+                }
+              }
               setIsActive(false);
             }}
             style={{
               position: "absolute",
-              top: 12,
+              bottom: 48,
               right: 12,
               zIndex: 20,
               display: "flex",

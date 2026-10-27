@@ -226,13 +226,20 @@ export function SimulationResults({
       if (bRow) {
         for (const v of selectedVariables) {
           if (bRow[v] !== undefined) {
-            merged[`${v} [Baseline]`] = bRow[v];
+            const rawBVal = Number(bRow[v]);
+            const mm = minMaxMap[v];
+            if (isNormalized && !isNaN(rawBVal) && mm) {
+              merged[`_raw_${v} [Baseline]`] = rawBVal;
+              merged[`${v} [Baseline]`] = ((rawBVal - mm.min) / (mm.max - mm.min || 1)) * 100;
+            } else {
+              merged[`${v} [Baseline]`] = bRow[v];
+            }
           }
         }
       }
       return merged;
     });
-  }, [chartData, baselineData, isComparingBaseline, selectedVariables]);
+  }, [chartData, baselineData, isComparingBaseline, selectedVariables, isNormalized, minMaxMap]);
 
   const handlePinBaseline = () => {
     if (!data.length) return;
@@ -505,6 +512,7 @@ export function SimulationResults({
       {/* Main Plot Area */}
       <TrajectoryChart
         mergedChartData={mergedChartData}
+        rawData={data}
         xAxisVar={xAxisVar}
         isNormalized={isNormalized}
         isLogScale={isLogScale}

@@ -53,8 +53,10 @@ export function graphqlRouter(database: LibraryDatabase): Router {
    *
    * GraphQL endpoint for querying class metadata.
    */
-  router.all("/:name/:version/graphql", (req, res, next) => {
-    const name = req.params["name"];
+  router.all(["/:name/:version/graphql", "/:scope/:name/:version/graphql"], (req, res, next) => {
+    const scope = req.params["scope"];
+    const rawName = req.params["name"];
+    const name = typeof scope === "string" && typeof rawName === "string" ? `${scope}/${rawName}` : rawName;
     const version = req.params["version"];
 
     if (typeof name !== "string" || typeof version !== "string") {

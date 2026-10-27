@@ -165,7 +165,12 @@ export const DomainTag = styled.div<{ $domain: DomainType }>`
       case "sysml2":
         return "#a855f7";
       case "cad":
+      case "scad":
         return "#fbbf24";
+      case "fea":
+        return "#f97316";
+      case "cfd":
+        return "#06b6d4";
       case "dataset":
         return "#34d399";
       default:

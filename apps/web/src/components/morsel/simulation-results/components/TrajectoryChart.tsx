@@ -6,6 +6,7 @@ import { CustomInspectionTooltip } from "./CustomInspectionTooltip";
 
 export interface TrajectoryChartProps {
   mergedChartData: Record<string, number | string>[];
+  rawData?: Record<string, number | string>[] | undefined;
   xAxisVar: string;
   isNormalized: boolean;
   isLogScale: boolean;
@@ -25,6 +26,7 @@ export interface TrajectoryChartProps {
 
 export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   mergedChartData,
+  rawData,
   xAxisVar,
   isNormalized,
   isLogScale,
@@ -78,7 +80,10 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
             />
             <YAxis
               scale={isLogScale ? "log" : "auto"}
-              domain={isNormalized ? [0, 100] : isLogScale ? ["auto", "auto"] : ["auto", "auto"]}
+              domain={
+                isLogScale ? (isNormalized ? [0.1, 100] : ["auto", "auto"]) : isNormalized ? [0, 100] : ["auto", "auto"]
+              }
+              allowDataOverflow={isLogScale ? true : undefined}
               stroke="var(--color-fg-muted, #8b949e)"
               tick={{ fill: "var(--color-fg-muted, #8b949e)", fontSize: 11 }}
               tickFormatter={(val) => (isNormalized ? `${val}%` : Number(val).toFixed(2))}
@@ -115,6 +120,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
                   isNormalized={isNormalized}
                   isComparingBaseline={isComparingBaseline}
                   colorMode={colorMode}
+                  rawData={rawData}
                 />
               }
             />

@@ -140,10 +140,8 @@ export const EmbedPlaygroundPage: React.FC = () => {
         setCurrentCode(p.code);
         if (p.isMultiFile && (p.artifactId || fromArtifact)) {
           const artId = p.artifactId || fromArtifact;
-          let ideUrl = `/ide?fromArtifact=${encodeURIComponent(String(artId))}#memfs:artifact-${artId}`;
-          if (p.anchor?.elementId) {
-            ideUrl += `&anchor=${encodeURIComponent(p.anchor.elementId)}`;
-          }
+          const anchorQuery = p.anchor?.elementId ? `&anchor=${encodeURIComponent(p.anchor.elementId)}` : "";
+          const ideUrl = `/ide?fromArtifact=${encodeURIComponent(String(artId))}${anchorQuery}#memfs:artifact-${artId}`;
           setTargetInfo({ target: "ide", url: ideUrl });
         } else {
           setTargetInfo({ target: "playground", url: `/playground${location.search}${location.hash}` });

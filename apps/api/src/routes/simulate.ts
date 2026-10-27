@@ -247,10 +247,16 @@ getErrorString();
             );
           }
 
+          // Persist the CSV result outside tmpDir so tmpDir can be cleaned up in finally
+          const resultDir = path.join(os.tmpdir(), "modelscript-simulate-results");
+          fs.mkdirSync(resultDir, { recursive: true });
+          const persistedCsvPath = path.join(resultDir, `${jobId}_res.csv`);
+          fs.copyFileSync(csvFilePath, persistedCsvPath);
+
           // Store the result path on the job so the GET route can stream it back
           const status = jobQueue.getStatus(jobId);
           if (status) {
-            status.resultPath = csvFilePath;
+            status.resultPath = persistedCsvPath;
             status.profile = profile.id;
             status.usage = usage;
           }
@@ -262,11 +268,10 @@ getErrorString();
             });
           }
         } catch (err) {
-          // If it's a simulation failure, we might want to keep the tmp dir for debugging
-          // but for now, we'll just log the error and clean up.
           console.error("Simulation Job %s failed:", jobId, err);
-          fs.rmSync(tmpDir, { recursive: true, force: true });
           throw err;
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
         }
       });
 

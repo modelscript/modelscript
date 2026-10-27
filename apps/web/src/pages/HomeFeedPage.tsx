@@ -171,7 +171,8 @@ const HomeFeedPage: React.FC = () => {
     const handlePostCreated = (e: any) => {
       const newPost = e.detail;
       if (newPost) {
-        setPosts((prev) => [newPost, ...prev]);
+        if (newPost.reply_to_id) return;
+        setPosts((prev) => (prev.some((p) => p.id === newPost.id) ? prev : [newPost, ...prev]));
       }
     };
     window.addEventListener("modelscript:post-created", handlePostCreated);
@@ -202,7 +203,9 @@ const HomeFeedPage: React.FC = () => {
 
       {user && (
         <ComposePrompt>
-          <ComposeBox onPostCreated={(post) => setPosts([post, ...posts])} />
+          <ComposeBox
+            onPostCreated={(post) => setPosts((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]))}
+          />
         </ComposePrompt>
       )}
 

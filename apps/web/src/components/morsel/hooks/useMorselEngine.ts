@@ -592,7 +592,7 @@ export function useMorselEngine({
   // ── Live Editor Value Tracking ──
   const [editorValue, setEditorValue] = useState<string>(content);
   useEffect(() => {
-    setEditorValue(editor?.getValue() || content);
+    setEditorValue(content || editor?.getValue() || "");
   }, [content, editor, contextVersion]);
 
   useEffect(() => {

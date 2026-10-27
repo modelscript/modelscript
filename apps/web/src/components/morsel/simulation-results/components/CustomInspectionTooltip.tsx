@@ -10,11 +10,13 @@ export function CustomInspectionTooltip({
   minMaxMap,
   isNormalized,
   isComparingBaseline,
+  rawData,
 }: CustomInspectionTooltipProps) {
   if (!active || !payload || !payload.length) return null;
 
   const numLabel = typeof label === "number" ? label : Number(label);
   const formattedLabel = `${xAxisVar}: ${isNaN(numLabel) ? label : numLabel.toFixed(4)}${xAxisVar === "time" ? "s" : ""}`;
+  const rawRow = rawData?.find((r: any) => Math.abs(Number(r.time) - Number(label)) < 1e-6);
 
   // Group items by base variable name to pair current value with baseline
   const grouped = new Map<string, { current?: any; baseline?: any; color: string }>();
@@ -72,9 +74,14 @@ export function CustomInspectionTooltip({
           const baseVal = entry.baseline !== undefined ? Number(entry.baseline) : null;
 
           let displayVal = curVal !== null ? (isNormalized ? `${curVal.toFixed(1)}%` : curVal.toFixed(4)) : "—";
-          if (isNormalized && curVal !== null && minMaxMap[name]) {
-            const raw = (curVal / 100) * (minMaxMap[name].max - minMaxMap[name].min) + minMaxMap[name].min;
-            displayVal = `${raw.toFixed(4)} (${curVal.toFixed(1)}%)`;
+          if (isNormalized && curVal !== null) {
+            const rawFromRow = rawRow && rawRow[name] !== undefined ? Number(rawRow[name]) : NaN;
+            if (!isNaN(rawFromRow)) {
+              displayVal = `${rawFromRow.toFixed(4)} (${curVal.toFixed(1)}%)`;
+            } else if (minMaxMap[name]) {
+              const raw = (curVal / 100) * (minMaxMap[name].max - minMaxMap[name].min) + minMaxMap[name].min;
+              displayVal = `${raw.toFixed(4)} (${curVal.toFixed(1)}%)`;
+            }
           }
 
           let deltaStr: string | null = null;

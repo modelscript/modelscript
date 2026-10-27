@@ -24,8 +24,20 @@ api.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 401) {
       if (typeof window !== "undefined" && window.localStorage) {
-        localStorage.removeItem("modelscript-auth-token");
-        window.dispatchEvent(new CustomEvent("modelscript:auth-expired"));
+        const reqUrl = String(error.config?.url || "");
+        const reqMethod = String(error.config?.method || "").toUpperCase();
+        const isCredentialCheck =
+          reqUrl.includes("/auth/login") ||
+          reqUrl.includes("/auth/2fa/") ||
+          reqUrl.includes("/users/me/password") ||
+          reqUrl.includes("/account/password") ||
+          reqUrl.includes("/auth/password") ||
+          reqUrl.includes("/auth/account") ||
+          (reqMethod === "DELETE" && (reqUrl.includes("/users/me") || reqUrl.includes("/account")));
+        if (!isCredentialCheck && localStorage.getItem("modelscript-auth-token")) {
+          localStorage.removeItem("modelscript-auth-token");
+          window.dispatchEvent(new CustomEvent("modelscript:auth-expired"));
+        }
       }
     }
     return Promise.reject(error);

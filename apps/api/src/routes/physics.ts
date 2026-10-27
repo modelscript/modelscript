@@ -450,8 +450,11 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   // ── Poll job status ──
 
+  const lookupPhysicsStatus = (rawId: string) =>
+    jobQueue.getStatus(rawId) ?? jobQueue.getStatus(`physics-${rawId}`) ?? jobQueue.getStatus(`cam-${rawId}`);
+
   router.get("/physics/:jobId", (req, res) => {
-    const status = jobQueue.getStatus(req.params.jobId);
+    const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) {
       return res.status(404).json({ error: "Job not found." });
     }
@@ -462,7 +465,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   // ── Download full .vtu result ──
 
   router.get("/physics/:jobId/result", (req, res) => {
-    const status = jobQueue.getStatus(req.params.jobId);
+    const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) return res.status(404).json({ error: "Job not found." });
     if (status.status !== "completed" || !status.resultPath) {
       return res.status(400).json({ error: "Job not completed yet." });
@@ -512,7 +515,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   // ── Extract a specific scalar from the result (server-side) ──
 
   router.get("/physics/:jobId/result/scalar", (req, res) => {
-    const status = jobQueue.getStatus(req.params.jobId);
+    const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) return res.status(404).json({ error: "Job not found." });
     if (status.status !== "completed" || !status.resultPath) {
       return res.status(400).json({ error: "Job not completed yet." });

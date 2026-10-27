@@ -103,7 +103,9 @@ export function useComposeAutocomplete({
   const hashtagSuggestions = useMemo(() => {
     if (!hashtagQuery) return [];
     const q = hashtagQuery.query.toLowerCase();
-    return trendingTopics.filter((t) => (t.displayName || t.concept || "").toLowerCase().includes(q)).slice(0, 10);
+    return trendingTopics
+      .filter((t) => (t.display_name || t.displayName || t.concept || "").toLowerCase().includes(q))
+      .slice(0, 10);
   }, [hashtagQuery, trendingTopics]);
 
   const updateTokenState = (val: string, cursor: number) => {

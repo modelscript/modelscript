@@ -114,6 +114,15 @@ export function gatherUserDataBundle(database: LibraryDatabase, userId: number):
   };
 }
 
+function escapeHtmlServer(str: unknown): string {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 /**
  * Builds a Twitter-style offline HTML viewer page.
  * Self-contained: 0 external CDN scripts or stylesheets. Runs completely offline.
@@ -126,7 +135,7 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ModelScript Archive — @${bundle.user.username}</title>
+  <title>ModelScript Archive — @${escapeHtmlServer(bundle.user.username)}</title>
   <style>
     :root {
       --bg: #0d1117;
@@ -399,10 +408,10 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
     </div>
 
     <div class="user-summary">
-      <div class="user-avatar" id="avatarBox">${bundle.user.avatar_url ? `<img src="${bundle.user.avatar_url}" class="user-avatar" alt="" />` : bundle.user.username.charAt(0).toUpperCase()}</div>
+      <div class="user-avatar" id="avatarBox">${bundle.user.avatar_url ? `<img src="${escapeHtmlServer(bundle.user.avatar_url)}" class="user-avatar" alt="" />` : escapeHtmlServer(bundle.user.username.charAt(0).toUpperCase())}</div>
       <div class="user-names">
-        <div class="display-name">${bundle.user.display_name || bundle.user.username}</div>
-        <div class="username">@${bundle.user.username}</div>
+        <div class="display-name">${escapeHtmlServer(bundle.user.display_name || bundle.user.username)}</div>
+        <div class="username">@${escapeHtmlServer(bundle.user.username)}</div>
       </div>
     </div>
 
@@ -499,11 +508,11 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
           <table class="table">
             <tr><th>Field</th><th>Value</th></tr>
             <tr><td><strong>User ID</strong></td><td>\${data.user.id}</td></tr>
-            <tr><td><strong>Username</strong></td><td>@\${data.user.username}</td></tr>
-            <tr><td><strong>Email</strong></td><td>\${data.user.email}</td></tr>
-            <tr><td><strong>Display Name</strong></td><td>\${data.user.display_name || 'Not set'}</td></tr>
-            <tr><td><strong>Bio</strong></td><td>\${data.user.bio || 'None'}</td></tr>
-            <tr><td><strong>Account Type</strong></td><td>\${data.user.account_type || 'user'}</td></tr>
+            <tr><td><strong>Username</strong></td><td>@\${escapeHtml(data.user.username || '')}</td></tr>
+            <tr><td><strong>Email</strong></td><td>\${escapeHtml(data.user.email || '')}</td></tr>
+            <tr><td><strong>Display Name</strong></td><td>\${escapeHtml(data.user.display_name || 'Not set')}</td></tr>
+            <tr><td><strong>Bio</strong></td><td>\${escapeHtml(data.user.bio || 'None')}</td></tr>
+            <tr><td><strong>Account Type</strong></td><td>\${escapeHtml(data.user.account_type || 'user')}</td></tr>
             <tr><td><strong>Member Since</strong></td><td>\${data.user.created_at ? new Date(data.user.created_at).toLocaleDateString() : 'N/A'}</td></tr>
           </table>
         </div>
@@ -560,7 +569,7 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
               \${data.libraries.map(lib => \`
                 <tr>
                   <td><strong>\${escapeHtml(lib.name)}</strong></td>
-                  <td><span class="badge badge-info">v\${lib.version}</span></td>
+                  <td><span class="badge badge-info">v\${escapeHtml(lib.version)}</span></td>
                   <td>\${new Date(lib.created_at).toLocaleDateString()}</td>
                 </tr>
               \`).join('')}
@@ -583,7 +592,7 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
               \${data.billingHistory.map(tx => \`
                 <tr>
                   <td>\${new Date(tx.created_at).toLocaleString()}</td>
-                  <td><span class="badge \${tx.amount >= 0 ? 'badge-success' : 'badge-info'}">\${tx.type}</span></td>
+                  <td><span class="badge \${tx.amount >= 0 ? 'badge-success' : 'badge-info'}">\${escapeHtml(tx.type)}</span></td>
                   <td>\${escapeHtml(tx.description || '')}</td>
                   <td style="font-weight: 600; color: \${tx.amount >= 0 ? '#3fb950' : 'inherit'}">\${tx.amount >= 0 ? '+' : ''}\${Number(tx.amount).toFixed(2)}</td>
                   <td>\${Number(tx.balance_after).toFixed(2)}</td>
@@ -633,7 +642,7 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
             This document certifies that the contents of this archive reflect a comprehensive data export delivered in fulfillment of statutory privacy rights under EU/UK GDPR (Articles 15 and 20) and the California Consumer Privacy Act (Cal. Civ. Code § 1798.100).
           </p>
           <table class="table">
-            <tr><td><strong>Data Subject:</strong></td><td>@\${data.user.username} (\${data.user.email})</td></tr>
+            <tr><td><strong>Data Subject:</strong></td><td>@\${escapeHtml(data.user.username || '')} (\${escapeHtml(data.user.email || '')})</td></tr>
             <tr><td><strong>User ID:</strong></td><td>\${data.user.id}</td></tr>
             <tr><td><strong>Export Timestamp:</strong></td><td>\${data.exportedAt}</td></tr>
             <tr><td><strong>Controller / Organization:</strong></td><td>ModelScript Engineering Platform</td></tr>

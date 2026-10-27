@@ -169,6 +169,17 @@ function CadModel({
     return line;
   }, []);
 
+  useEffect(() => {
+    return () => {
+      trailLine.geometry.dispose();
+      if (Array.isArray(trailLine.material)) {
+        trailLine.material.forEach((m) => m.dispose());
+      } else {
+        trailLine.material.dispose();
+      }
+    };
+  }, [trailLine]);
+
   // Outline / halo effect on selection or anchor
   useEffect(() => {
     if (!groupRef.current) return;
@@ -335,7 +346,7 @@ function SceneContents({
   vtkBuffer?: Uint8Array | null | undefined;
   touchScrollPassThrough?: boolean | undefined;
 }) {
-  const { gl, scene } = useThree();
+  const { gl } = useThree();
   const controlsRef = useRef<any>(null);
 
   // WebGL context loss interception and resource cleanup on unmount
@@ -349,21 +360,10 @@ function SceneContents({
 
     return () => {
       dom.removeEventListener("webglcontextlost", handleContextLost);
-      scene.traverse((obj) => {
-        if ((obj as THREE.Mesh).isMesh) {
-          const mesh = obj as THREE.Mesh;
-          mesh.geometry?.dispose();
-          if (Array.isArray(mesh.material)) {
-            mesh.material.forEach((m) => m.dispose());
-          } else {
-            mesh.material?.dispose();
-          }
-        }
-      });
       gl.dispose();
       gl.forceContextLoss();
     };
-  }, [gl, scene]);
+  }, [gl]);
 
   // Smoothly orbit and focus camera on target component anchor
   useEffect(() => {

@@ -2,7 +2,7 @@
 
 import { XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createArtifactView } from "../../api";
 import { createCellId, type NotebookCell, type TutorialDifficulty } from "../../util/notebook";
 import Box from "../Box";
@@ -35,14 +35,20 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [notebookMode, setNotebookMode] = useState<boolean>(
     Boolean(initialState?.notebookMode || initialState?.isNotebookMode),
   );
-  const [notebookTitle, setNotebookTitle] = useState<string>(initialState?.notebookTitle || "");
+  const [notebookTitle, setNotebookTitle] = useState<string>(
+    initialState?.notebookTitle || initialState?.initialTitle || "",
+  );
   const [notebookSummary, setNotebookSummary] = useState<string>(initialState?.notebookSummary || "");
   const [notebookDifficulty, setNotebookDifficulty] = useState<TutorialDifficulty | undefined>(
     initialState?.notebookDifficulty || "Intermediate",
   );
   const [notebookSeries, setNotebookSeries] = useState<string>(initialState?.notebookSeries || "");
-  const [notebookDialect, setNotebookDialect] = useState<string>(initialState?.notebookDialect || "Modelica 3.4");
-  const [notebookCompanionRepo, setNotebookCompanionRepo] = useState<string>(initialState?.notebookCompanionRepo || "");
+  const [notebookDialect, setNotebookDialect] = useState<string>(
+    initialState?.notebookDialect || initialState?.initialDialect || "Modelica 3.4",
+  );
+  const [notebookCompanionRepo, setNotebookCompanionRepo] = useState<string>(
+    initialState?.notebookCompanionRepo || initialState?.companionRepo || "",
+  );
   const [notebookCells, setNotebookCells] = useState<NotebookCell[]>(
     initialState?.notebookCells || [{ id: createCellId("md"), type: "markdown", content: "" }],
   );
@@ -50,6 +56,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [currentQuotePost, setCurrentQuotePost] = useState(initialState?.quotePost || initialQuotePost);
   const [currentReplyToPost, setCurrentReplyToPost] = useState(initialState?.replyToPost || initialReplyToPost);
   const [currentPendingPin, setCurrentPendingPin] = useState(initialState?.pendingPin || initialPendingPin);
+
+  const initializedPayloadRef = useRef<unknown>(null);
 
   useEffect(() => {
     if (!initialState) return;
@@ -59,8 +67,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     if (initialState.notebookMode !== undefined || initialState.isNotebookMode !== undefined) {
       setNotebookMode(Boolean(initialState.notebookMode || initialState.isNotebookMode));
     }
-    if (initialState.notebookTitle) {
-      setNotebookTitle(initialState.notebookTitle);
+    if (initialState.notebookTitle || initialState.initialTitle) {
+      setNotebookTitle(initialState.notebookTitle || initialState.initialTitle || "");
     }
     if (initialState.notebookSummary !== undefined) {
       setNotebookSummary(initialState.notebookSummary);
@@ -71,15 +79,19 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     if (initialState.notebookSeries !== undefined) {
       setNotebookSeries(initialState.notebookSeries);
     }
-    if (initialState.notebookDialect !== undefined) {
-      setNotebookDialect(initialState.notebookDialect);
+    if (initialState.notebookDialect !== undefined || initialState.initialDialect !== undefined) {
+      setNotebookDialect(initialState.notebookDialect || initialState.initialDialect || "Modelica 3.4");
     }
-    if (initialState.notebookCompanionRepo !== undefined) {
-      setNotebookCompanionRepo(initialState.notebookCompanionRepo);
+    if (initialState.notebookCompanionRepo !== undefined || initialState.companionRepo !== undefined) {
+      setNotebookCompanionRepo(initialState.notebookCompanionRepo || initialState.companionRepo || "");
     }
     if (initialState.notebookCells && initialState.notebookCells.length > 0) {
       setNotebookCells(initialState.notebookCells);
     }
+
+    if (initializedPayloadRef.current === initialState) return;
+    initializedPayloadRef.current = initialState;
+
     if (initialState.morselPayload && artifactId === null) {
       const { code, title, dialect } = initialState.morselPayload;
       const viewConfigObj: Record<string, any> = {
@@ -111,8 +123,26 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
           setArtifactId(data.id);
         })
         .catch(console.error);
+    } else if (initialState.repoPayload && artifactId === null) {
+      const repo = initialState.repoPayload;
+      createArtifactView({
+        artifact_type: "repository",
+        source_type: "git",
+        title: `${repo.namespace}/${repo.project}`,
+        view_config: JSON.stringify({
+          namespace: repo.namespace,
+          project: repo.project,
+          provider: repo.provider || "github",
+          description: repo.description,
+          defaultBranch: repo.defaultBranch || "main",
+        }),
+      })
+        .then((data) => {
+          setArtifactId(data.id);
+        })
+        .catch(console.error);
     }
-  }, [initialState, artifactId]);
+  }, [initialState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
 

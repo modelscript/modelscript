@@ -36,6 +36,7 @@ export class JobQueue extends EventEmitter {
   readonly #status = new Map<string, JobInfo>();
   readonly #runningChildProcesses = new Set<ChildProcess>();
   #activeCount = 0;
+  #generation = 0;
   public readonly concurrency: number;
 
   constructor(options: JobQueueOptions = {}) {
@@ -59,7 +60,8 @@ export class JobQueue extends EventEmitter {
 
   /** Enqueue an in-process async job. */
   enqueue(key: string, fn: JobFn): void {
-    if (this.#status.has(key)) return;
+    const existing = this.#status.get(key);
+    if (existing?.status === "pending" || existing?.status === "processing") return;
     this.#status.set(key, { status: "pending" });
     this.#queue.push({ key, fn });
     this.#process();
@@ -71,7 +73,8 @@ export class JobQueue extends EventEmitter {
    * `{ type: 'progress', classesProcessed }` and `{ type: 'complete', classesProcessed }`.
    */
   enqueueProcess(key: string, scriptPath: string, data: Record<string, unknown>): void {
-    if (this.#status.has(key)) return;
+    const existing = this.#status.get(key);
+    if (existing?.status === "pending" || existing?.status === "processing") return;
     this.#status.set(key, { status: "pending" });
     this.#queue.push({
       key,
@@ -87,6 +90,8 @@ export class JobQueue extends EventEmitter {
 
   /** Clear all jobs from the queue and reset status map (useful for dev resets). */
   clear(): void {
+    this.#generation++;
+    this.#activeCount = 0;
     this.#queue.length = 0;
     this.#status.clear();
     this.removeAllListeners();
@@ -142,6 +147,7 @@ export class JobQueue extends EventEmitter {
       });
 
       this.#runningChildProcesses.add(child);
+      let ipcError: string | undefined;
 
       child.stdout?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
@@ -155,13 +161,24 @@ export class JobQueue extends EventEmitter {
         this.appendLog(key, chunk);
       });
 
-      child.on("message", (msg: { type: string; classesProcessed?: number | undefined }) => {
-        if (msg.type === "progress" && msg.classesProcessed !== undefined) {
-          this.updateProgress(key, msg.classesProcessed);
-        } else if (msg.type === "complete" && msg.classesProcessed !== undefined) {
-          this.updateProgress(key, msg.classesProcessed);
-        }
-      });
+      child.on(
+        "message",
+        (msg: {
+          type: string;
+          classesProcessed?: number | undefined;
+          error?: string | undefined;
+          message?: string | undefined;
+        }) => {
+          if (msg.type === "progress" && msg.classesProcessed !== undefined) {
+            this.updateProgress(key, msg.classesProcessed);
+          } else if (msg.type === "complete" && msg.classesProcessed !== undefined) {
+            this.updateProgress(key, msg.classesProcessed);
+          } else if (msg.type === "error") {
+            ipcError = msg.error || msg.message || "Child process reported an error";
+            this.appendLog(key, ipcError);
+          }
+        },
+      );
 
       child.on("error", (err) => {
         this.#runningChildProcesses.delete(child);
@@ -170,7 +187,9 @@ export class JobQueue extends EventEmitter {
 
       child.on("exit", (code, signal) => {
         this.#runningChildProcesses.delete(child);
-        if (code === 0) {
+        if (ipcError) {
+          reject(new Error(ipcError));
+        } else if (code === 0) {
           resolve();
         } else if (signal) {
           reject(new Error(`Child process killed by signal ${signal} (likely out of memory)`));
@@ -190,29 +209,33 @@ export class JobQueue extends EventEmitter {
       if (!job) continue;
 
       this.#activeCount++;
-      void this.#executeJob(job);
+      void this.#executeJob(job, this.#generation);
     }
   }
 
-  async #executeJob(job: { key: string; fn: JobFn }): Promise<void> {
+  async #executeJob(job: { key: string; fn: JobFn }, gen: number): Promise<void> {
     const currentStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
     this.#status.set(job.key, { ...currentStatus, status: "processing" });
     this.emit(`status:${job.key}`, { status: "processing" });
     try {
       await job.fn();
+      if (this.#generation !== gen) return;
       const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
       this.#status.set(job.key, { ...updatedStatus, status: "completed" });
       this.emit(`status:${job.key}`, { status: "completed" });
     } catch (err) {
+      if (this.#generation !== gen) return;
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error(`Job "${job.key}" failed: ${message}`);
       const updatedStatus = this.#status.get(job.key) || { status: "pending" as JobStatus };
       this.#status.set(job.key, { ...updatedStatus, status: "failed", error: message });
       this.emit(`status:${job.key}`, { status: "failed", error: message });
     } finally {
-      this.#activeCount = Math.max(0, this.#activeCount - 1);
-      this.#prune();
-      this.#process();
+      if (this.#generation === gen) {
+        this.#activeCount = Math.max(0, this.#activeCount - 1);
+        this.#prune();
+        this.#process();
+      }
     }
   }
 

@@ -321,6 +321,8 @@ export class LibraryDatabase {
 
     this.#db = new Database(dbPath);
     this.#db.pragma("journal_mode = WAL");
+    this.#db.pragma("foreign_keys = ON");
+    this.#db.pragma("busy_timeout = 5000");
     this.#runner = new SqliteMigrationRunner(this.#db, dbPath);
     this.#runner.runPendingSync(allMigrations);
     this.#initialize();
@@ -343,61 +345,19 @@ export class LibraryDatabase {
   }
 
   resetDevData() {
-    const tables = [
-      "classes",
-      "extends",
-      "components",
-      "modifiers",
-      "users",
-      "oauth_accounts",
-      "follows",
-      "rss_feeds",
-      "user_rss_subscriptions",
-      "artifact_views",
-      "posts",
-      "likes",
-      "bookmarks",
-      "notifications",
-      "linked_repos",
-      "user_topics",
-      "trending_topics",
-      "post_topics",
-      "packages",
-      "package_versions",
-      "library_releases",
-      "classes",
-      "dist_tags",
-      "artifacts",
-      "post_syndications",
-      "post_location_stats",
-      "cad_cache",
-      "settings",
-      "settings",
-      "user_public_keys",
-      "jobs",
-      "job_steps",
-      "script_templates",
-      "instances",
-      "twins",
-      "twin_adaptations",
-      "twin_proposals",
-      "sysml2_relationships",
-      "sysml2_elements",
-      "sysml2_tags",
-      "sysml2_branches",
-      "sysml2_commits",
-      "sysml2_projects",
-      "thread_conflicts",
-      "thread_snapshots",
-    ];
     this.#db.exec("PRAGMA foreign_keys = OFF;");
+    const rows = this.#db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+      .all() as { name: string }[];
     this.#db.transaction(() => {
-      for (const table of tables) {
-        this.#db.exec(`DROP TABLE IF EXISTS ${table};`);
+      for (const { name } of rows) {
+        const safeName = name.replace(/"/g, '""');
+        this.#db.exec(`DROP TABLE IF EXISTS "${safeName}";`);
       }
     })();
-    this.#db.exec("PRAGMA foreign_keys = ON;");
+    this.#runner.runPendingSync(allMigrations, { silent: true });
     this.#initialize();
+    this.#db.exec("PRAGMA foreign_keys = ON;");
   }
 
   #initialize(): void {
@@ -1841,10 +1801,11 @@ export class LibraryDatabase {
     email: string;
     account_type: string;
     bot_scopes: string;
+    status?: string | undefined;
   } | null {
     const row = this.#db
       .prepare(
-        `SELECT id, owner_id, username, email, account_type, bot_scopes FROM users WHERE bot_token_hash = ? AND account_type = 'bot'`,
+        `SELECT id, owner_id, username, email, account_type, bot_scopes, status FROM users WHERE bot_token_hash = ? AND account_type = 'bot'`,
       )
       .get(tokenHash) as
       | {
@@ -1854,6 +1815,7 @@ export class LibraryDatabase {
           email: string;
           account_type: string;
           bot_scopes: string;
+          status?: string | undefined;
         }
       | undefined;
     return row || null;
@@ -2042,7 +2004,7 @@ export class LibraryDatabase {
   getUserByEmail(email: string): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE email = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE email = ?`,
       )
       .get(email) as UserRow | undefined;
   }
@@ -2050,7 +2012,7 @@ export class LibraryDatabase {
   getUserByUsername(username: string): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, account_type, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE username = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE username = ?`,
       )
       .get(username) as UserRow | undefined;
   }
@@ -2058,7 +2020,7 @@ export class LibraryDatabase {
   getUserById(id: number): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`,
       )
       .get(id) as UserRow | undefined;
   }
@@ -4373,6 +4335,10 @@ export class LibraryDatabase {
       .all(userId) as LinkedRepoRow[];
   }
 
+  getUserRepos(userId: number): LinkedRepoRow[] {
+    return this.getLinkedRepos(userId);
+  }
+
   getPopularRepos(limit: number = 5): LinkedRepoRow[] {
     return this.#db
       .prepare(
@@ -6476,12 +6442,14 @@ export class LibraryDatabase {
   }
 
   getUserCompletedHpcJobs(userId: number, limit = 20): HpcJobArtifactSummary[] {
+    const isProd = process.env["NODE_ENV"] === "production";
+    const whereUser = isProd ? "user_id = ?" : "(user_id = ? OR user_id IS NULL OR user_id = 1)";
     const jobs = this.#db
       .prepare(
         `SELECT id, name, status, type, metadata, started_at, completed_at,
                 compute_profile, cpu_seconds, peak_memory_mb, gpu_seconds, cost_credits, user_id
          FROM jobs
-         WHERE (user_id = ? OR user_id IS NULL OR user_id = 1)
+         WHERE ${whereUser}
            AND status = 'SUCCESS'
            AND (name LIKE 'CAE%' OR type = 'SIMULATE' OR type = 'ADHOC')
          ORDER BY id DESC

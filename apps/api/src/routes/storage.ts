@@ -23,15 +23,28 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50 MB max upload size
+  },
+});
 
 export function storageRouter(): Router {
   const router = createRouter();
 
   /**
-   * Serve static uploaded files
+   * Serve static uploaded files with sandboxed CSP to prevent same-origin Stored XSS
    */
-  router.use("/uploads", express.static(uploadDir));
+  router.use(
+    "/uploads",
+    (_req, res, next) => {
+      res.setHeader("Content-Security-Policy", "sandbox");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      next();
+    },
+    express.static(uploadDir),
+  );
 
   /**
    * POST /api/v1/storage/upload

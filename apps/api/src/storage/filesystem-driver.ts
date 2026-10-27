@@ -110,7 +110,7 @@ export class FilesystemStorageDriver implements StorageDriver {
   #resolveKey(key: string): string {
     const clean = key.replace(/\\/g, "/").replace(/^\/+/, "");
     const resolved = path.resolve(this.#baseDir, clean);
-    if (!resolved.startsWith(this.#baseDir)) {
+    if (resolved !== this.#baseDir && !resolved.startsWith(this.#baseDir + path.sep)) {
       throw new Error(`Path traversal detected: ${key}`);
     }
     return resolved;

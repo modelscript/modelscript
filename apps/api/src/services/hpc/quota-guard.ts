@@ -137,6 +137,10 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
     return reqAny.userId;
   }
 
+  if (process.env["NODE_ENV"] === "production") {
+    return null;
+  }
+
   // Fallback to dev user in test/development
   const devUser = database.getUserByUsername("dev");
   if (devUser) {

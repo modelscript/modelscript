@@ -198,11 +198,32 @@ const AppShell: React.FC = () => {
   const [isTopUpModalOpen, setIsTopUpModalOpen] = React.useState(false);
   const [isTopUpLoading, setIsTopUpLoading] = React.useState(false);
   const [topUpSuccess, setTopUpSuccess] = React.useState<string | null>(null);
+  const [topUpError, setTopUpError] = React.useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
 
+  const isDev = import.meta.env.DEV;
+
+  // Standalone full-bleed layout for /playground (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
+  const isStandaloneRoute = location.pathname.startsWith("/playground");
+
+  // Make wide layout for /settings/*
+  const isWideLayout = location.pathname.startsWith("/settings");
+
+  // Make workbench layout for post detail/inspector (/status/:id)
+  const isInspectorLayout = location.pathname.includes("/status/");
+
+  // Make full screen layout for /packages/*, /repos/*, and /ide/*
+  const isFullScreenLayout =
+    (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
+    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/") ||
+    location.pathname.startsWith("/ide");
+
+  const showsRightPanel = !isStandaloneRoute && !isWideLayout && !isFullScreenLayout && !isInspectorLayout;
+
   React.useEffect(() => {
+    if (!user || !showsRightPanel) return;
     let mounted = true;
     const fetchCluster = () => {
       if (document.visibilityState !== "visible") return;
@@ -223,7 +244,7 @@ const AppShell: React.FC = () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [user, showsRightPanel]);
 
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -281,23 +302,6 @@ const AppShell: React.FC = () => {
       window.removeEventListener("modelscript:open-topup", handleOpenTopUp);
     };
   }, []);
-
-  const isDev = import.meta.env.DEV;
-
-  // Standalone full-bleed layout for /playground (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
-  const isStandaloneRoute = location.pathname.startsWith("/playground");
-
-  // Make wide layout for /settings/*
-  const isWideLayout = location.pathname.startsWith("/settings");
-
-  // Make workbench layout for post detail/inspector (/status/:id)
-  const isInspectorLayout = location.pathname.includes("/status/");
-
-  // Make full screen layout for /packages/*, /repos/*, and /ide/*
-  const isFullScreenLayout =
-    (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
-    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/") ||
-    location.pathname.startsWith("/ide");
 
   const LegacyDialog = Dialog as any;
 
@@ -536,8 +540,8 @@ const AppShell: React.FC = () => {
                       onClick={() => navigate("/login")}
                       style={{
                         background: "transparent",
-                        border: "1px solid rgba(255,255,255,0.4)",
-                        color: "#fff",
+                        border: "1px solid var(--color-border)",
+                        color: "var(--color-text-primary)",
                         borderRadius: 9999,
                         padding: "8px 16px",
                         fontWeight: "bold",
@@ -698,6 +702,7 @@ const AppShell: React.FC = () => {
             onDismiss={() => {
               setIsTopUpModalOpen(false);
               setTopUpSuccess(null);
+              setTopUpError(null);
             }}
             aria-labelledby="wallet-topup-title"
           >
@@ -722,6 +727,19 @@ const AppShell: React.FC = () => {
                 </span>
               </Box>
 
+              {topUpError && (
+                <Box
+                  p={2}
+                  bg="rgba(239, 68, 68, 0.15)"
+                  border="1px solid rgba(239, 68, 68, 0.3)"
+                  borderRadius="6px"
+                  color="var(--color-danger-fg, #ef4444)"
+                  fontSize="13px"
+                >
+                  ✕ {topUpError}
+                </Box>
+              )}
+
               {topUpSuccess && (
                 <Box
                   p={2}
@@ -744,12 +762,17 @@ const AppShell: React.FC = () => {
                     onClick={async () => {
                       setIsTopUpLoading(true);
                       setTopUpSuccess(null);
+                      setTopUpError(null);
                       try {
                         const res = await topUpCredits(amt);
                         await refreshWallet();
-                        setTopUpSuccess(`Added +${amt} credits! New balance: ${res.newBalance.toFixed(2)} cr`);
+                        const newBal =
+                          typeof (res as any).newBalance === "number"
+                            ? (res as any).newBalance
+                            : ((res as any).balance ?? creditBalance + amt);
+                        setTopUpSuccess(`Added +${amt} credits! New balance: ${newBal.toFixed(2)} cr`);
                       } catch (err: any) {
-                        setTopUpSuccess(`Error: ${err.message || String(err)}`);
+                        setTopUpError(err.response?.data?.error || err.message || String(err));
                       } finally {
                         setIsTopUpLoading(false);
                       }

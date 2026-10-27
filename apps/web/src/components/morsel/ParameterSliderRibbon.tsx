@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlayIcon, SyncIcon, XIcon } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import styled from "styled-components";
 import type { ParameterInfo } from "./SimulationParameters";
 
@@ -159,31 +159,13 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
   dark = true,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const handleSliderChange = useCallback(
     (name: string, value: number) => {
       onChange(name, value);
-
-      // Auto-trigger simulation with 250ms debounce
-      if (onSimulate) {
-        const existingTimer = debounceTimers.current.get(name);
-        if (existingTimer) clearTimeout(existingTimer);
-        const timer = setTimeout(() => {
-          onSimulate();
-        }, 250);
-        debounceTimers.current.set(name, timer);
-      }
     },
-    [onChange, onSimulate],
+    [onChange],
   );
-
-  useEffect(() => {
-    return () => {
-      debounceTimers.current.forEach((t) => clearTimeout(t));
-      debounceTimers.current.clear();
-    };
-  }, []);
 
   if (parameters.length === 0) return null;
 
@@ -233,16 +215,23 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
             const isOverridden = overrides.has(param.name);
 
             // Compute slider bounds
-            let min = param.min ?? (param.defaultValue > 0 ? 0 : param.defaultValue * 2);
-            let max = param.max ?? (param.defaultValue > 0 ? param.defaultValue * 2.5 : 0);
+            const base = param.defaultValue;
+            let min = param.min ?? (base > 0 ? 0 : base < 0 ? base * 2 : -10);
+            let max = param.max ?? (base > 0 ? base * 2.5 : base < 0 ? 0 : 10);
             if (min === max) {
-              min = param.defaultValue * 0.5;
-              max = param.defaultValue * 1.5;
+              if (base === 0) {
+                min = -10;
+                max = 10;
+              } else {
+                min = base * 0.5;
+                max = base * 1.5;
+              }
             }
-            if (min > currentVal) min = currentVal * 0.8;
-            if (max < currentVal) max = currentVal * 1.2;
+            if (min > currentVal) min = currentVal < 0 ? currentVal * 1.2 : currentVal * 0.8;
+            if (max < currentVal) max = currentVal > 0 ? currentVal * 1.2 : currentVal * 0.8;
 
-            const step = (max - min) / 100;
+            const step =
+              base === 0 && param.min === undefined && param.max === undefined ? 0.1 : (max - min) / 100 || 0.1;
 
             return (
               <SliderCard key={param.name} $dark={dark}>

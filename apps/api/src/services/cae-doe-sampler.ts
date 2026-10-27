@@ -234,8 +234,10 @@ export class CaeDoeSampler {
     });
 
     const result: Record<string, number>[] = [];
+    const maxSamples = 200;
 
     function cartesian(idx: number, current: Record<string, number>) {
+      if (result.length >= maxSamples) return;
       if (idx === P) {
         result.push({ ...current });
         return;
@@ -243,6 +245,7 @@ export class CaeDoeSampler {
       const v = variables[idx]!;
       const vals = grids[idx]!;
       for (const val of vals) {
+        if (result.length >= maxSamples) return;
         current[v.name] = val;
         cartesian(idx + 1, current);
       }

@@ -399,17 +399,73 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   });
 
   // 4. Cancel CAE Job
-  router.delete("/cae/jobs/:id", (req, res) => {
-    const jobId = parseInt(req.params.id, 10);
-    const dbJob = database.getJob(jobId);
-    const cancelled = runner.cancelJob(req.params.id);
+  const handleCancelCaeJob = (req: express.Request, res: express.Response) => {
+    const idParam = String(req.params["id"] || "");
+    const jobId = parseInt(idParam, 10);
+    const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
+    const cancelled = runner.cancelJob(idParam);
     if (dbJob && dbJob.status !== "SUCCESS" && dbJob.status !== "FAILED" && dbJob.status !== "CANCELLED") {
       database.updateJobStatus(jobId, "CANCELLED");
       if (dbJob.user_id) {
         database.releaseUserEscrow(dbJob.user_id, jobId, "User cancelled CAE job");
       }
     }
-    res.json({ cancelled });
+    res.json({ success: true, cancelled });
+  };
+
+  router.delete("/cae/jobs/:id", handleCancelCaeJob);
+  router.post("/cae/jobs/:id/cancel", handleCancelCaeJob);
+
+  // 4b. Get CAE Job Logs
+  router.get("/cae/jobs/:id/logs", (req, res) => {
+    const idParam = String(req.params["id"] || "");
+    const jobId = parseInt(idParam, 10);
+    const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
+    if (!dbJob) return res.status(404).json({ error: "Job not found." });
+
+    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
+      resultDir?: string | undefined;
+      logs?: string[] | undefined;
+    };
+    let logs: string[] = Array.isArray(metadata.logs) ? metadata.logs : [];
+    if (metadata.resultDir) {
+      for (const logFile of ["solver.log", "run.log", "output.log"]) {
+        const logPath = path.join(metadata.resultDir, logFile);
+        if (fs.existsSync(logPath)) {
+          logs = fs.readFileSync(logPath, "utf8").split("\n");
+          break;
+        }
+      }
+    }
+    const queueStatus = jobQueue.getStatus(`cae-${jobId}`) ?? jobQueue.getStatus(idParam);
+    if (logs.length === 0 && queueStatus?.logs) {
+      logs = queueStatus.logs;
+    }
+    return res.json({ jobId: dbJob.id, status: dbJob.status.toLowerCase(), logs });
+  });
+
+  // 4c. Retry CAE Job
+  router.post("/cae/jobs/:id/retry", (req, res) => {
+    const idParam = String(req.params["id"] || "");
+    const jobId = parseInt(idParam, 10);
+    const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
+    if (!dbJob) return res.status(404).json({ error: "Job not found." });
+
+    const newJobId = database.createJob(
+      dbJob.name,
+      "PENDING",
+      dbJob.type || "ADHOC",
+      dbJob.trigger_source || "ide",
+      dbJob.repository_id ?? null,
+      dbJob.metadata ? JSON.parse(dbJob.metadata) : {},
+      dbJob.user_id ?? null,
+    );
+    return res.status(202).json({
+      success: true,
+      jobId: newJobId.toString(),
+      previousJobId: dbJob.id.toString(),
+      status: "queued",
+    });
   });
 
   // 5. Real-Time Telemetry Stream (Server-Sent Events)

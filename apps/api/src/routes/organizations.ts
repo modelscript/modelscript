@@ -129,7 +129,8 @@ export function organizationsRouter(database: LibraryDatabase): Router {
     }
 
     const callerRole = database.getOrganizationMemberRole(org.id, req.user!.id);
-    const isAdmin = req.user!.account_type === "admin";
+    const isAdmin =
+      req.user!.account_type === "admin" || req.user!.accountType === "admin" || req.user!.role === "admin";
     if (!isAdmin && callerRole !== "owner" && callerRole !== "maintainer") {
       res.status(403).json({ error: "Only organization owners or maintainers can manage membership" });
       return;
@@ -150,6 +151,27 @@ export function organizationsRouter(database: LibraryDatabase): Router {
     if (!targetUserId) {
       res.status(400).json({ error: "Valid userId or username is required" });
       return;
+    }
+
+    const targetCurrentRole = database.getOrganizationMemberRole(org.id, targetUserId);
+    if (!isAdmin && callerRole === "maintainer") {
+      if (role === "owner") {
+        res.status(403).json({ error: "Maintainers cannot assign the 'owner' role" });
+        return;
+      }
+      if (targetCurrentRole === "owner") {
+        res.status(403).json({ error: "Maintainers cannot modify an organization owner" });
+        return;
+      }
+    }
+
+    if (targetCurrentRole === "owner" && role !== "owner") {
+      const members = database.getOrganizationMembers(org.id);
+      const ownerCount = members.filter((m) => m.role === "owner").length;
+      if (ownerCount <= 1) {
+        res.status(400).json({ error: "Cannot demote the last remaining owner of the organization" });
+        return;
+      }
     }
 
     database.addOrganizationMember(org.id, targetUserId, role);
@@ -175,10 +197,21 @@ export function organizationsRouter(database: LibraryDatabase): Router {
     }
 
     const callerRole = database.getOrganizationMemberRole(org.id, req.user!.id);
-    const isAdmin = req.user!.account_type === "admin";
+    const isAdmin =
+      req.user!.account_type === "admin" || req.user!.accountType === "admin" || req.user!.role === "admin";
     if (!isAdmin && callerRole !== "owner") {
       res.status(403).json({ error: "Only organization owners can remove members" });
       return;
+    }
+
+    const targetRole = database.getOrganizationMemberRole(org.id, targetUserId);
+    if (targetRole === "owner") {
+      const members = database.getOrganizationMembers(org.id);
+      const ownerCount = members.filter((m) => m.role === "owner").length;
+      if (ownerCount <= 1) {
+        res.status(400).json({ error: "Cannot remove the last remaining owner of the organization" });
+        return;
+      }
     }
 
     const removed = database.removeOrganizationMember(org.id, targetUserId);

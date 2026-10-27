@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertFillIcon,
   CheckCircleFillIcon,
   CodeIcon,
   CpuIcon,
@@ -45,6 +46,8 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
   onLaunchCad,
   onProposeResolution,
 }) => {
+  const cadSide = twin.target.domain === "cad" ? twin.target : twin.source;
+
   return (
     <TwinCard>
       <TwinHeader>
@@ -60,6 +63,8 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
         <ParityChip $status={twin.parity.status} title={twin.parity.message}>
           {twin.parity.status === "compatible" ? (
             <CheckCircleFillIcon size={14} fill="#3fb950" />
+          ) : twin.parity.status === "warning" ? (
+            <AlertFillIcon size={14} fill="#d29922" />
           ) : (
             <XCircleFillIcon size={14} fill="#f85149" />
           )}
@@ -84,6 +89,21 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
             {twin.source.domain === "cad" && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <PackageIcon size={12} /> STEP CAD Assembly
+              </span>
+            )}
+            {twin.source.domain === "fea" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <CpuIcon size={12} /> FEA
+              </span>
+            )}
+            {twin.source.domain === "cfd" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <CpuIcon size={12} /> CFD
+              </span>
+            )}
+            {twin.source.domain === "scad" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <PackageIcon size={12} /> OpenSCAD
               </span>
             )}
             {twin.source.domain === "dataset" && (
@@ -122,6 +142,21 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
             {twin.target.domain === "cad" && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <PackageIcon size={12} /> STEP CAD 3D B-Rep
+              </span>
+            )}
+            {twin.target.domain === "fea" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <CpuIcon size={12} /> FEA
+              </span>
+            )}
+            {twin.target.domain === "cfd" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <CpuIcon size={12} /> CFD
+              </span>
+            )}
+            {twin.target.domain === "scad" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <PackageIcon size={12} /> OpenSCAD
               </span>
             )}
             {twin.target.domain === "dataset" && (
@@ -172,7 +207,7 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
               size="small"
               variant="primary"
               leadingVisual={CpuIcon}
-              onClick={() => onLaunchCad(twin.cadViewerConfig?.url || twin.target.resourcePath || "", twin.target.name)}
+              onClick={() => onLaunchCad(twin.cadViewerConfig?.url || cadSide.resourcePath || "", cadSide.name)}
             >
               Launch 3D CAD Viewer
             </Button>

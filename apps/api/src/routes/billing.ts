@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import express, { type Router } from "express";
+import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import {
   createStripePaymentIntent,
@@ -132,6 +133,37 @@ export function billingRouter(database: LibraryDatabase): Router {
   // Handles Stripe webhook events: instant chargeback/dispute quarantine & settlement
   router.post("/billing/webhook", express.json(), (req, res) => {
     try {
+      const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
+      const isProd = process.env["NODE_ENV"] === "production";
+      if (isProd || webhookSecret) {
+        const sigHeader = req.headers["stripe-signature"];
+        if (!webhookSecret || typeof sigHeader !== "string" || !sigHeader) {
+          return res.status(400).json({ error: "Missing or unconfigured Stripe webhook signature" });
+        }
+        const parts = Object.fromEntries(
+          sigHeader.split(",").map((kv) => {
+            const idx = kv.indexOf("=");
+            return idx > 0 ? [kv.slice(0, idx).trim(), kv.slice(idx + 1).trim()] : [kv.trim(), ""];
+          }),
+        );
+        const timestamp = parts["t"] || "";
+        const v1 = parts["v1"] || sigHeader;
+        const rawPayload =
+          (req as express.Request & { rawBody?: string | Buffer | undefined }).rawBody ?? JSON.stringify(req.body);
+        const payloadStr = Buffer.isBuffer(rawPayload) ? rawPayload.toString("utf-8") : String(rawPayload);
+        const expectedDated = timestamp
+          ? crypto.createHmac("sha256", webhookSecret).update(`${timestamp}.${payloadStr}`).digest("hex")
+          : "";
+        const expectedRaw = crypto.createHmac("sha256", webhookSecret).update(payloadStr).digest("hex");
+        const validDated =
+          expectedDated.length === v1.length && crypto.timingSafeEqual(Buffer.from(expectedDated), Buffer.from(v1));
+        const validRaw =
+          expectedRaw.length === v1.length && crypto.timingSafeEqual(Buffer.from(expectedRaw), Buffer.from(v1));
+        if (!validDated && !validRaw) {
+          return res.status(400).json({ error: "Invalid Stripe webhook signature" });
+        }
+      }
+
       const event = req.body;
       if (!event || !event.type) {
         return res.status(400).json({ error: "Invalid webhook payload structure" });
@@ -207,6 +239,7 @@ export function billingRouter(database: LibraryDatabase): Router {
         success: true,
         amountAdded: amount,
         newBalance,
+        balance: newBalance,
         message: `Successfully added ${amount.toFixed(1)} credits to your wallet.`,
       });
     } catch (err: unknown) {

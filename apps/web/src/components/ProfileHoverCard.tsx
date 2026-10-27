@@ -145,12 +145,19 @@ export default function ProfileHoverCard({
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  React.useEffect(() => {
+    setData(null);
+    setIsFollowing(false);
+    setIsBlocked(false);
+  }, [username]);
+
   const fetchProfile = async () => {
-    if (data) return;
+    if (data && data.username === username) return;
     try {
       const json = await getUserProfile(username);
       setData(json.profile);
-      setIsFollowing(json.isFollowing);
+      setIsFollowing(Boolean(json.isFollowing));
+      setIsBlocked(Boolean(json.isBlocked));
     } catch (e) {}
   };
 
@@ -250,6 +257,8 @@ export default function ProfileHoverCard({
         createPortal(
           <PopoverContainer
             onClick={(e) => e.stopPropagation()}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
             style={{
               top: finalTop,
               left: finalLeft,
