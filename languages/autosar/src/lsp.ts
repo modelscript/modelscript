@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerAutosarToDae } from "./dae/autosar-to-dae.js";
 import { lintAutosarModel } from "./lints/rules.js";
@@ -150,7 +149,7 @@ function extractPackageSymbols(pkg: AutosarPackage): LspDocumentSymbol {
     } else {
       children.push({
         name: elName,
-        detail: "kind" in el ? String((el as any).kind) : "Element",
+        detail: "kind" in el ? String(el.kind) : "Element",
         kind: LspSymbolKind.Interface,
         range: {
           start: { line: (el.range?.startLine ?? 1) - 1, character: (el.range?.startColumn ?? 1) - 1 },
@@ -243,7 +242,16 @@ export function getAutosarHover(
 /**
  * Executes domain actions on an AUTOSAR model.
  */
-export async function executeAutosarAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeAutosarAction(
+  action: "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ varCount: number; eqCount: number }>;
+export async function executeAutosarAction(
+  action: "to_modelica" | "to_sysml",
+  args: Record<string, unknown>,
+): Promise<string>;
+export async function executeAutosarAction(action: string, args: Record<string, unknown>): Promise<unknown>;
+export async function executeAutosarAction(action: string, args: Record<string, unknown>): Promise<unknown> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const model: AutosarModel = parseArxml(content);
 

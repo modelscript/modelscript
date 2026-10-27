@@ -516,6 +516,21 @@ function solveSimplexTableau(
         activeConstraints,
       };
     }
+
+    // Drive out any degenerate artificial variables remaining in the basis at zero level
+    for (let r = 0; r < numRows; r++) {
+      if (basic[r]! >= numEligibleCols) {
+        if (Math.abs(T[r]![numCols]!) <= 1e-5) {
+          T[r]![numCols] = 0;
+        }
+        for (let c = 0; c < numEligibleCols; c++) {
+          if (Math.abs(T[r]![c]!) > 1e-9) {
+            pivot(r, c);
+            break;
+          }
+        }
+      }
+    }
   }
 
   // Phase II: Minimize original objective: \sum w (d^+ + d^-)

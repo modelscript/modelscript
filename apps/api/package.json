@@ -129,5 +129,9 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "app"
   }
 }

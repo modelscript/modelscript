@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerSbmlToDae } from "./dae/sbml-to-dae.js";
 import { lintSbml } from "./lints/index.js";
 import { parseSbml } from "./parser/sbml-parser.js";
 import { sbmlToModelica } from "./projections/sbml-to-modelica.js";
-import { solveReactions } from "./solvers/reaction-solver.js";
+import { solveReactions, type ReactionSolverOptions } from "./solvers/reaction-solver.js";
 
 export interface LspPosition {
   line: number;
@@ -96,7 +95,8 @@ export function validateSbml(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -106,7 +106,7 @@ export function validateSbml(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8800",
         source: "sbml-parser",
-        message: `SBML parse error: ${err.message}`,
+        message: `SBML parse error: ${errMsg}`,
       },
     ];
   }
@@ -224,7 +224,47 @@ export function getSbmlHover(text: string, position: LspPosition): LspHover | nu
   return null;
 }
 
-export async function executeSbmlAction(action: string, text: string, params?: any): Promise<any> {
+export interface SbmlActionParams {
+  options?: ReactionSolverOptions | undefined;
+  modelName?: string | undefined;
+}
+
+export type SbmlActionResult =
+  | ReturnType<typeof lintSbml>
+  | ReturnType<typeof solveReactions>
+  | { modelName: string; variableCount: number; equationCount: number }
+  | string;
+
+export async function executeSbmlAction(
+  action: "lint_sbml",
+  text: string,
+  params?: SbmlActionParams,
+): Promise<ReturnType<typeof lintSbml>>;
+export async function executeSbmlAction(
+  action: "sbml_simulate",
+  text: string,
+  params?: SbmlActionParams,
+): Promise<ReturnType<typeof solveReactions>>;
+export async function executeSbmlAction(
+  action: "sbml_to_dae",
+  text: string,
+  params?: SbmlActionParams,
+): Promise<{ modelName: string; variableCount: number; equationCount: number }>;
+export async function executeSbmlAction(
+  action: "sbml_to_modelica",
+  text: string,
+  params?: SbmlActionParams,
+): Promise<string>;
+export async function executeSbmlAction(
+  action: string,
+  text: string,
+  params?: SbmlActionParams,
+): Promise<SbmlActionResult>;
+export async function executeSbmlAction(
+  action: string,
+  text: string,
+  params?: SbmlActionParams,
+): Promise<SbmlActionResult> {
   const doc = parseSbml(text);
 
   switch (action) {

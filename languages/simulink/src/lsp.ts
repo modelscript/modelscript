@@ -256,7 +256,7 @@ export async function executeSimulinkAction(action: string, args: Record<string,
     case "sync_from_modelica": {
       const modelicaText = args["modelicaText"] as string;
       if (!modelicaText) throw new Error("Missing 'modelicaText' in sync_from_modelica action");
-      const options = args["options"] as any;
+      const options = args["options"] as Parameters<typeof synchronizeModelicaToSimulink>[2];
       return synchronizeModelicaToSimulink(content, modelicaText, options);
     }
     default:

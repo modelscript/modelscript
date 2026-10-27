@@ -14,6 +14,55 @@ import {
   tggEq,
   tggRule,
 } from "@modelscript/dsl";
+import type { SymbolIndex } from "@modelscript/runtime";
+import type { StepAssemblyModel } from "./physical-data.js";
+import type { OcctMesh } from "./workspace-index.js";
+
+interface StepActionContext {
+  uri?: string | undefined;
+  documentText?: string | undefined;
+  documents?:
+    | {
+        get?: (uri: string) => { getText(): string } | undefined;
+      }
+    | undefined;
+  documentManager?:
+    | {
+        documentTrees?: Map<string, { text?: string | undefined }> | undefined;
+      }
+    | undefined;
+  sharedFs?:
+    | {
+        read?: (uri: string) => Promise<string>;
+      }
+    | undefined;
+  workspaceManager?:
+    | {
+        stepWorkspaceIndex?:
+          | {
+              getMeshes(uri?: string): OcctMesh[];
+              getAssemblyModel?(uri?: string): StepAssemblyModel | undefined;
+              parseStepFile(uri: string, buffer: Uint8Array): Promise<SymbolIndex>;
+            }
+          | undefined;
+        unifiedWorkspace?:
+          | {
+              toUnifiedPartial?(): SymbolIndex | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+}
+
+export interface StepSerializedMesh {
+  id: number;
+  name: string;
+  type: string;
+  color: [number, number, number] | number[];
+  vertices: number[];
+  normals: number[];
+  indices: number[];
+}
 
 /**
  * Language definition for STEP ISO 10303-21 Clear Text Encoding of the Exchange Structure
@@ -50,9 +99,12 @@ export const stepLanguage = language({
       title: "Open 3D CAD Viewer",
       description: "Opens the interactive 3D WebGL assembly and solid geometry viewer.",
       category: "query",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: StepActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         const targetUri = params?.uri || ctx.uri;
-        let meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
+        const meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
         return {
           success: true,
           uri: targetUri,
@@ -80,7 +132,10 @@ export const stepLanguage = language({
       title: "Translate CAD Assembly to Modelica MultiBody",
       description: "Extracts kinematic joints and mass properties to generate a Modelica MultiBody simulation model.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: StepActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "assembly" : "assembly";
         const name = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -109,7 +164,7 @@ export const stepLanguage = language({
             const partProps = assembly.massProperties.get(part.id);
             const partMass =
               partProps?.mass ?? (idx === 0 ? defaultMass : Math.max(0.1, defaultMass / assembly.parts.size));
-            const edge = assembly.edges.find((e: any) => e.childPartId === part.id) ?? assembly.edges[idx];
+            const edge = assembly.edges.find((e) => e.childPartId === part.id) ?? assembly.edges[idx];
             const loc = edge?.placement?.location ?? partProps?.centerOfMass ?? [0, 0, 0];
             bodyLines.push(
               `  Parts.BodyBox ${safeName}(r = {${loc[0]}, ${loc[1]}, ${loc[2]}}, m = ${partMass.toFixed(4)}) "${part.name}";`,
@@ -242,7 +297,10 @@ export const stepLanguage = language({
       title: "Discretize CAD to FEA Mesh (.inp)",
       description: "Discretizes 3D CAD boundary surfaces and volumes into an FEA hexahedral/tetrahedral mesh deck.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: StepActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "part" : "part";
         const baseName = filename.replace(/\.[^/.]+$/, "");
@@ -369,7 +427,10 @@ export const stepLanguage = language({
       title: "Discretize CAD to CFD Mesh (.su2)",
       description: "Generates aerodynamic surface and volume computational meshes for SU2 CFD analysis.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: StepActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "body" : "body";
         const baseName = filename.replace(/\.[^/.]+$/, "");
@@ -514,7 +575,10 @@ export const stepLanguage = language({
       title: "Create FEA Simulation Study (.fea.mo)",
       category: "transform",
       description: "Scaffolds a Modelica static structural FEA study targeting this CAD model.",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: StepActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "study" : "study";
         const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -589,7 +653,10 @@ export const stepLanguage = language({
       title: "Create CFD Simulation Study (.cfd.mo)",
       category: "transform",
       description: "Scaffolds a Modelica steady-state CFD study targeting this CAD model.",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: StepActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "study" : "study";
         const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -741,8 +808,8 @@ export const stepLanguage = language({
     },
     handlers: {
       // LSP request handler that maps a STEP assembly into a Modelica MultiBody model
-      "modelscript/generateMultiBody": async (ctx: any, params: { uri: string }) => {
-        const model = ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel(params.uri);
+      "modelscript/generateMultiBody": async (ctx: StepActionContext, params: { uri: string }) => {
+        const model = ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel?.(params.uri);
         if (!model) {
           throw new Error(`No STEP assembly found for ${params.uri}`);
         }
@@ -753,16 +820,16 @@ export const stepLanguage = language({
         const { mapStepToMultiBody } = await import("../step-multibody-mapper.js");
         const { generateMultiBodyModelica } = await import("@modelscript/modelica");
 
-        const multiBodyDescriptor = mapStepToMultiBody(baseName, model as any);
+        const multiBodyDescriptor = mapStepToMultiBody(baseName, model);
         const modelicaSource = generateMultiBodyModelica(multiBodyDescriptor, params.uri);
 
         return { source: modelicaSource, name: baseName };
       },
       // LSP request handler that returns triangulated 3D WebGL meshes via OCCT or B-Rep loop fallback
       "modelscript/getStepMeshes": async (
-        ctx: any,
+        ctx: StepActionContext,
         params: { uri: string; documentText?: string | undefined },
-      ): Promise<any[]> => {
+      ): Promise<StepSerializedMesh[]> => {
         let targetUri = params.uri;
         if (!/\.(step|stp|p21)$/i.test(targetUri)) {
           const unifiedIdx = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
@@ -780,7 +847,7 @@ export const stepLanguage = language({
           }
         }
 
-        let meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
+        let meshes: OcctMesh[] = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
         let unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
 
         let stepSourceText = params?.documentText || ctx.documentManager?.documentTrees?.get(targetUri)?.text;
@@ -1107,7 +1174,7 @@ export const stepLanguage = language({
           }
         }
 
-        return meshes.map((mesh: any, idx: number) => {
+        return meshes.map((mesh: OcctMesh, idx: number) => {
           const rawName = mesh.name || `Mesh_${idx}`;
           let displayName = rawName;
           let type = "Face";
@@ -1117,7 +1184,7 @@ export const stepLanguage = language({
               const normResource = (entry.resourceId || "").replace(":///", ":/");
               if (normResource === normTarget && entry.name === rawName && entry.ruleName === "step_shape") {
                 displayName = entry.name;
-                type = (entry.metadata as any)?.stepType ?? "NamedShape";
+                type = (entry.metadata as { stepType?: string } | undefined)?.stepType ?? "NamedShape";
                 break;
               }
             }

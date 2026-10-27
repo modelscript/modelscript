@@ -177,7 +177,7 @@ export class ArtifactRegistry {
    */
   async processArtifacts(
     artifacts: Record<string, unknown>[],
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     _tarballBuffer?: Buffer,
   ): Promise<ArtifactMetadata[]> {
     const results: ArtifactMetadata[] = [];

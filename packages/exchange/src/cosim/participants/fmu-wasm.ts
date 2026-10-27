@@ -264,7 +264,7 @@ export class FmuWasmParticipant implements CoSimParticipant {
   async terminate(): Promise<void> {
     this.values.clear();
     this.inputOverrides.clear();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     this.wasmExports = undefined as any;
     this.initialized = false;
   }

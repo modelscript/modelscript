@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/plcopen — Language Server Protocol (LSP) Service Integration.
@@ -81,7 +80,7 @@ export function validatePlcopen(content: string): LspDiagnostic[] {
   let project: PlcProject;
   try {
     project = parsePlcopen(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -91,7 +90,7 @@ export function validatePlcopen(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M7700",
         source: "plcopen-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -227,7 +226,36 @@ export function getPlcopenHover(content: string, offset: number): LspHover | nul
   return null;
 }
 
-export async function executePlcopenAction(actionId: string, content: string, params?: any): Promise<any> {
+export async function executePlcopenAction(
+  actionId: "plcopen_to_dae",
+  content: string,
+  params?: { cycles?: number; dtMs?: number },
+): Promise<{ variableCount: number; equationCount: number }>;
+export async function executePlcopenAction(
+  actionId: "plcopen_to_modelica" | "plcopen_to_sysml",
+  content: string,
+  params?: { cycles?: number; dtMs?: number },
+): Promise<string>;
+export async function executePlcopenAction(
+  actionId: "plcopen_run_scan",
+  content: string,
+  params?: { cycles?: number; dtMs?: number },
+): Promise<{
+  cycles: number;
+  dtMs: number;
+  finalVariables: Record<string, string | number | boolean>;
+  history: Record<string, string | number | boolean>[];
+}>;
+export async function executePlcopenAction(
+  actionId: string,
+  content: string,
+  params?: { cycles?: number; dtMs?: number },
+): Promise<unknown>;
+export async function executePlcopenAction(
+  actionId: string,
+  content: string,
+  params?: { cycles?: number; dtMs?: number },
+): Promise<unknown> {
   const project = parsePlcopen(content);
 
   switch (actionId) {

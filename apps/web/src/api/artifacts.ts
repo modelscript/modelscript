@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
 import { encodePackagePath } from "../util/url";
 import { api } from "./client";

@@ -7,7 +7,7 @@
  * monitoring, and Mobileye Responsibility-Sensitive Safety (RSS) formal verification.
  */
 
-import type { OpenScenarioDocument } from "../types.js";
+import type { OpenScenarioDocument, ScenarioCondition } from "../types.js";
 
 export interface ActorKinematicState {
   name: string;
@@ -298,7 +298,7 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
 }
 
 function evaluateEventTriggers(
-  ev: { triggerConditions: any[] },
+  ev: { triggerConditions: ScenarioCondition[] },
   t: number,
   actorStates: Map<string, ActorKinematicState>,
   egoName: string,

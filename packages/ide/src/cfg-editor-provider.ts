@@ -402,7 +402,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     _token: vscode.CancellationToken,
   ): Promise<void> {
     this.configureWebview(webviewPanel);

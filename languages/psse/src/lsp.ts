@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerPsseToDae } from "./dae/psse-to-dae.js";
 import { lintPsse } from "./lints/index.js";
@@ -103,14 +102,14 @@ export function validatePsse(content: string, _uri: string = "model.raw"): LspDi
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "P1001",
         source: "modelscript-psse",
-        message: `Failed to parse PSS/E RAW base case: ${err.message}`,
+        message: `Failed to parse PSS/E RAW base case: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -214,7 +213,7 @@ export function getPsseHover(content: string, position: LspPosition, _uri: strin
 /**
  * Executes domain actions on a PSS/E model.
  */
-export async function executePsseAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executePsseAction(action: string, args: Record<string, unknown>): Promise<unknown> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const psseCase: PsseCase = parseRaw(content);
 

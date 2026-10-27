@@ -878,8 +878,13 @@ export class UnifiedVerifier {
           const nominalX: number[] = [];
           for (let s = 0; s < stateNames.length; s++) {
             const sName = stateNames[s]!;
-            if (customBounds.has(sName)) {
-              const [lo, hi] = customBounds.get(sName)!;
+            const explicitStateBound = customBounds.get(sName) ?? ctx.contractedStateSpace?.get(sName);
+            if (
+              explicitStateBound &&
+              Number.isFinite(explicitStateBound[0]) &&
+              Number.isFinite(explicitStateBound[1])
+            ) {
+              const [lo, hi] = explicitStateBound;
               initialX.push(new Interval(lo, hi));
               nominalX.push((lo + hi) / 2);
               continue;
@@ -900,8 +905,9 @@ export class UnifiedVerifier {
           const nominalZ: number[] = [];
           for (let a = 0; a < algebraicNames.length; a++) {
             const aName = algebraicNames[a]!;
-            if (customBounds.has(aName)) {
-              const [lo, hi] = customBounds.get(aName)!;
+            const explicitAlgBound = customBounds.get(aName) ?? ctx.contractedStateSpace?.get(aName);
+            if (explicitAlgBound && Number.isFinite(explicitAlgBound[0]) && Number.isFinite(explicitAlgBound[1])) {
+              const [lo, hi] = explicitAlgBound;
               initialZ.push(new Interval(lo, hi));
               nominalZ.push((lo + hi) / 2);
               continue;
@@ -1337,6 +1343,17 @@ export class UnifiedVerifier {
       if (ctx.hybridAutomaton && PhysicalInvariantBridge) {
         plantPreconditions = PhysicalInvariantBridge.extractPlantBounds(ctx.hybridAutomaton);
       }
+      if (ctx.contractedStateSpace && ctx.contractedStateSpace.size > 0) {
+        if (!plantPreconditions) {
+          plantPreconditions = new Map();
+        }
+        for (const [k, [lo, hi]] of ctx.contractedStateSpace.entries()) {
+          if (Number.isFinite(lo) && Number.isFinite(hi)) {
+            const prev = plantPreconditions.get(k);
+            plantPreconditions.set(k, prev ? [Math.max(prev[0], lo), Math.min(prev[1], hi)] : [lo, hi]);
+          }
+        }
+      }
 
       const violations: VerificationViolation[] = [];
       const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b([\s\S]*?)\bend\s+\2\s*;/g;
@@ -1543,7 +1560,9 @@ export class UnifiedVerifier {
    */
   private static syncDigitalThread(report: UnifiedVerificationReport, hypergraph?: DigitalThreadHypergraph): void {
     const targetHypergraph = hypergraph || new DigitalThreadHypergraph();
-    const threadSlot = targetHypergraph.createThread(1);
+    const existingCount = targetHypergraph.getThreadCount();
+    const threadSlot =
+      targetHypergraph.findSlotByThreadId(1) ?? (existingCount > 0 ? 0 : targetHypergraph.createThread(1));
     if (report.summary.overallPassed) {
       targetHypergraph.recordTheorySat(threadSlot);
     } else {

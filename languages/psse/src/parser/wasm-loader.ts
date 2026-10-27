@@ -16,7 +16,7 @@ export function getPsseWasmPath(): string {
  */
 export async function createPsseWasmParser(wasmUrlOrBytes?: string | Uint8Array | ArrayBuffer) {
   const target = wasmUrlOrBytes ?? getPsseWasmPath();
-  return createWasmParser(target as any);
+  return createWasmParser(target as Parameters<typeof createWasmParser>[0]);
 }
 
 /**
@@ -25,5 +25,5 @@ export async function createPsseWasmParser(wasmUrlOrBytes?: string | Uint8Array 
 export function createPsseWasmParserSync(wasmPathOrBytes?: string | Uint8Array) {
   const target =
     wasmPathOrBytes ?? (typeof process !== "undefined" ? readFileSync(getPsseWasmPath()) : getPsseWasmPath());
-  return createWasmParserSync(target as any);
+  return createWasmParserSync(target as Parameters<typeof createWasmParserSync>[0]);
 }

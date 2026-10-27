@@ -3,7 +3,6 @@
 // Server-side diagram data builder for the VS Code webview.
 // Mirrors morsel's renderDiagram() + x6.ts but produces serializable JSON
 // that the webview can feed to an X6 Graph.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
   computeHeight,

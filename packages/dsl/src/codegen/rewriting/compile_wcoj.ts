@@ -31,6 +31,8 @@
  *   - Emits complexity bounds directly into the AOT WebAssembly transformation plan.
  */
 
+import { getDJB2Hash } from "../shared/utils.js";
+
 export interface WcojEdge {
   fromVar: string;
   toVar: string;
@@ -129,18 +131,28 @@ export function compileWcojMatcher(plan: WcojPlan): string {
 
   if (plan.isCyclic && plan.variableOrder.length >= 3) {
     const [v1, v2, v3] = plan.variableOrder;
+    const e1Hash = plan.edges[0]?.edgeType ? (getDJB2Hash(plan.edges[0].edgeType) & 0xffff) >>> 0 : 0;
+    const e2Hash = plan.edges[1]?.edgeType ? (getDJB2Hash(plan.edges[1].edgeType) & 0xffff) >>> 0 : e1Hash;
+    const e3Hash = plan.edges[2]?.edgeType ? (getDJB2Hash(plan.edges[2].edgeType) & 0xffff) >>> 0 : e1Hash;
     code += `  // Initialize Leapfrog Iterators over sorted CSR edge adjacency tables\n`;
     code += `  // Iterators intersect edges between (${v1}, ${v2}), (${v2}, ${v3}), and (${v3}, ${v1})\n`;
     code += `  let iter1Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n`;
     code += `  let iter2Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n`;
-    code += `  let iter3Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n\n`;
+    code += `  let iter3Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n`;
+    code += `  leapfrog_init_from_dpo_edges(iter1Ptr, graphPtr, ${e1Hash} as u16);\n`;
+    code += `  leapfrog_init_from_dpo_edges(iter2Ptr, graphPtr, ${e2Hash} as u16);\n`;
+    code += `  leapfrog_init_from_dpo_edges(iter3Ptr, graphPtr, ${e3Hash} as u16);\n\n`;
 
     code += `  // Execute 3-way Leapfrog Triejoin intersection\n`;
     code += `  matchCount = leapfrog_intersect_3(iter1Ptr, iter2Ptr, iter3Ptr, resultZSetPtr);\n`;
   } else {
+    const e1Hash = plan.edges[0]?.edgeType ? (getDJB2Hash(plan.edges[0].edgeType) & 0xffff) >>> 0 : 0;
+    const e2Hash = plan.edges[1]?.edgeType ? (getDJB2Hash(plan.edges[1].edgeType) & 0xffff) >>> 0 : e1Hash;
     code += `  // Standard 2-way Leapfrog cursor iteration for acyclic path\n`;
     code += `  let iter1Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n`;
     code += `  let iter2Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n`;
+    code += `  leapfrog_init_from_dpo_edges(iter1Ptr, graphPtr, ${e1Hash} as u16);\n`;
+    code += `  leapfrog_init_from_dpo_edges(iter2Ptr, graphPtr, ${e2Hash} as u16);\n`;
     code += `  matchCount = leapfrog_intersect_2(iter1Ptr, iter2Ptr, resultZSetPtr);\n`;
   }
 

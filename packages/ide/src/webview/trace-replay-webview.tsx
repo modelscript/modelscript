@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import type { ReplayTraceData } from "../trace-replay-panel.js";
 import { TimeSeriesViewer, type DataSeries } from "./shared/index.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 export function TraceReplayApp() {

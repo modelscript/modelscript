@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { language } from "@modelscript/dsl";
 import { lowerSwmmToDae } from "./dae/swmm-to-dae.js";
@@ -51,7 +50,7 @@ export const swmmLanguage = language({
           modelDescription: "Lints SWMM network file for dangling nodes, negative slopes, and missing cross sections.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseSwmm(text);
@@ -63,7 +62,7 @@ export const swmmLanguage = language({
       title: "Lower SWMM to DAE",
       description: "Compiles SWMM hydraulic network directly into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseSwmm(text);
@@ -80,7 +79,7 @@ export const swmmLanguage = language({
       title: "Project SWMM to Modelica",
       description: "Synthesizes standard Modelica 3.x fluid network model from SWMM deck.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseSwmm(text);
@@ -92,7 +91,7 @@ export const swmmLanguage = language({
       title: "Route Network Flow",
       description: "Solves 1D open-channel hydraulic routing and head balance using Manning equation.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseSwmm(text);

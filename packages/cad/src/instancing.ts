@@ -329,7 +329,7 @@ export class AssemblyClusteringEngine {
         quaternion: quat,
         scale: [sx, sy, sz],
         color: p.color,
-        boundingBox: (p as any).boundingBox ?? computeSolidAABB(p.solid),
+        boundingBox: p.boundingBox ?? computeSolidAABB(p.solid),
       };
     });
 
@@ -405,8 +405,10 @@ function computeSolidSignatureFromNode(solid: Solid): string {
       return `chamfer:${solid.distance}:(${computeSolidSignatureFromNode(solid.child)})`;
     case SolidKind.TaggedPatch:
       return `tag:${solid.tag.portName}:${solid.tag.portType}:(${computeSolidSignatureFromNode(solid.child)})`;
-    default:
-      return `${(solid as any).kind}:${JSON.stringify((solid as any).args ?? {})}`;
+    default: {
+      const unknownSolid = solid as { kind?: unknown; args?: unknown };
+      return `${String(unknownSolid.kind)}:${JSON.stringify(unknownSolid.args ?? {})}`;
+    }
   }
 }
 

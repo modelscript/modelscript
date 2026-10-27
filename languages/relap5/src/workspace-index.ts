@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseRelap5 } from "./parser/relap5-parser.js";
 import type { Relap5Deck } from "./types.js";
+
+export type Relap5DocumentLoader = () =>
+  | string
+  | { sourceText?: string | undefined; text?: string | undefined }
+  | null
+  | undefined;
 
 /**
  * Multi-file workspace indexer for US NRC RELAP5-3D decks (.i, .inp, .r5).
@@ -39,7 +44,7 @@ export class Relap5WorkspaceIndex implements IWorkspaceIndex {
     return this.fileDecks.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: Relap5DocumentLoader): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +54,7 @@ export class Relap5WorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: Relap5DocumentLoader): void {
     this._version++;
     if (loader) {
       try {
@@ -82,13 +87,13 @@ export class Relap5WorkspaceIndex implements IWorkspaceIndex {
       parentId: SymbolId | null,
       startOffset: number,
       endOffset: number,
-      metadata: Record<string, any> = {},
+      metadata: Record<string, unknown> = {},
     ): SymbolId {
       const symId = (baseId! + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "relap5_symbol",
         namePath: name,
         fieldName: null,

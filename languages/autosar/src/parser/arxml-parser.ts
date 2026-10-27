@@ -435,7 +435,7 @@ function parseCanFrame(elem: XmlElement, lineStarts: number[]): AutosarCanFrame 
 
 function parseArPackage(elem: XmlElement, lineStarts: number[], model: AutosarModel): AutosarPackage {
   const shortName = parseShortName(elem);
-  const elements = new Map<string, any>();
+  const elements: AutosarPackage["elements"] = new Map();
   const subPackages = new Map<string, AutosarPackage>();
 
   const elementsContainer = elem.children.find((c) => c.name === "ELEMENTS");

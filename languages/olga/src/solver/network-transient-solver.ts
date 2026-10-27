@@ -258,7 +258,7 @@ export function simulateNetworkTransient(
   const totalMachineryPowerKw: number[] = [];
 
   const perFpSnapshots: Record<string, SpatialProfileSnapshot[]> = {};
-  const perFpTrends: Record<string, any> = {};
+  const perFpTrends: Record<string, OlgaSimulationResult["trends"]> = {};
 
   for (const fp of model.flowpaths) {
     perFpSnapshots[fp.name] = [];

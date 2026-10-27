@@ -162,9 +162,23 @@ const FRONT = 1;
 const BACK = 2;
 const SPANNING = 3;
 
+interface BspWasmExports {
+  memory: { buffer: ArrayBuffer };
+  __new(bytes: number, id: number): number;
+  cad_bsp_split_polygon?: (
+    nVerts: number,
+    inVertsPtr: number,
+    planeNormalPtr: number,
+    w: number,
+    outFrontPtr: number,
+    outBackPtr: number,
+    outCountsPtr: number,
+  ) => number;
+}
+
 /** Cached WebAssembly linear-memory scratch buffers for `cad_bsp_split_polygon`. */
 let bspWasmScratch: {
-  wasm: any;
+  wasm: BspWasmExports;
   inVertsPtr: number;
   planeNormalPtr: number;
   outFrontPtr: number;
@@ -173,7 +187,7 @@ let bspWasmScratch: {
 } | null = null;
 
 /** Lazily allocates or reuses linear-memory scratch buffers in `wasm` for polygon splitting. */
-function ensureBspWasmScratch(wasm: any) {
+function ensureBspWasmScratch(wasm: BspWasmExports) {
   if (bspWasmScratch && bspWasmScratch.wasm === wasm) {
     return bspWasmScratch;
   }
@@ -221,7 +235,11 @@ export function splitPolygon(
   const nVerts = polygon.vertices.length;
 
   // 1. WebAssembly fast-path for convex polygons with up to 32 vertices
-  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+  const wasm =
+    typeof globalThis !== "undefined"
+      ? ((globalThis as { __modelscript_wasm_exports__?: BspWasmExports | undefined }).__modelscript_wasm_exports__ ??
+        null)
+      : null;
   if (wasm && typeof wasm.cad_bsp_split_polygon === "function" && nVerts <= 32) {
     const sc = ensureBspWasmScratch(wasm);
     const buf = wasm.memory.buffer as ArrayBuffer;

@@ -1,19 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/runtime";
 import { extractStepAssembly } from "./assembly-extractor.js";
 import type { StepAssemblyModel } from "./physical-data.js";
 import { scanStepEntities } from "./schema.js";
 
-let occtPromise: Promise<any> | null = null;
-let nodeRequire: any = null;
+export interface OcctMesh {
+  name?: string | undefined;
+  color?: [number, number, number] | number[] | undefined;
+  attributes?:
+    | {
+        position?: { array?: Float32Array | number[] | undefined } | undefined;
+        normal?: { array?: Float32Array | number[] | undefined } | undefined;
+      }
+    | undefined;
+  index?: { array?: Uint32Array | Uint16Array | number[] | undefined } | undefined;
+}
+
+interface OcctInstance {
+  ReadStepFile(content: Uint8Array, params: Record<string, unknown> | null): { meshes?: OcctMesh[] | undefined };
+}
+
+type OcctInitializer = (options?: { locateFile?: (path: string) => string }) => Promise<OcctInstance>;
+
+let occtPromise: Promise<OcctInstance | null> | null = null;
+let nodeRequire: NodeJS.Require | null = null;
 
 /**
  * Lazily initializes a Node.js `createRequire` function when running in a Node environment
  * so `occt-import-js.wasm` can be resolved from `node_modules`.
  */
-async function getNodeRequire(): Promise<any> {
+async function getNodeRequire(): Promise<NodeJS.Require | null> {
   if (!nodeRequire) {
     try {
       const nm = await import("node:module");
@@ -29,14 +46,14 @@ async function getNodeRequire(): Promise<any> {
  * Lazily loads and initializes the OpenCascade WebAssembly (`occt-import-js`) instance
  * for B-Rep STEP tessellation across Node.js and browser/worker environments.
  */
-function getOcct(serverDistBase: string | null = null): Promise<any> {
+function getOcct(serverDistBase: string | null = null): Promise<OcctInstance | null> {
   if (!occtPromise) {
     occtPromise = (async () => {
       try {
-        const mod = await import("occt-import-js");
-        const init = mod.default || mod;
+        const mod = (await import("occt-import-js")) as { default?: OcctInitializer } & OcctInitializer;
+        const init: OcctInitializer = mod.default || mod;
         const req = await getNodeRequire();
-        return await (init as any)({
+        return await init({
           locateFile: (path: string) => {
             if (path.endsWith(".wasm")) {
               if (serverDistBase) {
@@ -137,7 +154,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   public serverDistBase: string | null = null;
   private _version = 0;
   private fileIndices = new Map<string, SymbolIndex>();
-  private fileMeshes = new Map<string, any[]>();
+  private fileMeshes = new Map<string, OcctMesh[]>();
   private fileAssemblies = new Map<string, StepAssemblyModel>();
   private uriBaseIds = new Map<string, number>();
   private nextBaseId = 1000000;
@@ -168,7 +185,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   }
 
   /** Returns the cached triangulated OCCT meshes for `uri`. */
-  public getMeshes(uri: string): any[] {
+  public getMeshes(uri: string): OcctMesh[] {
     return this.fileMeshes.get(uri) || [];
   }
 
@@ -188,7 +205,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   }
 
   /** Registers an empty placeholder `SymbolIndex` entry for `uri` if not already present. */
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -201,11 +218,11 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   /**
    * Re-parses STEP product/shape symbols and assembly metadata when a document is edited in-place.
    */
-  public reindexDocument(uri: string, loader?: () => any, _editRanges?: any, _totalDelta?: number): void {
+  public reindexDocument(uri: string, loader?: () => unknown, _editRanges?: unknown, _totalDelta?: number): void {
     if (loader) {
       try {
         const res = loader();
-        const text = typeof res === "string" ? res : res?.text;
+        const text = typeof res === "string" ? res : (res as { text?: string } | null)?.text;
         if (typeof text === "string" && text.length > 0) {
           const { products, shapes } = extractStepNames(text);
           this.fileAssemblies.set(uri, extractStepAssembly(text));
@@ -230,7 +247,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     this.fileAssemblies.set(uri, assemblyModel);
 
     const occt = await getOcct(this.serverDistBase);
-    let meshes: any[] = [];
+    let meshes: OcctMesh[] = [];
     if (occt) {
       try {
         const result = occt.ReadStepFile(buffer, null);
@@ -257,7 +274,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     uri: string,
     products: StepNameMatch[],
     shapes: StepNameMatch[],
-    meshes: any[],
+    meshes: OcctMesh[],
     astIndex?: SymbolIndex,
   ): SymbolIndex {
     const symbols = new Map<number, SymbolEntry>();
@@ -365,7 +382,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     }
 
     for (let i = 0; i < meshes.length; i++) {
-      const mesh = meshes[i];
+      const mesh = meshes[i]!;
       const meshName = mesh.name || `Shape_${i}`;
 
       if (registeredShapes.has(meshName)) continue;

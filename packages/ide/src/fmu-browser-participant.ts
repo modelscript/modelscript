@@ -678,7 +678,7 @@ export class FmuBrowserParticipant {
             },
             wasi_snapshot_preview1: {
               // Minimal WASI stubs for WASM modules compiled with WASI support
-              // eslint-disable-next-line @typescript-eslint/no-empty-function
+
               proc_exit: () => {},
               fd_write: () => 0,
               fd_read: () => 0,

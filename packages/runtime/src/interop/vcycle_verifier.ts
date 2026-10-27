@@ -52,7 +52,28 @@ export class VCycleVerifier {
 
     for (let rIdx = 0; rIdx < requirements.length; rIdx++) {
       const req = requirements[rIdx]!;
-      const targetIdx = varIndices.get(req.constrainedVariable) ?? 0;
+      const targetIdx = varIndices.get(req.constrainedVariable);
+      if (targetIdx === undefined) {
+        const hashData = `${req.requirementId}:false:NaN:${req.limitValue}:${simulation.t.length}`;
+        let hash = 0;
+        for (let i = 0; i < hashData.length; i++) {
+          hash = (hash << 5) - hash + hashData.charCodeAt(i);
+          hash |= 0;
+        }
+        verdicts.push({
+          requirementId: req.requirementId,
+          name: req.name,
+          status: "Violated",
+          constrainedVariable: req.constrainedVariable,
+          peakValue: NaN,
+          limitValue: req.limitValue,
+          marginPercent: -100,
+          violationTime: simulation.t[0] ?? 0,
+          isSatisfied: false,
+          provenanceHash: `sha256:${Math.abs(hash).toString(16).padStart(8, "0")}`,
+        });
+        continue;
+      }
 
       const result = verifyTrajectoryDirect(
         simulation.t,

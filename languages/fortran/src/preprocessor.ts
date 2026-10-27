@@ -140,7 +140,7 @@ class ConditionParser {
     private params: Record<string, string | number>,
   ) {}
 
-  parse(): number | boolean {
+  parse(): number | boolean | string {
     return this.parseLogicalOr();
   }
 
@@ -152,7 +152,7 @@ class ConditionParser {
     return this.tokens[this.pos++] || "";
   }
 
-  private parseLogicalOr(): number | boolean {
+  private parseLogicalOr(): number | boolean | string {
     let left = this.parseLogicalAnd();
     while (this.peek() === "||") {
       this.consume();
@@ -162,7 +162,7 @@ class ConditionParser {
     return left;
   }
 
-  private parseLogicalAnd(): number | boolean {
+  private parseLogicalAnd(): number | boolean | string {
     let left = this.parseEquality();
     while (this.peek() === "&&") {
       this.consume();
@@ -172,7 +172,7 @@ class ConditionParser {
     return left;
   }
 
-  private parseEquality(): number | boolean {
+  private parseEquality(): number | boolean | string {
     let left = this.parseRelational();
     while (this.peek() === "==" || this.peek() === "!=") {
       const op = this.consume();
@@ -183,8 +183,8 @@ class ConditionParser {
     return left;
   }
 
-  private parseRelational(): number | boolean {
-    let left: number | boolean = this.parseAdditive();
+  private parseRelational(): number | boolean | string {
+    let left: number | boolean | string = this.parseAdditive();
     while (["<", "<=", ">", ">="].includes(this.peek() || "")) {
       const op = this.consume();
       const right = this.parseAdditive();
@@ -198,29 +198,29 @@ class ConditionParser {
     return left;
   }
 
-  private parseAdditive(): number {
+  private parseAdditive(): number | boolean | string {
     let left = this.parseMultiplicative();
     while (this.peek() === "+" || this.peek() === "-") {
       const op = this.consume();
       const right = this.parseMultiplicative();
-      if (op === "+") left += right;
-      else left -= right;
+      if (op === "+") left = Number(left) + Number(right);
+      else left = Number(left) - Number(right);
     }
     return left;
   }
 
-  private parseMultiplicative(): number {
+  private parseMultiplicative(): number | boolean | string {
     let left = this.parsePrimary();
     while (this.peek() === "*" || this.peek() === "/") {
       const op = this.consume();
       const right = this.parsePrimary();
-      if (op === "*") left *= right;
-      else left = right !== 0 ? left / right : 0;
+      if (op === "*") left = Number(left) * Number(right);
+      else left = Number(right) !== 0 ? Number(left) / Number(right) : 0;
     }
     return left;
   }
 
-  private parsePrimary(): any {
+  private parsePrimary(): number | boolean | string {
     const tok = this.consume();
     if (tok === "(") {
       const val = this.parse();

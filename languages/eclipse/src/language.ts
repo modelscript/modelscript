@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEclipseToDae } from "./dae/eclipse-to-dae.js";
 import { lintEclipse } from "./lints/index.js";
 import { parseEclipse } from "./parser/eclipse-parser.js";
 import { eclipseToModelica } from "./projections/eclipse-to-modelica.js";
-import { solveReservoirDepletion } from "./solvers/reservoir-solver.js";
+import { solveReservoirDepletion, type ReservoirSolverOptions } from "./solvers/reservoir-solver.js";
 
 /**
  * ModelScript Schlumberger ECLIPSE Reservoir (.data, .dat, .inc) Language Definition.
@@ -52,7 +51,7 @@ export const eclipseLanguage = language({
             "Lints ECLIPSE file for out-of-bounds completions, non-monotonic PVT tables, and missing sections.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseEclipse(text);
@@ -64,7 +63,10 @@ export const eclipseLanguage = language({
       title: "Solve Reservoir Depletion",
       description: "Solves multiphase Darcy flow material balance and Peaceman well inflow performance.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; options?: any }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; options?: ReservoirSolverOptions | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseEclipse(text);
@@ -76,7 +78,7 @@ export const eclipseLanguage = language({
       title: "Lower ECLIPSE to DAE",
       description: "Compiles reservoir material balance and Peaceman well inflow into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseEclipse(text);
@@ -93,7 +95,10 @@ export const eclipseLanguage = language({
       title: "Project ECLIPSE to Modelica",
       description: "Synthesizes standard Modelica 3.x porous media reservoir simulation model.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined; modelName?: string }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; modelName?: string },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseEclipse(text);

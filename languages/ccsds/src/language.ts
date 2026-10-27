@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/ccsds — Language Definition.
@@ -9,7 +8,7 @@
  * Modelica export, and SysML v2 export.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerCcsdsToDae } from "./dae/ccsds-to-dae.js";
 import { lintCcsds } from "./lints/rules.js";
 import { parseCcsds } from "./parser/index.js";
@@ -33,9 +32,9 @@ export const ccsdsLanguage = language({
       title: "Lint CCSDS Orbit & Telemetry",
       description: "Runs pre-flight sub-orbital impact, reference frame, and telemetry bit-packing checks.",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
-        const doc = parseCcsds(text, context.documentUri);
+        const doc = parseCcsds(text, context["documentUri"] as string | undefined);
         return lintCcsds(doc);
       },
     },
@@ -44,9 +43,9 @@ export const ccsdsLanguage = language({
       title: "Lower CCSDS to DAE Arena",
       description: "Emits 6-DOF Cowell perturbed orbital equations of motion in ModelScript linear memory.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
-        const doc = parseCcsds(text, context.documentUri);
+        const doc = parseCcsds(text, context["documentUri"] as string | undefined);
         const arena = lowerCcsdsToDae(doc);
         return {
           variableCount: arena.getVarCount(),
@@ -59,9 +58,9 @@ export const ccsdsLanguage = language({
       title: "Export to Modelica Astrodynamics Model",
       description: "Translates orbital state vectors into continuous Modelica 3.x orbital simulation models.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
-        const doc = parseCcsds(text, context.documentUri);
+        const doc = parseCcsds(text, context["documentUri"] as string | undefined);
         return ccsdsToModelica(doc);
       },
     },
@@ -70,9 +69,9 @@ export const ccsdsLanguage = language({
       title: "Export to SysML v2 Mission Architecture",
       description: "Translates XTCE telemetry dictionaries into SysML v2 port definitions and command handlers.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
-        const doc = parseCcsds(text, context.documentUri);
+        const doc = parseCcsds(text, context["documentUri"] as string | undefined);
         return ccsdsToSysml(doc);
       },
     },

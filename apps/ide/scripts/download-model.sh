@@ -52,8 +52,8 @@ for file in "${MODEL_FILES[@]}"; do
   fi
 done
 
-# The WASM file is committed to git (not available from a public URL).
-# In CI / Docker, it comes from the git checkout or COPY step.
+# Download WebGPU WASM runtime
+WASM_URL="https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_80/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
 if [ ! -f "$TARGET/$WASM_NAME" ]; then
   # Try to find it in the repo checkout (for CI/Docker contexts)
   REPO_WASM="$REPO_ROOT/models/$WASM_NAME"
@@ -61,7 +61,10 @@ if [ ! -f "$TARGET/$WASM_NAME" ]; then
     echo "  [copy] $WASM_NAME (from repo)"
     cp "$REPO_WASM" "$TARGET/$WASM_NAME"
   else
-    echo "  [WARNING] $WASM_NAME not found in $TARGET or $REPO_WASM. WebGPU AI assistant will be disabled until wasm runtime is provided."
+    echo "  [downloading] $WASM_NAME"
+    if ! curl -fSL --retry 3 "$WASM_URL" -o "$TARGET/$WASM_NAME"; then
+      echo "  [WARNING] $WASM_NAME download failed. WebGPU AI assistant will be disabled until wasm runtime is provided."
+    fi
   fi
 else
   echo "  [cached] $WASM_NAME"

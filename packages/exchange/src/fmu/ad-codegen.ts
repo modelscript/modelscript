@@ -74,15 +74,15 @@ export function generateModelEvaluateJacobian(id: string, dae: DAEBuilder, vars:
   // For each output, we do a backward sweep to get the row of the Jacobian!
   L.push("  /* --- Reverse Pass (Jacobian Construction) --- */");
   for (let row = 0; row < outputIndices.length; row++) {
-    const outIdx = outputIndices[row]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    const derEq = derEqs[row]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const outIdx = outputIndices[row]!;
+    const derEq = derEqs[row]!;
     L.push(`  { /* Row ${row}: derivative of ${derEq.state} */`);
     const { code, gradients } = tape.emitReverseC(outIdx);
     L.push(...code.map((c) => "  " + c)); // Indent inside block
 
     // Assign gradients into jac_out
     for (let col = 0; col < derEqs.length; col++) {
-      const colEq = derEqs[col]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const colEq = derEqs[col]!;
       const stateName = colEq.state;
       const gradIdx = gradients.get(stateName);
       if (gradIdx !== undefined) {
@@ -155,7 +155,7 @@ export function generateModelEvaluateObjective(id: string, dae: DAEBuilder, vars
   L.push(...code);
 
   for (let i = 0; i < optVars.length; i++) {
-    const v = optVars[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const v = optVars[i]!;
     const gradIdx = gradients.get(v.name);
     if (gradIdx !== undefined) {
       L.push(`  grad_out[${i}] = dt[${gradIdx}]; /* d(obj)/d(${v.name}) */`);
@@ -208,7 +208,7 @@ export function generateModelEvaluateHessian(id: string, dae: DAEBuilder, vars: 
   let lagrangianNode = tape.pushOp({ type: "const", val: 0.0 });
   for (let i = 0; i < eqIndices.length; i++) {
     const lamVar = tape.pushOp({ type: "var", name: `LAMBDA_${i}` });
-    const term = tape.pushOp({ type: "mul", a: lamVar, b: eqIndices[i]! }); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const term = tape.pushOp({ type: "mul", a: lamVar, b: eqIndices[i]! });
     lagrangianNode = tape.pushOp({ type: "add", a: lagrangianNode, b: term });
   }
 
@@ -237,7 +237,7 @@ export function generateModelEvaluateHessian(id: string, dae: DAEBuilder, vars: 
   }
 
   for (let col = 0; col < indepVars.length; col++) {
-    const seedNode = indepVarIndices[col]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const seedNode = indepVarIndices[col]!;
     L.push(`  { /* Column ${col}: derivative wrt ${indepVars[col]} */`);
     L.push(`    memset(dot_t, 0, sizeof(dot_t));`);
     L.push(`    memset(dot_dt, 0, sizeof(dot_dt));`);
@@ -250,7 +250,7 @@ export function generateModelEvaluateHessian(id: string, dae: DAEBuilder, vars: 
     L.push(...revDirCode.map((c) => "    " + c.trim()));
 
     for (let row = 0; row < indepVars.length; row++) {
-      const rowNode = indepVarIndices[row]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const rowNode = indepVarIndices[row]!;
       L.push(`    hess_out[${row * indepVars.length + col}] = dot_dt[${rowNode}];`);
     }
     L.push(`  }`);
@@ -320,7 +320,7 @@ export function generateNlpC(
     const { code: revCode, gradients } = tape.emitReverseC(objIdx);
     L.push(...revCode);
     for (let i = 0; i < vars.length; i++) {
-      const v = vars[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const v = vars[i]!;
       const gIdx = gradients.get(v.name);
       L.push(`  grad[${i}] = ${gIdx !== undefined ? `dt[${gIdx}]` : "0.0"};`);
     }

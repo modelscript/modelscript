@@ -263,4 +263,101 @@ describe("MCP Tools Extensive Coverage Suite", () => {
     assert.equal(createdPostData.authorId, 42);
     assert.equal(createdPostData.content, "Verified physics analysis");
   });
+
+  it("supports structured metrics in modelica_flatten, validate_system_consistency, tgg_reconcile_slot, and modelscript_closed_loop_synthesize", async () => {
+    const flattenRes = await tools["modelica_flatten"].handler({
+      className: "GimbalPitchLoop",
+      code: "model GimbalPitchLoop\n  parameter Real Kp = 10.0;\n  Real theta(start=0.0);\nequation\n  der(theta) = -Kp * theta;\nend GimbalPitchLoop;",
+    });
+    assert.ok(!flattenRes.isError);
+    const flattenJson = JSON.parse(flattenRes.content[0].text);
+    assert.equal(flattenJson.isBalanced, true);
+    assert.ok(Array.isArray(flattenJson.metrics));
+
+    const consRes = await tools["validate_system_consistency"].handler({
+      sysmlCode: "package P { part def Battery { attribute V_nominal = 400.0; } }",
+      modelicaCode: "model Pack\n  parameter Real V_nominal = 800.0;\nend Pack;",
+    });
+    assert.ok(!consRes.isError);
+    const consJson = JSON.parse(consRes.content[0].text);
+    assert.equal(consJson.divergencesDetected, 1);
+    assert.ok(Array.isArray(consJson.metrics));
+
+    const recRes = await tools["tgg_reconcile_slot"].handler({
+      correspondenceId: "corr_pack_voltage_01",
+      authority: "sysml_v2",
+      customValue: 800.0,
+      modelicaCode: "model Pack\n  parameter Real V_nominal = 400.0;\nend Pack;",
+    });
+    assert.ok(!recRes.isError);
+    const recJson = JSON.parse(recRes.content[0].text);
+    assert.equal(recJson.status, "resolved");
+    assert.ok(recJson.patchedModelicaCode.includes("800"));
+    assert.ok(recJson.verdict);
+
+    const synthRes = await tools["modelscript_closed_loop_synthesize"].handler({
+      modelName: "GimbalPitchLoop",
+      modelicaCode:
+        "model GimbalPitchLoop\n  parameter Real Kp = 10.0;\n  parameter Real Ki = 1.0;\n  parameter Real Kd = 0.5;\n  Real theta(start=0.0);\nequation\n  der(theta) = -Kp * theta;\nend GimbalPitchLoop;",
+      tunableParameters: ["Kp", "Ki", "Kd"],
+      stopTime: 1.0,
+    });
+    const synthJson = JSON.parse(synthRes.content[0].text);
+    assert.ok(synthJson.tunedParameters);
+    assert.ok(typeof synthJson.overshootPct === "number");
+    assert.ok(typeof synthJson.stlRobustness === "number");
+    assert.ok(Array.isArray(synthJson.metrics));
+  });
+
+  it("executes the 5 cross-domain MCP tools (CAD/FEA, B2B Migration, SSP Co-Sim, Formal/MC-DC, Twin SINDy/ROM)", async () => {
+    const cadRes = await tools["cad_fea_closed_loop_size"].handler({
+      partName: "ActuatorBracket",
+      materialYieldMpa: 276,
+      minSafetyFactor: 1.5,
+      appliedLoadN: 4200,
+      minClearanceMm: 2.0,
+    });
+    assert.ok(!cadRes.isError);
+    const cadJson = JSON.parse(cadRes.content[0].text);
+    assert.equal(cadJson.success, true);
+    assert.ok(cadJson.safetyFactor >= 1.5);
+    assert.ok(Array.isArray(cadJson.metrics));
+
+    const b2bRes = await tools["polyglot_migrate_and_verify_b2b"].handler({
+      sourceFormat: "simulink",
+      modelName: "ServoActuator",
+      tolerance: 1e-4,
+    });
+    assert.ok(!b2bRes.isError);
+    const b2bJson = JSON.parse(b2bRes.content[0].text);
+    assert.equal(b2bJson.iso26262Certified, true);
+    assert.ok(b2bJson.c99Sha256.startsWith("sha256:"));
+
+    const sspRes = await tools["ssp_diagnose_cosim_stability"].handler({
+      communicationStepSec: 0.001,
+    });
+    assert.ok(!sspRes.isError);
+    const sspJson = JSON.parse(sspRes.content[0].text);
+    assert.ok(sspJson.stabilizedSpectralRadius < 1.0);
+
+    const formalRes = await tools["formal_verify_safety_and_mcdc"].handler({
+      modelName: "FlightControlActuator",
+      safetyProperty: "abs(pitch_angle_deg) <= 35.0",
+    });
+    assert.ok(!formalRes.isError);
+    const formalJson = JSON.parse(formalRes.content[0].text);
+    assert.equal(formalJson.invariantProved, true);
+    assert.equal(formalJson.mcdcCoveragePct, 100.0);
+
+    const twinRes = await tools["twin_discover_sindy_and_rom"].handler({
+      modelName: "ServoTwin",
+      stateVariable: "omega",
+      sparsityThreshold: 0.05,
+      telemetrySamples: 2000,
+    });
+    assert.ok(!twinRes.isError);
+    const twinJson = JSON.parse(twinRes.content[0].text);
+    assert.ok(twinJson.rSquared > 0.99);
+    assert.ok(twinJson.romSpeedupFactor > 10);
+  });
 });

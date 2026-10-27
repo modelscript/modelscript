@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { COLORMAP_FRAGMENT_SHADER, COLORMAP_VERTEX_SHADER } from "../../../../util/colormap";

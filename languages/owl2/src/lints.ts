@@ -332,8 +332,7 @@ export function lintOwl2Document(
   collectPrefixesAndSyntax(rootNode);
 
   // If rootNode reports hasError but no explicit ERROR child node was found, emit O1001 on root
-  const rootHasError =
-    typeof (rootNode as any).hasError === "function" ? (rootNode as any).hasError() : Boolean(rootNode.hasError);
+  const rootHasError = typeof rootNode.hasError === "function" ? rootNode.hasError() : Boolean(rootNode.hasError);
   if (rootHasError && !diagnostics.some((d) => d.code === Owl2ErrorCode.PARSE_ERROR.code)) {
     const snippet = getNodeText(rootNode, ctx).slice(0, 40) || "document";
     emit(Owl2ErrorCode.PARSE_ERROR, rootNode, [snippet]);

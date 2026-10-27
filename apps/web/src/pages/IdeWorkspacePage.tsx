@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
@@ -384,7 +383,6 @@ export const IdeWorkspacePage: React.FC = () => {
   useEffect(() => {
     let lastHandledShareTimestamp = 0;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const processMessageData = (data: any) => {
       if (!data || typeof data !== "object") return;
 

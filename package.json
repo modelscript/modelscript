@@ -43,6 +43,7 @@
     "ci:local": "bash scripts/ci-local.sh",
     "ci:quick": "bash scripts/ci-local.sh --quick",
     "clean": "nx run-many --target=clean",
+    "clean:scratch": "npx tsx scripts/clean-scratch.ts",
     "codeql": "bash scripts/codeql-scan.sh",
     "codeql:docker": "bash scripts/codeql-scan.sh --docker",
     "codeql:install": "bash scripts/codeql-scan.sh --install",
@@ -70,6 +71,7 @@
     "lint:lockfile": "npx tsx scripts/lint-lockfile.ts",
     "lint:manifests": "npx tsx scripts/lint-package-manifests.ts",
     "lint:scripts": "eslint scripts eslint.config.ts --no-warn-ignored",
+    "lint:types-ratchet": "npx tsx scripts/lint-type-safety-ratchet.ts",
     "lint:versions": "npx tsx scripts/sync-versions.ts --check",
     "package:desktop": "npx nx build @modelscript/web && npm run build:tauri --workspace=@modelscript/desktop",
     "package:desktop:portable": "npx nx build @modelscript/web && npm run build:portable --workspace=@modelscript/desktop",
@@ -103,7 +105,8 @@
     "typecheck:all": "nx run-many --target=typecheck --parallel=4",
     "verify:all": "nx run-many -t lint,typecheck,build --skip-nx-cache --parallel=4",
     "verify:dist": "npx tsx scripts/verify-dist-integrity.ts",
-    "verify:fresh": "nx affected -t lint,typecheck,build --uncommitted --skip-nx-cache --parallel=4"
+    "verify:fresh": "nx affected -t lint,typecheck,build --uncommitted --skip-nx-cache --parallel=4",
+    "verify:pack": "npx tsx scripts/verify-pack-install.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
@@ -139,11 +142,6 @@
     "@nx/devkit": {
       "brace-expansion": "^5.0.12"
     },
-    "@react-router/dev": "^7.18.4",
-    "@react-router/node": "^7.18.4",
-    "@react-router/serve": "^7.18.4",
-    "@sigstore/core": "^3.2.1",
-    "@sigstore/verify": "^3.1.1",
     "@simple-git/argv-parser": "^2.0.1",
     "@vue/server-renderer": "^3.5.44",
     "adm-zip": "^0.6.1",
@@ -178,27 +176,17 @@
       "brace-expansion": "^5.0.12"
     },
     "postcss": "^8.5.23",
-    "postcss-selector-parser": "^7.1.3",
     "proxy-addr": "^2.0.8",
     "qs": "^6.16.0",
     "react-router": "^7.18.4",
     "react-router-dom": "^7.18.4",
-    "sigstore": "^4.1.1",
     "simple-git": "^4.0.2",
     "smol-toml": "^1.7.1",
     "source-map-js": "^1.2.2",
-    "tar": "^7.5.22",
-    "test-exclude": {
-      "brace-expansion": "^5.0.12",
-      "glob": {
-        "brace-expansion": "^2.1.7"
-      }
-    },
     "three": "^0.184.0",
     "tmp": "^0.2.7",
     "undici": "^7.30.1",
     "uuid": "^11.1.1",
-    "valibot": "^1.4.2",
     "vitepress": {
       "vite": "^6.4.5"
     },

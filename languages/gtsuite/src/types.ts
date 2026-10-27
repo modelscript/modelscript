@@ -70,6 +70,7 @@ export interface GtPipeComponent extends GtComponentBase {
   kind: "pipe" | "intake_runner" | "exhaust_runner";
   diameterM: number;
   lengthM: number;
+  discretizationLengthM?: number;
   wallTemperatureK?: number;
   frictionFactor?: number;
   wallRoughnessM?: number;

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/ccsds — Language Server Protocol (LSP) Service Integration.
@@ -81,7 +80,7 @@ export function validateCcsds(content: string, filename?: string): LspDiagnostic
   let doc: CcsdsDocument;
   try {
     doc = parseCcsds(content, filename);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -91,7 +90,7 @@ export function validateCcsds(content: string, filename?: string): LspDiagnostic
         severity: 1,
         code: "M8200",
         source: "ccsds-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -285,7 +284,42 @@ export function getCcsdsHover(content: string, offset: number, filename?: string
   return null;
 }
 
-export function executeCcsdsAction(action: string, content: string, params?: any): any {
+export interface CcsdsActionParams {
+  filename?: string | undefined;
+  title?: string | undefined;
+  duration?: number | undefined;
+  step?: number | undefined;
+  includeJ2?: boolean | undefined;
+  includeDrag?: boolean | undefined;
+}
+
+export function executeCcsdsAction(
+  action: "ccsds.toModelica",
+  content: string,
+  params?: CcsdsActionParams,
+): { modelica: string };
+export function executeCcsdsAction(
+  action: "ccsds.toSysml",
+  content: string,
+  params?: CcsdsActionParams,
+): { sysml: string };
+export function executeCcsdsAction(
+  action: "ccsds.toDae",
+  content: string,
+  params?: CcsdsActionParams,
+): { variables: number; equations: number };
+export function executeCcsdsAction(
+  action: "ccsds.propagate",
+  content: string,
+  params?: CcsdsActionParams,
+): { pointCount: number; points: ReturnType<typeof propagateOrbit> };
+export function executeCcsdsAction(
+  action: "ccsds.summary",
+  content: string,
+  params?: CcsdsActionParams,
+): { format: string; name: string; details: Record<string, unknown> };
+export function executeCcsdsAction(action: string, content: string, params?: CcsdsActionParams): unknown;
+export function executeCcsdsAction(action: string, content: string, params?: CcsdsActionParams): unknown {
   const doc = parseCcsds(content, params?.filename);
 
   switch (action) {

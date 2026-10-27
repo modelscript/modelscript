@@ -8,7 +8,6 @@
 
 import { CreateMLCEngine, prebuiltAppConfig } from "@mlc-ai/web-llm";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const acquireVsCodeApi: () => { postMessage(msg: unknown): void; getState(): any; setState(s: any): void };
 declare const MODEL_BASE_URL: string;
 declare const OLLAMA_BASE_URL: string | undefined;
@@ -36,7 +35,7 @@ interface ChatMessage {
 interface CompletionChunk {
   content?: string;
   finish_reason?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   tool_calls?: any[];
 }
 
@@ -46,7 +45,6 @@ interface PendingCloudStream {
   onEnd: () => void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let engine: any = null;
 let engineLoading = false;
 let isGenerating = false;
@@ -78,6 +76,161 @@ if (modelProviderSelect) {
 const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
 
 export const MODELSCRIPT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "modelscript_closed_loop_synthesize",
+      description:
+        "Synthesize, tune, and certify a SysML v2 or Modelica model across 5 compiler gates (Syntax, QUDV Dimensions, SMT Feasibility, DAE Balance, Dynamic Simulation & STL Robustness).",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Specification or requirement prompt" },
+          language: { type: "string", enum: ["sysml2", "modelica"], description: "Target language" },
+          initialCode: { type: "string", description: "Optional candidate code to repair or tune" },
+          className: { type: "string", description: "Target model or class name" },
+          tunableParameters: {
+            type: "array",
+            items: { type: "string" },
+            description: "Parameters to tune via sensitivity / IMC-PID optimization (e.g. ['Kp', 'Ki', 'Kd'])",
+          },
+          stopTime: { type: "number", description: "Closed-loop simulation horizon in seconds" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "modelica_flatten",
+      description:
+        "Flatten a Modelica class to a system of differential-algebraic equations (DAEs) and inspect state/algebraic counts, BLT blocks, and Pantelides index reduction.",
+      parameters: {
+        type: "object",
+        properties: {
+          className: { type: "string", description: "Target Modelica class name" },
+          code: { type: "string", description: "Optional Modelica code to flatten" },
+          includeMetrics: { type: "boolean", description: "Return structured DAE balance metrics" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "modelica_simulate",
+      description: "Simulate a Modelica model and compute trajectory verification metrics.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Modelica class name" },
+          stopTime: { type: "number", description: "Simulation stop time in seconds" },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "validate_system_consistency",
+      description:
+        "Verify cross-domain consistency between SysML v2 requirements/architecture and Modelica physical models (ports, QUDV units, and shared parameter slots).",
+      parameters: {
+        type: "object",
+        properties: {
+          sysmlCode: { type: "string", description: "SysML v2 source code" },
+          modelicaCode: { type: "string", description: "Modelica source code" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "tgg_reconcile_slot",
+      description:
+        "Reconcile a divergent cross-domain parameter slot across SysML v2 and Modelica using Triple Graph Grammar (TGG) rules and lossless CST writeback.",
+      parameters: {
+        type: "object",
+        properties: {
+          slotId: { type: "string", description: "Divergent parameter slot or conflict ID" },
+          strategy: {
+            type: "string",
+            enum: ["source-wins", "target-wins", "physics-simplex", "interval_intersection"],
+            description: "Reconciliation strategy",
+          },
+          customValue: { type: "number", description: "Optional explicit resolved numeric value" },
+        },
+        required: ["slotId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "rtm_query_matrix",
+      description:
+        "Query the live Requirements Traceability Matrix (RTM) for requirement coverage and verification verdicts.",
+      parameters: {
+        type: "object",
+        properties: {
+          statusFilter: {
+            type: "string",
+            enum: ["all", "verified", "failed", "unverified", "suspect"],
+            description: "Optional status filter",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cad_fea_closed_loop_size",
+      description:
+        "Run closed-loop 3D CAD/OpenSCAD/STEP parametric sizing coupled with tetrahedral FEA von Mises stress analysis and BVH collision clearance verification.",
+      parameters: {
+        type: "object",
+        properties: {
+          partName: { type: "string", description: "Target structural component name" },
+          materialYieldMpa: { type: "number", description: "Material yield strength in MPa" },
+          minSafetyFactor: { type: "number", description: "Required minimum safety factor" },
+          appliedLoadN: { type: "number", description: "Applied peak load in Newtons" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "polyglot_migrate_and_verify_b2b",
+      description:
+        "Migrate legacy Simulink (.slx), SPICE (.cir), or Adams (.adm) models to Modelica & SysML v2 and certify ISO 26262 Back-to-Back (B2B) equivalence.",
+      parameters: {
+        type: "object",
+        properties: {
+          sourceFormat: { type: "string", enum: ["simulink", "spice", "adams"], description: "Legacy CAE format" },
+          modelName: { type: "string", description: "Target Modelica / SysML v2 model name" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "formal_verify_safety_and_mcdc",
+      description:
+        "Prove unbounded safety invariants via IC3/PDR and SOS barrier certificates, and generate DO-178C / ISO 26262 MC/DC test vectors.",
+      parameters: {
+        type: "object",
+        properties: {
+          modelName: { type: "string", description: "Target model or state machine name" },
+          safetyProperty: { type: "string", description: "Safety invariant expression to prove" },
+        },
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -225,8 +378,8 @@ export const MODELSCRIPT_TOOLS = [
   },
 ];
 
-const SYSTEM_PROMPT = `You are ModelScript AI, an expert systems engineering and physical modeling assistant.
-You have access to tools to navigate the workspace, query multi-file symbols, inspect compiler diagnostics, verify model correctness (WASM GLR syntax, QUDV physical dimensions, SMT feasibility, and DAE balance), patch code surgically, add components, and simulate models.
+const SYSTEM_PROMPT = `You are ModelScript AI, an expert systems engineering and physical modeling assistant connected to the deterministic WebAssembly compiler, DAE solver, and Triple Graph Grammar (TGG) engine.
+You have access to tools to navigate the workspace, query multi-file symbols, inspect compiler diagnostics, run 5-gate closed-loop synthesis & parameter tuning (modelscript_closed_loop_synthesize), flatten & balance DAEs (modelica_flatten), reconcile cross-domain SysML v2 ↔ Modelica parameters (validate_system_consistency, tgg_reconcile_slot), size 3D CAD/FEA geometry (cad_fea_closed_loop_size), certify ISO 26262 B2B migrations (polyglot_migrate_and_verify_b2b), prove IC3/SOS + MC/DC formal safety (formal_verify_safety_and_mcdc), patch code surgically, add components, and simulate models.
 When working across multiple files or libraries, locate and read relevant files or symbols before modifying code.
 Always inspect or verify code before and after modifying it.
 To invoke actions, call the available functions or output:
@@ -259,7 +412,6 @@ async function ensureEngine(): Promise<void> {
 
   engineLoading = true;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nav = navigator as any;
     if (!nav.gpu) throw new Error("WebGPU not available");
     const adapter = await nav.gpu.requestAdapter();
@@ -594,7 +746,7 @@ async function* streamChatCompletion(
 ): AsyncGenerator<CompletionChunk, void, unknown> {
   if (currentProvider === "webgpu") {
     await ensureEngine();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let completion: any;
     try {
       completion = await engine.chat.completions.create({
@@ -716,7 +868,7 @@ async function sendMessage(): Promise<void> {
 
       let rawText = "";
       let finishReason = "stop";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       let nativeToolCalls: any[] = [];
 
       for await (const chunk of completion) {
@@ -779,16 +931,22 @@ async function sendMessage(): Promise<void> {
       }
 
       // Execute each detected tool call
+      let traceStepIdx = 0;
       for (const call of toolCalls) {
+        traceStepIdx++;
         const callMsgEl = addMessage("tool", "");
         callMsgEl.style.width = "100%";
         callMsgEl.style.alignSelf = "stretch";
         callMsgEl.style.display = "block";
         callMsgEl.classList.remove("tool");
         callMsgEl.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 8px; opacity: 0.8; font-size: 12px; margin: 2px 0;">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.5 12.5h-1v-5h1v5zm0-6h-1v-1h1v1z"/></svg>
-            <span>Action: <b>${call.name}</b></span>
+          <div class="trace-card">
+            <div class="trace-head">
+              <span class="trace-step-num">${traceStepIdx}</span>
+              <span class="trace-tool">${call.name}</span>
+              <span class="trace-proto">JSON-RPC tools/call</span>
+            </div>
+            <div class="trace-running">Executing tool call<span class="animated-ellipsis"></span></div>
           </div>
         `;
 
@@ -796,7 +954,75 @@ async function sendMessage(): Promise<void> {
           const toolResult = (await requestToolCall(call.name, call.input)) as Record<string, unknown>;
           const resultStr = typeof toolResult === "string" ? toolResult : JSON.stringify(toolResult, null, 2);
 
-          if (toolResult && toolResult.action === "Edited" && toolResult.file) {
+          const hasStructuredTrace =
+            toolResult &&
+            typeof toolResult === "object" &&
+            (typeof toolResult.resultTitle === "string" ||
+              Array.isArray(toolResult.metrics) ||
+              Array.isArray(toolResult.gates));
+
+          if (hasStructuredTrace) {
+            const titleText =
+              typeof toolResult.resultTitle === "string"
+                ? toolResult.resultTitle
+                : typeof toolResult.summary === "string"
+                  ? toolResult.summary
+                  : `${call.name} completed`;
+            const rawMetrics = Array.isArray(toolResult.metrics)
+              ? (toolResult.metrics as { label: string; value: string; status?: string }[])
+              : Array.isArray(toolResult.gates)
+                ? (toolResult.gates as { gate: number; gateName: string; passed: boolean }[]).map((g) => ({
+                    label: `Gate ${g.gate}: ${g.gateName}`,
+                    value: g.passed ? "PASS" : "FAIL",
+                    status: g.passed ? "pass" : "fail",
+                  }))
+                : [];
+            const escapedArgs = JSON.stringify(call.input ?? {}, null, 2)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;");
+            const metricsHtml = rawMetrics
+              .map(
+                (m) => `
+              <div class="trace-metric ${m.status || "info"}">
+                <span class="tm-label">${m.label}</span>
+                <span class="tm-val">${m.value}</span>
+              </div>`,
+              )
+              .join("");
+            const verdictHtml =
+              typeof toolResult.verdict === "string"
+                ? `
+              <div class="verdict-banner">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.2" style="flex-shrink:0;margin-top:2px;">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <path d="m9 12 2 2 4-4" />
+                </svg>
+                <div><strong>Deterministic Compiler Proof:</strong> ${toolResult.verdict}</div>
+              </div>`
+                : "";
+
+            callMsgEl.innerHTML = `
+              <div class="trace-card">
+                <div class="trace-head">
+                  <span class="trace-step-num">${traceStepIdx}</span>
+                  <span class="trace-tool">${call.name}</span>
+                  <span class="trace-proto">JSON-RPC tools/call</span>
+                </div>
+                <pre class="trace-args"><code>${escapedArgs}</code></pre>
+                <div class="trace-result">
+                  <div class="trace-res-title">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    ${titleText}
+                  </div>
+                  ${metricsHtml ? `<div class="trace-metrics">${metricsHtml}</div>` : ""}
+                </div>
+              </div>
+              ${verdictHtml}
+            `;
+          } else if (toolResult && toolResult.action === "Edited" && toolResult.file) {
             callMsgEl.innerHTML = `
               <div style="display: flex; align-items: center; gap: 8px; background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.1)); border-radius: 4px; padding: 4px 8px; font-size: 12.5px; font-family: var(--vscode-font-family, system-ui, sans-serif); margin: 2px 0; width: 100%; box-sizing: border-box;">
                 <svg style="opacity: 0.7;" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -843,10 +1069,20 @@ async function sendMessage(): Promise<void> {
             `;
           } else {
             callMsgEl.innerHTML = `
-              <div style="display: flex; align-items: center; gap: 8px; background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.1)); border-radius: 4px; padding: 4px 8px; font-size: 12.5px; margin: 2px 0; width: 100%; box-sizing: border-box;">
-                <svg style="opacity: 0.7;" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.5 12.5h-1v-5h1v5zm0-6h-1v-1h1v1z"/></svg>
-                <span style="opacity: 0.9; font-weight: 500;">${call.name}</span>
-                <span style="margin-left: auto; font-family: monospace; opacity: 0.6; font-size: 11px;">Success</span>
+              <div class="trace-card">
+                <div class="trace-head">
+                  <span class="trace-step-num">${traceStepIdx}</span>
+                  <span class="trace-tool">${call.name}</span>
+                  <span class="trace-proto">JSON-RPC tools/call</span>
+                </div>
+                <div class="trace-result">
+                  <div class="trace-res-title">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Completed
+                  </div>
+                </div>
               </div>
             `;
           }

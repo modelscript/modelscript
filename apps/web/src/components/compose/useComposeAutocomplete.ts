@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState } from "react";
 import { getTrending, getUserFollowers, resolveFederatedActor } from "../../api";
 import type { NotebookCell } from "../../util/notebook";

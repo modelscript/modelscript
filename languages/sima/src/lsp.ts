@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerSimaToDae } from "./dae/sima-to-dae.js";
 import { lintSimaProject } from "./lints/index.js";
@@ -106,14 +105,14 @@ export function validateSima(content: string, uri: string = "model.inp"): LspDia
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M7000",
         source: "modelscript-sima",
-        message: `Failed to parse SIMA model: ${err.message}`,
+        message: `Failed to parse SIMA model: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -236,7 +235,7 @@ export function getSimaHover(content: string, position: LspPosition, uri: string
 /**
  * Executes domain actions on a SIMA model.
  */
-export async function executeSimaAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeSimaAction(action: string, args: Record<string, unknown>): Promise<unknown> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const uri = typeof args["uri"] === "string" ? args["uri"] : "model.inp";
   const model: SimaModel = parseSimaFile(content, uri);

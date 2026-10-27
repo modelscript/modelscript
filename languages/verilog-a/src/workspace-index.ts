@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/verilog-a — Multi-File Workspace Indexer.
@@ -43,7 +42,7 @@ export class VerilogAWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -53,7 +52,10 @@ export class VerilogAWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {

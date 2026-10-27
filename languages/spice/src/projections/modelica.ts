@@ -200,7 +200,7 @@ export function modelicaToSpice(modelicaSource: string): SpiceCircuit {
 
     components.push({
       name,
-      kind: info.kind as any,
+      kind: info.kind as SpiceComponent["kind"],
       nodes: [pNet, nNet],
       value: info.paramVal,
       params: new Map(),

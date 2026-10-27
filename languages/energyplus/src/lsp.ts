@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/energyplus — Language Server Protocol (LSP) Service Integration.
@@ -79,7 +78,8 @@ export function validateEnergyPlus(content: string): LspDiagnostic[] {
   let doc: EnergyPlusDocument;
   try {
     doc = parseEnergyPlus(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -89,7 +89,7 @@ export function validateEnergyPlus(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M7900",
         source: "energyplus-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${message}`,
       },
     ];
   }
@@ -259,7 +259,33 @@ export function getEnergyPlusHover(content: string, offset: number): LspHover | 
   return null;
 }
 
-export function executeEnergyPlusAction(action: string, content: string, params?: any): any {
+export interface EnergyPlusActionParams {
+  title?: string | undefined;
+}
+
+export function executeEnergyPlusAction(
+  action: "energyplus.toModelica",
+  content: string,
+  params?: EnergyPlusActionParams,
+): { modelica: string };
+export function executeEnergyPlusAction(
+  action: "energyplus.toDae",
+  content: string,
+  params?: EnergyPlusActionParams,
+): { variables: number; equations: number };
+export function executeEnergyPlusAction(
+  action: "energyplus.summary",
+  content: string,
+  params?: EnergyPlusActionParams,
+): {
+  building: string | undefined;
+  zones: number;
+  surfaces: number;
+  materials: number;
+  constructions: number;
+};
+export function executeEnergyPlusAction(action: string, content: string, params?: EnergyPlusActionParams): unknown;
+export function executeEnergyPlusAction(action: string, content: string, params?: EnergyPlusActionParams): unknown {
   const doc = parseEnergyPlus(content);
 
   switch (action) {

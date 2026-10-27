@@ -18,7 +18,7 @@ export interface AntvNode {
   width: number;
   height: number;
   label?: string | undefined;
-  data?: Record<string, any> | undefined;
+  data?: Record<string, unknown> | undefined;
 }
 
 export interface AntvEdge {
@@ -106,7 +106,7 @@ export function renderRocetsPidSvg(model: RocetsEngineModel): string {
   for (const node of data.nodes) {
     const cx = node.x + node.width / 2;
     const cy = node.y + node.height / 2;
-    const typeUpper = (node.data?.["type"] || "").toUpperCase();
+    const typeUpper = String(node.data?.["type"] || "").toUpperCase();
     posMap.set(node.id, { cx, cy, width: node.width, height: node.height, type: typeUpper });
 
     // Distinct styling per propulsion module type

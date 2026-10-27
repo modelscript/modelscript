@@ -36,7 +36,11 @@ function stripVarPrefix(v: any): string {
 
 function findBoundProperty(bindings: Record<string, any>, v: any, fallback: string): string {
   const rawName = stripVarPrefix(v);
-  return Object.keys(bindings).find((k) => bindings[k] === v || k === rawName) || rawName || fallback;
+  return (
+    Object.keys(bindings).find((k) => bindings[k] === v || stripVarPrefix(bindings[k]) === rawName || k === rawName) ||
+    rawName ||
+    fallback
+  );
 }
 
 function formatFloatLiteral(n: number): string {
@@ -44,7 +48,11 @@ function formatFloatLiteral(n: number): string {
   return Number.isInteger(n) ? `${n}.0` : `${n}`;
 }
 
-function compileAlgebraicExprToAS(exprStr: string, inputVarIdent: string): string {
+function compileAlgebraicExprToAS(
+  exprStr: string,
+  inputVarIdent: string,
+  boundVarExprs?: Record<string, string>,
+): string {
   let s = String(exprStr || "").trim();
   if (!s) return inputVarIdent;
   const eqIdx = s.indexOf("==");
@@ -60,9 +68,35 @@ function compileAlgebraicExprToAS(exprStr: string, inputVarIdent: string): strin
   const reserved = new Set(["Math", "sqrt", "pow", "exp", "log", "ln", "abs", "sin", "cos", "tan", "min", "max"]);
   s = s.replace(/\b([a-zA-Z_]\w*)\b/g, (match) => {
     if (reserved.has(match)) return match === "ln" ? "log" : match;
+    if (boundVarExprs && boundVarExprs[match] !== undefined) {
+      return boundVarExprs[match]!;
+    }
     return inputVarIdent;
   });
   return s;
+}
+
+function buildBoundVarExprMap(
+  bindings: Record<string, any>,
+  nodeVarIdent: string,
+  primaryProp: string,
+  primaryVarIdent: string,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  const primaryBoundVar = stripVarPrefix(bindings[primaryProp]);
+  for (const [propName, boundVal] of Object.entries(bindings)) {
+    const rawVar = stripVarPrefix(boundVal);
+    if (propName === primaryProp || (rawVar && rawVar === primaryBoundVar)) {
+      map[propName] = primaryVarIdent;
+      if (rawVar) map[rawVar] = primaryVarIdent;
+    } else {
+      const propHash = getDJB2Hash(propName) as u32;
+      const loadExpr = `graph.model.getProperty<f64>(${nodeVarIdent}, ${propHash} as u32)`;
+      map[propName] = loadExpr;
+      if (rawVar) map[rawVar] = loadExpr;
+    }
+  }
+  return map;
 }
 
 /**
@@ -117,12 +151,31 @@ export function compileTGGRules(
 
   const vProxy = (name: string) => `__var_${name}`;
 
+  // Track 16-bit truncated node type hashes to prevent silent collisions across distinct node types
+  const usedHash16ToType = new Map<number, string>();
+  const resolvedNodeTypeHash = new Map<string, number>();
+  const getCollisionFreeNodeHash = (nodeType: string): number => {
+    const existing = resolvedNodeTypeHash.get(nodeType);
+    if (existing !== undefined) return existing;
+    let h = getDJB2Hash(nodeType) >>> 0;
+    let h16 = h & 0xffff;
+    while (h16 === 0 || (usedHash16ToType.has(h16) && usedHash16ToType.get(h16) !== nodeType)) {
+      h = (h + 1) >>> 0;
+      h16 = h & 0xffff;
+    }
+    usedHash16ToType.set(h16, nodeType);
+    resolvedNodeTypeHash.set(nodeType, h);
+    return h;
+  };
+
   // Evaluate and infer languages for all rules
   const evaluatedRules = allRules.map((rule, rIdx) => {
     const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
     const evaluatedTarget = typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target;
     const constraints: TGGConstraint[] = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
     const { sourceLang, targetLang } = inferRuleLanguages(rule, evaluatedSource, evaluatedTarget, constraints);
+    const sourceNodeType = evaluatedSource?.nodeType || "UnknownNode";
+    const targetNodeType = evaluatedTarget?.nodeType || "UnknownNode";
 
     return {
       rule,
@@ -133,10 +186,10 @@ export function compileTGGRules(
       constraints,
       sourceLang,
       targetLang,
-      sourceNodeType: evaluatedSource?.nodeType || "UnknownNode",
-      targetNodeType: evaluatedTarget?.nodeType || "UnknownNode",
-      sourceNodeHash: getDJB2Hash(evaluatedSource?.nodeType || "UnknownNode"),
-      targetNodeHash: getDJB2Hash(evaluatedTarget?.nodeType || "UnknownNode"),
+      sourceNodeType,
+      targetNodeType,
+      sourceNodeHash: getCollisionFreeNodeHash(sourceNodeType),
+      targetNodeHash: getCollisionFreeNodeHash(targetNodeType),
       priority: rule.priority ?? 0,
     };
   });
@@ -470,7 +523,8 @@ export function compileTGGRules(
           code += `  }\n`;
         } else {
           const srcVarIdent = `__invSrc_fwd_${idx}_${cIdx}`;
-          const asFwdExpr = compileAlgebraicExprToAS(String(fwd || ""), srcVarIdent);
+          const boundFwdMap = buildBoundVarExprMap(srcBindings, "sourceNodeId", srcProp, srcVarIdent);
+          const asFwdExpr = compileAlgebraicExprToAS(String(fwd || ""), srcVarIdent, boundFwdMap);
           code += `  {\n`;
           code += `    let ${srcVarIdent} = graph.model.getProperty<f64>(sourceNodeId, ${srcPropHash} as u32);\n`;
           code += `    let __invTgt_fwd_${idx}_${cIdx}: f64 = ${asFwdExpr};\n`;
@@ -716,7 +770,8 @@ export function compileTGGRules(
           code += `  }\n`;
         } else {
           const tgtVarIdent = `__invTgt_bwd_${idx}_${cIdx}`;
-          const asBwdExpr = compileAlgebraicExprToAS(effectiveBwd, tgtVarIdent);
+          const boundBwdMap = buildBoundVarExprMap(tgtBindings, "targetNodeId", tgtProp, tgtVarIdent);
+          const asBwdExpr = compileAlgebraicExprToAS(effectiveBwd, tgtVarIdent, boundBwdMap);
           code += `  {\n`;
           code += `    let ${tgtVarIdent} = graph.model.getProperty<f64>(targetNodeId, ${tgtPropHash} as u32);\n`;
           code += `    let __invSrc_bwd_${idx}_${cIdx}: f64 = ${asBwdExpr};\n`;
@@ -857,6 +912,107 @@ export function compileTGGRules(
       code += `    graph.model.setProperty<f64>(targetNodeId, ${recTgtPropHash} as u32, __recVal);\n`;
     } else {
       code += `    return;\n`;
+    }
+    code += `  } else {\n`;
+    // Synchronize stale attributes and constraints from sourceNodeId -> targetNodeId
+    for (const [tgtProp, tgtVal] of Object.entries(tgtBindings)) {
+      const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+      if (typeof tgtVal === "string" && tgtVal.startsWith("__var_")) {
+        const matchedSrcAttr = Object.keys(srcBindings).find((k) => srcBindings[k] === tgtVal);
+        if (matchedSrcAttr) {
+          const srcPropHash = getDJB2Hash(matchedSrcAttr) as u32;
+          code += `    let __prop_val_${tgtProp} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __prop_val_${tgtProp});\n`;
+        }
+      }
+    }
+    for (let cIdx = 0; cIdx < constraints.length; cIdx++) {
+      const c = constraints[cIdx]!;
+      if (c.kind === "eq") {
+        const [a, b] = c.args;
+        const aName = stripVarPrefix(a);
+        const bName = stripVarPrefix(b);
+        const srcProp = Object.keys(srcBindings).find(
+          (k) => srcBindings[k] === a || k === aName || srcBindings[k] === b || k === bName,
+        );
+        const tgtProp = Object.keys(tgtBindings).find(
+          (k) => tgtBindings[k] === b || k === bName || tgtBindings[k] === a || k === aName,
+        );
+        if (srcProp && tgtProp) {
+          const srcPropHash = getDJB2Hash(srcProp) as u32;
+          const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+          code += `    let __eqVal_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          code += `    if (__eqVal_prop_${idx}_${cIdx} != 0) {\n`;
+          code += `      graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __eqVal_prop_${idx}_${cIdx});\n`;
+          code += `    }\n`;
+        }
+      } else if (c.kind === "typeMap") {
+        const [sourceVar, targetVar, mapKey] = c.args;
+        const srcProp = findBoundProperty(srcBindings, sourceVar, "type");
+        const tgtProp = findBoundProperty(tgtBindings, targetVar, "type");
+        const srcPropHash = getDJB2Hash(srcProp) as u32;
+        const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+        const mapObj: Record<string, string> | undefined =
+          typeof mapKey === "string"
+            ? _typeMaps[mapKey]
+            : typeof mapKey === "object" && mapKey !== null
+              ? (mapKey as Record<string, string>)
+              : undefined;
+        code += `    let __srcType_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
+        code += `    let __mappedType_prop_${idx}_${cIdx} = __srcType_prop_${idx}_${cIdx};\n`;
+        if (mapObj) {
+          for (const [k, v] of Object.entries(mapObj)) {
+            code += `    if (__srcType_prop_${idx}_${cIdx} == ${getDJB2Hash(k)} as u32) __mappedType_prop_${idx}_${cIdx} = ${getDJB2Hash(String(v))} as u32;\n`;
+          }
+        }
+        code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __mappedType_prop_${idx}_${cIdx});\n`;
+      } else if (c.kind === "formatUri") {
+        const [idVar, prefix, targetVar] = c.args;
+        const srcProp = findBoundProperty(srcBindings, idVar, "id");
+        const tgtProp = findBoundProperty(tgtBindings, targetVar, "iri");
+        const srcPropHash = getDJB2Hash(srcProp) as u32;
+        const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+        const prefixHash = prefix ? (getDJB2Hash(String(prefix)) as u32) : 0;
+        code += `    let __idVal_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
+        code += `    let __uriVal_prop_${idx}_${cIdx}: u32 = __idVal_prop_${idx}_${cIdx} != 0 ? (__idVal_prop_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+        code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __uriVal_prop_${idx}_${cIdx});\n`;
+      } else if (c.kind === "compute") {
+        const [targetVar, queryName, sourceVar] = c.args;
+        const srcProp = findBoundProperty(srcBindings, sourceVar, "value");
+        const tgtProp = findBoundProperty(tgtBindings, targetVar, "value");
+        const srcPropHash = getDJB2Hash(srcProp) as u32;
+        const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+        const queryHash = getDJB2Hash(String(queryName || "compute")) as u32;
+        code += `    let __compVal_prop_${idx}_${cIdx} = graph.model.compute(sourceNodeId, ${queryHash} as u32);\n`;
+        code += `    if (__compVal_prop_${idx}_${cIdx} == 0) {\n`;
+        code += `      __compVal_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
+        code += `    }\n`;
+        code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __compVal_prop_${idx}_${cIdx});\n`;
+      } else if (c.kind === "invertible") {
+        const [fwd] = c.args;
+        const tgtDefaultProp = Object.keys(tgtBindings)[0] || "value";
+        const inv = invertExpression(String(fwd || ""), tgtDefaultProp);
+        const srcProp = findBoundProperty(srcBindings, inv.sourceVar || Object.keys(srcBindings)[0], "value");
+        const tgtProp = findBoundProperty(tgtBindings, inv.targetVar || tgtDefaultProp, "value");
+        const srcPropHash = getDJB2Hash(srcProp) as u32;
+        const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+        if (inv.kind === "prefix") {
+          const prefixMatch = String(fwd || "")
+            .trim()
+            .match(/^"([^"]+)"/);
+          const prefixHash = prefixMatch ? (getDJB2Hash(prefixMatch[1]!) as u32) : 0;
+          code += `    let __invId_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          code += `    let __invOut_prop_${idx}_${cIdx}: u32 = __invId_prop_${idx}_${cIdx} != 0 ? (__invId_prop_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+          code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __invOut_prop_${idx}_${cIdx});\n`;
+        } else {
+          const srcVarIdent = `__invSrc_prop_${idx}_${cIdx}`;
+          const boundPropMap = buildBoundVarExprMap(srcBindings, "sourceNodeId", srcProp, srcVarIdent);
+          const asFwdExpr = compileAlgebraicExprToAS(String(fwd || ""), srcVarIdent, boundPropMap);
+          code += `    let ${srcVarIdent} = graph.model.getProperty<f64>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          code += `    let __invTgt_prop_${idx}_${cIdx}: f64 = ${asFwdExpr};\n`;
+          code += `    graph.model.setProperty<f64>(targetNodeId, ${tgtPropHash} as u32, __invTgt_prop_${idx}_${cIdx});\n`;
+        }
+      }
     }
     code += `  }\n`;
     code += `  \n`;

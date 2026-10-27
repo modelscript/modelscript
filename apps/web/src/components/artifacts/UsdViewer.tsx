@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/no-namespace */
+/* eslint-disable @typescript-eslint/no-namespace */
 import { DownloadIcon, PackageIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, IconButton, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";

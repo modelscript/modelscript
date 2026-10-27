@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { easy5ToDae } from "./dae/easy5-to-dae.js";
 import { computeBodePlot, linearizeEasy5 } from "./linear/index.js";

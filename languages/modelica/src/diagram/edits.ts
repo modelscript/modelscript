@@ -3,7 +3,6 @@
 // Diagram-to-code edit computation.
 // Ported from morsel's morsel.tsx (getPlacementEdit, getConnectEdits,
 // handleEdgeDelete, handleComponentsDelete) to produce LSP TextEdit arrays.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 type ModelicaClassInstance = any;
 import { CstUnparser } from "@modelscript/dsl";

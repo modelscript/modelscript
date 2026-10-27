@@ -546,8 +546,7 @@ export class B2BEquivalenceVerifier {
   private static async ensureBltInitialized(): Promise<void> {
     await initBltWasm();
     try {
-      const relDistBlt = "../../dist/analysis/wasm_blt.js";
-      // @ts-ignore
+      const relDistBlt: string = "../../dist/analysis/wasm_blt.js";
       const distBlt: any = await import(relDistBlt).catch(() => null);
       if (distBlt?.initBltWasm) await distBlt.initBltWasm();
     } catch {}

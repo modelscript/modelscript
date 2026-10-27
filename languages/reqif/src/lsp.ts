@@ -101,7 +101,7 @@ export function validateReqif(content: string): LspDiagnostic[] {
   let doc: ReqIfDocument;
   try {
     doc = parseReqIf(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     diags.push({
       range: {
         start: { line: 0, character: 0 },
@@ -110,7 +110,7 @@ export function validateReqif(content: string): LspDiagnostic[] {
       severity: 1,
       code: "REQIF-PARSE-ERROR",
       source: "reqif",
-      message: err.message || "Failed to parse ReqIF XML document",
+      message: (err instanceof Error ? err.message : String(err)) || "Failed to parse ReqIF XML document",
     });
     return diags;
   }

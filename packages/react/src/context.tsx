@@ -31,9 +31,13 @@ export function ModelScriptProvider({ children, theme = "dark" }: ModelScriptPro
   useEffect(() => {
     // Detect host runtime environment
     if (typeof window !== "undefined") {
-      if ((window as any).__TAURI__) {
+      const hostWindow = window as unknown as {
+        __TAURI__?: unknown;
+        acquireVsCodeApi?: unknown;
+      };
+      if (hostWindow.__TAURI__) {
         setEnvironment("tauri");
-      } else if ((window as any).acquireVsCodeApi || window.parent !== window) {
+      } else if (hostWindow.acquireVsCodeApi || window.parent !== window) {
         setEnvironment("vscode");
       } else {
         setEnvironment("web");

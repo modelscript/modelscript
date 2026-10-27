@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import {

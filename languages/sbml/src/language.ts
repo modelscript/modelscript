@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSbmlToDae } from "./dae/sbml-to-dae.js";
 import { lintSbml } from "./lints/index.js";
 import { parseSbml } from "./parser/sbml-parser.js";
 import { sbmlToModelica } from "./projections/sbml-to-modelica.js";
-import { solveReactions } from "./solvers/reaction-solver.js";
+import { solveReactions, type ReactionSolverOptions } from "./solvers/reaction-solver.js";
 
 /**
  * ModelScript Systems Biology Markup Language (.sbml, .xml) Language Definition.
@@ -51,7 +50,7 @@ export const sbmlLanguage = language({
           modelDescription: "Lints SBML file for missing compartments, undefined species, and empty reactions.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseSbml(text);
@@ -63,7 +62,10 @@ export const sbmlLanguage = language({
       title: "Simulate Biochemical Network",
       description: "Solves chemical reaction kinetics ODEs using 4th-order Runge-Kutta numerical integration.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; options?: any }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; options?: ReactionSolverOptions | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const doc = parseSbml(text);
@@ -75,7 +77,7 @@ export const sbmlLanguage = language({
       title: "Lower SBML to DAE",
       description: "Compiles species concentrations, stoichiometry, and reaction fluxes into DAEBuilder.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseSbml(text);
@@ -92,7 +94,10 @@ export const sbmlLanguage = language({
       title: "Project SBML to Modelica",
       description: "Synthesizes standard Modelica 3.x biochemical reaction equations and flux variables.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined; modelName?: string }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; modelName?: string },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseSbml(text);

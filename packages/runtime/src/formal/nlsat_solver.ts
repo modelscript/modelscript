@@ -610,6 +610,44 @@ export class MultiPoly {
         if (!l || !r) return null;
         return MultiPoly.multiply(l, r);
       }
+      case "div": {
+        if (node.right.kind === "const" && Math.abs(node.right.value) > 1e-12) {
+          const l = MultiPoly.fromExprNode(node.left);
+          if (!l) return null;
+          const inv = 1 / node.right.value;
+          return new MultiPoly(l.terms.map((t) => ({ deg: new Map(t.deg), coeff: t.coeff * inv })));
+        }
+        return null;
+      }
+      case "pow": {
+        if (
+          node.right.kind === "const" &&
+          Number.isInteger(node.right.value) &&
+          node.right.value >= 0 &&
+          node.right.value <= 16
+        ) {
+          const exp = node.right.value;
+          if (exp === 0) return new MultiPoly([{ deg: new Map(), coeff: 1 }]);
+          const base = MultiPoly.fromExprNode(node.left);
+          if (!base) return null;
+          let acc = base;
+          for (let i = 1; i < exp; i++) {
+            acc = MultiPoly.multiply(acc, base);
+          }
+          return acc;
+        }
+        return null;
+      }
+      case "call": {
+        const fn = node.fn.toLowerCase();
+        if (fn === "sqr" && node.args[0]) {
+          return MultiPoly.fromExprNode({ kind: "sqr", child: node.args[0] });
+        }
+        if (fn === "pow" && node.args[0] && node.args[1]) {
+          return MultiPoly.fromExprNode({ kind: "pow", left: node.args[0], right: node.args[1] });
+        }
+        return null;
+      }
       default:
         return null;
     }
@@ -767,10 +805,11 @@ export class NlsatSolver {
     const stack: StackFrame[] = [];
     let currentVarIdx = 0;
     const n = this.variableOrder.length;
+    const conflictCoreIds = new Set<number>();
 
-    if (n === 0) {
-      // No variables: check pure constant constraints
-      for (const c of this.constraints) {
+    // Check pure constant constraints upfront regardless of variable count
+    for (const c of this.constraints) {
+      if (c.vars.length === 0) {
         const val = c.poly.eval(assignment);
         if (!evalRelOp(val, c.op)) {
           return {
@@ -782,6 +821,9 @@ export class NlsatSolver {
           };
         }
       }
+    }
+
+    if (n === 0) {
       return {
         status: "SAT",
         model: assignment,
@@ -799,6 +841,7 @@ export class NlsatSolver {
           const val = c.poly.eval(assignment);
           if (!evalRelOp(val, c.op)) {
             allSatisfied = false;
+            conflictCoreIds.add(c.id);
             break;
           }
         }
@@ -872,6 +915,7 @@ export class NlsatSolver {
         if (feasibleCells.length === 0) {
           // Conflict at this level! No real value satisfies active constraints
           const conflictingIds = activeConstraints.map((c) => c.id);
+          for (const id of conflictingIds) conflictCoreIds.add(id);
 
           if (currentVarIdx === 0) {
             // Refuted at root level: formula is definitively UNSAT
@@ -930,6 +974,8 @@ export class NlsatSolver {
             }
             return {
               status: "UNSAT",
+              conflictingConstraintIds:
+                conflictCoreIds.size > 0 ? Array.from(conflictCoreIds) : this.constraints.map((c) => c.id),
               iterations,
               durationMs: performance.now() - startTime,
               summary: "UNSAT: All CAD cell branches exhausted across variable tree.",

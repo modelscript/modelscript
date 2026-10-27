@@ -262,10 +262,9 @@ export function parseLpsXml(xmlText: string): LpsModel {
     const polytropicEfficiency = parseNum(getAttr(el, "efficiency"), 0.82);
     const driverEfficiency = parseNum(getAttr(el, "driverEfficiency"), 0.38);
     const fuelGasFraction = parseNum(getAttr(el, "fuelGasFraction"), 0.005);
-    const status =
-      getAttr(el, "status")?.toUpperCase() === "STOPPED" || getAttr(el, "status")?.toUpperCase() === "BYPASSED"
-        ? (getAttr(el, "status")!.toUpperCase() as any)
-        : "RUNNING";
+    const rawCompStatus = getAttr(el, "status")?.toUpperCase();
+    const status: CompressorStation["status"] =
+      rawCompStatus === "STOPPED" || rawCompStatus === "BYPASSED" ? rawCompStatus : "RUNNING";
     const controlMode: CompressorControlMode =
       (getAttr(el, "controlMode")?.toUpperCase() as CompressorControlMode) ?? "DISCHARGE_PRESSURE";
     const setpoint = parsePressure(getAttr(el, "setpoint"), 80e5);
@@ -301,10 +300,9 @@ export function parseLpsXml(xmlText: string): LpsModel {
     const ratedHead = parseNum(getAttr(el, "ratedHead"), 300); // 300 meters head
     const npshRequired = parseNum(getAttr(el, "npshRequired") ?? getAttr(el, "npshr"), 4.5); // 4.5 meters
     const efficiency = parseNum(getAttr(el, "efficiency"), 0.8);
-    const status =
-      getAttr(el, "status")?.toUpperCase() === "STOPPED" || getAttr(el, "status")?.toUpperCase() === "BYPASSED"
-        ? (getAttr(el, "status")!.toUpperCase() as any)
-        : "RUNNING";
+    const rawPumpStatus = getAttr(el, "status")?.toUpperCase();
+    const status: PumpStation["status"] =
+      rawPumpStatus === "STOPPED" || rawPumpStatus === "BYPASSED" ? rawPumpStatus : "RUNNING";
     const controlMode: PumpControlMode =
       (getAttr(el, "controlMode")?.toUpperCase() as PumpControlMode) ?? "DISCHARGE_PRESSURE";
     const setpoint = parsePressure(getAttr(el, "setpoint"), 60e5);
@@ -446,12 +444,15 @@ export function parseLpsXml(xmlText: string): LpsModel {
   // 9. Simulation Controls
   const ctrlEls = findElements(root, ["controls", "simulationcontrols", "study"]);
   const c = ctrlEls.length > 0 ? ctrlEls[0] : null;
+  const rawEos = getAttr(c, "eos")?.toUpperCase();
+  const equationOfState: SimulationControls["equationOfState"] =
+    rawEos === "GERG2008" || rawEos === "PENG_ROBINSON" || rawEos === "IDEAL" ? rawEos : "AGA8";
   const simulationControls: SimulationControls = {
     startTime: parseNum(getAttr(c, "startTime"), 0),
     endTime: parseNum(getAttr(c, "endTime") ?? getAttr(c, "duration"), 86400),
     timeStep: parseNum(getAttr(c, "timeStep") ?? getAttr(c, "dt"), 60),
     steadyStateFirst: getAttr(c, "steadyStateFirst")?.toLowerCase() !== "false",
-    equationOfState: (getAttr(c, "eos")?.toUpperCase() as any) ?? "AGA8",
+    equationOfState,
     tolerance: parseNum(getAttr(c, "tolerance"), 1e-4),
   };
 

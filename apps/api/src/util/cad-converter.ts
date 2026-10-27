@@ -2,12 +2,10 @@
 
 import { AssemblyBVH, type BVHItem } from "@modelscript/cad";
 import { extractStepAssembly } from "@modelscript/step";
-// @ts-expect-error missing types for occt-import-js
 import occtimportjs from "occt-import-js";
 import type { LibraryDatabase } from "../database.js";
 import { safePublicFetch } from "./ssrf.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function computeMeshProperties(meshes: any[]) {
   let totalVolume = 0;
   let totalSurfaceArea = 0;
@@ -58,11 +56,11 @@ function computeMeshProperties(meshes: any[]) {
   return { volume: totalVolume, surfaceArea: totalSurfaceArea };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function convertStepBufferToJson(fileData: Uint8Array, stepText?: string): Promise<any> {
   // occtimportjs is a wasm module factory
-  const occt = await // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (occtimportjs as unknown as () => Promise<{ ReadStepFile: (data: Uint8Array, param: null) => any }>)();
+  const occt = await (
+    occtimportjs as unknown as () => Promise<{ ReadStepFile: (data: Uint8Array, param: null) => any }>
+  )();
 
   // Read the STEP file from memory
   const result = occt.ReadStepFile(fileData, null) || { meshes: [] };

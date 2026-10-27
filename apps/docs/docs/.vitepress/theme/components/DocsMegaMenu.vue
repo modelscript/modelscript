@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import mcpData from "../data/mcp-tools.generated.json";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
@@ -100,7 +101,7 @@ const columns: MegaMenuColumn[] = [
       },
       {
         name: "MCP & IDE Reference",
-        tagline: "All 31 MCP tool schemas, LSP capabilities & DAP debugger",
+        tagline: `All ${mcpData.toolCount} MCP tool schemas, LSP capabilities & DAP debugger`,
         href: "/reference/mcp-and-ide",
         icon: "layers",
         accent: "#a78bfa",

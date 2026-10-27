@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { language } from "@modelscript/dsl";
 import { lowerTouchstoneToDae } from "./dae/touchstone-to-dae.js";
@@ -69,7 +68,7 @@ export const touchstoneLanguage = language({
           modelDescription: "Lints Touchstone S-parameter file for format, passivity, and reciprocity violations.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseTouchstone(text);
@@ -81,7 +80,7 @@ export const touchstoneLanguage = language({
       title: "Verify Passivity",
       description: "Computes matrix spectral norm ||S(f)||_2 across frequency points to verify passivity.",
       category: "verify",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseTouchstone(text);
@@ -93,7 +92,7 @@ export const touchstoneLanguage = language({
       title: "Lower Touchstone to DAE",
       description: "Compiles Touchstone N-port model into companion state-space DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseTouchstone(text);
@@ -110,7 +109,7 @@ export const touchstoneLanguage = language({
       title: "Project Touchstone to Modelica",
       description: "Synthesizes standard Modelica 3.x Analog N-port state-space model.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseTouchstone(text);
@@ -122,7 +121,7 @@ export const touchstoneLanguage = language({
       title: "Fit Vector Macromodel",
       description: "Fits rational pole-residue state space representation using vector fitting algorithm.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseTouchstone(text);

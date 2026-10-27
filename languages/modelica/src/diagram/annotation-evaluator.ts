@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { Cst } from "../../src-gen/bindings.js";
 import { resolveModelicaConstant } from "../constants.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../types.js";

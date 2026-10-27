@@ -339,7 +339,6 @@ export class VerificationRunner {
   // CST comparison extraction
   // -------------------------------------------------------------------------
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public extractComparison(node: any): { lhs: string; op: ComparisonOp; rhs: string } | null {
     if (!node) return null;
 
@@ -408,7 +407,6 @@ export class VerificationRunner {
     simResult: SimulationResult,
     timeIndex: number,
   ): { isSatisfied: boolean; error?: string | undefined } {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cst = this.db.cstNode(constraint.id) as any;
     if (!cst) {
       return { isSatisfied: false, error: "No CST node found for constraint" };

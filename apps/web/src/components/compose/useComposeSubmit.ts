@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
 import { createArtifactView, createPost, updatePost, uploadStorageFile } from "../../api";
 import { getAllPrivateKeyIds, getPrivateKey, migrateLegacyKeys } from "../../util/keystore";

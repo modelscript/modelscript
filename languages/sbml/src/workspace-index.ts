@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseSbml } from "./parser/sbml-parser.js";
 import type { SbmlDocument } from "./types.js";
+
+export type SbmlDocumentLoader = () =>
+  | string
+  | { sourceText?: string | undefined; text?: string | undefined }
+  | null
+  | undefined;
 
 /**
  * Multi-file workspace indexer for Systems Biology Markup Language documents (.sbml, .xml).
@@ -39,7 +44,7 @@ export class SbmlWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: SbmlDocumentLoader): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +54,7 @@ export class SbmlWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: SbmlDocumentLoader): void {
     this._version++;
     if (loader) {
       try {
@@ -82,13 +87,13 @@ export class SbmlWorkspaceIndex implements IWorkspaceIndex {
       parentId: SymbolId | null,
       startOffset: number,
       endOffset: number,
-      metadata: Record<string, any> = {},
+      metadata: Record<string, unknown> = {},
     ): SymbolId {
       const symId = (baseId! + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "sbml_symbol",
         namePath: name,
         fieldName: null,

@@ -48,7 +48,7 @@ export function checkDistIntegrity(pkgJsonPath: string): Violation[] {
   const violations: Violation[] = [];
   const pkgDir = path.dirname(pkgJsonPath);
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-  const pkgName = pkg.name || path.relative(REPO_ROOT, pkgDir);
+  const pkgName = pkg.name || path.relative(REPO_ROOT, pkgDir).replace(/\\/g, "/");
   const distDir = path.join(pkgDir, "dist");
 
   // Only check packages that have or produce a dist/ directory
@@ -100,7 +100,7 @@ export function checkDistIntegrity(pkgJsonPath: string): Violation[] {
           if (entry.name === "node_modules" || entry.name === "scratch") continue;
           results.push(...findNonTsAssets(full, baseDir));
         } else if (entry.isFile()) {
-          const rel = path.relative(baseDir, full);
+          const rel = path.relative(baseDir, full).replace(/\\/g, "/");
           // Look for .wasm assets or src-gen bindings that are required at runtime
           if (entry.name.endsWith(".wasm") || rel.includes("src-gen/bindings.js")) {
             results.push(rel);

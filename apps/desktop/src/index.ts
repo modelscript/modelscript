@@ -54,9 +54,25 @@ export interface DesktopSimulationResult {
   executionTimeMs: number;
 }
 
+interface TauriFsFallback {
+  readTextFile?: (filePath: string) => Promise<string>;
+  readFile?: (filePath: string) => Promise<Uint8Array>;
+  writeTextFile?: (filePath: string, content: string) => Promise<void>;
+  writeFile?: (filePath: string, data: Uint8Array) => Promise<void>;
+}
+
+interface TauriGlobal {
+  fs?: TauriFsFallback;
+}
+
+function getTauriGlobal(): TauriGlobal | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
+}
+
 /** Check if running inside the native Tauri desktop environment */
 export function isTauriEnvironment(): boolean {
-  return typeof window !== "undefined" && Boolean((window as any).__TAURI__);
+  return Boolean(getTauriGlobal());
 }
 
 /**
@@ -69,7 +85,7 @@ export async function readModelFile(filePath: string): Promise<string> {
       const { readTextFile } = await import("@tauri-apps/plugin-fs");
       return await readTextFile(filePath);
     } catch {
-      const tauri = (window as any).__TAURI__;
+      const tauri = getTauriGlobal();
       if (tauri?.fs?.readTextFile) {
         return await tauri.fs.readTextFile(filePath);
       }
@@ -94,7 +110,7 @@ export async function readModelBinaryFile(filePath: string): Promise<Uint8Array>
       const { readFile } = await import("@tauri-apps/plugin-fs");
       return await readFile(filePath);
     } catch {
-      const tauri = (window as any).__TAURI__;
+      const tauri = getTauriGlobal();
       if (tauri?.fs?.readFile) {
         return await tauri.fs.readFile(filePath);
       }
@@ -121,7 +137,7 @@ export async function writeModelFile(filePath: string, content: string): Promise
       await writeTextFile(filePath, content);
       return;
     } catch {
-      const tauri = (window as any).__TAURI__;
+      const tauri = getTauriGlobal();
       if (tauri?.fs?.writeTextFile) {
         await tauri.fs.writeTextFile(filePath, content);
         return;
@@ -152,7 +168,7 @@ export async function writeModelBinaryFile(filePath: string, data: Uint8Array): 
       await writeFile(filePath, data);
       return;
     } catch {
-      const tauri = (window as any).__TAURI__;
+      const tauri = getTauriGlobal();
       if (tauri?.fs?.writeFile) {
         await tauri.fs.writeFile(filePath, data);
         return;
@@ -368,11 +384,12 @@ export async function exportSimulationCsv(
   filePath: string,
   trajectory: { time: number; values: Record<string, number> }[],
 ): Promise<string> {
-  if (trajectory.length === 0) {
+  const firstPoint = trajectory[0];
+  if (!firstPoint) {
     throw new Error("No trajectory points to export.");
   }
 
-  const varNames = Object.keys(trajectory[0]!.values);
+  const varNames = Object.keys(firstPoint.values);
   const header = ["time", ...varNames].join(",");
   const rows = trajectory.map((pt) => {
     const row = [pt.time.toFixed(6), ...varNames.map((v) => (pt.values[v] ?? 0.0).toString())];

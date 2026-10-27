@@ -93,5 +93,9 @@
     "typescript-eslint": "^8.46.3",
     "vite": "^8.0.14",
     "vite-tsconfig-paths": "^5.1.4"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "app"
   }
 }

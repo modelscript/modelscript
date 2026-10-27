@@ -153,7 +153,6 @@ export async function seedExamplePackages(
     const zipBuffer = await zipFolderToBuffer(pkgDir, ignorePatterns);
     try {
       await storage.store(name, version, zipBuffer);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
         throw err;
@@ -366,7 +365,6 @@ export async function seedPrepackagedLibraries(
     } else {
       try {
         await storage.store(pkg.name, pkg.version, zipBuffer);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
           throw err;

@@ -8,7 +8,15 @@
  * tracing, loop identification, and spatial aggregation.
  */
 
-import type { LpsModel, LpsNode } from "../types.js";
+import type {
+  CompressorStation,
+  InlineValve,
+  LpsModel,
+  LpsNode,
+  LpsPipe,
+  PumpStation,
+  RegulatorValve,
+} from "../types.js";
 
 export type LinkKind = "PIPE" | "COMPRESSOR" | "PUMP" | "REGULATOR" | "VALVE";
 
@@ -21,7 +29,7 @@ export interface NetworkLink {
   length: number; // meters (0 for inline equipment)
   diameter: number; // meters
   maop: number; // Pa
-  reference: any;
+  reference: LpsPipe | CompressorStation | PumpStation | RegulatorValve | InlineValve;
 }
 
 export class PipelineGraph {

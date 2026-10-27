@@ -203,6 +203,10 @@
     "prettier": "^3.6.2",
     "rimraf": "^6.1.0"
   },
+  "modelscript": {
+    "tier": "stable",
+    "category": "core"
+  },
   "nx": {
     "targets": {
       "build": {

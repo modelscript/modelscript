@@ -57,7 +57,7 @@ export function clearActiveDropPlaceholder(): void {
  * Computes typical node dimensions from existing diagram components in the graph,
  * or returns language-appropriate defaults (e.g. 20x20 for Modelica/physical circuits).
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export function getTypicalNodeSize(g: any): { width: number; height: number } {
   if (g && typeof g.getNodes === "function") {
     const nodes = g.getNodes().filter((n: any) => !isEphemeralDiagramNode(n.id));
@@ -188,7 +188,6 @@ export function ensureDiagramStyles(): void {
 }
 
 export function dropComponentGhost(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   g: any,
   x: number,
   y: number,

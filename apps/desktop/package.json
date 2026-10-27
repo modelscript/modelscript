@@ -40,5 +40,9 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.2.0"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "app"
   }
 }

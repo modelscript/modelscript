@@ -238,6 +238,7 @@ export class MultiDomainVerificationCoordinator {
    */
   public verify(requirements: RequirementContractSpec[], decks: MultiDomainDecks): MultiDomainVerificationReport {
     const t0 = performance.now();
+    this.coordinator.reset();
     const domainChecks: DomainCheckResult[] = [];
     const domainsEvaluated: string[] = [];
 
@@ -247,7 +248,16 @@ export class MultiDomainVerificationCoordinator {
     // 2. Assert requirements into Entailment & Constraint oracles
     let litId = 1000;
     for (const req of requirements) {
-      const op = req.operator === "!=" ? "<=" : req.operator;
+      if (req.operator === "!=") {
+        this.constraintOracle.assertLiteral({
+          id: litId++,
+          predicate: "bound",
+          args: [req.variable, "!=", req.limitValue],
+        });
+        continue;
+      }
+
+      const op = req.operator;
       this.reqOracle.assertLiteral({
         id: litId++,
         predicate: "requirement",

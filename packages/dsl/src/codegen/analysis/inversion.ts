@@ -12,8 +12,13 @@ export interface InversionResult {
  * Automatically derives the inverse transformation of declarative constraint expressions.
  * Solves y = f(x) for x, enabling automatic backward TGG rule generation without manual specification.
  */
-export function invertExpression(forwardExpr: string, targetVarName: string = "y"): InversionResult {
+export function invertExpression(
+  forwardExpr: string,
+  targetVarName: string = "y",
+  sourceVarHint?: string,
+): InversionResult {
   let trimmed = forwardExpr.trim();
+  const callerTargetOrHint = targetVarName !== "y" ? targetVarName : undefined;
   const firstEqIdx = trimmed.indexOf("=");
   if (
     firstEqIdx > 0 &&
@@ -24,6 +29,9 @@ export function invertExpression(forwardExpr: string, targetVarName: string = "y
   ) {
     const lhs = trimmed.slice(0, firstEqIdx).trim();
     if (/^[a-zA-Z_]\w*$/.test(lhs)) {
+      if (sourceVarHint === undefined && callerTargetOrHint !== undefined && callerTargetOrHint !== lhs) {
+        sourceVarHint = callerTargetOrHint;
+      }
       targetVarName = lhs;
       trimmed = trimmed.slice(firstEqIdx + 1).trim();
     }
@@ -41,6 +49,49 @@ export function invertExpression(forwardExpr: string, targetVarName: string = "y
       sourceVar,
       targetVar: targetVarName,
       invertedExpr: `(${targetVarName} ${invAddOp} ${bVal}) ${invMulOp} ${aVal}`,
+    };
+  }
+
+  // 0b. Commutative 2-step affine: A * x + B or A * x - B
+  const commFullAffineMatch1 = trimmed.match(/^([\d.]+)\s*\*\s*([a-zA-Z_]\w*)\s*([+-])\s*([\d.]+)$/);
+  if (commFullAffineMatch1) {
+    const [, aVal, sourceVar, addOp, bVal] = commFullAffineMatch1;
+    const invAddOp = addOp === "+" ? "-" : "+";
+    return {
+      isInvertible: true,
+      kind: "affine",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr: `(${targetVarName} ${invAddOp} ${bVal}) / ${aVal}`,
+    };
+  }
+
+  // 0c. Offset-first 2-step affine: B + A * x or B - A * x
+  const commFullAffineMatch2 = trimmed.match(/^([\d.]+)\s*([+-])\s*([\d.]+)\s*\*\s*([a-zA-Z_]\w*)$/);
+  if (commFullAffineMatch2) {
+    const [, bVal, addOp, aVal, sourceVar] = commFullAffineMatch2;
+    const numExpr = addOp === "+" ? `(${targetVarName} - ${bVal})` : `(${bVal} - ${targetVarName})`;
+    return {
+      isInvertible: true,
+      kind: "affine",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr: `${numExpr} / ${aVal}`,
+    };
+  }
+
+  // 0d. Offset-first 2-step affine with post-multiplier/divisor: B + x * A or B - x / A
+  const commFullAffineMatch3 = trimmed.match(/^([\d.]+)\s*([+-])\s*([a-zA-Z_]\w*)\s*([*/])\s*([\d.]+)$/);
+  if (commFullAffineMatch3) {
+    const [, bVal, addOp, sourceVar, mulOp, aVal] = commFullAffineMatch3;
+    const numExpr = addOp === "+" ? `(${targetVarName} - ${bVal})` : `(${bVal} - ${targetVarName})`;
+    const invMulOp = mulOp === "*" ? "/" : "*";
+    return {
+      isInvertible: true,
+      kind: "affine",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr: `${numExpr} ${invMulOp} ${aVal}`,
     };
   }
 
@@ -95,6 +146,32 @@ export function invertExpression(forwardExpr: string, targetVarName: string = "y
       sourceVar,
       targetVar: targetVarName,
       invertedExpr: `${targetVarName} / ${constVal}`,
+    };
+  }
+
+  // 2c. Two-variable symbolic binary expression: v1 (+|-|*|/) v2
+  const symBinMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*([+\-*/])\s*([a-zA-Z_]\w*)$/);
+  if (symBinMatch) {
+    const [, v1, op, v2] = symBinMatch;
+    const solveForV2 = sourceVarHint === v2 && sourceVarHint !== v1;
+    const sourceVar = solveForV2 ? v2! : v1!;
+    const otherVar = solveForV2 ? v1! : v2!;
+    let invertedExpr: string;
+    if (op === "+") {
+      invertedExpr = `${targetVarName} - ${otherVar}`;
+    } else if (op === "-") {
+      invertedExpr = solveForV2 ? `${otherVar} - ${targetVarName}` : `${targetVarName} + ${otherVar}`;
+    } else if (op === "*") {
+      invertedExpr = `${targetVarName} / ${otherVar}`;
+    } else {
+      invertedExpr = solveForV2 ? `${otherVar} / ${targetVarName}` : `${targetVarName} * ${otherVar}`;
+    }
+    return {
+      isInvertible: true,
+      kind: "affine",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr,
     };
   }
 

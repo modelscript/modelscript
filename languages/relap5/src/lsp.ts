@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerRelap5ToDae } from "./dae/relap5-to-dae.js";
 import { lintRelap5 } from "./lints/index.js";
 import { parseRelap5 } from "./parser/relap5-parser.js";
 import { relap5ToModelica } from "./projections/relap5-to-modelica.js";
-import { solvePointKinetics } from "./solvers/point-kinetics-solver.js";
+import { solvePointKinetics, type KineticsSolverOptions } from "./solvers/point-kinetics-solver.js";
 
 export interface LspPosition {
   line: number;
@@ -96,7 +95,8 @@ export function validateRelap5(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -106,7 +106,7 @@ export function validateRelap5(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8600",
         source: "relap5-parser",
-        message: `RELAP5 parse error: ${err.message}`,
+        message: `RELAP5 parse error: ${errMsg}`,
       },
     ];
   }
@@ -255,7 +255,47 @@ export function getRelap5Hover(text: string, position: LspPosition): LspHover | 
   return null;
 }
 
-export async function executeRelap5Action(action: string, text: string, params?: any): Promise<any> {
+export interface Relap5ActionParams {
+  options?: KineticsSolverOptions | undefined;
+  modelName?: string | undefined;
+}
+
+export type Relap5ActionResult =
+  | ReturnType<typeof lintRelap5>
+  | ReturnType<typeof solvePointKinetics>
+  | { modelName: string; variableCount: number; equationCount: number }
+  | string;
+
+export async function executeRelap5Action(
+  action: "lint_relap5",
+  text: string,
+  params?: Relap5ActionParams,
+): Promise<ReturnType<typeof lintRelap5>>;
+export async function executeRelap5Action(
+  action: "relap5_kinetics_solve",
+  text: string,
+  params?: Relap5ActionParams,
+): Promise<ReturnType<typeof solvePointKinetics>>;
+export async function executeRelap5Action(
+  action: "relap5_to_dae",
+  text: string,
+  params?: Relap5ActionParams,
+): Promise<{ modelName: string; variableCount: number; equationCount: number }>;
+export async function executeRelap5Action(
+  action: "relap5_to_modelica",
+  text: string,
+  params?: Relap5ActionParams,
+): Promise<string>;
+export async function executeRelap5Action(
+  action: string,
+  text: string,
+  params?: Relap5ActionParams,
+): Promise<Relap5ActionResult>;
+export async function executeRelap5Action(
+  action: string,
+  text: string,
+  params?: Relap5ActionParams,
+): Promise<Relap5ActionResult> {
   const deck = parseRelap5(text);
 
   switch (action) {

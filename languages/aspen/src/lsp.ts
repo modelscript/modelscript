@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerAspenToDae } from "./dae/aspen-to-dae.js";
 import { lintAspen } from "./lints/index.js";
@@ -89,7 +88,7 @@ export function validateAspen(text: string): LspDiagnostic[] {
         message: `[${d.code}] ${d.message}`,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -99,7 +98,7 @@ export function validateAspen(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8100",
         source: "modelscript-aspen",
-        message: `Parse Error: ${err.message}`,
+        message: `Parse Error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -231,7 +230,11 @@ export function getAspenHover(text: string, pos: LspPosition): LspHover | undefi
   }
 }
 
-export async function executeAspenAction(actionId: string, text: string, params?: any): Promise<any> {
+export async function executeAspenAction(
+  actionId: string,
+  text: string,
+  params?: { streamId?: string | undefined },
+): Promise<unknown> {
   const deck = parseAspen(text);
 
   switch (actionId) {

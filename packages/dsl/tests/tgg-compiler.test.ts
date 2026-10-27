@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  compileWcojMatcher,
+  invertExpression,
+  planWcojPattern,
+  runCPA,
   tggCompute,
   tggDefaultVal,
   tggEq,
@@ -12,6 +16,7 @@ import {
   tggReconcilePhysics,
   tggRule,
   tggTypeMap,
+  verifyRuleLosslessness,
 } from "@modelscript/dsl";
 import { compileTGGRules } from "@modelscript/dsl/codegen/compile_tgg.js";
 import assert from "node:assert";
@@ -23,6 +28,7 @@ const expect = (val: any) => ({
   toBeDefined: () => assert.notStrictEqual(val, undefined),
   toContain: (str: string) => assert.ok(String(val).includes(str)),
   notToContain: (str: string) => assert.ok(!String(val).includes(str)),
+  toBeGreaterThanOrEqual: (min: number) => assert.ok(Number(val) >= min),
 });
 
 describe("AOT TGG Compiler", () => {
@@ -152,5 +158,122 @@ describe("AOT TGG Compiler", () => {
     expect(code).notToContain("0.0, 0.0, corr");
     expect(code).toContain("let __srcVal = graph.model.getProperty<f64>(sourceNodeId,");
     expect(code).toContain("let __tgtVal = graph.model.getProperty<f64>(targetNodeId,");
+
+    // Stale attribute propagation in tgg_propagate_ComplexConstraintRule
+    expect(code).toContain("__invSrc_prop_0_5");
+    expect(code).toContain("__uriVal_prop_0_0");
+  });
+
+  it("should resolve distinct bound variables in multi-variable invertible expressions and initialize WCOJ iterators", () => {
+    const rules = [
+      tggRule({
+        name: "ForceLawRule",
+        source: ($, v) =>
+          $.MechanicalBody({
+            mass: v("m"),
+            accel: v("a"),
+          }),
+        target: ($, v) =>
+          $.ForceLoad({
+            force: v("f"),
+          }),
+        where: () => [tggInvertible("f = m * a", "m = f / a")],
+      }),
+    ];
+
+    const compiled = compileTGGRules(rules);
+    // 'm' resolves to the primary local variable and 'a' resolves to a separate property load on sourceNodeId
+    expect(compiled.sourceCode).toContain("__invSrc_fwd_0_0 * graph.model.getProperty<f64>(sourceNodeId,");
+
+    // WCOJ matcher initializes LeapfrogIterators from DPO edges before intersection
+    const plan = planWcojPattern({
+      name: "TriangleJoin",
+      variables: ["u", "v", "w"],
+      edges: [
+        { fromVar: "u", toVar: "v", edgeType: "Connect" },
+        { fromVar: "v", toVar: "w", edgeType: "Connect" },
+        { fromVar: "w", toVar: "u", edgeType: "Connect" },
+      ],
+    });
+    const wcojCode = compileWcojMatcher(plan);
+    expect(wcojCode).toContain("leapfrog_init_from_dpo_edges(iter1Ptr, graphPtr,");
+    expect(wcojCode).toContain("leapfrog_init_from_dpo_edges(iter2Ptr, graphPtr,");
+    expect(wcojCode).toContain("leapfrog_init_from_dpo_edges(iter3Ptr, graphPtr,");
+    expect(wcojCode).toContain("leapfrog_intersect_3(iter1Ptr, iter2Ptr, iter3Ptr, resultZSetPtr)");
+  });
+
+  it("inverts commutative 2-step affine expressions and detects shared-vertex CPA cycles without cross-language false positives", () => {
+    const inv1 = invertExpression("f = 1.8 * c + 32");
+    expect(inv1.isInvertible).toBe(true);
+    expect(inv1.sourceVar).toBe("c");
+    expect(inv1.targetVar).toBe("f");
+    expect(inv1.invertedExpr).toBe("(f - 32) / 1.8");
+
+    const inv2 = invertExpression("y = 100 - 2.5 * x");
+    expect(inv2.isInvertible).toBe(true);
+    expect(inv2.sourceVar).toBe("x");
+    expect(inv2.invertedExpr).toBe("(100 - y) / 2.5");
+
+    const inv3 = invertExpression("y = 10 + x * 4");
+    expect(inv3.isInvertible).toBe(true);
+    expect(inv3.sourceVar).toBe("x");
+    expect(inv3.invertedExpr).toBe("(y - 10) / 4");
+
+    // Cross-language rules sharing a generic node type name ("Component") in incompatible language directions should NOT trigger a false cycle
+    const noCycleReport = runCPA([
+      {
+        name: "SysmlToSspComponent",
+        sourceLang: "sysml2",
+        targetLang: "ssp",
+        source: ($) => $.PartUsage({ name: "x" }),
+        target: ($) => $.Component({ name: "x" }),
+      },
+      {
+        name: "StepToSysmlComponent",
+        sourceLang: "step",
+        targetLang: "sysml2",
+        source: ($) => $.Component({ name: "x" }),
+        target: ($) => $.PartUsage({ name: "x" }),
+      },
+    ]);
+    expect(noCycleReport.cycles.length).toBe(0);
+
+    // Two distinct cycles sharing a common vertex A (A -> B -> A and A -> C -> A) should both be detected
+    const multiCycleReport = runCPA([
+      {
+        name: "R_AB",
+        source: ($) => $.NodeA({ name: "x" }),
+        target: ($) => $.NodeB({ name: "x" }),
+      },
+      {
+        name: "R_BA",
+        source: ($) => $.NodeB({ name: "x" }),
+        target: ($) => $.NodeA({ name: "x" }),
+      },
+      {
+        name: "R_AC",
+        source: ($) => $.NodeA({ name: "x" }),
+        target: ($) => $.NodeC({ name: "x" }),
+      },
+      {
+        name: "R_CA",
+        source: ($) => $.NodeC({ name: "x" }),
+        target: ($) => $.NodeA({ name: "x" }),
+      },
+    ]);
+    expect(multiCycleReport.cycles.length).toBeGreaterThanOrEqual(2);
+
+    // Losslessness verifier should recognize renamed pattern variables (mass: v("m"), accel: v("a"))
+    // in multi-variable invertible constraints ("F = m * a")
+    const losslessReport = verifyRuleLosslessness(
+      tggRule({
+        name: "NewtonForceRule",
+        source: ($, v) => $.RigidBody({ mass: v("m"), accel: v("a") }),
+        target: ($, v) => $.ForceLoad({ force: v("F") }),
+        where: () => [tggInvertible("F = m * a")],
+      }),
+    );
+    expect(losslessReport.status).toBe("PROVEN_LOSSLESS");
+    expect(losslessReport.leakedAttributes.length).toBe(0);
   });
 });

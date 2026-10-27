@@ -1,0 +1,265 @@
+{
+  "toolCount": 52,
+  "tools": [
+    {
+      "name": "modelica_load",
+      "description": "Load Modelica libraries from file system paths. Must be called before using other tools.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_parse",
+      "description": "Parse inline Modelica source code and return a summary of classes, components, and any syntax errors.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_flatten",
+      "description": "Flatten a Modelica class to its DAE (Differential Algebraic Equation) form. Resolves inheritance, modifications, and produces the flat equation system and structural BLT/index-reduction metrics.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_lint",
+      "description": "Lint loaded Modelica libraries and return diagnostics (errors, warnings) with source locations.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_simulate",
+      "description": "Flatten and simulate a Modelica model, returning time-series results. Uses the high-performance arena simulation pipeline.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "hybrid_simulate",
+      "description": "Flatten and simulate a hybrid SysML v2 / Modelica system.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_doe",
+      "description": "Run a Design of Experiments on a Modelica model. Samples the parameter space and returns input-output datasets for response surface analysis or ROM training.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_sensitivity",
+      "description": "Run a One-At-a-Time (OAT) sensitivity analysis on a Modelica model. Perturbs each parameter individually and reports normalized sensitivity coefficients.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_query",
+      "description": "Introspect a Modelica class — returns its kind, description, components, extends hierarchy, and equations.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "validate_system_consistency",
+      "description": "Validates cross-domain consistency across SysML v2, Modelica, and the unified OWL2 ontology (port topology, SI/QUDV units, and shared parameter bindings).",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "query_ontology_sparql",
+      "description": "Evaluate a SPARQL-DL or Property Path query against the unified polyglot ontology.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "query_ontology_bgp",
+      "description": "Evaluate a multi-pattern Basic Graph Pattern (BGP) query using Leapfrog Triejoin (Worst-Case Optimal Join).",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "trace_fault_propagation",
+      "description": "Trace connections via transitive closure of the isConnectedTo property.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "explain_inference",
+      "description": "Get the axiom justification chain for why a SubClassOf relationship holds.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "tgg_query_thread",
+      "description": "Query multi-way digital thread alignments linking SysML v2, Modelica, CAD, and Requirements.",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "tgg_diagnose_conflict",
+      "description": "Diagnose active multi-master concurrent edit conflicts with SMT bounds and physical feasibility.",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "tgg_reconcile_slot",
+      "description": "Reconcile a multi-master cross-domain conflict slot using a physics-constrained or authority strategy and propagate updated parameter bindings across SysML v2 and Modelica.",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "rtm_query_matrix",
+      "description": "Query the digital thread Requirements Traceability Matrix (RTM) health, coverage percentages, and orphan requirements.",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "rtm_suggest_links",
+      "description": "Suggest candidate architecture components to satisfy or verify an orphan requirement.",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "rtm_diagnose_suspect",
+      "description": "Diagnose why a trace link was marked as suspect and suggest remediation actions.",
+      "category": "Digital Thread (TGG & RTM)"
+    },
+    {
+      "name": "modelscript_closed_loop_synthesize",
+      "description": "Synthesize, tune, and certify a SysML v2 or Modelica model using Closed-Loop Compiler verification gates (1. Syntax, 2. QUDV Dimensions, 3. SMT Feasibility, 4. DAE Structural Balance, 5. Dynamic Simulation, STL Robustness & Parameter Tuning).",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelscript_patch_code",
+      "description": "Surgically patch a model file by finding a specific searchBlock and replacing it with replaceBlock.",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelscript_read_file",
+      "description": "Read file contents or a specific range of lines from a workspace file.",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelscript_list_workspace_files",
+      "description": "List engineering model files in the workspace (Modelica, SysML, STEP, SCAD, CSV).",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelica_diff_calibrate",
+      "description": "Calibrate Modelica model parameters against experimental or measurement curves using continuous DAE adjoint sensitivity and L-BFGS-B optimization.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "pscad_lint",
+      "description": "Lint a PSCAD project (.pscx, .pslx) or workspace (.pswx) file. Performs pre-flight electrical topology, parameter bounds, floating terminal, and weak grid (SCR) checks.",
+      "category": "Power Systems & EMT (PSCAD)"
+    },
+    {
+      "name": "pscad_simulate",
+      "description": "Simulate a PSCAD electromagnetic transient (EMT) circuit using the WebAssembly Dommel companion-circuit solver. Supports Bergeron lines, CDA switch damping, and OEM Inverter-Based Resource (IBR) FMUs.",
+      "category": "Power Systems & EMT (PSCAD)"
+    },
+    {
+      "name": "pscad_verify_ieee2800",
+      "description": "Automate IEEE 2800-2022 grid code compliance testing for Inverter-Based Resources (IBRs). Assesses momentary cessation, fast reactive current injection (T_90 <= 50 ms), and overvoltage ceiling (<= 1.20 pu).",
+      "category": "Power Systems & EMT (PSCAD)"
+    },
+    {
+      "name": "pscad_export",
+      "description": "Export a PSCAD project (.pscx, .pslx) to Modelica (OpenIPSL) or FMI/SSP (SystemStructure.ssd) for cross-domain digital thread interoperability.",
+      "category": "Power Systems & EMT (PSCAD)"
+    },
+    {
+      "name": "modelica_linearize",
+      "description": "Linearize a Modelica DAE model around an operating point or steady-state equilibrium to extract explicit LTI State-Space matrices (A, B, C, D), eigenvalues/poles, damping ratios, and stability margins.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "modelica_tune_pid",
+      "description": "Automatically tune a P, PI, or PID controller for a linearized Modelica plant model using Skogestad IMC (SIMC) and Sensitivity-Constrained Loop Shaping.",
+      "category": "Modelica & DAE Simulation"
+    },
+    {
+      "name": "olga_simulate",
+      "description": "Simulate transient multiphase flow, liquid accumulation, pressure drops, slugging, and pigging for an OLGA model (.opi, .key, .genkey).",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_lint",
+      "description": "Run pre-flight multiphase flow assurance diagnostics (M7001–M7007: CFL stability, steep risers, severe slugging dips, pig stuck hazard) on an OLGA model.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_verify",
+      "description": "Formally verify multiphase simulation against flow assurance limits (MAOP, hydrate subcooling margin, and slug catcher capacity).",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_diagram",
+      "description": "Generate standalone SVG diagrams for an OLGA flowline: topological P&ID schematic or pipeline elevation bathymetry Z(X) with holdup heatmaps and active slugs/pigs.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_parse_tpl",
+      "description": "Parse an OLGA simulation trend plot (.tpl) file or content into structured time-series dataset with variable catalog, units, and channel statistics.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_parse_ppl",
+      "description": "Parse an OLGA spatial profile plot (.ppl) file or content into structured spatial snapshots along pipeline coordinate X with flow regimes and critical extrema.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_tune",
+      "description": "Calibrate OLGA flowline model parameters (roughness, choke Cd, heat transfer, well PI) using autonomous Nelder-Mead simplex history matching against telemetry CSV observations.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_gate",
+      "description": "Evaluate an automated Flow Assurance CI/CD Safety Gate check on an OLGA model for pull requests and operational envelope verification.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "olga_survey",
+      "description": "Ingest 3D seabed bathymetry survey coordinates (CSV with Easting,Northing,Depth or KP,Elevation) and discretize into adaptive curvature-aware OLGA pipe segments.",
+      "category": "Multiphase Flow Assurance (OLGA)"
+    },
+    {
+      "name": "gensys_lint",
+      "description": "Perform pre-flight semantic and physical validation on GENSYS railway vehicle models (.calc, .run, .sub).",
+      "category": "Multibody & Rail (GENSYS / SIMPACK)"
+    },
+    {
+      "name": "gensys_verify_en14363",
+      "description": "Verify derailment quotient (Y/Q <= 0.8) and Prud'homme lateral track shifting force limits according to EN 14363 / UIC 518.",
+      "category": "Multibody & Rail (GENSYS / SIMPACK)"
+    },
+    {
+      "name": "gensys_fastsim",
+      "description": "Compute tangential longitudinal/lateral creep forces and spin moment using Kalker's FASTSIM algorithm.",
+      "category": "Multibody & Rail (GENSYS / SIMPACK)"
+    },
+    {
+      "name": "simpack_lint",
+      "description": "Perform structural and reference diagnostics on SIMPACK XML (.spck) or classic deck (.sim, .mbs) files.",
+      "category": "Multibody & Rail (GENSYS / SIMPACK)"
+    },
+    {
+      "name": "simpack_mobility",
+      "description": "Calculate system degrees of freedom and overconstrained mechanisms using Grübler-Kutzbach spatial criterion.",
+      "category": "Multibody & Rail (GENSYS / SIMPACK)"
+    },
+    {
+      "name": "social_read_thread",
+      "description": "Read the conversation thread history, parent post, and attachments for a given social post ID.",
+      "category": "Collaborative Engineering"
+    },
+    {
+      "name": "social_post_reply",
+      "description": "Post an engineering response or verification result to a social discussion thread on behalf of an authorized bot account.",
+      "category": "Collaborative Engineering"
+    },
+    {
+      "name": "cad_fea_closed_loop_size",
+      "description": "Run closed-loop 3D CAD/OpenSCAD/STEP parametric sizing coupled with tetrahedral FEA von Mises stress analysis and BVH collision clearance verification.",
+      "category": "Cross-Domain Certification & Digital Twin"
+    },
+    {
+      "name": "polyglot_migrate_and_verify_b2b",
+      "description": "Migrate legacy Simulink (.slx), SPICE (.cir), or MSC Adams (.adm) models to Modelica & SysML v2 and certify ISO 26262 Back-to-Back (B2B) trajectory & C99 equivalence.",
+      "category": "Cross-Domain Certification & Digital Twin"
+    },
+    {
+      "name": "ssp_diagnose_cosim_stability",
+      "description": "Analyze an FMI 2.0/3.0 & SSP multi-FMU co-simulation topology for algebraic feedthrough loops, ZOH spectral radius instability, and synthesize stabilizing coupling schedules.",
+      "category": "Cross-Domain Certification & Digital Twin"
+    },
+    {
+      "name": "formal_verify_safety_and_mcdc",
+      "description": "Prove unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and generate DO-178C / ISO 26262 MC/DC independence-pair test vectors.",
+      "category": "Cross-Domain Certification & Digital Twin"
+    },
+    {
+      "name": "twin_discover_sindy_and_rom",
+      "description": "Discover sparse nonlinear governing differential equations (SINDy) from hardware telemetry residuals and calibrate a Reduced-Order Model (ROM) digital twin.",
+      "category": "Cross-Domain Certification & Digital Twin"
+    }
+  ]
+}

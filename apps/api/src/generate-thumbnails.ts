@@ -9,7 +9,7 @@ async function main() {
   console.log("Starting thumbnail generation for missing artifacts...");
 
   // Find all artifacts that are 3D models (simulation or CAD) and lack a thumbnailUrl
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const rows = database.getAllArtifactViews();
 
   for (const row of rows) {

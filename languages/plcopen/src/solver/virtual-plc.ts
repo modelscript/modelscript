@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/plcopen — Virtual PLC Scan Cycle Execution Engine.
@@ -32,12 +31,14 @@ export interface CounterState {
   Q: boolean;
 }
 
+export type PlcValue = string | number | boolean;
+
 export class VirtualPlc {
   private project: PlcProject | null = null;
-  private variables = new Map<string, any>();
+  private variables = new Map<string, PlcValue>();
   private timers = new Map<string, TimerState>();
   private counters = new Map<string, CounterState>();
-  private pouVarMap = new Map<string, Map<string, any>>();
+  private pouVarMap = new Map<string, Map<string, PlcPou["variables"][number]>>();
   private timeCache = new Map<string, number>();
   private cycleCount = 0;
   private defaultDtMs = 10; // Default 10ms cycle time
@@ -59,14 +60,14 @@ export class VirtualPlc {
 
     // Initialize variables from all POUs
     for (const pou of project.pous) {
-      const vMap = new Map<string, any>();
+      const vMap = new Map<string, PlcPou["variables"][number]>();
       for (const v of pou.variables) {
         vMap.set(v.name.toLowerCase(), v);
       }
       this.pouVarMap.set(pou.name, vMap);
 
       for (const v of pou.variables) {
-        let val: any = 0;
+        let val: PlcValue = 0;
         const dtUpper = v.dataType.toUpperCase();
         if (v.initialValue !== undefined) {
           val = v.initialValue;
@@ -90,16 +91,16 @@ export class VirtualPlc {
     }
   }
 
-  public setVariable(name: string, value: any): void {
+  public setVariable(name: string, value: PlcValue): void {
     this.variables.set(name, value);
   }
 
-  public getVariable(name: string): any {
+  public getVariable(name: string): PlcValue | undefined {
     return this.variables.get(name);
   }
 
-  public getAllVariables(): Record<string, any> {
-    const res: Record<string, any> = {};
+  public getAllVariables(): Record<string, PlcValue> {
+    const res: Record<string, PlcValue> = {};
     for (const [k, v] of this.variables.entries()) {
       if (!k.includes(".")) {
         res[k] = v;
@@ -130,8 +131,8 @@ export class VirtualPlc {
   /**
    * Runs multiple scan cycles and returns a time-series log of variable states.
    */
-  public runCycles(count: number, dtMs = this.defaultDtMs): Record<string, any>[] {
-    const history: Record<string, any>[] = [];
+  public runCycles(count: number, dtMs = this.defaultDtMs): Record<string, PlcValue>[] {
+    const history: Record<string, PlcValue>[] = [];
     for (let c = 0; c < count; c++) {
       this.step(dtMs);
       history.push({
@@ -153,7 +154,7 @@ export class VirtualPlc {
           this.variables.set(`${pou.name}.${name}`, val);
         } else if (stmt.target.kind === "member") {
           // Object property assignment
-          const objName = (stmt.target.object as any).name;
+          const objName = (stmt.target.object as { name?: string }).name ?? "";
           const prop = stmt.target.property;
           const key = `${objName}.${prop}`;
           this.variables.set(key, val);
@@ -179,7 +180,7 @@ export class VirtualPlc {
         const selVal = this.evaluateExpr(pou, stmt.selector);
         let matched = false;
         for (const c of stmt.cases) {
-          if (c.values.includes(selVal)) {
+          if ((c.values as readonly PlcValue[]).includes(selVal)) {
             this.executeStatements(pou, c.statements, dtMs);
             matched = true;
             break;
@@ -320,7 +321,7 @@ export class VirtualPlc {
     }
   }
 
-  private evaluateExpr(pou: PlcPou, expr: PlcExpr): any {
+  private evaluateExpr(pou: PlcPou, expr: PlcExpr): PlcValue {
     if (expr.kind === "literal") {
       if (expr.literalType === "time") {
         return this.parseTimeMs(expr.value);
@@ -330,36 +331,38 @@ export class VirtualPlc {
 
     if (expr.kind === "identifier") {
       const name = expr.name;
-      if (this.variables.has(name)) return this.variables.get(name);
+      if (this.variables.has(name)) return this.variables.get(name)!;
       if (this.variables.has(`${pou.name}.${name}`)) {
-        return this.variables.get(`${pou.name}.${name}`);
+        return this.variables.get(`${pou.name}.${name}`)!;
       }
       return 0;
     }
 
     if (expr.kind === "member") {
-      const objName = (expr.object as any).name;
+      const objName = (expr.object as { name?: string }).name ?? "";
       const key = `${objName}.${expr.property}`;
-      if (this.variables.has(key)) return this.variables.get(key);
+      if (this.variables.has(key)) return this.variables.get(key)!;
       return 0;
     }
 
     if (expr.kind === "binary") {
       const left = this.evaluateExpr(pou, expr.left);
       const right = this.evaluateExpr(pou, expr.right);
+      const lNum = Number(left);
+      const rNum = Number(right);
       switch (expr.op) {
         case "+":
-          return left + right;
+          return typeof left === "string" || typeof right === "string" ? `${left}${right}` : lNum + rNum;
         case "-":
-          return left - right;
+          return lNum - rNum;
         case "*":
-          return left * right;
+          return lNum * rNum;
         case "/":
-          return right !== 0 ? left / right : 0;
+          return rNum !== 0 ? lNum / rNum : 0;
         case "MOD":
-          return right !== 0 ? left % right : 0;
+          return rNum !== 0 ? lNum % rNum : 0;
         case "**":
-          return Math.pow(left, right);
+          return Math.pow(lNum, rNum);
         case "=":
           return left === right;
         case "<>":
@@ -385,9 +388,9 @@ export class VirtualPlc {
       const arg = this.evaluateExpr(pou, expr.argument);
       switch (expr.op) {
         case "-":
-          return -arg;
+          return -Number(arg);
         case "+":
-          return +arg;
+          return +Number(arg);
         case "NOT":
           return !arg;
       }
@@ -396,7 +399,7 @@ export class VirtualPlc {
     return 0;
   }
 
-  private parseTimeMs(val: any): number {
+  private parseTimeMs(val: unknown): number {
     if (typeof val === "number") return val;
     if (typeof val === "string") {
       const cached = this.timeCache.get(val);

@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { WorkerTaskStage } from "../worker/worker-protocol.js";
 import { runSandboxTask, SandboxTaskResult, terminateSandboxWorker } from "../worker/worker-runner.js";
 
-export interface WorkerTaskHookState<T = any> {
+export interface WorkerTaskHookState<T = unknown> {
   stage: WorkerTaskStage;
   progress: number;
   statusMessage: string;
@@ -15,12 +15,12 @@ export interface WorkerTaskHookState<T = any> {
   error: string | null;
 }
 
-export interface UseWorkerTaskReturn<T = any> extends WorkerTaskHookState<T> {
+export interface UseWorkerTaskReturn<T = unknown> extends WorkerTaskHookState<T> {
   runTask: (
     action: "parse" | "lint" | "simulate",
     dialect: string,
     content: string | ArrayBuffer,
-    options?: Record<string, any>,
+    options?: Record<string, unknown>,
   ) => Promise<T>;
   abort: () => void;
   reset: () => void;
@@ -30,7 +30,7 @@ export interface UseWorkerTaskReturn<T = any> extends WorkerTaskHookState<T> {
  * React hook that executes heavy engineering model parsing and linting
  * inside a sandboxed Web Worker, keeping the React UI thread at 60 FPS.
  */
-export function useWorkerTask<T = any>(): UseWorkerTaskReturn<T> {
+export function useWorkerTask<T = unknown>(): UseWorkerTaskReturn<T> {
   const [state, setState] = useState<WorkerTaskHookState<T>>({
     stage: "idle",
     progress: 0,
@@ -77,7 +77,7 @@ export function useWorkerTask<T = any>(): UseWorkerTaskReturn<T> {
       action: "parse" | "lint" | "simulate",
       dialect: string,
       content: string | ArrayBuffer,
-      options?: Record<string, any>,
+      options?: Record<string, unknown>,
     ): Promise<T> => {
       const taskId = "task_" + Math.random().toString(36).substring(2, 9);
       currentTaskId.current = taskId;
@@ -128,8 +128,8 @@ export function useWorkerTask<T = any>(): UseWorkerTaskReturn<T> {
         }
 
         return result;
-      } catch (err: any) {
-        const errorMessage = err?.message || String(err);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
         if (currentTaskId.current === taskId) {
           setState((prev) => ({
             ...prev,

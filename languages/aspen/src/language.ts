@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { language } from "@modelscript/dsl";
 import { lowerAspenToDae } from "./dae/aspen-to-dae.js";
@@ -51,7 +50,7 @@ export const aspenLanguage = language({
           modelDescription: "Lints Aspen input file for unconnected streams, tear cycles, and fraction errors.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseAspen(text);
@@ -63,7 +62,7 @@ export const aspenLanguage = language({
       title: "Lower Aspen to DAE",
       description: "Compiles Aspen process flowsheet directly into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseAspen(text);
@@ -80,7 +79,7 @@ export const aspenLanguage = language({
       title: "Project Aspen to Modelica",
       description: "Synthesizes standard Modelica 3.x fluid process model from Aspen deck.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseAspen(text);
@@ -92,7 +91,7 @@ export const aspenLanguage = language({
       title: "Solve Flash VLE",
       description: "Solves Rachford-Rice vapor-liquid equilibrium flash for feed stream.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; streamId?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined; streamId?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseAspen(text);

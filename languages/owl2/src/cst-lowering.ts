@@ -14,12 +14,12 @@ export interface GenericSyntaxNode {
   startOffset?: number | undefined;
   endOffset?: number | undefined;
   isError?: boolean | undefined;
-  hasError?: boolean | undefined;
+  hasError?: boolean | (() => boolean) | undefined;
   children?: GenericSyntaxNode[] | undefined;
   childCount?: number | undefined;
   child?: ((index: number) => GenericSyntaxNode | null) | undefined;
-  getFirstChild?: (() => any) | undefined;
-  getNextSibling?: (() => any) | undefined;
+  getFirstChild?: (() => GenericSyntaxNode | null) | undefined;
+  getNextSibling?: (() => GenericSyntaxNode | null) | undefined;
   getTypeId?: (() => number) | undefined;
 }
 

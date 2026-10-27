@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
-import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";
+import {
+  QueryEngine,
+  WorkspaceIndex,
+  type CSTTree,
+  type EditRange,
+  type QueryCacheStore,
+  type QueryDB,
+  type SymbolEntry,
+  type SymbolId,
+  type SymbolIndex,
+} from "@modelscript/runtime";
+import type { GenericSyntaxNode } from "./cst-lowering.js";
 import { owl2Language } from "./language.js";
 import { lintOwl2Document } from "./lints.js";
 
@@ -11,10 +20,10 @@ const indexerHooks = extractIndexerHooks(owl2Language) ?? [];
 export const queryHooks = extractQueryHooksMap(owl2Language) ?? new Map();
 const refHooks = extractRefHooks(owl2Language) ?? [];
 
-const defRuleNames = new Set(indexerHooks.map((h: any) => h.ruleName));
+const defRuleNames = new Set(indexerHooks.map((h) => h.ruleName));
 const refAsIndexerHooks = (refHooks ?? [])
-  .filter((rh: any) => !defRuleNames.has(rh.ruleName))
-  .map((rh: any) => ({
+  .filter((rh) => !defRuleNames.has(rh.ruleName))
+  .map((rh) => ({
     ruleName: rh.ruleName,
     kind: "Reference",
     namePath: rh.namePath,
@@ -24,19 +33,22 @@ const refAsIndexerHooks = (refHooks ?? [])
   }));
 const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
 
-const cstByUri = new Map<string, { getRootNode: () => any; sourceText?: string | undefined }>();
+const cstByUri = new Map<
+  string,
+  { getRootNode: () => GenericSyntaxNode | null | undefined; sourceText?: string | undefined }
+>();
 
 const docHooks = queryHooks.get("OntologyDocument") ?? {};
-docHooks["lint__owl2Document"] = (db: any, entryOrId: any) => {
+docHooks["lint__owl2Document"] = (db: QueryDB, entryOrId: SymbolEntry | SymbolId) => {
   const sym = typeof entryOrId === "object" && entryOrId !== null ? entryOrId : db.symbol(entryOrId);
   if (!sym) return [];
   const symId = sym.id;
-  const uri = sym.resourceId ?? sym.uri ?? "";
+  const uri = sym.resourceId ?? sym.documentUri ?? "";
   const cached = cstByUri.get(uri);
-  const rootNode = cached?.getRootNode?.() ?? db.cstNode(symId);
+  const rootNode = (cached?.getRootNode?.() ?? db.cstNode(symId)) as GenericSyntaxNode | null | undefined;
   if (!rootNode) return [];
   const sourceText =
-    cached?.sourceText ?? (typeof sym.metadata?.sourceText === "string" ? sym.metadata.sourceText : undefined);
+    cached?.sourceText ?? (typeof sym.metadata?.["sourceText"] === "string" ? sym.metadata["sourceText"] : undefined);
   const diags = lintOwl2Document(rootNode, sourceText);
   return diags.map((d) => ({
     severity: d.severity,
@@ -59,7 +71,12 @@ queryHooks.set("OntologyDocument", docHooks);
 export function createOWL2WorkspaceIndex(): WorkspaceIndex {
   const ws = new WorkspaceIndex(allIndexerHooks);
   const origRegister = ws.register.bind(ws);
-  ws.register = (uri: string, treeFn?: any, parentFQN?: string, editRanges?: any) => {
+  ws.register = (
+    uri: string,
+    treeFn?: (() => GenericSyntaxNode | null | undefined) | GenericSyntaxNode | null,
+    parentFQN?: string,
+    editRanges?: EditRange[],
+  ) => {
     const getRootNode = typeof treeFn === "function" ? treeFn : () => treeFn;
     cstByUri.set(uri, { getRootNode });
     const fileId = origRegister(uri, getRootNode, parentFQN, editRanges);
@@ -72,7 +89,12 @@ export function createOWL2WorkspaceIndex(): WorkspaceIndex {
 /**
  * Creates a configured QueryEngine for a given OWL2 SymbolIndex.
  */
-export function createOWL2QueryEngine(index: any, tree?: any, cacheStore?: any, maxMemos?: number): QueryEngine {
+export function createOWL2QueryEngine(
+  index: SymbolIndex,
+  tree?: CSTTree,
+  cacheStore?: QueryCacheStore,
+  maxMemos?: number,
+): QueryEngine {
   return new QueryEngine(index, queryHooks, {
     tree,
     cacheStore,

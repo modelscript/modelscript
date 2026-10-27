@@ -227,7 +227,7 @@ export function lintOlgaModel(
     const inletNode = model.nodes.find(
       (n) => n.flowpath === flowpath.name && (n.type === "TERMINAL" || n.type === "MASS_SOURCE"),
     );
-    const h2sFrac = (inletNode as any)?.h2sMoleFraction ?? (flowpath.sources[0] as any)?.h2sMoleFraction ?? 0.0;
+    const h2sFrac = inletNode?.h2sMoleFraction ?? flowpath.sources[0]?.h2sMoleFraction ?? 0.0;
     if (h2sFrac > 0.0005) {
       const pPa = inletNode?.pressure ?? 100e5;
       const tK = inletNode?.temperature ?? 330.15;
@@ -240,8 +240,8 @@ export function lintOlgaModel(
         pipeDiameterM: pipe0?.diameter ?? 0.254,
         nominalWallThicknessMm: 19.1,
         corrosionAllowanceMm: 3.0,
-        metallurgy: (pipe0 as any)?.metallurgy,
-        hasCraCladding: (pipe0 as any)?.cladding != null,
+        metallurgy: pipe0?.metallurgy,
+        hasCraCladding: pipe0?.cladding != null,
       });
 
       if (!sourEval.isMetallurgyCompliant) {

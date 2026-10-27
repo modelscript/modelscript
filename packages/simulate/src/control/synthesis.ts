@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
  * @modelscript/simulate/control — Controller Synthesis Engine (PID Autotuning, CARE LQR, Linear MPC).

@@ -11,7 +11,9 @@ import type {
   EclipseDeck,
   EclipseDimensions,
   EclipseGrid,
+  EclipseInjectionControl,
   EclipsePhases,
+  EclipseProductionControl,
   EclipseProps,
   EclipseRange,
   EclipseSolution,
@@ -476,7 +478,7 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
           i: parseInt(tok[2] ?? "1", 10),
           j: parseInt(tok[3] ?? "1", 10),
           refDepth: parseFloat(tok[4] ?? "5000.0"),
-          preferredPhase: (tok[5]?.toUpperCase() ?? "OIL") as any,
+          preferredPhase: (tok[5]?.toUpperCase() ?? "OIL") as EclipseWell["preferredPhase"],
           completions: [],
           range: rec.range,
         });
@@ -516,9 +518,9 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
       if (tok.length >= 8) {
         const wName = tok[0] ?? "PROD1";
         const w = wells.get(wName);
-        const prodCtrl = {
-          status: (tok[1]?.toUpperCase() === "SHUT" ? "SHUT" : "OPEN") as any,
-          controlMode: (tok[2]?.toUpperCase() ?? "ORAT") as any,
+        const prodCtrl: EclipseProductionControl = {
+          status: tok[1]?.toUpperCase() === "SHUT" ? "SHUT" : "OPEN",
+          controlMode: (tok[2]?.toUpperCase() ?? "ORAT") as EclipseProductionControl["controlMode"],
           oilRate: parseNum(tok[3], 1000.0),
           waterRate: parseNum(tok[4], 0.0),
           gasRate: parseNum(tok[5], 0.0),
@@ -531,10 +533,10 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
       if (tok.length >= 6) {
         const wName = tok[0] ?? "INJ1";
         const w = wells.get(wName);
-        const injCtrl = {
-          fluidType: (tok[1]?.toUpperCase() === "GAS" ? "GAS" : "WATER") as any,
-          status: (tok[2]?.toUpperCase() === "SHUT" ? "SHUT" : "OPEN") as any,
-          controlMode: (tok[3]?.toUpperCase() ?? "RATE") as any,
+        const injCtrl: EclipseInjectionControl = {
+          fluidType: tok[1]?.toUpperCase() === "GAS" ? "GAS" : "WATER",
+          status: tok[2]?.toUpperCase() === "SHUT" ? "SHUT" : "OPEN",
+          controlMode: (tok[3]?.toUpperCase() ?? "RATE") as EclipseInjectionControl["controlMode"],
           rate: parseNum(tok[4], 2000.0),
           bhpLimit: parseNum(tok[5], 5000.0),
         };

@@ -123,7 +123,6 @@ export class SqliteRdfSource implements Source {
       if (pValue && pValue !== p) return;
       if (oValue && object && !o.equals(object)) return;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       stream.push(quad(namedNode(s), namedNode(p), o as any));
     };
 

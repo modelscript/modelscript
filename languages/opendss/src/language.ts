@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenDssToDae } from "./dae/opendss-to-dae.js";
 import { lintOpenDss } from "./lints/index.js";
 import { parseOpenDss } from "./parser/opendss-parser.js";
@@ -51,7 +50,7 @@ export const openDssLanguage = language({
           modelDescription: "Lints OpenDSS file for unconnected buses, hosting capacity limits, and bad line lengths.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseOpenDss(text);
@@ -63,7 +62,7 @@ export const openDssLanguage = language({
       title: "Solve Distribution Power Flow",
       description: "Calculates radial/meshed forward-backward sweep distribution power flow and voltages.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseOpenDss(text);
@@ -75,7 +74,7 @@ export const openDssLanguage = language({
       title: "Lower OpenDSS to DAE",
       description: "Compiles distribution network lines, transformers, and loads into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseOpenDss(text);
@@ -92,7 +91,7 @@ export const openDssLanguage = language({
       title: "Project OpenDSS to Modelica",
       description: "Synthesizes standard Modelica 3.x distribution grid electrical circuit.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseOpenDss(text);

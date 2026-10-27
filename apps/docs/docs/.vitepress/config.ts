@@ -61,7 +61,7 @@ if (fs.existsSync(grammarPath)) {
 export default defineConfig({
   markdown: {
     math: true,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     languages: modelicaGrammar ? [modelicaGrammar as any] : [],
     languageAlias: {
       abaqus: "ini",

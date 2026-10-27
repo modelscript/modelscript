@@ -62,7 +62,7 @@ export const psseLanguage = language({
           modelDescription: "Lints PSS/E raw file for missing buses, limits, and topology errors.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseRaw(text);
@@ -85,7 +85,7 @@ export const psseLanguage = language({
           modelDescription: "Computes complex admittance matrix and power injections for PSS/E base case.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseRaw(text);

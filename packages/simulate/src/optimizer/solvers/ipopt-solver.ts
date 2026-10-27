@@ -12,7 +12,6 @@ export interface IpoptResult {
 export class IpoptSolver {
   private wasmSolver: CoinorWasmSolver | null = null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(
     public modelDllPath: string,
     wasmModule?: any,

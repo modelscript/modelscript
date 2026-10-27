@@ -340,10 +340,10 @@ function generateOutlineGerber(outline: BoardOutline): string {
   lines.push("D10*");
 
   if (outline.vertices.length >= 2) {
-    const first = outline.vertices[0]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const first = outline.vertices[0]!;
     lines.push(`X${toGerberCoord(first[0])}Y${toGerberCoord(first[1])}D02*`);
     for (let i = 1; i < outline.vertices.length; i++) {
-      const v = outline.vertices[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const v = outline.vertices[i]!;
       lines.push(`X${toGerberCoord(v[0])}Y${toGerberCoord(v[1])}D01*`);
     }
     // Close the polygon

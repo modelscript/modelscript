@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import vtkImageMarchingCubes from "@kitware/vtk.js/Filters/General/ImageMarchingCubes";
+import vtkXMLImageDataReader from "@kitware/vtk.js/IO/XML/XMLImageDataReader";
+import vtkActor from "@kitware/vtk.js/Rendering/Core/Actor";
+import vtkColorTransferFunction from "@kitware/vtk.js/Rendering/Core/ColorTransferFunction";
+import vtkMapper from "@kitware/vtk.js/Rendering/Core/Mapper";
+import vtkFullScreenRenderWindow from "@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow";
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
-// @ts-expect-error No type definitions available for vtk.js
-import vtkFullScreenRenderWindow from "@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow";
-// @ts-expect-error No type definitions available for vtk.js
-import vtkActor from "@kitware/vtk.js/Rendering/Core/Actor";
-// @ts-expect-error No type definitions available for vtk.js
-import vtkMapper from "@kitware/vtk.js/Rendering/Core/Mapper";
-// @ts-expect-error No type definitions available for vtk.js
-import vtkXMLImageDataReader from "@kitware/vtk.js/IO/XML/XMLImageDataReader";
-// @ts-expect-error No type definitions available for vtk.js
-import vtkImageMarchingCubes from "@kitware/vtk.js/Filters/General/ImageMarchingCubes";
-// @ts-expect-error No type definitions available for vtk.js
-import vtkColorTransferFunction from "@kitware/vtk.js/Rendering/Core/ColorTransferFunction";
 
 import mqtt from "mqtt";
 import "./vr-visualization-webview.css";
@@ -21,7 +15,7 @@ const App = () => {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [time, setTime] = React.useState<number>(0);
   const [participant, setParticipant] = React.useState<string>("Waiting for data...");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const vtkContext = React.useRef<any>(null);
   const mqttClient = React.useRef<mqtt.MqttClient | null>(null);
 

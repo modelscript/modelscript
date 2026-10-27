@@ -57,6 +57,7 @@ export interface GeneratedLanguageData {
   group: string;
   pkgName: string;
   version: string;
+  tier: "stable" | "beta" | "preview";
   cliCommand: string | null;
   actions: string[];
   capabilities: {
@@ -77,6 +78,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
 
     const pkgName = pkg?.name || `@modelscript/${lang.slug}`;
     const version = pkg?.version || "0.0.0";
+    const tier: "stable" | "beta" | "preview" = pkg?.modelscript?.tier || "preview";
     const allDeps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) };
 
     // Determine primary CLI command
@@ -179,6 +181,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
       group: lang.group,
       pkgName,
       version,
+      tier,
       cliCommand: cliCmd ? `msx ${cliCmd}` : null,
       actions,
       capabilities: {

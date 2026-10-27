@@ -29,7 +29,6 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
 }) => {
   const navigate = useNavigate();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const postAny = post as any;
   const primaryArtifactId = postAny.artifact_view_id ?? post.artifact_id ?? notebookData.artifactIds?.[0];
   const primaryArtifactView =

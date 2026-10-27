@@ -21,6 +21,6 @@ export interface EmbeddedBroker {
    * Useful in browser environments where local MQTT connections are required
    * without a physical WebSocket URL.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   createClientStream?(): any;
 }

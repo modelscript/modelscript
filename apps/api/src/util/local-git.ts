@@ -92,7 +92,7 @@ export class LocalGitProvider implements IGitProvider {
     const git = simpleGit(repoPath);
 
     const log = await git.log([refName]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     return log.all.map((c: any) => ({
       id: c.hash,
       short_id: c.hash.substring(0, 8),
@@ -105,27 +105,23 @@ export class LocalGitProvider implements IGitProvider {
   }
 
   // Not supported in plain git, return empty array
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   async getPipelines(_idOrUrl: string, _refName: string): Promise<GitPipelineItem[]> {
     return [];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getPipelineJobs(_idOrUrl: string, _pipelineId: string): Promise<GitJobItem[]> {
     return [];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getIssues(_idOrUrl: string): Promise<GitIssueItem[]> {
     return [];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async createIssue(_idOrUrl: string, _body: unknown): Promise<GitIssueItem> {
     throw new Error("Issues are not supported by local git provider");
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getMergeRequests(_idOrUrl: string): Promise<GitMergeRequestItem[]> {
     return [];
   }

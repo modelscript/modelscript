@@ -111,8 +111,8 @@ export function runDRC(input: DRCInput): DRCResult {
   // 2. Copper clearance: trace-to-trace
   for (let i = 0; i < input.traces.length; i++) {
     for (let j = i + 1; j < input.traces.length; j++) {
-      const t1 = input.traces[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-      const t2 = input.traces[j]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const t1 = input.traces[i]!;
+      const t2 = input.traces[j]!;
       if (t1.layer !== t2.layer) continue;
       if (t1.netId === t2.netId) continue;
       totalChecks++;
@@ -155,8 +155,8 @@ export function runDRC(input: DRCInput): DRCResult {
   // 4. Pad-to-pad clearance (different nets, same layer)
   for (let i = 0; i < input.pads.length; i++) {
     for (let j = i + 1; j < input.pads.length; j++) {
-      const p1 = input.pads[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-      const p2 = input.pads[j]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const p1 = input.pads[i]!;
+      const p2 = input.pads[j]!;
       if (p1.layer !== p2.layer) continue;
       if (p1.netId === p2.netId) continue;
       totalChecks++;
@@ -485,8 +485,8 @@ function minDistToPolygon(point: Point2D, polygon: Point2D[]): number {
   let minDist = Infinity;
 
   for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    const b = polygon[(i + 1) % polygon.length]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const a = polygon[i]!;
+    const b = polygon[(i + 1) % polygon.length]!;
     const d = pointToSegmentDist(point, a, b);
     if (d < minDist) minDist = d;
   }

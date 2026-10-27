@@ -87,7 +87,7 @@ export function validateSpice(content: string): LspDiagnostic[] {
 
   try {
     circuit = parseSpice(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     diagnostics.push({
       range: {
         start: { line: 0, character: 0 },
@@ -95,7 +95,7 @@ export function validateSpice(content: string): LspDiagnostic[] {
       },
       severity: 1,
       source: "spice-parser",
-      message: `Fatal SPICE parse error: ${err.message}`,
+      message: `Fatal SPICE parse error: ${err instanceof Error ? err.message : String(err)}`,
     });
     return diagnostics;
   }
@@ -286,7 +286,7 @@ export function getSpiceHover(content: string, line: number, _character: number)
 /**
  * Executes domain actions on a SPICE netlist.
  */
-export async function executeSpiceAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeSpiceAction(action: string, args: Record<string, unknown>): Promise<unknown> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const circuit = parseSpice(content);
 
@@ -297,7 +297,7 @@ export async function executeSpiceAction(action: string, args: Record<string, un
       return { modelica: spiceToModelica(circuit) };
     case "sync_from_modelica": {
       const modelicaText = typeof args["modelicaText"] === "string" ? args["modelicaText"] : "";
-      const options = args["options"] as any;
+      const options = args["options"] as Parameters<typeof synchronizeModelicaToSpice>[2];
       return synchronizeModelicaToSpice(content, modelicaText, options);
     }
     default:

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseRaw } from "./parser/raw-parser.js";
@@ -39,7 +38,7 @@ export class PsseWorkspaceIndex implements IWorkspaceIndex {
     return this.fileCases.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +48,10 @@ export class PsseWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {
@@ -113,12 +115,17 @@ export class PsseWorkspaceIndex implements IWorkspaceIndex {
     const childIds: SymbolId[] = [];
 
     // Helper to register child symbol
-    function addChild(name: string, kind: string, span?: { startOffset: number; endOffset: number }, meta?: any) {
+    function addChild(
+      name: string,
+      kind: string,
+      span?: { startOffset: number; endOffset: number },
+      meta?: Record<string, unknown>,
+    ) {
       const id = idCounter++ as SymbolId;
       const entry: SymbolEntry = {
         id,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "psse_component",
         namePath: name,
         fieldName: null,
@@ -129,7 +136,7 @@ export class PsseWorkspaceIndex implements IWorkspaceIndex {
         inherits: [],
         language: "psse",
         resourceId: uri,
-        metadata: meta,
+        metadata: meta ?? {},
       };
       symbols.set(id, entry);
       const existing = byName.get(name) ?? [];

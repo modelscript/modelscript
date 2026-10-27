@@ -12,10 +12,17 @@ import {
   tggComplement,
   tggEq,
   tggRule,
+  type ActionExecutionContext,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import type { MaterializeOptions } from "./types.js";
+
+interface FeaActionContext extends ActionExecutionContext {
+  documents?: { get(uri: string): { getText(): string } | undefined } | undefined;
+  sharedFs?: { read(uri: string): Promise<string> } | undefined;
+}
 
 /**
  * Operator precedence levels for embedded parameter expressions in FEA templates (`.inpt`).
@@ -56,7 +63,10 @@ export const feaLanguage = language({
       title: "Open 3D FEA Deck Viewer",
       description: "Opens the 3D finite element deck viewer showing nodes, elements, boundary conditions, and loads.",
       category: "query",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: FeaActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -104,8 +114,12 @@ export const feaLanguage = language({
       description: "Evaluates embedded expressions and expands parametric macros into a concrete CalculiX / .inp deck.",
       category: "transform",
       execute: async (
-        ctx: any,
-        params: { documentText?: string | undefined; uri?: string | undefined; options?: any },
+        ctx: FeaActionContext,
+        params: {
+          documentText?: string | undefined;
+          uri?: string | undefined;
+          options?: MaterializeOptions | undefined;
+        },
       ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
@@ -151,7 +165,10 @@ export const feaLanguage = language({
       title: "Run FEA Structural Simulation",
       description: "Executes a structural finite element simulation using CalculiX solver.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: FeaActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();

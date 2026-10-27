@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerOpenScenarioToDae } from "./dae/openscenario-to-dae.js";
 import { lintOpenScenario } from "./lints/index.js";
 import { parseOpenScenario } from "./parser/openscenario-parser.js";
 import { openScenarioToModelica } from "./projections/openscenario-to-modelica.js";
-import { simulateScenario } from "./solvers/scenario-orchestrator.js";
+import {
+  simulateScenario,
+  type OrchestratorOptions,
+  type ScenarioSimulationResult,
+} from "./solvers/scenario-orchestrator.js";
 
 export interface LspPosition {
   line: number;
@@ -96,7 +99,8 @@ export function validateOpenScenario(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -106,7 +110,7 @@ export function validateOpenScenario(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8500",
         source: "openscenario-parser",
-        message: `OpenSCENARIO parse error: ${err.message}`,
+        message: `OpenSCENARIO parse error: ${message}`,
       },
     ];
   }
@@ -280,7 +284,40 @@ export function getOpenScenarioHover(text: string, position: LspPosition): LspHo
   return null;
 }
 
-export async function executeOpenScenarioAction(action: string, text: string, params?: any): Promise<any> {
+export interface OpenScenarioActionParams extends OrchestratorOptions {
+  modelName?: string | undefined;
+}
+
+export async function executeOpenScenarioAction(
+  action: "lint_openscenario",
+  text: string,
+  params?: OpenScenarioActionParams,
+): Promise<ReturnType<typeof lintOpenScenario>>;
+export async function executeOpenScenarioAction(
+  action: "openscenario_simulate",
+  text: string,
+  params?: OpenScenarioActionParams,
+): Promise<ScenarioSimulationResult>;
+export async function executeOpenScenarioAction(
+  action: "openscenario_to_dae",
+  text: string,
+  params?: OpenScenarioActionParams,
+): Promise<{ modelName: string; variableCount: number; equationCount: number }>;
+export async function executeOpenScenarioAction(
+  action: "openscenario_to_modelica",
+  text: string,
+  params?: OpenScenarioActionParams,
+): Promise<string>;
+export async function executeOpenScenarioAction(
+  action: string,
+  text: string,
+  params?: OpenScenarioActionParams,
+): Promise<unknown>;
+export async function executeOpenScenarioAction(
+  action: string,
+  text: string,
+  params?: OpenScenarioActionParams,
+): Promise<unknown> {
   const doc = parseOpenScenario(text);
 
   switch (action) {

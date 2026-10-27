@@ -45,7 +45,7 @@ export class PsoutEditorProvider implements vscode.CustomReadonlyEditorProvider<
   public async resolveCustomEditor(
     document: PsoutCustomDocument,
     webviewPanel: vscode.WebviewPanel,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     _token: vscode.CancellationToken,
   ): Promise<void> {
     webviewPanel.webview.options = {

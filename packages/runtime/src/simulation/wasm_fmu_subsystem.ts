@@ -189,7 +189,6 @@ export class LookupTableFmuSubsystem implements FmuSubsystem {
     this.offsets = offsets ?? new Map();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   initialize(_startTime: number, _stopTime: number, _stepSize: number): void {
     this.currentOutputs.clear();
     for (const name of this.outputNames) {
@@ -211,7 +210,6 @@ export class LookupTableFmuSubsystem implements FmuSubsystem {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   doStep(_currentTime: number, _stepSize: number): void {
     // Outputs were already computed in setInputs
   }
@@ -249,7 +247,6 @@ export class NeuralNetFmuSubsystem implements FmuSubsystem {
     this.outputNames = rom.outputNames;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   initialize(_startTime: number, _stopTime: number, _stepSize: number): void {
     this.currentInputs.clear();
     this.currentOutputs.clear();
@@ -266,7 +263,6 @@ export class NeuralNetFmuSubsystem implements FmuSubsystem {
     this.evaluate();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   doStep(_currentTime: number, _stepSize: number): void {
     this.evaluate();
   }
@@ -326,7 +322,6 @@ export class OnnxFmuSubsystem implements FmuSubsystem {
     this.inputBuffer = new Float64Array(inputNames.length);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   initialize(_startTime: number, _stopTime: number, _stepSize: number): void {
     this.currentInputs.clear();
     this.currentOutputs.clear();
@@ -343,7 +338,6 @@ export class OnnxFmuSubsystem implements FmuSubsystem {
     this.evaluate();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   doStep(_currentTime: number, _stepSize: number): void {
     this.evaluate();
   }

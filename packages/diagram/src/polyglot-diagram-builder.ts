@@ -111,7 +111,6 @@ export interface GraphicsConfig {
     | undefined;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 //
 // Language-agnostic diagram builder for polyglot languages.
 // Reads SymbolIndex + GraphicsConfig and produces X6‑compatible JSON
@@ -1015,7 +1014,7 @@ export function buildPolyglotDiagram(
       if (otherEntries.length > 0) {
         sections.push({
           header: "features",
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
           entries: otherEntries.map((e) => e.name!),
         });
       }
@@ -1878,7 +1877,7 @@ export function buildPolyglotDiagram(
     if (!parentNode.ports) {
       parentNode.ports = { groups: {}, items: [] };
     }
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
     const groups = parentNode.ports.groups!;
     if (!groups["in"]) {
       groups["in"] = {
@@ -2102,7 +2101,7 @@ export function buildPolyglotDiagram(
     let finalSource: string | { cell: string; port: string } = sourceId;
     if (sourceId.includes(".")) {
       const parts = sourceId.split(".");
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       const port = parts.pop()!;
       finalSource = { cell: parts.join("."), port };
     }
@@ -2110,7 +2109,7 @@ export function buildPolyglotDiagram(
     let finalTarget: string | { cell: string; port: string } = targetId;
     if (targetId.includes(".")) {
       const parts = targetId.split(".");
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
       const port = parts.pop()!;
       finalTarget = { cell: parts.join("."), port };
     }
@@ -2298,7 +2297,7 @@ export function buildPolyglotDiagram(
         let finalSource: string | { cell: string; port: string } = usageNodeId;
         if (usageNodeId.includes(".")) {
           const parts = usageNodeId.split(".");
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
           const port = parts.pop()!;
           finalSource = { cell: parts.join("."), port };
         }
@@ -2306,7 +2305,7 @@ export function buildPolyglotDiagram(
         let finalTarget: string | { cell: string; port: string } = defNodeId;
         if (defNodeId.includes(".")) {
           const parts = defNodeId.split(".");
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
           const port = parts.pop()!;
           finalTarget = { cell: parts.join("."), port };
         }

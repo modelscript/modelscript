@@ -200,6 +200,8 @@ export class SemanticTheoryCoordinator {
   private infeasibleConflict?: ConflictClause | undefined;
   /** Registered function application terms for congruence closure deduction. */
   private functionTerms: FunctionApplicationTerm[] = [];
+  /** Opposite-sign flow conservation pairings (vA = -vB) keyed by variable name. */
+  private oppositeSignPairs = new Map<string, { partner: string; justifications: number[] }[]>();
   /** Backtracking stack of solver state snapshots for `pushLevel()` / `popLevel()`. */
   private levelStack: {
     literalIds: number[];
@@ -211,6 +213,7 @@ export class SemanticTheoryCoordinator {
     boundJustificationsSnapshot?: Map<string, Set<number>> | undefined;
     infeasibleConflictSnapshot?: ConflictClause | undefined;
     functionTermsSnapshot?: FunctionApplicationTerm[] | undefined;
+    oppositeSignPairsSnapshot?: Map<string, { partner: string; justifications: number[] }[]> | undefined;
   }[] = [];
   /** Monotonically increasing counter for auto-assigned literal IDs. */
   private nextLitId = 1;
@@ -672,7 +675,31 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
-   * Retracts an asserted literal from all oracles.
+   * Registers an opposite-sign flow conservation pairing (`vA == -vB`, i.e., `vA + vB = 0`).
+   */
+  private registerOppositeSignPair(rawVarA: string, rawVarB: string, justifications: number[]): void {
+    const cleanA = rawVarA.startsWith("-") ? rawVarA.slice(1) : rawVarA;
+    const cleanB = rawVarB.startsWith("-") ? rawVarB.slice(1) : rawVarB;
+    const addLink = (fromVar: string, toVar: string) => {
+      if (!this.oppositeSignPairs.has(fromVar)) {
+        this.oppositeSignPairs.set(fromVar, []);
+      }
+      const list = this.oppositeSignPairs.get(fromVar)!;
+      const existing = list.find((item) => item.partner === toVar);
+      if (existing) {
+        for (const j of justifications) {
+          if (!existing.justifications.includes(j)) existing.justifications.push(j);
+        }
+      } else {
+        list.push({ partner: toVar, justifications: [...justifications] });
+      }
+    };
+    addLink(cleanA, cleanB);
+    addLink(cleanB, cleanA);
+  }
+
+  /**
+   * Retracts an asserted literal from all oracles and rebuilds equivalence classes and bounds.
    */
   public retractLiteral(litId: number): void {
     if (!this.activeLiterals.has(litId)) return;
@@ -681,18 +708,90 @@ export class SemanticTheoryCoordinator {
     this.memoizedResult = undefined;
     this.worklist = this.worklist.filter((e) => !e.justification || !e.justification.includes(litId));
     this.functionTerms = this.functionTerms.filter((t) => t.literalId !== litId);
-    for (const jSet of this.canonicalBoundJustifications.values()) {
-      jSet.delete(litId);
-    }
     this.infeasibleConflict = undefined;
 
-    // Clear and rebuild canonical bounds from remaining active literals
-    const refVars = this.extractReferencedVariables(lit);
-    for (const v of refVars) {
-      const canon = this.getCanonicalVar(v);
-      this.canonicalBounds.delete(canon);
+    // Purge known equalities that depended on the retracted literal or congruence closure
+    const directEqKey =
+      (lit.predicate === "equal" || lit.predicate === "sameIndividual") &&
+      Array.isArray(lit.args) &&
+      typeof lit.args[0] === "string" &&
+      typeof lit.args[1] === "string"
+        ? this.makeEqualityKey(lit.args[0], lit.args[1])
+        : undefined;
+
+    for (const [key, eq] of Array.from(this.knownEqualities.entries())) {
+      const justs = eq.justifications ?? eq.justification;
+      const dependsOnLit =
+        (justs && justs.includes(litId)) ||
+        (directEqKey !== undefined && key === directEqKey) ||
+        eq.sourceOracle === "CongruenceClosure";
+      if (dependsOnLit) {
+        this.knownEqualities.delete(key);
+      }
     }
 
+    // Clear and rebuild equivalence classes, opposite-sign pairs, justifications, and canonical bounds
+    this.parentMap.clear();
+    this.canonicalBounds.clear();
+    this.canonicalBoundJustifications.clear();
+    this.canonSubscribers.clear();
+    this.oppositeSignPairs.clear();
+
+    const addJustifications = (canon: string, ids: number[]) => {
+      if (ids.length === 0) return;
+      if (!this.canonicalBoundJustifications.has(canon)) {
+        this.canonicalBoundJustifications.set(canon, new Set());
+      }
+      const set = this.canonicalBoundJustifications.get(canon)!;
+      for (const id of ids) set.add(id);
+    };
+
+    // 1. Rebuild equivalence classes from remaining active equal/sameIndividual literals
+    for (const activeLit of this.activeLiterals.values()) {
+      if (
+        (activeLit.predicate === "equal" || activeLit.predicate === "sameIndividual") &&
+        Array.isArray(activeLit.args) &&
+        activeLit.args.length >= 2
+      ) {
+        const [varA, varB] = activeLit.args;
+        if (typeof varA === "string" && typeof varB === "string") {
+          if (varA.startsWith("-") !== varB.startsWith("-")) {
+            this.registerOppositeSignPair(varA, varB, [activeLit.id]);
+          } else {
+            const root = this.unionVars(varA, varB);
+            addJustifications(root, [activeLit.id]);
+          }
+        }
+      }
+    }
+
+    // 2. Rebuild equivalence classes from remaining valid knownEqualities
+    for (const eq of this.knownEqualities.values()) {
+      const justs = (eq.justifications ?? eq.justification ?? []).filter((id) => id !== litId);
+      eq.justifications = justs;
+      eq.justification = justs;
+      if (eq.varA.startsWith("-") !== eq.varB.startsWith("-")) {
+        this.registerOppositeSignPair(eq.varA, eq.varB, justs);
+      } else {
+        const root = this.unionVars(eq.varA, eq.varB);
+        addJustifications(root, justs);
+      }
+    }
+
+    // 3. Rebuild canonical subscribers from varSubscribers
+    for (const [vName, subs] of this.varSubscribers.entries()) {
+      if (subs.size === 0) continue;
+      const canon = this.getCanonicalVar(vName);
+      if (!this.canonSubscribers.has(canon)) {
+        this.canonSubscribers.set(canon, new Set());
+      }
+      const canonSet = this.canonSubscribers.get(canon)!;
+      for (const oracle of subs) {
+        canonSet.add(oracle);
+      }
+    }
+
+    // 4. Rebuild canonical bounds from remaining active interval/bound literals and knownEqualities
     for (const activeLit of this.activeLiterals.values()) {
       if (activeLit.predicate === "interval" && Array.isArray(activeLit.args) && activeLit.args.length >= 3) {
         const [vName, lo, hi] = activeLit.args;
@@ -702,6 +801,7 @@ export class SemanticTheoryCoordinator {
           const newLo = Math.max(curr ? curr[0] : -Infinity, lo);
           const newHi = Math.min(curr ? curr[1] : Infinity, hi);
           this.canonicalBounds.set(canon, [newLo, newHi]);
+          addJustifications(canon, [activeLit.id]);
         }
       } else if (activeLit.predicate === "bound" && Array.isArray(activeLit.args) && activeLit.args.length >= 3) {
         const [vName, op, val] = activeLit.args;
@@ -719,7 +819,35 @@ export class SemanticTheoryCoordinator {
           const newLo = Math.max(curr ? curr[0] : -Infinity, lo);
           const newHi = Math.min(curr ? curr[1] : Infinity, hi);
           this.canonicalBounds.set(canon, [newLo, newHi]);
+          addJustifications(canon, [activeLit.id]);
         }
+      }
+    }
+
+    for (const eq of this.knownEqualities.values()) {
+      if (eq.bounds && eq.varA.startsWith("-") === eq.varB.startsWith("-")) {
+        const canon = this.getCanonicalVar(eq.varA);
+        const curr = this.canonicalBounds.get(canon);
+        const newLo = Math.max(curr ? curr[0] : -Infinity, eq.bounds[0]);
+        const newHi = Math.min(curr ? curr[1] : Infinity, eq.bounds[1]);
+        this.canonicalBounds.set(canon, [newLo, newHi]);
+      }
+    }
+
+    // Mirror bounds across opposite-sign pairs
+    for (const [varName, partners] of this.oppositeSignPairs.entries()) {
+      const rootA = this.getCanonicalVar(varName);
+      const bA = this.canonicalBounds.get(rootA);
+      if (!bA) continue;
+      for (const { partner, justifications } of partners) {
+        const rootB = this.getCanonicalVar(partner);
+        const currB = this.canonicalBounds.get(rootB);
+        const newLo = Math.max(currB ? currB[0] : -Infinity, -bA[1]);
+        const newHi = Math.min(currB ? currB[1] : Infinity, -bA[0]);
+        this.canonicalBounds.set(rootB, [newLo, newHi]);
+        addJustifications(rootB, justifications);
+        const jA = this.canonicalBoundJustifications.get(rootA);
+        if (jA) addJustifications(rootB, Array.from(jA));
       }
     }
 
@@ -751,6 +879,13 @@ export class SemanticTheoryCoordinator {
     for (const [k, v] of this.canonicalBoundJustifications.entries()) {
       bjSnapshot.set(k, new Set(v));
     }
+    const ospSnapshot = new Map<string, { partner: string; justifications: number[] }[]>();
+    for (const [k, v] of this.oppositeSignPairs.entries()) {
+      ospSnapshot.set(
+        k,
+        v.map((item) => ({ partner: item.partner, justifications: [...item.justifications] })),
+      );
+    }
     this.levelStack.push({
       literalIds: [],
       equalityKeys: [],
@@ -761,6 +896,7 @@ export class SemanticTheoryCoordinator {
       boundJustificationsSnapshot: bjSnapshot,
       infeasibleConflictSnapshot: this.infeasibleConflict ? { ...this.infeasibleConflict } : undefined,
       functionTermsSnapshot: [...this.functionTerms],
+      oppositeSignPairsSnapshot: ospSnapshot,
     });
     for (const oracle of this.oracles.values()) {
       oracle.pushLevel?.();
@@ -803,6 +939,9 @@ export class SemanticTheoryCoordinator {
     if (top.functionTermsSnapshot) {
       this.functionTerms = top.functionTermsSnapshot;
     }
+    if (top.oppositeSignPairsSnapshot) {
+      this.oppositeSignPairs = top.oppositeSignPairsSnapshot;
+    }
 
     for (const oracle of this.oracles.values()) {
       if (oracle.popLevel) {
@@ -835,6 +974,7 @@ export class SemanticTheoryCoordinator {
     this.memoizedResult = undefined;
     this.infeasibleConflict = undefined;
     this.functionTerms = [];
+    this.oppositeSignPairs.clear();
     this.levelStack = [];
     this.nextLitId = 1;
     for (const oracle of this.oracles.values()) {
@@ -847,11 +987,12 @@ export class SemanticTheoryCoordinator {
    * Checks if an oracle is subscribed to a variable or any variable in its equivalence class.
    */
   private isSubscribedToVar(oracle: TheoryOracle, varName: string): boolean {
-    const canon = this.getCanonicalVar(varName);
+    const cleanName = varName.startsWith("-") ? varName.slice(1) : varName;
+    const canon = this.getCanonicalVar(cleanName);
     const canonSubs = this.canonSubscribers.get(canon);
     if (canonSubs && canonSubs.has(oracle)) return true;
 
-    const directSubs = this.varSubscribers.get(varName);
+    const directSubs = this.varSubscribers.get(cleanName) ?? this.varSubscribers.get(varName);
     if (directSubs && directSubs.has(oracle)) return true;
 
     return false;
@@ -954,12 +1095,161 @@ export class SemanticTheoryCoordinator {
     startTime: number,
   ): { unsat?: CoordinatorSatResult | undefined; eventsProcessed: number } {
     let eventsProcessed = 0;
+    const isTargetedByDomain = (oracle: TheoryOracle, ev: PropagationEvent): boolean => {
+      if (ev.kind === "bound") {
+        return (
+          oracle.name === "ConstraintTheoryOracle" ||
+          oracle.name === "SpatialPhysicsOracle" ||
+          oracle.name === "ToleranceStackOracle"
+        );
+      }
+      return oracle.name === "ConstraintTheoryOracle" || (ev.theoryDomain ? oracle.domain === ev.theoryDomain : false);
+    };
+
     while (this.worklist.length > 0) {
       const event = this.worklist.shift()!;
       if (event.kind === "equality") {
         const key = this.makeEqualityKey(event.varA, event.varB);
         const existing = this.knownEqualities.get(key);
         let isNewOrTightened = false;
+
+        // Check for opposite-sign Kirchhoff flow conservation relation (e.g. portA.m_flow == -portB.m_flow)
+        const isOppositeSign = event.varA.startsWith("-") !== event.varB.startsWith("-");
+        if (isOppositeSign) {
+          const cleanA = event.varA.startsWith("-") ? event.varA.slice(1) : event.varA;
+          const cleanB = event.varB.startsWith("-") ? event.varB.slice(1) : event.varB;
+          const justs = event.justification ?? [];
+          this.registerOppositeSignPair(cleanA, cleanB, justs);
+
+          const rootA = this.getCanonicalVar(cleanA);
+          const rootB = this.getCanonicalVar(cleanB);
+
+          if (justs.length > 0) {
+            if (!this.canonicalBoundJustifications.has(rootA)) {
+              this.canonicalBoundJustifications.set(rootA, new Set());
+            }
+            if (!this.canonicalBoundJustifications.has(rootB)) {
+              this.canonicalBoundJustifications.set(rootB, new Set());
+            }
+            const jA = this.canonicalBoundJustifications.get(rootA)!;
+            const jB = this.canonicalBoundJustifications.get(rootB)!;
+            for (const id of justs) {
+              jA.add(id);
+              jB.add(id);
+            }
+          }
+
+          const bA = this.canonicalBounds.get(rootA);
+          const bB = this.canonicalBounds.get(rootB);
+
+          // Mirror bounds: vA = -vB => vA in [-hiB, -loB] and vB in [-hiA, -loA]
+          if (bA || bB) {
+            const loA = Math.max(bA ? bA[0] : -Infinity, bB ? -bB[1] : -Infinity);
+            const hiA = Math.min(bA ? bA[1] : Infinity, bB ? -bB[0] : Infinity);
+            const loB = Math.max(bB ? bB[0] : -Infinity, bA ? -bA[1] : -Infinity);
+            const hiB = Math.min(bB ? bB[1] : Infinity, bA ? -bA[0] : Infinity);
+
+            const combinedJusts = new Set<number>(justs);
+            const jSetA = this.canonicalBoundJustifications.get(rootA);
+            const jSetB = this.canonicalBoundJustifications.get(rootB);
+            if (jSetA) for (const id of jSetA) combinedJusts.add(id);
+            if (jSetB) for (const id of jSetB) combinedJusts.add(id);
+            const allJustsArr = Array.from(combinedJusts);
+
+            if (loA > hiA + 1e-9) {
+              return {
+                unsat: {
+                  status: "UNSAT",
+                  isSat: false,
+                  conflict: this.makeBoundInversionConflict(cleanA, loA, hiA, allJustsArr, [
+                    cleanA,
+                    cleanB,
+                    rootA,
+                    rootB,
+                  ]),
+                  sharedEqualities: Array.from(this.knownEqualities.values()),
+                  iterations: iteration,
+                  durationMs: performance.now() - startTime,
+                },
+                eventsProcessed,
+              };
+            }
+            if (loB > hiB + 1e-9) {
+              return {
+                unsat: {
+                  status: "UNSAT",
+                  isSat: false,
+                  conflict: this.makeBoundInversionConflict(cleanB, loB, hiB, allJustsArr, [
+                    cleanA,
+                    cleanB,
+                    rootA,
+                    rootB,
+                  ]),
+                  sharedEqualities: Array.from(this.knownEqualities.values()),
+                  iterations: iteration,
+                  durationMs: performance.now() - startTime,
+                },
+                eventsProcessed,
+              };
+            }
+
+            if (!bA || loA > bA[0] + 1e-9 || hiA < bA[1] - 1e-9) {
+              this.canonicalBounds.set(rootA, [loA, hiA]);
+              if (jSetB) {
+                if (!this.canonicalBoundJustifications.has(rootA)) {
+                  this.canonicalBoundJustifications.set(rootA, new Set());
+                }
+                for (const id of jSetB) this.canonicalBoundJustifications.get(rootA)!.add(id);
+              }
+              isNewOrTightened = true;
+            }
+            if (!bB || loB > bB[0] + 1e-9 || hiB < bB[1] - 1e-9) {
+              this.canonicalBounds.set(rootB, [loB, hiB]);
+              if (jSetA) {
+                if (!this.canonicalBoundJustifications.has(rootB)) {
+                  this.canonicalBoundJustifications.set(rootB, new Set());
+                }
+                for (const id of jSetA) this.canonicalBoundJustifications.get(rootB)!.add(id);
+              }
+              isNewOrTightened = true;
+            }
+          }
+
+          let eqToBroadcast: SharedEquality | null = null;
+          if (!existing) {
+            isNewOrTightened = true;
+            eqToBroadcast = {
+              varA: event.varA,
+              varB: event.varB,
+              domain: event.domain ?? "real",
+              bounds: event.bounds,
+              explanation: event.explanation,
+              sourceOracle: event.sourceOracle,
+              justifications: justs,
+              justification: justs,
+            };
+            this.knownEqualities.set(key, eqToBroadcast);
+            if (this.levelStack.length > 0) {
+              this.levelStack[this.levelStack.length - 1]!.equalityKeys.push(key);
+            }
+          }
+
+          if (isNewOrTightened && eqToBroadcast) {
+            eventsProcessed++;
+            for (const oracle of this.oracles.values()) {
+              if (oracle.name === event.sourceOracle) continue;
+              const isSubscribed =
+                this.isSubscribedToVar(oracle, cleanA) ||
+                this.isSubscribedToVar(oracle, cleanB) ||
+                (event.theoryDomain ? this.isSubscribedToDomain(oracle, event.theoryDomain) : false);
+              if (isSubscribed || isTargetedByDomain(oracle, event)) {
+                oracle.onSharedEquality(eqToBroadcast);
+                this.dirtyOracles.add(oracle.name);
+              }
+            }
+          }
+          continue;
+        }
 
         const canonRoot = this.unionVars(event.varA, event.varB);
         if (this.infeasibleConflict) {
@@ -1059,19 +1349,6 @@ export class SemanticTheoryCoordinator {
           eqToBroadcast = { ...existing };
         }
 
-        const isTargetedByDomain = (oracle: TheoryOracle, ev: PropagationEvent): boolean => {
-          if (ev.kind === "bound") {
-            return (
-              oracle.name === "ConstraintTheoryOracle" ||
-              oracle.name === "SpatialPhysicsOracle" ||
-              oracle.name === "ToleranceStackOracle"
-            );
-          }
-          return (
-            oracle.name === "ConstraintTheoryOracle" || (ev.theoryDomain ? oracle.domain === ev.theoryDomain : false)
-          );
-        };
-
         if (isNewOrTightened && eqToBroadcast) {
           eventsProcessed++;
           for (const oracle of this.oracles.values()) {
@@ -1087,19 +1364,6 @@ export class SemanticTheoryCoordinator {
           }
         }
       } else if (event.kind === "bound") {
-        const isTargetedByDomain = (oracle: TheoryOracle, ev: PropagationEvent): boolean => {
-          if (ev.kind === "bound") {
-            return (
-              oracle.name === "ConstraintTheoryOracle" ||
-              oracle.name === "SpatialPhysicsOracle" ||
-              oracle.name === "ToleranceStackOracle"
-            );
-          }
-          return (
-            oracle.name === "ConstraintTheoryOracle" || (ev.theoryDomain ? oracle.domain === ev.theoryDomain : false)
-          );
-        };
-
         const canonRoot = this.getCanonicalVar(event.varName);
         const currentBound = this.canonicalBounds.get(canonRoot);
 
@@ -1149,6 +1413,21 @@ export class SemanticTheoryCoordinator {
             : event.justification
               ? [...event.justification]
               : [];
+
+          // Propagate negated bounds to any opposite-sign Kirchhoff flow partners
+          const partners = this.oppositeSignPairs.get(event.varName) ?? this.oppositeSignPairs.get(canonRoot) ?? [];
+          for (const { partner, justifications: pairJusts } of partners) {
+            const mergedJusts = Array.from(new Set([...allJustifications, ...pairJusts]));
+            this.enqueueEvent({
+              kind: "bound",
+              varName: partner,
+              bounds: [-hi, -lo],
+              theoryDomain: event.theoryDomain,
+              explanation: `Kirchhoff opposite-sign flow bound from '${event.varName}' in [${lo}, ${hi}]`,
+              sourceOracle: event.sourceOracle,
+              justification: mergedJusts,
+            });
+          }
 
           const boundEq: SharedEquality = {
             varA: event.varName,

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerIbisToDae } from "./dae/ibis-to-dae.js";
 import { lintIbis } from "./lints/index.js";
@@ -89,7 +88,7 @@ export function validateIbis(text: string): LspDiagnostic[] {
         message: `[M${d.code}] ${d.message}`,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -99,7 +98,7 @@ export function validateIbis(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8300",
         source: "modelscript-ibis",
-        message: `Parse Error: ${err.message}`,
+        message: `Parse Error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -233,7 +232,7 @@ export function getIbisHover(text: string, pos: LspPosition): LspHover | undefin
   }
 }
 
-export async function executeIbisAction(actionId: string, text: string): Promise<any> {
+export async function executeIbisAction(actionId: string, text: string): Promise<unknown> {
   const deck = parseIbis(text);
 
   switch (actionId) {

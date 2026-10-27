@@ -151,12 +151,84 @@ export class DpoGraph {
   }
 
   /**
+   * Deletes an active edge, unlinks it from its source node's adjacency list,
+   * and decrements the degrees of both its source and target nodes.
+   */
+  @inline
+  deleteEdge(edgeId: u32): boolean {
+    if (edgeId == 0 || edgeId > this.edgeCount) return false;
+    let edgeSlot = edgeId - 1;
+    let edgeOffset = edgeSlot * DPO_EDGE_STRIDE;
+
+    let edgeMeta = this.edges.get(edgeOffset + DPO_EDGE_TYPE);
+    let flags = (edgeMeta & 0xffff) as u16;
+    if ((flags & DPO_FLAG_ACTIVE) == 0 || (flags & DPO_FLAG_TOMBSTONE) != 0) {
+      return false;
+    }
+
+    // Mark edge tombstoned
+    let newFlags = (flags | DPO_FLAG_TOMBSTONE) & ~DPO_FLAG_ACTIVE;
+    this.edges.set(edgeOffset + DPO_EDGE_TYPE, (edgeMeta & 0xffff0000) | (newFlags as u32));
+
+    let srcId = this.edges.get(edgeOffset + DPO_EDGE_SOURCE);
+    let tgtId = this.edges.get(edgeOffset + DPO_EDGE_TARGET);
+    let nextEdgeId = this.edges.get(edgeOffset + DPO_EDGE_NEXT);
+
+    // Unlink from source node's incident list and decrement source degree
+    if (srcId > 0 && srcId <= this.nodeCount) {
+      let srcOffset = (srcId - 1) * DPO_NODE_STRIDE;
+      let head = this.nodes.get(srcOffset + DPO_NODE_FIRST_EDGE);
+      if (head == edgeId) {
+        this.nodes.set(srcOffset + DPO_NODE_FIRST_EDGE, nextEdgeId);
+      } else {
+        let prevEdgeId = head;
+        while (prevEdgeId != 0) {
+          let prevOffset = (prevEdgeId - 1) * DPO_EDGE_STRIDE;
+          let currId = this.edges.get(prevOffset + DPO_EDGE_NEXT);
+          if (currId == edgeId) {
+            this.edges.set(prevOffset + DPO_EDGE_NEXT, nextEdgeId);
+            break;
+          }
+          prevEdgeId = currId;
+        }
+      }
+      let srcDeg = this.nodes.get(srcOffset + DPO_NODE_DEGREE);
+      if (srcDeg > 0) this.nodes.set(srcOffset + DPO_NODE_DEGREE, srcDeg - 1);
+    }
+
+    // Decrement target node degree
+    if (tgtId > 0 && tgtId <= this.nodeCount) {
+      let tgtOffset = (tgtId - 1) * DPO_NODE_STRIDE;
+      let tgtDeg = this.nodes.get(tgtOffset + DPO_NODE_DEGREE);
+      if (tgtDeg > 0) this.nodes.set(tgtOffset + DPO_NODE_DEGREE, tgtDeg - 1);
+    }
+
+    this.edges.set(edgeOffset + DPO_EDGE_NEXT, 0);
+    return true;
+  }
+
+  /**
    * Pushout Complement (D = G \ (L \ K)):
-   * Deletes node and recycles slot into freelist.
+   * Deletes node, removes any remaining incident edges (decrementing neighbor degrees),
+   * and recycles slot into freelist.
    */
   @inline
   deleteNode(nodeId: u32): boolean {
     if (!this.isNodeActive(nodeId)) return false;
+
+    // Remove any remaining active incident edges so neighbor degrees stay consistent
+    for (let eSlot: u32 = 0; eSlot < this.edgeCount; eSlot++) {
+      let eOffset = eSlot * DPO_EDGE_STRIDE;
+      let eFlags = (this.edges.get(eOffset + DPO_EDGE_TYPE) & 0xffff) as u16;
+      if ((eFlags & DPO_FLAG_ACTIVE) != 0 && (eFlags & DPO_FLAG_TOMBSTONE) == 0) {
+        let srcId = this.edges.get(eOffset + DPO_EDGE_SOURCE);
+        let tgtId = this.edges.get(eOffset + DPO_EDGE_TARGET);
+        if (srcId == nodeId || tgtId == nodeId) {
+          this.deleteEdge(eSlot + 1);
+        }
+      }
+    }
+
     let slot = nodeId - 1;
     let offset = slot * DPO_NODE_STRIDE;
 
@@ -221,6 +293,10 @@ export function dpo_add_edge(graphPtr: usize, srcId: u32, tgtId: u32, edgeType: 
 
 export function dpo_check_dangling_edge(graphPtr: usize, nodeId: u32, matchedDegree: u32): boolean {
   return changetype<DpoGraph>(graphPtr).checkDanglingEdge(nodeId, matchedDegree);
+}
+
+export function dpo_delete_edge(graphPtr: usize, edgeId: u32): boolean {
+  return changetype<DpoGraph>(graphPtr).deleteEdge(edgeId);
 }
 
 export function dpo_delete_node(graphPtr: usize, nodeId: u32): boolean {

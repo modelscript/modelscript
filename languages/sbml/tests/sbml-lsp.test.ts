@@ -80,7 +80,7 @@ test("SBML LSP: executeSbmlAction executes solver and export actions", async () 
     options: { duration: 5.0 },
   });
   assert.equal(simRes.modelId, "MetabolicLspTest");
-  assert.ok(simRes.finalConcentrations["G6P"] > 0);
+  assert.ok((simRes.finalConcentrations["G6P"] ?? 0) > 0);
 
   const daeRes = await executeSbmlAction("sbml_to_dae", VALID_SBML);
   assert.ok(daeRes.variableCount >= 4);

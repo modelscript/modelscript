@@ -253,7 +253,7 @@ function mapUnaryOp(op: PlcUnaryOp): UnaryOp {
   }
 }
 
-function parseDurationSeconds(val: any): number {
+function parseDurationSeconds(val: unknown): number {
   if (typeof val === "number") return val / 1000;
   if (typeof val === "string") {
     const m = /(?:T|TIME)#(\d+)(ms|s|m|h)?/i.exec(val);

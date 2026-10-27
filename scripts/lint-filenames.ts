@@ -47,14 +47,15 @@ function isKebabCase(str: string): boolean {
   return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(str);
 }
 
-export function checkFile(relPath: string): Violation[] {
+export function checkFile(rawRelPath: string): Violation[] {
+  const relPath = rawRelPath.replace(/\\/g, "/");
   if (shouldExclude(relPath)) return [];
   if (ALLOWED_SHIMS.has(relPath)) return [];
 
   const violations: Violation[] = [];
-  const basename = path.basename(relPath);
-  const ext = path.extname(relPath);
-  const nameWithoutExt = path.basename(relPath, ext);
+  const basename = path.posix.basename(relPath);
+  const ext = path.posix.extname(relPath);
+  const nameWithoutExt = path.posix.basename(relPath, ext);
 
   // 1. Double prefix test anti-pattern: test-*.test.ts
   if (basename.endsWith(".test.ts") || basename.endsWith(".test.tsx") || basename.endsWith(".test.js")) {
@@ -118,7 +119,7 @@ export function run(fileList?: string[]): { checked: number; violations: Violati
   let checked = 0;
 
   for (const file of files) {
-    const rel = path.isAbsolute(file) ? path.relative(REPO_ROOT, file) : file;
+    const rel = (path.isAbsolute(file) ? path.relative(REPO_ROOT, file) : file).replace(/\\/g, "/");
     checked++;
     const v = checkFile(rel);
     if (v.length > 0) {

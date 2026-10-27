@@ -295,7 +295,7 @@ function resolveParameterConflict(
   return targetVal;
 }
 
-function mapModelicaTypeToSimulink(typeSpec: string): any {
+function mapModelicaTypeToSimulink(typeSpec: string): SimulinkBlock["type"] {
   if (typeSpec.includes("Math.Gain")) return "Gain";
   if (typeSpec.includes("Continuous.Integrator")) return "Integrator";
   if (typeSpec.includes("Sources.Constant")) return "Constant";

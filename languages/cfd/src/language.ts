@@ -12,10 +12,17 @@ import {
   tggComplement,
   tggEq,
   tggRule,
+  type ActionExecutionContext,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import type { MaterializeOptions } from "./types.js";
+
+interface CfdActionContext extends ActionExecutionContext {
+  documents?: { get(uri: string): { getText(): string } | undefined } | undefined;
+  sharedFs?: { read(uri: string): Promise<string> } | undefined;
+}
 
 /**
  * Operator precedence levels for embedded parameter expressions in CFD templates (`.cfgt`).
@@ -56,7 +63,10 @@ export const cfdLanguage = language({
       title: "Open 3D Aerodynamics Viewer",
       description: "Opens the 3D surface mesh and boundary marker viewer for SU2 aerodynamic configurations.",
       category: "query",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: CfdActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();
@@ -103,8 +113,12 @@ export const cfdLanguage = language({
       description: "Evaluates embedded parameter expressions to generate a concrete SU2 configuration file.",
       category: "transform",
       execute: async (
-        ctx: any,
-        params: { documentText?: string | undefined; uri?: string | undefined; options?: any },
+        ctx: CfdActionContext,
+        params: {
+          documentText?: string | undefined;
+          uri?: string | undefined;
+          options?: MaterializeOptions | undefined;
+        },
       ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
@@ -150,7 +164,10 @@ export const cfdLanguage = language({
       title: "Run CFD Aerodynamic Simulation",
       description: "Executes an aerodynamic CFD evaluation on the active SU2/OpenFOAM configuration.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; uri?: string | undefined }) => {
+      execute: async (
+        ctx: CfdActionContext,
+        params: { documentText?: string | undefined; uri?: string | undefined },
+      ) => {
         let source = params?.documentText ?? ctx.documentText;
         if (!source && ctx.uri && ctx.documents) {
           source = ctx.documents.get(ctx.uri)?.getText();

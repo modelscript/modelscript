@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerTouchstoneToDae } from "./dae/touchstone-to-dae.js";
 import { lintTouchstone } from "./lints/index.js";
@@ -89,7 +88,7 @@ export function validateTouchstone(text: string): LspDiagnostic[] {
         message: `[M${d.code}] ${d.message}`,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -99,7 +98,7 @@ export function validateTouchstone(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8300",
         source: "modelscript-touchstone",
-        message: `Parse Error: ${err.message}`,
+        message: `Parse Error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -223,7 +222,7 @@ export function getTouchstoneHover(text: string, pos: LspPosition): LspHover | u
   }
 }
 
-export async function executeTouchstoneAction(actionId: string, text: string): Promise<any> {
+export async function executeTouchstoneAction(actionId: string, text: string): Promise<unknown> {
   const deck = parseTouchstone(text);
 
   switch (actionId) {

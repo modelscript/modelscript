@@ -114,16 +114,27 @@ export class CongruenceClosure {
 
   public find(x: string): string {
     if (!this.parent.has(x)) this.parent.set(x, x);
-    let root = x;
-    while (this.parent.get(root) !== root) {
-      root = this.parent.get(root)!;
-    }
-    // Path compression
     let curr = x;
-    while (curr !== root) {
-      const nxt = this.parent.get(curr)!;
-      this.parent.set(curr, root);
-      curr = nxt;
+    const visited = new Set<string>();
+    const path: string[] = [];
+
+    while (true) {
+      if (visited.has(curr)) {
+        this.parent.set(curr, curr);
+        break;
+      }
+      visited.add(curr);
+      path.push(curr);
+      const next = this.parent.get(curr);
+      if (!next || next === curr) {
+        break;
+      }
+      curr = next;
+    }
+
+    const root = curr;
+    for (const node of path) {
+      this.parent.set(node, root);
     }
     return root;
   }

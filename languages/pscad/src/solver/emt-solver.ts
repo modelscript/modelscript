@@ -63,8 +63,95 @@ interface CompanionBranch {
   ic: Float64Array;
 }
 
+interface SwitchLike {
+  id: string;
+  fromBus: string;
+  toBus: string;
+  initialClosed?: boolean | undefined;
+  actionTimeSec: number;
+  rClosedOhm?: number | undefined;
+  rOpenOhm?: number | undefined;
+}
+
+interface LegacyBranchLike {
+  id: string;
+  fromBus: string;
+  toBus: string;
+  rOhm?: number | undefined;
+  r?: number | undefined;
+  lHenry?: number | undefined;
+  lH?: number | undefined;
+  cFarad?: number | undefined;
+  cF?: number | undefined;
+}
+
+interface LegacyLineLike {
+  id: string;
+  fromBus: string;
+  toBus: string;
+  rTotalOhm?: number | undefined;
+  lTotalHenry?: number | undefined;
+  cTotalFarad?: number | undefined;
+}
+
+interface LegacyTransformerLike {
+  id: string;
+  primaryKv?: number | undefined;
+  ratedMva?: number | undefined;
+  mva?: number | undefined;
+  leakageXPu?: number | undefined;
+  xLeakagePu?: number | undefined;
+  primaryBus?: string | undefined;
+  fromBus?: string | undefined;
+  secondaryBus?: string | undefined;
+  toBus?: string | undefined;
+}
+
+interface LegacySourceLike {
+  bus: string;
+  rSourceOhm?: number | undefined;
+  lSourceHenry?: number | undefined;
+  lSourceH?: number | undefined;
+  voltageKv?: number | undefined;
+  kv?: number | undefined;
+  frequencyHz?: number | undefined;
+  phaseDeg?: number | undefined;
+  phaseAngleDeg?: number | undefined;
+}
+
+interface LegacyNetlistExtensions {
+  lines?: LegacyLineLike[] | undefined;
+  switches?: SwitchLike[] | undefined;
+}
+
+interface EmtWasmExports {
+  memory: WebAssembly.Memory;
+  emt_create: (nNodes: number, maxBranches: number, maxSources: number, dt: number) => number;
+  emt_add_branch: (
+    solverPtr: number,
+    fromNode: number,
+    toNode: number,
+    rOhm: number,
+    lHenry: number,
+    cFarad: number,
+  ) => number;
+  emt_add_source: (
+    solverPtr: number,
+    nodeIdx: number,
+    vPeakKv: number,
+    freqHz: number,
+    phaseRad: number,
+    gSrc: number,
+    active: number,
+  ) => void;
+  emt_build_and_factorize: (solverPtr: number) => number | boolean;
+  emt_get_voltages_ptr: (solverPtr: number) => number;
+  emt_step: (solverPtr: number) => void;
+  emt_get_branch_current: (solverPtr: number, branchIdx: number) => number;
+}
+
 interface SwitchState {
-  sw: any;
+  sw: SwitchLike;
   fromIdx: number;
   toIdx: number;
   currentClosed: boolean;
@@ -74,7 +161,7 @@ interface SwitchState {
 }
 
 interface FmuState {
-  fmu: any;
+  fmu: NonNullable<EmtNetlist["fmuInstances"]>[number];
   busIdx: number;
   iRatedPeak: number;
   iqState: number;
@@ -258,7 +345,9 @@ export class EmtSolver {
       });
     };
 
-    for (const br of (this.netlist.branches ?? []) as any[]) {
+    const netlistExt = this.netlist as EmtNetlist & LegacyNetlistExtensions;
+
+    for (const br of (this.netlist.branches ?? []) as LegacyBranchLike[]) {
       addCompanion(
         br.id,
         br.fromBus,
@@ -268,18 +357,25 @@ export class EmtSolver {
         br.cFarad || br.cF || 0,
       );
     }
-    for (const ln of ((this.netlist as any).lines ?? []) as any[]) {
+    for (const ln of netlistExt.lines ?? []) {
       addCompanion(ln.id, ln.fromBus, ln.toBus, ln.rTotalOhm || 1.0, ln.lTotalHenry || 0.01, ln.cTotalFarad || 0);
     }
-    for (const xf of (this.netlist.transformers ?? []) as any[]) {
+    for (const xf of (this.netlist.transformers ?? []) as LegacyTransformerLike[]) {
       const baseZ = (xf.primaryKv || 230.0) ** 2 / Math.max(xf.ratedMva || xf.mva || 100.0, 1.0);
       const xOhm = Math.max((xf.leakageXPu || xf.xLeakagePu || 0.1) * baseZ, 0.05);
       const lHenry = xOhm / this.omega;
-      addCompanion(xf.id, xf.primaryBus ?? xf.fromBus, xf.secondaryBus ?? xf.toBus, 0.01 * baseZ, lHenry, 0);
+      addCompanion(
+        xf.id,
+        xf.primaryBus ?? xf.fromBus ?? "0",
+        xf.secondaryBus ?? xf.toBus ?? "0",
+        0.01 * baseZ,
+        lHenry,
+        0,
+      );
     }
 
     // Register switch states
-    for (const sw of ((this.netlist as any).switches ?? []) as any[]) {
+    for (const sw of netlistExt.switches ?? []) {
       const fromIdx = sw.fromBus === "0" || sw.fromBus === "GND" ? -1 : (this.busIdxMap.get(sw.fromBus) ?? -1);
       const toIdx = sw.toBus === "0" || sw.toBus === "GND" ? -1 : (this.busIdxMap.get(sw.toBus) ?? -1);
       const ia = new Float64Array(this.nSteps);
@@ -304,14 +400,15 @@ export class EmtSolver {
     }
 
     // Register sources
-    for (const src of (this.netlist.sources ?? []) as any[]) {
+    for (const src of (this.netlist.sources ?? []) as LegacySourceLike[]) {
       const bIdx = this.busIdxMap.get(src.bus) ?? 0;
       const rSrc = src.rSourceOhm !== undefined && src.rSourceOhm > 0 ? src.rSourceOhm : 1.5;
-      const lSrc = (src.lSourceHenry ?? src.lSourceH ?? 0) > 0 ? (src.lSourceHenry ?? src.lSourceH) : 0.0;
+      const rawLSrc = src.lSourceHenry ?? src.lSourceH ?? 0;
+      const lSrc = rawLSrc > 0 ? rawLSrc : 0.0;
       const zSrc = Math.hypot(rSrc, this.omega * lSrc);
       const gSrc = 1.0 / Math.max(zSrc, 1e-4);
-      const vPeak =
-        (((src.voltageKv ?? src.kv) > 0 ? (src.voltageKv ?? src.kv) : this.busList[bIdx]!.baseKv) || 230.0) * 1e3;
+      const rawKv = src.voltageKv ?? src.kv ?? 0;
+      const vPeak = ((rawKv > 0 ? rawKv : this.busList[bIdx]!.baseKv) || 230.0) * 1e3;
       const freqRad = 2 * Math.PI * (src.frequencyHz || this.netlist.nominalFrequencyHz || 60.0);
       const phaseRad = (((src.phaseDeg ?? src.phaseAngleDeg) || 0) * Math.PI) / 180.0;
       const list = this.busSources.get(bIdx) ?? [];
@@ -413,8 +510,20 @@ export class EmtSolver {
    * Delegates simulation to the native WebAssembly EMT companion solver kernel in linear memory.
    */
   private solveWithWasm(): EmtSolverResult | null {
-    const wasm: any = getDefaultWasmExports();
-    if (!wasm || typeof wasm.emt_create !== "function") return null;
+    const wasm = getDefaultWasmExports() as Partial<EmtWasmExports> | null;
+    if (
+      !wasm ||
+      typeof wasm.emt_create !== "function" ||
+      typeof wasm.emt_add_branch !== "function" ||
+      typeof wasm.emt_add_source !== "function" ||
+      typeof wasm.emt_build_and_factorize !== "function" ||
+      typeof wasm.emt_get_voltages_ptr !== "function" ||
+      typeof wasm.emt_step !== "function" ||
+      typeof wasm.emt_get_branch_current !== "function" ||
+      !wasm.memory
+    ) {
+      return null;
+    }
 
     try {
       const nNodes = this.nBuses * 3;
@@ -545,7 +654,8 @@ export class EmtSolver {
       // 1. Detect switch state toggles
       let topologyChanged = false;
       for (const swState of this.switchStates) {
-        const isClosed = t >= swState.sw.actionTimeSec ? !swState.sw.initialClosed : swState.sw.initialClosed;
+        const initClosed = Boolean(swState.sw.initialClosed);
+        const isClosed = t >= swState.sw.actionTimeSec ? !initClosed : initClosed;
         if (isClosed !== swState.currentClosed) {
           swState.currentClosed = isClosed;
           topologyChanged = true;

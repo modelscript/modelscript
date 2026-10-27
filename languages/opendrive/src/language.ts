@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/opendrive — Language Definition.
@@ -8,7 +7,7 @@
  * analytical clothoid track sampling, DAE lowering, and GENSYS export.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenDriveToDae } from "./dae/opendrive-to-dae.js";
 import { sampleRoadTrack } from "./geometry/clothoid.js";
 import { lintOpenDrive } from "./lints/rules.js";
@@ -32,7 +31,7 @@ export const opendriveLanguage = language({
       title: "Lint OpenDRIVE Road Network",
       description: "Runs pre-flight tangency continuity, lane link, and clothoid convergence checks.",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseOpenDrive(text);
         return lintOpenDrive(doc);
@@ -44,7 +43,7 @@ export const opendriveLanguage = language({
       description:
         "Generates high-precision 3D spatial track coordinates via Fresnel clothoids and elevation profiles.",
       category: "simulate",
-      execute: async (context: any, params?: any) => {
+      execute: async (context: ActionExecutionContext, params?: { step?: number | undefined }) => {
         const text = context.documentText || "";
         const doc = parseOpenDrive(text);
         const step = params?.step ?? 1.0;
@@ -61,7 +60,7 @@ export const opendriveLanguage = language({
       title: "Lower OpenDRIVE to DAE Arena",
       description: "Lowers road tracking dynamics into ModelScript's linear-memory DAEBuilder arena.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseOpenDrive(text);
         const arena = lowerOpenDriveToDae(doc);
@@ -76,7 +75,7 @@ export const opendriveLanguage = language({
       title: "Export to GENSYS Track (.geo)",
       description: "Translates OpenDRIVE 3D roadway trajectories to GENSYS track geometry format.",
       category: "export",
-      execute: async (context: any, params?: any) => {
+      execute: async (context: ActionExecutionContext, params?: { step?: number | undefined }) => {
         const text = context.documentText || "";
         const doc = parseOpenDrive(text);
         const step = params?.step ?? 1.0;

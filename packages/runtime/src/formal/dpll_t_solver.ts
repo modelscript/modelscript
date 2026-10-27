@@ -366,6 +366,9 @@ export class DpllTSolver {
       }
 
       // 2. Check multi-theory constraints with SemanticTheoryCoordinator if present
+      let coordActiveLitIds: LitId[] = [];
+      const coordTightenedBounds = new Map<string, [number, number]>();
+
       if (this.coordinator && this.multiTheoryLiterals.size > 0) {
         this.coordinator.pushLevel();
         const activeLitIds: LitId[] = [];
@@ -396,7 +399,20 @@ export class DpllTSolver {
           }
         }
 
+        coordActiveLitIds = activeLitIds;
         const coordRes = this.coordinator.checkSat();
+        if (coordRes.isSat) {
+          const allBounds = this.coordinator.getAllCanonicalBounds();
+          for (const [canonVar, b] of allBounds.entries()) {
+            coordTightenedBounds.set(canonVar, [b[0], b[1]]);
+          }
+          for (const v of box.keys()) {
+            const b = allBounds.get(this.coordinator.getCanonicalVar(v));
+            if (b) {
+              coordTightenedBounds.set(v, [b[0], b[1]]);
+            }
+          }
+        }
         this.coordinator.popLevel();
 
         if (!coordRes.isSat) {
@@ -471,6 +487,46 @@ export class DpllTSolver {
         }
 
         const boxCopy = this.cloneBox(box);
+        let boxTighteningConflict = false;
+        for (const [v, b] of coordTightenedBounds.entries()) {
+          const existing = boxCopy.get(v);
+          if (existing) {
+            const newLo = Math.max(existing.lo, b[0]);
+            const newHi = Math.min(existing.hi, b[1]);
+            if (newLo > newHi + 1e-9) {
+              boxTighteningConflict = true;
+              break;
+            }
+            boxCopy.set(v, new Interval(newLo, newHi));
+          } else {
+            if (b[0] > b[1] + 1e-9) {
+              boxTighteningConflict = true;
+              break;
+            }
+            boxCopy.set(v, new Interval(b[0], b[1]));
+          }
+        }
+
+        const combinedConflictLits = () => {
+          const set = new Set<LitId>();
+          for (const l of activeLits) set.add(-l);
+          for (const l of coordActiveLitIds) set.add(-l);
+          return Array.from(set);
+        };
+
+        if (boxTighteningConflict) {
+          this.conflicts++;
+          const conflictClause = combinedConflictLits();
+          if (!this.sat.addClause(conflictClause)) {
+            return {
+              status: "UNSAT",
+              conflictsEncountered: this.conflicts,
+              subdivisions: this.subdivisions,
+              summary: "Problem certified UNSAT after coordinator bound intersection with initial domain box.",
+            };
+          }
+          continue;
+        }
 
         // 3a. Exact NLSAT CAD engine for polynomial systems
         if (this.useNlsat) {
@@ -496,14 +552,19 @@ export class DpllTSolver {
 
             if (nlsatRes.status === "UNSAT") {
               this.conflicts++;
-              const conflictClause =
+              let conflictClause =
                 nlsatRes.conflictingConstraintIds && nlsatRes.conflictingConstraintIds.length > 0
                   ? nlsatRes.conflictingConstraintIds
                       .filter((cid) => cidToLit.has(cid))
                       .map((cid) => -cidToLit.get(cid)!)
                   : activeLits.map((l) => -l);
+              if (coordTightenedBounds.size > 0 && coordActiveLitIds.length > 0) {
+                const merged = new Set<LitId>(conflictClause.length > 0 ? conflictClause : activeLits.map((l) => -l));
+                for (const l of coordActiveLitIds) merged.add(-l);
+                conflictClause = Array.from(merged);
+              }
 
-              if (!this.sat.addClause(conflictClause.length > 0 ? conflictClause : activeLits.map((l) => -l))) {
+              if (!this.sat.addClause(conflictClause.length > 0 ? conflictClause : combinedConflictLits())) {
                 return {
                   status: "UNSAT",
                   conflictsEncountered: this.conflicts,
@@ -544,7 +605,7 @@ export class DpllTSolver {
           }
 
           this.conflicts++;
-          const conflictClause = activeLits.map((l) => -l);
+          const conflictClause = combinedConflictLits();
           if (!this.sat.addClause(conflictClause)) {
             return {
               status: "UNSAT",
@@ -565,10 +626,21 @@ export class DpllTSolver {
         };
       }
 
+      // If no nonlinear theoryLits, intersect box with coordinator tightened bounds if any
+      const outBox = this.cloneBox(box);
+      for (const [v, b] of coordTightenedBounds.entries()) {
+        const existing = outBox.get(v);
+        if (existing) {
+          outBox.set(v, new Interval(Math.max(existing.lo, b[0]), Math.min(existing.hi, b[1])));
+        } else {
+          outBox.set(v, new Interval(b[0], b[1]));
+        }
+      }
+
       // If no box constraints, the coordinator model or Boolean SAT model is certified SAT
       return {
         status: "DELTA_SAT",
-        solutionBox: box.size > 0 ? box : undefined,
+        solutionBox: outBox.size > 0 ? outBox : undefined,
         conflictsEncountered: this.conflicts,
         subdivisions: this.subdivisions,
         summary: "Multi-theory satisfiability certified by DPLL(T) solver.",

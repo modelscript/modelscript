@@ -10,7 +10,7 @@ import type { LanguageClient } from "vscode-languageclient/browser";
  */
 export function registerMCPTools(context: vscode.ExtensionContext, client: LanguageClient): void {
   // Runtime guard — lm.registerTool is a proposed API, only available with Copilot
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   if (typeof (vscode.lm as any)?.registerTool !== "function") {
     console.log("[mcp-bridge] vscode.lm.registerTool not available — skipping");
     return;
@@ -199,6 +199,38 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
           } catch (e) {
             return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(`Error: ${e}`)]);
           }
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
+
+  // modelscript_closed_loop_synthesize
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("modelscript_closed_loop_synthesize", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          const result = await client.sendRequest<any>("modelscript/closedLoopSynthesize", options.input);
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
+        },
+      }),
+    );
+  } catch {
+    /* tool not contributed in package.json */
+  }
+
+  // tgg_reconcile_slot
+  try {
+    context.subscriptions.push(
+      vscode.lm.registerTool("tgg_reconcile_slot", {
+        async invoke(
+          options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
+        ): Promise<vscode.LanguageModelToolResult> {
+          const result = await client.sendRequest<any>("modelscript/reconcileConflict", options.input);
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
         },
       }),
     );

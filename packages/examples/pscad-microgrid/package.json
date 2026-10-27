@@ -15,5 +15,9 @@
     "pipeline": "tsx run_simulation.ts && tsx verify_grid_code.ts",
     "sim": "msx pscad sim Microgrid_IBR.pscx",
     "verify": "msx pscad verify-ieee2800 Microgrid_IBR.pscx"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "example"
   }
 }

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Spinner } from "@primer/react";
 import React, { Suspense } from "react";
 import Box from "../../Box";

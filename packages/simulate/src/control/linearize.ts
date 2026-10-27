@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
  * @modelscript/simulate/control — Index-1 DAE Steady-State Trim & State-Space Linearization.

@@ -49,7 +49,10 @@ export class ReqIfWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {

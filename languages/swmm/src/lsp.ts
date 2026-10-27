@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerSwmmToDae } from "./dae/swmm-to-dae.js";
 import { lintSwmm } from "./lints/index.js";
@@ -89,7 +88,7 @@ export function validateSwmm(text: string): LspDiagnostic[] {
         message: `[${d.code}] ${d.message}`,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -99,7 +98,7 @@ export function validateSwmm(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8200",
         source: "modelscript-swmm",
-        message: `Parse Error: ${err.message}`,
+        message: `Parse Error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -236,7 +235,7 @@ export function getSwmmHover(text: string, pos: LspPosition): LspHover | undefin
   }
 }
 
-export async function executeSwmmAction(actionId: string, text: string): Promise<any> {
+export async function executeSwmmAction(actionId: string, text: string): Promise<unknown> {
   const deck = parseSwmm(text);
 
   switch (actionId) {

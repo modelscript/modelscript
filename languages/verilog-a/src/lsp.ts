@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/verilog-a — Language Server Protocol (LSP) Service Integration.
@@ -80,7 +79,7 @@ export function validateVerilogA(content: string): LspDiagnostic[] {
   let doc: VerilogADocument;
   try {
     doc = parseVerilogA(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -90,7 +89,7 @@ export function validateVerilogA(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M7600",
         source: "verilog-a-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -297,7 +296,7 @@ export function getVerilogAHover(content: string, offset: number): LspHover | un
   return undefined;
 }
 
-export async function executeVerilogAAction(actionId: string, content: string, _params?: any): Promise<any> {
+export async function executeVerilogAAction(actionId: string, content: string, _params?: unknown): Promise<unknown> {
   const doc = parseVerilogA(content);
 
   switch (actionId) {

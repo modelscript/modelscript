@@ -21,6 +21,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
   private propagatedEqualities = new Set<string>();
   private aliases = new Map<string, string>(); // canonical alias mapping
   private varJustifications = new Map<string, Set<number>>();
+  private oppositeSignPairs = new Map<string, Set<string>>();
   private sharedEqualities: SharedEquality[] = [];
   private levelStack: {
     intervals: Map<string, Interval | null>;
@@ -28,6 +29,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     propagatedEqualities: Set<string>;
     assertedLitIds: number[];
     varJustifications: Map<string, Set<number>>;
+    oppositeSignPairs: Map<string, Set<string>>;
   }[] = [];
 
   constructor() {
@@ -40,6 +42,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     this.propagatedEqualities.clear();
     this.aliases.clear();
     this.varJustifications.clear();
+    this.oppositeSignPairs.clear();
     this.sharedEqualities = [];
     this.levelStack = [];
   }
@@ -49,12 +52,17 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     for (const [k, v] of this.varJustifications) {
       vjSnapshot.set(k, new Set(v));
     }
+    const ospSnapshot = new Map<string, Set<string>>();
+    for (const [k, v] of this.oppositeSignPairs) {
+      ospSnapshot.set(k, new Set(v));
+    }
     this.levelStack.push({
       intervals: new Map(this.intervals),
       aliases: new Map(this.aliases),
       propagatedEqualities: new Set(this.propagatedEqualities),
       assertedLitIds: [],
       varJustifications: vjSnapshot,
+      oppositeSignPairs: ospSnapshot,
     });
   }
 
@@ -65,20 +73,89 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     this.aliases = top.aliases;
     this.propagatedEqualities = top.propagatedEqualities;
     this.varJustifications = top.varJustifications;
+    this.oppositeSignPairs = top.oppositeSignPairs;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
   }
 
   private getCanonicalVar(v: string): string {
-    const parent = this.aliases.get(v);
-    if (!parent || parent === v) {
-      this.aliases.set(v, v);
-      return v;
+    let curr = v;
+    const visited = new Set<string>();
+    while (true) {
+      const parent = this.aliases.get(curr);
+      if (!parent || parent === curr || visited.has(curr)) {
+        break;
+      }
+      visited.add(curr);
+      curr = parent;
     }
-    const root = this.getCanonicalVar(parent);
-    this.aliases.set(v, root);
+    const root = curr;
+    this.aliases.set(root, root);
+    let node = v;
+    const compressVisited = new Set<string>();
+    while (node !== root && !compressVisited.has(node)) {
+      compressVisited.add(node);
+      const next = this.aliases.get(node);
+      this.aliases.set(node, root);
+      if (!next || next === node) break;
+      node = next;
+    }
     return root;
+  }
+
+  private mirrorOppositeSignBounds(canon: string): void {
+    const partners = this.oppositeSignPairs.get(canon);
+    if (!partners || partners.size === 0) return;
+    const intA = this.getInterval(canon);
+    const jA = this.varJustifications.get(canon);
+    for (const rawPartner of partners) {
+      const canonB = this.getCanonicalVar(rawPartner);
+      if (jA) {
+        if (!this.varJustifications.has(canonB)) this.varJustifications.set(canonB, new Set());
+        const setB = this.varJustifications.get(canonB)!;
+        for (const id of jA) setB.add(id);
+      }
+      if (intA === null) {
+        this.intervals.set(canonB, null);
+      } else {
+        const negA = new Interval(-intA.hi, -intA.lo);
+        const intB = this.getInterval(canonB);
+        this.intervals.set(canonB, intB ? intersectInterval(intB, negA) : null);
+      }
+    }
+  }
+
+  private registerOppositeSignEquality(rawA: string, rawB: string, justIds: Iterable<number>): void {
+    const canonA = this.getCanonicalVar(rawA);
+    const canonB = this.getCanonicalVar(rawB);
+    if (!this.varJustifications.has(canonA)) this.varJustifications.set(canonA, new Set());
+    if (!this.varJustifications.has(canonB)) this.varJustifications.set(canonB, new Set());
+    const setA = this.varJustifications.get(canonA)!;
+    const setB = this.varJustifications.get(canonB)!;
+    for (const id of justIds) {
+      setA.add(id);
+      setB.add(id);
+    }
+    for (const id of setA) setB.add(id);
+    for (const id of setB) setA.add(id);
+
+    if (!this.oppositeSignPairs.has(canonA)) this.oppositeSignPairs.set(canonA, new Set());
+    if (!this.oppositeSignPairs.has(canonB)) this.oppositeSignPairs.set(canonB, new Set());
+    this.oppositeSignPairs.get(canonA)!.add(canonB);
+    this.oppositeSignPairs.get(canonB)!.add(canonA);
+
+    const intA = this.getInterval(canonA);
+    const intB = this.getInterval(canonB);
+    if (intA === null || intB === null) {
+      this.intervals.set(canonA, null);
+      this.intervals.set(canonB, null);
+    } else {
+      const negB = new Interval(-intB.hi, -intB.lo);
+      const negA = new Interval(-intA.hi, -intA.lo);
+      this.intervals.set(canonA, intersectInterval(intA, negB));
+      this.intervals.set(canonB, intersectInterval(intB, negA));
+    }
   }
 
   private unionVars(a: string, b: string): void {
@@ -100,6 +177,15 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         const setB = this.varJustifications.get(rootB)!;
         if (jA) for (const id of jA) setB.add(id);
       }
+
+      // Merge opposite-sign pairs
+      const ospA = this.oppositeSignPairs.get(rootA);
+      if (ospA) {
+        if (!this.oppositeSignPairs.has(rootB)) this.oppositeSignPairs.set(rootB, new Set());
+        const ospB = this.oppositeSignPairs.get(rootB)!;
+        for (const p of ospA) ospB.add(p);
+      }
+      this.mirrorOppositeSignBounds(rootB);
     }
   }
 
@@ -128,6 +214,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         const curr = this.getInterval(canon);
         if (!curr) {
           this.intervals.set(canon, null);
+          this.mirrorOppositeSignBounds(canon);
           break;
         }
 
@@ -143,18 +230,27 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         }
 
         this.intervals.set(canon, intersectInterval(curr, boundInt));
+        this.mirrorOppositeSignBounds(canon);
         break;
       }
       case "equal": {
         const [varA, varB] = args as [string, string];
-        const canonA = this.getCanonicalVar(varA);
-        const canonB = this.getCanonicalVar(varB);
-        if (!this.varJustifications.has(canonA)) this.varJustifications.set(canonA, new Set());
-        this.varJustifications.get(canonA)!.add(lit.id);
-        if (!this.varJustifications.has(canonB)) this.varJustifications.set(canonB, new Set());
-        this.varJustifications.get(canonB)!.add(lit.id);
+        const negA = varA.startsWith("-");
+        const negB = varB.startsWith("-");
+        const cleanA = negA ? varA.slice(1) : varA;
+        const cleanB = negB ? varB.slice(1) : varB;
+        if (negA !== negB) {
+          this.registerOppositeSignEquality(cleanA, cleanB, [lit.id]);
+        } else {
+          const canonA = this.getCanonicalVar(cleanA);
+          const canonB = this.getCanonicalVar(cleanB);
+          if (!this.varJustifications.has(canonA)) this.varJustifications.set(canonA, new Set());
+          this.varJustifications.get(canonA)!.add(lit.id);
+          if (!this.varJustifications.has(canonB)) this.varJustifications.set(canonB, new Set());
+          this.varJustifications.get(canonB)!.add(lit.id);
 
-        this.unionVars(varA, varB);
+          this.unionVars(cleanA, cleanB);
+        }
         break;
       }
       case "interval": {
@@ -169,6 +265,7 @@ export class ConstraintTheoryOracle implements TheoryOracle {
         } else {
           this.intervals.set(canon, intersectInterval(curr, new Interval(lo, hi)));
         }
+        this.mirrorOppositeSignBounds(canon);
         break;
       }
       case "hyperplane": {
@@ -260,9 +357,12 @@ export class ConstraintTheoryOracle implements TheoryOracle {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
     const savedStack = this.levelStack;
-    // Replay remaining asserted literals and re-apply shared equalities
+    // Replay remaining asserted literals and re-apply non-retracted shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
-    const savedShared = [...this.sharedEqualities];
+    const savedShared = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification;
+      return !justs || !justs.includes(litId);
+    });
     this.reset();
     this.levelStack = savedStack;
     for (const lit of remaining) {
@@ -397,10 +497,29 @@ export class ConstraintTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     this.sharedEqualities.push(eq);
-    const justs = eq.justifications ?? eq.justification;
-    if (justs && justs.length > 0) {
-      const rA = this.getCanonicalVar(eq.varA);
-      const rB = this.getCanonicalVar(eq.varB);
+    const justs = eq.justifications ?? eq.justification ?? [];
+    const negA = eq.varA.startsWith("-");
+    const negB = eq.varB.startsWith("-");
+    const cleanA = negA ? eq.varA.slice(1) : eq.varA;
+    const cleanB = negB ? eq.varB.slice(1) : eq.varB;
+
+    if (negA !== negB) {
+      this.registerOppositeSignEquality(cleanA, cleanB, justs);
+      if (eq.bounds) {
+        const canonA = this.getCanonicalVar(cleanA);
+        const currA = this.getInterval(canonA);
+        const bA = negA ? new Interval(-eq.bounds[1], -eq.bounds[0]) : new Interval(eq.bounds[0], eq.bounds[1]);
+        if (currA) {
+          this.intervals.set(canonA, intersectInterval(currA, bA));
+        }
+        this.mirrorOppositeSignBounds(canonA);
+      }
+      return;
+    }
+
+    if (justs.length > 0) {
+      const rA = this.getCanonicalVar(cleanA);
+      const rB = this.getCanonicalVar(cleanB);
       if (!this.varJustifications.has(rA)) this.varJustifications.set(rA, new Set());
       const setA = this.varJustifications.get(rA)!;
       for (const id of justs) setA.add(id);
@@ -409,13 +528,15 @@ export class ConstraintTheoryOracle implements TheoryOracle {
       for (const id of justs) setB.add(id);
     }
 
-    this.unionVars(eq.varA, eq.varB);
+    this.unionVars(cleanA, cleanB);
     if (eq.bounds) {
-      const canon = this.getCanonicalVar(eq.varA);
+      const canon = this.getCanonicalVar(cleanA);
       const curr = this.getInterval(canon);
+      const bInt = negA ? new Interval(-eq.bounds[1], -eq.bounds[0]) : new Interval(eq.bounds[0], eq.bounds[1]);
       if (curr) {
-        this.intervals.set(canon, intersectInterval(curr, new Interval(eq.bounds[0], eq.bounds[1])));
+        this.intervals.set(canon, intersectInterval(curr, bInt));
       }
+      this.mirrorOppositeSignBounds(canon);
     }
   }
 

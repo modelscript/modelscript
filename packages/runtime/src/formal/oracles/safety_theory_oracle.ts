@@ -144,8 +144,12 @@ export class SafetyTheoryOracle implements TheoryOracle {
   }
 
   public pushLevel(): void {
+    const fmSnap = new Map<string, ComponentFailureMode>();
+    for (const [k, v] of this.failureModes) {
+      fmSnap.set(k, { ...v });
+    }
     this.levelStack.push({
-      failureModes: new Map(this.failureModes),
+      failureModes: fmSnap,
       ftaNodes: new Map(this.ftaNodes),
       hazards: new Map(this.hazards),
       activeLiterals: [...this.activeLiterals],

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/epanet — Language Server Protocol (LSP) Service Integration.
@@ -80,7 +79,8 @@ export function validateEpanet(content: string): LspDiagnostic[] {
   let net: EpanetNetwork;
   try {
     net = parseInp(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -90,7 +90,7 @@ export function validateEpanet(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M8100",
         source: "epanet-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${errMsg}`,
       },
     ];
   }
@@ -226,7 +226,66 @@ export function getEpanetHover(content: string, offset: number): LspHover | null
   return null;
 }
 
-export function executeEpanetAction(action: string, content: string, params?: any): any {
+export interface EpanetActionParams {
+  title?: string | undefined;
+}
+
+export type EpanetActionResult =
+  | { modelica: string }
+  | { variables: number; equations: number }
+  | {
+      converged: boolean;
+      iterations: number;
+      maxFlowChange: number;
+      pressures: Record<string, number>;
+      flows: Record<string, number>;
+    }
+  | {
+      title: string | undefined;
+      junctions: number;
+      reservoirs: number;
+      tanks: number;
+      pipes: number;
+      pumps: number;
+      valves: number;
+    };
+
+export function executeEpanetAction(
+  action: "epanet.toModelica",
+  content: string,
+  params?: EpanetActionParams,
+): { modelica: string };
+export function executeEpanetAction(
+  action: "epanet.toDae",
+  content: string,
+  params?: EpanetActionParams,
+): { variables: number; equations: number };
+export function executeEpanetAction(
+  action: "epanet.solve",
+  content: string,
+  params?: EpanetActionParams,
+): {
+  converged: boolean;
+  iterations: number;
+  maxFlowChange: number;
+  pressures: Record<string, number>;
+  flows: Record<string, number>;
+};
+export function executeEpanetAction(
+  action: "epanet.summary",
+  content: string,
+  params?: EpanetActionParams,
+): {
+  title: string | undefined;
+  junctions: number;
+  reservoirs: number;
+  tanks: number;
+  pipes: number;
+  pumps: number;
+  valves: number;
+};
+export function executeEpanetAction(action: string, content: string, params?: EpanetActionParams): EpanetActionResult;
+export function executeEpanetAction(action: string, content: string, params?: EpanetActionParams): EpanetActionResult {
   const net = parseInp(content);
 
   switch (action) {

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import Editor from "@monaco-editor/react";
 import { CheckIcon, CodeIcon, CopyIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Text, useTheme } from "@primer/react";

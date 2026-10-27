@@ -49,7 +49,7 @@ export class SpiceWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => string | { sourceText?: string; text?: string } | null): void {
     this._version++;
     if (loader) {
       try {
@@ -124,7 +124,13 @@ export class SpiceWorkspaceIndex implements IWorkspaceIndex {
     childrenOf.set(rootId, rootChildren);
 
     // Helper to register a symbol
-    const addSymbol = (name: string, kind: any, ruleName: string, span: any, meta: Record<string, unknown>) => {
+    const addSymbol = (
+      name: string,
+      kind: string,
+      ruleName: string,
+      span: { startOffset?: number; endOffset?: number } | undefined,
+      meta: Record<string, unknown>,
+    ) => {
       const symId = idCounter++;
       const entry: SymbolEntry = {
         id: symId,

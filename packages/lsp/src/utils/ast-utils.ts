@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SyntaxNode } from "./cst-facade.js";
 
 export function isClassInstance(obj: any): boolean {

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/plcopen — Language Definition.
@@ -33,7 +32,7 @@ export const plcopenLanguage = language({
       title: "Lint PLCopen Project",
       description: "Runs pre-flight IEC 61131-3 static semantics and safety checks.",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const project = parsePlcopen(text);
         return lintPlcProject(project);
@@ -44,7 +43,10 @@ export const plcopenLanguage = language({
       title: "Run Virtual PLC Scan Cycle",
       description: "Executes discrete scan cycles using the deterministic VirtualPlc engine.",
       category: "simulate",
-      execute: async (context: any, params?: any) => {
+      execute: async (
+        context: { documentText?: string | undefined },
+        params?: { cycles?: number | undefined; dtMs?: number | undefined },
+      ) => {
         const text = context.documentText || "";
         const project = parsePlcopen(text);
         const plc = new VirtualPlc(project);
@@ -59,7 +61,7 @@ export const plcopenLanguage = language({
       title: "Lower PLCopen to DAE Arena",
       description: "Lowers discrete/continuous variables and equations into ModelScript's DAEBuilder arena.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const project = parsePlcopen(text);
         const arena = lowerPlcopenToDae(project);
@@ -74,7 +76,7 @@ export const plcopenLanguage = language({
       title: "Export to Modelica 3.x",
       description: "Translates PLCopen POUs to Modelica 3.x blocks.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const project = parsePlcopen(text);
         return plcopenToModelica(project);
@@ -85,7 +87,7 @@ export const plcopenLanguage = language({
       title: "Export to SysML v2",
       description: "Translates PLCopen POUs to SysML v2 Action and State definitions.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const project = parsePlcopen(text);
         return plcopenToSysML(project);

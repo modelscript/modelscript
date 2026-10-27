@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DssDeck } from "../types.js";
+import type { DssDeck, DssLine, DssTransformer } from "../types.js";
 
 export interface BusPowerFlowResult {
   busName: string;
@@ -128,13 +128,15 @@ export function solveDistributionPowerFlow(deck: DssDeck, maxIters = 20, tol = 1
     fromBus: string;
     toBus: string;
     kind: "transformer" | "line";
-    xfmr?: any;
-    line?: any;
+    xfmr?: DssTransformer | undefined;
+    line?: DssLine | undefined;
     rTotal: number;
     xTotal: number;
   }
 
-  const adj = new Map<string, { to: string; kind: "transformer" | "line"; ref: any }[]>();
+  type AdjEdge = { to: string; kind: "transformer"; ref: DssTransformer } | { to: string; kind: "line"; ref: DssLine };
+
+  const adj = new Map<string, AdjEdge[]>();
   for (const bName of buses.keys()) {
     adj.set(bName, []);
   }

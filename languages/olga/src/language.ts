@@ -16,6 +16,7 @@ import {
   tggComplement,
   tggEq,
   tggRule,
+  type ActionExecutionContext,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
@@ -58,7 +59,7 @@ export const olgaLanguage = language({
           modelDescription: "Lints an OLGA .opi project for CFL violations, invalid geometry, and missing boundaries.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const model = parseOlga(text);
@@ -85,7 +86,10 @@ export const olgaLanguage = language({
           modelDescription: "Runs in-WASM 1D Drift-Flux multiphase simulation on an OLGA case (.opi or .key).",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined; durationSeconds?: number }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; durationSeconds?: number },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const model = parseOlga(text);
@@ -109,7 +113,7 @@ export const olgaLanguage = language({
             "Generates SysML v2 requirement contracts and state machine operating procedures from OLGA case.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const model = parseOlga(text);
@@ -132,7 +136,7 @@ export const olgaLanguage = language({
           modelDescription: "Simulates OLGA case and checks against formal SysML v2 hydrate, surge, and MAOP limits.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const model = parseOlga(text);
@@ -156,7 +160,7 @@ export const olgaLanguage = language({
           modelDescription: "Serializes the OLGA pipeline into standard OLGA keyword deck format (.genkey).",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const model = parseOlga(text);

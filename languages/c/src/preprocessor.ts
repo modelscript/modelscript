@@ -192,11 +192,184 @@ export function evaluateCondition(condExpr: string, defines: Map<string, string>
 
     // Safe mathematical expression evaluation
     const sanitized = replaced.replace(/[^0-9+\-*/%<>=!&|^() ]/g, "");
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-    const fn = new Function(`return !!(${sanitized});`);
-    return Boolean(fn());
+    const tokens = tokenizeCCondition(sanitized);
+    const parser = new CConditionParser(tokens);
+    return Boolean(parser.parse());
   } catch {
     return false;
+  }
+}
+
+function tokenizeCCondition(expr: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i]!;
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    const two = expr.slice(i, i + 2);
+    if (["==", "!=", "<=", ">=", "&&", "||", "<<", ">>"].includes(two)) {
+      tokens.push(two);
+      i += 2;
+      continue;
+    }
+    if (/[0-9]/.test(ch)) {
+      let num = "";
+      while (i < expr.length && /[0-9.]/.test(expr[i]!)) {
+        num += expr[i]!;
+        i++;
+      }
+      tokens.push(num);
+      continue;
+    }
+    tokens.push(ch);
+    i++;
+  }
+  return tokens;
+}
+
+class CConditionParser {
+  private pos = 0;
+  constructor(private tokens: string[]) {}
+
+  parse(): number {
+    return this.parseLogicalOr();
+  }
+
+  private peek(): string | undefined {
+    return this.tokens[this.pos];
+  }
+
+  private consume(): string {
+    return this.tokens[this.pos++] ?? "";
+  }
+
+  private parseLogicalOr(): number {
+    let left = this.parseLogicalAnd();
+    while (this.peek() === "||") {
+      this.consume();
+      const right = this.parseLogicalAnd();
+      left = left !== 0 || right !== 0 ? 1 : 0;
+    }
+    return left;
+  }
+
+  private parseLogicalAnd(): number {
+    let left = this.parseBitwiseOr();
+    while (this.peek() === "&&") {
+      this.consume();
+      const right = this.parseBitwiseOr();
+      left = left !== 0 && right !== 0 ? 1 : 0;
+    }
+    return left;
+  }
+
+  private parseBitwiseOr(): number {
+    let left = this.parseBitwiseXor();
+    while (this.peek() === "|") {
+      this.consume();
+      left = left | this.parseBitwiseXor();
+    }
+    return left;
+  }
+
+  private parseBitwiseXor(): number {
+    let left = this.parseBitwiseAnd();
+    while (this.peek() === "^") {
+      this.consume();
+      left = left ^ this.parseBitwiseAnd();
+    }
+    return left;
+  }
+
+  private parseBitwiseAnd(): number {
+    let left = this.parseEquality();
+    while (this.peek() === "&") {
+      this.consume();
+      left = left & this.parseEquality();
+    }
+    return left;
+  }
+
+  private parseEquality(): number {
+    let left = this.parseRelational();
+    while (this.peek() === "==" || this.peek() === "!=") {
+      const op = this.consume();
+      const right = this.parseRelational();
+      left = (op === "==" ? left === right : left !== right) ? 1 : 0;
+    }
+    return left;
+  }
+
+  private parseRelational(): number {
+    let left = this.parseShift();
+    while (["<", "<=", ">", ">="].includes(this.peek() ?? "")) {
+      const op = this.consume();
+      const right = this.parseShift();
+      if (op === "<") left = left < right ? 1 : 0;
+      else if (op === "<=") left = left <= right ? 1 : 0;
+      else if (op === ">") left = left > right ? 1 : 0;
+      else if (op === ">=") left = left >= right ? 1 : 0;
+    }
+    return left;
+  }
+
+  private parseShift(): number {
+    let left = this.parseAdditive();
+    while (this.peek() === "<<" || this.peek() === ">>") {
+      const op = this.consume();
+      const right = this.parseAdditive();
+      left = op === "<<" ? left << right : left >> right;
+    }
+    return left;
+  }
+
+  private parseAdditive(): number {
+    let left = this.parseMultiplicative();
+    while (this.peek() === "+" || this.peek() === "-") {
+      const op = this.consume();
+      const right = this.parseMultiplicative();
+      left = op === "+" ? left + right : left - right;
+    }
+    return left;
+  }
+
+  private parseMultiplicative(): number {
+    let left = this.parseUnary();
+    while (this.peek() === "*" || this.peek() === "/" || this.peek() === "%") {
+      const op = this.consume();
+      const right = this.parseUnary();
+      if (op === "*") left = left * right;
+      else if (op === "/") left = right !== 0 ? left / right : 0;
+      else left = right !== 0 ? left % right : 0;
+    }
+    return left;
+  }
+
+  private parseUnary(): number {
+    const tok = this.peek();
+    if (tok === "!" || tok === "-" || tok === "+" || tok === "~") {
+      this.consume();
+      const val = this.parseUnary();
+      if (tok === "!") return val === 0 ? 1 : 0;
+      if (tok === "-") return -val;
+      if (tok === "~") return ~val;
+      return val;
+    }
+    return this.parsePrimary();
+  }
+
+  private parsePrimary(): number {
+    const tok = this.consume();
+    if (tok === "(") {
+      const val = this.parse();
+      if (this.peek() === ")") this.consume();
+      return val;
+    }
+    const n = Number(tok);
+    return Number.isNaN(n) ? 0 : n;
   }
 }
 

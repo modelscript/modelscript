@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { feaToDae } from "./dae/fea-to-dae.js";
 import { parseFeaDeck } from "./dialects/index.js";
 import { lintFeaModel } from "./lints/index.js";
 import { feaToModelica } from "./projections/index.js";
-import type { FeaModelData } from "./types.js";
+import type { CaeDiagnostic, FeaModelData } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -102,14 +101,15 @@ export function validateFea(content: string, uri: string = "model.inp"): LspDiag
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M7400",
         source: "modelscript-fea",
-        message: `Failed to parse FEA deck: ${err.message}`,
+        message: `Failed to parse FEA deck: ${errMsg}`,
       },
     ];
   }
@@ -225,10 +225,47 @@ export function getFeaHover(content: string, _position: LspPosition, uri: string
   }
 }
 
+export interface FeaActionResult {
+  success: boolean;
+  error?: string | undefined;
+  diagnostics?: CaeDiagnostic[] | undefined;
+  variables?: number | undefined;
+  equations?: number | undefined;
+  modelica?: string | undefined;
+  numNodes?: number | undefined;
+  numElements?: number | undefined;
+  maxDisplacementM?: number | undefined;
+  maxStressPa?: number | undefined;
+}
+
 /**
  * Executes domain actions on FEA models.
  */
-export async function executeFeaAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeFeaAction(
+  action: "lint_fea_model" | "lint",
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; diagnostics: CaeDiagnostic[] }>;
+export async function executeFeaAction(
+  action: "export_fea_dae" | "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; variables: number; equations: number }>;
+export async function executeFeaAction(
+  action: "export_fea_modelica" | "to_modelica",
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; modelica: string }>;
+export async function executeFeaAction(
+  action: "solve_fea" | "solve",
+  args: Record<string, unknown>,
+): Promise<{
+  success: boolean;
+  error?: string;
+  numNodes: number;
+  numElements: number;
+  maxDisplacementM: number;
+  maxStressPa: number;
+}>;
+export async function executeFeaAction(action: string, args: Record<string, unknown>): Promise<FeaActionResult>;
+export async function executeFeaAction(action: string, args: Record<string, unknown>): Promise<FeaActionResult> {
   const content = (args["content"] as string) || "";
   const uri = (args["uri"] as string) || "model.inp";
   const ext = uri.split(".").pop() ?? "inp";
@@ -236,8 +273,9 @@ export async function executeFeaAction(action: string, args: Record<string, unkn
   let model: FeaModelData;
   try {
     model = parseFeaDeck(content, ext);
-  } catch (err: any) {
-    return { success: false, error: `Parse error: ${err.message}` };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Parse error: ${errMsg}` };
   }
 
   switch (action) {

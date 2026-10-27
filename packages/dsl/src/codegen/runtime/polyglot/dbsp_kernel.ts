@@ -11,6 +11,14 @@
 
 import { ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
+import {
+  DpoGraph,
+  DPO_EDGE_STRIDE,
+  DPO_EDGE_TARGET,
+  DPO_EDGE_TYPE,
+  DPO_FLAG_ACTIVE,
+  DPO_FLAG_TOMBSTONE,
+} from "./dpo_kernel";
 
 export const ZSET_STRIDE = 3;
 export const ZSET_ELEMENT = 0;   // 32-bit Node or Entity ID
@@ -127,6 +135,58 @@ export class LeapfrogIterator {
   atEnd(): boolean {
     return this.cursor >= this.length;
   }
+}
+
+/**
+ * Initializes a LeapfrogIterator in linear memory with sorted unique target node IDs
+ * extracted from active edges in a DpoGraph matching edgeTypeHash (or all edges if 0).
+ */
+export function leapfrog_init_from_dpo_edges(
+  iterPtr: usize,
+  graphPtr: usize,
+  edgeTypeHash: u16 = 0
+): void {
+  let iter = changetype<LeapfrogIterator>(iterPtr);
+  if (graphPtr == 0) {
+    iter.init(createChunkedUint32Array(0), 0);
+    return;
+  }
+  let g = changetype<DpoGraph>(graphPtr);
+  let totalEdges = g.edgeCount;
+  let keys = createChunkedUint32Array(totalEdges > 0 ? totalEdges : 1);
+  let len: u32 = 0;
+
+  for (let eIdx: u32 = 0; eIdx < totalEdges; eIdx++) {
+    let eOffset = eIdx * DPO_EDGE_STRIDE;
+    let typeWord = g.edges.get(eOffset + DPO_EDGE_TYPE);
+    let flags = (typeWord & 0xffff) as u16;
+    let eType = (typeWord >>> 16) as u16;
+    if (
+      (flags & DPO_FLAG_ACTIVE) != 0 &&
+      (flags & DPO_FLAG_TOMBSTONE) == 0 &&
+      (edgeTypeHash == 0 || eType == edgeTypeHash)
+    ) {
+      let targetNode = g.edges.get(eOffset + DPO_EDGE_TARGET);
+      let duplicate = false;
+      for (let k: u32 = 0; k < len; k++) {
+        if (keys.get(k) == targetNode) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (!duplicate) {
+        let insertPos: i32 = (len as i32) - 1;
+        while (insertPos >= 0 && keys.get(insertPos as u32) > targetNode) {
+          keys.set((insertPos + 1) as u32, keys.get(insertPos as u32));
+          insertPos--;
+        }
+        keys.set((insertPos + 1) as u32, targetNode);
+        len++;
+      }
+    }
+  }
+
+  iter.init(keys, len);
 }
 
 /**

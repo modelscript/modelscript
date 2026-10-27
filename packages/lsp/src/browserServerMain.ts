@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser.js";
 
@@ -19,15 +18,6 @@ import {
 import { type SysML2Layout } from "@modelscript/sysml2/diagram";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { createDiagramDispatch } from "./diagramApi.js";
-
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
 
 import type { SyntaxNode, Tree as TreeSitterTree } from "./utils/cst-facade.js";
 
@@ -52,9 +42,6 @@ import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscrip
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 
-// @ts-ignore
-// @ts-ignore
-// @ts-ignore
 import csvLangFallback from "@modelscript/csv/language";
 import * as modelicaDiagramOps from "@modelscript/modelica/diagram";
 import { AnnotationEvaluator, clearIconCache } from "@modelscript/modelica/diagram";

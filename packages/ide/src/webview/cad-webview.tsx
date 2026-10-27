@@ -8,7 +8,6 @@ import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
 import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 function App() {

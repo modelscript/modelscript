@@ -14,7 +14,6 @@ const vscode = acquireVsCodeApi();
 
 // ── DOM refs ──
 
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 const modeSelect = document.getElementById("mode-select") as HTMLSelectElement;
 const modeStatus = document.getElementById("mode-status")!;
 const btnRefresh = document.getElementById("btn-refresh")!;
@@ -54,7 +53,6 @@ const btnClearCan = document.getElementById("btn-clear-can") as HTMLButtonElemen
 const canFrameRows = document.getElementById("can-frame-rows");
 
 const errorContainer = document.getElementById("error-container")!;
-/* eslint-enable @typescript-eslint/no-non-null-assertion */
 
 function escapeHtmlCosim(unsafe: string): string {
   if (!unsafe) return "";
@@ -560,7 +558,7 @@ let isCanPaused = false;
 let totalFrames = 0;
 let fpsCounter = 0;
 let lastFpsTime = performance.now();
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 let activeSerialPort: any = null;
 
 async function connectWebSerial(): Promise<void> {

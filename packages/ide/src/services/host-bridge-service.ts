@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as vscode from "vscode";
 import { Uri, workspace } from "vscode";
 import type { LibraryTreeProvider } from "../library-tree-provider.js";

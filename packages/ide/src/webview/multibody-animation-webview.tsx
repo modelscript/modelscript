@@ -10,7 +10,6 @@ import { AnimationTimeline } from "./cad-viewer/animation-timeline.js";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations.js";
 import type { StepMeshPayload } from "./step-viewer/step-viewer.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 function AnimatedBody({
@@ -51,7 +50,7 @@ function AnimatedBody({
     if (animationController.mode === "stopped") return;
 
     // Apply Dynamic Modal Mesh Morphing
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const modalDisp = (animationController as any).getModalDisplacements?.(
       bindingName,
       Math.floor(initialVertices.length / 3),
@@ -198,7 +197,7 @@ function SceneContents({
   focusedPartName?: string;
 }) {
   const { camera } = useThree();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const controlsRef = useRef<any>(null);
 
   useEffect(() => {
@@ -239,10 +238,7 @@ function SceneContents({
     if (!focusedPartName) return;
     const target = focusedPartName.toLowerCase();
     const mesh = meshes.find(
-      (m) =>
-        m.name.toLowerCase().includes(target) ||
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ((m as any).userData?.name || "").toLowerCase().includes(target),
+      (m) => m.name.toLowerCase().includes(target) || ((m as any).userData?.name || "").toLowerCase().includes(target),
     );
     if (!mesh) return;
 
@@ -338,7 +334,7 @@ function App() {
         const { stepMeshes, cadComponents, simulationData } = message.data;
 
         // 1. Load Meshes
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const rawMeshes: StepMeshPayload[] = (stepMeshes || []).map((m: any) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),
@@ -363,7 +359,7 @@ function App() {
         const parsedCad = extractCadComponents(cadComponents || []);
 
         // We map dynamicPosition, dynamicRotation, dynamicScale, and dynamicDeformation to AnimationController bindings.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const bindings = parsedCad.map((c: any) => {
           const compBindings: { property: "position" | "rotation" | "scale"; index: number; variable: string }[] = [];
 
@@ -404,7 +400,6 @@ function App() {
             }
           }
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let deformationConfig: any = c.deformation;
           if (!deformationConfig && c.cad?.dynamicDeformation) {
             const volMatch = c.cad.dynamicDeformation.match(/V=([a-zA-Z0-9_.]+)/);
@@ -442,7 +437,7 @@ function App() {
       } else if (message.type === "focusPart") {
         const target = (message.partName || "").toLowerCase();
         setFocusedPartName(message.partName);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const found = meshes.find(
           (m: any) =>
             (m.name || "").toLowerCase().includes(target) || (m.userData?.name || "").toLowerCase().includes(target),

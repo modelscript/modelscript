@@ -9,13 +9,11 @@ import type { EmbeddedBroker } from "./interface.js";
 class MemoryStream extends Duplex {
   peer?: MemoryStream | undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   override _read(_size: number): void {
     // Flow control not strictly implemented for memory streams,
     // pushing occurs via peer's _write.
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override _write(chunk: any, _encoding: string, callback: (error?: Error | null) => void): void {
     if (this.peer) {
       this.peer.push(chunk);
@@ -41,7 +39,6 @@ export class BrowserBroker implements EmbeddedBroker {
   public readonly aedes: Aedes;
 
   constructor() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const AedesConstructor = (aedes as any).default || aedes;
     this.aedes = new (AedesConstructor as new () => Aedes)();
   }
@@ -70,7 +67,7 @@ export class BrowserBroker implements EmbeddedBroker {
     serverStream.peer = clientStream;
 
     // Attach the server end to Aedes connection handler
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     this.aedes.handle(serverStream as any);
 
     return clientStream;

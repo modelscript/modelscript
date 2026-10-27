@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/epanet — Multi-File Workspace Indexer.
@@ -11,6 +10,8 @@
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseInp } from "./parser/index.js";
 import type { EpanetNetwork } from "./types.js";
+
+export type EpanetDocumentLoader = () => string | EpanetNetwork | null | undefined;
 
 export class EpanetWorkspaceIndex implements IWorkspaceIndex {
   private _version = 1;
@@ -43,7 +44,7 @@ export class EpanetWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: EpanetDocumentLoader): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -53,7 +54,7 @@ export class EpanetWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: EpanetDocumentLoader): void {
     this._version++;
     if (loader) {
       try {
@@ -61,7 +62,7 @@ export class EpanetWorkspaceIndex implements IWorkspaceIndex {
         if (typeof res === "string") {
           this.indexSource(uri, res);
         } else if (res && typeof res === "object") {
-          this.indexDocument(uri, res as EpanetNetwork);
+          this.indexDocument(uri, res);
         }
       } catch {
         // Retain previous or empty index
@@ -90,12 +91,17 @@ export class EpanetWorkspaceIndex implements IWorkspaceIndex {
     const byName = new Map<string, SymbolId[]>();
     const childrenOf = new Map<SymbolId | null, SymbolId[]>();
 
-    function addSym(name: string, kind: string, parentId: SymbolId | null = null, extra?: any): SymbolId {
+    function addSym(
+      name: string,
+      kind: string,
+      parentId: SymbolId | null = null,
+      extra?: Record<string, unknown>,
+    ): SymbolId {
       const symId = (baseId! + localSeq++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: `epanet_${kind}`,
         namePath: name,
         fieldName: null,
@@ -106,7 +112,7 @@ export class EpanetWorkspaceIndex implements IWorkspaceIndex {
         inherits: [],
         language: "epanet",
         resourceId: uri,
-        metadata: extra,
+        metadata: extra ?? {},
       };
 
       symbols.set(symId, entry);

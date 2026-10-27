@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/plcopen — Multi-File Workspace Indexer.
@@ -43,7 +42,7 @@ export class PlcopenWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -53,7 +52,7 @@ export class PlcopenWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => string | { sourceText?: string; text?: string } | null): void {
     this._version++;
     if (loader) {
       try {
@@ -126,7 +125,7 @@ export class PlcopenWorkspaceIndex implements IWorkspaceIndex {
       const pouEntry: SymbolEntry = {
         id: pouId,
         name: pou.name,
-        kind: kindStr as any,
+        kind: kindStr,
         ruleName: `plc_${pou.pouType}`,
         namePath: pou.name,
         fieldName: null,
@@ -162,7 +161,7 @@ export class PlcopenWorkspaceIndex implements IWorkspaceIndex {
         const varEntry: SymbolEntry = {
           id: varId,
           name: v.name,
-          kind: varKind as any,
+          kind: varKind,
           ruleName: `plc_variable_${v.scope}`,
           namePath: `${pou.name}.${v.name}`,
           fieldName: null,

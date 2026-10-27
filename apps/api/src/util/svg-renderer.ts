@@ -27,7 +27,7 @@ async function ensureParser(): Promise<void> {
     const modelicaWasmPath = require.resolve("@modelscript/modelica/dist/parser.wasm");
     const { createWasmParser } = await import("@modelscript/modelica/parser");
     const { parser } = await createWasmParser(modelicaWasmPath);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     Context.registerParser(".mo", parser as any);
   })();
   return parserPromise;
@@ -57,21 +57,19 @@ function cleanModelicaDescription(raw: string | null | undefined): string | null
 /**
  * Extract modifier name/value pairs from a modification or CST node.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function extractModifiers(modification: any | null, cstNode?: any): { name: string; value: string | null }[] {
   const result: { name: string; value: string | null }[] = [];
   if (!modification && !cstNode) return result;
 
   if (Array.isArray(modification?.modificationArguments)) {
     for (const arg of modification.modificationArguments) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const name = (arg as any).name;
       if (name) {
         let value: string | null = null;
         try {
           const expr = arg.expression;
           if (expr) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const json = (expr as any).toJSON;
             value = typeof json === "string" ? json : JSON.stringify(json);
           }
@@ -88,7 +86,6 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
   const targetNode = cstNode ?? modification;
   if (!targetNode) return result;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const walk = (node: any, depth = 0) => {
     if (!node) return;
     if (
@@ -152,7 +149,7 @@ function extractModifiers(modification: any | null, cstNode?: any): { name: stri
 /**
  * Extract metadata for a single component instance.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export function _extractComponentMetadata(component: any): ComponentMetadata | null {
   const name = component.name;
   if (!name) return null;

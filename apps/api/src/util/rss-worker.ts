@@ -8,9 +8,8 @@ import { safePublicFetch } from "./ssrf.js";
 interface FeedItemProcessor {
   matchUrl(url: string): boolean;
   processItem(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     item: any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     feed: any,
     database: LibraryDatabase,
   ): { content: string; artifactViewId?: number | undefined };

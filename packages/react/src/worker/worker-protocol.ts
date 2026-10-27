@@ -7,7 +7,7 @@ export interface WorkerTaskRequest {
   action: "parse" | "lint" | "simulate";
   dialect: string;
   content: string | ArrayBuffer;
-  options?: Record<string, any> | undefined;
+  options?: Record<string, unknown> | undefined;
 }
 
 export interface WorkerStageMessage {
@@ -21,7 +21,7 @@ export interface WorkerStageMessage {
 export interface WorkerSuccessMessage {
   type: "SUCCESS";
   id: string;
-  result: any;
+  result: unknown;
   durationMs: number;
   memoryUsageBytes?: number;
 }

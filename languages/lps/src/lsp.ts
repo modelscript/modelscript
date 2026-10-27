@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerLpsToDae } from "./dae/lps-to-dae.js";
 import { lintLpsModel } from "./lints/index.js";
@@ -8,7 +7,7 @@ import { lpsToModelica } from "./projections/lps-to-modelica.js";
 import { lpsToSysml2 } from "./projections/lps-to-sysml2.js";
 import { SteadyNetworkSolver } from "./solver/steady/steady-network-solver.js";
 import { GasEulerDaeSolver } from "./solver/transient/gas-euler-dae.js";
-import type { LpsModel } from "./types.js";
+import type { LpsDiagnostic as LpsDomainDiagnostic, LpsModel, LpsSteadyResult } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -106,14 +105,14 @@ export function validateLps(content: string, _uri: string = "network.lps"): LspD
         message: issue.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M8000",
         source: "modelscript-lps",
-        message: `Failed to parse PipelineStudio network: ${err.message}`,
+        message: `Failed to parse PipelineStudio network: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -238,10 +237,45 @@ export function getLpsHover(
   }
 }
 
+export type LpsTransientSimulationResult = ReturnType<typeof GasEulerDaeSolver.simulate>;
+
 /**
  * Executes domain actions on a PipelineStudio model.
  */
-export async function executeLpsAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeLpsAction(action: "lint", args: Record<string, unknown>): Promise<LpsDomainDiagnostic[]>;
+export async function executeLpsAction(
+  action: "to_sysml" | "to_modelica",
+  args: Record<string, unknown>,
+): Promise<string>;
+export async function executeLpsAction(
+  action: "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ varCount: number; eqCount: number }>;
+export async function executeLpsAction(action: "solve_steady", args: Record<string, unknown>): Promise<LpsSteadyResult>;
+export async function executeLpsAction(
+  action: "simulate_transient",
+  args: Record<string, unknown>,
+): Promise<LpsTransientSimulationResult>;
+export async function executeLpsAction(
+  action: string,
+  args: Record<string, unknown>,
+): Promise<
+  | LpsDomainDiagnostic[]
+  | string
+  | { varCount: number; eqCount: number }
+  | LpsSteadyResult
+  | LpsTransientSimulationResult
+>;
+export async function executeLpsAction(
+  action: string,
+  args: Record<string, unknown>,
+): Promise<
+  | LpsDomainDiagnostic[]
+  | string
+  | { varCount: number; eqCount: number }
+  | LpsSteadyResult
+  | LpsTransientSimulationResult
+> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const model: LpsModel = parseLps(content);
 

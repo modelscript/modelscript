@@ -232,7 +232,14 @@ export function simulateOlgaNetwork(model: OlgaModel, options?: SimulationOption
   const totalMachineryPowerKw: number[] = [];
 
   const perFpSnapshots: Record<string, SpatialProfileSnapshot[]> = {};
-  const perFpTrends: Record<string, any> = {};
+  const perFpTrends: Record<
+    string,
+    OlgaSimulationResult["trends"] & {
+      maxWaxThickness: number[];
+      pumpHeadDeltaP: number[];
+      compressorDischargeP: number[];
+    }
+  > = {};
 
   for (const fp of model.flowpaths) {
     perFpSnapshots[fp.name] = [];

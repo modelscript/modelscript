@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { CheckIcon, CopyIcon, DownloadIcon, GraphIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";

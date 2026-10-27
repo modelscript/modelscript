@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/opendrive — Language Server Protocol (LSP) Service Integration.
@@ -80,7 +79,7 @@ export function validateOpenDrive(content: string): LspDiagnostic[] {
   let doc: OpenDriveDocument;
   try {
     doc = parseOpenDrive(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -90,7 +89,7 @@ export function validateOpenDrive(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M7800",
         source: "opendrive-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -258,7 +257,11 @@ export function getOpenDriveHover(content: string, offset: number): LspHover | n
   return null;
 }
 
-export async function executeOpenDriveAction(actionId: string, content: string, params?: any): Promise<any> {
+export async function executeOpenDriveAction(
+  actionId: string,
+  content: string,
+  params?: { step?: number | undefined },
+): Promise<unknown> {
   const doc = parseOpenDrive(content);
 
   switch (actionId) {

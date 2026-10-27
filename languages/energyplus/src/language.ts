@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/energyplus — Language Definition.
@@ -8,7 +7,7 @@
  * pre-flight linter diagnostics, DAE lowering, and Modelica thermal export.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEnergyPlusToDae } from "./dae/energyplus-to-dae.js";
 import { lintEnergyPlus } from "./lints/rules.js";
 import { parseEnergyPlus } from "./parser/index.js";
@@ -31,7 +30,7 @@ export const energyplusLanguage = language({
       title: "Lint EnergyPlus Building Model",
       description: "Runs pre-flight interzone matching, material property, and zone convexity checks.",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseEnergyPlus(text);
         return lintEnergyPlus(doc);
@@ -42,7 +41,7 @@ export const energyplusLanguage = language({
       title: "Lower EnergyPlus to DAE Arena",
       description: "Generates multi-zone lumped capacitance thermal DAEs in ModelScript linear memory.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseEnergyPlus(text);
         const arena = lowerEnergyPlusToDae(doc);
@@ -57,7 +56,7 @@ export const energyplusLanguage = language({
       title: "Export to Modelica Thermal Model",
       description: "Translates EnergyPlus thermal zones and envelope constructions into Modelica.Thermal components.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseEnergyPlus(text);
         return energyPlusToModelica(doc);

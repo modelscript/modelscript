@@ -20,7 +20,6 @@ import { SurrogateLiveExplorer, type PodSurrogateDataPayload } from "./cad-viewe
 import { SurrogateTrainDialog } from "./cad-viewer/surrogate-train-dialog";
 import { SweepConfigDrawer, type ActiveSweepState } from "./cad-viewer/sweep-config-drawer";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 interface InpMeshPayload {

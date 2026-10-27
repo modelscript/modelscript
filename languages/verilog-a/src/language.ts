@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/verilog-a — Language Definition.
@@ -8,7 +7,7 @@
  * DAE lowering, Modelica projection, and SPICE export actions.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerVerilogAToDae } from "./dae/verilog-a-to-dae.js";
 import { lintVerilogA } from "./lints/rules.js";
 import { parseVerilogA } from "./parser/verilog-a-parser.js";
@@ -32,7 +31,7 @@ export const verilogALanguage = language({
       title: "Lint Verilog-A Model",
       description: "Runs pre-flight analog device modeling and numerical convergence checks.",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseVerilogA(text);
         return lintVerilogA(doc);
@@ -43,7 +42,7 @@ export const verilogALanguage = language({
       title: "Lower Verilog-A to DAE Arena",
       description: "Lowers continuous analog equations into ModelScript's linear-memory DAEBuilder.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseVerilogA(text);
         const mod = doc.modules[0];
@@ -61,7 +60,7 @@ export const verilogALanguage = language({
       title: "Export to Modelica 3.x",
       description: "Translates Verilog-A compact model into acausal Modelica electrical component.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseVerilogA(text);
         const mod = doc.modules[0];
@@ -74,7 +73,7 @@ export const verilogALanguage = language({
       title: "Export to SPICE Subcircuit",
       description: "Translates Verilog-A compact model into SPICE .SUBCKT with non-linear B-sources.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const doc = parseVerilogA(text);
         const mod = doc.modules[0];

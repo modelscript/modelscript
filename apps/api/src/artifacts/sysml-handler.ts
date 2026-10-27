@@ -173,7 +173,6 @@ export class SysmlArtifactHandler implements ArtifactHandler {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   validate(_artifact: Record<string, unknown>): string[] {
     return [];
   }

@@ -478,7 +478,6 @@ export function computeSysML2ConnectionDelete(docText: string, source: string, t
 export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: string, newName: string): TextEdit[] {
   const edits: TextEdit[] = [];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function findName(node: any) {
     if (
       (node.type === "Name" || node.type === "Identifier" || node.type.includes("Identification")) &&

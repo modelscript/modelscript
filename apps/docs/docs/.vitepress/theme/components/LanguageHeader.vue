@@ -30,6 +30,7 @@ interface LangItem {
     projections: string[];
   };
   ruleCount: number;
+  tier?: "stable" | "beta" | "preview";
 }
 
 const currentSlug = computed<string>(() => {
@@ -47,15 +48,16 @@ const lang = computed<LangItem | undefined>(() => {
 
 const maturity = computed(() => {
   if (!lang.value) return null;
+  const t = lang.value.tier;
   const c = lang.value.capabilities;
-  if (c.simulate && c.dae && lang.value.ruleCount > 0) {
+  if (t === "stable" || (!t && c.simulate && c.dae && lang.value.ruleCount > 0)) {
     return {
       tier: "Stable",
       badgeClass: "badge-stable",
       hint: "Production-ready pipeline: native WASM GLR parser, static diagnostics, DAE arena lowering, and numerical solvers verified in CI.",
     };
   }
-  if (c.dae || lang.value.ruleCount > 0) {
+  if (t === "beta" || (!t && (c.dae || lang.value.ruleCount > 0))) {
     return {
       tier: "Beta",
       badgeClass: "badge-beta",
@@ -74,12 +76,7 @@ const maturity = computed(() => {
   <div v-if="lang" class="lang-header-card" role="region" :aria-label="`${lang.name} status and capabilities`">
     <div class="lang-header-top">
       <div class="lang-badges">
-        <span
-          v-if="maturity"
-          class="lang-maturity-badge"
-          :class="maturity.badgeClass"
-          :title="maturity.hint"
-        >
+        <span v-if="maturity" class="lang-maturity-badge" :class="maturity.badgeClass" :title="maturity.hint">
           <span class="badge-dot" />
           {{ maturity.tier }}
         </span>

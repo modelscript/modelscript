@@ -34,7 +34,6 @@ async function fetchJSON(url: string): Promise<UpdateInfo> {
 
 async function downloadAndExtract(url: string, dest: string): Promise<void> {
   // Dynamic import for tar-fs (CommonJS module)
-  // @ts-expect-error -- tar-fs has no type declarations
   const tar = await import("tar-fs");
 
   return new Promise<void>((resolve, reject) => {

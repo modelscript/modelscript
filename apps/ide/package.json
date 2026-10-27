@@ -47,5 +47,9 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "app"
   }
 }

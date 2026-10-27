@@ -581,7 +581,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         let lSatH: number | undefined = undefined;
         let kneeFluxWb: number | undefined = undefined;
         let remanentFluxWb: number | undefined = undefined;
-        let jaParams: any = undefined;
+        let jaParams: EmtTransformer["jaParams"] = undefined;
 
         if (isSaturable) {
           const cmRaw = String(
@@ -1632,7 +1632,21 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     windingConnection: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D";
   }[] = [];
 
-  const saturableTransformers: any[] = [];
+  const saturableTransformers: {
+    id: string;
+    primaryBus: string;
+    secondaryBus: string;
+    ratedMva: number;
+    primaryKv: number;
+    secondaryKv: number;
+    leakageReactancePu: number;
+    coreModel: "PIECEWISE_LINEAR" | "JILES_ATHERTON";
+    lUnsatH?: number | undefined;
+    lSatH?: number | undefined;
+    kneeFluxWb?: number | undefined;
+    remanentFluxWb?: number | undefined;
+    jaParams?: EmtTransformer["jaParams"] | undefined;
+  }[] = [];
 
   for (const x of netlist.transformers) {
     if (x.saturation) {

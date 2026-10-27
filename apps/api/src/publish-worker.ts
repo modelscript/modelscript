@@ -76,7 +76,7 @@ process.on(
 
       let metadataBatch: ClassMetadata[] = [];
       let classCount = processedClassNames.size;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       let rootMetadata: any = null;
       const iconSvgs: Record<string, string> = {};
 
@@ -138,7 +138,6 @@ process.on(
       const unifiedWs = new UnifiedWorkspace();
       unifiedWs.domainPartitioning = true;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let queryEngineRef: any = null;
 
       // 1. Process Modelica (if present)
@@ -176,9 +175,8 @@ process.on(
 
         if (queryEngineRef) {
           unifiedWs.registerWorkspace("modelica", {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             toSymbolIndex: () => (queryEngineRef as any).index,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             toUnified: () => (queryEngineRef as any).index,
           });
         } else {
@@ -258,7 +256,7 @@ process.on(
       if (hasSysML) {
         console.log(`[publish] ${name}@${version}: indexing ${sysmlFiles.length} SysML v2 files...`);
         const sysmlWs = createSysML2WorkspaceIndex();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         let sysmlParser: any = null;
         try {
           const require = createRequire(import.meta.url);
@@ -281,7 +279,7 @@ process.on(
             sysmlTextByUri.set(fileUri, text);
             if (sysmlParser) {
               const tree = sysmlParser.parse(text);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
               sysmlWs.register(fileUri, () => (tree ? (tree.rootNode as any) : null));
             } else {
               sysmlWs.register(fileUri);
@@ -400,10 +398,8 @@ process.on(
         `[publish] ${name}@${version}: unified symbol index created with ${unifiedSymbolIndex.symbols.size} symbols.`,
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const polyglotHooks = new Map<string, any>();
       if (queryEngineRef) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const [k, v] of (queryEngineRef as any).hooksByRule?.entries?.() ?? []) {
           polyglotHooks.set(k, v);
         }
@@ -524,7 +520,6 @@ process.on(
             manifestObj.dependencies = { ...manifestObj.dependencies, ...rootDependencies };
           }
           database.updatePackageVersionManifest(versionId, JSON.stringify(manifestObj));
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (_e) {
           console.warn(`[publish] Failed to update manifest for ${name}@${version}`);
         }

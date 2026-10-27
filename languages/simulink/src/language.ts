@@ -21,33 +21,33 @@ export const simulinkLanguage = language({
   },
 
   rules: {
-    Model: ($: any) => repeat(choice($["BlockStatement"], $["LineStatement"], $["SystemStatement"], $["Comment"])),
+    Model: ($) => repeat(choice($["BlockStatement"]!, $["LineStatement"]!, $["SystemStatement"]!, $["Comment"]!)),
 
-    SystemStatement: ($: any) =>
+    SystemStatement: ($) =>
       seq(
         choice("System", "system"),
         "{",
-        repeat(choice($["BlockStatement"], $["LineStatement"], $["PropertyAssign"])),
+        repeat(choice($["BlockStatement"]!, $["LineStatement"]!, $["PropertyAssign"]!)),
         "}",
       ),
 
-    BlockStatement: ($: any) =>
+    BlockStatement: ($) =>
       seq(
         choice("Block", "block"),
         "{",
-        repeat(choice($["PropertyAssign"], $["BlockStatement"], $["LineStatement"])),
+        repeat(choice($["PropertyAssign"]!, $["BlockStatement"]!, $["LineStatement"]!)),
         "}",
       ),
 
-    LineStatement: ($: any) =>
-      seq(choice("Line", "line"), "{", repeat(choice($["PropertyAssign"], $["BranchStatement"])), "}"),
+    LineStatement: ($) =>
+      seq(choice("Line", "line"), "{", repeat(choice($["PropertyAssign"]!, $["BranchStatement"]!)), "}"),
 
-    BranchStatement: ($: any) => seq(choice("Branch", "branch"), "{", repeat($["PropertyAssign"]), "}"),
+    BranchStatement: ($) => seq(choice("Branch", "branch"), "{", repeat($["PropertyAssign"]!), "}"),
 
-    PropertyAssign: ($: any) =>
+    PropertyAssign: ($) =>
       seq(
-        field("key", $["Identifier"]),
-        field("value", choice($["StringLiteral"], $["NumberLiteral"], $["Identifier"])),
+        field("key", $["Identifier"]!),
+        field("value", choice($["StringLiteral"]!, $["NumberLiteral"]!, $["Identifier"]!)),
       ),
 
     Identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
@@ -62,7 +62,7 @@ export const simulinkLanguage = language({
       title: "Lint Simulink Model",
       description: "Runs pre-flight control checks (algebraic loops, unconnected ports, missing initial conditions).",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const model = text.startsWith("PK") ? parseSlx(Buffer.from(text, "binary")) : parseMdl(text);
         const diagnostics = lintSimulinkModel(model);
@@ -74,7 +74,7 @@ export const simulinkLanguage = language({
       title: "Project to Modelica 3.x",
       description: "Projects Simulink block diagram to Modelica.Blocks continuous and math library.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const model = text.startsWith("PK") ? parseSlx(Buffer.from(text, "binary")) : parseMdl(text);
         return simulinkToModelica(model);
@@ -85,7 +85,7 @@ export const simulinkLanguage = language({
       title: "Lower to DAE Arena",
       description: "Lowers continuous control blocks and transfer functions directly to linear-memory DAEBuilder.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const model = text.startsWith("PK") ? parseSlx(Buffer.from(text, "binary")) : parseMdl(text);
         const dae = lowerSimulinkToDae(model);
@@ -97,7 +97,11 @@ export const simulinkLanguage = language({
       title: "Synchronize from Modelica 3.x",
       description: "Reconciles tuned parameters and topological changes from Modelica back into Simulink .mdl.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: {
+        documentText?: string | undefined;
+        modelicaText?: string | undefined;
+        options?: Parameters<typeof synchronizeModelicaToSimulink>[2] | undefined;
+      }) => {
         const originalText = context.documentText || "";
         const modifiedModelica = context.modelicaText || "";
         const options = context.options || {};

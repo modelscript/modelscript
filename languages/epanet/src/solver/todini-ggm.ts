@@ -28,6 +28,13 @@ export interface EpanetSolverOptions {
   useWasm?: boolean | undefined;
 }
 
+interface WasmCholeskyExports {
+  memory?: WebAssembly.Memory | undefined;
+  ukf_cholesky?: ((n: number, mPtr: number, lPtr: number) => number) | undefined;
+  atomicChunkAlloc?: ((bytes: number) => number) | undefined;
+  atomicChunkFree?: ((ptr: number) => void) | undefined;
+}
+
 export function solveHydraulics(
   net: EpanetNetwork,
   options?: EpanetSolverOptions | number,
@@ -45,7 +52,9 @@ export function solveHydraulics(
     if (options.tolerance !== undefined) tolerance = options.tolerance;
     if (options.useWasm !== undefined) useWasm = options.useWasm;
   }
-  const wasmExports: any = useWasm ? getDefaultWasmExports() : null;
+  const wasmExports: WasmCholeskyExports | null = useWasm
+    ? (getDefaultWasmExports() as WasmCholeskyExports | null)
+    : null;
   const junctions = net.junctions;
   const reservoirs = net.reservoirs;
   const pipes = net.pipes.filter((p) => p.status !== "CLOSED");
@@ -347,7 +356,7 @@ function solveCholeskyFlat(
  * Solves SPD linear system M * x = b using WebAssembly Cholesky factorization in linear memory.
  */
 function solveCholeskyWasm(
-  wasm: any,
+  wasm: WasmCholeskyExports | null,
   M: Float64Array,
   b: Float64Array,
   x: Float64Array,
@@ -363,7 +372,7 @@ function solveCholeskyWasm(
   const totalBytes = matBytes + lBytes;
 
   const hasAlloc = typeof wasm.atomicChunkAlloc === "function";
-  const basePtr = hasAlloc ? wasm.atomicChunkAlloc(totalBytes) : 1024;
+  const basePtr = typeof wasm.atomicChunkAlloc === "function" ? wasm.atomicChunkAlloc(totalBytes) : 1024;
   if (!basePtr) return false;
 
   const mPtr = basePtr;

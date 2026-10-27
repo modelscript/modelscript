@@ -87,7 +87,7 @@ export function buildStepFunction(stmts: FortranStmt[]): FortranStepFunction {
           return val !== undefined ? val : 0;
         }
         case "port": {
-          const fn = ctx.inputs ?? (ctx as any).getInput;
+          const fn = ctx.inputs ?? ctx.getInput;
           return fn ? fn(expr.portName) : 0;
         }
         case "special": {

@@ -230,7 +230,6 @@ export async function scaffoldMultiDomain(targetUri?: vscode.Uri | string): Prom
  * CodeLens Provider offering one-click multi-domain scaffolding directly above SysML definitions.
  */
 export class SysmlScaffoldCodeLensProvider implements vscode.CodeLensProvider {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   provideCodeLenses(_document: vscode.TextDocument, _token: vscode.CancellationToken): vscode.CodeLens[] {
     // Disabled: code lens is messy in editor
     return [];

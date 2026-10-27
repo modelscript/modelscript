@@ -78,10 +78,19 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
     }
 
     // 3. Checked in constraint equations
+    const strippedSrcVar =
+      typeof srcVar === "string" && srcVar.startsWith("__var_")
+        ? srcVar.slice(6)
+        : typeof srcVar === "string"
+          ? srcVar
+          : undefined;
     const isArgMatching = (arg: any) =>
       arg === attr ||
       arg === srcVar ||
-      (typeof arg === "string" && arg.startsWith("__var_") && (arg.slice(6) === attr || arg === srcVar));
+      (strippedSrcVar !== undefined && arg === strippedSrcVar) ||
+      (typeof arg === "string" &&
+        arg.startsWith("__var_") &&
+        (arg.slice(6) === attr || arg === srcVar || (strippedSrcVar !== undefined && arg.slice(6) === strippedSrcVar)));
 
     for (const c of constraints) {
       if (c.kind === "eq" && (isArgMatching(c.args[0]) || isArgMatching(c.args[1]))) {
@@ -103,9 +112,13 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
       } else if (c.kind === "physicalPort" && (isArgMatching(c.args[0]) || isArgMatching(c.args[1]))) {
         isMapped = true;
       } else if (c.kind === "invertible") {
-        const inv = invertExpression(c.args[0]);
-        if (inv.isInvertible && (isArgMatching(inv.sourceVar) || inv.sourceVar === attr)) {
-          isMapped = true;
+        const candidateHints = strippedSrcVar && strippedSrcVar !== attr ? [strippedSrcVar, attr] : [attr];
+        for (const hint of candidateHints) {
+          const inv = invertExpression(c.args[0], "y", hint);
+          if (inv.isInvertible && (isArgMatching(inv.sourceVar) || inv.sourceVar === hint)) {
+            isMapped = true;
+            break;
+          }
         }
       }
     }

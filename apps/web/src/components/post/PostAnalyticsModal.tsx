@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { BookmarkIcon, CommentIcon, HeartIcon, InfoIcon, RssIcon, SyncIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton, Text, Tooltip } from "@primer/react";
 import React, { useEffect, useState } from "react";

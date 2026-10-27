@@ -97,7 +97,7 @@ export function validateAdams(content: string): LspDiagnostic[] {
   let dataset: AdamsDataset;
   try {
     dataset = parseAdams(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -107,7 +107,7 @@ export function validateAdams(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M7300",
         source: "adams-parser",
-        message: `Parse error: ${err.message}`,
+        message: `Parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -145,7 +145,10 @@ export function getAdamsDocumentSymbols(content: string): LspDocumentSymbol[] {
   const symbols: LspDocumentSymbol[] = [];
 
   // Group markers by part
-  const markersByPart = new Map<string | number, typeof dataset.markers extends Map<any, infer V> ? V[] : never[]>();
+  const markersByPart = new Map<
+    string | number,
+    typeof dataset.markers extends Map<unknown, infer V> ? V[] : never[]
+  >();
   for (const marker of dataset.markers.values()) {
     const list = markersByPart.get(marker.partId) ?? [];
     list.push(marker);

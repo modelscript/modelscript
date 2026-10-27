@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
-
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
 import type { SyntaxNode } from "../utils/cst-facade.js";

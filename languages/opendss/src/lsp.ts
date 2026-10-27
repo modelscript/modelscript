@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerOpenDssToDae } from "./dae/opendss-to-dae.js";
 import { lintOpenDss } from "./lints/index.js";
@@ -89,7 +88,8 @@ export function validateOpenDss(text: string): LspDiagnostic[] {
         message: `[M${d.code}] ${d.message}`,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -99,7 +99,7 @@ export function validateOpenDss(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8400",
         source: "modelscript-opendss",
-        message: `Parse Error: ${err.message}`,
+        message: `Parse Error: ${errMsg}`,
       },
     ];
   }
@@ -257,7 +257,27 @@ export function getOpenDssHover(text: string, pos: LspPosition): LspHover | unde
   }
 }
 
-export async function executeOpenDssAction(actionId: string, text: string): Promise<any> {
+export type OpenDssActionResult =
+  | ReturnType<typeof lintOpenDss>
+  | ReturnType<typeof solveDistributionPowerFlow>
+  | { modelName: string; variableCount: number; equationCount: number }
+  | string;
+
+export async function executeOpenDssAction(
+  actionId: "opendss_lint",
+  text: string,
+): Promise<ReturnType<typeof lintOpenDss>>;
+export async function executeOpenDssAction(
+  actionId: "opendss_powerflow",
+  text: string,
+): Promise<ReturnType<typeof solveDistributionPowerFlow>>;
+export async function executeOpenDssAction(
+  actionId: "opendss_to_dae",
+  text: string,
+): Promise<{ modelName: string; variableCount: number; equationCount: number }>;
+export async function executeOpenDssAction(actionId: "opendss_to_modelica", text: string): Promise<string>;
+export async function executeOpenDssAction(actionId: string, text: string): Promise<OpenDssActionResult>;
+export async function executeOpenDssAction(actionId: string, text: string): Promise<OpenDssActionResult> {
   const deck = parseOpenDss(text);
 
   switch (actionId) {

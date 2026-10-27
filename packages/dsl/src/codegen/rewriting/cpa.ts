@@ -404,40 +404,59 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
     if (!adjList.has(sig.name)) adjList.set(sig.name, new Set());
     for (const other of signatures) {
       if (sig.name === other.name) continue;
-      // If sig's target could be consumed as other's source
-      if (sig.targetNodeType === other.sourceNodeType && sig.targetNodeType !== "UnknownNode") {
+      // Check language compatibility when both rules specify/infer languages
+      const isLangCompatible = !sig.targetLang || !other.sourceLang || sig.targetLang === other.sourceLang;
+      // If sig's target could be consumed as other's source in the same language domain
+      if (isLangCompatible && sig.targetNodeType === other.sourceNodeType && sig.targetNodeType !== "UnknownNode") {
         adjList.get(sig.name)!.add(other.name);
       }
     }
   }
 
-  // Detect elementary cycles using DFS
+  // Detect elementary cycles using path-based DFS with canonical rotation deduplication
   const cycles: string[][] = [];
-  const visited = new Set<string>();
+  const seenCycleKeys = new Set<string>();
   const recStack = new Set<string>();
   const path: string[] = [];
 
+  function canonicalCycleKey(cycleNodes: string[]): string {
+    // cycleNodes is [v0, v1, ..., vk, v0]; core is [v0, v1, ..., vk]
+    const core = cycleNodes.slice(0, -1);
+    if (core.length === 0) return "";
+    let minIdx = 0;
+    for (let i = 1; i < core.length; i++) {
+      if (core[i]! < core[minIdx]!) {
+        minIdx = i;
+      }
+    }
+    const rotated = [...core.slice(minIdx), ...core.slice(0, minIdx)];
+    return rotated.join("->");
+  }
+
   function dfs(curr: string) {
-    visited.add(curr);
     recStack.add(curr);
     path.push(curr);
 
     const neighbors = adjList.get(curr) || new Set();
     for (const neighbor of neighbors) {
-      if (!visited.has(neighbor)) {
+      if (!recStack.has(neighbor)) {
         dfs(neighbor);
-      } else if (recStack.has(neighbor)) {
+      } else {
         const cycleStartIndex = path.indexOf(neighbor);
         if (cycleStartIndex >= 0) {
           const cycle = path.slice(cycleStartIndex).concat(neighbor);
-          cycles.push(cycle);
-          conflicts.push({
-            kind: "cycle",
-            rule1: curr,
-            rule2: neighbor,
-            description: `Cyclic TGG dependency detected: ${cycle.join(" -> ")}. May cause infinite synchronization loops.`,
-            severity: "error",
-          });
+          const key = canonicalCycleKey(cycle);
+          if (!seenCycleKeys.has(key)) {
+            seenCycleKeys.add(key);
+            cycles.push(cycle);
+            conflicts.push({
+              kind: "cycle",
+              rule1: curr,
+              rule2: neighbor,
+              description: `Cyclic TGG dependency detected: ${cycle.join(" -> ")}. May cause infinite synchronization loops.`,
+              severity: "error",
+            });
+          }
         }
       }
     }
@@ -447,9 +466,7 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
   }
 
   for (const sig of signatures) {
-    if (!visited.has(sig.name)) {
-      dfs(sig.name);
-    }
+    dfs(sig.name);
   }
 
   return {

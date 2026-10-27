@@ -145,9 +145,12 @@ export class AbstractDomainOracle implements TheoryOracle {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
     const savedStack = this.levelStack;
-    // Replay remaining asserted literals and re-apply shared equalities
+    // Replay remaining asserted literals and re-apply non-retracted shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
-    const savedShared = [...this.sharedEqualities];
+    const savedShared = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification;
+      return !justs || !justs.includes(litId);
+    });
     this.reset();
     this.levelStack = savedStack;
     for (const lit of remaining) {

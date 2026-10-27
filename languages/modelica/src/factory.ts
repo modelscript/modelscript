@@ -6,9 +6,7 @@
 // Note: TSC with `module: nodenext` has a naming mismatch bug when
 // resolving exports from @modelscript/modelica through the
 // exports map. The .d.ts files export UPPER_CASE names but TSC resolves
-// camelCase aliases. We use @ts-expect-error to work around this.
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// camelCase aliases.
 
 import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
 import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";

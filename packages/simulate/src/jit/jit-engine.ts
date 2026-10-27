@@ -357,7 +357,7 @@ export class ArenaJitEngine {
     }
 
     const code = lines.join("\n");
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+
     const compiled = new Function("env", "t", code) as (env: Float64Array, t: number) => void;
     v8FunctionCache.set(signature, compiled);
 

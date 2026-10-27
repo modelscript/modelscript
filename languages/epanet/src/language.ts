@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/epanet — Language Definition.
@@ -8,7 +7,7 @@
  * pre-flight linter diagnostics, Todini GGM solver, DAE lowering, and Modelica export.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEpanetToDae } from "./dae/epanet-to-dae.js";
 import { lintEpanet } from "./lints/rules.js";
 import { parseInp } from "./parser/index.js";
@@ -32,7 +31,7 @@ export const epanetLanguage = language({
       title: "Lint EPANET Hydraulic Network",
       description: "Runs pre-flight isolated node, pipe geometry, and pump curve monotonicity checks.",
       category: "verify",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const net = parseInp(text);
         return lintEpanet(net);
@@ -43,7 +42,7 @@ export const epanetLanguage = language({
       title: "Solve Network Hydraulics (Todini GGM)",
       description: "Computes steady-state junction pressures and pipe flows via Todini Global Gradient Algorithm.",
       category: "simulate",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const net = parseInp(text);
         const res = solveHydraulics(net);
@@ -61,7 +60,7 @@ export const epanetLanguage = language({
       title: "Lower EPANET to DAE Arena",
       description: "Generates hydraulic pressure head and flow balance equations in ModelScript linear memory.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const net = parseInp(text);
         const arena = lowerEpanetToDae(net);
@@ -76,7 +75,7 @@ export const epanetLanguage = language({
       title: "Export to Modelica.Fluid Hydraulic Model",
       description: "Translates EPANET reservoirs, pipes, and demands into Modelica.Fluid network components.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
         const net = parseInp(text);
         return epanetToModelica(net);

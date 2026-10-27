@@ -202,7 +202,7 @@ export class MqttTreeProvider
   public async handleDrag(
     source: readonly MqttTreeItem[],
     dataTransfer: vscode.DataTransfer,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     _token: vscode.CancellationToken,
   ): Promise<void> {
     const item = source[0];

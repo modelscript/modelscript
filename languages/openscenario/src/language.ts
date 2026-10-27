@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenScenarioToDae } from "./dae/openscenario-to-dae.js";
 import { lintOpenScenario } from "./lints/index.js";
 import { parseOpenScenario } from "./parser/openscenario-parser.js";
 import { openScenarioToModelica } from "./projections/openscenario-to-modelica.js";
-import { simulateScenario } from "./solvers/scenario-orchestrator.js";
+import { simulateScenario, type OrchestratorOptions } from "./solvers/scenario-orchestrator.js";
 
 /**
  * ModelScript ASAM OpenSCENARIO (.xosc, .osc) Language Definition.
@@ -51,7 +50,7 @@ export const openScenarioLanguage = language({
           modelDescription: "Lints OpenSCENARIO files for dangling actors, invalid triggers, and initial collisions.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseOpenScenario(text);
@@ -63,7 +62,10 @@ export const openScenarioLanguage = language({
       title: "Simulate OpenSCENARIO & Safety Verification",
       description: "Executes scenario events, evaluates TTC, and verifies RSS safety stopping margins.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; options?: any }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; options?: OrchestratorOptions | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const doc = parseOpenScenario(text);
@@ -75,7 +77,7 @@ export const openScenarioLanguage = language({
       title: "Lower OpenSCENARIO to DAE",
       description: "Compiles vehicle kinematics and safety equations into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseOpenScenario(text);
@@ -92,7 +94,10 @@ export const openScenarioLanguage = language({
       title: "Project OpenSCENARIO to Modelica",
       description: "Synthesizes standard Modelica 3.x vehicle dynamics and safety verification model.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined; modelName?: string }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; modelName?: string },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseOpenScenario(text);

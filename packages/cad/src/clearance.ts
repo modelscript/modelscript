@@ -211,14 +211,15 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
       }
       return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
     }
-    case SolidKind.Subtract:
+    case SolidKind.Subtract: {
+      // Conservative bounding box from primary solid
+      return computeSolidAABB(solid.left, currentTransform);
+    }
     case SolidKind.Fillet:
     case SolidKind.Chamfer:
     case SolidKind.TaggedPatch: {
       // Conservative bounding box from primary solid
-      const child = (solid as any).left || (solid as any).child;
-      if (child) return computeSolidAABB(child, currentTransform);
-      return { min: [0, 0, 0], max: [0, 0, 0] };
+      return computeSolidAABB(solid.child, currentTransform);
     }
     default:
       return { min: [0, 0, 0], max: [0, 0, 0] };
@@ -281,6 +282,12 @@ export function resolveClearanceRule(
   return bestClearance;
 }
 
+interface AabbWasmExports {
+  memory: { buffer: ArrayBuffer };
+  __new(bytes: number, id: number): number;
+  cad_aabb_distance?: (aPtr: number, bPtr: number) => number;
+}
+
 /**
  * Computes the Euclidean distance between two AABBs.
  * Returns:
@@ -288,10 +295,14 @@ export function resolveClearanceRule(
  *   d = 0: touching surfaces.
  *   d < 0: penetration depth (collision/interference).
  */
-let aabbWasmScratch: { wasm: any; aPtr: number; bPtr: number } | null = null;
+let aabbWasmScratch: { wasm: AabbWasmExports; aPtr: number; bPtr: number } | null = null;
 
 export function computeAABBDistance(a: AABB, b: AABB): number {
-  const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+  const wasm =
+    typeof globalThis !== "undefined"
+      ? ((globalThis as { __modelscript_wasm_exports__?: AabbWasmExports | undefined }).__modelscript_wasm_exports__ ??
+        null)
+      : null;
   if (wasm && typeof wasm.cad_aabb_distance === "function") {
     if (!aabbWasmScratch || aabbWasmScratch.wasm !== wasm) {
       aabbWasmScratch = {

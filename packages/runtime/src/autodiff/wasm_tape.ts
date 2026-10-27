@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion, no-case-declarations */
+/* eslint-disable no-case-declarations */
 /**
  * Static Tape (Wengert List) for Algorithmic Differentiation.
  *
@@ -152,7 +152,7 @@ export class StaticTapeBuilder {
   /**
    * Appends a contiguous SIMD-style vector operation of length `size` to the tape, padding trailing slots with `Nop`.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   public pushVecOp(kind: TapeOpKind, size: number, data1 = 0, _data2 = 0, data3 = 0, vals?: number[]): number {
     this.ensureCapacity(size);
     const idx = this.length;
@@ -359,7 +359,7 @@ export class StaticTapeBuilder {
   /**
    * Appends a high-level descriptor object (`{ type: "add" | "mul" | ... }`) onto the tape.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public pushOp(op: any): number {
     switch (op.type) {
       case "const":

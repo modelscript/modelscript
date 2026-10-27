@@ -119,3 +119,28 @@ export interface ServerContext {
   /** Optional sandbox execution resource constraints (timeouts, memory limits) for AI agent tools. */
   sandboxLimits?: import("./sandbox.js").McpExecutionLimits | undefined;
 }
+
+/**
+ * Single KPI metric badge emitted by an MCP engineering tool for structured trace display.
+ */
+export interface McpTraceMetric {
+  /** Short metric label (e.g., `"Overshoot"`, `"BLT blocks"`, `"STL robustness ρ"`). */
+  label: string;
+  /** Formatted metric value with units or thresholds (e.g., `"2.8% (< 4.0%)"`, `"+0.062 PASS"`). */
+  value: string;
+  /** Visual status indicator for UI badge coloring. */
+  status?: "pass" | "info" | "fail" | undefined;
+}
+
+/**
+ * Standardized structured trace envelope included in MCP tool JSON responses
+ * and consumed by the IDE AI Chat panel (`chat-webview.ts`) and docs console (`HomeAiAgent.vue`).
+ */
+export interface McpStructuredTrace {
+  /** Concise single-line summary of the tool execution outcome. */
+  resultTitle: string;
+  /** Key quantitative engineering metrics produced by the tool step. */
+  metrics: McpTraceMetric[];
+  /** Optional final compiler/solver certification verdict banner text. */
+  verdict?: string | undefined;
+}

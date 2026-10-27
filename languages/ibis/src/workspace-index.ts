@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseIbis } from "./parser/ibis-parser.js";
@@ -39,7 +38,7 @@ export class IbisWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDecks.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +48,10 @@ export class IbisWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {
@@ -82,13 +84,13 @@ export class IbisWorkspaceIndex implements IWorkspaceIndex {
       parentId: SymbolId | null,
       startOffset: number,
       endOffset: number,
-      metadata: Record<string, any> = {},
+      metadata: Record<string, unknown> = {},
     ): SymbolId {
       const symId = (baseId! + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "ibis_symbol",
         namePath: name,
         fieldName: null,

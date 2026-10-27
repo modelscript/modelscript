@@ -35,7 +35,7 @@ export interface EmbedOptions {
   zoomMode?: ZoomInterceptionMode;
 }
 
-export type EmbedEventHandler<T = any> = (data: T) => void;
+export type EmbedEventHandler<T = unknown> = (data: T) => void;
 
 /**
  * High-level programmatic controller for embedded ModelScript artifact viewers.
@@ -44,7 +44,7 @@ export class ModelScriptEmbed {
   private iframe: HTMLIFrameElement;
   private containerEl: HTMLElement;
   private options: EmbedOptions;
-  private listeners: Map<string, Set<EmbedEventHandler>> = new Map();
+  private listeners: Map<string, Set<EmbedEventHandler<unknown>>> = new Map();
   private messageHandler: (e: MessageEvent) => void;
 
   constructor(options: EmbedOptions) {
@@ -137,15 +137,18 @@ export class ModelScriptEmbed {
     return getLaunchUrl(payload);
   }
 
-  public on<T = any>(event: string, handler: EmbedEventHandler<T>): () => void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
+  public on<T = unknown>(event: string, handler: EmbedEventHandler<T>): () => void {
+    let set = this.listeners.get(event);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(event, set);
     }
-    this.listeners.get(event)!.add(handler);
-    return () => this.listeners.get(event)?.delete(handler);
+    const typedHandler = handler as EmbedEventHandler<unknown>;
+    set.add(typedHandler);
+    return () => this.listeners.get(event)?.delete(typedHandler);
   }
 
-  private emit(event: string, data: any): void {
+  private emit(event: string, data: unknown): void {
     const handlers = this.listeners.get(event);
     if (handlers) {
       for (const h of handlers) h(data);

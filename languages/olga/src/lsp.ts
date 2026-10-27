@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerOlgaToDae } from "./dae/olga-to-dae.js";
-import { getOlgaQuickFixes, lintOlgaModel, type OlgaQuickFix } from "./lints/index.js";
+import { getOlgaQuickFixes, lintOlgaModel, type OlgaDiagnostic, type OlgaQuickFix } from "./lints/index.js";
 import { parseOlga } from "./parser/index.js";
 import { olgaToSysml2 } from "./projections/olga-to-sysml2.js";
 import { simulateDriftFlux } from "./solver/drift-flux-dae.js";
-import type { OlgaFlowpath, OlgaModel } from "./types.js";
+import type { OlgaFlowpath, OlgaModel, OlgaSimulationResult } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -241,7 +240,18 @@ export function getOlgaHover(
 /**
  * Executes domain actions on an OLGA model.
  */
-export async function executeOlgaAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeOlgaAction(action: "lint", args: Record<string, unknown>): Promise<OlgaDiagnostic[]>;
+export async function executeOlgaAction(action: "to_sysml", args: Record<string, unknown>): Promise<string>;
+export async function executeOlgaAction(
+  action: "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ varCount: number; eqCount: number }>;
+export async function executeOlgaAction(
+  action: "simulate_drift_flux",
+  args: Record<string, unknown>,
+): Promise<OlgaSimulationResult>;
+export async function executeOlgaAction(action: string, args: Record<string, unknown>): Promise<unknown>;
+export async function executeOlgaAction(action: string, args: Record<string, unknown>): Promise<unknown> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const model: OlgaModel = parseOlga(content);
 

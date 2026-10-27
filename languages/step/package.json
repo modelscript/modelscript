@@ -71,5 +71,9 @@
     "@modelscript/dsl": "*",
     "@modelscript/modelica": "*",
     "@modelscript/runtime": "*"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "language"
   }
 }

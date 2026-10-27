@@ -7,7 +7,6 @@ let replInterpreter: any = null;
 export function registerReplEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/repl/evaluate", async (params: { input: string }) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const parser =
         (globalThis as any).parser ?? (globalThis as any).modelicaParser ?? context.parserService.getParser("modelica");
       if (!parser) {
@@ -44,7 +43,6 @@ export function registerReplEndpoints(context: LspContext) {
           }
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = replInterpreter.execute(tree.rootNode as any);
 
         if (result.error) {

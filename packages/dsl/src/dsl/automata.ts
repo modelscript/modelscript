@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
 import type { Production, SymbolName } from "./grammar.js";
 import { NormalizedGrammar } from "./grammar.js";
 

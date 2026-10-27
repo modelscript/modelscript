@@ -22,15 +22,15 @@ export function getCTextMateGrammar(): { tm: string; monarch: string } {
 /**
  * Returns the parsed Monaco Monarch tokenizer object for C.
  */
-export function getCMonarchDefinition(): Record<string, any> {
+export function getCMonarchDefinition(): Record<string, unknown> {
   const { monarch } = getCTextMateGrammar();
-  return JSON.parse(monarch);
+  return JSON.parse(monarch) as Record<string, unknown>;
 }
 
 /**
  * Returns the standard VS Code / Monaco language configuration for C source files and headers.
  */
-export function getCLanguageConfiguration(): Record<string, any> {
+export function getCLanguageConfiguration(): Record<string, unknown> {
   return {
     comments: {
       lineComment: "//",

@@ -61,7 +61,6 @@ class SemanticDiffTreeProvider implements vscode.TreeDataProvider<SemanticDiffTr
 
     if (!this.client) return [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
     if (!gitExtension) return [];
 
@@ -125,7 +124,7 @@ export function registerScmTreeView(context: vscode.ExtensionContext, client: La
     context.subscriptions.push(vscode.window.registerTreeDataProvider("modelscript.scmTreeView", treeProvider));
 
     // Refresh when git state changes
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
     if (gitExtension) {
       const git = gitExtension.getAPI(1);

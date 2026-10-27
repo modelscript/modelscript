@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { cfdToDae } from "./dae/cfd-to-dae.js";
 import { parseCfdConfig } from "./dialects/index.js";
 import { lintCfdModel } from "./lints/index.js";
 import { cfdToModelica } from "./projections/index.js";
-import type { CfdModelData } from "./types.js";
+import type { CaeDiagnostic, CfdModelData } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -102,14 +101,15 @@ export function validateCfd(content: string, uri: string = "model.cfg"): LspDiag
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M7300",
         source: "modelscript-cfd",
-        message: `Failed to parse CFD configuration: ${err.message}`,
+        message: `Failed to parse CFD configuration: ${errMsg}`,
       },
     ];
   }
@@ -226,10 +226,53 @@ export function getCfdHover(content: string, _position: LspPosition, uri: string
   }
 }
 
+export interface CfdActionResult {
+  success: boolean;
+  error?: string | undefined;
+  diagnostics?: CaeDiagnostic[] | undefined;
+  variables?: number | undefined;
+  equations?: number | undefined;
+  modelica?: string | undefined;
+  mach?: number | undefined;
+  aoa?: number | undefined;
+  cL?: number | undefined;
+  cD?: number | undefined;
+  liftN?: number | undefined;
+  dragN?: number | undefined;
+  lOverD?: number | undefined;
+}
+
 /**
  * Executes domain actions on CFD models.
  */
-export async function executeCfdAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeCfdAction(
+  action: "lint_cfd_model" | "lint",
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; diagnostics: CaeDiagnostic[] }>;
+export async function executeCfdAction(
+  action: "export_cfd_dae" | "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; variables: number; equations: number }>;
+export async function executeCfdAction(
+  action: "export_cfd_modelica" | "to_modelica",
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; error?: string; modelica: string }>;
+export async function executeCfdAction(
+  action: "solve_cfd" | "evaluate_aerodynamics" | "solve",
+  args: Record<string, unknown>,
+): Promise<{
+  success: boolean;
+  error?: string;
+  mach: number;
+  aoa: number;
+  cL: number;
+  cD: number;
+  liftN: number;
+  dragN: number;
+  lOverD: number;
+}>;
+export async function executeCfdAction(action: string, args: Record<string, unknown>): Promise<CfdActionResult>;
+export async function executeCfdAction(action: string, args: Record<string, unknown>): Promise<CfdActionResult> {
   const content = (args["content"] as string) || "";
   const uri = (args["uri"] as string) || "model.cfg";
   const ext = uri.split(".").pop() ?? "cfg";
@@ -237,8 +280,9 @@ export async function executeCfdAction(action: string, args: Record<string, unkn
   let model: CfdModelData;
   try {
     model = parseCfdConfig(content, ext);
-  } catch (err: any) {
-    return { success: false, error: `Parse error: ${err.message}` };
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Parse error: ${errMsg}` };
   }
 
   switch (action) {

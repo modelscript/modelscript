@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { EngineeringDataGrid, type DataGridColumn } from "./shared/index.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 export interface VerificationRequirement {

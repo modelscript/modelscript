@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseFeaDeck } from "./dialects/index.js";
 import type { FeaModelData } from "./types.js";
+
+export interface FeaSourceSpan {
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+}
+
+export type FeaDocumentLoader = () =>
+  | string
+  | { sourceText?: string | undefined; text?: string | undefined }
+  | null
+  | undefined;
 
 /**
  * Workspace indexer for Finite Element Analysis decks (Abaqus/CalculiX .inp, Nastran .bdf).
@@ -39,7 +51,7 @@ export class FeaWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDecks.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: FeaDocumentLoader): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +61,7 @@ export class FeaWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: FeaDocumentLoader): void {
     this._version++;
     if (loader) {
       try {
@@ -92,8 +104,8 @@ export class FeaWorkspaceIndex implements IWorkspaceIndex {
     return results;
   }
 
-  public findReferences(name: string, _currentUri?: string): { uri: string; range: any }[] {
-    const results: { uri: string; range: any }[] = [];
+  public findReferences(name: string, _currentUri?: string): { uri: string; range: FeaSourceSpan }[] {
+    const results: { uri: string; range: FeaSourceSpan }[] = [];
     for (const [uri, deck] of this.fileDecks.entries()) {
       if (deck.materials.has(name) || deck.nodeSets.has(name) || deck.elementSets.has(name)) {
         results.push({
@@ -142,7 +154,7 @@ export class FeaWorkspaceIndex implements IWorkspaceIndex {
       const entry: SymbolEntry = {
         id,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "fea_entity",
         namePath: name,
         fieldName: null,

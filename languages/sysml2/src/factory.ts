@@ -3,8 +3,6 @@
 // Bridge module connecting polyglot-generated SysML2 artifacts to
 // the LSP pipeline. Mirrors packages/core/src/compiler/modelica/metascript-bridge.ts.
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
 import { extractGraphicsConfig, extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
 import { QueryEngine, WorkspaceIndex, type VerificationResult } from "@modelscript/runtime";

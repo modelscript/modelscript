@@ -5,7 +5,6 @@
  * [L: Length, M: Mass, T: Time, I: Current, Theta: Temperature, N: Amount, J: Intensity]
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { findCstDescendants, findFirstDescendant } from "./flattener/cst-lowerer.js";
 

@@ -252,14 +252,14 @@ export function validateGensys(content: string): LspDiagnostic[] {
   let model: GensysModel;
   try {
     model = parseGensysDeck(content, "GensysModel");
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
         severity: 1,
         code: "M1001",
         source: "gensys",
-        message: `GENSYS Parse Error: ${err.message}`,
+        message: `GENSYS Parse Error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }

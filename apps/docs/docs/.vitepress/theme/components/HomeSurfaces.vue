@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import type { IconName } from "../data/icons";
+import mcpData from "../data/mcp-tools.generated.json";
 import { type Tone, toneStyle } from "../data/tones";
 import MsIcon from "./MsIcon.vue";
 
@@ -63,7 +64,7 @@ const surfaces: Surface[] = [
     body: "A Model Context Protocol server that lets AI assistants compile, simulate, and analyze models.",
     cta: "MCP docs",
     link: "/reference/mcp-and-ide",
-    tag: "31 AI tools",
+    tag: `${mcpData.toolCount} AI tools`,
   },
   {
     id: "desktop",

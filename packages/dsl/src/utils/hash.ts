@@ -13,7 +13,6 @@ export class SimpleHash {
     return this;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   digest(_encoding?: string): string {
     const str = this.#parts.join("\0");
     // FNV-1a 64-bit hash (as two 32-bit halves for precision)
@@ -34,7 +33,7 @@ export class SimpleHash {
  * Drop-in replacement for Node.js `createHash("sha256")`.
  * Returns a `SimpleHash` instance with `.update()` and `.digest()` methods.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 export function createHash(_algorithm?: string): SimpleHash {
   return new SimpleHash();
 }

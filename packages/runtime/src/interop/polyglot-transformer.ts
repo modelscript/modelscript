@@ -753,7 +753,24 @@ export class PolyglotTransformer {
   resolveConflictPhysics(id: string, physMin: number, physMax: number): void {
     const item = this.conflicts.get(id);
     if (!item) return;
-    const midpoint = (Number(item.sourceVal) + Number(item.targetVal)) * 0.5;
+    const srcVal = Number(item.sourceVal);
+    const tgtVal = Number(item.targetVal);
+    if (physMin > physMax || !Number.isFinite(srcVal) || !Number.isFinite(tgtVal)) {
+      item.resolved = undefined;
+      item.isResolved = false;
+      return;
+    }
+    const minProp = Math.min(srcVal, tgtVal);
+    const maxProp = Math.max(srcVal, tgtVal);
+    const withinSource = srcVal >= physMin && srcVal <= physMax;
+    const withinTarget = tgtVal >= physMin && tgtVal <= physMax;
+    const hullOverlaps = minProp <= physMax && maxProp >= physMin;
+    if (!withinSource && !withinTarget && !hullOverlaps) {
+      item.resolved = undefined;
+      item.isResolved = false;
+      return;
+    }
+    const midpoint = (srcVal + tgtVal) * 0.5;
     let candidate = midpoint;
     if (candidate < physMin) candidate = physMin;
     if (candidate > physMax) candidate = physMax;

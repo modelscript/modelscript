@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { DiagramData } from "@modelscript/diagram";
 import { renderDiagramDataToSvg } from "@modelscript/diagram/svg";
 import { Context } from "@modelscript/modelica/context";
 import { renderDiagram, renderIcon } from "@modelscript/modelica/diagram";
@@ -115,7 +116,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
         return;
       }
       const data = buildSspDiagramData(ssdXml);
-      emitSvg(renderDiagramDataToSvg(data, svgOpts));
+      emitSvg(renderDiagramDataToSvg(data as unknown as DiagramData, svgOpts));
       return;
     }
 

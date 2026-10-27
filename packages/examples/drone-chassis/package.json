@@ -8,5 +8,9 @@
   "main": "Chassis.mo",
   "scripts": {
     "lint": "eslint . --no-warn-ignored"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "example"
   }
 }

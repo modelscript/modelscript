@@ -153,7 +153,6 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
 FROM node:24-alpine AS download-model
 RUN apk add --no-cache curl bash
 WORKDIR /app/apps/ide
-COPY apps/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm models/
 COPY apps/ide/scripts/download-model.sh scripts/download-model.sh
 RUN bash scripts/download-model.sh
 

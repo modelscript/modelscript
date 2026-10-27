@@ -27,9 +27,8 @@ export class AudioWorkletClock {
   private realtimeFactor: number;
   private onTick: AudioClockOptions["onTick"];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private audioCtx: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   private timerNode: any = null;
   private isRunning = false;
   private currentSimTime = 0;
@@ -52,12 +51,10 @@ export class AudioWorkletClock {
 
     const hasAudio =
       typeof window !== "undefined" &&
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (Boolean((window as any).AudioContext) || Boolean((window as any).webkitAudioContext));
 
     if (hasAudio) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         this.audioCtx = new AudioContextClass();
         if (this.audioCtx.state === "suspended") {
@@ -75,7 +72,6 @@ export class AudioWorkletClock {
           Math.round(this.audioCtx.sampleRate * (this.stepSize / this.realtimeFactor)),
         );
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.timerNode.onaudioprocess = async (_e: any) => {
           if (!this.isRunning) return;
           sampleCounter += bufferSize;

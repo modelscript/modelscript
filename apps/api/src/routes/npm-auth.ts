@@ -39,7 +39,7 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
     enforceExportCompliance(() => database),
     async (req: Request, res: Response): Promise<void> => {
       const username = req.params["username"];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const body = req.body as any;
       const { name, password, email } = body;
 

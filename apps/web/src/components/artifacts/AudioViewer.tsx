@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DownloadIcon, MuteIcon, PlayIcon, PulseIcon, SquareFillIcon, UnmuteIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";

@@ -5,7 +5,7 @@ export interface CachedPackageSnapshot {
   version: string;
   timestamp: number;
   symbolData: ArrayBuffer;
-  manifest?: Record<string, any> | undefined;
+  manifest?: Record<string, unknown> | undefined;
 }
 
 const DB_NAME = "modelscript_cache";
@@ -139,7 +139,7 @@ export class PackageRehydrationCache {
     pkgName: string,
     version: string,
     symbolData: ArrayBuffer,
-    manifest?: Record<string, any>,
+    manifest?: Record<string, unknown>,
   ): Promise<void> {
     try {
       const db = await this.getDB();

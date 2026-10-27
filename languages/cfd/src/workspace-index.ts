@@ -1,9 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseCfdConfig } from "./dialects/index.js";
 import type { CfdModelData } from "./types.js";
+
+export interface CfdSourceSpan {
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+}
+
+export type CfdDocumentLoader = () =>
+  | string
+  | { sourceText?: string | undefined; text?: string | undefined }
+  | null
+  | undefined;
 
 /**
  * Workspace indexer for Computational Fluid Dynamics (SU2, OpenFOAM) decks.
@@ -39,7 +51,7 @@ export class CfdWorkspaceIndex implements IWorkspaceIndex {
     return this.fileConfigs.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: CfdDocumentLoader): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +61,7 @@ export class CfdWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: CfdDocumentLoader): void {
     this._version++;
     if (loader) {
       try {
@@ -92,8 +104,8 @@ export class CfdWorkspaceIndex implements IWorkspaceIndex {
     return results;
   }
 
-  public findReferences(name: string, _currentUri?: string): { uri: string; range: any }[] {
-    const results: { uri: string; range: any }[] = [];
+  public findReferences(name: string, _currentUri?: string): { uri: string; range: CfdSourceSpan }[] {
+    const results: { uri: string; range: CfdSourceSpan }[] = [];
     for (const [uri, config] of this.fileConfigs.entries()) {
       if (config.markers.has(name) || config.directives.has(name)) {
         results.push({
@@ -142,7 +154,7 @@ export class CfdWorkspaceIndex implements IWorkspaceIndex {
       const entry: SymbolEntry = {
         id,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "cfd_entity",
         namePath: name,
         fieldName: null,

@@ -65,5 +65,9 @@
     "@modelscript/dsl": "*",
     "@modelscript/fortran": "*",
     "@modelscript/runtime": "*"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "language"
   }
 }

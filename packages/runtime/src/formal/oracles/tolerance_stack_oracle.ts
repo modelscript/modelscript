@@ -22,11 +22,15 @@ export class ToleranceStackOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
 
+  private sharedEqualities: SharedEquality[] = [];
+
   private levelStack: {
     specs: Map<string, GdtToleranceSpecification>;
     chains: Map<string, ToleranceChainSpec>;
     constraints: Map<string, { min: number; max: number }>;
     clearanceJustifications: Map<string, Set<number>>;
+    propagatedEqualities: Set<string>;
+    sharedEqualities: SharedEquality[];
     assertedLitIds: number[];
   }[] = [];
 
@@ -41,6 +45,7 @@ export class ToleranceStackOracle implements TheoryOracle {
     this.clearanceJustifications.clear();
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
+    this.sharedEqualities = [];
     this.levelStack = [];
   }
 
@@ -54,6 +59,8 @@ export class ToleranceStackOracle implements TheoryOracle {
       chains: new Map(this.chains),
       constraints: new Map(this.clearanceConstraints),
       clearanceJustifications: clearJustSnap,
+      propagatedEqualities: new Set(this.propagatedEqualities),
+      sharedEqualities: [...this.sharedEqualities],
       assertedLitIds: [],
     });
   }
@@ -65,6 +72,8 @@ export class ToleranceStackOracle implements TheoryOracle {
     this.chains = top.chains;
     this.clearanceConstraints = top.constraints;
     this.clearanceJustifications = top.clearanceJustifications;
+    this.propagatedEqualities = top.propagatedEqualities;
+    this.sharedEqualities = top.sharedEqualities;
     for (const litId of top.assertedLitIds) {
       this.assertedLiterals.delete(litId);
     }
@@ -102,19 +111,21 @@ export class ToleranceStackOracle implements TheoryOracle {
   }
 
   public retractLiteral(litId: number): void {
-    const lit = this.assertedLiterals.get(litId);
-    if (!lit) return;
+    if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
-
-    if (lit.predicate === "gdtTolerance") {
-      const spec = lit.args[0] as GdtToleranceSpecification;
-      if (spec?.id) this.toleranceSpecs.delete(spec.id);
-    } else if (lit.predicate === "toleranceChain") {
-      const chain = lit.args[0] as ToleranceChainSpec;
-      if (chain?.chainId) this.chains.delete(chain.chainId);
-    } else if (lit.predicate === "clearanceConstraint") {
-      const chainId = String(lit.args[0]);
-      this.clearanceConstraints.delete(chainId);
+    const savedStack = this.levelStack;
+    const remaining = Array.from(this.assertedLiterals.values());
+    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
+    this.reset();
+    this.levelStack = savedStack;
+    for (const lit of remaining) {
+      this.assertLiteral(lit);
+    }
+    for (const eq of remainingSharedEqs) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -309,6 +320,7 @@ export class ToleranceStackOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     if (eq.domain === "interval" && eq.bounds && eq.varA.startsWith("clearance_")) {
       const chainId = eq.varA.replace(/^clearance_/, "");
       if (this.chains.has(chainId)) {

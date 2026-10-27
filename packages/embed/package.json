@@ -42,5 +42,9 @@
     "@types/node": "^22.13.10",
     "@types/pako": "^2.0.3",
     "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "core"
   }
 }

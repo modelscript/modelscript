@@ -11,7 +11,6 @@
  * 4. Gate 4: DAE Arena Structural Balance (N_eq == N_var) & BLT Causalization
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   createSysML2QueryEngine,
   createSysML2WorkspaceIndex,

@@ -41,18 +41,15 @@ if (document.readyState === "loading") {
   initPropertiesClose();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.() ?? {
   postMessage() {
     /* noop fallback */
   },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pendingDiagramActions: any[] = [];
 let diagramActionTimer: ReturnType<typeof setTimeout> | null = null;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function enqueueDiagramAction(action: any) {
   console.log("[diagram.ts] enqueuing diagram action:", action.type, action);
 
@@ -178,7 +175,7 @@ function initDiagramBridge() {
           cancelAnimationFrame(ghostRafId);
           ghostRafId = null;
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         (window as any).__hidePlacementGhost?.();
       }
     },
@@ -197,7 +194,6 @@ function initDiagramBridge() {
     const targetX = typeof clientX === "number" && clientX > 0 ? clientX : (lastGhostClientPos?.x ?? 0);
     const targetY = typeof clientY === "number" && clientY > 0 ? clientY : (lastGhostClientPos?.y ?? 0);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const getPlacementData = (window as any).__getPlacementData;
     let placementData = getPlacementData ? getPlacementData() : null;
 
@@ -281,7 +277,7 @@ function initDiagramBridge() {
           y: snappedY,
         });
         // Clear placement ghost and state inside diagram-core without removing the drop animation
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         (window as any).__clearPlacement?.();
       }
     }
@@ -297,7 +293,7 @@ function initDiagramBridge() {
 
   const onPointerUpOrMouseUp = (e: MouseEvent | PointerEvent) => {
     // Only handle placement on pointerup if placement mode was active
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     if ((window as any).__getPlacementData?.()) {
       handleDropOrPlace(e.clientX, e.clientY);
     }
@@ -325,7 +321,6 @@ function initDiagramBridge() {
       if (isPointerOverCanvas && lastGhostClientPos) {
         handleDropOrPlace(lastGhostClientPos.x, lastGhostClientPos.y);
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).__clearPlacement?.();
       }
     } else if (e.data.type === "simulationData") {
@@ -1343,7 +1338,6 @@ if (document.readyState === "loading") {
 const nodeActiveTabMap = new Map<string, string>();
 let currentRenderedNodeId: string | null = null;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function showProperties(nodeData: any) {
   const panel = document.getElementById("properties-panel");
   const content = document.getElementById("properties-content");

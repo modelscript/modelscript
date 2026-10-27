@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";

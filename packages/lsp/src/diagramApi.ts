@@ -87,10 +87,9 @@ export interface DiagramBackend {
 // ── Modelica Backend ──
 
 export interface ModelicaBackendDeps {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   getDocumentInstances: (uri: string) => any[] | undefined;
   getDocumentText: (uri: string) => string | undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   resolveClassInstance: (uri: string, className?: string) => any | null;
   flushValidation: (uri: string) => Promise<void>;
   isDocumentStale?: (uri: string) => boolean;
@@ -205,7 +204,7 @@ export interface SysML2BackendDeps {
   serializeLayout?: ((layout: any) => string) | undefined;
   parseLayout?: ((text: string) => any) | undefined;
   getSidecarUri?: ((uri: string) => string) | undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   buildDiagramData: (params: DiagramGetDataParams) => any;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
   computeConnectionInsert: (text: string, source: string, target: string, tree?: unknown) => TextEdit[];
@@ -2728,7 +2727,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
             const text = await readSsdSource(params.uri);
             if (!text) return null;
             const { buildSspDiagramData } = await import("@modelscript/ssp/diagram");
-            return buildSspDiagramData(text);
+            return buildSspDiagramData(text) as unknown as DiagramData;
           } catch {
             return null;
           }
@@ -2820,7 +2819,10 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
             const text = await readSsdSource(params.uri);
             if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
             const { applySspDiagramEdits } = await import("@modelscript/ssp/diagram");
-            const rawEdits = applySspDiagramEdits(text, params.actions);
+            const rawEdits = applySspDiagramEdits(
+              text,
+              params.actions as unknown as Parameters<typeof applySspDiagramEdits>[1],
+            );
             const hasStructural = params.actions.some(
               (a) =>
                 a.type === "connect" ||
@@ -3711,7 +3713,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
 
 export function processDiagramEditBatch(
   request: DiagramApplyEditsParams,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   classInstance: any,
   docText: string,
 ): DiagramApplyEditsResult {
@@ -3779,7 +3781,7 @@ export function processDiagramEditBatch(
         const baseName = action.className.split(".").pop() || "comp";
         let uniqueName = baseName + "1";
         let counter = 1;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const existingNames = new Set(Array.from(classInstance.components || []).map((c: any) => c.name));
         while (existingNames.has(uniqueName)) {
           counter++;

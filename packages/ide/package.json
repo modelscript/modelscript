@@ -44,5 +44,9 @@
     "@types/vscode": "^1.72.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "core"
   }
 }

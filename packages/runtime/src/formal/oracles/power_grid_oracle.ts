@@ -68,12 +68,15 @@ export class PowerGridTheoryOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private nextLitId = 40000;
 
+  private sharedEqualities: SharedEquality[] = [];
+
   private levelStack: {
     busVoltages: Map<string, BusVoltageSpec>;
     reactivePowers: Map<string, ReactivePowerSpec>;
     branchLoadings: Map<string, BranchLoadingSpec>;
     ieee2800Clauses: Map<string, Ieee2800ClauseSpec>;
     externalBounds: Map<string, [number, number]>;
+    sharedEqualities: SharedEquality[];
     assertedLitIds: number[];
   }[] = [];
 
@@ -87,6 +90,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
     this.branchLoadings.clear();
     this.ieee2800Clauses.clear();
     this.externalBounds.clear();
+    this.sharedEqualities = [];
     this.assertedLiterals.clear();
     this.levelStack = [];
   }
@@ -98,6 +102,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
       branchLoadings: new Map(this.branchLoadings),
       ieee2800Clauses: new Map(this.ieee2800Clauses),
       externalBounds: new Map(this.externalBounds),
+      sharedEqualities: [...this.sharedEqualities],
       assertedLitIds: [],
     });
   }
@@ -110,6 +115,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
     this.branchLoadings = top.branchLoadings;
     this.ieee2800Clauses = top.ieee2800Clauses;
     this.externalBounds = top.externalBounds;
+    this.sharedEqualities = top.sharedEqualities;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -271,10 +277,19 @@ export class PowerGridTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
+    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of remainingSharedEqs) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -434,11 +449,20 @@ export class PowerGridTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA) return;
+    this.sharedEqualities.push(eq);
 
     if (eq.bounds) {
-      this.externalBounds.set(eq.varA, eq.bounds);
-      if (eq.varB && isNaN(Number(eq.varB))) {
-        this.externalBounds.set(eq.varB, eq.bounds);
+      const intersect = (varName: string, b: [number, number]) => {
+        const prev = this.externalBounds.get(varName);
+        if (prev) {
+          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+        } else {
+          this.externalBounds.set(varName, [b[0], b[1]]);
+        }
+      };
+      intersect(eq.varA, eq.bounds);
+      if (eq.varB && eq.varB !== eq.varA && isNaN(Number(eq.varB))) {
+        intersect(eq.varB, eq.bounds);
       }
     }
   }

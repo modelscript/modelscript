@@ -38,10 +38,12 @@ export class CausalizationTheoryOracle implements TheoryOracle {
   private samplingChecks: SamplingCheck[] = [];
   private algebraicLoops: AlgebraicLoopSpec[] = [];
   private assertedLiterals = new Map<number, TheoryLiteral>();
+  private sharedEqualities: SharedEquality[] = [];
   private levelStack: {
     equations: EquationAssignment[];
     samplingChecks: SamplingCheck[];
     algebraicLoops: AlgebraicLoopSpec[];
+    sharedEqualities: SharedEquality[];
     assertedLitIds: number[];
   }[] = [];
 
@@ -53,15 +55,17 @@ export class CausalizationTheoryOracle implements TheoryOracle {
     this.equations = [];
     this.samplingChecks = [];
     this.algebraicLoops = [];
+    this.sharedEqualities = [];
     this.assertedLiterals.clear();
     this.levelStack = [];
   }
 
   public pushLevel(): void {
     this.levelStack.push({
-      equations: [...this.equations],
-      samplingChecks: [...this.samplingChecks],
-      algebraicLoops: [...this.algebraicLoops],
+      equations: this.equations.map((e) => ({ ...e, unknowns: [...e.unknowns] })),
+      samplingChecks: this.samplingChecks.map((s) => ({ ...s })),
+      algebraicLoops: this.algebraicLoops.map((l) => ({ ...l, variables: [...l.variables] })),
+      sharedEqualities: [...this.sharedEqualities],
       assertedLitIds: [],
     });
   }
@@ -72,6 +76,7 @@ export class CausalizationTheoryOracle implements TheoryOracle {
     this.equations = top.equations;
     this.samplingChecks = top.samplingChecks;
     this.algebraicLoops = top.algebraicLoops;
+    this.sharedEqualities = top.sharedEqualities;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -87,7 +92,7 @@ export class CausalizationTheoryOracle implements TheoryOracle {
     switch (predicate) {
       case "equation": {
         const [eqId, unknowns] = args as [string, string[]];
-        this.equations.push({ eqId, unknowns });
+        this.equations.push({ eqId, unknowns: [...unknowns] });
         break;
       }
       case "sampleRate": {
@@ -99,7 +104,7 @@ export class CausalizationTheoryOracle implements TheoryOracle {
         const [loopId, variables, isLinear, hasAnalyticInverse] = args as [string, string[], boolean, boolean?];
         this.algebraicLoops.push({
           loopId,
-          variables,
+          variables: [...variables],
           isLinear,
           hasAnalyticInverse: hasAnalyticInverse ?? isLinear,
         });
@@ -115,10 +120,17 @@ export class CausalizationTheoryOracle implements TheoryOracle {
     this.assertedLiterals.delete(litId);
     const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
+    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
     this.reset();
     this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of remainingSharedEqs) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -181,6 +193,7 @@ export class CausalizationTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA || !eq.varB || eq.varA === eq.varB) return;
+    this.sharedEqualities.push(eq);
     for (const loop of this.algebraicLoops) {
       const idxA = loop.variables.indexOf(eq.varA);
       if (idxA !== -1) {

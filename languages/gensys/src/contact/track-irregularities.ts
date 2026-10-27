@@ -191,9 +191,10 @@ export function generatePsdTrackIrregularity(spec: TrackPsdSpecification): Track
     let psdG = 0;
 
     if (spec.standard === "FRA") {
-      const classNum = parseInt(spec.quality.replace("fra_class_", ""), 10) || 6;
-      psdV = calculateFraPsd(om, "vertical", classNum as any);
-      psdA = calculateFraPsd(om, "alignment", classNum as any);
+      const rawClass = parseInt(spec.quality.replace("fra_class_", ""), 10) || 6;
+      const classNum = Math.min(6, Math.max(1, rawClass)) as 1 | 2 | 3 | 4 | 5 | 6;
+      psdV = calculateFraPsd(om, "vertical", classNum);
+      psdA = calculateFraPsd(om, "alignment", classNum);
       // Derive cant from alignment/vertical standard ratios
       psdC = (psdV * (om * om)) / (halfGauge * halfGauge * 2.0);
       psdG = psdA * 0.3;

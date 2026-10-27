@@ -89,7 +89,6 @@ export function createCosimWebSocketHandler(
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   return (ws: WsWebSocket, _req: IncomingMessage) => {
     const state: ClientState = {
       ws,

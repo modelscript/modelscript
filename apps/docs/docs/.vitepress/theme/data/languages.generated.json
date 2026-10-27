@@ -8,6 +8,7 @@
     "group": "core",
     "pkgName": "@modelscript/modelscript",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx compile",
     "actions": [],
     "capabilities": {
@@ -28,6 +29,7 @@
     "group": "core",
     "pkgName": "@modelscript/modelica",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx simulate",
     "actions": [],
     "capabilities": {
@@ -52,6 +54,7 @@
     "group": "core",
     "pkgName": "@modelscript/sysml2",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx sysml",
     "actions": [
       "export",
@@ -81,6 +84,7 @@
     "group": "core",
     "pkgName": "@modelscript/reqif",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx reqif",
     "actions": [
       "import",
@@ -111,6 +115,7 @@
     "group": "core",
     "pkgName": "@modelscript/ssp",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx fmu",
     "actions": [],
     "capabilities": {
@@ -134,6 +139,7 @@
     "group": "core",
     "pkgName": "@modelscript/owl2",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -157,6 +163,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/step",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx csg",
     "actions": [],
     "capabilities": {
@@ -180,6 +187,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/scad",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx csg",
     "actions": [],
     "capabilities": {
@@ -203,6 +211,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/cfd",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx cfd",
     "actions": [
       "lint",
@@ -232,6 +241,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/fea",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx fea",
     "actions": [
       "lint",
@@ -261,6 +271,7 @@
     "group": "integration",
     "pkgName": "@modelscript/csv",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -284,6 +295,7 @@
     "group": "integration",
     "pkgName": "@modelscript/c",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx c",
     "actions": [
       "inspect",
@@ -313,6 +325,7 @@
     "group": "integration",
     "pkgName": "@modelscript/fortran",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -333,6 +346,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/jsbsim",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx jsbsim",
     "actions": [
       "inspect",
@@ -362,6 +376,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/rocets",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx rocets",
     "actions": [
       "lint",
@@ -395,6 +410,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/ccsds",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx ccsds",
     "actions": [
       "inspect",
@@ -425,6 +441,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/easy5",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx easy5",
     "actions": [
       "lint",
@@ -460,6 +477,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/autosar",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx autosar",
     "actions": [
       "inspect",
@@ -490,6 +508,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/simulink",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx simulink",
     "actions": [
       "lint",
@@ -519,6 +538,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/gtsuite",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx gtsuite",
     "actions": [
       "lint",
@@ -554,6 +574,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/opendrive",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx opendrive",
     "actions": [
       "inspect",
@@ -583,6 +604,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/openscenario",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx openscenario",
     "actions": [
       "inspect",
@@ -612,6 +634,7 @@
     "group": "rail",
     "pkgName": "@modelscript/gensys",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx gensys",
     "actions": [
       "lint",
@@ -642,6 +665,7 @@
     "group": "rail",
     "pkgName": "@modelscript/simpack",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx simpack",
     "actions": [
       "lint",
@@ -672,6 +696,7 @@
     "group": "power",
     "pkgName": "@modelscript/pscad",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx pscad",
     "actions": [
       "lint",
@@ -704,6 +729,7 @@
     "group": "power",
     "pkgName": "@modelscript/psse",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx psse",
     "actions": [
       "inspect",
@@ -735,6 +761,7 @@
     "group": "power",
     "pkgName": "@modelscript/opendss",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx opendss",
     "actions": [
       "inspect",
@@ -764,6 +791,7 @@
     "group": "oil-gas",
     "pkgName": "@modelscript/olga",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx olga",
     "actions": [
       "inspect",
@@ -804,6 +832,7 @@
     "group": "oil-gas",
     "pkgName": "@modelscript/lps",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx lps",
     "actions": [
       "inspect",
@@ -836,6 +865,7 @@
     "group": "oil-gas",
     "pkgName": "@modelscript/eclipse",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx eclipse",
     "actions": [
       "inspect",
@@ -865,6 +895,7 @@
     "group": "nuclear",
     "pkgName": "@modelscript/relap5",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx relap5",
     "actions": [
       "inspect",
@@ -894,6 +925,7 @@
     "group": "marine",
     "pkgName": "@modelscript/sima",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx sima",
     "actions": [
       "lint",
@@ -928,6 +960,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/spice",
     "version": "0.0.18",
+    "tier": "stable",
     "cliCommand": "msx spice",
     "actions": [
       "simulate",
@@ -960,6 +993,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/verilog-a",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx verilog-a",
     "actions": [
       "inspect",
@@ -989,6 +1023,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/ibis",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx ibis",
     "actions": [
       "inspect",
@@ -1018,6 +1053,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/touchstone",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx touchstone",
     "actions": [
       "inspect",
@@ -1048,6 +1084,7 @@
     "group": "robotics",
     "pkgName": "@modelscript/urdf",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx urdf",
     "actions": [
       "lint",
@@ -1079,6 +1116,7 @@
     "group": "robotics",
     "pkgName": "@modelscript/plcopen",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx plcopen",
     "actions": [
       "inspect",
@@ -1109,6 +1147,7 @@
     "group": "robotics",
     "pkgName": "@modelscript/adams",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx adams",
     "actions": [
       "lint",
@@ -1138,6 +1177,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/energyplus",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx energyplus",
     "actions": [
       "inspect",
@@ -1168,6 +1208,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/epanet",
     "version": "0.0.18",
+    "tier": "beta",
     "cliCommand": "msx epanet",
     "actions": [
       "inspect",
@@ -1196,6 +1237,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/swmm",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx swmm",
     "actions": [
       "inspect",
@@ -1225,6 +1267,7 @@
     "group": "process",
     "pkgName": "@modelscript/aspen",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx aspen",
     "actions": [
       "inspect",
@@ -1254,6 +1297,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/sbml",
     "version": "0.0.18",
+    "tier": "preview",
     "cliCommand": "msx sbml",
     "actions": [
       "inspect",

@@ -96,9 +96,8 @@ export interface SequenceLayoutResult {
  * @returns      The layout result with lifeline and message positions
  */
 export function computeSequenceLayout(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodes: any[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   edges: any[],
   config: Partial<SequenceLayoutConfig> = {},
 ): SequenceLayoutResult {
@@ -202,9 +201,8 @@ export function computeSequenceLayout(
  * @returns      The layout result for additional rendering
  */
 export function applySequenceLayout(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodes: any[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   edges: any[],
   isDark: boolean,
 ): SequenceLayoutResult {
@@ -217,7 +215,6 @@ export function applySequenceLayout(
 
   // ── Reposition lifeline header nodes ──
   for (const ll of layout.lifelines) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const node = nodes.find((n: any) => n.id === ll.nodeId);
     if (!node) continue;
 
@@ -291,7 +288,6 @@ export function applySequenceLayout(
   }
 
   for (const msg of layout.messages) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const edge = edges.find((e: any) => e.id === msg.edgeId);
     if (!edge) continue;
 

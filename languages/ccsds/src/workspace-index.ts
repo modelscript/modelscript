@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/ccsds — Multi-File Workspace Indexer.
@@ -43,7 +42,7 @@ export class CcsdsWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -53,7 +52,7 @@ export class CcsdsWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => unknown): void {
     this._version++;
     if (loader) {
       try {
@@ -90,12 +89,17 @@ export class CcsdsWorkspaceIndex implements IWorkspaceIndex {
     const byName = new Map<string, SymbolId[]>();
     const childrenOf = new Map<SymbolId | null, SymbolId[]>();
 
-    function addSym(name: string, kind: string, parentId: SymbolId | null = null, extra?: any): SymbolId {
+    function addSym(
+      name: string,
+      kind: string,
+      parentId: SymbolId | null = null,
+      extra?: Record<string, unknown>,
+    ): SymbolId {
       const symId = (baseId! + localSeq++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: `ccsds_${kind}`,
         namePath: name,
         fieldName: null,
@@ -106,7 +110,7 @@ export class CcsdsWorkspaceIndex implements IWorkspaceIndex {
         inherits: [],
         language: "ccsds",
         resourceId: uri,
-        metadata: extra,
+        metadata: extra ?? {},
       };
 
       symbols.set(symId, entry);

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { language } from "@modelscript/dsl";
 import { lowerJsbsimToDae } from "./dae/jsbsim-to-dae.js";
 import { lintJsbsim } from "./lints/index.js";
 import { parseJsbsim } from "./parser/jsbsim-parser.js";
 import { jsbsimToModelica } from "./projections/jsbsim-to-modelica.js";
-import { solveFlightDynamics } from "./solvers/flight-solver.js";
+import { solveFlightDynamics, type FlightSolverOptions } from "./solvers/flight-solver.js";
+
+interface JsbsimActionContext {
+  documentText?: string | undefined;
+}
 
 /**
  * ModelScript JSBSim 2.0 Aircraft Flight Dynamics (.xml) Language Definition.
@@ -52,7 +55,7 @@ export const jsbsimLanguage = language({
             "Lints JSBSim XML file for negative wing areas, non-physical inertias, and missing aerodynamics.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: JsbsimActionContext | undefined, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseJsbsim(text);
@@ -64,7 +67,10 @@ export const jsbsimLanguage = language({
       title: "Simulate 6-DOF Flight Dynamics",
       description: "Integrates rigid-body 6 degrees-of-freedom equations of motion coupled with aerodynamic forces.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; options?: any }) => {
+      execute: async (
+        ctx: JsbsimActionContext | undefined,
+        params: { documentText?: string | undefined; options?: FlightSolverOptions | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const doc = parseJsbsim(text);
@@ -76,7 +82,7 @@ export const jsbsimLanguage = language({
       title: "Lower JSBSim to DAE",
       description: "Compiles 6-DOF flight dynamics equations of motion into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: JsbsimActionContext | undefined, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseJsbsim(text);
@@ -93,7 +99,10 @@ export const jsbsimLanguage = language({
       title: "Project JSBSim to Modelica",
       description: "Synthesizes standard Modelica 3.x 6-DOF aircraft flight mechanics simulation model.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined; modelName?: string }) => {
+      execute: async (
+        ctx: JsbsimActionContext | undefined,
+        params: { documentText?: string | undefined; modelName?: string | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseJsbsim(text);

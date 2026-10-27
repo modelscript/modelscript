@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import { DAEBuilder, StringInterner, initBltWasm } from "@modelscript/runtime";
 import assert from "node:assert";

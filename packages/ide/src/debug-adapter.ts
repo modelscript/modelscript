@@ -25,7 +25,7 @@ import { MultiBodyAnimationPanel } from "./multibody-animation-panel.js";
 /** Currently active in-process DAP debug session instance, if one is running. */
 export let activeDebugSession: ModelScriptDebugSession | undefined;
 /** Callback registered by the LSP client to launch a debugged simulation for a model URI/path. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export let startLspDebugSession: ((program: string) => Promise<any>) | undefined;
 /** Callback registered by the LSP client to resume simulation execution from a breakpoint. */
 export let continueLspDebugSession: (() => Promise<void>) | undefined;
@@ -44,7 +44,6 @@ export let nextLspDebugSession: (() => Promise<void>) | undefined;
  * Registers the LSP-backed simulation control callbacks invoked by `ModelScriptDebugSession`.
  */
 export function setLspDebugCallbacks(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   start: (program: string) => Promise<any>,
   cont: () => Promise<void>,
   getVars: () => Promise<{ name: string; value: string; variablesReference: number }[]>,

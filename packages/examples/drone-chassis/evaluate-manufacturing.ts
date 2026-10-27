@@ -65,7 +65,6 @@ async function main() {
   console.log(`[1/3] Parsing CAD geometry from ${stepPath}...`);
   const fileData = fs.readFileSync(stepPath);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const occt = await (occtimportjs as any)();
   const result = occt.ReadStepFile(new Uint8Array(fileData), null);
 

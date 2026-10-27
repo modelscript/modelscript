@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DiffIcon, SlidersIcon, SyncIcon, XIcon } from "@primer/octicons-react";
 import { Button, IconButton, SegmentedControl, Spinner, Text } from "@primer/react";
 import { Canvas } from "@react-three/fiber";

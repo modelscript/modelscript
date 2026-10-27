@@ -130,7 +130,9 @@ async function run() {
 
   const compiledPhys = compileTGGRules(physicsRule);
   assert(compiledPhys.sourceCode.includes("Physics reconciliation policy: __var_v1 <-> __var_v2 bounds=[200, 800]"));
-  assert(compiledPhys.sourceCode.includes("tgg_reconcile_physics_simplex(slot, 0.0, 0.0, 200.0, 800.0, corr)"));
+  assert(
+    compiledPhys.sourceCode.includes("tgg_reconcile_physics_simplex(slot, __srcVal, __tgtVal, 200.0, 800.0, corr)"),
+  );
   console.log("  ✓ Compiled physics boundary constraint checks into WASM kernel");
 
   // Conflict recording & physics resolution
@@ -140,11 +142,17 @@ async function run() {
   assert(resolved?.isResolved, "Conflict must be marked resolved");
   assert.strictEqual(resolved?.resolved, 450.0, "Midpoint consensus must be chosen when within envelope");
 
-  // Boundary clamp check: if midpoint exceeds physical limit
-  transformer.recordConflict("overdrive_temp", 380.0, 420.0);
+  // Boundary clamp check: when one proposal is feasible (320) and midpoint (370) exceeds physical limit (350)
+  transformer.recordConflict("overdrive_temp", 320.0, 420.0);
   transformer.resolveConflictPhysics("overdrive_temp", 250.0, 350.0); // max physical limit is 350
   const clamped = transformer.getConflicts().find((c) => c.id === "overdrive_temp");
   assert.strictEqual(clamped?.resolved, 350.0, "Value must be projected to physical limit boundary");
+
+  // Dual out-of-bounds check: when both proposals (380 and 420) violate the physical envelope on the same side
+  transformer.recordConflict("infeasible_temp", 380.0, 420.0);
+  transformer.resolveConflictPhysics("infeasible_temp", 250.0, 350.0);
+  const infeasible = transformer.getConflicts().find((c) => c.id === "infeasible_temp");
+  assert.strictEqual(infeasible?.isResolved, false, "Doubly out-of-bounds proposals must remain conflicted");
   console.log("  ✓ Enforced physical feasibility envelope during multi-master consensus\n");
 
   // --------------------------------------------------------------------------

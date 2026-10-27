@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseSimulink } from "./parser/index.js";
@@ -40,7 +39,7 @@ export class SimulinkWorkspaceIndex implements IWorkspaceIndex {
     return this.fileModels.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -50,7 +49,7 @@ export class SimulinkWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => string | { sourceText?: string; text?: string } | null): void {
     this._version++;
     if (loader) {
       try {
@@ -84,7 +83,7 @@ export class SimulinkWorkspaceIndex implements IWorkspaceIndex {
       const entry: SymbolEntry = {
         id,
         name,
-        kind: kind as any,
+        kind,
         ruleName: kind === "Class" ? "simulink_model" : "simulink_block",
         namePath: name,
         fieldName: null,

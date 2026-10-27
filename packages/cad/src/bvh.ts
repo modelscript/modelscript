@@ -33,8 +33,30 @@ export interface FrustumPlane {
   distance: number;
 }
 
+interface BvhWasmExports {
+  memory: { buffer: ArrayBuffer };
+  __new(bytes: number, id: number): number;
+  cad_bvh_tree_raycast?: (
+    totalNodes: number,
+    nodesPtr: number,
+    rayOriginPtr: number,
+    rayDirPtr: number,
+    maxDist: number,
+    hitOutPtr: number,
+  ) => number;
+  cad_bvh_raycast?: (
+    n: number,
+    aabbsPtr: number,
+    idsPtr: number,
+    rayOriginPtr: number,
+    rayDirPtr: number,
+    maxDist: number,
+    hitOutPtr: number,
+  ) => number;
+}
+
 let bvhWasmScratch: {
-  wasm: any;
+  wasm: BvhWasmExports;
   capItems: number;
   capNodes: number;
   aabbsPtr: number;
@@ -45,7 +67,7 @@ let bvhWasmScratch: {
   hitOutPtr: number;
 } | null = null;
 
-function ensureBvhWasmScratch(wasm: any, nItems: number, nNodes: number = 0) {
+function ensureBvhWasmScratch(wasm: BvhWasmExports, nItems: number, nNodes: number = 0) {
   const reqItems = Math.max(nItems, 64);
   const reqNodes = Math.max(nNodes, 64);
   if (
@@ -287,7 +309,11 @@ export class AssemblyBVH {
     const dir: [number, number, number] = [rayDir[0] / len, rayDir[1] / len, rayDir[2] / len];
 
     // Perform accelerated O(log N) raycast in WASM when available (or fallback to flat scan / TS)
-    const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
+    const wasm =
+      typeof globalThis !== "undefined"
+        ? ((globalThis as { __modelscript_wasm_exports__?: BvhWasmExports | undefined }).__modelscript_wasm_exports__ ??
+          null)
+        : null;
     if (this.totalItems > 0 && wasm) {
       if (typeof wasm.cad_bvh_tree_raycast === "function" && this.totalNodes > 0) {
         const sc = ensureBvhWasmScratch(wasm, this.totalItems, this.totalNodes);

@@ -1,0 +1,261 @@
+{
+  "description": "Per-package type-safety ratchet ceilings for explicit 'any' and '@ts-expect-error'/'@ts-ignore' in src/. Counts may decrease but must never increase.",
+  "packages": {
+    "apps/api": {
+      "explicitAny": 472,
+      "tsComments": 0
+    },
+    "apps/cli": {
+      "explicitAny": 334,
+      "tsComments": 0
+    },
+    "apps/desktop": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "apps/docs": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "apps/ide": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "apps/ide/github-fs": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "apps/web": {
+      "explicitAny": 595,
+      "tsComments": 0
+    },
+    "languages/adams": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/aspen": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/autosar": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/c": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/ccsds": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cfd": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/csv": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/easy5": {
+      "explicitAny": 33,
+      "tsComments": 0
+    },
+    "languages/eclipse": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/energyplus": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/epanet": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/fea": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/fortran": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gensys": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gtsuite": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/ibis": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/jsbsim": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/lps": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/modelica": {
+      "explicitAny": 3175,
+      "tsComments": 0
+    },
+    "languages/modelscript": {
+      "explicitAny": 48,
+      "tsComments": 0
+    },
+    "languages/olga": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/opendrive": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/opendss": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/openscenario": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/owl2": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/plcopen": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/pscad": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/psse": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/relap5": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/reqif": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/rocets": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/sbml": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/scad": {
+      "explicitAny": 132,
+      "tsComments": 0
+    },
+    "languages/sima": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/simpack": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/simulink": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/spice": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/ssp": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/step": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/swmm": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/sysml2": {
+      "explicitAny": 191,
+      "tsComments": 0
+    },
+    "languages/touchstone": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/urdf": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/verilog-a": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/cad": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/diagram": {
+      "explicitAny": 476,
+      "tsComments": 0
+    },
+    "packages/dsl": {
+      "explicitAny": 761,
+      "tsComments": 0
+    },
+    "packages/embed": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/examples/drone-chassis": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/examples/pscad-microgrid": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/exchange": {
+      "explicitAny": 73,
+      "tsComments": 0
+    },
+    "packages/ide": {
+      "explicitAny": 385,
+      "tsComments": 0
+    },
+    "packages/lsp": {
+      "explicitAny": 1952,
+      "tsComments": 0
+    },
+    "packages/mcp": {
+      "explicitAny": 106,
+      "tsComments": 0
+    },
+    "packages/react": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/runtime": {
+      "explicitAny": 714,
+      "tsComments": 0
+    },
+    "packages/simulate": {
+      "explicitAny": 140,
+      "tsComments": 0
+    }
+  }
+}

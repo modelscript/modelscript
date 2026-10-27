@@ -46,11 +46,31 @@ export function getShortLabel(iri: string): string {
   return iri;
 }
 
+export interface OWL2DiagramAxiom {
+  readonly type: string;
+  readonly iri?: string | undefined;
+  readonly subClassIri?: string | undefined;
+  readonly superClassIri?: string | undefined;
+  readonly inferred?: boolean | undefined;
+  readonly subjectIri?: string | undefined;
+  readonly objectIri?: string | undefined;
+  readonly propertyIri?: string | undefined;
+  readonly classIri?: string | undefined;
+  readonly individualIri?: string | undefined;
+  readonly domainIri?: string | undefined;
+  readonly rangeIri?: string | undefined;
+  readonly targetClassIri?: string | undefined;
+  readonly dataRange?: string | undefined;
+  readonly inversePropertyIri?: string | undefined;
+  readonly propertyIris?: readonly string[] | undefined;
+  readonly classIris?: readonly string[] | undefined;
+}
+
 /**
  * Builds DiagramData for an OWL 2 ontology suitable for AntV X6 rendering.
  */
 export function buildOWL2DiagramData(
-  axioms: any[],
+  axioms: readonly OWL2DiagramAxiom[],
   layout?: {
     elements?:
       | Record<string, { x: number; y: number; width?: number | undefined; height?: number | undefined }>
@@ -84,32 +104,32 @@ export function buildOWL2DiagramData(
   };
 
   for (const ax of axioms) {
-    if (ax.type === "ClassDeclaration" || ax.type === "Class") {
+    if ((ax.type === "ClassDeclaration" || ax.type === "Class") && ax.iri) {
       nodesMap.set(ax.iri, {
         iri: ax.iri,
         label: getShortLabel(ax.iri),
         type: "class",
         isDefinedClass: definedClasses.has(ax.iri),
       });
-    } else if (ax.type === "ObjectPropertyDeclaration" || ax.type === "ObjectProperty") {
+    } else if ((ax.type === "ObjectPropertyDeclaration" || ax.type === "ObjectProperty") && ax.iri) {
       nodesMap.set(ax.iri, {
         iri: ax.iri,
         label: getShortLabel(ax.iri),
         type: "objectProperty",
       });
-    } else if (ax.type === "DataPropertyDeclaration" || ax.type === "DataProperty") {
+    } else if ((ax.type === "DataPropertyDeclaration" || ax.type === "DataProperty") && ax.iri) {
       nodesMap.set(ax.iri, {
         iri: ax.iri,
         label: getShortLabel(ax.iri),
         type: "dataProperty",
       });
-    } else if (ax.type === "IndividualDeclaration" || ax.type === "NamedIndividual") {
+    } else if ((ax.type === "IndividualDeclaration" || ax.type === "NamedIndividual") && ax.iri) {
       nodesMap.set(ax.iri, {
         iri: ax.iri,
         label: getShortLabel(ax.iri),
         type: "individual",
       });
-    } else if (ax.type === "SubClassOf") {
+    } else if (ax.type === "SubClassOf" && ax.subClassIri && ax.superClassIri) {
       ensureNode(ax.subClassIri, "class");
       ensureNode(ax.superClassIri, "class");
       const isInferred = Boolean(ax.inferred);
@@ -122,7 +142,7 @@ export function buildOWL2DiagramData(
         label: isInferred ? "«inferred» subClassOf" : "subClassOf",
         type: isInferred ? "inferredSubClassOf" : "subClassOf",
       });
-    } else if (ax.type === "ObjectPropertyAssertion") {
+    } else if (ax.type === "ObjectPropertyAssertion" && ax.subjectIri && ax.objectIri && ax.propertyIri) {
       ensureNode(ax.subjectIri, "individual");
       ensureNode(ax.objectIri, "individual");
       edgesData.push({
@@ -194,22 +214,26 @@ export function buildOWL2DiagramData(
       }
     } else if (ax.type === "EquivalentClasses" && Array.isArray(ax.classIris) && ax.classIris.length >= 2) {
       for (let i = 0; i < ax.classIris.length - 1; i++) {
-        ensureNode(ax.classIris[i], "class");
-        ensureNode(ax.classIris[i + 1], "class");
+        const c1 = ax.classIris[i]!;
+        const c2 = ax.classIris[i + 1]!;
+        ensureNode(c1, "class");
+        ensureNode(c2, "class");
         edgesData.push({
-          source: ax.classIris[i],
-          target: ax.classIris[i + 1],
+          source: c1,
+          target: c2,
           label: "equivalentTo",
           type: "equivalentTo",
         });
       }
     } else if (ax.type === "DisjointClasses" && Array.isArray(ax.classIris) && ax.classIris.length >= 2) {
       for (let i = 0; i < ax.classIris.length - 1; i++) {
-        ensureNode(ax.classIris[i], "class");
-        ensureNode(ax.classIris[i + 1], "class");
+        const c1 = ax.classIris[i]!;
+        const c2 = ax.classIris[i + 1]!;
+        ensureNode(c1, "class");
+        ensureNode(c2, "class");
         edgesData.push({
-          source: ax.classIris[i],
-          target: ax.classIris[i + 1],
+          source: c1,
+          target: c2,
           label: "disjointWith",
           type: "disjointWith",
         });
@@ -416,7 +440,7 @@ export function buildOWL2DiagramData(
 
     let stroke = "#569cd6";
     let strokeDasharray: string | undefined = undefined;
-    let targetMarker: any = undefined;
+    let targetMarker: Record<string, unknown> | undefined = undefined;
 
     if (rel.type === "subClassOf") {
       stroke = "#569cd6";

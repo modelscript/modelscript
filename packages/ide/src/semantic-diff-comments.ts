@@ -89,7 +89,6 @@ export function registerSemanticDiffComments(context: vscode.ExtensionContext, c
       return; // Only annotate the working tree version
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
     if (!gitExtension) return;
 

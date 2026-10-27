@@ -201,7 +201,9 @@ function parseFlowpathElement(el: XmlElement): OlgaFlowpath {
       };
     } else if (tagName === "Ipr" || tagName === "IPR" || tagName === "WellboreIpr") {
       const rawType = (getAttr(child, "Type") || getAttr(child, "ModelType") || "VOGEL").toUpperCase();
-      const iprType = ["LINEAR_PI", "VOGEL", "FETKOVICH"].includes(rawType) ? (rawType as any) : "VOGEL";
+      const iprType: OlgaIpr["type"] = ["LINEAR_PI", "VOGEL", "FETKOVICH"].includes(rawType)
+        ? (rawType as OlgaIpr["type"])
+        : "VOGEL";
       ipr = {
         type: iprType,
         reservoirPressure: parsePressure(getAttr(child, "ReservoirPressure"), 220e5),

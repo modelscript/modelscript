@@ -103,7 +103,7 @@ export function getSimpackDocumentSymbols(content: string): LspDocumentSymbol[] 
   const symbols: LspDocumentSymbol[] = [];
 
   // Group markers by body
-  const markersByBody = new Map<string, typeof model.markers extends Map<any, infer V> ? V[] : never[]>();
+  const markersByBody = new Map<string, typeof model.markers extends Map<unknown, infer V> ? V[] : never[]>();
   for (const marker of model.markers.values()) {
     const list = markersByBody.get(marker.bodyId) ?? [];
     list.push(marker);
@@ -268,14 +268,14 @@ export function validateSimpack(content: string): LspDiagnostic[] {
   let model: SimpackModel;
   try {
     model = isXml ? parseSpckXml(content, "SimpackModel") : parseSimDeck(content, "SimpackModel");
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
         severity: 1,
         code: "M1001",
         source: "simpack",
-        message: `SIMPACK Parse Error: ${err.message}`,
+        message: `SIMPACK Parse Error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }

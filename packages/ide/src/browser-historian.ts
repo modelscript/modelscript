@@ -58,10 +58,10 @@ export class BrowserHistorian {
       result = result.filter((p) => p.variable === opts.variable);
     }
     if (opts?.startTime !== undefined) {
-      result = result.filter((p) => p.time >= opts.startTime!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      result = result.filter((p) => p.time >= opts.startTime!);
     }
     if (opts?.endTime !== undefined) {
-      result = result.filter((p) => p.time <= opts.endTime!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      result = result.filter((p) => p.time <= opts.endTime!);
     }
     if (opts?.limit !== undefined && result.length > opts.limit) {
       result = result.slice(-opts.limit);

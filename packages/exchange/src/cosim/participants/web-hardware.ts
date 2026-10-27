@@ -67,7 +67,7 @@ export class WebSerialParticipant implements CoSimParticipant {
   private frameMap = new Map<number, FmiLsBusFrame>();
 
   // Browser Serial handles
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   private port: any = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
@@ -123,7 +123,6 @@ export class WebSerialParticipant implements CoSimParticipant {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async initialize(_startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     if (this.customStream) {
       this.reader = this.customStream.readable.getReader();
@@ -136,7 +135,6 @@ export class WebSerialParticipant implements CoSimParticipant {
     // Connect via navigator.serial if available in browser
     if (typeof navigator !== "undefined" && "serial" in navigator) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const serial = (navigator as any).serial;
         this.port = await serial.requestPort();
         await this.port.open({ baudRate: this.baudRate });

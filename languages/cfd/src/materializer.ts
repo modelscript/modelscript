@@ -5,7 +5,7 @@ import type { BoundaryActionPayload, CaeDiagnostic, MaterializeOptions, Paramete
 /**
  * Safe mathematical function and constant environment available inside CFD template `{{ ... }}` expressions.
  */
-const MATH_ENV: Record<string, any> = {
+const MATH_ENV: Record<string, ((...args: number[]) => number) | number> = {
   sin: Math.sin,
   cos: Math.cos,
   tan: Math.tan,
@@ -261,7 +261,8 @@ export function evaluateCfdExpression(
       if (tok.kind === "ident") {
         const ident = tok.value;
         if (peek()?.kind === "lparen") {
-          if (!ALLOWED_IDENTIFIERS.has(ident) || typeof MATH_ENV[ident] !== "function") {
+          const fn = MATH_ENV[ident];
+          if (!ALLOWED_IDENTIFIERS.has(ident) || typeof fn !== "function") {
             throw new Error(`Expression contains illegal identifier: '${ident}'`);
           }
           consume(); // '('
@@ -277,7 +278,7 @@ export function evaluateCfdExpression(
           if (close.kind !== "rparen") {
             throw new Error(`Expected closing parenthesis for call to '${ident}'`);
           }
-          return Number(MATH_ENV[ident](...args));
+          return Number(fn(...args));
         }
 
         if (ident in MATH_ENV && typeof MATH_ENV[ident] === "number") {
@@ -310,15 +311,16 @@ export function evaluateCfdExpression(
     if (typeof result === "string") {
       return result;
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     if (diagnostics) {
       diagnostics.push({
         severity: "error",
-        message: err.message || String(err),
+        message: errMsg || String(err),
         expression: trimmed,
       });
     } else {
-      console.warn(`[cfd:materializer] Failed to evaluate expression '${trimmed}':`, err.message || err);
+      console.warn(`[cfd:materializer] Failed to evaluate expression '${trimmed}':`, errMsg || err);
     }
   }
 

@@ -33,7 +33,7 @@ export function terminateSandboxWorker(): void {
   }
 }
 
-export interface SandboxTaskResult<T = any> {
+export interface SandboxTaskResult<T = unknown> {
   result: T;
   durationMs: number;
   memoryUsageBytes?: number | undefined;
@@ -43,7 +43,7 @@ export interface SandboxTaskResult<T = any> {
  * Dispatches an engineering parse or lint task to the background Web Worker,
  * completely isolating heavy parsing from the main UI thread.
  */
-export function runSandboxTask<T = any>(
+export function runSandboxTask<T = unknown>(
   request: WorkerTaskRequest,
   onStageUpdate?: ((msg: WorkerStageMessage) => void) | undefined,
 ): Promise<SandboxTaskResult<T>> {

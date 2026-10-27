@@ -152,7 +152,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
         return;
       }
       // Send a custom request to the language server to get the cad components
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const cadComponents = await this._client.sendRequest<any[]>("modelscript/getCadComponents", { uri });
 
       const documentUri = vscode.Uri.parse(uri);

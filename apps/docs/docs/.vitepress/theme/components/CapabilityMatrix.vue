@@ -25,6 +25,7 @@ interface LanguageManifest {
     projections: string[];
   };
   ruleCount: number;
+  tier: "stable" | "beta" | "preview";
 }
 
 const props = withDefaults(
@@ -93,6 +94,7 @@ const filteredLanguages = computed(() => {
       lang.role.toLowerCase().includes(q) ||
       lang.slug.toLowerCase().includes(q) ||
       lang.pkgName.toLowerCase().includes(q) ||
+      lang.tier.toLowerCase().includes(q) ||
       (lang.cliCommand && lang.cliCommand.toLowerCase().includes(q)) ||
       lang.capabilities.projections.some((p) => p.toLowerCase().includes(q))
     );
@@ -109,7 +111,7 @@ const filteredLanguages = computed(() => {
         <input
           v-model="search"
           type="search"
-          placeholder="Filter by name, extension (.mo, .arxml), role, or projection target..."
+          placeholder="Filter by name, extension (.mo, .arxml), role, tier, or projection target..."
           aria-label="Filter languages"
         />
         <span class="count-badge">{{ filteredLanguages.length }} / {{ allLanguages.length }}</span>
@@ -190,6 +192,7 @@ const filteredLanguages = computed(() => {
               <a :href="`/languages/${lang.slug}`" class="lang-link">
                 <span class="lang-name">{{ lang.name }}</span>
                 <span class="lang-ext">{{ lang.ext }}</span>
+                <span class="lang-tier" :class="`tier-${lang.tier}`">{{ lang.tier }}</span>
               </a>
               <span v-if="!compact" class="lang-role">{{ lang.role }}</span>
             </td>
@@ -498,6 +501,45 @@ const filteredLanguages = computed(() => {
   background: var(--vp-c-bg-soft);
   color: var(--vp-c-text-2);
   border: 1px solid var(--vp-c-border);
+}
+
+.lang-tier {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.tier-stable {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+}
+
+.dark .tier-stable {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.tier-beta {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+}
+
+.dark .tier-beta {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.tier-preview {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.dark .tier-preview {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 
 .lang-role {

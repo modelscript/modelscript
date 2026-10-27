@@ -297,7 +297,7 @@ function parseAsciiGtm(text: string, defaultName: string): GtModel {
           clearanceVolumeM3: disp / (cr - 1),
           displacementM3: disp,
           combustionModel: {
-            type: (kv["combustion"] as any) ?? "wiebe",
+            type: "wiebe",
             anchorAngleDeg: kv["anchor"] ?? kv["soi"] ?? 15.0,
             durationDeg: kv["duration"] ?? kv["burn_duration"] ?? 45.0,
             wiebeExponentM: kv["m"] ?? 2.0,

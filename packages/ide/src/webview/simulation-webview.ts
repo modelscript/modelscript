@@ -176,7 +176,6 @@ interface LiveBuffer {
 let liveBuffer: LiveBuffer | null = null;
 let animFrameId: number | null = null;
 
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 const treeViewEl = document.getElementById("tree-view")!;
@@ -266,7 +265,6 @@ const paramModifiedBadge = document.getElementById("param-modified-badge");
 let currentParameters: Record<string, HTMLInputElement> = {};
 const defaultParameters = new Map<string, number>();
 const customRightVars = new Set<string>();
-/* eslint-enable @typescript-eslint/no-non-null-assertion */
 
 let currentInterpolation = "smooth";
 checkboxSmooth?.addEventListener("change", (e) => {

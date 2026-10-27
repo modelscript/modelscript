@@ -48,5 +48,9 @@
   },
   "engines": {
     "vscode": "^1.72.0"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "app"
   }
 }

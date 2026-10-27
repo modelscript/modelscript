@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { rocetsToDae } from "./dae/rocets-to-dae.js";
 import { lintRocets } from "./lints/index.js";
@@ -106,14 +105,14 @@ export function validateRocets(content: string, _uri: string = "engine.roc"): Ls
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M8000",
         source: "modelscript-rocets",
-        message: `Failed to parse ROCETS engine deck: ${err.message}`,
+        message: `Failed to parse ROCETS engine deck: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -230,7 +229,7 @@ export function getRocetsHover(
 /**
  * Executes domain actions on a NASA ROCETS rocket propulsion model.
  */
-export async function executeRocetsAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeRocetsAction(action: string, args: Record<string, unknown>): Promise<unknown> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const model: RocetsEngineModel = parseRocetsDeck(content);
 

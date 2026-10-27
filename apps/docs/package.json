@@ -7,14 +7,15 @@
   "scripts": {
     "build": "tsx scripts/check-docs.ts && vitepress build docs",
     "build:pdf": "tsx scripts/generate-pdf.ts",
-    "check": "tsx scripts/gen-cli-data.ts --check && tsx scripts/gen-lint-rules.ts --check && tsx scripts/gen-language-data.ts --check && tsx scripts/gen-llms-txt.ts --check && tsx scripts/check-docs.ts",
+    "check": "tsx scripts/gen-cli-data.ts --check && tsx scripts/gen-lint-rules.ts --check && tsx scripts/gen-language-data.ts --check && tsx scripts/gen-mcp-data.ts --check && tsx scripts/gen-llms-txt.ts --check && tsx scripts/check-docs.ts",
     "clean": "rimraf docs/.vitepress/dist",
     "dev": "vitepress dev docs",
-    "gen": "npm run gen:cli && npm run gen:lint && npm run gen:lang && npm run gen:llms",
+    "gen": "npm run gen:cli && npm run gen:lint && npm run gen:lang && npm run gen:mcp && npm run gen:llms",
     "gen:cli": "tsx scripts/gen-cli-data.ts",
     "gen:lang": "tsx scripts/gen-language-data.ts",
     "gen:lint": "tsx scripts/gen-lint-rules.ts",
     "gen:llms": "tsx scripts/gen-llms-txt.ts",
+    "gen:mcp": "tsx scripts/gen-mcp-data.ts",
     "lint": "eslint docs scripts --no-warn-ignored",
     "preview": "vitepress preview docs",
     "typecheck": "tsc --noEmit"
@@ -25,5 +26,9 @@
     "mermaid": "^11.16.1",
     "three": "^0.184.0",
     "vitepress": "^1.1.4"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "app"
   }
 }

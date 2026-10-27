@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DownloadIcon, FileIcon, LinkExternalIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { useMemo } from "react";

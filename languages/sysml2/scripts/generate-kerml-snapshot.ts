@@ -34,7 +34,7 @@ async function main() {
 
   workspaceIndex.register(uri, () => {
     const tree = parser.parse(text);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     return tree ? (tree.rootNode as any) : null;
   });
 

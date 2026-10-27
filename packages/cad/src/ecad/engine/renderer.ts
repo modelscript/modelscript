@@ -316,9 +316,9 @@ export class PCBRenderer {
     ctx.strokeStyle = "#e6e600";
     ctx.lineWidth = 0.1;
     ctx.beginPath();
-    ctx.moveTo(outline[0]!.x, outline[0]!.y); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    ctx.moveTo(outline[0]!.x, outline[0]!.y);
     for (let i = 1; i < outline.length; i++) {
-      ctx.lineTo(outline[i]!.x, outline[i]!.y); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      ctx.lineTo(outline[i]!.x, outline[i]!.y);
     }
     ctx.closePath();
     ctx.stroke();
@@ -342,9 +342,9 @@ export class PCBRenderer {
 
       if (trace.points.length >= 2) {
         ctx.beginPath();
-        ctx.moveTo(trace.points[0]!.x, trace.points[0]!.y); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        ctx.moveTo(trace.points[0]!.x, trace.points[0]!.y);
         for (let i = 1; i < trace.points.length; i++) {
-          ctx.lineTo(trace.points[i]!.x, trace.points[i]!.y); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          ctx.lineTo(trace.points[i]!.x, trace.points[i]!.y);
         }
         ctx.stroke();
       }
@@ -565,8 +565,8 @@ function computeRatsnest(graph: NetlistGraph, pads: RenderPad[] = []): RatsnestL
 
       for (const from of connected) {
         for (const to of remaining) {
-          const pf = pinPositions[from]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-          const pt = pinPositions[to]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          const pf = pinPositions[from]!;
+          const pt = pinPositions[to]!;
           const dx = pf.pos.x - pt.pos.x;
           const dy = pf.pos.y - pt.pos.y;
           const dist = dx * dx + dy * dy;
@@ -578,8 +578,8 @@ function computeRatsnest(graph: NetlistGraph, pads: RenderPad[] = []): RatsnestL
         }
       }
 
-      const fromPin = pinPositions[bestFrom]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-      const toPin = pinPositions[bestTo]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const fromPin = pinPositions[bestFrom]!;
+      const toPin = pinPositions[bestTo]!;
       lines.push({
         from: fromPin.pos,
         to: toPin.pos,

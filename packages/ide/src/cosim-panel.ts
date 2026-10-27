@@ -111,8 +111,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
-    _context: vscode.WebviewViewResolveContext, // eslint-disable-line @typescript-eslint/no-unused-vars
-    _token: vscode.CancellationToken, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken,
   ): void {
     this.view = webviewView;
 

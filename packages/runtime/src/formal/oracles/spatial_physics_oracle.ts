@@ -98,10 +98,12 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     droneProps?: DroneSlicingProperties | undefined;
     externalBounds: Map<string, [number, number]>;
     externalBoundJustifications: Map<string, Set<number>>;
+    sharedEqualities: SharedEquality[];
     assertedLitIds: number[];
   }[] = [];
 
   private externalBoundJustifications = new Map<string, Set<number>>();
+  private sharedEqualities: SharedEquality[] = [];
 
   constructor() {
     this.reset();
@@ -144,6 +146,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.droneProps = undefined;
     this.externalBounds.clear();
     this.externalBoundJustifications.clear();
+    this.sharedEqualities = [];
     this.assertedLiterals.clear();
     this.levelStack = [];
   }
@@ -163,6 +166,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       droneProps: this.droneProps ? { ...this.droneProps } : undefined,
       externalBounds: new Map(this.externalBounds),
       externalBoundJustifications: extJustSnap,
+      sharedEqualities: [...this.sharedEqualities],
       assertedLitIds: [],
     });
   }
@@ -179,6 +183,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.droneProps = top.droneProps;
     this.externalBounds = top.externalBounds;
     this.externalBoundJustifications = top.externalBoundJustifications;
+    this.sharedEqualities = top.sharedEqualities;
     for (const litId of top.assertedLitIds) {
       this.assertedLiterals.delete(litId);
     }
@@ -394,10 +399,19 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
+    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of remainingSharedEqs) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -727,12 +741,19 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     if (eq.bounds) {
-      if (eq.varA === eq.varB) {
-        this.externalBounds.set(eq.varA, [...eq.bounds]);
-      } else {
-        this.externalBounds.set(eq.varA, [...eq.bounds]);
-        this.externalBounds.set(eq.varB, [...eq.bounds]);
+      const intersect = (varName: string, b: [number, number]) => {
+        const prev = this.externalBounds.get(varName);
+        if (prev) {
+          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+        } else {
+          this.externalBounds.set(varName, [b[0], b[1]]);
+        }
+      };
+      intersect(eq.varA, eq.bounds);
+      if (eq.varB && eq.varB !== eq.varA) {
+        intersect(eq.varB, eq.bounds);
       }
       const justs = eq.justifications ?? eq.justification ?? [];
       if (justs.length > 0) {

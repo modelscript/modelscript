@@ -130,8 +130,8 @@ export function BlackboxInspector({
       if (onEmulateInBrowser) {
         onEmulateInBrowser(client);
       }
-    } catch (err: any) {
-      setEmulateError(err?.message || String(err));
+    } catch (err: unknown) {
+      setEmulateError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsEmulating(false);
     }

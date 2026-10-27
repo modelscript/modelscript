@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
  * Optimal control solver for Modelica models using direct collocation.
@@ -588,7 +587,6 @@ export class ModelicaOptimizer {
           return ph.solve(
             msProblem,
             (bp, overrides, aug) => {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const subSolver = new (this.constructor as any)(this.dae, {
                 ...bp,
                 parameterOverrides: overrides,
@@ -611,7 +609,6 @@ export class ModelicaOptimizer {
             ...(this.problem.monteCarloOptions ? { monteCarloOptions: this.problem.monteCarloOptions } : {}),
           };
           return saa.solve(sp, (bp, overrides) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const subSolver = new (this.constructor as any)(this.dae, {
               ...bp,
               parameterOverrides: overrides,

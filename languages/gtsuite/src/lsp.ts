@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { simulateGtSuiteTransient } from "./dae/cylinder-dae.js";
 import { gtsuiteToDae } from "./dae/gtsuite-to-dae.js";
 import { lintGtModel } from "./lints/index.js";
 import { parseGtmModel } from "./parser/gtm-parser.js";
 import { gtsuiteToModelica, gtsuiteToSsp, gtsuiteToSysml2 } from "./projections/index.js";
-import type { GtModel } from "./types.js";
+import type { GtDiagnostic, GtModel, GtSimulationResult } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -105,14 +104,14 @@ export function validateGtsuite(content: string, uri: string = "model.gtm"): Lsp
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: DEFAULT_RANGE,
         severity: 1,
         code: "M9000",
         source: "modelscript-gtsuite",
-        message: `Failed to parse GT-SUITE model: ${err.message}`,
+        message: `Failed to parse GT-SUITE model: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -132,13 +131,13 @@ export function getGtsuiteDocumentSymbols(content: string, uri: string = "model.
 
       if (comp.kind === "cylinder") {
         kind = LspSymbolKind.Class;
-        detail = `Bore: ${(comp as any).boreM * 1000}mm | Stroke: ${(comp as any).strokeM * 1000}mm`;
+        detail = `Bore: ${comp.boreM * 1000}mm | Stroke: ${comp.strokeM * 1000}mm`;
       } else if (comp.kind === "pipe") {
         kind = LspSymbolKind.Field;
-        detail = `Len: ${(comp as any).lengthM}m | Diam: ${(comp as any).diameterM * 1000}mm`;
+        detail = `Len: ${comp.lengthM}m | Diam: ${comp.diameterM * 1000}mm`;
       } else if (comp.kind === "plenum") {
         kind = LspSymbolKind.Namespace;
-        detail = `Vol: ${((comp as any).volumeM3 * 1e6).toFixed(0)}cm³`;
+        detail = `Vol: ${(comp.volumeM3 * 1e6).toFixed(0)}cm³`;
       } else if (comp.kind === "turbo_compressor" || comp.kind === "turbo_turbine") {
         kind = LspSymbolKind.Constructor;
         detail = `Type: ${comp.kind}`;
@@ -185,13 +184,13 @@ export function getGtsuiteHover(
       if (line.includes(comp.id) || (comp.title && line.includes(comp.title))) {
         let details = `### GT-SUITE Component \`${comp.title || comp.id}\`\n- **Kind**: \`${comp.kind}\`\n`;
         if (comp.kind === "cylinder") {
-          const cyl = comp as any;
+          const cyl = comp;
           details += `- **Bore**: ${(cyl.boreM * 1000).toFixed(1)} mm\n- **Stroke**: ${(cyl.strokeM * 1000).toFixed(1)} mm\n- **Compression Ratio**: ${cyl.compressionRatio ?? "default"}\n- **Clearance Vol**: ${cyl.clearanceVolumeM3 ? (cyl.clearanceVolumeM3 * 1e6).toFixed(1) + " cm³" : "calculated"}\n`;
         } else if (comp.kind === "pipe") {
-          const pipe = comp as any;
+          const pipe = comp;
           details += `- **Length**: ${pipe.lengthM} m\n- **Diameter**: ${(pipe.diameterM * 1000).toFixed(1)} mm\n- **Discretization**: ${pipe.discretizationLengthM ? (pipe.discretizationLengthM * 1000).toFixed(1) + " mm" : "auto"}\n`;
         } else if (comp.kind === "plenum") {
-          const pl = comp as any;
+          const pl = comp;
           details += `- **Volume**: ${(pl.volumeM3 * 1e6).toFixed(1)} cm³\n- **Init Pressure**: ${pl.initialPressurePa ? (pl.initialPressurePa / 1000).toFixed(1) + " kPa" : "101.3 kPa"}\n`;
         }
         return {
@@ -222,7 +221,27 @@ export function getGtsuiteHover(
 /**
  * Executes domain actions on a GT-SUITE model.
  */
-export async function executeGtsuiteAction(action: string, args: Record<string, unknown>): Promise<any> {
+export async function executeGtsuiteAction(action: "lint", args: Record<string, unknown>): Promise<GtDiagnostic[]>;
+export async function executeGtsuiteAction(
+  action: "to_modelica" | "to_ssp" | "to_sysml2",
+  args: Record<string, unknown>,
+): Promise<string>;
+export async function executeGtsuiteAction(
+  action: "to_dae",
+  args: Record<string, unknown>,
+): Promise<{ varCount: number; eqCount: number }>;
+export async function executeGtsuiteAction(
+  action: "simulate",
+  args: Record<string, unknown>,
+): Promise<GtSimulationResult>;
+export async function executeGtsuiteAction(
+  action: string,
+  args: Record<string, unknown>,
+): Promise<GtDiagnostic[] | string | { varCount: number; eqCount: number } | GtSimulationResult>;
+export async function executeGtsuiteAction(
+  action: string,
+  args: Record<string, unknown>,
+): Promise<GtDiagnostic[] | string | { varCount: number; eqCount: number } | GtSimulationResult> {
   const content = typeof args["content"] === "string" ? args["content"] : "";
   const uri = typeof args["uri"] === "string" ? args["uri"] : "model.gtm";
   const model: GtModel = parseGtmModel(content, uri);

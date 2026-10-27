@@ -147,13 +147,27 @@ export class DimensionalTheoryOracle implements TheoryOracle {
   }
 
   private getCanonicalVar(v: string): string {
-    const parent = this.aliases.get(v);
-    if (!parent || parent === v) {
-      this.aliases.set(v, v);
-      return v;
+    let curr = v;
+    const visited = new Set<string>();
+    while (true) {
+      const parent = this.aliases.get(curr);
+      if (!parent || parent === curr || visited.has(curr)) {
+        break;
+      }
+      visited.add(curr);
+      curr = parent;
     }
-    const root = this.getCanonicalVar(parent);
-    this.aliases.set(v, root);
+    const root = curr;
+    this.aliases.set(root, root);
+    let node = v;
+    const compressVisited = new Set<string>();
+    while (node !== root && !compressVisited.has(node)) {
+      compressVisited.add(node);
+      const next = this.aliases.get(node);
+      this.aliases.set(node, root);
+      if (!next || next === node) break;
+      node = next;
+    }
     return root;
   }
 
@@ -283,7 +297,9 @@ export class DimensionalTheoryOracle implements TheoryOracle {
         break;
       }
       case "equal": {
-        const [varA, varB] = args as [string, string];
+        const [rawA, rawB] = args as [string, string];
+        const varA = rawA.startsWith("-") ? rawA.slice(1) : rawA;
+        const varB = rawB.startsWith("-") ? rawB.slice(1) : rawB;
         const rootA = this.getCanonicalVar(varA);
         const rootB = this.getCanonicalVar(varB);
         if (rootA !== rootB) {
@@ -314,9 +330,14 @@ export class DimensionalTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
-    const savedShared = [...this.sharedEqualities];
+    const savedShared = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification;
+      return !justs || !justs.includes(litId);
+    });
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
@@ -394,8 +415,10 @@ export class DimensionalTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     this.sharedEqualities.push(eq);
-    const rootA = this.getCanonicalVar(eq.varA);
-    const rootB = this.getCanonicalVar(eq.varB);
+    const cleanA = eq.varA.startsWith("-") ? eq.varA.slice(1) : eq.varA;
+    const cleanB = eq.varB.startsWith("-") ? eq.varB.slice(1) : eq.varB;
+    const rootA = this.getCanonicalVar(cleanA);
+    const rootB = this.getCanonicalVar(cleanB);
     const justs = eq.justifications ?? eq.justification ?? [];
     if (rootA !== rootB) {
       this.aliases.set(rootA, rootB);

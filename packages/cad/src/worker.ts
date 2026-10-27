@@ -1,9 +1,93 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type OpenCascadeInstance = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TopoDS_Shape = any;
+interface TopoDS_Shape {
+  delete?(): void;
+}
+
+interface OpenCascadePoint {
+  X(): number;
+  Y(): number;
+  Z(): number;
+  Transformed(trsf: unknown): OpenCascadePoint;
+  delete(): void;
+}
+
+interface OpenCascadeTriangle {
+  Value(index: number): number;
+  delete(): void;
+}
+
+interface OpenCascadeTriangulation {
+  NbTriangles(): number;
+  Triangle(index: number): OpenCascadeTriangle;
+  Node(index: number): OpenCascadePoint;
+}
+
+interface OpenCascadeHandleTriangulation {
+  IsNull(): boolean;
+  get(): OpenCascadeTriangulation;
+}
+
+interface OpenCascadeLocation {
+  Transformation(): unknown;
+  delete(): void;
+}
+
+interface OpenCascadeExplorer {
+  More(): boolean;
+  Current(): TopoDS_Shape;
+  Next(): void;
+  delete(): void;
+}
+
+interface OpenCascadeInstance {
+  BRepPrimAPI_MakeBox_1: new (
+    width: number | undefined,
+    length: number | undefined,
+    height: number | undefined,
+  ) => {
+    Solid(): TopoDS_Shape;
+    delete(): void;
+  };
+  BRepPrimAPI_MakeCylinder_1: new (
+    radius: number,
+    height: number | undefined,
+  ) => {
+    Solid(): TopoDS_Shape;
+    delete(): void;
+  };
+  BRepAlgoAPI_Cut_3: new (
+    s1: TopoDS_Shape,
+    s2: TopoDS_Shape,
+  ) => {
+    Build(): void;
+    IsDone(): boolean;
+    Shape(): TopoDS_Shape;
+    delete(): void;
+  };
+  BRepMesh_IncrementalMesh_2: new (
+    shape: TopoDS_Shape,
+    linDeflection: number,
+    isRelative: boolean,
+    angDeflection: number,
+    isInParallel: boolean,
+  ) => {
+    Perform(): void;
+    delete(): void;
+  };
+  TopExp_Explorer_2: new (shape: TopoDS_Shape, toFind: unknown, toAvoid: unknown) => OpenCascadeExplorer;
+  TopAbs_ShapeEnum: {
+    TopAbs_FACE: unknown;
+    TopAbs_SHAPE: unknown;
+  };
+  TopoDS: {
+    Face_1(shape: TopoDS_Shape): TopoDS_Shape & { delete(): void };
+  };
+  TopLoc_Location_1: new () => OpenCascadeLocation;
+  BRep_Tool: {
+    Triangulation(face: TopoDS_Shape, location: OpenCascadeLocation): OpenCascadeHandleTriangulation;
+  };
+}
 
 export interface CSGExecutionGraph {
   nodes: CSGNode[];
@@ -16,7 +100,7 @@ export interface CSGNode {
 }
 
 export class CSGWorker {
-  private oc: OpenCascadeInstance;
+  private oc!: OpenCascadeInstance;
 
   async init() {
     if (typeof window !== "undefined") {
@@ -113,8 +197,11 @@ export class CSGWorker {
     console.log(`[CSG] Graph processing complete. Meshes saved to ${outputDir}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private exportMesh(shape: TopoDS_Shape, filePath: string, fs: any) {
+  private exportMesh(
+    shape: TopoDS_Shape,
+    filePath: string,
+    fs: { writeFileSync(path: string, data: string, encoding: BufferEncoding): void },
+  ) {
     // Generates the rendering triangulation
     const incMesh = new this.oc.BRepMesh_IncrementalMesh_2(shape, 0.1, false, 0.5, false);
     incMesh.Perform();

@@ -51,10 +51,13 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private nextLitId = 50000;
 
+  private sharedEqualities: SharedEquality[] = [];
+
   private levelStack: {
     lines: Map<string, MooringLineSpec>;
     floaters: Map<string, FloaterExcursionSpec>;
     externalBounds: Map<string, [number, number]>;
+    sharedEqualities: SharedEquality[];
     assertedLitIds: number[];
   }[] = [];
 
@@ -66,6 +69,7 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
     this.lines.clear();
     this.floaters.clear();
     this.externalBounds.clear();
+    this.sharedEqualities = [];
     this.assertedLiterals.clear();
     this.levelStack = [];
   }
@@ -75,6 +79,7 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
       lines: new Map(this.lines),
       floaters: new Map(this.floaters),
       externalBounds: new Map(this.externalBounds),
+      sharedEqualities: [...this.sharedEqualities],
       assertedLitIds: [],
     });
   }
@@ -85,6 +90,7 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
     this.lines = top.lines;
     this.floaters = top.floaters;
     this.externalBounds = top.externalBounds;
+    this.sharedEqualities = top.sharedEqualities;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -181,10 +187,19 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
   public retractLiteral(litId: number): void {
     if (!this.assertedLiterals.has(litId)) return;
     this.assertedLiterals.delete(litId);
+    const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
+    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
     this.reset();
+    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of remainingSharedEqs) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -363,11 +378,20 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA) return;
+    this.sharedEqualities.push(eq);
 
     if (eq.bounds) {
-      this.externalBounds.set(eq.varA, eq.bounds);
-      if (eq.varB && isNaN(Number(eq.varB))) {
-        this.externalBounds.set(eq.varB, eq.bounds);
+      const intersect = (varName: string, b: [number, number]) => {
+        const prev = this.externalBounds.get(varName);
+        if (prev) {
+          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+        } else {
+          this.externalBounds.set(varName, [b[0], b[1]]);
+        }
+      };
+      intersect(eq.varA, eq.bounds);
+      if (eq.varB && eq.varB !== eq.varA && isNaN(Number(eq.varB))) {
+        intersect(eq.varB, eq.bounds);
       }
     }
   }

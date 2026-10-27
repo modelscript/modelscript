@@ -23,7 +23,7 @@ export class NodeBroker implements EmbeddedBroker {
     }
 
     // Using simple aedes instantiator handling either new or default function
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const AedesConstructor = (aedes as any).default || aedes;
     this.aedes = new (AedesConstructor as new () => Aedes)();
 

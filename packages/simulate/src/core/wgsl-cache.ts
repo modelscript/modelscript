@@ -40,7 +40,6 @@ async function computeHash(buffers: GPUArenaBuffers): Promise<string> {
  * Attempt to retrieve a cached WGSL shader string for this model topology.
  */
 export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const glob = typeof globalThis !== "undefined" ? (globalThis as any) : undefined;
   if (!glob || !glob.crypto || !glob.crypto.subtle || !glob.indexedDB) {
     return null;
@@ -84,7 +83,6 @@ export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | 
  * Persist the generated WGSL string to IndexedDB.
  */
 export async function setCachedWGSL(buffers: GPUArenaBuffers, wgsl: string): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const glob = typeof globalThis !== "undefined" ? (globalThis as any) : undefined;
   if (!glob || !glob.crypto || !glob.crypto.subtle || !glob.indexedDB) {
     return;

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseSwmm } from "./parser/swmm-parser.js";
@@ -39,7 +38,7 @@ export class SwmmWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDecks.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,7 +48,10 @@ export class SwmmWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {
@@ -87,7 +89,7 @@ export class SwmmWorkspaceIndex implements IWorkspaceIndex {
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "swmm_symbol",
         namePath: name,
         fieldName: null,

@@ -10,9 +10,8 @@ export function compressEmbedPayload(payload: UniversalEmbedPayload): string {
   const jsonStr = JSON.stringify(payload);
   const compressed = pako.deflate(jsonStr);
   let binary = "";
-  const len = compressed.length;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(compressed[i]!);
+  for (const byte of compressed) {
+    binary += String.fromCharCode(byte);
   }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

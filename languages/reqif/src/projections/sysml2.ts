@@ -103,7 +103,7 @@ export function sysml2ToReqIf(sysmlText: string, title = "Imported from SysML v2
     if (constraintMatch) {
       contract = {
         variable: constraintMatch[1]!,
-        comparator: constraintMatch[2]! as any,
+        comparator: constraintMatch[2]! as NonNullable<ReqIfSpecObject["contract"]>["comparator"],
         limitValue: parseFloat(constraintMatch[3]!),
       };
     }

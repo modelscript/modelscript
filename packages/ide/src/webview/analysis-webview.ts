@@ -12,7 +12,6 @@ declare function acquireVsCodeApi(): {
 import DOMPurify from "dompurify";
 
 (function () {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _vscode = acquireVsCodeApi();
 
   const contentEl = document.getElementById("content") as HTMLElement;

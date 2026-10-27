@@ -103,7 +103,6 @@ export class CosimMqttClient {
       }
 
       if (this.streamBuilder) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.client = mqtt.connect({ ...opts, builder: this.streamBuilder } as any);
       } else if (this.brokerUrl) {
         this.client = mqtt.connect(this.brokerUrl, opts);

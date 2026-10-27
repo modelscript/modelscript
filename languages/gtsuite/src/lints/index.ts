@@ -356,7 +356,7 @@ export function lintGtModel(model: GtModel): GtDiagnostic[] {
     if (comp.kind === "shaft") {
       const shaft = comp as GtShaftComponent;
       const linkedTurbomachinery = model.components.some(
-        (c) => (c.kind === "turbo_compressor" || c.kind === "turbo_turbine") && (c as any).shaftId === shaft.id,
+        (c) => (c.kind === "turbo_compressor" || c.kind === "turbo_turbine") && c.shaftId === shaft.id,
       );
       if (!linkedTurbomachinery) {
         diagnostics.push({

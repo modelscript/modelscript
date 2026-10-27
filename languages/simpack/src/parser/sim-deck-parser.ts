@@ -139,7 +139,7 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
     // $JOINT <id> <type> <fromMarker> <toMarker>
     else if ((cmd === "joint" || cmd === "$joint") && tokens.length >= 5) {
       const id = tokens[1] ?? `j_${model.joints.size + 1}`;
-      const type = (tokens[2]?.toLowerCase() ?? "revolute") as any;
+      const type = (tokens[2]?.toLowerCase() ?? "revolute") as SimpackJoint["type"];
       const fromMarker = tokens[3] ?? "";
       const toMarker = tokens[4] ?? "";
 

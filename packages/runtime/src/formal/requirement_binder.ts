@@ -217,7 +217,10 @@ export function assertRequirementsToTheoryCoordinator(
     coordinator.assertLiteral({
       predicate: "requirement",
       args: [req.id, req.targetAttribute, req.operator, req.limitValue],
-      domain: "continuous_safety",
+    });
+    coordinator.assertLiteral({
+      predicate: "bound",
+      args: [req.targetAttribute, req.operator, req.limitValue],
     });
   }
 }

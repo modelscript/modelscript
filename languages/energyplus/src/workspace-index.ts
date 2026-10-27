@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/energyplus — Multi-File Workspace Indexer.
@@ -11,7 +10,7 @@
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseEnergyPlus } from "./parser/index.js";
-import type { EnergyPlusDocument } from "./types.js";
+import type { EnergyPlusDocument, IdfZone } from "./types.js";
 
 export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
   private _version = 1;
@@ -44,7 +43,7 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -54,7 +53,7 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => unknown): void {
     this._version++;
     if (loader) {
       try {
@@ -91,12 +90,17 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
     const byName = new Map<string, SymbolId[]>();
     const childrenOf = new Map<SymbolId | null, SymbolId[]>();
 
-    function addSym(name: string, kind: string, parentId: SymbolId | null = null, extra?: any): SymbolId {
+    function addSym(
+      name: string,
+      kind: string,
+      parentId: SymbolId | null = null,
+      extra?: Record<string, unknown>,
+    ): SymbolId {
       const symId = (baseId! + localSeq++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: `energyplus_${kind}`,
         namePath: name,
         fieldName: null,
@@ -107,7 +111,7 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
         inherits: [],
         language: "energyplus",
         resourceId: uri,
-        metadata: extra,
+        metadata: extra ?? {},
       };
 
       symbols.set(symId, entry);
@@ -207,8 +211,8 @@ export class EnergyPlusWorkspaceIndex implements IWorkspaceIndex {
     return results;
   }
 
-  public getAllZones(): { uri: string; zone: any }[] {
-    const list: { uri: string; zone: any }[] = [];
+  public getAllZones(): { uri: string; zone: IdfZone }[] {
+    const list: { uri: string; zone: IdfZone }[] = [];
     for (const [uri, doc] of this.fileDocuments.entries()) {
       for (const z of doc.zones) {
         list.push({ uri, zone: z });

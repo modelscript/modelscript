@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { BookIcon, EyeIcon, LawIcon, RepoForkedIcon, StarIcon } from "@primer/octicons-react";
 import { Heading, Link as PrimerLink, Text } from "@primer/react";
 import React from "react";

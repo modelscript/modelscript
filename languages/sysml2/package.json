@@ -87,6 +87,10 @@
     "vscode-languageserver": "^9.0.1"
   },
   "devDependencies": {},
+  "modelscript": {
+    "tier": "stable",
+    "category": "language"
+  },
   "nx": {
     "targets": {
       "build": {

@@ -82,9 +82,10 @@ export function lowerUrdfToDae(robot: UrdfRobot, builder?: DAEBuilder, options?:
       gravTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(gCoeff), dae.addNameExpr(`${jName}.q`));
     } else {
       const qExpr = dae.addNameExpr(`${jName}.q`);
+      const daeWithCall = dae as unknown as { addCall?: (funcId: number, arg: number, count: number) => number };
       const sinQ =
-        typeof (dae as any).addCall === "function"
-          ? (dae as any).addCall(0, qExpr, 1) // BuiltinMathFunc.Sin = 0
+        typeof daeWithCall.addCall === "function"
+          ? daeWithCall.addCall(0, qExpr, 1) // BuiltinMathFunc.Sin = 0
           : qExpr;
       gravTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(gCoeff), sinQ);
     }

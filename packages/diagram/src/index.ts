@@ -2,11 +2,10 @@
 //
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
-/* eslint-disable @typescript-eslint/no-extraneous-class */
+
 import * as antvLayout from "@antv/layout";
 import * as x6 from "@antv/x6";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const Graph: any = (x6 as any).Graph || class {};
 const Cell: any = (x6 as any).Cell || class {};
 const Selection: any = (x6 as any).Selection || class {};
@@ -19,7 +18,6 @@ type Node = any;
 type Edge = any;
 type Selection = any;
 type Transform = any;
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 import {
   clearActiveDropPlaceholder,
@@ -130,23 +128,17 @@ export interface DiagramRendererOptions {
   /** Whether edges can connect directly to node bodies in addition to port magnets. */
   allowNodeConnection?: boolean | undefined;
   /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
-  onAction?: ((action: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void) | undefined;
+  onAction?: ((action: any) => void) | undefined;
   /** Callback invoked when the selected component node changes (or `null` when deselected). */
   onSelect?: ((id: string | null) => void) | undefined;
   /** Callback invoked to display or update the component properties inspection panel. */
-  onShowProperties?:
-    | ((
-        nodeId: string,
-        cachedProps?: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any,
-        isLoading?: boolean,
-      ) => void)
-    | undefined;
+  onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
   /** Callback invoked when the user triggers an Undo keyboard shortcut (`Ctrl+Z` / `Cmd+Z`). */
   onUndo?: (() => void) | undefined;
   /** Callback invoked when the user triggers a Redo keyboard shortcut (`Ctrl+Y` / `Cmd+Shift+Z`). */
   onRedo?: (() => void) | undefined;
   /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
-  onMessage?: ((msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void) | undefined;
+  onMessage?: ((msg: any) => void) | undefined;
 }
 
 /** Active diagram renderer configuration options. */
@@ -162,7 +154,7 @@ export function setDiagramOptions(options: DiagramRendererOptions) {
 /**
  * Dispatches a structural or spatial diagram edit action to the registered `onAction` callback.
  */
-function enqueueDiagramAction(action: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) {
+function enqueueDiagramAction(action: any) {
   if (currentOptions?.onAction) currentOptions.onAction(action);
 }
 
@@ -170,7 +162,7 @@ function enqueueDiagramAction(action: /* eslint-disable-line @typescript-eslint/
  * Forwards host-bound messages (`undo`, `redo`, `getProperties`, `revealSource`, `navigateTo`)
  * to the appropriate callback in `currentOptions`.
  */
-function postMessageToHost(msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) {
+function postMessageToHost(msg: any) {
   if (msg.type === "undo" && currentOptions?.onUndo) {
     currentOptions.onUndo();
     return;
@@ -203,7 +195,7 @@ let isRenderingDiagram = false;
 let lastRenderedModule: string | null = null;
 
 /** Cache for on-demand component properties (cleared on diagram re-render) */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 const propertyCache = new Map<string, any>();
 
 export { translateConnectedEdgeStubs };
@@ -269,13 +261,12 @@ export function rerouteEdgeOrthogonal(edge: any, g: Graph): void {
 /** Get connected edge metadata for a node (for move/resize updates) */
 function getConnectedEdges(
   g: Graph,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   node: any,
 ): { source: string; target: string; points: { x: number; y: number }[] }[] {
   return g.getConnectedEdges(node).map((edge: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const source = edge.getSource() as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const target = edge.getTarget() as any;
     const sourceCell = edge.getSourceCell?.() ?? (source?.cell ? g.getCellById?.(source.cell) : null);
     const targetCell = edge.getTargetCell?.() ?? (target?.cell ? g.getCellById?.(target.cell) : null);
@@ -529,7 +520,7 @@ export function initGraph(isDark: boolean): Graph | null {
   // ── Placement Mode (Drag and Drop in VS Code) ──
   let placementData: { className: string; classKind: string; iconSvg?: string | undefined; isDrag?: boolean } | null =
     null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let placementGhost: any = null;
   let isPointerOverCanvas = false;
   let lastCanvasPos: { x: number; y: number } | null = null;
@@ -697,31 +688,31 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // Expose for webview to invoke
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__startPlacement = startPlacement;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__movePlacementGhost = handlePointerMove;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__hidePlacementGhost = () => {
     if (placementGhost) {
       placementGhost.remove();
       placementGhost = null;
     }
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__clearPlacement = clearPlacement;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__handlePlacementClick = handlePlacementClick;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__handleDragEnd = handleDragEnd;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__setPointerOverCanvas = (over: boolean, pos?: { x: number; y: number }) => {
     isPointerOverCanvas = over;
     if (pos) lastCanvasPos = pos;
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__getPlacementData = () => placementData;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (window as any).__rerouteEdgeOrthogonal = (edgeId: string) => {
     const edge = g.getCellById(edgeId);
     if (edge && edge.isEdge()) {
@@ -758,7 +749,7 @@ export function initGraph(isDark: boolean): Graph | null {
         changedNodes.clear();
         return;
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const items: any[] = [];
       changedNodes.forEach((id) => {
         const n = g.getCellById(id);
@@ -812,7 +803,7 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // Node rotated
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   g.on("node:rotated", ({ node }: any) => {
     if (isRenderingDiagram) return;
     if (isEphemeralDiagramNode(node.id)) return;
@@ -829,7 +820,7 @@ export function initGraph(isDark: boolean): Graph | null {
   // We don't shrink/fit parents during drag to preserve Dagre layout spacings.
 
   // Node resized
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   g.on("node:resized", ({ node }: any) => {
     if (isRenderingDiagram) return;
     if (isEphemeralDiagramNode(node.id)) return;
@@ -870,12 +861,12 @@ export function initGraph(isDark: boolean): Graph | null {
   });
 
   // Edge connected (handles both new edge creation and terminal dragging reconnection)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   g.on("edge:connected", ({ isNew, edge }: any) => {
     if (isRenderingDiagram) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const source = edge.getSource() as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const target = edge.getTarget() as any;
     if (!source?.cell || !target?.cell) return;
 
@@ -1007,9 +998,8 @@ export function initGraph(isDark: boolean): Graph | null {
 
     if (edgeUpdateTimeout) clearTimeout(edgeUpdateTimeout);
     edgeUpdateTimeout = setTimeout(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const source = edge.getSource() as any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const target = edge.getTarget() as any;
       const wireId = edge.getData()?.wireId;
       if ((source?.cell && target?.cell) || wireId) {
@@ -1207,9 +1197,8 @@ export function initGraph(isDark: boolean): Graph | null {
 
       cells.forEach((cell: Cell) => {
         if (cell.isEdge()) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const source = cell.getSource() as any;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const target = cell.getTarget() as any;
           const wireId = cell.getData()?.wireId;
           if (source?.cell && source?.port && target?.cell && target?.port) {
@@ -1447,7 +1436,7 @@ export function initGraph(isDark: boolean): Graph | null {
  * Renders (or incrementally diffs and updates) a polyglot diagram model onto the AntV X6 graph canvas,
  * executing hierarchical Dagre/sequence/swimlane/TSM layouts and updating topological solder dots.
  */
-export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any, isDark: boolean) {
+export function renderDiagram(data: any, isDark: boolean) {
   const g = initGraph(isDark);
   if (!g) return;
 
@@ -1459,11 +1448,7 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   }
 }
 
-function renderDiagramInternal(
-  g: Graph,
-  data: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any,
-  isDark: boolean,
-) {
+function renderDiagramInternal(g: Graph, data: any, isDark: boolean) {
   // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives.
   // Retain the drop placeholder if incoming data does not yet contain the newly dropped component
   // (e.g. while language server is still indexing), preventing any visual gap where the component disappears.
@@ -1516,13 +1501,12 @@ function renderDiagramInternal(
   if (ghost) g.removeCell(ghost);
 
   // Build nodes from diagram data
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const nodes: any[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const edges: any[] = [];
 
   for (const node of data.nodes) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nodeData: any = {
       id: node.id,
       x: node.x,
@@ -1550,7 +1534,6 @@ function renderDiagramInternal(
   }
 
   for (const edge of data.edges) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const edgeData: any = {
       id: edge.id,
       shape: edge.shape ?? "edge",
@@ -1577,7 +1560,7 @@ function renderDiagramInternal(
   // Add diagram background if present
   if (data.coordinateSystem) {
     const cs = data.coordinateSystem;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const children: any[] = [
       {
         tagName: "rect",
@@ -1747,14 +1730,12 @@ function renderDiagramInternal(
         edges: subEdges,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const subResult = subDagre.layout(subModel as any);
 
       let minX = Infinity;
       let minY = Infinity;
       const layoutCoords = new Map<string, { leftX: number; topY: number }>();
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       subResult.nodes?.forEach((laid: any) => {
         const childNode = childNodes.find((c) => c.id === laid.id);
         if (childNode) {
@@ -1792,7 +1773,7 @@ function renderDiagramInternal(
 
     // ── Phase 2: Top-level Dagre layout with expanded container sizes ──
     const nodesToLayout: string[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     nodes.forEach((node: any) => {
       if (node.autoLayout && !node.parent) {
         nodesToLayout.push(node.id ?? "");
@@ -1848,11 +1829,9 @@ function renderDiagramInternal(
         edges: modelEdges,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const newModel = dagreLayout.layout(model as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       newModel.nodes?.forEach((n: any) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const node = nodes.find((no: any) => no.id === n.id);
         if (node) {
           node.x = n.x - (node.width ?? 0) / 2;
@@ -2148,7 +2127,7 @@ function renderDiagramInternal(
 
 // Handle deferred diagram updates to avoid interrupting active interactions
 let isMouseDown = false;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 let pendingDiagramData: any = null;
 
 if (typeof document !== "undefined") {
@@ -2313,12 +2292,10 @@ if (typeof window !== "undefined") {
           })),
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const newModel = dagreLayout.layout(model as any);
         const g = graph;
 
         g.batchUpdate("layout", () => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           newModel.nodes?.forEach((n: any) => {
             const node = g.getCellById(n.id);
             if (node && node.isNode()) {
@@ -2454,7 +2431,7 @@ function updateBreadcrumbs(breadcrumbs?: { id: string; label: string }[]) {
 /**
  * Invokes the registered `onShowProperties` callback to display or update the component inspector.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function showProperties(nodeData: any) {
   if (currentOptions?.onShowProperties) {
     currentOptions.onShowProperties(nodeData.id, nodeData.properties, nodeData.isLoading);

@@ -30,10 +30,10 @@ const CONNECTOR_TYPE_COLORS: Record<SspConnectorType, string> = {
 /**
  * Build AntV X6-compatible `DiagramData` directly from an `SspSystem` or `.ssd` XML string.
  */
-export function buildSspDiagramData(input: SspSystem | string): any {
+export function buildSspDiagramData(input: SspSystem | string) {
   const system: SspSystem = typeof input === "string" ? parseSsd(input) : input;
-  const nodes: any[] = [];
-  const edges: any[] = [];
+  const nodes: ({ id: string } & Record<string, unknown>)[] = [];
+  const edges: Record<string, unknown>[] = [];
 
   const portGroups = {
     in: {
@@ -94,7 +94,7 @@ export function buildSspDiagramData(input: SspSystem | string): any {
     const outputs = cmp.connectors.filter((c) => c.kind === "output" || c.kind === "inout");
     const params = cmp.connectors.filter((c) => c.kind === "parameter" || c.kind === "calculatedParameter");
 
-    const portItems: any[] = [];
+    const portItems: Record<string, unknown>[] = [];
     inputs.forEach((conn, i) => {
       const py = conn.geometry
         ? Math.round(conn.geometry.y * height)
@@ -440,10 +440,45 @@ export function buildSspDiagramData(input: SspSystem | string): any {
   };
 }
 
+export interface SspDiagramEditItem {
+  name?: string;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+}
+
+export interface SspDiagramEditAction extends SspDiagramEditItem {
+  type?: string;
+  action?: string;
+  items?: SspDiagramEditItem[];
+  item?: SspDiagramEditItem;
+  source?: string;
+  target?: string;
+  sourceComponent?: string;
+  sourcePort?: string;
+  targetComponent?: string;
+  targetPort?: string;
+  points?: { x: number; y: number }[];
+  edges?: { source: string; target: string; points?: { x: number; y: number }[] }[];
+  className?: string;
+  names?: string[];
+  oldName?: string;
+  newName?: string;
+  key?: string;
+  parameter?: string;
+  value?: string | number | boolean;
+}
+
 /**
  * Apply a batch of interactive diagram edit actions to a `SystemStructure.ssd` XML document.
  */
-export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?: SspSystem): SspTextEdit[] {
+export function applySspDiagramEdits(
+  xml: string,
+  actions: SspDiagramEditAction[],
+  parsedSystem?: SspSystem,
+): SspTextEdit[] {
   const system = parsedSystem ?? parseSsd(xml);
   const lines = xml.split("\n");
   const edits: SspTextEdit[] = [];
@@ -566,8 +601,8 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
         if (cmp) {
           upsertComponentGeometry(
             cmp,
-            item.x,
-            item.y,
+            item.x ?? 0,
+            item.y ?? 0,
             item.width ?? (cmp.geometry ? Math.abs(cmp.geometry.x2 - cmp.geometry.x1) : 180),
             item.height ?? (cmp.geometry ? Math.abs(cmp.geometry.y2 - cmp.geometry.y1) : 100),
             item.rotation,
@@ -579,18 +614,18 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
       if (item) {
         const cmp = system.components.find((c) => c.name === item.name);
         if (cmp) {
-          upsertComponentGeometry(cmp, item.x, item.y, item.width, item.height, item.rotation);
+          upsertComponentGeometry(cmp, item.x ?? 0, item.y ?? 0, item.width ?? 180, item.height ?? 100, item.rotation);
         }
       }
     } else if (actionType === "connect") {
       const src =
         action.sourcePort !== undefined
           ? { element: action.sourceComponent || "", connector: action.sourcePort }
-          : parseEndpointRef(action.source);
+          : parseEndpointRef(action.source ?? "");
       const tgt =
         action.targetPort !== undefined
           ? { element: action.targetComponent || "", connector: action.targetPort }
-          : parseEndpointRef(action.target);
+          : parseEndpointRef(action.target ?? "");
       const startElAttr = src.element ? `startElement="${src.element}" ` : "";
       const endElAttr = tgt.element ? `endElement="${tgt.element}" ` : "";
       let connSnippet: string;
@@ -621,7 +656,7 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
         });
       }
     } else if (actionType === "disconnect") {
-      const matched = findMatchingConnection(action.source, action.target);
+      const matched = findMatchingConnection(action.source ?? "", action.target ?? "");
       if (matched?.line && matched.line - 1 < lines.length) {
         const startIdx = matched.line - 1;
         let endIdx = startIdx;
@@ -778,9 +813,9 @@ export function applySspDiagramEdits(xml: string, actions: any[], parsedSystem?:
         }
       }
     } else if (actionType === "updateParameter" || actionType === "updateProperty") {
-      const paramName: string = actionType === "updateProperty" ? action.key : action.parameter;
+      const paramName: string = (actionType === "updateProperty" ? action.key : action.parameter) ?? "";
       const paramVal = String(action.value);
-      const targetName: string = action.name;
+      const targetName: string = action.name ?? "";
 
       if (paramName === "source" || paramName === "type") {
         const cmp = system.components.find((c) => c.name === targetName);

@@ -71,7 +71,7 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
  * Expects variables in the format `{ name: "x", cad: "CAD(uri=\"...\")" }`
  * as produced by the updated ModelicaVariable.toJSON.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export function extractCadComponents(daeVariables: any[]): CadComponent[] {
   const components: CadComponent[] = [];
   const portsByParent = new Map<string, { name: string; port: CadPortAnnotation }[]>();

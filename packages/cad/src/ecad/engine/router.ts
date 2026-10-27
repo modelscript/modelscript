@@ -132,7 +132,7 @@ export class PCBRouter {
   updateRoute(cursor: Point2D): Point2D[] {
     if (this.state !== "routing" || this.currentWaypoints.length === 0) return [];
 
-    const lastPoint = this.currentWaypoints[this.currentWaypoints.length - 1]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const lastPoint = this.currentWaypoints[this.currentWaypoints.length - 1]!;
     const snapped = this.snapToPad(cursor) ?? cursor;
     const constrained = this.constrainSegment(lastPoint, snapped);
 
@@ -145,7 +145,7 @@ export class PCBRouter {
   addWaypoint(cursor: Point2D): void {
     if (this.state !== "routing") return;
 
-    const lastPoint = this.currentWaypoints[this.currentWaypoints.length - 1]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const lastPoint = this.currentWaypoints[this.currentWaypoints.length - 1]!;
     const snapped = this.snapToPad(cursor) ?? cursor;
     const constrained = this.constrainSegment(lastPoint, snapped);
     this.currentWaypoints.push(...constrained);

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import "@primer/octicons-react";
 import "@primer/react";
 import "react";
@@ -121,7 +120,6 @@ declare module "react" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-empty-object-type
   interface HTMLAttributes<T> extends PrimerSystemStyleProps {}
 
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
       "model-viewer": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & Record<string, any>;
@@ -167,7 +165,7 @@ declare global {
     getPreferredCanvasFormat(): string;
     requestAdapter(options?: Record<string, any>): Promise<{ requestDevice(): Promise<GPUDevice> } | null>;
   }
-  // eslint-disable-next-line no-var
+
   var GPUBufferUsage: {
     readonly MAP_READ: number;
     readonly MAP_WRITE: number;

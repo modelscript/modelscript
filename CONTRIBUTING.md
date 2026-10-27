@@ -1,6 +1,19 @@
 # Contributing to ModelScript
 
-## Development Setup
+Thank you for your interest in contributing to **ModelScript**! This document covers local development setup, architectural guidelines, testing workflows, adding linter rules and domain languages, and release procedures.
+
+---
+
+## 1. Development Setup
+
+### Prerequisites
+
+- **Node.js** $\ge 24$ (see `.nvmrc`)
+- **Git**
+- _(Optional)_ **OpenModelica (`omc`)** — only required when regenerating ground-truth `.mo` baselines (`--update --omc`) or refreshing cached Modelica Standard Library (MSL) verification trajectories.
+- _(Optional)_ **Docker** — only required for container builds (`npm run docker:build`) or local GitHub Actions execution via `act` (`npm run ci:act`).
+
+### Quick Start
 
 ```bash
 git clone https://github.com/modelscript/modelscript.git
@@ -9,86 +22,174 @@ npm install
 npm run build
 ```
 
-### Prerequisites
-
-- **Node.js** ≥ 24 (see `.nvmrc`)
-- **Git**
-
 ### Common Commands
 
-| Command                         | Description                                       |
-| ------------------------------- | ------------------------------------------------- |
-| `npm run dev`                   | Start all services (API, Web, IDE, Docs)          |
-| `npm run build`                 | Build all packages                                |
-| `npm run build:ide:extension`   | Build complete VS Code IDE extension directory    |
-| `npm run package:ide:extension` | Package complete VS Code extension bundle (.vsix) |
-| `npm test`                      | Run tests                                         |
-| `npm run lint`                  | Run linters                                       |
-| `npm run format`                | Format with Prettier                              |
+| Command                  | Description                                                                 |
+| :----------------------- | :-------------------------------------------------------------------------- |
+| `npm run dev`            | Start all development services concurrently (API, Web, IDE, Docs)           |
+| `npm run build`          | Build all workspace packages in topological dependency order via Nx         |
+| `npm run build:affected` | Build only packages affected by current branch changes                      |
+| `npm test`               | Run tests for affected packages via the RAM/CPU-aware `test-coordinator.js` |
+| `npm run test:all`       | Run all unit and integration test suites across the monorepo                |
+| `npm run lint`           | Run ESLint and repository policy linters on affected packages               |
+| `npm run lint:all`       | Run ESLint, manifest, header, cycle, and type-safety ratchet checks         |
+| `npm run typecheck`      | Run TypeScript `tsc --noEmit` across affected packages                      |
+| `npm run verify:dist`    | Verify `package.json#exports` and `.wasm` asset parity in `dist/`           |
+| `npm run verify:pack`    | Verify `npm pack` tarball completeness and isolated ESM consumer imports    |
+| `npm run clean:scratch`  | Remove untracked `scratch*` directories and ephemeral debug logs            |
+| `npm run format`         | Format code, JSON, and Markdown files with Prettier                         |
 
-## Making a Release
+---
 
-Releases are triggered manually via GitHub Actions. The workflow versions all publishable packages, generates changelogs, and publishes to all registries.
+## 2. Architecture & Engineering Principles
 
-### 1. Configure Secrets
+### Compilation Pipeline
 
-The following secrets must be set in **Settings → Secrets and variables → Actions**:
+ModelScript uses a single canonical, arena-native compilation and flattening pipeline:
 
-| Secret       | Source                                                          | Purpose                                                                      |
-| ------------ | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `NPM_TOKEN`  | [npmjs.com](https://www.npmjs.com/settings/~/tokens)            | Publish `@modelscript/dsl`, `@modelscript/runtime`, `@modelscript/cli`, etc. |
-| `VSCE_PAT`   | [Azure DevOps](https://dev.azure.com/) → Personal access tokens | Publish VS Code extension to Marketplace                                     |
-| `OVSX_PAT`   | [open-vsx.org](https://open-vsx.org/user-settings/tokens)       | Publish VS Code extension to Open VSX                                        |
-| `DEPLOY_PAT` | GitHub → Personal access tokens (classic)                       | Push version commits and tags back to the repo                               |
+```text
+Source (.mo / domain file)
+  → Native WASM GLR Parser (parser.wasm)
+  → Linear Memory CST
+  → SymbolIndexer → SymbolIndex (flat symbol table)
+  → WorkspaceIndex → Unified Multi-File SymbolIndex
+  → QueryEngine (Salsa incremental memoization: fetch → deep_verify → execute → backdate)
+  → Static Linting (CompilerLint CST passes & Salsa lint__* query hooks)
+  → Flattener (AssemblyScript WASM Kernel / TS Bridge) → DAEBuilder
+  → Constant Folding → Alias Elimination → Tarjan BLT / Pantelides → Solvers / FMU / WebGPU
+```
 
-### 2. Trigger the Release
+### Data-Oriented & Linear-Memory Rules
 
-1. Go to **Actions** → **Release** → **Run workflow**
-2. Select the version bump type:
-   - `patch` — bug fixes (0.0.**x**)
-   - `minor` — new features (0.**x**.0)
-   - `major` — breaking changes (**x**.0.0)
-   - `prepatch` / `preminor` / `premajor` — pre-release versions
-3. Check **"Is this the first release?"** if there are no existing tags
-4. Click **Run workflow**
+1. **Zero Intermediate AST Wrappers:** The compiler operates on a Struct-of-Arrays (SoA) architecture in WebAssembly linear memory (`DAEBuilder`, linear CST pointers). Do not allocate heavy intermediate TypeScript AST wrapper classes for expressions, equations, or flattening logic.
+2. **Direct Lowering to DAE Arena:** Equations, expressions, and statements are lowered directly from linear memory parser nodes (`db.cstNode(symbolId)`) into `DAEBuilder` integer handles (`ExprId`, `EqId`, `StmtId`).
+3. **Native WASM GLR Parsers:** All 44 domain languages use native WebAssembly GLR parsers (`parser.wasm`) compiled by `@modelscript/dsl` (`buildParser`). Never introduce external C/C++ parser bindings such as `tree-sitter`.
+4. **Linter and Flattener Synchronization:** Keep frontend semantic diagnostics in the linter (`languages/*/src/lints/` or `queries.ts`) rather than moving checks into the flattener as a workaround.
 
-### 3. What the Release Does
+### Key Monorepo Workspaces
 
-The workflow runs these steps in order:
+| Directory            | Purpose                                                                                                                                                                                         |
+| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/dsl/`      | Grammar DSL combinators, WASM GLR parser compiler (`buildParser`), Triple Graph Grammars (TGG), Critical Pair Analysis (CPA), E-graph rewriting                                                 |
+| `packages/runtime/`  | Linear-memory WebAssembly DAE arena (`DAEBuilder`), Salsa `QueryEngine`, `WorkspaceIndex`, BLT solver, Nelson-Oppen `TheoryCoordinator`                                                         |
+| `packages/simulate/` | Numerical integrators (SUNDIALS CVODE/IDA, BDF, DOPRI5), WebGPU batched solver, 3D FEA/CFD, surrogate ROMs, Monte Carlo                                                                         |
+| `packages/lsp/`      | Polyglot Language Server Protocol engine across all 44 languages and background worker pool                                                                                                     |
+| `packages/exchange/` | FMI 2.0/3.0 FMU export/import, SSP 1.0 container toolkit, `CoSimMaster`, AASX/DDP/OKH packaging                                                                                                 |
+| `packages/diagram/`  | Polyglot schematic layout (Sugiyama/TSM), Manhattan port routing, dark-mode SVG rendering                                                                                                       |
+| `packages/cad/`      | Constructive Solid Geometry (CSG), OpenCascade/Manifold B-Rep, STEP AP242 I/O, Gerber ECAD DRC                                                                                                  |
+| `languages/*`        | 44 engineering domain languages (Modelica, SysML v2, STEP, PSCAD, GENSYS, OLGA, SPICE, etc.)                                                                                                    |
+| `apps/*`             | CLI (`@modelscript/cli`), API server (`@modelscript/api`), Web IDE (`@modelscript/ide`), Web platform (`@modelscript/web`), Desktop Studio (`@modelscript/desktop`), Docs (`@modelscript/docs`) |
 
-1. **Build, Test, Lint** — ensures main is healthy
-2. **Version & Changelog** — bumps versions using [conventional commits](https://www.conventionalcommits.org/), generates changelogs, creates a GitHub Release
-3. **Publish to npm** — `@modelscript/dsl`, `@modelscript/runtime`, `@modelscript/cli`, etc.
-4. **Publish VS Code Extension** — packages VSIX, publishes to VS Code Marketplace and Open VSX
-5. **Publish Docker Images** — builds and pushes to GHCR (`ghcr.io/modelscript/*`) with `:latest` and `:version` tags
-6. **Push tags** — pushes version commits and git tags back to the repo
+---
 
-### Dry Run
+## 3. Testing & Conformance Workflows
 
-To preview what a release would do without publishing:
+### Monorepo Unit & Integration Tests (`test-coordinator.js`)
+
+`npm test` invokes [`scripts/test-coordinator.js`](./scripts/test-coordinator.js), which inspects available CPU cores and free RAM to dynamically factorize task parallelism ($P$ concurrent Nx package targets $\times$ $W$ `node:test` workers per package) so WASM/V8 workers never exhaust system memory:
 
 ```bash
-npm run release:dry-run
+# Run tests for affected packages
+npm test
+
+# Run tests across all packages
+npm run test:all
+
+# Preview resource allocation and shard partitioning
+node scripts/test-coordinator.js run-many --dry-run
 ```
 
-## CI/CD
+### Modelica & OpenModelica (OMC) Conformance Suite
 
-Every push to `main` and every pull request triggers the CI workflow (`.github/workflows/ci.yml`), which:
+The Modelica test runner ([`languages/modelica/tests/testsuite-runner.ts`](./languages/modelica/tests/testsuite-runner.ts)) executes 2,600+ `.mo` conformance tests across TypeScript and WebAssembly flattening kernels. Note that arguments are directory or `.mo` file paths (there is no `--filter` flag):
 
-- Builds all packages
-- Runs tests
-- Runs linters
-- Packages the VS Code extension (VSIX artifact)
-- Deploys IDE to GitHub Pages (main only)
-- Builds and pushes Docker images to GHCR as `:latest` (main only)
+```bash
+# Run a single .mo conformance test
+npm run test:single -- OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
 
-## Commit Messages
+# Run an entire conformance subdirectory
+npm run test:modelica -- OpenModelica/flattening/modelica/types
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/) — the release workflow uses them to generate changelogs automatically.
+# Run dual differential verification (WASM vs JS flattener)
+npm run test:modelica:both:allow-wasm
 
+# Update expected output against local OpenModelica (omc) ground truth
+npm run test:modelica:update -- OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo
 ```
+
+### Modelica Standard Library (MSL 4.1.0) Benchmark Runner
+
+The on-the-fly MSL verification suite ([`languages/modelica/tests/msl-comparison-runner.ts`](./languages/modelica/tests/msl-comparison-runner.ts)) validates DAE variable/equation parity, numerical trajectory RMSE, schematic layout, and icon rendering against `omc`:
+
+```bash
+npm run test:msl:flatten
+npm run test:msl:sim -- --model=Modelica.Electrical.Analog.Examples.ChuaCircuit
+npm run test:msl:diagram
+npm run test:msl:icon -- --package=Modelica.Electrical.Analog.Basic
+```
+
+---
+
+## 4. Adding Linter Rules & Domain Languages
+
+### Adding a Modelica Linter Rule
+
+1. **Define the Error Code** in [`languages/modelica/src/errors.ts`](./languages/modelica/src/errors.ts) using the standard numbering scheme (`1xxx` syntax, `2xxx` name resolution, `3xxx` type checking, `4xxx` structural/inheritance, `5xxx` equations/algorithms, `6xxx` clocks/state machines/EMT):
+   - Mirror OpenModelica's diagnostic text, wrap identifiers in single quotes (`'${name}'`), and end with a period (`.`).
+2. **Implement the Check:**
+   - **CST Lints (`CompilerLint`):** Place syntax and local checks in `languages/modelica/src/lints/` and export in `languages/modelica/src/lints/index.ts`.
+   - **Semantic / Salsa Lints:** Implement inter-procedural or hierarchy-dependent checks as `lint__<ruleName>` query hooks in `languages/modelica/src/queries.ts`.
+3. **Add a `.mo` Regression Test** under `languages/modelica/testsuite/OpenModelica/flattening/`.
+
+### Package Manifest & Hygiene Standards
+
+Every workspace package under `apps/`, `packages/`, and `languages/` is verified in CI by [`scripts/lint-package-manifests.ts`](./scripts/lint-package-manifests.ts):
+
+- **SPDX License Header:** All `.ts` / `.tsx` source files must begin with `// SPDX-License-Identifier: AGPL-3.0-or-later`.
+- **Manifest Metadata:** Publishable packages must declare `"license": "AGPL-3.0-or-later"`, a non-empty `"files"` whitelist, `"exports"` (or `"bin"` / `"main"`), and a `"modelscript"` maturity descriptor (`"tier": "stable" | "beta" | "preview"`).
+- **No Private Dependencies:** Publishable packages must never depend on `"private": true` workspace packages in `"dependencies"`.
+- **Dockerfile & README Parity:** Every workspace `package.json` must have a matching `COPY` entry in the root [`Dockerfile`](./Dockerfile), a non-empty workspace `README.md` with the standard 2-line UTF-8 header, and a link in the root [`README.md`](./README.md).
+- **Type-Safety Ratchet:** Explicit `any` and `@ts-expect-error` counts in `src/` are governed by `npm run lint:types-ratchet` ([`config/type-safety-baseline.json`](./config/type-safety-baseline.json)) and must never increase.
+
+---
+
+## 5. Commit Messages & Pull Requests
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/) (enforced via Husky and Commitlint):
+
+```text
 feat: add simulation CSV export
 fix: correct array dimension mismatch in flattener
 docs: update CLI usage examples
 refactor: simplify DAE printer ordering
 ```
+
+Before opening a pull request, run the local pre-flight checks:
+
+```bash
+npm run lint:all
+npm run verify:dist
+npm run verify:pack
+npm test
+```
+
+---
+
+## 6. Making a Release
+
+Releases are triggered manually via GitHub Actions ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), which versions all publishable packages, generates changelogs, signs git tags with GPG, and publishes with npm provenance.
+
+### Required Repository Secrets
+
+| Secret                               | Source                                                    | Purpose                                                  |
+| :----------------------------------- | :-------------------------------------------------------- | :------------------------------------------------------- |
+| `NPM_TOKEN`                          | [npmjs.com](https://www.npmjs.com/settings/~/tokens)      | Publish `@modelscript/*` packages with provenance        |
+| `VSCE_PAT`                           | [Azure DevOps](https://dev.azure.com/)                    | Publish VS Code extension to Visual Studio Marketplace   |
+| `OVSX_PAT`                           | [open-vsx.org](https://open-vsx.org/user-settings/tokens) | Publish VS Code extension to Open VSX                    |
+| `DEPLOY_PAT`                         | GitHub Personal Access Token                              | Push version commits, tags, and GitHub Pages deployments |
+| `GPG_PRIVATE_KEY` & `GPG_PASSPHRASE` | Maintainer GPG key                                        | Sign release commits and git tags                        |
+
+### Triggering a Release
+
+1. Preview locally if desired: `npm run release:dry-run`
+2. Navigate to **Actions → Release → Run workflow** on GitHub and choose the semver bump (`patch`, `minor`, `major`, `prepatch`, `preminor`, `premajor`).

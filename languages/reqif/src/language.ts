@@ -66,7 +66,7 @@ export const reqifLanguage = language({
           modelDescription: "Proves mathematical completeness of requirements decomposition.",
         },
       },
-      execute: async (context: any) => {
+      execute: async (context) => {
         const text = context.documentText || "";
         const doc = parseReqIf(text);
         const report = verifyReqIfEntailment(doc);
@@ -83,7 +83,7 @@ export const reqifLanguage = language({
       title: "Export Requirements to SysML v2",
       description: "Generates SysML v2 requirement definitions and satisfaction links.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context) => {
         const text = context.documentText || "";
         const doc = parseReqIf(text);
         return reqifToSysml2(doc);
@@ -94,7 +94,7 @@ export const reqifLanguage = language({
       title: "Export Requirements to Modelica Verifier",
       description: "Generates a Modelica verification block with assertions for plant monitoring.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context) => {
         const text = context.documentText || "";
         const doc = parseReqIf(text);
         return reqifToModelicaVerifier(doc);

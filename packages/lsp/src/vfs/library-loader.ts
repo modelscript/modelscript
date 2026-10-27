@@ -343,7 +343,6 @@ export async function loadDependencyFromRegistry(
   ctx.logger.log(`[deps] Loading ${label} from registry via LSP bundle...`);
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let cached: any = null;
     const db = await openMSLCache();
     try {

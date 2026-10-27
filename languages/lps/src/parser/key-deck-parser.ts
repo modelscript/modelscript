@@ -371,7 +371,12 @@ export function parseLpsKeyDeck(text: string): LpsModel {
         if (key === "START") simulationControls.startTime = parseNum(val, 0);
         else if (key === "END") simulationControls.endTime = parseNum(val, 86400);
         else if (key === "DT") simulationControls.timeStep = parseNum(val, 60);
-        else if (key === "EOS") simulationControls.equationOfState = val.toUpperCase() as any;
+        else if (key === "EOS") {
+          const eos = val.toUpperCase();
+          if (eos === "AGA8" || eos === "GERG2008" || eos === "PENG_ROBINSON" || eos === "IDEAL") {
+            simulationControls.equationOfState = eos;
+          }
+        }
       }
     }
   }

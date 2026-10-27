@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";

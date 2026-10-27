@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseGensysDeck } from "./parser/deck-parser.js";
@@ -40,7 +39,7 @@ export class GensysWorkspaceIndex implements IWorkspaceIndex {
     return this.fileModels.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -50,7 +49,10 @@ export class GensysWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string; text?: string } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {
@@ -110,12 +112,12 @@ export class GensysWorkspaceIndex implements IWorkspaceIndex {
 
     const childIds: SymbolId[] = [];
 
-    function addChild(name: string, kind: string, meta?: any) {
+    function addChild(name: string, kind: string, meta?: Record<string, unknown>) {
       const id = idCounter++ as SymbolId;
       const entry: SymbolEntry = {
         id,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "gensys_element",
         namePath: `${modelName}.${name}`,
         fieldName: null,
@@ -126,7 +128,7 @@ export class GensysWorkspaceIndex implements IWorkspaceIndex {
         inherits: [],
         language: "gensys",
         resourceId: uri,
-        metadata: meta,
+        metadata: meta ?? {},
       };
       symbols.set(id, entry);
       const existing = byName.get(name) ?? [];

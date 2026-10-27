@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { language } from "@modelscript/dsl";
+import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerRelap5ToDae } from "./dae/relap5-to-dae.js";
 import { lintRelap5 } from "./lints/index.js";
 import { parseRelap5 } from "./parser/relap5-parser.js";
 import { relap5ToModelica } from "./projections/relap5-to-modelica.js";
-import { solvePointKinetics } from "./solvers/point-kinetics-solver.js";
+import { solvePointKinetics, type KineticsSolverOptions } from "./solvers/point-kinetics-solver.js";
 
 /**
  * ModelScript US NRC RELAP5-3D (.i, .inp, .r5) Language Definition.
@@ -52,7 +51,7 @@ export const relap5Language = language({
             "Lints RELAP5 file for dangling volume junctions, negative pressures, and bad loss coefficients.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseRelap5(text);
@@ -64,7 +63,10 @@ export const relap5Language = language({
       title: "Solve Reactor Point Kinetics",
       description: "Solves 6-group delayed neutron precursor ODEs with Doppler and moderator thermal feedback.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined; options?: any }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; options?: KineticsSolverOptions | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseRelap5(text);
@@ -76,7 +78,7 @@ export const relap5Language = language({
       title: "Lower RELAP5 to DAE",
       description: "Compiles two-phase volumes, junctions, and kinetics into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: ActionExecutionContext, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseRelap5(text);
@@ -93,7 +95,10 @@ export const relap5Language = language({
       title: "Project RELAP5 to Modelica",
       description: "Synthesizes standard Modelica 3.x nuclear reactor thermal-hydraulic simulation model.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined; modelName?: string }) => {
+      execute: async (
+        ctx: ActionExecutionContext,
+        params: { documentText?: string | undefined; modelName?: string },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseRelap5(text);

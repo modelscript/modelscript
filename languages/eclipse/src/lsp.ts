@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerEclipseToDae } from "./dae/eclipse-to-dae.js";
 import { lintEclipse } from "./lints/index.js";
 import { parseEclipse } from "./parser/eclipse-parser.js";
 import { eclipseToModelica } from "./projections/eclipse-to-modelica.js";
-import { solveReservoirDepletion } from "./solvers/reservoir-solver.js";
+import {
+  solveReservoirDepletion,
+  type ReservoirSimulationResult,
+  type ReservoirSolverOptions,
+} from "./solvers/reservoir-solver.js";
 
 export interface LspPosition {
   line: number;
@@ -96,7 +99,8 @@ export function validateEclipse(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     return [
       {
         range: {
@@ -106,7 +110,7 @@ export function validateEclipse(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8700",
         source: "eclipse-parser",
-        message: `ECLIPSE parse error: ${err.message}`,
+        message: `ECLIPSE parse error: ${message}`,
       },
     ];
   }
@@ -233,7 +237,41 @@ export function getEclipseHover(text: string, position: LspPosition): LspHover |
   return null;
 }
 
-export async function executeEclipseAction(action: string, text: string, params?: any): Promise<any> {
+export interface EclipseActionParams {
+  options?: ReservoirSolverOptions | undefined;
+  modelName?: string | undefined;
+}
+
+export async function executeEclipseAction(
+  action: "lint_eclipse",
+  text: string,
+  params?: EclipseActionParams,
+): Promise<ReturnType<typeof lintEclipse>>;
+export async function executeEclipseAction(
+  action: "eclipse_reservoir_solve",
+  text: string,
+  params?: EclipseActionParams,
+): Promise<ReservoirSimulationResult>;
+export async function executeEclipseAction(
+  action: "eclipse_to_dae",
+  text: string,
+  params?: EclipseActionParams,
+): Promise<{ modelName: string; variableCount: number; equationCount: number }>;
+export async function executeEclipseAction(
+  action: "eclipse_to_modelica",
+  text: string,
+  params?: EclipseActionParams,
+): Promise<string>;
+export async function executeEclipseAction(
+  action: string,
+  text: string,
+  params?: EclipseActionParams,
+): Promise<unknown>;
+export async function executeEclipseAction(
+  action: string,
+  text: string,
+  params?: EclipseActionParams,
+): Promise<unknown> {
   const deck = parseEclipse(text);
 
   switch (action) {

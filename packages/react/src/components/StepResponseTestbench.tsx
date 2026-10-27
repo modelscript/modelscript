@@ -279,7 +279,7 @@ export function StepResponseTestbench({
 
             {/* Output curves */}
             {outputs.slice(0, 5).map((out, idx) => {
-              const color = colors[idx % colors.length]!;
+              const color = colors[idx % colors.length] ?? "#8b5cf6";
               const pts = trajectory
                 .map((p) => {
                   const val = p.values[out.name] ?? 0.0;

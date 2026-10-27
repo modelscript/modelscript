@@ -276,8 +276,8 @@ function parseFortranExprTokens(
       const op = tok.value;
       const operand = parseUnary();
       if (op === "+") return operand;
-      if (typeof (builder as any).addUnaryExpr === "function") {
-        return (builder as any).addUnaryExpr(UnaryOp.Negate, operand);
+      if (typeof builder.addUnaryExpr === "function") {
+        return builder.addUnaryExpr(UnaryOp.Negate, operand);
       }
       return builder.addBinaryExpr(BinOp.Sub, builder.addRealLiteral(0.0), operand);
     }
@@ -328,29 +328,25 @@ function parseFortranExprTokens(
           return builder.addBinaryExpr(BinOp.Pow, args[0]!, args[1]!);
         }
         if (fnUpper === "ABS" && args.length >= 1) {
-          if (typeof (builder as any).addCall === "function") {
-            return (builder as any).addCall(14, args[0]!, 1); // BuiltinMathFunc.Abs
+          if (typeof builder.addCall === "function") {
+            return builder.addCall(14, args[0]!, 1); // BuiltinMathFunc.Abs
           }
           return args[0]!;
         }
         if (fnUpper === "EXP" && args.length >= 1) {
-          if (typeof (builder as any).addCall === "function") {
-            return (builder as any).addCall(10, args[0]!, 1); // BuiltinMathFunc.Exp
+          if (typeof builder.addCall === "function") {
+            return builder.addCall(10, args[0]!, 1); // BuiltinMathFunc.Exp
           }
           return builder.addBinaryExpr(BinOp.Pow, builder.addRealLiteral(Math.E), args[0]!);
         }
-        if (fnUpper === "SIN" && args.length >= 1 && typeof (builder as any).addCall === "function") {
-          return (builder as any).addCall(0, args[0]!, 1);
+        if (fnUpper === "SIN" && args.length >= 1 && typeof builder.addCall === "function") {
+          return builder.addCall(0, args[0]!, 1);
         }
-        if (fnUpper === "COS" && args.length >= 1 && typeof (builder as any).addCall === "function") {
-          return (builder as any).addCall(1, args[0]!, 1);
+        if (fnUpper === "COS" && args.length >= 1 && typeof builder.addCall === "function") {
+          return builder.addCall(1, args[0]!, 1);
         }
-        if (
-          (fnUpper === "LOG" || fnUpper === "ALOG") &&
-          args.length >= 1 &&
-          typeof (builder as any).addCall === "function"
-        ) {
-          return (builder as any).addCall(11, args[0]!, 1);
+        if ((fnUpper === "LOG" || fnUpper === "ALOG") && args.length >= 1 && typeof builder.addCall === "function") {
+          return builder.addCall(11, args[0]!, 1);
         }
 
         return args[0] ?? builder.addRealLiteral(0.0);

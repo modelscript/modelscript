@@ -7,8 +7,9 @@ import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const vscode = (window as any).acquireVsCodeApi?.();
+const vscode = (
+  window as unknown as { acquireVsCodeApi?: () => { postMessage(msg: unknown): void } }
+).acquireVsCodeApi?.();
 
 function Loader() {
   const { progress } = useProgress();
@@ -59,13 +60,15 @@ function GCodeApp() {
 
           setObject(obj);
         } catch (err: unknown) {
-          vscode.postMessage({ type: "error", message: err instanceof Error ? err.message : "Failed to parse GCode" });
+          vscode?.postMessage({
+            type: "error",
+            message: err instanceof Error ? err.message : "Failed to parse GCode",
+          });
         }
       }
     };
 
     window.addEventListener("message", handleMessage);
-    // @ts-expect-error acquireVsCodeApi is injected
     vscode?.postMessage({ type: "ready" });
 
     return () => {
@@ -197,7 +200,7 @@ function AnimatedGCode({
     }
 
     let totalVertices = 0;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     object.traverse((child: any) => {
       if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
         totalVertices += child.geometry.attributes.position.count;
@@ -206,7 +209,6 @@ function AnimatedGCode({
 
     let currentVertices = Math.floor(totalVertices * progressRef.current);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     object.traverse((child: any) => {
       if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
         const count = child.geometry.attributes.position.count;

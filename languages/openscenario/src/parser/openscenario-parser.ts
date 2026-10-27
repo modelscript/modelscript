@@ -26,6 +26,7 @@ import type {
   ScenarioPosition,
   ScenarioStory,
   ScenarioWorldPosition,
+  SpeedActionDynamics,
 } from "../types.js";
 
 function getAttr(elem: XmlElement, name: string): string | undefined {
@@ -124,7 +125,7 @@ export function parseOpenScenario(source: string, filename?: string): OpenScenar
     for (const p of findChildren(paramDecls, "ParameterDeclaration")) {
       parameters.push({
         name: getAttr(p, "name") ?? "",
-        parameterType: (getAttr(p, "parameterType") as any) ?? "string",
+        parameterType: (getAttr(p, "parameterType") as ScenarioParameter["parameterType"]) ?? "string",
         value: getAttr(p, "value") ?? "",
       });
     }
@@ -257,7 +258,7 @@ export function parseOpenScenario(source: string, filename?: string): OpenScenar
 
             for (const evElem of findChildren(mElem, "Event")) {
               const evName = getAttr(evElem, "name") ?? "Event";
-              const priority = (getAttr(evElem, "priority") as any) ?? "overwrite";
+              const priority = (getAttr(evElem, "priority") as ScenarioEvent["priority"]) ?? "overwrite";
               const evMaxExec = getNumAttr(evElem, "maximumExecutionCount", 1);
 
               const actions: ScenarioAction[] = [];
@@ -378,9 +379,9 @@ function parsePrivateAction(
         }
       }
 
-      let speedDynamics: any;
+      let speedDynamics: SpeedActionDynamics | undefined;
       if (dynElem) {
-        const shape = (getAttr(dynElem, "dynamicsShape") as any) ?? "step";
+        const shape = (getAttr(dynElem, "dynamicsShape") as SpeedActionDynamics["shape"]) ?? "step";
         const val = getNumAttr(dynElem, "value", 0);
         const dim = getAttr(dynElem, "dynamicsDimension");
         speedDynamics = {
@@ -460,7 +461,7 @@ function parseTriggerConditions(source: string, triggerElem: XmlElement): Scenar
     for (const c of findChildren(cg, "Condition")) {
       const name = getAttr(c, "name") ?? "Condition";
       const delay = getNumAttr(c, "delay", 0);
-      const edge = (getAttr(c, "conditionEdge") as any) ?? "none";
+      const edge = (getAttr(c, "conditionEdge") as ScenarioCondition["conditionEdge"]) ?? "none";
 
       const entityCond = findChild(c, "ByEntityCondition");
       const valueCond = findChild(c, "ByValueCondition");

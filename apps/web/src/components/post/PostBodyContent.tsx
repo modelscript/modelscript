@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { PinIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";

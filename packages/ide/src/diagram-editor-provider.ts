@@ -32,7 +32,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   public static instance: DiagramEditorProvider | undefined;
 
   /** Post simulation telemetry data to all active diagram webviews for a URI */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public static postSimulationData(uri: string, simData: any): void {
     if (!DiagramEditorProvider.instance) return;
     DiagramEditorProvider.instance.postToActiveWebviews({
@@ -62,7 +62,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   /** Post a message to all active diagram webviews */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public postToActiveWebviews(message: any): void {
     for (const panel of this.activeWebviews) {
       panel.webview.postMessage(message);
@@ -70,7 +70,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   /** Post a message to all active diagram webviews except the sender */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   public postToActiveWebviewsExcept(sourcePanel: vscode.WebviewPanel, message: any): void {
     for (const panel of this.activeWebviews) {
       if (panel !== sourcePanel) {
@@ -86,7 +86,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
     webviewPanel: vscode.WebviewPanel,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     _token: vscode.CancellationToken,
   ): Promise<void> {
     webviewPanel.webview.options = {
@@ -202,7 +202,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.webview.onDidReceiveMessage(
       (message) => {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           let actions: any[] | undefined;
 
           switch (message.type) {
@@ -328,7 +327,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
               const isOptimistic = actions?.every(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (a: any) =>
                   a.type === "move" ||
                   a.type === "resize" ||
@@ -445,7 +443,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             // change. They can be applied optimistically without showing a spinner
             // or triggering a diagram re-render.
             const isOptimisticOnly = actions.every(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (a: any) =>
                 a.type === "move" ||
                 a.type === "resize" ||
@@ -460,7 +457,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               // ── Optimistic path: silent text update, no spinner, no re-render ──
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
                     uri: uriString,
                     seq: 1,
@@ -506,7 +502,6 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               }
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
                     uri: uriString,
                     seq: 1,

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import StepViewer, { type StepMeshPayload } from "./step-viewer/step-viewer";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 /* ─── types ─── */
@@ -77,11 +76,10 @@ function App() {
   }, []);
 
   const updateField = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (path: string, value: any) => {
       const c = JSON.parse(JSON.stringify(configRef.current)) as Record<string, unknown>;
       const keys = path.split(".");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       let obj: any = c;
       for (let i = 0; i < keys.length - 1; i++) {
         const k = keys[i] as string;
@@ -110,7 +108,6 @@ function App() {
     const handleMessage = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === "stepMeshes") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const raw: StepMeshPayload[] = (msg.data || []).map((m: any) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),

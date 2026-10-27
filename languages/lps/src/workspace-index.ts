@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/lps — Multi-File Workspace Indexer.
@@ -44,7 +43,7 @@ export class LpsWorkspaceIndex implements IWorkspaceIndex {
     return this.fileModels.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -54,7 +53,10 @@ export class LpsWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(
+    uri: string,
+    loader?: () => string | { sourceText?: string | undefined; text?: string | undefined } | null | undefined,
+  ): void {
     this._version++;
     if (loader) {
       try {
@@ -115,12 +117,12 @@ export class LpsWorkspaceIndex implements IWorkspaceIndex {
 
     const childIds: SymbolId[] = [];
 
-    function addChild(name: string, kind: string, meta?: any) {
+    function addChild(name: string, kind: string, meta?: Record<string, unknown>) {
       const id = idCounter++ as SymbolId;
       const entry: SymbolEntry = {
         id,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "lps_component",
         namePath: `${studyName}.${name}`,
         fieldName: null,

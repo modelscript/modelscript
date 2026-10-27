@@ -1080,7 +1080,6 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           });
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const kparU8 = (KparPackageAdapter.buildKparArchive as any)(resolvedManifest, files);
         const nodeBuf = Buffer.from(kparU8);
 

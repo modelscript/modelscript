@@ -1,13 +1,13 @@
 ---
 title: AI Agents & MCP Workflows
-description: Connect Claude Code, Cursor, Windsurf, and custom LLM agents to ModelScript's 31 deterministic compiler, simulation, CAD, TGG, and formal verification MCP tools.
+description: Connect Claude Code, Cursor, Windsurf, and custom LLM agents to ModelScript's 52 deterministic compiler, simulation, CAD, TGG, and formal verification MCP tools.
 ---
 
 # AI Agents & MCP Workflows
 
 Large language models excel at generating structure and exploring design spaces, but when asked to write differential equations, power-grid topologies, or safety-critical requirements in free text, they frequently hallucinate mismatched units, structurally singular DAEs, or violated physical conservation laws.
 
-ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **31 polyglot compilation, simulation, CAD, TGG, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
+ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **52 polyglot compilation, simulation, CAD, TGG, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
 
 ---
 
@@ -69,7 +69,7 @@ When prompting an LLM outside of MCP (or seeding system prompts for custom agent
 ```mermaid
 sequenceDiagram
     participant Agent as AI Agent (Claude / Cursor)
-    participant MCP as @modelscript/mcp (31 Tools)
+    participant MCP as @modelscript/mcp (52 Tools)
     participant Core as WASM GLR + Salsa + DAE Arena
     participant Verify as 13 Theory Oracles & Solvers
 
@@ -93,7 +93,7 @@ Rather than writing a Modelica controller in one shot and hoping it stabilizes t
 2. **Arena DAE Flattening & Pantelides Index Reduction** (`modelica_flatten`)
 3. **Time-Domain Integration** (`modelica_simulate` via SUNDIALS CVODE/IDA or Radau IIA)
 4. **Signal Temporal Logic (STL) Verification** (`sysml2_falsify_requirements`)
-5. **Counterexample Diagnostics**: Returns the exact time $t^*$, violated requirement ID, and parameter sensitivity Jacobian $\partial \rho / \partial p_j$ if any constraint is violated.
+5. **Counterexample & Sensitivity Tuning**: Evaluates STL robustness $\rho$ and tunes designated control gains (`tunableParameters`) via IMC-PID and sensitivity refinement until all five verification gates pass.
 
 **Example MCP Tool Call:**
 
@@ -104,6 +104,7 @@ Rather than writing a Modelica controller in one shot and hoping it stabilizes t
     "modelName": "ActiveSuspension",
     "modelicaSource": "model ActiveSuspension\n  parameter Real k_s = 18000;\n  parameter Real c_d = 1450;\n  ...\nend ActiveSuspension;",
     "sysmlSource": "requirement def <'REQ-RIDE-01'> PeakAccelerationBound {\n  require constraint { maxVerticalAccel <= 1.8 }\n}",
+    "tunableParameters": ["Kp", "Ki", "Kd"],
     "stopTime": 5.0,
     "maxRepairIterations": 5
   }
@@ -142,9 +143,9 @@ After calibration converges, ask the agent to invoke **`modelica_sensitivity`** 
 
 When a systems engineer adds a port or updates a mass budget in `.sysml` while a controls engineer edits equations in `.mo`, the digital thread can diverge. AI agents resolve cross-domain drift deterministically using three TGG & Theory Coordinator tools:
 
-1. **`validate_system_consistency`**: Runs the **13 Nelson-Oppen Domain Theory Oracles** across `.sysml`, `.mo`, `.step`, and `.owl` files to detect dimensional mismatches, violated interval bounds, or broken `@satisfies` links.
-2. **`tgg_inspect_conflicts`**: Runs static Critical Pair Analysis (CPA) and inspects concurrent edits on Triple Graph Grammar correspondence nodes.
-3. **`tgg_reconcile_slot`**: Applies a formal resolution policy (`source_wins`, `target_wins`, `interval_intersection`, or `custom_expression`) and rewrites both ASTs losslessly.
+1. **`validate_system_consistency`**: Cross-checks `.sysml` and `.mo` models (or runs the 13 Nelson-Oppen Domain Theory Oracles) to detect port topology mismatches, unit conflicts, and divergent shared parameter slots.
+2. **`tgg_diagnose_conflict`**: Runs static Critical Pair Analysis (CPA) and inspects concurrent edits on Triple Graph Grammar correspondence nodes.
+3. **`tgg_reconcile_slot`**: Applies a formal resolution policy (`source-wins`, `target-wins`, `physics-simplex`, or `interval_intersection`) and rewrites both ASTs losslessly.
 
 ```json
 {
@@ -170,6 +171,18 @@ Before cutting a release or generating an FDA / ISO 26262 Design History File (`
 
 ---
 
+### Workflow E: Cross-Domain CAD/FEA Sizing, Legacy B2B Certification & Formal Safety
+
+Beyond 1D system dynamics, `@modelscript/mcp` provides five cross-domain certification tools:
+
+- **`cad_fea_closed_loop_size`**: Couples parametric 3D OpenSCAD/STEP geometry with tetrahedral FEA von Mises stress analysis and 3D BVH collision clearance checks, iteratively sizing ribs, walls, and fillets until structural safety factors hold.
+- **`polyglot_migrate_and_verify_b2b`**: Transpiles legacy Simulink (`.slx`), SPICE (`.cir`), or Adams (`.adm`) models into balanced Modelica and SysML v2, then executes an ISO 26262 Part 6 Back-to-Back (B2B) trajectory equivalence proof with C99 SHA-256 codegen parity.
+- **`ssp_diagnose_cosim_stability`**: Detects direct-feedthrough algebraic loops across multi-FMU SSP topologies, computes the Zero-Order Hold (ZOH) spectral radius $\rho(J_{\mathrm{ZOH}})$, and synthesizes FMI directional-derivative Newton relaxation schedules.
+- **`formal_verify_safety_and_mcdc`**: Proves unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and synthesizes DO-178C / ISO 26262 MC/DC independence-pair test vectors.
+- **`twin_discover_sindy_and_rom`**: Runs Sparse Identification of Nonlinear Dynamics (SINDy STLSQ) over hardware telemetry residuals to discover unmodeled physics terms and calibrate a real-time Reduced-Order Model (ROM).
+
+---
+
 ## 3. Recommended Prompt Patterns for Engineers
 
 Use these prompt templates with Claude Code or Cursor when working in a ModelScript workspace:
@@ -178,7 +191,7 @@ Use these prompt templates with Claude Code or Cursor when working in a ModelScr
 > _"Create a Modelica model `DC_BuckConverter.mo` and a companion `BuckConverterReq.sysml` specifying a $12\text{ V} \to 5\text{ V}$ step-down converter with output voltage ripple $\le 50\text{ mV}$ and settling time $\le 4\text{ ms}$. Run `modelica_lint`, simulate with `modelica_simulate`, and iterate using `modelscript_closed_loop_synthesize` until `sysml2_verify` proves both requirements SAFE."_
 
 > ** Legacy Migration Prompt:**
-> _"Import `legacy/PitchActuator.slx` into `models/PitchActuator.mo`, run `modelica_lint` to resolve any diagnostic warnings, and verify that the step response matches the Simulink reference trajectory within $10^{-3}$ relative error."_
+> _"Import `legacy/PitchActuator.slx` into `models/PitchActuator.mo` using `polyglot_migrate_and_verify_b2b`, run `modelica_lint` to resolve any diagnostic warnings, and verify that the step response matches the Simulink reference trajectory within $10^{-4}$ relative error."_
 
 > ** Grid Compliance Prompt:**
 > _"Run `pscad_lint` and `pscad_verify_ieee2800` on `grid/WindFarm_300MW.pscx`. If Low-Voltage Ride-Through (LVRT) reactive current response time $T_{\text{resp}}$ exceeds $30\text{ ms}$, adjust the inverter inner current loop gains and re-run `pscad_verify_ieee2800` until all IEEE Std 2800-2022 clauses pass."\_
@@ -187,5 +200,5 @@ Use these prompt templates with Claude Code or Cursor when working in a ModelScr
 
 ## Next Steps
 
-- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 31 core MCP tools, IDE copilot tiers, and autonomous social bots.
+- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 52 core MCP tools, IDE copilot tiers, and autonomous social bots.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Automate headless linting, SARIF verification, visual PR diffs, and DHF compliance dossiers on every commit.

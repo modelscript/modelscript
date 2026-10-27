@@ -56,7 +56,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   function safeRegisterCommand(
     commandId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     callback: (...args: any[]) => any,
   ): vscode.Disposable {
     if (registeredCommandIds.has(commandId)) {

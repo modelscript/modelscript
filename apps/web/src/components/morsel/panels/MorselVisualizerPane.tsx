@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { DynamicBindingConfig } from "@modelscript/cad";
 import { PauseIcon, PlayIcon, PlusIcon, PulseIcon, StackIcon, TableIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner } from "@primer/react";

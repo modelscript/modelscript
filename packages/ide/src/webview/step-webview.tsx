@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import StepViewer, { type StepMeshPayload } from "./step-viewer/step-viewer";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const vscode = (window as any).acquireVsCodeApi?.();
 
 function App() {
@@ -28,7 +27,7 @@ function App() {
       const message = event.data;
       if (message.type === "stepMeshes") {
         // postMessage serializes typed arrays to plain objects — convert back
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const rawMeshes: StepMeshPayload[] = (message.data || []).map((m: any) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),

@@ -95,27 +95,27 @@ export function tgg_reconcile_physics_simplex(
   physMax: f64,
   corr: CorrespondenceIndex
 ): f64 {
-  let midpoint = (srcVal + tgtVal) * 0.5;
-  let candidate = midpoint;
-
-  // Project candidate onto physical feasibility envelope
-  if (candidate < physMin) {
-    candidate = physMin;
-  } else if (candidate > physMax) {
-    candidate = physMax;
-  }
-
   // If even the bounds are infeasible
   if (physMin > physMax) {
     corr.markConflict(slot);
     return f64.NaN;
   }
 
-  // Verify that the candidate satisfies at least one edit direction feasibility
+  // Verify that at least one edit direction is feasible or the convex hull [minProp, maxProp]
+  // intersects the physical feasibility envelope [physMin, physMax]
   let withinSource = (srcVal >= physMin && srcVal <= physMax);
   let withinTarget = (tgtVal >= physMin && tgtVal <= physMax);
+  let minProp = srcVal < tgtVal ? srcVal : tgtVal;
+  let maxProp = srcVal > tgtVal ? srcVal : tgtVal;
+  let hullOverlaps = (minProp <= physMax && maxProp >= physMin);
 
-  if (withinSource || withinTarget || (candidate >= physMin && candidate <= physMax)) {
+  if (withinSource || withinTarget || hullOverlaps) {
+    let candidate = (srcVal + tgtVal) * 0.5;
+    if (candidate < physMin) {
+      candidate = physMin;
+    } else if (candidate > physMax) {
+      candidate = physMax;
+    }
     corr.clearConflict(slot);
     return candidate;
   }

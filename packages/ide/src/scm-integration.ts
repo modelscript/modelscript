@@ -13,7 +13,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
       }
 
       // 1. Get VS Code Git extension API
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
       if (!gitExtension) {
         vscode.window.showErrorMessage("Git extension is not available.");
@@ -99,7 +99,6 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const gitExtension = vscode.extensions.getExtension<any>("vscode.git")?.exports;
       if (!gitExtension) {
         vscode.window.showErrorMessage("Git extension is not available.");

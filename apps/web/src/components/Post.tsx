@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { SyncIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";

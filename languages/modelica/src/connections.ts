@@ -107,7 +107,7 @@ export class IntUnionFind {
  *   - Dynamic prefix resolution supports nested sub-component hierarchies and expandable bus connectors.
  *   - Generates minimal non-redundant equation sets directly into the `DAEBuilder` linear arena.
  */
-/* eslint-disable @typescript-eslint/no-extraneous-class */
+
 export class ModelicaPortBalancer {
   /**
    * Finalizes all connection graphs on a `DAEBuilder`, expanding `connect()`

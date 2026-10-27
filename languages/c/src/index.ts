@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createWasmParser, type TreeSitterParser } from "../src-gen/bindings.js";
+import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
 import { CAstParser, parseCScript, tokenizeC, type CExpr, type CStmt, type CToken } from "./ast.js";
 import {
   scrapeCHeader,
@@ -73,6 +73,7 @@ export type {
   CToken,
   PreprocessedC,
   ScrapedCHeader,
+  SyntaxNode,
   TreeSitterParser,
 };
 
@@ -115,7 +116,7 @@ export async function getCParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | str
 /**
  * Parses C source code into a CST root node using the WebAssembly GLR parser.
  */
-export async function parseC(source: string): Promise<any> {
+export async function parseC(source: string): Promise<SyntaxNode | null> {
   const parser = await getCParser();
   const tree = parser.parse(source);
   return tree?.rootNode ?? null;

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { TreeNodeInfo } from "@modelscript/runtime";
 import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 

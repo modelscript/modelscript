@@ -342,11 +342,7 @@ export function hasClassChildren(index: any, symbolId: number, compositeName?: s
   return false;
 }
 
-export function buildClassHierarchy(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  classInstance: any,
-  visited = new Set<string>(),
-): ClassHierarchyNode {
+export function buildClassHierarchy(classInstance: any, visited = new Set<string>()): ClassHierarchyNode {
   if (!classInstance) {
     return { name: "<unknown>", kind: "class", description: null, children: [] };
   }
@@ -380,7 +376,6 @@ export function buildClassHierarchy(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildComponentTree(classInstance: any, depth = 0): ComponentTreeNode {
   const children: ComponentTreeNode[] = [];
   if (classInstance && depth < 5) {

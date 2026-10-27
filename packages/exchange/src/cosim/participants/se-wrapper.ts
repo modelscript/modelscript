@@ -87,7 +87,6 @@ export class ScheduledExecutionParticipant implements CoSimParticipant {
     return this.lastActivationTimes.get(clockRef);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async initialize(startTime: number, _stopTime: number, _stepSize: number): Promise<void> {
     this.activationCounts.clear();
     this.lastActivationTimes.clear();

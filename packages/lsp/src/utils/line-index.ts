@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
  * Line-Index Table — O(1) cursor-to-token mapping for the Language Server.

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { GraphIcon } from "@primer/octicons-react";
 import { Spinner, Text, useTheme } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";

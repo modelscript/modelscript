@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import mcpData from "../data/mcp-tools.generated.json";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
@@ -80,7 +81,7 @@ const columns: MegaMenuColumn[] = [
     label: "AI, Automation & HIL",
     items: [
       {
-        name: "MCP Server (31 Tools)",
+        name: `MCP Server (${mcpData.toolCount} Tools)`,
         tagline: "Closed-loop tool calling for Claude, Cursor & agents",
         href: "/reference/mcp-and-ide",
         icon: "sparkles",
@@ -114,7 +115,7 @@ const columns: MegaMenuColumn[] = [
 const feature: MegaMenuFeature = {
   eyebrow: "Agentic Engineering",
   title: "Ground AI agents in physics & proofs",
-  body: "Expose 31 compiler, solver, and SMT verification tools to AI assistants over the Model Context Protocol.",
+  body: `Expose ${mcpData.toolCount} compiler, solver, and SMT verification tools to AI assistants over the Model Context Protocol.`,
   code: "npx -y @modelscript/mcp",
   ctaLabel: "Explore MCP & IDE Workbench",
   ctaHref: "/reference/mcp-and-ide",

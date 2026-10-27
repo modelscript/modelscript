@@ -8,7 +8,6 @@
 
 import { CreateMLCEngine, prebuiltAppConfig } from "@mlc-ai/web-llm";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let engine: any = null;
 let loading = false;
 
@@ -26,7 +25,7 @@ function getModelBaseUrl(): string {
   // We derive the origin from the referring page or use a hardcoded fallback.
 
   // Try to extract origin from the script URL that loaded us via importScripts
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const scripts = (self as any).__importScriptsOrigin;
   if (scripts) return scripts + "/api/models";
 
@@ -66,7 +65,7 @@ async function ensureEngine(): Promise<void> {
   loading = true;
   try {
     // Check WebGPU
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const nav = navigator as any;
     if (!nav.gpu) throw new Error("WebGPU not available in this worker");
     const adapter = await nav.gpu.requestAdapter();
@@ -93,7 +92,7 @@ self.onmessage = async (event: MessageEvent) => {
 
   if (msg.type === "setOrigin") {
     // Main thread tells us the server origin so we can build model URLs
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (self as any).__importScriptsOrigin = msg.origin;
     return;
   }

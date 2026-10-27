@@ -192,7 +192,7 @@ export interface EmtBranch {
   rOpenOhm?: number | undefined;
   /** Naturally commutated diode: conducts N1 (anode) -> N2 (cathode), blocks otherwise. */
   diode?: boolean | undefined;
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface EmtTransformer {
@@ -436,7 +436,7 @@ export interface EmtCustomFortranBlock {
   numIntStates: number;
   inputs?: { portName: string; sourceId?: string | undefined }[] | undefined;
   outputs?: { portName: string; targetId?: string | undefined }[] | undefined;
-  step: (ctx: any) => void;
+  step: (ctx: import("@modelscript/fortran").FortranExecutionContext) => void;
 }
 
 // ==========================================

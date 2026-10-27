@@ -49,7 +49,7 @@ export const spiceLanguage = language({
           modelDescription: "Calculates DC operating point node voltages and currents for a SPICE circuit.",
         },
       },
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const circuit = parseSpice(text);
         const op = solveOp(circuit);
@@ -77,7 +77,7 @@ export const spiceLanguage = language({
           modelDescription: "Simulates time-domain transient response of a SPICE netlist.",
         },
       },
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const circuit = parseSpice(text);
         const tran = solveTran(circuit);
@@ -104,7 +104,7 @@ export const spiceLanguage = language({
           modelDescription: "Computes frequency response magnitude (dB) and phase for a SPICE netlist.",
         },
       },
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const circuit = parseSpice(text);
         const ac = solveAc(circuit);
@@ -127,7 +127,7 @@ export const spiceLanguage = language({
           group: "modelscript_run@3",
         },
       },
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const circuit = parseSpice(text);
         const diagnostics = lintSpiceCircuit(circuit);
@@ -142,7 +142,7 @@ export const spiceLanguage = language({
       title: "Export Circuit to Modelica 3.x",
       description: "Translates SPICE netlist into Modelica.Electrical.Analog physical model.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const circuit = parseSpice(text);
         return spiceToModelica(circuit);
@@ -153,7 +153,7 @@ export const spiceLanguage = language({
       title: "Export Circuit to ECAD NetlistGraph",
       description: "Generates a NetlistGraph for PCB layout and ratsnest rendering.",
       category: "export",
-      execute: async (context: any) => {
+      execute: async (context: { documentText?: string | undefined }) => {
         const text = context.documentText || "";
         const circuit = parseSpice(text);
         return spiceToNetlistGraph(circuit);
@@ -164,7 +164,11 @@ export const spiceLanguage = language({
       title: "Synchronize Netlist from Modelica 3.x",
       description: "Reconciles tuned component values from Modelica back into SPICE netlist.",
       category: "transform",
-      execute: async (context: any) => {
+      execute: async (context: {
+        documentText?: string | undefined;
+        modelicaText?: string | undefined;
+        options?: Record<string, unknown> | undefined;
+      }) => {
         const { synchronizeModelicaToSpice } = await import("./tgg/spice-sync.js");
         const originalText = context.documentText || "";
         const modifiedModelica = context.modelicaText || "";

@@ -154,8 +154,9 @@ export class ParameterInversionEngine {
               rule.description || `Multidisciplinary constraint '${rule.name}' violated by candidate parameter set.`,
             );
           }
-        } catch (err: any) {
-          violations.push(`Constraint '${rule.name}' evaluation error: ${err.message}`);
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          violations.push(`Constraint '${rule.name}' evaluation error: ${message}`);
         }
       }
     }

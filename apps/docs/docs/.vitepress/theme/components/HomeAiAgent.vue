@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { IconName } from "../data/icons";
+import mcpData from "../data/mcp-tools.generated.json";
 import MsIcon from "./MsIcon.vue";
 
 interface AgentToolCall {
@@ -118,6 +119,61 @@ const scenarios: AgentScenario[] = [
     ],
     verdict: "Compliance report generated · All IEEE 2800 ride-through criteria satisfied",
   },
+  {
+    id: "cad",
+    badge: "3D CAD · FEA Sizing",
+    icon: "cube",
+    title: "Generative CSG/STEP sizing with FEA stress gates",
+    prompt:
+      "Size the Al 6061-T6 ActuatorBracket.scad ribs and fillets for a 4.2 kN load with safety factor ≥ 1.5 and ≥ 2.0 mm BVH housing clearance.",
+    summary:
+      "Couples parametric CSG/STEP solid geometry with tetrahedral FEA von Mises stress analysis and 3D BVH collision detection in a single MCP call.",
+    calls: [
+      {
+        tool: "cad_fea_closed_loop_size",
+        args: '{ "partName": "ActuatorBracket", "materialYieldMpa": 276, "minSafetyFactor": 1.5, "appliedLoadN": 4200 }',
+        resultTitle: "3D CSG/STEP ↔ Tetrahedral FEA Sizing (ActuatorBracket)",
+        metrics: [
+          { label: "Peak von Mises", value: "160.1 MPa (≤ 184 MPa)", status: "pass" },
+          { label: "Safety Factor", value: "1.72x (Req ≥ 1.5x)", status: "pass" },
+          { label: "BVH Clearance", value: "3.45 mm (0 collisions)", status: "pass" },
+        ],
+      },
+    ],
+    verdict: "Structural FEA & 3D BVH clearance certified: rib_thickness_mm = 3.12, fillet_radius_mm = 1.85",
+  },
+  {
+    id: "safety",
+    badge: "ISO 26262 B2B · Formal MC/DC",
+    icon: "shield",
+    title: "Legacy CAE migration & IC3/SOS + MC/DC proofs",
+    prompt:
+      "Migrate ServoActuator.slx to Modelica + SysML v2, verify ISO 26262 B2B trajectory parity, and prove unbounded IC3/SOS safety with MC/DC vectors.",
+    summary:
+      "Transpiles legacy Simulink/SPICE/Adams models, certifies back-to-back trajectory equivalence, and proves IC3/PDR invariants with 100% MC/DC test coverage.",
+    calls: [
+      {
+        tool: "polyglot_migrate_and_verify_b2b",
+        args: '{ "sourceFormat": "simulink", "modelName": "ServoActuator", "tolerance": 1e-4 }',
+        resultTitle: "Legacy SIMULINK → Modelica/SysML v2 B2B Certification",
+        metrics: [
+          { label: "B2B Trajectory Δ", value: "8.4e-6 (≤ 1e-4)", status: "pass" },
+          { label: "ISO 26262 Part 6", value: "ASIL-D Certified", status: "pass" },
+        ],
+      },
+      {
+        tool: "formal_verify_safety_and_mcdc",
+        args: '{ "modelName": "ServoActuator", "safetyProperty": "abs(pitch_angle_deg) <= 35.0" }',
+        resultTitle: "IC3/PDR Invariant, SOS Barrier & DO-178C MC/DC Proof (ServoActuator)",
+        metrics: [
+          { label: "IC3/PDR Invariant", value: "Inductive (7 Frames)", status: "pass" },
+          { label: "SOS Barrier B(x)", value: "LMI Feasible (+0.184)", status: "pass" },
+          { label: "MC/DC Coverage", value: "100.0% (4 vectors)", status: "pass" },
+        ],
+      },
+    ],
+    verdict: "ISO 26262 ASIL-D & DO-178C DAL-A proof bundle generated with C99 SHA-256 parity",
+  },
 ];
 
 const active = ref(0);
@@ -161,8 +217,8 @@ onBeforeUnmount(() => {
         <h2 class="ms-h2">Give AI agents a deterministic compiler and physics engine</h2>
         <p class="ms-lead">
           Language models hallucinate when guessing differential equations in plain text.
-          <code>@modelscript/mcp</code> exposes 31 compiler, solver, and formal verification tools so AI agents can
-          compile, simulate, and prove engineering designs in a closed loop.
+          <code>@modelscript/mcp</code> exposes {{ mcpData.toolCount }} compiler, solver, and formal verification tools
+          so AI agents can compile, simulate, and prove engineering designs in a closed loop.
         </p>
       </header>
 
@@ -197,7 +253,7 @@ onBeforeUnmount(() => {
                 <MsIcon name="terminal" :size="15" /> Connect Claude, Cursor, or Windsurf
               </span>
               <a href="/reference/mcp-and-ide" class="mcp-config-link">
-                All 31 MCP tools <MsIcon name="arrowRight" :size="13" :stroke="2" />
+                All {{ mcpData.toolCount }} MCP tools <MsIcon name="arrowRight" :size="13" :stroke="2" />
               </a>
             </div>
             <div class="mcp-cmd-row">
@@ -224,9 +280,7 @@ onBeforeUnmount(() => {
           class="ai-console"
         >
           <div class="console-bar">
-            <div class="console-dots">
-              <span class="dot" /><span class="dot" /><span class="dot" />
-            </div>
+            <div class="console-dots"><span class="dot" /><span class="dot" /><span class="dot" /></div>
             <span class="console-title">mcp://modelscript · agent session</span>
             <span class="console-status"><span class="status-dot" /> WASM Kernel Ready</span>
           </div>
@@ -343,8 +397,7 @@ onBeforeUnmount(() => {
   color: var(--vp-c-brand-1);
   background:
     radial-gradient(circle at 25% 20%, rgba(34, 211, 238, 0.22), transparent 68%),
-    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.16), transparent 68%),
-    var(--vp-c-brand-soft);
+    radial-gradient(circle at 80% 85%, rgba(129, 140, 248, 0.16), transparent 68%), var(--vp-c-brand-soft);
   border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 28%, transparent);
 }
 

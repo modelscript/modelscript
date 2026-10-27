@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import { parseOpenScenario } from "./parser/openscenario-parser.js";
@@ -39,7 +38,7 @@ export class OpenScenarioWorkspaceIndex implements IWorkspaceIndex {
     return this.fileDocuments.get(uri);
   }
 
-  public register(uri: string, _loader?: () => any): void {
+  public register(uri: string, _loader?: () => unknown): void {
     if (!this.fileIndices.has(uri)) {
       this.fileIndices.set(uri, {
         symbols: new Map(),
@@ -49,12 +48,13 @@ export class OpenScenarioWorkspaceIndex implements IWorkspaceIndex {
     }
   }
 
-  public reindexDocument(uri: string, loader?: () => any): void {
+  public reindexDocument(uri: string, loader?: () => unknown): void {
     this._version++;
     if (loader) {
       try {
         const res = loader();
-        const text = typeof res === "string" ? res : (res?.sourceText ?? res?.text);
+        const obj = typeof res === "object" && res !== null ? (res as { sourceText?: unknown; text?: unknown }) : null;
+        const text = typeof res === "string" ? res : (obj?.sourceText ?? obj?.text);
         if (typeof text === "string") {
           this.indexFile(uri, text);
         }
@@ -82,13 +82,13 @@ export class OpenScenarioWorkspaceIndex implements IWorkspaceIndex {
       parentId: SymbolId | null,
       startOffset: number,
       endOffset: number,
-      metadata: Record<string, any> = {},
+      metadata: Record<string, unknown> = {},
     ): SymbolId {
       const symId = (baseId! + localId++) as SymbolId;
       const entry: SymbolEntry = {
         id: symId,
         name,
-        kind: kind as any,
+        kind,
         ruleName: "openscenario_symbol",
         namePath: name,
         fieldName: null,

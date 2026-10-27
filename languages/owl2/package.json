@@ -61,5 +61,9 @@
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/runtime": "*"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "language"
   }
 }

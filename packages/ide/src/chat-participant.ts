@@ -12,7 +12,7 @@ When asked to add/insert a component, use modelscript_add_component.`;
  */
 export function registerChatParticipant(context: vscode.ExtensionContext): void {
   // Runtime guard — chat API is only available with Copilot on desktop
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   if (typeof (vscode.chat as any)?.createChatParticipant !== "function") {
     console.log("[chat-participant] vscode.chat.createChatParticipant not available — skipping");
     return;

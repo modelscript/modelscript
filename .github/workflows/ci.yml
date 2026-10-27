@@ -49,6 +49,8 @@ jobs:
         run: npm run lint:filenames
       - name: Check Workspace Package Manifests & Versions
         run: npm run lint:manifests
+      - name: Check Type-Safety Ratchet
+        run: npm run lint:types-ratchet
       - name: Check Root TypeScript Config
         run: npx tsc --noEmit
       - name: Lint Root Scripts
@@ -365,6 +367,8 @@ jobs:
           fi
       - name: Verify Dist & Exports Integrity
         run: npm run verify:dist
+      - name: Verify Package Tarballs & Overrides
+        run: npm run verify:pack
       - name: Check Docs Generated Data & Links
         run: npm run check --workspace=@modelscript/docs
       - name: Build VS Code Extension
@@ -377,6 +381,47 @@ jobs:
         with:
           name: modelscript-vsix
           path: dist/extension/*.vsix
+
+  cross_os_smoke:
+    name: Cross-OS Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci --ignore-scripts
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/asc-tests
+            languages/*/.cache
+            languages/*/dist/*.wasm
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+            Linux-wasm-
+      - name: Build Core Compiler Chain
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica --parallel=2
+      - name: Verify Cross-Platform Hygiene & Dist Integrity
+        run: |
+          npm run lint:filenames
+          npm run lint:manifests
+          npm run lint:types-ratchet
+          npm run verify:dist
+          npm run verify:pack
 
   deploy_site:
     needs: [build, test, lint, modelica_testsuite]

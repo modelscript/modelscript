@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createWasmParser, type TreeSitterParser } from "../src-gen/bindings.js";
+import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
 import { FortranAstParser, parseFortranScript, tokenizeFortran, type FortranExpr, type FortranStmt } from "./ast.js";
 import {
   buildStepFunction,
@@ -49,6 +49,7 @@ export type {
   FortranStepFunction,
   FortranStmt,
   PreprocessedFortran,
+  SyntaxNode,
   TreeSitterParser,
 };
 
@@ -91,7 +92,7 @@ export async function getFortranParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer
 /**
  * Parses Fortran source code into a CST node.
  */
-export async function parseFortran(source: string): Promise<any> {
+export async function parseFortran(source: string): Promise<SyntaxNode | null> {
   const parser = await getFortranParser();
   const tree = parser.parse(source);
   return tree?.rootNode ?? null;

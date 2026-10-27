@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /**
  * @modelscript/lps — Language Definition for PipelineStudio (TGNET & TLNET).
@@ -16,6 +15,10 @@ import { LinePackEngine } from "./solver/line-pack/line-pack-engine.js";
 import { SteadyNetworkSolver } from "./solver/steady/steady-network-solver.js";
 import { GasEulerDaeSolver } from "./solver/transient/gas-euler-dae.js";
 import { PipelineVerifier } from "./verification/pipeline-verifier.js";
+
+interface LpsActionContext {
+  documentText?: string | undefined;
+}
 
 export const lpsLanguage = language({
   name: "lps",
@@ -51,7 +54,7 @@ export const lpsLanguage = language({
             "Lints a PipelineStudio .lps/.tgx model for MAOP violations, compressor surge, and delivery pressure deficits.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: LpsActionContext | undefined, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const model = parseLps(text);
@@ -77,7 +80,7 @@ export const lpsLanguage = language({
           modelDescription: "Solves steady-state pressures, mass flows, velocities, and line pack.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: LpsActionContext | undefined, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const model = parseLps(text);
@@ -106,7 +109,10 @@ export const lpsLanguage = language({
           modelDescription: "Simulates transient gas dynamics across the pipeline network over time.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined; duration?: number | undefined }) => {
+      execute: async (
+        ctx: LpsActionContext | undefined,
+        params: { documentText?: string | undefined; duration?: number | undefined },
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const model = parseLps(text);
@@ -132,7 +138,7 @@ export const lpsLanguage = language({
           modelDescription: "Translates PipelineStudio models into formal SysML v2 textual architecture.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: LpsActionContext | undefined, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const model = parseLps(text);

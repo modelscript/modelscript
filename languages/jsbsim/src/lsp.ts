@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { lowerJsbsimToDae } from "./dae/jsbsim-to-dae.js";
+import type { DiagnosticItem } from "./errors.js";
 import { lintJsbsim } from "./lints/index.js";
 import { parseJsbsim } from "./parser/jsbsim-parser.js";
 import { jsbsimToModelica } from "./projections/jsbsim-to-modelica.js";
-import { solveFlightDynamics } from "./solvers/flight-solver.js";
+import { solveFlightDynamics, type FlightSimulationResult, type FlightSolverOptions } from "./solvers/flight-solver.js";
 
 export interface LspPosition {
   line: number;
@@ -96,7 +96,7 @@ export function validateJsbsim(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -106,7 +106,7 @@ export function validateJsbsim(text: string): LspDiagnostic[] {
         severity: 1,
         code: "M8900",
         source: "jsbsim-parser",
-        message: `JSBSim parse error: ${err.message}`,
+        message: `JSBSim parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }
@@ -216,7 +216,51 @@ export function getJsbsimHover(text: string, position: LspPosition): LspHover | 
   return null;
 }
 
-export async function executeJsbsimAction(action: string, text: string, params?: any): Promise<any> {
+export interface JsbsimActionParams {
+  options?: FlightSolverOptions | undefined;
+  modelName?: string | undefined;
+}
+
+export async function executeJsbsimAction(
+  action: "lint_jsbsim",
+  text: string,
+  params?: JsbsimActionParams,
+): Promise<DiagnosticItem[]>;
+export async function executeJsbsimAction(
+  action: "jsbsim_simulate",
+  text: string,
+  params?: JsbsimActionParams,
+): Promise<FlightSimulationResult>;
+export async function executeJsbsimAction(
+  action: "jsbsim_to_dae",
+  text: string,
+  params?: JsbsimActionParams,
+): Promise<{ modelName: string; variableCount: number; equationCount: number }>;
+export async function executeJsbsimAction(
+  action: "jsbsim_to_modelica",
+  text: string,
+  params?: JsbsimActionParams,
+): Promise<string>;
+export async function executeJsbsimAction(
+  action: string,
+  text: string,
+  params?: JsbsimActionParams,
+): Promise<
+  | DiagnosticItem[]
+  | FlightSimulationResult
+  | { modelName: string; variableCount: number; equationCount: number }
+  | string
+>;
+export async function executeJsbsimAction(
+  action: string,
+  text: string,
+  params?: JsbsimActionParams,
+): Promise<
+  | DiagnosticItem[]
+  | FlightSimulationResult
+  | { modelName: string; variableCount: number; equationCount: number }
+  | string
+> {
   const doc = parseJsbsim(text);
 
   switch (action) {

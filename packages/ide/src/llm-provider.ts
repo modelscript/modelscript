@@ -2,9 +2,8 @@
 
 import * as vscode from "vscode";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let webllm: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 let engine: any = null;
 
 const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
@@ -54,7 +53,6 @@ async function ensureEngine(): Promise<void> {
  * type errors with current @types/vscode.
  */
 export function registerLLMProvider(context: vscode.ExtensionContext): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lm = vscode.lm as any;
   if (!lm || typeof lm.registerChatModelProvider !== "function") {
     console.log("[llm-provider] vscode.lm.registerChatModelProvider not available — skipping local model registration");
@@ -66,10 +64,10 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
     {
       provideChatResponse: async (
         messages: vscode.LanguageModelChatMessage[],
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         options: Record<string, any>,
         _extensionId: string,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         progress: vscode.Progress<any>,
         token: vscode.CancellationToken,
       ) => {
@@ -77,7 +75,7 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         if (!engine) throw new Error("Failed to initialize WebLLM engine");
 
         // Convert VS Code messages to OpenAI format
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const openaiMessages: any[] = messages.map((msg: any) => {
           let role: string;
           switch (msg.role) {
@@ -108,7 +106,6 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
           stream: true,
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for await (const chunk of completion as AsyncIterable<any>) {
           if (token.isCancellationRequested) break;
           const delta = chunk.choices?.[0]?.delta?.content;
@@ -118,7 +115,6 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         }
       },
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       provideTokenCount: async (text: any) => {
         // Approximate token count (4 chars per token is a reasonable heuristic)
         if (typeof text === "string") {
@@ -126,7 +122,7 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
         }
         // For message arrays, sum up content
         let total = 0;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         for (const msg of text as any[]) {
           for (const part of msg.content) {
             if (part instanceof vscode.LanguageModelTextPart) {

@@ -44,10 +44,108 @@ function getWorkspacePackages(): string[] {
   return packagePaths;
 }
 
+const STABLE_LANGUAGES = new Set([
+  "modelscript",
+  "modelica",
+  "sysml2",
+  "ssp",
+  "reqif",
+  "owl2",
+  "csv",
+  "pscad",
+  "spice",
+  "olga",
+  "lps",
+  "gensys",
+  "step",
+  "scad",
+]);
+
+const BETA_LANGUAGES = new Set([
+  "opendrive",
+  "adams",
+  "easy5",
+  "rocets",
+  "urdf",
+  "ccsds",
+  "epanet",
+  "gtsuite",
+  "plcopen",
+  "simulink",
+  "autosar",
+  "c",
+  "energyplus",
+  "simpack",
+  "verilog-a",
+]);
+
+const CORE_FOUNDATIONAL_LANGUAGES = new Set(["ssp", "csv"]);
+
+export function getExpectedMetadata(relDir: string): {
+  tier: "stable" | "beta" | "preview";
+  category: "core" | "language" | "app" | "example";
+} {
+  const norm = relDir.replace(/\\/g, "/");
+  if (norm.startsWith("apps/")) {
+    return { tier: "stable", category: "app" };
+  }
+  if (norm.startsWith("packages/examples/")) {
+    return { tier: "stable", category: "example" };
+  }
+  if (norm.startsWith("packages/")) {
+    return { tier: "stable", category: "core" };
+  }
+  const slug = path.posix.basename(norm);
+  if (STABLE_LANGUAGES.has(slug)) {
+    return { tier: "stable", category: "language" };
+  }
+  if (BETA_LANGUAGES.has(slug)) {
+    return { tier: "beta", category: "language" };
+  }
+  return { tier: "preview", category: "language" };
+}
+
+function countPackageTestFiles(pkgDir: string): number {
+  const testsDir = path.join(pkgDir, "tests");
+  if (!fs.existsSync(testsDir)) return 0;
+  let count = 0;
+  function walk(dir: string): void {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith("scratch") || entry.name === "node_modules") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && (entry.name.endsWith(".test.ts") || entry.name.endsWith(".spec.ts"))) {
+        count++;
+      }
+    }
+  }
+  walk(testsDir);
+  return count;
+}
+
+export function syncMaturityMetadata(packagePaths: string[]): number {
+  let updatedCount = 0;
+  for (const pkgPath of packagePaths) {
+    const relPath = path.relative(REPO_ROOT, pkgPath).replace(/\\/g, "/");
+    const relDir = path.posix.dirname(relPath);
+    const expected = getExpectedMetadata(relDir);
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const current = pkg["modelscript"] as { tier?: string; category?: string } | undefined;
+    if (!current || current.tier !== expected.tier || current.category !== expected.category) {
+      pkg["modelscript"] = expected;
+      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+      updatedCount++;
+    }
+  }
+  return updatedCount;
+}
+
 export function checkPackageManifest(pkgJsonPath: string): Violation[] {
   const violations: Violation[] = [];
-  const relPath = path.relative(REPO_ROOT, pkgJsonPath);
+  const relPath = path.relative(REPO_ROOT, pkgJsonPath).replace(/\\/g, "/");
   const pkgDir = path.dirname(pkgJsonPath);
+  const relDir = path.posix.dirname(relPath);
 
   let pkg: Record<string, unknown>;
   try {
@@ -129,6 +227,45 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
         file: relPath,
         rule: "required-entrypoint",
         message: `Publishable package must specify at least one of "exports", "bin", or "main".`,
+      });
+    }
+  }
+
+  // 2b. Validate "modelscript" maturity metadata & test-suite thresholds
+  const meta = pkg["modelscript"] as { tier?: string; category?: string } | undefined;
+  const validTiers = new Set(["stable", "beta", "preview"]);
+  const validCategories = new Set(["core", "language", "app", "example"]);
+  if (
+    !meta ||
+    typeof meta !== "object" ||
+    !validTiers.has(meta.tier ?? "") ||
+    !validCategories.has(meta.category ?? "")
+  ) {
+    violations.push({
+      file: relPath,
+      rule: "required-maturity-metadata",
+      message: `Package must declare "modelscript": { "tier": "stable" | "beta" | "preview", "category": "core" | "language" | "app" | "example" }. Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
+    });
+  } else if (relDir.startsWith("languages/")) {
+    const slug = path.posix.basename(relDir);
+    const testCount = countPackageTestFiles(pkgDir);
+    if (meta.tier === "stable" && !CORE_FOUNDATIONAL_LANGUAGES.has(slug) && testCount < 4) {
+      violations.push({
+        file: relPath,
+        rule: "tier-test-threshold",
+        message: `Language "${slug}" is marked "stable" but only has ${testCount} test file(s) (minimum 4 required for stable tier).`,
+      });
+    } else if (meta.tier === "beta" && testCount < 5) {
+      violations.push({
+        file: relPath,
+        rule: "tier-test-threshold",
+        message: `Language "${slug}" is marked "beta" but only has ${testCount} test file(s) (minimum 5 required for beta tier).`,
+      });
+    } else if (testCount < 1) {
+      violations.push({
+        file: relPath,
+        rule: "tier-test-threshold",
+        message: `Language "${slug}" must have at least 1 unit/integration test file in tests/.`,
       });
     }
   }
@@ -289,6 +426,12 @@ function checkCrossWorkspaceRules(packagePaths: string[]): Violation[] {
 
 async function run(): Promise<void> {
   const packagePaths = getWorkspacePackages();
+
+  if (process.argv.includes("--sync-tiers")) {
+    const updated = syncMaturityMetadata(packagePaths);
+    console.log(`✓ Synchronized "modelscript" maturity metadata across ${updated} workspace manifest(s).`);
+  }
+
   const allViolations: Violation[] = [];
 
   for (const pkgPath of packagePaths) {

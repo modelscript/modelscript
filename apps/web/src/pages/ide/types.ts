@@ -4,7 +4,7 @@ export interface IdeArtifactMetadata {
   id: string | number;
   title: string;
   viewType: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   viewConfig: any;
 }
 

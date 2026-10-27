@@ -69,6 +69,8 @@ export class FlowAlgebraOracle implements TheoryOracle {
   private spatialFluxes = new Map<string, SpatialFluxMeasurement>();
   private portValues1D = new Map<string, OneDPortValues>();
 
+  private sharedEqualities: SharedEquality[] = [];
+
   private levelStack: {
     portTypes: Map<string, PortTypeDefinition>;
     portInstances: Map<string, PortInstance>;
@@ -78,6 +80,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
     spatialFluxes: Map<string, SpatialFluxMeasurement>;
     portValues1D: Map<string, OneDPortValues>;
     aliases: Map<string, string>;
+    sharedEqualities: SharedEquality[];
     assertedLitIds: number[];
   }[] = [];
 
@@ -92,6 +95,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
     this.portInstances.clear();
     this.connections = [];
     this.aliases.clear();
+    this.sharedEqualities = [];
     this.assertedLiterals.clear();
     this.spatialPatches.clear();
     this.patch1DConnections.clear();
@@ -110,6 +114,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
       spatialFluxes: new Map(this.spatialFluxes),
       portValues1D: new Map(this.portValues1D),
       aliases: new Map(this.aliases),
+      sharedEqualities: [...this.sharedEqualities],
       assertedLitIds: [],
     });
   }
@@ -125,6 +130,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
     this.spatialFluxes = top.spatialFluxes;
     this.portValues1D = top.portValues1D;
     this.aliases = top.aliases;
+    this.sharedEqualities = top.sharedEqualities;
     for (const id of top.assertedLitIds) {
       this.assertedLiterals.delete(id);
     }
@@ -277,10 +283,17 @@ export class FlowAlgebraOracle implements TheoryOracle {
     this.assertedLiterals.delete(litId);
     const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
+    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      return !justs.includes(litId);
+    });
     this.reset();
     this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
+    }
+    for (const eq of remainingSharedEqs) {
+      this.onSharedEquality(eq);
     }
   }
 
@@ -447,6 +460,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
+    this.sharedEqualities.push(eq);
     if (eq.varA && eq.varB && eq.varA !== eq.varB) {
       const rootA = this.getCanonicalPort(eq.varA);
       const rootB = this.getCanonicalPort(eq.varB);

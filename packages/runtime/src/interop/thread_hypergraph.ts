@@ -209,6 +209,20 @@ export class DigitalThreadHypergraph {
     const offset = slot * THREAD_STRIDE;
 
     let mask = this.data[offset + THREAD_FIELD_MASK]!;
+    const prevNodeId = this.data[offset + THREAD_HEADER_WORDS + domainIdx]!;
+    if ((mask & (1 << domainIdx)) !== 0 && prevNodeId !== 0 && prevNodeId !== nodeId) {
+      const oldKey = (BigInt(domainIdx) << 32n) | BigInt(prevNodeId >>> 0);
+      const oldSlots = this.nodeToThreadSlots.get(oldKey);
+      if (oldSlots) {
+        const filtered = oldSlots.filter((s) => s !== slot);
+        if (filtered.length > 0) {
+          this.nodeToThreadSlots.set(oldKey, filtered);
+        } else {
+          this.nodeToThreadSlots.delete(oldKey);
+        }
+      }
+    }
+
     mask |= 1 << domainIdx;
     this.data[offset + THREAD_FIELD_MASK] = mask;
     this.data[offset + THREAD_HEADER_WORDS + domainIdx] = nodeId;

@@ -109,9 +109,10 @@ export class NativeFmuRunner {
     const decimation = Math.max(1, options.sampleDecimation ?? 1);
 
     const hasStepsCount = options.stepsCount !== undefined;
-    const totalSteps = hasStepsCount
-      ? Math.max(1, options.stepsCount!)
-      : Math.max(1, Math.round(((options.stopTime ?? startTime + 1.0) - startTime) / dt));
+    const totalSteps =
+      options.stepsCount !== undefined
+        ? Math.max(1, options.stepsCount)
+        : Math.max(1, Math.round(((options.stopTime ?? startTime + 1.0) - startTime) / dt));
 
     const includeInitial = options.includeInitial ?? !hasStepsCount;
 
@@ -142,7 +143,8 @@ export class NativeFmuRunner {
     if (includeInitial) {
       timeBuffer[frameCount] = curTime;
       for (let i = 0; i < nOutputs; i++) {
-        outputMatrix[frameCount * nOutputs + i] = this.shadowVars.get(vrsToRecord[i]!) ?? 0.0;
+        const vr = vrsToRecord[i] ?? 0;
+        outputMatrix[frameCount * nOutputs + i] = this.shadowVars.get(vr) ?? 0.0;
       }
       frameCount++;
     }
@@ -161,7 +163,8 @@ export class NativeFmuRunner {
       if (s % decimation === 0 && frameCount < maxFrames) {
         timeBuffer[frameCount] = curTime;
         for (let i = 0; i < nOutputs; i++) {
-          outputMatrix[frameCount * nOutputs + i] = this.shadowVars.get(vrsToRecord[i]!) ?? 0.0;
+          const vr = vrsToRecord[i] ?? 0;
+          outputMatrix[frameCount * nOutputs + i] = this.shadowVars.get(vr) ?? 0.0;
         }
         frameCount++;
       }
@@ -174,9 +177,9 @@ export class NativeFmuRunner {
     for (let i = 0; i < nOutputs; i++) {
       const col = new Float64Array(frameCount);
       for (let f = 0; f < frameCount; f++) {
-        col[f] = finalMatrix[f * nOutputs + i]!;
+        col[f] = finalMatrix[f * nOutputs + i] ?? 0.0;
       }
-      outputMap.set(namesToRecord[i]!, col);
+      outputMap.set(namesToRecord[i] ?? `var_${i}`, col);
     }
 
     const executionTimeMs = performance.now() - tStart;

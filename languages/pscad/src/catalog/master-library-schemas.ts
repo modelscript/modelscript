@@ -2491,10 +2491,19 @@ export function getPscadDefinitionLocation(
   return null;
 }
 
+export interface PscadDocSymbol {
+  name: string;
+  detail: string;
+  kind: number;
+  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  selectionRange: { start: { line: number; character: number }; end: { line: number; character: number } };
+  children?: PscadDocSymbol[] | undefined;
+}
+
 /**
  * Builds hierarchical LSP `DocumentSymbol[]` for the VS Code Outline & Breadcrumbs bar.
  */
-export function getPscadDocumentSymbols(text: string) {
+export function getPscadDocumentSymbols(text: string): PscadDocSymbol[] {
   const project = parsePscx(text);
   const lines = text.split(/\r?\n/);
   const totalLines = Math.max(0, lines.length - 1);
@@ -2508,8 +2517,8 @@ export function getPscadDocumentSymbols(text: string) {
     };
   };
 
-  const buildModuleChildren = (mod: typeof project.rootModule) => {
-    const children: any[] = [];
+  const buildModuleChildren = (mod: typeof project.rootModule): PscadDocSymbol[] => {
+    const children: PscadDocSymbol[] = [];
     for (const bus of mod.buses) {
       const r = makeRange(bus.line);
       children.push({
@@ -2534,7 +2543,7 @@ export function getPscadDocumentSymbols(text: string) {
     return children;
   };
 
-  const moduleSymbols: any[] = [
+  const moduleSymbols: PscadDocSymbol[] = [
     {
       name: project.rootModule.name || "Main",
       detail: "Root Schematic Module",
@@ -2580,7 +2589,15 @@ export function getPscadQuickFixes(text: string, uri: string) {
   const actions: {
     title: string;
     code: string;
-    edit: { changes: Record<string, { range: any; newText: string }[]> };
+    edit: {
+      changes: Record<
+        string,
+        {
+          range: { start: { line: number; character: number }; end: { line: number; character: number } };
+          newText: string;
+        }[]
+      >;
+    };
   }[] = [];
 
   for (const d of lints) {

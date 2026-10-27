@@ -280,7 +280,7 @@ export function emtResultToComtrade(
   stationName: string = "ModelScript_Station",
   recordingDevId: string = "EMT01",
 ): ComtradeRecord {
-  const analogChannels: any[] = [];
+  const analogChannels: ComtradeRecord["config"]["analogChannels"] = [];
   const analogData = new Map<string, Float64Array>();
   let chIdx = 1;
 

@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { language } from "@modelscript/dsl";
 import { lowerIbisToDae } from "./dae/ibis-to-dae.js";
@@ -51,7 +50,7 @@ export const ibisLanguage = language({
           modelDescription: "Lints IBIS file for pin mismatches, non-monotonic curves, and invalid parasitics.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const parsed = parseIbis(text);
@@ -63,7 +62,7 @@ export const ibisLanguage = language({
       title: "Lower IBIS to DAE",
       description: "Compiles IBIS buffer and package model directly into DAEBuilder linear memory.",
       category: "transform",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const parsed = parseIbis(text);
@@ -80,7 +79,7 @@ export const ibisLanguage = language({
       title: "Project IBIS to Modelica",
       description: "Synthesizes standard Modelica 3.x analog buffer driver model.",
       category: "export",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return "";
         const parsed = parseIbis(text);
@@ -92,7 +91,7 @@ export const ibisLanguage = language({
       title: "Evaluate Buffer Characteristics",
       description: "Computes output dynamic on-resistance and driver currents from I/V curves.",
       category: "simulate",
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const deck = parseIbis(text);

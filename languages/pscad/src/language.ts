@@ -316,7 +316,7 @@ export const pscadLanguage = language({
           modelDescription: "Lints PSCAD project for floating nodes and parameter errors.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: { documentText?: string | undefined }, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return [];
         const project = parsePscx(text);
@@ -342,7 +342,7 @@ export const pscadLanguage = language({
           modelDescription: "Inspects PSCAD components, buses, and wiring topology.",
         },
       },
-      execute: async (ctx: any, params: { documentText?: string | undefined }) => {
+      execute: async (ctx: { documentText?: string | undefined }, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         const project = parsePscx(text);
@@ -368,7 +368,13 @@ export const pscadLanguage = language({
           modelDescription: "Executes fixed-step companion circuit EMT simulation.",
         },
       },
-      execute: async (ctx: any, params?: Partial<PscadSimulationPipelineOptions>) => {
+      execute: async (
+        ctx: {
+          documentText?: string | undefined;
+          solverRunner?: PscadSimulationPipelineOptions["solverRunner"] | undefined;
+        },
+        params?: Partial<PscadSimulationPipelineOptions>,
+      ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         return runPscadSimulationPipeline({

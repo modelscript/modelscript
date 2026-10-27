@@ -114,7 +114,7 @@ export function validateUrdf(content: string): LspDiagnostic[] {
   let robot: UrdfRobot;
   try {
     robot = parseUrdf(content);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return [
       {
         range: {
@@ -124,7 +124,7 @@ export function validateUrdf(content: string): LspDiagnostic[] {
         severity: 1,
         code: "M7500",
         source: "urdf-parser",
-        message: `XML Parse error: ${err.message}`,
+        message: `XML Parse error: ${err instanceof Error ? err.message : String(err)}`,
       },
     ];
   }

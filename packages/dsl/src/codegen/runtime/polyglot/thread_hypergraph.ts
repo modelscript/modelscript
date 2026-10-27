@@ -80,6 +80,14 @@ export class ThreadHypergraph {
     let offset = slot * THREAD_STRIDE;
 
     let mask = this.data.get(offset + THREAD_FIELD_MASK);
+    let prevNodeId = this.data.get(offset + THREAD_HEADER_WORDS + domainIdx);
+    if ((mask & (1 << domainIdx)) != 0 && prevNodeId != 0 && prevNodeId != nodeId) {
+      let oldKey: u64 = ((domainIdx as u64) << 32) | (prevNodeId as u64);
+      if (this.nodeToThreadSlot.get(oldKey) == slot + 1) {
+        this.nodeToThreadSlot.set(oldKey, 0);
+      }
+    }
+
     mask |= (1 << domainIdx);
     this.data.set(offset + THREAD_FIELD_MASK, mask);
     this.data.set(offset + THREAD_HEADER_WORDS + domainIdx, nodeId);

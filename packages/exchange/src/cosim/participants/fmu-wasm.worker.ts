@@ -106,9 +106,9 @@ self.onmessage = async (event: MessageEvent) => {
         };
 
         const wasmModule = await WebAssembly.instantiate(binary, { env });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         wasmInstance = wasmModule as any;
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+
         wasmExports = wasmInstance!.exports;
 
         const exports = wasmExports as {

@@ -51,7 +51,6 @@ export class WebGPUSimulationRunner {
    * Attempt to initialize WebGPU. Returns true if successful, false if unsupported.
    */
   async initialize(): Promise<boolean> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nav = typeof globalThis !== "undefined" ? (globalThis as any).navigator : undefined;
     if (!nav || !nav.gpu) {
       return false; // WebGPU not available in this environment
@@ -207,9 +206,7 @@ export class WebGPUSimulationRunner {
     const resultBuffer = new Float32Array((steps + 1) * this.buffers.varCount);
     // Copy t=0
     for (let i = 0; i < this.buffers.varCount; i++) {
-      resultBuffer[i] =
-        this.buffers.stateBuffer[i * 2] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! +
-        this.buffers.stateBuffer[i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+      resultBuffer[i] = this.buffers.stateBuffer[i * 2]! + this.buffers.stateBuffer[i * 2 + 1]!;
     }
 
     const totalTrajectoryBytes = (steps + 1) * this.buffers.varCount * 8; // vec2<f32>
@@ -378,9 +375,7 @@ export class WebGPUSimulationRunner {
         const srcOffset = s * stepStride;
         const dstOffset = s * this.buffers.varCount;
         for (let i = 0; i < this.buffers.varCount; i++) {
-          resultBuffer[dstOffset + i] =
-            mappedData[srcOffset + i * 2] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! +
-            mappedData[srcOffset + i * 2 + 1] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+          resultBuffer[dstOffset + i] = mappedData[srcOffset + i * 2]! + mappedData[srcOffset + i * 2 + 1]!;
         }
       }
       trajectoryReadbackBuffer.unmap();
@@ -497,12 +492,8 @@ export class WebGPUSimulationRunner {
       const v = y[i] ?? 0;
       const vHi = Math.fround(v);
       const vLo = Math.fround(v - vHi);
-      fullState[
-        this.buffers.stateVarIndices[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! * 2
-      ] = vHi;
-      fullState[
-        this.buffers.stateVarIndices[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */! * 2 + 1
-      ] = vLo;
+      fullState[this.buffers.stateVarIndices[i]! * 2] = vHi;
+      fullState[this.buffers.stateVarIndices[i]! * 2 + 1] = vLo;
     }
     this.device.queue.writeBuffer(this.stateBuffer, 0, fullState);
 
@@ -541,7 +532,7 @@ export class WebGPUSimulationRunner {
 
       // 5. Extract only the derivative values
       for (let i = 0; i < this.numStates; i++) {
-        const idx = this.buffers.derivVarIndices[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+        const idx = this.buffers.derivVarIndices[i]!;
         derivValues[i] = (resultState[idx * 2] ?? 0) + (resultState[idx * 2 + 1] ?? 0);
       }
 

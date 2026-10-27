@@ -67,7 +67,8 @@ export function verifyReqIfMultiDomain(doc: ReqIfDocument, decks: MultiDomainDec
         const match = obj.text.match(pattern);
         if (match) {
           const rawVar = (match[1] ?? "").toLowerCase();
-          const rawOp = match[2] === "=" ? "==" : (match[2] as any);
+          const rawOp: RequirementContractSpec["operator"] =
+            match[2] === "=" ? "==" : (match[2] as RequirementContractSpec["operator"]);
           const unit = match[4] || "";
           const val = normalizeContractValue(parseFloat(match[3] ?? "0"), unit);
 

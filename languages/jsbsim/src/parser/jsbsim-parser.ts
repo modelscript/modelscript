@@ -150,9 +150,13 @@ export function parseJsbsim(source: string, filename?: string): JsbsimDocument {
   if (groundElem) {
     for (const cElem of findChildren(groundElem, "contact")) {
       const gName = getAttr(cElem, "name") ?? "GEAR";
-      const gType = (getAttr(cElem, "type")?.toUpperCase() ?? "BOGEY") as any;
+      const rawGType = getAttr(cElem, "type")?.toUpperCase();
+      const gType: JsbsimLandingGear["type"] =
+        rawGType === "STRUCTURE" || rawGType === "NOSE" || rawGType === "TAIL" ? rawGType : "BOGEY";
       const steerable = getChildText(cElem, "steerable") === "1" || getChildText(cElem, "steerable") === "true";
-      const bg = getChildText(cElem, "brake_group")?.toUpperCase() as any;
+      const rawBg = getChildText(cElem, "brake_group")?.toUpperCase();
+      const bg: JsbsimLandingGear["brakeGroup"] =
+        rawBg === "NONE" || rawBg === "LEFT" || rawBg === "RIGHT" || rawBg === "NOSE" ? rawBg : undefined;
 
       groundReactions.push({
         name: gName,
@@ -214,7 +218,11 @@ export function parseJsbsim(source: string, filename?: string): JsbsimDocument {
   const aeroCoefficients: JsbsimAeroCoeff[] = [];
   if (aeroElem) {
     for (const axisElem of findChildren(aeroElem, "axis")) {
-      const axisName = (getAttr(axisElem, "name")?.toUpperCase() ?? "LIFT") as any;
+      const rawAxis = getAttr(axisElem, "name")?.toUpperCase();
+      const axisName: JsbsimAeroCoeff["axis"] =
+        rawAxis === "DRAG" || rawAxis === "SIDE" || rawAxis === "ROLL" || rawAxis === "PITCH" || rawAxis === "YAW"
+          ? rawAxis
+          : "LIFT";
       for (const fnElem of findChildren(axisElem, "function")) {
         const fnName = getAttr(fnElem, "name") ?? "coeff";
         const terms: { property: string; factor: number }[] = [];

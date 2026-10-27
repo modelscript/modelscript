@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { KebabHorizontalIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
 import React, { useState } from "react";

@@ -8,9 +8,8 @@ interface NotebookRendererOutputItem {
 }
 
 interface DiagramData {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   nodes: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   edges: any[];
   coordinateSystem?: {
     x: number;
@@ -60,7 +59,7 @@ export function activate() {
 
       // Auto-layout nodes that lack placement annotations
       const nodesToLayout: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       nodes.forEach((node: any) => {
         if (node.autoLayout) {
           nodesToLayout.push(node.id ?? "");
@@ -113,11 +112,9 @@ export function activate() {
           edges: modelEdges,
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const newModel = dagreLayout.layout(model as any);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         newModel.nodes?.forEach((n: any) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const node = nodes.find((no: any) => no.id === n.id);
           if (node) {
             node.x = n.x - (node.width ?? 0) / 2;
