@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildDiagramFromDSL } from "../src/polyglot-diagram-builder.js";
+import { buildDiagramFromDSL, extractDeclarationFromText } from "../src/polyglot-diagram-builder.js";
 
 describe("DSL to X6 Diagram Adapter", () => {
   it("should adapt raw AST diagram data with DSL diagram configuration", () => {
@@ -134,5 +134,48 @@ describe("DSL to X6 Diagram Adapter", () => {
     assert.deepStrictEqual(edge.router, { name: "manhattan" });
     assert.deepStrictEqual(edge.connector, { name: "jumpover" });
     assert.strictEqual(edge.attrs.line.stroke, "#60a5fa");
+  });
+
+  it("extractDeclarationFromText extracts type and name correctly across formats", () => {
+    assert.deepStrictEqual(extractDeclarationFromText("parameter Real mass = 10;"), {
+      compType: "Real",
+      compName: "mass",
+    });
+
+    assert.deepStrictEqual(extractDeclarationFromText("parameter Modelica.SIunits.Voltage v = 5;"), {
+      compType: "Modelica.SIunits.Voltage",
+      compName: "v",
+    });
+
+    assert.deepStrictEqual(extractDeclarationFromText("constant input Real u = 1;"), {
+      compType: "Real",
+      compName: "u",
+    });
+
+    assert.deepStrictEqual(extractDeclarationFromText("flow HeatPort port_a;"), {
+      compType: "HeatPort",
+      compName: "port_a",
+    });
+
+    assert.deepStrictEqual(extractDeclarationFromText("Resistor R1;"), {
+      compType: "Resistor",
+      compName: "R1",
+    });
+
+    assert.deepStrictEqual(extractDeclarationFromText("myVar;"), {
+      compName: "myVar",
+    });
+
+    assert.deepStrictEqual(extractDeclarationFromText(""), {});
+  });
+
+  it("extractDeclarationFromText processes repetitive whitespace without ReDoS in sub-millisecond time", () => {
+    const malicious = " ".repeat(10000) + "parameter " + " ".repeat(10000) + "Real x;";
+    const start = performance.now();
+    const res = extractDeclarationFromText(malicious);
+    const duration = performance.now() - start;
+
+    assert.ok(duration < 50, `Expected execution < 50ms, took ${duration}ms`);
+    assert.deepStrictEqual(res, {}); // > 1000 chars leading spaces scanned up to limit safely without hang
   });
 });

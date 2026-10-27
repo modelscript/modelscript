@@ -2992,6 +2992,70 @@ function resolveTypeName(
   return undefined;
 }
 
+const DECL_MODIFIERS = new Set(["parameter", "constant", "input", "output", "flow", "discrete"]);
+
+/**
+ * Non-destructive linear scanner extracting optional type and component name
+ * from declaration text without regular expression backtracking (immune to ReDoS).
+ */
+export function extractDeclarationFromText(text: string): { compType?: string; compName?: string } {
+  if (!text) return {};
+
+  const maxLen = Math.min(text.length, 1000);
+  const words: string[] = [];
+  let i = 0;
+
+  while (i < maxLen) {
+    const ch = text.charCodeAt(i);
+    // [a-zA-Z_]
+    if ((ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch === 95) {
+      const start = i;
+      while (i < maxLen) {
+        const c = text.charCodeAt(i);
+        if (
+          (c >= 65 && c <= 90) ||
+          (c >= 97 && c <= 122) ||
+          (c >= 48 && c <= 57) ||
+          c === 95 ||
+          c === 46 // '.'
+        ) {
+          i++;
+        } else {
+          break;
+        }
+      }
+      let word = text.slice(start, i);
+      while (word.endsWith(".")) {
+        word = word.slice(0, -1);
+      }
+      if (word.length > 0) {
+        words.push(word);
+      }
+      if (words.length >= 8) break;
+    } else {
+      i++;
+    }
+  }
+
+  let idx = 0;
+  while (idx < words.length && DECL_MODIFIERS.has(words[idx]!)) {
+    idx++;
+  }
+
+  if (idx < words.length) {
+    if (idx + 1 < words.length) {
+      const compType = words[idx]!;
+      const compName = words[idx + 1]!.replace(/\..*$/, "");
+      return { compType, compName };
+    } else {
+      const compName = words[idx]!.replace(/\..*$/, "");
+      return { compName };
+    }
+  }
+
+  return {};
+}
+
 /**
  * Adapts raw AST diagram records and DSL DiagramConfig into full X6-compatible PolyglotDiagramData.
  */
@@ -3147,18 +3211,12 @@ export function buildDiagramFromDSL(
 
     if (!compName) {
       const text = getNodeText(rawNode);
-      // Non-destructive declaration match: optional modifiers followed by type and identifier
-      const declMatch = text.match(
-        /(?:^|\s+)(?:(?:parameter|constant|input|output|flow|discrete)\s+)*([a-zA-Z_][a-zA-Z0-9_.]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/,
-      );
-      if (declMatch) {
-        compType = compType || declMatch[1]!;
-        compName = declMatch[2]!;
+      const decl = extractDeclarationFromText(text);
+      if (decl.compName) {
+        compType = compType || decl.compType || "";
+        compName = decl.compName;
       } else {
-        const singleMatch = text.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
-        compName = singleMatch
-          ? singleMatch[1]!
-          : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+        compName = rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
       }
     }
 
