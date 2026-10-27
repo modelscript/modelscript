@@ -8,7 +8,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (33 Engineering Domains)"]
+    subgraph Languages["Polyglot Source Languages (44 Formats)"]
         direction TB
         MO[".mo (Modelica 3.x)"]
         SYS[".sysml / .kerml (SysML v2)"]

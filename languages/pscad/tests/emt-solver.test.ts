@@ -197,4 +197,56 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
     assert.ok(maxFaultV < 30e3, `Fault voltage must be deeply depressed (< 30 kV), got ${maxFaultV}`);
     assert.ok(maxPostFaultV > 150e3, `Post-fault voltage must recover (> 150 kV), got ${maxPostFaultV}`);
   });
+
+  it("should solve a 3-phase AC transmission line using WebAssembly EMT kernel", () => {
+    const netlist: EmtNetlist = {
+      name: "WasmAcGrid",
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["Bus1", { id: "Bus1", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["Line1"] }],
+        ["Bus2", { id: "Bus2", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["Line1"] }],
+      ]),
+      sources: [
+        {
+          id: "Src1",
+          bus: "Bus1",
+          voltageKv: 230.0,
+          frequencyHz: 60.0,
+          phaseDeg: 0.0,
+          rSourceOhm: 0.5,
+          lSourceHenry: 0.005,
+        },
+      ],
+      branches: [
+        {
+          id: "Line1",
+          fromBus: "Bus1",
+          toBus: "Bus2",
+          rOhm: 1.2,
+          lHenry: 0.02,
+          cFarad: 1e-6,
+        },
+      ],
+    };
+
+    const solver = new EmtSolver(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.05,
+      enableCda: true,
+      useWasm: true,
+    });
+
+    const result = solver.solve();
+
+    assert.equal(result.metrics.totalSteps, 1000);
+    const vBus2 = result.busVoltages.get("Bus2");
+    assert.ok(vBus2 !== undefined);
+    assert.equal(vBus2.length, 1000);
+
+    let maxV = 0.0;
+    for (let i = 500; i < 1000; i++) {
+      if (Math.abs(vBus2[i]!) > maxV) maxV = Math.abs(vBus2[i]!);
+    }
+    assert.ok(maxV > 150e3 && maxV < 250e3, `Max bus voltage ${maxV} should be in nominal 230 kV range`);
+  });
 });

@@ -184,16 +184,36 @@ export function simulateCumminsDynamics(
   // Synthesize 2nd-order state-space realization per DOF
   const realizations: StateSpaceRealization[] = [1, 2, 3, 4, 5, 6].map((dof) => createRationalRealization(dof, 2));
 
-  // State vectors:
-  // x: 6 positions, v: 6 velocities
-  // z: 6 x 2 radiation auxiliary states
-  const x = [0, 0, 0, 0, 0, 0];
-  const v = [0, 0, 0, 0, 0, 0];
-  const z: number[][] = realizations.map((r) => new Array(r.order).fill(0));
+  // State vectors (6 DOFs for positions x and velocities v, 12 states for radiation z)
+  const x = new Float64Array(6);
+  const v = new Float64Array(6);
+  const z = new Float64Array(12);
 
-  const timeHist: number[] = [];
-  const posHist: number[][] = [[], [], [], [], [], []];
-  const velHist: number[][] = [[], [], [], [], [], []];
+  // Pre-allocated scratch buffers for 4th-order Runge-Kutta stages
+  const dx1 = new Float64Array(6);
+  const dv1 = new Float64Array(6);
+  const dz1 = new Float64Array(12);
+
+  const dx2 = new Float64Array(6);
+  const dv2 = new Float64Array(6);
+  const dz2 = new Float64Array(12);
+
+  const dx3 = new Float64Array(6);
+  const dv3 = new Float64Array(6);
+  const dz3 = new Float64Array(12);
+
+  const dx4 = new Float64Array(6);
+  const dv4 = new Float64Array(6);
+  const dz4 = new Float64Array(12);
+
+  const xt = new Float64Array(6);
+  const vt = new Float64Array(6);
+  const zt = new Float64Array(12);
+
+  // Pre-allocate history buffers to eliminate array resizes during stepping
+  const timeHist = new Array<number>(totalSteps);
+  const posHist: number[][] = Array.from({ length: 6 }, () => new Array<number>(totalSteps));
+  const velHist: number[][] = Array.from({ length: 6 }, () => new Array<number>(totalSteps));
 
   // First-order wave force amplitudes per DOF (F0 ~ rho * g * V * k * RAO)
   const f0Wave = [
@@ -205,27 +225,27 @@ export function simulateCumminsDynamics(
     0.05 * vessel.mass * 9.81 * hs * 0.5, // Yaw (N*m)
   ];
 
-  // Helper derivative function
-  const computeDerivatives = (
-    curX: number[],
-    curV: number[],
-    curZ: number[][],
+  // In-place derivative evaluation with zero heap allocations
+  const evalDerivatives = (
+    curX: Float64Array,
+    curV: Float64Array,
+    curZ: Float64Array,
     time: number,
-  ): { dx: number[]; dv: number[]; dz: number[][] } => {
-    const dx = [...curV];
-    const dv = [0, 0, 0, 0, 0, 0];
-    const dz: number[][] = [];
-
+    outDx: Float64Array,
+    outDv: Float64Array,
+    outDz: Float64Array,
+  ): void => {
     for (let i = 0; i < 6; i++) {
+      outDx[i] = curV[i]!;
+
       const r = realizations[i] ?? createRationalRealization(i + 1, 2);
       const cRow = C[i] ?? [0, 0, 0, 0, 0, 0];
       const c_ii = cRow[i] ?? 0;
       const inertia_i = totalInertia[i] ?? vessel.mass;
-      const cZ = curZ[i] ?? [0, 0];
-      const z0 = cZ[0] ?? 0;
-      const z1 = cZ[1] ?? 0;
-      const curX_i = curX[i] ?? 0;
-      const curV_i = curV[i] ?? 0;
+      const z0 = curZ[i * 2 + 0]!;
+      const z1 = curZ[i * 2 + 1]!;
+      const curX_i = curX[i]!;
+      const curV_i = curV[i]!;
 
       // Radiation damping force mu_i = C_r * z_i
       const c0 = r.C[0] ?? 0;
@@ -248,7 +268,7 @@ export function simulateCumminsDynamics(
       const fExc = f0 * Math.cos(omegaWave * time);
 
       // Acceleration
-      dv[i] = (fExc - mu_i - restoring_i - fViscous) / Math.max(1.0, inertia_i);
+      outDv[i] = (fExc - mu_i - restoring_i - fViscous) / Math.max(1.0, inertia_i);
 
       // Radiation state derivatives: dz/dt = A * z + B * v
       const a00 = r.A[0]?.[0] ?? 0;
@@ -258,82 +278,63 @@ export function simulateCumminsDynamics(
       const b0 = r.B[0] ?? 0;
       const b1 = r.B[1] ?? 1;
 
-      dz.push([a00 * z0 + a01 * z1 + b0 * curV_i, a10 * z0 + a11 * z1 + b1 * curV_i]);
+      outDz[i * 2 + 0] = a00 * z0 + a01 * z1 + b0 * curV_i;
+      outDz[i * 2 + 1] = a10 * z0 + a11 * z1 + b1 * curV_i;
     }
-
-    return { dx, dv, dz };
   };
 
-  // RK4 time stepping
+  // Zero-allocation 4th-order Runge-Kutta time integration loop
+  const dtHalf = 0.5 * dt;
+  const dtSixth = dt / 6.0;
+
   for (let step = 0; step < totalSteps; step++) {
     const t = step * dt;
-    timeHist.push(t);
+    timeHist[step] = t;
     for (let i = 0; i < 6; i++) {
-      posHist[i]?.push(x[i] ?? 0);
-      velHist[i]?.push(v[i] ?? 0);
+      posHist[i]![step] = x[i]!;
+      velHist[i]![step] = v[i]!;
     }
 
-    const k1 = computeDerivatives(x, v, z, t);
+    // Stage 1
+    evalDerivatives(x, v, z, t, dx1, dv1, dz1);
 
-    const x_k2 = x.map((xi, i) => xi + 0.5 * dt * (k1.dx[i] ?? 0));
-    const v_k2 = v.map((vi, i) => vi + 0.5 * dt * (k1.dv[i] ?? 0));
-    const z_k2 = z.map((zi, i) => {
-      const z0 = zi[0] ?? 0;
-      const z1 = zi[1] ?? 0;
-      const dz = k1.dz[i] ?? [0, 0];
-      return [z0 + 0.5 * dt * (dz[0] ?? 0), z1 + 0.5 * dt * (dz[1] ?? 0)];
-    });
-    const k2 = computeDerivatives(x_k2, v_k2, z_k2, t + 0.5 * dt);
-
-    const x_k3 = x.map((xi, i) => xi + 0.5 * dt * (k2.dx[i] ?? 0));
-    const v_k3 = v.map((vi, i) => vi + 0.5 * dt * (k2.dv[i] ?? 0));
-    const z_k3 = z.map((zi, i) => {
-      const z0 = zi[0] ?? 0;
-      const z1 = zi[1] ?? 0;
-      const dz = k2.dz[i] ?? [0, 0];
-      return [z0 + 0.5 * dt * (dz[0] ?? 0), z1 + 0.5 * dt * (dz[1] ?? 0)];
-    });
-    const k3 = computeDerivatives(x_k3, v_k3, z_k3, t + 0.5 * dt);
-
-    const x_k4 = x.map((xi, i) => xi + dt * (k3.dx[i] ?? 0));
-    const v_k4 = v.map((vi, i) => vi + dt * (k3.dv[i] ?? 0));
-    const z_k4 = z.map((zi, i) => {
-      const z0 = zi[0] ?? 0;
-      const z1 = zi[1] ?? 0;
-      const dz = k3.dz[i] ?? [0, 0];
-      return [z0 + dt * (dz[0] ?? 0), z1 + dt * (dz[1] ?? 0)];
-    });
-    const k4 = computeDerivatives(x_k4, v_k4, z_k4, t + dt);
-
-    // Update state
+    // Stage 2
     for (let i = 0; i < 6; i++) {
-      const curX = x[i] ?? 0;
-      const curV = v[i] ?? 0;
-      const curZ = z[i] ?? [0, 0];
-      const z0 = curZ[0] ?? 0;
-      const z1 = curZ[1] ?? 0;
+      xt[i] = x[i]! + dtHalf * dx1[i]!;
+      vt[i] = v[i]! + dtHalf * dv1[i]!;
+    }
+    for (let j = 0; j < 12; j++) {
+      zt[j] = z[j]! + dtHalf * dz1[j]!;
+    }
+    evalDerivatives(xt, vt, zt, t + dtHalf, dx2, dv2, dz2);
 
-      const k1_dx = k1.dx[i] ?? 0;
-      const k2_dx = k2.dx[i] ?? 0;
-      const k3_dx = k3.dx[i] ?? 0;
-      const k4_dx = k4.dx[i] ?? 0;
+    // Stage 3
+    for (let i = 0; i < 6; i++) {
+      xt[i] = x[i]! + dtHalf * dx2[i]!;
+      vt[i] = v[i]! + dtHalf * dv2[i]!;
+    }
+    for (let j = 0; j < 12; j++) {
+      zt[j] = z[j]! + dtHalf * dz2[j]!;
+    }
+    evalDerivatives(xt, vt, zt, t + dtHalf, dx3, dv3, dz3);
 
-      const k1_dv = k1.dv[i] ?? 0;
-      const k2_dv = k2.dv[i] ?? 0;
-      const k3_dv = k3.dv[i] ?? 0;
-      const k4_dv = k4.dv[i] ?? 0;
+    // Stage 4
+    for (let i = 0; i < 6; i++) {
+      xt[i] = x[i]! + dt * dx3[i]!;
+      vt[i] = v[i]! + dt * dv3[i]!;
+    }
+    for (let j = 0; j < 12; j++) {
+      zt[j] = z[j]! + dt * dz3[j]!;
+    }
+    evalDerivatives(xt, vt, zt, t + dt, dx4, dv4, dz4);
 
-      const k1_dz = k1.dz[i] ?? [0, 0];
-      const k2_dz = k2.dz[i] ?? [0, 0];
-      const k3_dz = k3.dz[i] ?? [0, 0];
-      const k4_dz = k4.dz[i] ?? [0, 0];
-
-      x[i] = curX + (dt / 6) * (k1_dx + 2 * k2_dx + 2 * k3_dx + k4_dx);
-      v[i] = curV + (dt / 6) * (k1_dv + 2 * k2_dv + 2 * k3_dv + k4_dv);
-      z[i] = [
-        z0 + (dt / 6) * ((k1_dz[0] ?? 0) + 2 * (k2_dz[0] ?? 0) + 2 * (k3_dz[0] ?? 0) + (k4_dz[0] ?? 0)),
-        z1 + (dt / 6) * ((k1_dz[1] ?? 0) + 2 * (k2_dz[1] ?? 0) + 2 * (k3_dz[1] ?? 0) + (k4_dz[1] ?? 0)),
-      ];
+    // Update state vector
+    for (let i = 0; i < 6; i++) {
+      x[i] = x[i]! + dtSixth * (dx1[i]! + 2 * dx2[i]! + 2 * dx3[i]! + dx4[i]!);
+      v[i] = v[i]! + dtSixth * (dv1[i]! + 2 * dv2[i]! + 2 * dv3[i]! + dv4[i]!);
+    }
+    for (let j = 0; j < 12; j++) {
+      z[j] = z[j]! + dtSixth * (dz1[j]! + 2 * dz2[j]! + 2 * dz3[j]! + dz4[j]!);
     }
   }
 

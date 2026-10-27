@@ -19,6 +19,7 @@ export {
 export { parseCardDeck, parseHydFile, parseSimaFile, parseSimaXml } from "./parser/index.js";
 export { simaToModelica, simaToSsp, simaToSysml2 } from "./projections/index.js";
 export {
+  WasmCatenaryBridge,
   createRationalRealization,
   lowerSimaToDae,
   simulateCumminsDynamics,

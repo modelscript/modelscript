@@ -18,6 +18,8 @@ import type { UrdfRobot } from "../types.js";
 export interface UrdfDaeOptions {
   /** Gravitational acceleration in m/s^2. Default: 9.80665 along -Z. */
   gravity?: number | undefined;
+  /** Whether to linearize gravity near q=0. Default: false (exact non-linear gravity). */
+  linearizeGravity?: boolean | undefined;
 }
 
 export function lowerUrdfToDae(robot: UrdfRobot, builder?: DAEBuilder, options?: UrdfDaeOptions): DAEBuilder {
@@ -63,7 +65,7 @@ export function lowerUrdfToDae(robot: UrdfRobot, builder?: DAEBuilder, options?:
     // Apparent inertia M
     const inertiaVal = node.jointType === "prismatic" ? Math.max(0.1, node.mass) : Math.max(0.01, node.inertia[2]);
 
-    // Gravity bias term G = m * g * lever_arm * sin(q)
+    // Gravity bias term G = m * g * lever_arm * sin(q) (or linearized G*q)
     const leverArm = Math.max(0.1, Math.sqrt(node.originPos.x ** 2 + node.originPos.y ** 2));
     const gCoeff = node.mass * gravityG * leverArm;
 
@@ -74,29 +76,58 @@ export function lowerUrdfToDae(robot: UrdfRobot, builder?: DAEBuilder, options?:
     // Damping term: d * qd
     const dampTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(dampingVal), dae.addNameExpr(`${jName}.qd`));
 
-    // Gravity term: G * q (linearized near equilibrium for arena solver)
-    const gravTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(gCoeff), dae.addNameExpr(`${jName}.q`));
+    // Non-linear gravity term: G * sin(q) (exact trigonometric restoration)
+    let gravTerm: number;
+    if (options?.linearizeGravity || node.jointType === "prismatic") {
+      gravTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(gCoeff), dae.addNameExpr(`${jName}.q`));
+    } else {
+      const qExpr = dae.addNameExpr(`${jName}.q`);
+      const sinQ =
+        typeof (dae as any).addCall === "function"
+          ? (dae as any).addCall(0, qExpr, 1) // BuiltinMathFunc.Sin = 0
+          : qExpr;
+      gravTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(gCoeff), sinQ);
+    }
 
-    // LHS = M*der(qd) + D*qd + G*q
+    // LHS = M*der(qd) + D*qd + G
     const lhs = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Add, mTerm, dampTerm), gravTerm);
     const rhs = dae.addNameExpr(`${jName}.tau`);
 
     dae.addEquation(EqKind.Simple, lhs, rhs);
   }
 
-  // 4. Link forward kinematics equations: link.z = parent.z + origin.z + q (if prismatic)
-  let parentZExpr = dae.addRealLiteral(0.0);
+  // 4. Link forward kinematics equations: link.(x,y,z) = parent.(x,y,z) + origin.(x,y,z) (+ q * axis if prismatic)
   for (const node of tree) {
     const lName = node.name;
-    const zOffset = dae.addRealLiteral(node.originPos.z);
-    let linkZ = dae.addBinaryExpr(BinOp.Add, parentZExpr, zOffset);
+    const parentName = node.parentName;
+
+    const parentXExpr = parentName ? dae.addNameExpr(`${parentName}.x`) : dae.addRealLiteral(0.0);
+    const parentYExpr = parentName ? dae.addNameExpr(`${parentName}.y`) : dae.addRealLiteral(0.0);
+    const parentZExpr = parentName ? dae.addNameExpr(`${parentName}.z`) : dae.addRealLiteral(0.0);
+
+    let linkX = dae.addBinaryExpr(BinOp.Add, parentXExpr, dae.addRealLiteral(node.originPos.x));
+    let linkY = dae.addBinaryExpr(BinOp.Add, parentYExpr, dae.addRealLiteral(node.originPos.y));
+    let linkZ = dae.addBinaryExpr(BinOp.Add, parentZExpr, dae.addRealLiteral(node.originPos.z));
 
     if (node.jointName && node.jointType === "prismatic") {
-      linkZ = dae.addBinaryExpr(BinOp.Add, linkZ, dae.addNameExpr(`${node.jointName}.q`));
+      const qExpr = dae.addNameExpr(`${node.jointName}.q`);
+      if (Math.abs(node.axis.x) > 1e-6) {
+        const dx = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(node.axis.x), qExpr);
+        linkX = dae.addBinaryExpr(BinOp.Add, linkX, dx);
+      }
+      if (Math.abs(node.axis.y) > 1e-6) {
+        const dy = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(node.axis.y), qExpr);
+        linkY = dae.addBinaryExpr(BinOp.Add, linkY, dy);
+      }
+      if (Math.abs(node.axis.z) > 1e-6) {
+        const dz = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(node.axis.z), qExpr);
+        linkZ = dae.addBinaryExpr(BinOp.Add, linkZ, dz);
+      }
     }
 
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(`${lName}.x`), linkX);
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(`${lName}.y`), linkY);
     dae.addEquation(EqKind.Simple, dae.addNameExpr(`${lName}.z`), linkZ);
-    parentZExpr = dae.addNameExpr(`${lName}.z`);
   }
 
   return dae;

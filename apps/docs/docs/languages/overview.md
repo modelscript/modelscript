@@ -4,6 +4,12 @@ ModelScript is not a single-language compiler—it is a **polyglot systems engin
 
 ---
 
+## Explore by Domain
+
+Search by name, file extension, or engineering domain, or filter by industry. See [Industries](/industries/) for domain-specific workflows.
+
+<LanguageExplorer />
+
 ## Supported Engineering Languages
 
 | Language                                     | Package                     | Extensions                               | Engineering Domain                                                                 |

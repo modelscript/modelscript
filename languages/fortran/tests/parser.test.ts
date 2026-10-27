@@ -100,4 +100,53 @@ END SUBROUTINE
     assert.ok(variables.some((v) => v.name === "easy5_blk_s_1"));
     assert.ok(variables.some((v) => v.name === "easy5_blk_Y"));
   });
+
+  test("lowerFortranToDae: handles unary minus, power operator (**), and intrinsic math functions", () => {
+    const variables: any[] = [];
+    const equations: any[] = [];
+    let exprCounter = 1;
+
+    const mockBuilder: any = {
+      addVariable(name: string, type: any, variability: any, causality: any, startVal: number) {
+        variables.push({ name, type, variability, causality, startVal });
+        return variables.length - 1;
+      },
+      addEquation(kind: any, lhs: number, rhs: number) {
+        equations.push({ kind, lhs, rhs });
+        return equations.length - 1;
+      },
+      addDer(varId: number) {
+        return exprCounter++;
+      },
+      addName(varId: number) {
+        return exprCounter++;
+      },
+      addBinaryExpr(op: any, left: number, right: number) {
+        return exprCounter++;
+      },
+      addRealLiteral(val: number) {
+        return exprCounter++;
+      },
+      addUnaryExpr(op: any, operand: number) {
+        return exprCounter++;
+      },
+    };
+
+    const lines = [
+      "! Advanced EASY5 state equations",
+      "SD(1) = -S(1) * 2.5 - 10.0",
+      "SD(2) = SQRT(S(1)) + S(2)**2.0",
+      "der_omega = -(M_TORQUE * 0.05)",
+      "OUT_VAL = EXP(-S(1)) * 50.0",
+    ];
+
+    const res = lowerFortranToDae(mockBuilder, lines, "f_block");
+    assert.equal(res.equationCount, 4);
+    assert.equal(res.stateVarIndices.length, 3); // s_1, s_2, omega
+    assert.ok(variables.some((v) => v.name === "f_block_s_1"));
+    assert.ok(variables.some((v) => v.name === "f_block_s_2"));
+    assert.ok(variables.some((v) => v.name === "f_block_omega"));
+    assert.ok(variables.some((v) => v.name === "f_block_M_TORQUE"));
+    assert.ok(variables.some((v) => v.name === "f_block_OUT_VAL"));
+  });
 });

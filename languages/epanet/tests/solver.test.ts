@@ -54,4 +54,30 @@ describe("EPANET Todini Global Gradient Hydraulic Solver", () => {
     assert(pJ1 > 0, `Expected positive pressure at J1, got ${pJ1}`);
     assert(pJ2 > 0, `Expected positive pressure at J2, got ${pJ2}`);
   });
+
+  it("solves gravity network pressures and flows using WebAssembly Cholesky kernel", () => {
+    const net = parseInp(SIMPLE_GRAVITY_SYSTEM);
+    const res = solveHydraulics(net, { useWasm: true });
+
+    assert.strictEqual(res.converged, true);
+    assert(res.iterations <= 15, `Expected <= 15 iterations, got ${res.iterations}`);
+
+    const q1 = res.linkFlows.get("P1") ?? 0;
+    const q2 = res.linkFlows.get("P2") ?? 0;
+    assert.strictEqual(Math.round(q1), 25);
+    assert.strictEqual(Math.round(q2), 15);
+
+    const hR1 = res.nodeHeads.get("R1") ?? 0;
+    const hJ1 = res.nodeHeads.get("J1") ?? 0;
+    const hJ2 = res.nodeHeads.get("J2") ?? 0;
+
+    assert.strictEqual(hR1, 100.0);
+    assert(hJ1 < hR1 && hJ1 > 80.0, `Expected 80 < hJ1 < 100, got ${hJ1}`);
+    assert(hJ2 < hJ1 && hJ2 > 60.0, `Expected 60 < hJ2 < hJ1, got ${hJ2}`);
+
+    const pJ1 = res.nodePressures.get("J1") ?? 0;
+    const pJ2 = res.nodePressures.get("J2") ?? 0;
+    assert(pJ1 > 0, `Expected positive pressure at J1, got ${pJ1}`);
+    assert(pJ2 > 0, `Expected positive pressure at J2, got ${pJ2}`);
+  });
 });

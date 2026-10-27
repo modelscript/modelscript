@@ -8,6 +8,7 @@
  */
 
 import type { DelayedNeutronGroup, Relap5Deck } from "../types.js";
+import { WasmPointKineticsBridge } from "./wasm-bridge.js";
 
 export interface KineticsSolverOptions {
   duration?: number | undefined; // transient duration (s), default 10.0
@@ -37,6 +38,15 @@ export interface KineticsSimulationResult {
 }
 
 export function solvePointKinetics(deck: Relap5Deck, options?: KineticsSolverOptions): KineticsSimulationResult {
+  const wasmBridge = WasmPointKineticsBridge.getInstance();
+  if (wasmBridge) {
+    try {
+      return wasmBridge.simulate(deck, options);
+    } catch {
+      // Fall through to pure TS implementation if WASM throws
+    }
+  }
+
   const duration = options?.duration ?? 10.0;
   const dt = options?.stepSize ?? 0.001;
   const extRho0 = options?.externalReactivity ?? 0.0;

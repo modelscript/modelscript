@@ -31,6 +31,50 @@ export interface EmulsionProperties {
 }
 
 /**
+ * Fast zero-allocation scalar emulsion viscosity calculation without object wrapping.
+ */
+export function evaluateEmulsionViscosityFast(
+  waterCut: number,
+  oilViscosity: number,
+  waterViscosity = 0.001,
+  options?: EmulsionOptions,
+): number {
+  const wc = Math.max(0.0, Math.min(1.0, waterCut));
+  if (wc <= 0.0) return oilViscosity;
+  if (wc >= 1.0) return waterViscosity;
+
+  const wcInv = options?.inversionWaterCut ?? 0.42;
+  const phiMax = options?.maxPackingFraction ?? 0.68;
+  const peakMultiplier = options?.peakMultiplier ?? 8.5;
+
+  let muCont: number;
+  let phiD: number;
+
+  if (wc < wcInv) {
+    muCont = oilViscosity;
+    phiD = (wc / wcInv) * phiMax * 0.95;
+  } else {
+    muCont = waterViscosity;
+    const oilCut = 1.0 - wc;
+    const invOilCut = 1.0 - wcInv;
+    phiD = (oilCut / Math.max(1e-4, invOilCut)) * phiMax * 0.95;
+  }
+
+  const normalizedPhi = Math.min(0.92, phiD / phiMax);
+  const k0 = 0.85;
+  const denominator = Math.max(0.05, 1.0 - normalizedPhi);
+  const factor = Math.max(0.05, 1.0 - (k0 * phiD) / denominator);
+  let muRel = Math.pow(factor, -2.5);
+
+  const sigma = 0.05;
+  const distFromInversion = (wc - wcInv) / sigma;
+  const inversionPeak = peakMultiplier * Math.exp(-0.5 * distFromInversion * distFromInversion);
+  muRel = Math.max(muRel, 1.0 + inversionPeak);
+
+  return muCont * muRel;
+}
+
+/**
  * Evaluates the effective emulsion viscosity accounting for phase inversion.
  *
  * @param waterCut          Water volume fraction WC = Q_w / (Q_o + Q_w) [0.0 to 1.0]

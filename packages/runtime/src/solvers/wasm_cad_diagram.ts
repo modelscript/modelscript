@@ -129,6 +129,56 @@ export function raycastBvhWasm(
 }
 
 /**
+ * Performs hierarchical stack-based BVH tree raycasting against 64-byte nodes in WASM.
+ */
+export function raycastBvhTreeWasm(
+  nodes: Float64Array,
+  numNodes: number,
+  origin: readonly [number, number, number],
+  dir: readonly [number, number, number],
+  maxDist = 1e30,
+): { id: number; distance: number; point: [number, number, number] } | null {
+  const wasm: any = getDefaultWasmExports();
+  if (!wasm || typeof wasm.cad_bvh_tree_raycast !== "function") {
+    throw new Error("WASM cad_bvh_tree_raycast kernel not available");
+  }
+  if (numNodes === 0) return null;
+
+  const s = ensureCadScratch(wasm);
+  const nodesPtr = wasm.__new(numNodes * 64, 0);
+
+  const buf = wasm.memory.buffer;
+  new Float64Array(buf, nodesPtr, numNodes * 8).set(nodes.subarray(0, numNodes * 8));
+
+  const o = new Float64Array(buf, s.rayOriginPtr, 3);
+  o[0] = origin[0];
+  o[1] = origin[1];
+  o[2] = origin[2];
+
+  const d = new Float64Array(buf, s.rayDirPtr, 3);
+  d[0] = dir[0];
+  d[1] = dir[1];
+  d[2] = dir[2];
+
+  const hitId: number = wasm.cad_bvh_tree_raycast(
+    numNodes,
+    nodesPtr,
+    s.rayOriginPtr,
+    s.rayDirPtr,
+    maxDist,
+    s.hitOutPtr,
+  );
+  if (hitId < 0) return null;
+
+  const hitOut = new Float64Array(wasm.memory.buffer, s.hitOutPtr, 4);
+  return {
+    id: hitId,
+    distance: hitOut[0]!,
+    point: [hitOut[1]!, hitOut[2]!, hitOut[3]!],
+  };
+}
+
+/**
  * Computes exact squared Euclidean distance between two 3D triangles (9 f64s each) in WASM.
  */
 export function computeTriTriMinDistanceSqWasm(triA: Float64Array, triB: Float64Array): number {

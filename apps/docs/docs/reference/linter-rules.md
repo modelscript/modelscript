@@ -1,6 +1,6 @@
 # Compiler Linter Rules Reference
 
-ModelScript includes a zero-allocation, multi-language static analysis engine that executes directly over linear WebAssembly Concrete Syntax Trees (`CompilerLint`) and memoized Salsa semantic queries (`lint__*` hooks). Across all **33 supported engineering languages**, the compiler enforces **over 250 diagnostic rules** before simulation or code generation begins.
+ModelScript includes a zero-allocation, multi-language static analysis engine that executes directly over linear WebAssembly Concrete Syntax Trees (`CompilerLint`) and memoized Salsa semantic queries (`lint__*` hooks). Across the **supported engineering languages**, the compiler enforces **over 250 diagnostic rules** before simulation or code generation begins.
 
 ## Running the Linter
 

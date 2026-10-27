@@ -192,7 +192,18 @@ export function computeBodePlot(
   const m = sys.inputNames.length;
   const p = sys.outputNames.length;
 
+  const dim = 2 * n;
+  const scratchM = new Float64Array(dim * dim);
+  const scratchRhs = new Float64Array(dim);
+  const scratchSol = new Float64Array(dim);
+  const outX: { real: number; imag: number }[] = Array.from({ length: n }, () => ({ real: 0, imag: 0 }));
+  const bCol = new Float64Array(n);
+
   for (let inIdx = 0; inIdx < m; inIdx++) {
+    for (let i = 0; i < n; i++) {
+      bCol[i] = sys.B[i]![inIdx]!;
+    }
+
     for (let outIdx = 0; outIdx < p; outIdx++) {
       const magList: number[] = [];
       const phaseList: number[] = [];
@@ -203,18 +214,13 @@ export function computeBodePlot(
 
         if (n > 0) {
           // Solve complex system (j*w*I - A) * X = B[:, inIdx]
-          // Re(M) = -A, Im(M) = w*I
-          const X = solveComplexSystem(
-            sys.A,
-            w,
-            sys.B.map((row) => row[inIdx]!),
-          );
-          if (X) {
+          const ok = solveComplexSystem(sys.A, w, bCol, scratchM, scratchRhs, scratchSol, outX);
+          if (ok) {
             // y = C * X + D
             for (let k = 0; k < n; k++) {
               const cVal = sys.C[outIdx]![k]!;
-              gReal += cVal * X[k]!.real;
-              gImag += cVal * X[k]!.imag;
+              gReal += cVal * outX[k]!.real;
+              gImag += cVal * outX[k]!.imag;
             }
           }
         }
@@ -257,93 +263,93 @@ export function computeBodePlot(
 
 /**
  * Solves (j*w*I - A) * X = b for complex vector X.
- * Uses 2n x 2n equivalent real system:
+ * Uses 2n x 2n equivalent real system on flat Float64Array scratch buffers:
  * [ -A   -w*I ] [ X_re ] = [ b ]
  * [  w*I  -A  ] [ X_im ]   [ 0 ]
  */
-function solveComplexSystem(A: number[][], w: number, b: number[]): { real: number; imag: number }[] | null {
-  const n = A.length;
+function solveComplexSystem(
+  A: number[][],
+  w: number,
+  b: Float64Array,
+  scratchM: Float64Array,
+  scratchRhs: Float64Array,
+  scratchSol: Float64Array,
+  outResult: { real: number; imag: number }[],
+): boolean {
+  const n = b.length;
   const dim = 2 * n;
-  const M: number[][] = Array.from({ length: dim }, () => new Array(dim).fill(0.0));
-  const rhs: number[] = new Array(dim).fill(0.0);
 
+  scratchM.fill(0);
   for (let i = 0; i < n; i++) {
-    rhs[i] = b[i]!;
-    rhs[i + n] = 0.0;
+    scratchRhs[i] = b[i]!;
+    scratchRhs[i + n] = 0.0;
+
+    const rowOffset1 = i * dim;
+    const rowOffset2 = (i + n) * dim;
+    const aRow = A[i]!;
 
     for (let j = 0; j < n; j++) {
-      M[i]![j] = -A[i]![j]!;
-      M[i + n]![j + n] = -A[i]![j]!;
+      const aVal = -aRow[j]!;
+      scratchM[rowOffset1 + j] = aVal;
+      scratchM[rowOffset2 + j + n] = aVal;
     }
-    const rowA = M[i];
-    const rowB = M[i + n];
-    if (rowA) {
-      const curA = rowA[i + n];
-      if (curA !== undefined) {
-        rowA[i + n] = curA - w;
-      }
-    }
-    if (rowB) {
-      const curB = rowB[i];
-      if (curB !== undefined) {
-        rowB[i] = curB + w;
-      }
-    }
+    scratchM[rowOffset1 + i + n] = scratchM[rowOffset1 + i + n]! - w;
+    scratchM[rowOffset2 + i] = scratchM[rowOffset2 + i]! + w;
   }
 
-  // Gaussian elimination
+  // Gaussian elimination with partial pivoting
   for (let col = 0; col < dim; col++) {
     let maxRow = col;
-    let maxVal = Math.abs(M[col]![col]!);
+    let maxVal = Math.abs(scratchM[col * dim + col]!);
     for (let row = col + 1; row < dim; row++) {
-      const val = Math.abs(M[row]![col]!);
+      const val = Math.abs(scratchM[row * dim + col]!);
       if (val > maxVal) {
         maxVal = val;
         maxRow = row;
       }
     }
-    if (maxVal < 1e-15) return null;
+    if (maxVal < 1e-15) return false;
 
-    const tmpR = M[col]!;
-    M[col] = M[maxRow]!;
-    M[maxRow] = tmpR;
+    // Swap rows in scratchM
+    if (maxRow !== col) {
+      const r1 = col * dim;
+      const r2 = maxRow * dim;
+      for (let k = 0; k < dim; k++) {
+        const tmp = scratchM[r1 + k]!;
+        scratchM[r1 + k] = scratchM[r2 + k]!;
+        scratchM[r2 + k] = tmp;
+      }
+      const tmpB = scratchRhs[col]!;
+      scratchRhs[col] = scratchRhs[maxRow]!;
+      scratchRhs[maxRow] = tmpB;
+    }
 
-    const tmpB = rhs[col]!;
-    rhs[col] = rhs[maxRow]!;
-    rhs[maxRow] = tmpB;
-
+    const diagVal = scratchM[col * dim + col]!;
     for (let row = col + 1; row < dim; row++) {
-      const rowM = M[row];
-      const colM = M[col];
-      const diagVal = colM ? colM[col] : undefined;
-      const curRowVal = rowM ? rowM[col] : undefined;
-      if (!rowM || !colM || diagVal === undefined || curRowVal === undefined) continue;
+      const rOffset = row * dim;
+      const curRowVal = scratchM[rOffset + col]!;
+      if (curRowVal === 0.0) continue;
       const factor = curRowVal / diagVal;
       for (let k = col; k < dim; k++) {
-        const rVal = rowM[k];
-        const cVal = colM[k];
-        if (rVal !== undefined && cVal !== undefined) {
-          rowM[k] = rVal - factor * cVal;
-        }
+        scratchM[rOffset + k] = scratchM[rOffset + k]! - factor * scratchM[col * dim + k]!;
       }
-      const rhsRowVal = rhs[row];
-      const rhsColVal = rhs[col];
-      if (rhsRowVal !== undefined && rhsColVal !== undefined) {
-        rhs[row] = rhsRowVal - factor * rhsColVal;
-      }
+      scratchRhs[row] = scratchRhs[row]! - factor * scratchRhs[col]!;
     }
   }
 
-  const sol = new Array(dim).fill(0.0);
+  // Back-substitution
   for (let row = dim - 1; row >= 0; row--) {
-    let sum = rhs[row]!;
-    for (let col = row + 1; col < dim; col++) sum -= M[row]![col]! * sol[col]!;
-    sol[row] = sum / M[row]![row]!;
+    let sum = scratchRhs[row]!;
+    const rOffset = row * dim;
+    for (let col = row + 1; col < dim; col++) {
+      sum -= scratchM[rOffset + col]! * scratchSol[col]!;
+    }
+    scratchSol[row] = sum / scratchM[rOffset + row]!;
   }
 
-  const result: { real: number; imag: number }[] = [];
   for (let i = 0; i < n; i++) {
-    result.push({ real: sol[i]!, imag: sol[i + n]! });
+    outResult[i]!.real = scratchSol[i]!;
+    outResult[i]!.imag = scratchSol[i + n]!;
   }
-  return result;
+  return true;
 }

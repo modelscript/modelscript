@@ -14,6 +14,7 @@ import {
   computeTriTriMinDistanceSqWasm,
   getDefaultWasmExports,
   multiplyMat4Wasm,
+  raycastBvhTreeWasm,
   raycastBvhWasm,
   routeOrthogonalAStarWasm,
   SdpSolver,
@@ -70,6 +71,61 @@ describe("Native WebAssembly CAD (BSP/BVH/Clearance) & Diagram (Orthogonal A*) K
     assert.deepEqual(hit.point, [1, 1, 10]);
 
     const miss = raycastBvhWasm(aabbs, ids, [1, 1, 0], [0, 0, -1], 100);
+    assert.equal(miss, null);
+  });
+
+  it("executes hierarchical binary BVH tree raycasting with stack traversal in WASM", () => {
+    // Binary tree with 3 nodes:
+    // Root (0): enclosing box [0,0,10..2,2,52], left=1, right=2, item=-1
+    // Left (1): leaf box [0,0,10..2,2,12], left=-1, right=-1, item=10
+    // Right (2): leaf box [0,0,50..2,2,52], left=-1, right=-1, item=20
+    const nodeBuf = new ArrayBuffer(3 * 64);
+    const f64 = new Float64Array(nodeBuf);
+    const i32 = new Int32Array(nodeBuf);
+
+    // Root node 0
+    f64[0] = 0;
+    f64[1] = 0;
+    f64[2] = 10;
+    f64[3] = 2;
+    f64[4] = 2;
+    f64[5] = 52;
+    i32[12] = 1;
+    i32[13] = 2;
+    i32[14] = -1;
+    i32[15] = 0;
+
+    // Left child 1
+    f64[8] = 0;
+    f64[9] = 0;
+    f64[10] = 10;
+    f64[11] = 2;
+    f64[12] = 2;
+    f64[13] = 12;
+    i32[28] = -1;
+    i32[29] = -1;
+    i32[30] = 10;
+    i32[31] = 1;
+
+    // Right child 2
+    f64[16] = 0;
+    f64[17] = 0;
+    f64[18] = 50;
+    f64[19] = 2;
+    f64[20] = 2;
+    f64[21] = 52;
+    i32[44] = -1;
+    i32[45] = -1;
+    i32[46] = 20;
+    i32[47] = 1;
+
+    const hit = raycastBvhTreeWasm(f64, 3, [1, 1, 0], [0, 0, 1], 100);
+    assert.ok(hit !== null);
+    assert.equal(hit.id, 10);
+    assert.ok(Math.abs(hit.distance - 10.0) < 1e-9);
+    assert.deepEqual(hit.point, [1, 1, 10]);
+
+    const miss = raycastBvhTreeWasm(f64, 3, [1, 1, 0], [0, 0, -1], 100);
     assert.equal(miss, null);
   });
 

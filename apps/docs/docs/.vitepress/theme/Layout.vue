@@ -2,7 +2,9 @@
 <script setup lang="ts">
 import { inBrowser } from "vitepress";
 import DefaultTheme from "vitepress/theme";
-import TurbineHero from "./components/TurbineHero.vue";
+import { defineAsyncComponent } from "vue";
+
+const TurbineHero = defineAsyncComponent(() => import("./components/TurbineHero.vue"));
 
 const { Layout } = DefaultTheme;
 </script>
@@ -14,7 +16,6 @@ const { Layout } = DefaultTheme;
         <TurbineHero />
       </ClientOnly>
       <div v-if="!inBrowser" class="turbine-ssr-fallback">
-        <div class="fallback-aura"></div>
         <img class="fallback-img" src="/ms-logo.png" alt="ModelScript Turbine Engine" />
       </div>
     </template>

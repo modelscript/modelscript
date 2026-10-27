@@ -176,100 +176,125 @@ export function solveReservoirDepletion(
     const dtDays = targetDay - currentDay;
     currentDay = targetDay;
 
+    const nSub = Math.max(1, Math.ceil(dtDays / 2.0));
+    const subDt = dtDays / nSub;
+
     let stepOil = 0.0;
-    let stepWater = 0.0;
-    let stepGas = 0.0;
+    let stepWaterProd = 0.0;
+    let stepGasProd = 0.0;
 
-    const wellSamples: WellProductionSample[] = [];
+    let latestWellSamples: WellProductionSample[] = [];
 
-    // Interpolate fluid properties at current average pressure
-    const { bo, muO } = interpolatePvdo(deck.props.pvdo, pres);
-    const bw = deck.props.pvtw?.bw ?? 1.02;
-    const muW = deck.props.pvtw?.muw ?? 0.5; // cP
+    const bg = deck.props.pvdg?.[0]?.fvf ?? (isField ? 0.001 : 0.005);
 
-    // Current average water saturation in reservoir at the producer drainage zone
-    // Advances with cumulative oil recovery and Buckley-Leverett waterflood displacement
-    const recoveryFrac = stoiip > 0 ? cumOil / stoiip : 0.0;
-    const maxSw = deck.props.swof.length > 0 ? deck.props.swof[deck.props.swof.length - 1]!.saturation : 0.8;
-    const displaceableMobileFraction = Math.max(0.1, 1.0 - swc - 0.2);
-    const avgSw = Math.min(maxSw, swc + (maxSw - swc) * Math.min(1.0, recoveryFrac / displaceableMobileFraction));
-    const { krw, kro } = interpolateSwof(deck.props.swof, avgSw);
+    for (let sub = 0; sub < nSub; sub++) {
+      // Interpolate fluid properties at current average pressure
+      const { bo, muO } = interpolatePvdo(deck.props.pvdo, pres);
+      const bw = deck.props.pvtw?.bw ?? 1.02;
+      const muW = deck.props.pvtw?.muw ?? 0.5; // cP
 
-    // Water fractional flow: fw = (krw / muW) / (krw / muW + kro / muO)
-    const mobW = krw / Math.max(1e-4, muW);
-    const mobO = kro / Math.max(1e-4, muO);
-    const waterCut = mobW + mobO > 0 ? mobW / (mobW + mobO) : 0.0;
+      // Current average water saturation in reservoir at the producer drainage zone
+      // Advances with cumulative oil recovery and Buckley-Leverett waterflood displacement
+      const recoveryFrac = stoiip > 0 ? (cumOil + stepOil) / stoiip : 0.0;
+      const maxSw = deck.props.swof.length > 0 ? deck.props.swof[deck.props.swof.length - 1]!.saturation : 0.8;
+      const displaceableMobileFraction = Math.max(0.1, 1.0 - swc - 0.2);
+      const avgSw = Math.min(maxSw, swc + (maxSw - swc) * Math.min(1.0, recoveryFrac / displaceableMobileFraction));
+      const { krw, kro } = interpolateSwof(deck.props.swof, avgSw);
 
-    // Calculate rates from each producer well
-    for (const w of wellList) {
-      if (w.productionControl && w.productionControl.status === "OPEN") {
-        const pc = w.productionControl;
-        const bhp = pc.bhpLimit;
-        const dP = Math.max(0, pres - bhp);
+      // Water fractional flow: fw = (krw / muW) / (krw / muW + kro / muO)
+      const mobW = krw / Math.max(1e-4, muW);
+      const mobO = kro / Math.max(1e-4, muO);
+      const waterCut = mobW + mobO > 0 ? mobW / (mobW + mobO) : 0.0;
 
-        let totalWi = 0.0;
-        for (const c of w.completions) {
-          if (c.status === "OPEN") totalWi += c.wellIndex;
+      let subOil = 0.0;
+      let subWaterProd = 0.0;
+      let subGasProd = 0.0;
+      let subWaterInj = 0.0;
+      let subGasInj = 0.0;
+
+      const subWellSamples: WellProductionSample[] = [];
+
+      // Calculate rates from each producer and injector well
+      for (const w of wellList) {
+        if (w.productionControl && w.productionControl.status === "OPEN") {
+          const pc = w.productionControl;
+          const bhpLimit = pc.bhpLimit;
+          const dP = Math.max(0, pres - bhpLimit);
+
+          let totalWi = 0.0;
+          for (const c of w.completions) {
+            if (c.status === "OPEN") totalWi += c.wellIndex;
+          }
+          if (totalWi === 0.0) {
+            const kAvg = Math.sqrt(deck.grid.permX * deck.grid.permY);
+            totalWi = (isField ? 0.00708 : 0.00852) * kAvg * dz;
+          }
+
+          // Inflow rate via Peaceman equation: q_oil = WI * (kro / (muO * bo)) * (P_res - P_bhp)
+          const wellMobility = kro / Math.max(0.1, muO * bo);
+          const maxRate = totalWi * dP * wellMobility;
+          const qOil = Math.min(pc.oilRate > 0 ? pc.oilRate : maxRate, maxRate);
+          const actualBhp =
+            pc.oilRate > 0 && qOil < maxRate && totalWi * wellMobility > 0
+              ? pres - qOil / (totalWi * wellMobility)
+              : bhpLimit;
+
+          const qWater = waterCut > 0.001 ? (qOil * waterCut) / Math.max(1e-4, 1.0 - waterCut) : 0.0;
+          // Dissolved solution gas-oil ratio Rs(P) scales with reservoir pressure
+          const pRatio = Math.max(0.1, Math.min(1.5, pres / initPres));
+          const baseGor = isField ? 500.0 : 90.0;
+          const solutionGor = baseGor * Math.pow(pRatio, 0.8);
+          const producingGor =
+            pres < 0.85 * initPres ? solutionGor * (1.0 + 1.2 * (0.85 - pres / initPres)) : solutionGor;
+          const qGas = isField ? (qOil * producingGor) / 1000.0 : qOil * producingGor;
+
+          subOil += qOil * subDt;
+          subWaterProd += qWater * subDt;
+          subGasProd += qGas * subDt;
+
+          subWellSamples.push({
+            wellName: w.name,
+            oilRate: qOil,
+            waterRate: qWater,
+            gasRate: qGas,
+            waterCut,
+            bhp: actualBhp,
+          });
+        } else if (w.injectionControl && w.injectionControl.status === "OPEN") {
+          const ic = w.injectionControl;
+          const qInj = ic.rate;
+          if (ic.fluidType === "WATER") {
+            subWaterInj += qInj * subDt;
+          } else {
+            subGasInj += qInj * subDt;
+          }
+          subWellSamples.push({
+            wellName: w.name,
+            oilRate: 0.0,
+            waterRate: ic.fluidType === "WATER" ? -qInj : 0.0,
+            gasRate: ic.fluidType === "GAS" ? -qInj : 0.0,
+            waterCut: 0.0,
+            bhp: ic.bhpLimit,
+          });
         }
-        if (totalWi === 0.0) {
-          const kAvg = Math.sqrt(deck.grid.permX * deck.grid.permY);
-          totalWi = (isField ? 0.00708 : 0.00852) * kAvg * dz;
-        }
-
-        // Inflow rate via Peaceman equation: q_oil = WI * (kro / (muO * bo)) * (P_res - P_bhp)
-        const wellMobility = kro / Math.max(0.1, muO * bo);
-        const maxRate = totalWi * dP * wellMobility;
-        const qOil = Math.min(pc.oilRate > 0 ? pc.oilRate : maxRate, maxRate);
-
-        const qWater = waterCut > 0.001 ? (qOil * waterCut) / Math.max(1e-4, 1.0 - waterCut) : 0.0;
-        // Dissolved solution gas-oil ratio Rs(P) scales with reservoir pressure
-        const pRatio = Math.max(0.1, Math.min(1.5, pres / initPres));
-        const baseGor = isField ? 500.0 : 90.0;
-        const solutionGor = baseGor * Math.pow(pRatio, 0.8);
-        const producingGor =
-          pres < 0.85 * initPres ? solutionGor * (1.0 + 1.2 * (0.85 - pres / initPres)) : solutionGor;
-        const qGas = isField ? (qOil * producingGor) / 1000.0 : qOil * producingGor;
-
-        stepOil += qOil * dtDays;
-        stepWater += qWater * dtDays;
-        stepGas += qGas * dtDays;
-
-        wellSamples.push({
-          wellName: w.name,
-          oilRate: qOil,
-          waterRate: qWater,
-          gasRate: qGas,
-          waterCut,
-          bhp,
-        });
-      } else if (w.injectionControl && w.injectionControl.status === "OPEN") {
-        const ic = w.injectionControl;
-        const qInj = ic.rate;
-        if (ic.fluidType === "WATER") {
-          stepWater -= qInj * dtDays;
-        } else {
-          stepGas -= qInj * dtDays;
-        }
-        wellSamples.push({
-          wellName: w.name,
-          oilRate: 0.0,
-          waterRate: ic.fluidType === "WATER" ? -qInj : 0.0,
-          gasRate: ic.fluidType === "GAS" ? -qInj : 0.0,
-          waterCut: 0.0,
-          bhp: ic.bhpLimit,
-        });
       }
+
+      stepOil += subOil;
+      stepWaterProd += subWaterProd;
+      stepGasProd += subGasProd;
+      latestWellSamples = subWellSamples;
+
+      // Material balance: net reservoir voidage = produced volume - injected volume
+      const vProdRes = bo * subOil + bw * subWaterProd + bg * subGasProd;
+      const vInjRes = bw * subWaterInj + bg * subGasInj;
+      const netDeltaVp = vProdRes - vInjRes;
+      const deltaP = netDeltaVp / (vPore * ct);
+      pres = Math.max(100.0, pres - deltaP);
     }
 
-    // Material balance pressure drop with waterflood sweep efficiency (eta_sweep ~ 0.75)
-    // Local drainage area depletes even with pattern injection:
-    const netDeltaVp = Math.max(0.15 * bo * stepOil, bo * stepOil + bw * stepWater * 0.75);
-    const deltaP = netDeltaVp / (vPore * ct);
-    pres = Math.max(100.0, pres - deltaP);
-
     cumOil += stepOil;
-    cumWater += stepWater;
-    cumGas += stepGas;
+    cumWater += stepWaterProd;
+    cumGas += stepGasProd;
 
     const overallWc = cumOil + cumWater > 0 ? cumWater / (cumOil + cumWater) : 0.0;
 
@@ -280,7 +305,7 @@ export function solveReservoirDepletion(
       cumulativeWater: cumWater,
       cumulativeGas: cumGas,
       waterCut: overallWc,
-      wells: wellSamples,
+      wells: latestWellSamples,
     });
   }
 

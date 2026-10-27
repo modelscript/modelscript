@@ -1,43 +1,250 @@
-/* Custom aesthetic overrides to make the design more premium and dynamic */
+/* ModelScript design system — tokens, utilities, and VitePress overrides */
 html,
 body {
   overflow-x: clip;
 }
 
+/* ───────────────────────── Tokens ───────────────────────── */
 :root {
-  --vp-c-brand-1: #646cff;
-  --vp-c-brand-2: #747bff;
-  --vp-c-brand-3: #8489ff;
-  --vp-c-brand-soft: rgba(100, 108, 255, 0.16);
+  /* Brand: engineering teal → cyan → sky */
+  --vp-c-brand-1: #0e7490;
+  --vp-c-brand-2: #0891b2;
+  --vp-c-brand-3: #0891b2;
+  --vp-c-brand-soft: rgba(8, 145, 178, 0.14);
 
-  /* Background gradients for a glassmorphism feel */
+  --ms-accent-1: #14b8a6;
+  --ms-accent-2: #06b6d4;
+  --ms-accent-3: #6366f1;
+  --ms-gradient: linear-gradient(110deg, #14b8a6 0%, #06b6d4 45%, #6366f1 100%);
+  --ms-gradient-text: linear-gradient(110deg, #0f766e 0%, #0891b2 50%, #4f46e5 100%);
+
+  --ms-border-strong: rgba(15, 23, 42, 0.12);
+  --ms-surface-glass: rgba(255, 255, 255, 0.92);
+  --ms-surface-hover: rgba(15, 23, 42, 0.045);
+  --ms-surface-footer: rgba(15, 23, 42, 0.025);
+  --ms-grid-line: rgba(15, 23, 42, 0.05);
+  /* How much of an industry accent hue to use for text (rest is --vp-c-text-1). */
+  --ms-accent-strength: 62%;
+
+  --vp-font-family-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
   --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: -webkit-linear-gradient(120deg, #bd34fe 30%, #41d1ff);
+  --vp-home-hero-name-background: var(--ms-gradient-text);
 
-  --vp-home-hero-image-background-image: linear-gradient(-45deg, #bd34fe 50%, #41d1ff 50%);
-  --vp-home-hero-image-filter: blur(44px);
+  --vp-button-brand-bg: #0e7490;
+  --vp-button-brand-hover-bg: #0891b2;
+  --vp-button-brand-active-bg: #155e75;
 }
 
 .dark {
-  --vp-c-brand-1: #747bff;
-  --vp-c-brand-2: #8489ff;
-  --vp-c-brand-3: #9499ff;
+  --vp-c-bg: #0a0f1c;
+  --vp-c-bg-alt: #070b15;
+  --vp-c-bg-elv: #0f1626;
+  --vp-c-bg-soft: #0f1728;
+  --vp-c-divider: rgba(148, 163, 184, 0.14);
+  --vp-c-border: rgba(148, 163, 184, 0.2);
+  --vp-c-gutter: #050810;
+
+  --vp-c-brand-1: #22d3ee;
+  --vp-c-brand-2: #06b6d4;
+  --vp-c-brand-3: #0891b2;
+  --vp-c-brand-soft: rgba(34, 211, 238, 0.14);
+
+  --ms-gradient-text: linear-gradient(110deg, #5eead4 0%, #22d3ee 45%, #a5b4fc 100%);
+  --ms-border-strong: rgba(148, 163, 184, 0.2);
+  --ms-surface-glass: rgba(10, 15, 28, 0.88);
+  --ms-surface-hover: rgba(148, 163, 184, 0.08);
+  --ms-surface-footer: rgba(148, 163, 184, 0.04);
+  --ms-grid-line: rgba(148, 163, 184, 0.06);
+  --ms-accent-strength: 100%;
+
+  --vp-button-brand-bg: #0891b2;
+  --vp-button-brand-hover-bg: #06b6d4;
+  --vp-button-brand-active-bg: #0e7490;
 }
 
-/* Subtle micro-animations */
-.VPHero .image-bg {
-  animation: pulse-glow 4s ease-in-out infinite alternate;
+.VPNavBar:not(.home.top) .content-body,
+.VPNavBar.has-sidebar .content-body {
+  background: color-mix(in srgb, var(--vp-c-bg) 82%, transparent) !important;
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
 }
 
-@keyframes pulse-glow {
-  0% {
-    transform: scale(1);
-    opacity: 0.8;
+/* ───────────────────────── Utilities ───────────────────────── */
+.ms-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (min-width: 960px) {
+  .ms-container {
+    padding: 0 32px;
   }
-  100% {
-    transform: scale(1.05);
-    opacity: 1;
+}
+
+.ms-section {
+  padding: 88px 0;
+}
+
+.ms-section-alt {
+  background: var(--vp-c-bg-alt);
+  border-top: 1px solid var(--vp-c-divider);
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.ms-section-head {
+  max-width: 720px;
+  margin: 0 auto 48px;
+  text-align: center;
+}
+
+.ms-section-head.left {
+  margin-left: 0;
+  text-align: left;
+}
+
+.ms-eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--ms-gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.ms-h2 {
+  margin: 0;
+  border: none;
+  padding: 0;
+  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+  line-height: 1.15;
+  font-weight: 750;
+  letter-spacing: -0.022em;
+  color: var(--vp-c-text-1);
+}
+
+.ms-lead {
+  margin: 16px auto 0;
+  max-width: 640px;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--vp-c-text-2);
+}
+
+.ms-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 22px;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-decoration: none !important;
+  white-space: nowrap;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+
+.ms-btn:hover {
+  transform: translateY(-1px);
+}
+
+.ms-btn-brand {
+  color: #fff !important;
+  background: var(--vp-button-brand-bg);
+  box-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.55);
+}
+
+.ms-btn-brand:hover {
+  background: var(--vp-button-brand-hover-bg);
+  box-shadow: 0 14px 34px -10px rgba(6, 182, 212, 0.7);
+}
+
+.ms-btn-ghost {
+  color: var(--vp-c-text-1) !important;
+  background: transparent;
+  border: 1px solid var(--vp-c-border);
+}
+
+.ms-btn-ghost:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1) !important;
+}
+
+.ms-cta {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 48px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-divider);
+  background:
+    radial-gradient(80% 140% at 100% 0%, rgba(99, 102, 241, 0.18), transparent 60%),
+    radial-gradient(80% 140% at 0% 100%, rgba(20, 184, 166, 0.18), transparent 60%), var(--vp-c-bg-soft);
+}
+
+.ms-cta h2 {
+  margin: 0 0 8px;
+  border: none;
+  padding: 0;
+  font-size: clamp(1.4rem, 2.6vw, 2rem);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--vp-c-text-1);
+}
+
+.ms-cta p {
+  margin: 0;
+  color: var(--vp-c-text-2);
+}
+
+.ms-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .ms-section {
+    padding: 64px 0;
   }
+  .ms-cta {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 32px 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Full-bleed custom pages (industries) */
+.VPPage .ms-full-bleed,
+.ms-full-bleed {
+  width: 100%;
 }
 
 .VPHero .name {
@@ -48,7 +255,7 @@ body {
 /* Hero image sizing and drop shadow */
 .VPHero .image-src {
   max-height: 280px;
-  filter: drop-shadow(0 12px 32px rgba(116, 123, 255, 0.3));
+  filter: drop-shadow(0 12px 32px rgba(6, 182, 212, 0.3));
   transition: transform 0.3s ease;
 }
 
@@ -128,29 +335,11 @@ body {
   margin: 0 auto;
 }
 
-.turbine-ssr-fallback .fallback-aura {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 480px;
-  height: 480px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at center,
-    rgba(14, 165, 233, 0.3) 0%,
-    rgba(124, 58, 237, 0.2) 45%,
-    rgba(0, 0, 0, 0) 70%
-  );
-  filter: blur(56px);
-  pointer-events: none;
-}
-
 .turbine-ssr-fallback .fallback-img {
   position: relative;
   max-height: 320px;
   width: auto;
-  filter: drop-shadow(0 16px 36px rgba(116, 123, 255, 0.35));
+  filter: drop-shadow(0 16px 36px rgba(6, 182, 212, 0.35));
   z-index: 1;
 }
 

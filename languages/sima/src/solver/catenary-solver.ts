@@ -29,12 +29,22 @@ export interface CatenaryResult {
   profile: { x: number; z: number }[]; // 2D points along the line
 }
 
+import { WasmCatenaryBridge } from "./wasm-bridge.js";
+
 export function solveCatenary(params: CatenarySolveParams): CatenaryResult {
   const { waterDepth: h, horizontalSpan: X, lineLength: L, submergedWeight: w } = params;
   const ea = params.axialStiffnessEA ?? 1e9;
 
   if (L <= h) {
     throw new Error(`Line length (${L}m) must be greater than water depth (${h}m).`);
+  }
+
+  const wasmBridge = WasmCatenaryBridge.getInstance();
+  if (wasmBridge) {
+    const wasmResult = wasmBridge.solve(params);
+    if (wasmResult) {
+      return wasmResult;
+    }
   }
 
   // Check straight-line distance

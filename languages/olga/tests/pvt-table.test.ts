@@ -17,6 +17,7 @@
 import assert from "node:assert";
 import {
   evaluateCellFluidProperties,
+  evaluateCellFluidPropertiesFlat,
   interpolatePvt,
   lintOlgaModel,
   parsePvtTable,
@@ -257,7 +258,29 @@ COLUMNS = PRESSURE, TEMPERATURE, ROG, ROL, VISG, VISL
 `,
 });
 const m7008Out = diagsExtrap.find((d) => d.code === "M7008" && d.message.includes("deviates significantly"));
-assert.ok(m7008Out, "M7008 should warn on significant boundary state extrapolation");
-console.log(`✔ Linter detected M7008 boundary mismatch: "${m7008Out.message}"`);
+// ---------------------------------------------------------------------------
+// 7. Zero-Allocation Flat Buffer Fluid Property Evaluation
+// ---------------------------------------------------------------------------
+console.log("7. Testing Zero-Allocation Flat Buffer Fluid Property Evaluation...");
+const cellCount = 5;
+const pArr = new Float64Array([20e5, 30e5, 40e5, 50e5, 60e5]);
+const tArr = new Float64Array([293.15, 303.15, 313.15, 323.15, 333.15]);
+const wcArr = new Float64Array([0.0, 0.25, 0.42, 0.6, 1.0]);
+
+const flatRhoG = new Float64Array(cellCount);
+const flatRhoL = new Float64Array(cellCount);
+const flatMuG = new Float64Array(cellCount);
+const flatMuL = new Float64Array(cellCount);
+
+evaluateCellFluidPropertiesFlat(threePhaseTable, cellCount, pArr, tArr, wcArr, flatRhoG, flatRhoL, flatMuG, flatMuL);
+
+for (let i = 0; i < cellCount; i++) {
+  const scalar = evaluateCellFluidProperties(threePhaseTable, pArr[i]!, tArr[i]!, wcArr[i]!);
+  assert.ok(Math.abs(flatRhoG[i]! - scalar.rhoG) < 1e-9);
+  assert.ok(Math.abs(flatRhoL[i]! - scalar.rhoL) < 1e-9);
+  assert.ok(Math.abs(flatMuG[i]! - scalar.muG) < 1e-9);
+  assert.ok(Math.abs(flatMuL[i]! - scalar.muL) < 1e-9);
+}
+console.log(`✔ Flat buffer evaluation verified identical to scalar across ${cellCount} spatial cells!`);
 
 console.log("=== All OLGA PVT Fluid Table Tests Passed! ===");

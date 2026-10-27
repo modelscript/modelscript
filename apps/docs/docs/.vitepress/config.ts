@@ -2,7 +2,46 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig } from "vitepress";
+import { defineConfig, type DefaultTheme } from "vitepress";
+import { INDUSTRIES } from "./theme/data/industries";
+import { LANGUAGES, PLATFORM_GROUPS, type LanguageGroupId } from "./theme/data/languages";
+
+const SITE_DESCRIPTION = `Free, open-source toolchain that imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, and lets you simulate, verify, and export — in the browser, CLI, or VS Code.`;
+
+/** Maps a language's primary group to the industry slug whose name labels the sidebar group. */
+const GROUP_TO_INDUSTRY: Partial<Record<LanguageGroupId, string>> = {
+  aerospace: "aerospace",
+  automotive: "automotive",
+  rail: "rail",
+  marine: "marine",
+  power: "power-systems",
+  "oil-gas": "oil-gas",
+  nuclear: "nuclear",
+  buildings: "buildings",
+  electronics: "electronics",
+  robotics: "robotics",
+  process: "process",
+  "life-sciences": "life-sciences",
+};
+
+function languagesSidebar(): DefaultTheme.SidebarItem[] {
+  const itemsFor = (group: LanguageGroupId): DefaultTheme.SidebarItem[] =>
+    LANGUAGES.filter((l) => l.group === group).map((l) => ({ text: l.sidebar, link: `/languages/${l.slug}` }));
+
+  const platform = PLATFORM_GROUPS.map((g) => ({ text: g.label, collapsed: false, items: itemsFor(g.id) }));
+  const industries = INDUSTRIES.flatMap((ind) => {
+    const group = (Object.keys(GROUP_TO_INDUSTRY) as LanguageGroupId[]).find((k) => GROUP_TO_INDUSTRY[k] === ind.slug);
+    if (!group) return [];
+    const items = itemsFor(group);
+    return items.length ? [{ text: ind.name, collapsed: true, items }] : [];
+  });
+
+  return [
+    { text: "Polyglot Languages", items: [{ text: "Overview & Matrix", link: "/languages/overview" }] },
+    ...platform,
+    ...industries,
+  ];
+}
 
 let modelicaGrammar: Record<string, unknown> | null = null;
 const grammarPath = path.resolve(__dirname, "../../../../dist/extension/syntaxes/modelica.tmLanguage.json");
@@ -60,20 +99,61 @@ export default defineConfig({
     esbuild: {
       target: "esnext",
     },
+    resolve: {
+      dedupe: ["three"],
+    },
     optimizeDeps: {
+      include: [
+        "three",
+        "three/examples/jsm/environments/RoomEnvironment.js",
+        "three/examples/jsm/utils/BufferGeometryUtils.js",
+      ],
       esbuildOptions: {
         target: "esnext",
       },
     },
   },
   title: "ModelScript",
-  description: "Open-source computable digital thread unifying Modelica, SysML2, 3D CAD, and continuum physics.",
+  description: SITE_DESCRIPTION,
   appearance: "dark",
+  sitemap: { hostname: "https://modelscript.org" },
+  transformPageData(pageData) {
+    const params = pageData.params as { title?: string; description?: string } | undefined;
+    if (params?.title) {
+      pageData.title = params.title;
+      pageData.frontmatter["title"] = params.title;
+    }
+    if (params?.description) {
+      pageData.description = params.description;
+      pageData.frontmatter["description"] = params.description;
+    }
+  },
+  transformHead({ pageData, title, description }) {
+    const route = pageData.relativePath.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, ".html");
+    const url = `https://modelscript.org/${route}`;
+    const desc = description || SITE_DESCRIPTION;
+    return [
+      ["link", { rel: "canonical", href: url }],
+      ["meta", { property: "og:url", content: url }],
+      ["meta", { property: "og:title", content: title }],
+      ["meta", { property: "og:description", content: desc }],
+      ["meta", { name: "twitter:title", content: title }],
+      ["meta", { name: "twitter:description", content: desc }],
+    ];
+  },
   head: [
     ["link", { rel: "icon", href: "/favicon.ico" }],
     ["link", { rel: "icon", type: "image/png", href: "/ms-logo.png" }],
-    ["link", { rel: "canonical", href: "https://modelscript.org" }],
-    ["meta", { name: "theme-color", content: "#0d1117" }],
+    ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
+    ["link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" }],
+    [
+      "link",
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap",
+      },
+    ],
+    ["meta", { name: "theme-color", content: "#0a0f1c" }],
     [
       "meta",
       {
@@ -85,33 +165,8 @@ export default defineConfig({
     ["meta", { name: "author", content: "Mohamad Omar Nachawati" }],
     ["meta", { property: "og:site_name", content: "ModelScript" }],
     ["meta", { property: "og:type", content: "website" }],
-    [
-      "meta",
-      { property: "og:title", content: "ModelScript — The Computable Digital Thread for Engineering & Simulation" },
-    ],
-    [
-      "meta",
-      {
-        property: "og:description",
-        content:
-          "Parse, lint, flatten, simulate, optimize, and formally verify across Modelica, SysML v2, CAD, and continuum physics — uniting multi-domain engineering in an active computable digital thread. Free and open-source under AGPL-3.0.",
-      },
-    ],
-    ["meta", { property: "og:url", content: "https://modelscript.org" }],
     ["meta", { property: "og:image", content: "https://modelscript.org/ms-logo.png" }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
-    [
-      "meta",
-      { name: "twitter:title", content: "ModelScript — The Computable Digital Thread for Engineering & Simulation" },
-    ],
-    [
-      "meta",
-      {
-        name: "twitter:description",
-        content:
-          "Parse, lint, flatten, simulate, optimize, and formally verify across Modelica, SysML v2, CAD, and continuum physics — uniting multi-domain engineering in an active computable digital thread.",
-      },
-    ],
     ["meta", { name: "twitter:image", content: "https://modelscript.org/ms-logo.png" }],
     ["meta", { name: "robots", content: "index, follow" }],
     [
@@ -149,12 +204,38 @@ export default defineConfig({
       provider: "local",
     },
     nav: [
-      { text: "Guide", link: "/guide/introduction" },
-      { text: "Architecture", link: "/architecture/overview" },
-      { text: "Algorithms", link: "/algorithms/overview" },
-      { text: "Languages", link: "/languages/overview" },
-      { text: "CLI", link: "/cli/overview" },
-      { text: "Reference", link: "/reference/linter-rules" },
+      { component: "IndustriesMegaMenu" },
+      {
+        text: "Docs",
+        activeMatch: "^/(guide|architecture|algorithms|cli|reference)/",
+        items: [
+          {
+            text: "Learn",
+            items: [
+              { text: "Introduction", link: "/guide/introduction" },
+              { text: "Installation", link: "/guide/installation" },
+              { text: "Getting Started", link: "/guide/getting-started" },
+            ],
+          },
+          {
+            text: "Deep Dive",
+            items: [
+              { text: "Compiler Architecture", link: "/architecture/overview" },
+              { text: "Algorithms Catalog", link: "/algorithms/overview" },
+            ],
+          },
+          {
+            text: "Reference",
+            items: [
+              { text: "CLI Commands", link: "/cli/commands" },
+              { text: "Linter Rules", link: "/reference/linter-rules" },
+              { text: "Standards & Export Formats", link: "/reference/export-formats" },
+              { text: "MCP Server & IDE", link: "/reference/mcp-and-ide" },
+            ],
+          },
+        ],
+      },
+      { text: "Languages", link: "/languages/overview", activeMatch: "^/languages/" },
       {
         text: "Ecosystem",
         items: [
@@ -165,7 +246,7 @@ export default defineConfig({
             text: "VS Code Extension",
             link: "https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript",
           },
-          { text: "PDF Manual (164p)", link: "/modelscript-reference-manual.pdf", target: "_blank" },
+          { text: "PDF Reference Manual", link: "/modelscript-reference-manual.pdf", target: "_blank" },
         ],
       },
     ],
@@ -220,58 +301,7 @@ export default defineConfig({
           ],
         },
       ],
-      "/languages/": [
-        {
-          text: "Polyglot Languages",
-          items: [
-            { text: "Overview & Matrix", link: "/languages/overview" },
-            { text: "ModelScript (.msx)", link: "/languages/modelscript" },
-            { text: "Modelica", link: "/languages/modelica" },
-            { text: "SysML v2 / KerML", link: "/languages/sysml2" },
-            { text: "MATLAB Simulink", link: "/languages/simulink" },
-            { text: "AUTOSAR Architecture", link: "/languages/autosar" },
-            { text: "ReqIF Requirements", link: "/languages/reqif" },
-            { text: "SPICE Electronics", link: "/languages/spice" },
-            { text: "SIMPACK Multibody Dynamics", link: "/languages/simpack" },
-            { text: "GENSYS Railway Dynamics", link: "/languages/gensys" },
-            { text: "MSC Adams MBD", link: "/languages/adams" },
-            { text: "URDF & Xacro Robotics", link: "/languages/urdf" },
-            { text: "PSCAD Power Systems", link: "/languages/pscad" },
-            { text: "PSS/E Power Flow (.raw)", link: "/languages/psse" },
-            { text: "OLGA Multiphase Flow", link: "/languages/olga" },
-            { text: "PipelineStudio (.lps)", link: "/languages/lps" },
-            { text: "EASY5 Simulation", link: "/languages/easy5" },
-            { text: "GT-SUITE / GT-POWER", link: "/languages/gtsuite" },
-            { text: "SIMA / SIMO / RIFLEX", link: "/languages/sima" },
-            { text: "NASA ROCETS Propulsion", link: "/languages/rocets" },
-            { text: "STEP CAD (ISO 10303)", link: "/languages/step" },
-            { text: "OWL2 Ontology", link: "/languages/owl2" },
-            { text: "OpenSCAD CSG", link: "/languages/scad" },
-            { text: "SSP System Packaging", link: "/languages/ssp" },
-            { text: "CFD (SU2 / OpenFOAM)", link: "/languages/cfd" },
-            { text: "FEA Structural Analysis", link: "/languages/fea" },
-            { text: "CSV Telemetry", link: "/languages/csv" },
-            { text: "CCSDS Space Telemetry", link: "/languages/ccsds" },
-            { text: "EnergyPlus Thermal", link: "/languages/energyplus" },
-            { text: "EPANET Water Networks", link: "/languages/epanet" },
-            { text: "OpenDRIVE Roads", link: "/languages/opendrive" },
-            { text: "PLCopen Automation", link: "/languages/plcopen" },
-            { text: "Verilog-A Devices", link: "/languages/verilog-a" },
-            { text: "Fortran Integration", link: "/languages/fortran" },
-            { text: "C Integration", link: "/languages/c" },
-            { text: "Aspen Chemical Process", link: "/languages/aspen" },
-            { text: "SWMM Urban Hydrology", link: "/languages/swmm" },
-            { text: "Touchstone RF / SI", link: "/languages/touchstone" },
-            { text: "IBIS Buffer Modeling", link: "/languages/ibis" },
-            { text: "OpenDSS Distribution", link: "/languages/opendss" },
-            { text: "OpenSCENARIO AV Safety", link: "/languages/openscenario" },
-            { text: "RELAP5 Nuclear Loops", link: "/languages/relap5" },
-            { text: "ECLIPSE Reservoir", link: "/languages/eclipse" },
-            { text: "SBML Systems Biology", link: "/languages/sbml" },
-            { text: "JSBSim Flight Dynamics", link: "/languages/jsbsim" },
-          ],
-        },
-      ],
+      "/languages/": languagesSidebar(),
       "/cli/": [
         {
           text: "CLI Toolchain",

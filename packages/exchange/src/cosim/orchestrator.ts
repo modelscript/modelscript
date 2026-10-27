@@ -613,6 +613,12 @@ export class Orchestrator {
       return;
     }
 
+    const dim = U.length;
+    const scratchDeltaU = new Float64Array(dim);
+    const scratchTrialU = new Float64Array(dim);
+    const scratchBestU = new Float64Array(dim);
+    const scratchDeltaR = new Float64Array(dim);
+
     let J: Float64Array | null = null;
     const maxIter = 6;
 
@@ -625,35 +631,33 @@ export class Orchestrator {
           });
         }
 
-        const deltaU = this.jacobianSolver.solveLinearSystem(J, residual);
+        this.jacobianSolver.solveLinearSystem(J, residual, scratchDeltaU);
 
         let alpha = 1.0;
-        let bestU = new Float64Array(U);
+        scratchBestU.set(U);
         let bestNorm = norm;
         let bestOutputs = currentOutputs;
 
         for (let ls = 0; ls < 3; ls++) {
-          const trialU = new Float64Array(U.length);
-          for (let i = 0; i < U.length; i++) trialU[i] = U[i]! + alpha * deltaU[i]!;
+          for (let i = 0; i < dim; i++) scratchTrialU[i] = U[i]! + alpha * scratchDeltaU[i]!;
 
-          const trialInputs = this.jacobianSolver.vectorToInputMap(trialU);
+          const trialInputs = this.jacobianSolver.vectorToInputMap(scratchTrialU);
           const trialOutputs = await stepWithInputs(trialInputs);
-          const trialRes = this.jacobianSolver.computeResidual(trialU, trialOutputs);
+          const trialRes = this.jacobianSolver.computeResidual(scratchTrialU, trialOutputs);
 
           if (trialRes.norm < bestNorm || ls === 2) {
-            bestU = trialU;
+            scratchBestU.set(scratchTrialU);
             bestNorm = trialRes.norm;
             bestOutputs = trialOutputs;
-            const deltaR = new Float64Array(residual.length);
-            for (let i = 0; i < residual.length; i++) deltaR[i] = trialRes.residual[i]! - residual[i]!;
-            this.jacobianSolver.updateBroyden(J, deltaU, deltaR);
+            for (let i = 0; i < dim; i++) scratchDeltaR[i] = trialRes.residual[i]! - residual[i]!;
+            this.jacobianSolver.updateBroyden(J, scratchDeltaU, scratchDeltaR);
             residual = trialRes.residual;
             break;
           }
           alpha *= 0.5;
         }
 
-        U = bestU;
+        U.set(scratchBestU);
         norm = bestNorm;
         currentOutputs = bestOutputs;
 

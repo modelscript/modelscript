@@ -54,6 +54,78 @@ export function cad_aabb_distance(aPtr: usize, bPtr: usize): f64 {
   return -Math.max(0.0, pen);
 }
 
+@inline
+function testRayAabb(
+  base: usize,
+  ox: f64,
+  oy: f64,
+  oz: f64,
+  dx: f64,
+  dy: f64,
+  dz: f64
+): f64 {
+  const minX = load<f64>(base + 0);
+  const minY = load<f64>(base + 8);
+  const minZ = load<f64>(base + 16);
+  const maxX = load<f64>(base + 24);
+  const maxY = load<f64>(base + 32);
+  const maxZ = load<f64>(base + 40);
+
+  let tMin: f64 = -1e30;
+  let tMax: f64 = 1e30;
+
+  // X slab
+  if (Math.abs(dx) < 1e-12) {
+    if (ox < minX || ox > maxX) return -1.0;
+  } else {
+    let t1 = (minX - ox) / dx;
+    let t2 = (maxX - ox) / dx;
+    if (t1 > t2) {
+      const tmp = t1;
+      t1 = t2;
+      t2 = tmp;
+    }
+    if (t1 > tMin) tMin = t1;
+    if (t2 < tMax) tMax = t2;
+    if (tMin > tMax) return -1.0;
+  }
+
+  // Y slab
+  if (Math.abs(dy) < 1e-12) {
+    if (oy < minY || oy > maxY) return -1.0;
+  } else {
+    let t1 = (minY - oy) / dy;
+    let t2 = (maxY - oy) / dy;
+    if (t1 > t2) {
+      const tmp = t1;
+      t1 = t2;
+      t2 = tmp;
+    }
+    if (t1 > tMin) tMin = t1;
+    if (t2 < tMax) tMax = t2;
+    if (tMin > tMax) return -1.0;
+  }
+
+  // Z slab
+  if (Math.abs(dz) < 1e-12) {
+    if (oz < minZ || oz > maxZ) return -1.0;
+  } else {
+    let t1 = (minZ - oz) / dz;
+    let t2 = (maxZ - oz) / dz;
+    if (t1 > t2) {
+      const tmp = t1;
+      t1 = t2;
+      t2 = tmp;
+    }
+    if (t1 > tMin) tMin = t1;
+    if (t2 < tMax) tMax = t2;
+    if (tMin > tMax) return -1.0;
+  }
+
+  if (tMax < 0.0) return -1.0;
+  return tMin >= 0.0 ? tMin : 0.0;
+}
+
 /**
  * Performs slab-method raycast against `numItems` AABBs in linear memory (`aabbsPtr`, 6 f64s each).
  * Writes `[closestDist, hitX, hitY, hitZ]` to `hitOutPtr` (4 f64s) and returns the hit item ID (or -1).
@@ -85,74 +157,126 @@ export function cad_bvh_raycast(
 
   for (let i: i32 = 0; i < numItems; i++) {
     const base = aabbsPtr + (((i * 6) as usize) << 3);
-    const minX = load<f64>(base + 0);
-    const minY = load<f64>(base + 8);
-    const minZ = load<f64>(base + 16);
-    const maxX = load<f64>(base + 24);
-    const maxY = load<f64>(base + 32);
-    const maxZ = load<f64>(base + 40);
-
-    let tMin: f64 = -1e30;
-    let tMax: f64 = 1e30;
-    let valid: bool = true;
-
-    // X slab
-    if (Math.abs(dx) < 1e-12) {
-      if (ox < minX || ox > maxX) valid = false;
-    } else {
-      let t1 = (minX - ox) / dx;
-      let t2 = (maxX - ox) / dx;
-      if (t1 > t2) {
-        const tmp = t1;
-        t1 = t2;
-        t2 = tmp;
-      }
-      if (t1 > tMin) tMin = t1;
-      if (t2 < tMax) tMax = t2;
-      if (tMin > tMax) valid = false;
+    const tHit = testRayAabb(base, ox, oy, oz, dx, dy, dz);
+    if (tHit >= 0.0 && tHit < closestDist) {
+      closestDist = tHit;
+      closestId = load<i32>(idsPtr + ((i as usize) << 2));
     }
+  }
 
-    // Y slab
-    if (valid) {
-      if (Math.abs(dy) < 1e-12) {
-        if (oy < minY || oy > maxY) valid = false;
-      } else {
-        let t1 = (minY - oy) / dy;
-        let t2 = (maxY - oy) / dy;
-        if (t1 > t2) {
-          const tmp = t1;
-          t1 = t2;
-          t2 = tmp;
+  if (closestId >= 0) {
+    store<f64>(hitOutPtr + 0, closestDist);
+    store<f64>(hitOutPtr + 8, ox + dx * closestDist);
+    store<f64>(hitOutPtr + 16, oy + dy * closestDist);
+    store<f64>(hitOutPtr + 24, oz + dz * closestDist);
+  }
+  return closestId;
+}
+
+/**
+ * Traverses a hierarchical BVH node tree in linear memory (`nodesPtr`) using a fixed-size
+ * depth-first stack. Each node is 64 bytes:
+ * - 0..47: 6 f64s [minX, minY, minZ, maxX, maxY, maxZ] (48 bytes)
+ * - 48..51: i32 leftChild index (-1 if leaf)
+ * - 52..55: i32 rightChild index (-1 if leaf)
+ * - 56..59: i32 itemId (-1 if internal)
+ * - 60..63: i32 itemCount / flags
+ */
+export function cad_bvh_tree_raycast(
+  numNodes: i32,
+  nodesPtr: usize,
+  rayOriginPtr: usize,
+  rayDirPtr: usize,
+  maxDist: f64,
+  hitOutPtr: usize
+): i32 {
+  if (numNodes <= 0) return -1;
+
+  const ox = load<f64>(rayOriginPtr + 0);
+  const oy = load<f64>(rayOriginPtr + 8);
+  const oz = load<f64>(rayOriginPtr + 16);
+
+  let dx = load<f64>(rayDirPtr + 0);
+  let dy = load<f64>(rayDirPtr + 8);
+  let dz = load<f64>(rayDirPtr + 16);
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (len <= 1e-15) return -1;
+  dx /= len;
+  dy /= len;
+  dz /= len;
+
+  let closestDist = maxDist;
+  let closestId: i32 = -1;
+
+  // Root bounding box test
+  const rootHit = testRayAabb(nodesPtr, ox, oy, oz, dx, dy, dz);
+  if (rootHit < 0.0 || rootHit > closestDist) return -1;
+
+  const stack = new StaticArray<i32>(64);
+  let stackPtr: i32 = 0;
+  stack[stackPtr] = 0;
+  stackPtr++;
+
+  while (stackPtr > 0) {
+    stackPtr--;
+    const nodeIdx = stack[stackPtr];
+    const nodeBase = nodesPtr + (((nodeIdx as usize) << 6)); // * 64
+
+    const leftChild = load<i32>(nodeBase + 48);
+    const rightChild = load<i32>(nodeBase + 52);
+    const itemId = load<i32>(nodeBase + 56);
+
+    // Leaf node
+    if (leftChild < 0 && rightChild < 0) {
+      if (itemId >= 0) {
+        const hitT = testRayAabb(nodeBase, ox, oy, oz, dx, dy, dz);
+        if (hitT >= 0.0 && hitT < closestDist) {
+          closestDist = hitT;
+          closestId = itemId;
         }
-        if (t1 > tMin) tMin = t1;
-        if (t2 < tMax) tMax = t2;
-        if (tMin > tMax) valid = false;
       }
+      continue;
     }
 
-    // Z slab
-    if (valid) {
-      if (Math.abs(dz) < 1e-12) {
-        if (oz < minZ || oz > maxZ) valid = false;
-      } else {
-        let t1 = (minZ - oz) / dz;
-        let t2 = (maxZ - oz) / dz;
-        if (t1 > t2) {
-          const tmp = t1;
-          t1 = t2;
-          t2 = tmp;
+    // Internal node: test children
+    let leftDist: f64 = -1.0;
+    let rightDist: f64 = -1.0;
+
+    if (leftChild >= 0 && leftChild < numNodes) {
+      const leftBase = nodesPtr + (((leftChild as usize) << 6));
+      leftDist = testRayAabb(leftBase, ox, oy, oz, dx, dy, dz);
+    }
+    if (rightChild >= 0 && rightChild < numNodes) {
+      const rightBase = nodesPtr + (((rightChild as usize) << 6));
+      rightDist = testRayAabb(rightBase, ox, oy, oz, dx, dy, dz);
+    }
+
+    // Traverse closer child first (push farther child first)
+    if (leftDist >= 0.0 && leftDist <= closestDist && rightDist >= 0.0 && rightDist <= closestDist) {
+      if (leftDist < rightDist) {
+        if (stackPtr < 63) {
+          stack[stackPtr] = rightChild;
+          stackPtr++;
+          stack[stackPtr] = leftChild;
+          stackPtr++;
         }
-        if (t1 > tMin) tMin = t1;
-        if (t2 < tMax) tMax = t2;
-        if (tMin > tMax) valid = false;
+      } else {
+        if (stackPtr < 63) {
+          stack[stackPtr] = leftChild;
+          stackPtr++;
+          stack[stackPtr] = rightChild;
+          stackPtr++;
+        }
       }
-    }
-
-    if (valid && tMax >= 0.0) {
-      const tHit = tMin >= 0.0 ? tMin : 0.0;
-      if (tHit < closestDist) {
-        closestDist = tHit;
-        closestId = load<i32>(idsPtr + ((i as usize) << 2));
+    } else if (leftDist >= 0.0 && leftDist <= closestDist) {
+      if (stackPtr < 64) {
+        stack[stackPtr] = leftChild;
+        stackPtr++;
+      }
+    } else if (rightDist >= 0.0 && rightDist <= closestDist) {
+      if (stackPtr < 64) {
+        stack[stackPtr] = rightChild;
+        stackPtr++;
       }
     }
   }

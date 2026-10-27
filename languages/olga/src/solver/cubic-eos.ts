@@ -236,6 +236,11 @@ export class CubicEos {
   private readonly omegaA: number;
   private readonly omegaB: number;
 
+  // Reusable scratch buffers for zero-allocation inner loops
+  private readonly scratchLnPhiL: Float64Array;
+  private readonly scratchLnPhiV: Float64Array;
+  private readonly scratchSqrtA: Float64Array;
+
   constructor(
     componentNames: string[],
     modelType: CubicEosModelType = "PENG_ROBINSON",
@@ -256,6 +261,9 @@ export class CubicEos {
 
     this.numComponents = this.components.length;
     this.kijMatrix = new Float64Array(this.numComponents * this.numComponents);
+    this.scratchLnPhiL = new Float64Array(this.numComponents);
+    this.scratchLnPhiV = new Float64Array(this.numComponents);
+    this.scratchSqrtA = new Float64Array(this.numComponents);
 
     if (modelType === "PENG_ROBINSON") {
       this.omegaA = 0.457235529;
@@ -337,15 +345,21 @@ export class CubicEos {
   public mixParameters(x: ArrayLike<number>, pureA: Float64Array, pureB: Float64Array): { aMix: number; bMix: number } {
     let aMix = 0.0;
     let bMix = 0.0;
+    const n = this.numComponents;
+    const sqrtA = this.scratchSqrtA;
+    for (let i = 0; i < n; i++) {
+      sqrtA[i] = Math.sqrt(pureA[i]!);
+    }
 
-    for (let i = 0; i < this.numComponents; i++) {
+    for (let i = 0; i < n; i++) {
       const xi = x[i]!;
       bMix += xi * pureB[i]!;
-      for (let j = 0; j < this.numComponents; j++) {
-        const xj = x[j]!;
-        const aij = Math.sqrt(pureA[i]! * pureA[j]!) * (1.0 - this.getKij(i, j));
-        aMix += xi * xj * aij;
+      const sqrtAi = sqrtA[i]!;
+      let sumJ = 0.0;
+      for (let j = 0; j < n; j++) {
+        sumJ += x[j]! * (sqrtAi * sqrtA[j]!) * (1.0 - this.getKij(i, j));
       }
+      aMix += xi * sumJ;
     }
 
     return { aMix: Math.max(1e-12, aMix), bMix: Math.max(1e-12, bMix) };
@@ -380,36 +394,58 @@ export class CubicEos {
     const q = (2.0 * c2 * c2 * c2) / 27.0 - (c2 * c1) / 3.0 + c0;
     const delta = (q * q) / 4.0 + (p * p * p) / 27.0;
 
-    let roots: number[] = [];
+    const bMin = Math.max(B, 1e-4);
+    let minZ = Infinity;
+    let maxZ = -Infinity;
 
     if (delta > 1e-14) {
       // Single real root (Cardano)
       const u = Math.cbrt(-q / 2.0 + Math.sqrt(delta));
       const v = Math.cbrt(-q / 2.0 - Math.sqrt(delta));
-      roots.push(u + v - c2 / 3.0);
+      const z = u + v - c2 / 3.0;
+      if (z > bMin && isFinite(z)) {
+        minZ = z;
+        maxZ = z;
+      }
     } else if (Math.abs(delta) <= 1e-14) {
       // All real roots, at least two equal
       const u = Math.cbrt(-q / 2.0);
-      roots.push(2.0 * u - c2 / 3.0);
-      roots.push(-u - c2 / 3.0);
+      const z1 = 2.0 * u - c2 / 3.0;
+      const z2 = -u - c2 / 3.0;
+      if (z1 > bMin && isFinite(z1)) {
+        if (z1 < minZ) minZ = z1;
+        if (z1 > maxZ) maxZ = z1;
+      }
+      if (z2 > bMin && isFinite(z2)) {
+        if (z2 < minZ) minZ = z2;
+        if (z2 > maxZ) maxZ = z2;
+      }
     } else {
       // Three distinct real roots (Trigonometric / Viete)
       const phi = Math.acos(Math.max(-1.0, Math.min(1.0, -q / (2.0 * Math.sqrt(-Math.pow(p / 3.0, 3))))));
       const r = 2.0 * Math.sqrt(-p / 3.0);
-      roots.push(r * Math.cos(phi / 3.0) - c2 / 3.0);
-      roots.push(r * Math.cos((phi + 2.0 * Math.PI) / 3.0) - c2 / 3.0);
-      roots.push(r * Math.cos((phi + 4.0 * Math.PI) / 3.0) - c2 / 3.0);
+      const z1 = r * Math.cos(phi / 3.0) - c2 / 3.0;
+      const z2 = r * Math.cos((phi + 2.0 * Math.PI) / 3.0) - c2 / 3.0;
+      const z3 = r * Math.cos((phi + 4.0 * Math.PI) / 3.0) - c2 / 3.0;
+      if (z1 > bMin && isFinite(z1)) {
+        if (z1 < minZ) minZ = z1;
+        if (z1 > maxZ) maxZ = z1;
+      }
+      if (z2 > bMin && isFinite(z2)) {
+        if (z2 < minZ) minZ = z2;
+        if (z2 > maxZ) maxZ = z2;
+      }
+      if (z3 > bMin && isFinite(z3)) {
+        if (z3 < minZ) minZ = z3;
+        if (z3 > maxZ) maxZ = z3;
+      }
     }
 
-    // Filter physically valid positive roots (Z > B)
-    const valid = roots.filter((z) => z > Math.max(B, 1e-4) && !isNaN(z) && isFinite(z));
-    if (valid.length === 0) {
+    if (minZ === Infinity) {
       const fallback = Math.max(B + 0.01, 0.8);
       return { zLiquid: fallback, zVapor: fallback };
     }
 
-    const minZ = Math.min(...valid);
-    const maxZ = Math.max(...valid);
     return { zLiquid: minZ, zVapor: maxZ };
   }
 
@@ -425,41 +461,51 @@ export class CubicEos {
     aMix: number,
     bMix: number,
     Z: number,
+    outLnPhi?: Float64Array,
   ): Float64Array {
-    const lnPhi = new Float64Array(this.numComponents);
+    const lnPhi = outLnPhi ?? new Float64Array(this.numComponents);
     const A = (aMix * P) / (R_GAS * R_GAS * T * T);
     const B = (bMix * P) / (R_GAS * T);
 
     const safeZminusB = Math.max(1e-12, Z - B);
+    const n = this.numComponents;
+    const sqrtA = this.scratchSqrtA;
+    for (let i = 0; i < n; i++) {
+      sqrtA[i] = Math.sqrt(pureA[i]!);
+    }
 
     if (this.modelType === "PENG_ROBINSON") {
       const sqrt2 = Math.SQRT2;
       const termLog = Math.log(Math.max(1e-12, (Z + (1.0 + sqrt2) * B) / (Z + (1.0 - sqrt2) * B)));
+      const factor = A / (2.0 * Math.SQRT2 * B);
 
-      for (let i = 0; i < this.numComponents; i++) {
+      for (let i = 0; i < n; i++) {
         let sumCross = 0.0;
-        for (let j = 0; j < this.numComponents; j++) {
-          sumCross += x[j]! * Math.sqrt(pureA[i]! * pureA[j]!) * (1.0 - this.getKij(i, j));
+        const sqrtAi = sqrtA[i]!;
+        for (let j = 0; j < n; j++) {
+          sumCross += x[j]! * (sqrtAi * sqrtA[j]!) * (1.0 - this.getKij(i, j));
         }
 
         const biOverB = pureB[i]! / bMix;
         const deltaA = (2.0 * sumCross) / aMix - biOverB;
 
-        lnPhi[i] = biOverB * (Z - 1.0) - Math.log(safeZminusB) - (A / (2.0 * Math.SQRT2 * B)) * deltaA * termLog;
+        lnPhi[i] = biOverB * (Z - 1.0) - Math.log(safeZminusB) - factor * deltaA * termLog;
       }
     } else {
       // SRK
       const termLog = Math.log(Math.max(1e-12, 1.0 + B / Z));
-      for (let i = 0; i < this.numComponents; i++) {
+      const factor = A / B;
+      for (let i = 0; i < n; i++) {
         let sumCross = 0.0;
-        for (let j = 0; j < this.numComponents; j++) {
-          sumCross += x[j]! * Math.sqrt(pureA[i]! * pureA[j]!) * (1.0 - this.getKij(i, j));
+        const sqrtAi = sqrtA[i]!;
+        for (let j = 0; j < n; j++) {
+          sumCross += x[j]! * (sqrtAi * sqrtA[j]!) * (1.0 - this.getKij(i, j));
         }
 
         const biOverB = pureB[i]! / bMix;
         const deltaA = (2.0 * sumCross) / aMix - biOverB;
 
-        lnPhi[i] = biOverB * (Z - 1.0) - Math.log(safeZminusB) - (A / B) * deltaA * termLog;
+        lnPhi[i] = biOverB * (Z - 1.0) - Math.log(safeZminusB) - factor * deltaA * termLog;
       }
     }
 
@@ -571,8 +617,8 @@ export class CubicEos {
         const { zLiquid } = this.solveZFactor(P, T, aL, bL);
         const { zVapor } = this.solveZFactor(P, T, aV, bV);
 
-        const lnPhiL = this.computeLnPhi(x, P, T, pureA, pureB, aL, bL, zLiquid);
-        const lnPhiV = this.computeLnPhi(y, P, T, pureA, pureB, aV, bV, zVapor);
+        const lnPhiL = this.computeLnPhi(x, P, T, pureA, pureB, aL, bL, zLiquid, this.scratchLnPhiL);
+        const lnPhiV = this.computeLnPhi(y, P, T, pureA, pureB, aV, bV, zVapor, this.scratchLnPhiV);
 
         // Convergence check: sum_i (ln(K_i) + ln(phi_i^V) - ln(phi_i^L))^2 < 1e-10
         let error = 0.0;

@@ -39,15 +39,19 @@
     "./lsp": {
       "types": "./dist/src/lsp.d.ts",
       "default": "./dist/src/lsp.js"
-    }
+    },
+    "./point_kinetics.wasm": "./dist/point_kinetics.wasm",
+    "./dist/point_kinetics.wasm": "./dist/point_kinetics.wasm"
   },
   "files": [
     "src/**",
     "dist/**",
+    "assembly/**",
     "assets/**"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:wasm && tsc",
+    "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",

@@ -20,4 +20,8 @@ export type PlaceholderType =
   | "sysml"
   | "dataset"
   | "plot"
-  | "pdf";
+  | "pdf"
+  | "circuit"
+  | "network"
+  | "hydraulic"
+  | "schematic";

@@ -36,25 +36,36 @@ export interface FrustumPlane {
 let bvhWasmScratch: {
   wasm: any;
   capItems: number;
+  capNodes: number;
   aabbsPtr: number;
   idsPtr: number;
+  nodesPtr: number;
   rayOriginPtr: number;
   rayDirPtr: number;
   hitOutPtr: number;
 } | null = null;
 
-function ensureBvhWasmScratch(wasm: any, nItems: number) {
+function ensureBvhWasmScratch(wasm: any, nItems: number, nNodes: number = 0) {
   const reqItems = Math.max(nItems, 64);
-  if (bvhWasmScratch && bvhWasmScratch.wasm === wasm && bvhWasmScratch.capItems >= reqItems) {
+  const reqNodes = Math.max(nNodes, 64);
+  if (
+    bvhWasmScratch &&
+    bvhWasmScratch.wasm === wasm &&
+    bvhWasmScratch.capItems >= reqItems &&
+    bvhWasmScratch.capNodes >= reqNodes
+  ) {
     return bvhWasmScratch;
   }
   const alloc = (bytes: number): number => wasm.__new(bytes, 0);
   const capItems = Math.max(reqItems, bvhWasmScratch ? bvhWasmScratch.capItems * 2 : 256);
+  const capNodes = Math.max(reqNodes, bvhWasmScratch ? bvhWasmScratch.capNodes * 2 : 512);
   bvhWasmScratch = {
     wasm,
     capItems,
+    capNodes,
     aabbsPtr: alloc(capItems * 6 * 8),
     idsPtr: alloc(capItems * 4),
+    nodesPtr: alloc(capNodes * 64),
     rayOriginPtr: alloc(3 * 8),
     rayDirPtr: alloc(3 * 8),
     hitOutPtr: alloc(4 * 8),
@@ -65,9 +76,11 @@ function ensureBvhWasmScratch(wasm: any, nItems: number) {
 export class AssemblyBVH {
   readonly root: BVHNode;
   readonly totalItems: number;
+  readonly totalNodes: number;
   readonly depth: number;
   readonly flatAABBs: Float64Array;
   readonly flatItemIds: Int32Array;
+  readonly flatNodes: Float64Array;
 
   constructor(items: BVHItem[], maxLeafSize = 4) {
     this.totalItems = items.length;
@@ -118,8 +131,10 @@ export class AssemblyBVH {
         items: [],
       };
       this.depth = 0;
+      this.totalNodes = 0;
       this.flatAABBs = new Float64Array(0);
       this.flatItemIds = new Int32Array(0);
+      this.flatNodes = new Float64Array(0);
     } else {
       this.root = build([...items], 1);
       this.depth = maxDepth;
@@ -136,6 +151,50 @@ export class AssemblyBVH {
         this.flatAABBs[off + 5] = item.aabb.max[2];
         this.flatItemIds[i] = item.id;
       }
+
+      // Pre-compute 64-byte binary BVH nodes for zero-allocation WASM tree raycasting
+      let nodeCount = 0;
+      const countNodes = (n: BVHNode) => {
+        nodeCount++;
+        if (n.left) countNodes(n.left);
+        if (n.right) countNodes(n.right);
+      };
+      countNodes(this.root);
+      this.totalNodes = nodeCount;
+
+      const nodeBuf = new ArrayBuffer(nodeCount * 64);
+      const nodeF64 = new Float64Array(nodeBuf);
+      const nodeI32 = new Int32Array(nodeBuf);
+
+      let nextIdx = 0;
+      const flatten = (n: BVHNode): number => {
+        const idx = nextIdx++;
+        const f64Off = idx * 8;
+        const i32Off = idx * 16;
+        nodeF64[f64Off + 0] = n.aabb.min[0];
+        nodeF64[f64Off + 1] = n.aabb.min[1];
+        nodeF64[f64Off + 2] = n.aabb.min[2];
+        nodeF64[f64Off + 3] = n.aabb.max[0];
+        nodeF64[f64Off + 4] = n.aabb.max[1];
+        nodeF64[f64Off + 5] = n.aabb.max[2];
+
+        if (n.items) {
+          nodeI32[i32Off + 12] = -1; // leftChild
+          nodeI32[i32Off + 13] = -1; // rightChild
+          nodeI32[i32Off + 14] = n.items[0]?.id ?? -1; // itemId
+          nodeI32[i32Off + 15] = n.items.length; // itemCount
+        } else {
+          const leftIdx = n.left ? flatten(n.left) : -1;
+          const rightIdx = n.right ? flatten(n.right) : -1;
+          nodeI32[i32Off + 12] = leftIdx;
+          nodeI32[i32Off + 13] = rightIdx;
+          nodeI32[i32Off + 14] = -1;
+          nodeI32[i32Off + 15] = 0;
+        }
+        return idx;
+      };
+      flatten(this.root);
+      this.flatNodes = nodeF64;
     }
   }
 
@@ -227,40 +286,69 @@ export class AssemblyBVH {
     if (len === 0) return null;
     const dir: [number, number, number] = [rayDir[0] / len, rayDir[1] / len, rayDir[2] / len];
 
-    // Use flat WASM kernel only when the tree is a single leaf node; for multi-level hierarchies
-    // use O(log N) BVH tree pruning so large assemblies avoid O(N) linear scans and buffer copies.
+    // Perform accelerated O(log N) raycast in WASM when available (or fallback to flat scan / TS)
     const wasm = typeof globalThis !== "undefined" ? (globalThis as any).__modelscript_wasm_exports__ : null;
-    if (this.totalItems > 0 && this.depth <= 1 && wasm && typeof wasm.cad_bvh_raycast === "function") {
-      const n = this.totalItems;
-      const sc = ensureBvhWasmScratch(wasm, n);
-      const buf = wasm.memory.buffer as ArrayBuffer;
-      new Float64Array(buf, sc.aabbsPtr, n * 6).set(this.flatAABBs);
-      new Int32Array(buf, sc.idsPtr, n).set(this.flatItemIds);
-      const o = new Float64Array(buf, sc.rayOriginPtr, 3);
-      o[0] = rayOrigin[0];
-      o[1] = rayOrigin[1];
-      o[2] = rayOrigin[2];
-      const d = new Float64Array(buf, sc.rayDirPtr, 3);
-      d[0] = dir[0];
-      d[1] = dir[1];
-      d[2] = dir[2];
+    if (this.totalItems > 0 && wasm) {
+      if (typeof wasm.cad_bvh_tree_raycast === "function" && this.totalNodes > 0) {
+        const sc = ensureBvhWasmScratch(wasm, this.totalItems, this.totalNodes);
+        const buf = wasm.memory.buffer as ArrayBuffer;
+        new Float64Array(buf, sc.nodesPtr, this.totalNodes * 8).set(this.flatNodes);
+        const o = new Float64Array(buf, sc.rayOriginPtr, 3);
+        o[0] = rayOrigin[0];
+        o[1] = rayOrigin[1];
+        o[2] = rayOrigin[2];
+        const d = new Float64Array(buf, sc.rayDirPtr, 3);
+        d[0] = dir[0];
+        d[1] = dir[1];
+        d[2] = dir[2];
 
-      const hitId: number = wasm.cad_bvh_raycast(
-        n,
-        sc.aabbsPtr,
-        sc.idsPtr,
-        sc.rayOriginPtr,
-        sc.rayDirPtr,
-        Number.isFinite(maxDist) ? maxDist : 1e30,
-        sc.hitOutPtr,
-      );
-      if (hitId < 0) return null;
-      const hitOut = new Float64Array(wasm.memory.buffer, sc.hitOutPtr, 4);
-      return {
-        id: hitId,
-        distance: hitOut[0]!,
-        point: [hitOut[1]!, hitOut[2]!, hitOut[3]!],
-      };
+        const hitId: number = wasm.cad_bvh_tree_raycast(
+          this.totalNodes,
+          sc.nodesPtr,
+          sc.rayOriginPtr,
+          sc.rayDirPtr,
+          Number.isFinite(maxDist) ? maxDist : 1e30,
+          sc.hitOutPtr,
+        );
+        if (hitId < 0) return null;
+        const hitOut = new Float64Array(wasm.memory.buffer, sc.hitOutPtr, 4);
+        return {
+          id: hitId,
+          distance: hitOut[0]!,
+          point: [hitOut[1]!, hitOut[2]!, hitOut[3]!],
+        };
+      } else if (this.depth <= 1 && typeof wasm.cad_bvh_raycast === "function") {
+        const n = this.totalItems;
+        const sc = ensureBvhWasmScratch(wasm, n, 0);
+        const buf = wasm.memory.buffer as ArrayBuffer;
+        new Float64Array(buf, sc.aabbsPtr, n * 6).set(this.flatAABBs);
+        new Int32Array(buf, sc.idsPtr, n).set(this.flatItemIds);
+        const o = new Float64Array(buf, sc.rayOriginPtr, 3);
+        o[0] = rayOrigin[0];
+        o[1] = rayOrigin[1];
+        o[2] = rayOrigin[2];
+        const d = new Float64Array(buf, sc.rayDirPtr, 3);
+        d[0] = dir[0];
+        d[1] = dir[1];
+        d[2] = dir[2];
+
+        const hitId: number = wasm.cad_bvh_raycast(
+          n,
+          sc.aabbsPtr,
+          sc.idsPtr,
+          sc.rayOriginPtr,
+          sc.rayDirPtr,
+          Number.isFinite(maxDist) ? maxDist : 1e30,
+          sc.hitOutPtr,
+        );
+        if (hitId < 0) return null;
+        const hitOut = new Float64Array(wasm.memory.buffer, sc.hitOutPtr, 4);
+        return {
+          id: hitId,
+          distance: hitOut[0]!,
+          point: [hitOut[1]!, hitOut[2]!, hitOut[3]!],
+        };
+      }
     }
 
     let closestHit: RaycastHit | null = null;

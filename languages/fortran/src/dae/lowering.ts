@@ -7,7 +7,7 @@
  * and algebraic relations directly into @modelscript/runtime's linear-memory DAEBuilder.
  */
 
-import { BinOp, Causality, EqKind, IDaeBuilder, VarType, Variability } from "@modelscript/runtime";
+import { BinOp, Causality, EqKind, IDaeBuilder, UnaryOp, VarType, Variability } from "@modelscript/runtime";
 
 export interface FortranDaeLoweringResult {
   stateVarIndices: number[];
@@ -73,6 +73,19 @@ export function lowerFortranToDae(
       continue;
     }
 
+    const derPrefixMatch = /^der_([A-Za-z_][A-Za-z0-9_]*)$/i.exec(target);
+    if (derPrefixMatch) {
+      const stateVarName = derPrefixMatch[1]!;
+      const stateVarIdx = getOrAddVar(stateVarName, true);
+
+      const derExprId = builder.addDer(stateVarIdx);
+      const rhsExprId = lowerExprToArena(builder, rhs, getOrAddVar);
+
+      builder.addEquation(EqKind.Simple, derExprId, rhsExprId);
+      equationCount++;
+      continue;
+    }
+
     // 2. Algebraic Assignment: Var = expr
     const varMatch = /^([A-Za-z_][A-Za-z0-9_]*)$/.exec(target);
     if (varMatch) {
@@ -98,72 +111,275 @@ function lowerExprToArena(
   expr: string,
   getOrAddVar: (name: string, isContinuousState?: boolean) => number,
 ): number {
-  const trimmed = expr.trim();
-
-  // Numeric literal
-  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eEdD][+-]?\d+)?$/.test(trimmed)) {
-    return builder.addRealLiteral(parseFloat(trimmed.replace(/[dD]/, "e")));
-  }
-
-  // EASY5 State Reference: S(i)
-  const sMatch = /^S\s*\(\s*([0-9]+)\s*\)$/i.exec(trimmed);
-  if (sMatch) {
-    const varIdx = getOrAddVar(`s_${sMatch[1]!}`, true);
-    return builder.addName(varIdx);
-  }
-
-  // Variable reference
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-    const varIdx = getOrAddVar(trimmed, false);
-    return builder.addName(varIdx);
-  }
-
-  // Simple additive/multiplicative expressions
-  // Check addition / subtraction at top level
-  const addIdx = findTopLevelOp(trimmed, ["+", "-"]);
-  if (addIdx > 0) {
-    const op = trimmed[addIdx]!;
-    const leftStr = trimmed.slice(0, addIdx).trim();
-    const rightStr = trimmed.slice(addIdx + 1).trim();
-    const leftId = lowerExprToArena(builder, leftStr, getOrAddVar);
-    const rightId = lowerExprToArena(builder, rightStr, getOrAddVar);
-    const binOp = op === "+" ? BinOp.Add : BinOp.Sub;
-    return builder.addBinaryExpr(binOp, leftId, rightId);
-  }
-
-  // Check multiplication / division at top level
-  const mulIdx = findTopLevelOp(trimmed, ["*", "/"]);
-  if (mulIdx > 0) {
-    const op = trimmed[mulIdx]!;
-    const leftStr = trimmed.slice(0, mulIdx).trim();
-    const rightStr = trimmed.slice(mulIdx + 1).trim();
-    const leftId = lowerExprToArena(builder, leftStr, getOrAddVar);
-    const rightId = lowerExprToArena(builder, rightStr, getOrAddVar);
-    const binOp = op === "*" ? BinOp.Mul : BinOp.Div;
-    return builder.addBinaryExpr(binOp, leftId, rightId);
-  }
-
-  // Parentheses stripping: (inner)
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
-    return lowerExprToArena(builder, trimmed.slice(1, -1), getOrAddVar);
-  }
-
-  // Fallback default
-  return builder.addRealLiteral(0.0);
+  const tokens = tokenizeFortranExpr(expr);
+  if (tokens.length === 0) return builder.addRealLiteral(0.0);
+  return parseFortranExprTokens(tokens, builder, getOrAddVar);
 }
 
-function findTopLevelOp(str: string, ops: string[]): number {
-  let depth = 0;
-  for (let i = str.length - 1; i >= 0; i--) {
-    const ch = str[i]!;
-    if (ch === ")") depth++;
-    else if (ch === "(") depth--;
-    if (depth === 0 && ops.includes(ch)) {
-      // Ensure it's not a leading unary sign
-      if (i > 0 && !/[+\-*/^(]/.test(str[i - 1]!)) {
-        return i;
+interface FortranExprToken {
+  type: "num" | "ident" | "state" | "op" | "lparen" | "rparen" | "comma";
+  value: string;
+  num?: number;
+}
+
+function tokenizeFortranExpr(expr: string): FortranExprToken[] {
+  const tokens: FortranExprToken[] = [];
+  let i = 0;
+  const n = expr.length;
+
+  while (i < n) {
+    const ch = expr[i]!;
+
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+
+    // Number literal
+    if (/\d/.test(ch) || (ch === "." && i + 1 < n && /\d/.test(expr[i + 1]!))) {
+      const start = i;
+      while (i < n && /[0-9.eEdD+-]/.test(expr[i]!)) {
+        if ((expr[i] === "+" || expr[i] === "-") && !/[eEdD]/.test(expr[i - 1] ?? "")) {
+          break;
+        }
+        i++;
+      }
+      const raw = expr.slice(start, i).replace(/[dD]/g, "e");
+      tokens.push({ type: "num", value: raw, num: parseFloat(raw) });
+      continue;
+    }
+
+    // Exponentiation ** or ^
+    if (ch === "*" && i + 1 < n && expr[i + 1] === "*") {
+      tokens.push({ type: "op", value: "**" });
+      i += 2;
+      continue;
+    }
+    if (ch === "^") {
+      tokens.push({ type: "op", value: "^" });
+      i++;
+      continue;
+    }
+
+    if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+      tokens.push({ type: "op", value: ch });
+      i++;
+      continue;
+    }
+    if (ch === "(") {
+      tokens.push({ type: "lparen", value: "(" });
+      i++;
+      continue;
+    }
+    if (ch === ")") {
+      tokens.push({ type: "rparen", value: ")" });
+      i++;
+      continue;
+    }
+    if (ch === ",") {
+      tokens.push({ type: "comma", value: "," });
+      i++;
+      continue;
+    }
+
+    // Identifiers or state access: S(1), SD(1), X(1)
+    if (/[A-Za-z_]/.test(ch)) {
+      const start = i;
+      while (i < n && /[A-Za-z0-9_]/.test(expr[i]!)) {
+        i++;
+      }
+      const ident = expr.slice(start, i);
+
+      // Check for S(1) or SD(1) or X(1)
+      if (/^(?:S|SD|X)$/i.test(ident) && i < n && expr[i] === "(") {
+        const parenClose = expr.indexOf(")", i);
+        if (parenClose > i) {
+          const inner = expr.slice(i + 1, parenClose).trim();
+          if (/^\d+$/.test(inner)) {
+            i = parenClose + 1;
+            tokens.push({ type: "state", value: inner });
+            continue;
+          }
+        }
+      }
+
+      tokens.push({ type: "ident", value: ident });
+      continue;
+    }
+
+    i++;
+  }
+
+  return tokens;
+}
+
+function parseFortranExprTokens(
+  tokens: FortranExprToken[],
+  builder: IDaeBuilder,
+  getOrAddVar: (name: string, isContinuousState?: boolean) => number,
+): number {
+  let pos = 0;
+
+  function peek(): FortranExprToken | undefined {
+    return tokens[pos];
+  }
+
+  function consume(): FortranExprToken {
+    return tokens[pos++]!;
+  }
+
+  function parseExpression(): number {
+    return parseBinary(1);
+  }
+
+  function getPrecedence(op: string): number {
+    if (op === "+" || op === "-") return 1;
+    if (op === "*" || op === "/") return 2;
+    if (op === "^" || op === "**") return 3;
+    return 0;
+  }
+
+  function parseBinary(minPrec: number): number {
+    let left = parseUnary();
+
+    while (pos < tokens.length) {
+      const tok = peek();
+      if (!tok || tok.type !== "op") break;
+
+      const prec = getPrecedence(tok.value);
+      if (prec < minPrec) break;
+
+      consume();
+      const nextMinPrec = tok.value === "^" || tok.value === "**" ? prec : prec + 1;
+      const right = parseBinary(nextMinPrec);
+
+      if (tok.value === "+") {
+        left = builder.addBinaryExpr(BinOp.Add, left, right);
+      } else if (tok.value === "-") {
+        left = builder.addBinaryExpr(BinOp.Sub, left, right);
+      } else if (tok.value === "*") {
+        left = builder.addBinaryExpr(BinOp.Mul, left, right);
+      } else if (tok.value === "/") {
+        left = builder.addBinaryExpr(BinOp.Div, left, right);
+      } else if (tok.value === "^" || tok.value === "**") {
+        left = builder.addBinaryExpr(BinOp.Pow, left, right);
       }
     }
+
+    return left;
   }
-  return -1;
+
+  function parseUnary(): number {
+    const tok = peek();
+    if (tok && tok.type === "op" && (tok.value === "+" || tok.value === "-")) {
+      consume();
+      const op = tok.value;
+      const operand = parseUnary();
+      if (op === "+") return operand;
+      if (typeof (builder as any).addUnaryExpr === "function") {
+        return (builder as any).addUnaryExpr(UnaryOp.Negate, operand);
+      }
+      return builder.addBinaryExpr(BinOp.Sub, builder.addRealLiteral(0.0), operand);
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): number {
+    const tok = peek();
+    if (!tok) {
+      return builder.addRealLiteral(0.0);
+    }
+
+    if (tok.type === "num") {
+      consume();
+      return builder.addRealLiteral(tok.num ?? 0.0);
+    }
+
+    if (tok.type === "state") {
+      consume();
+      const varIdx = getOrAddVar(`s_${tok.value}`, true);
+      return builder.addName(varIdx);
+    }
+
+    if (tok.type === "ident") {
+      consume();
+      const identName = tok.value;
+
+      // Function call: IDENT(arg1, arg2, ...)
+      if (peek() && peek()!.type === "lparen") {
+        consume(); // (
+        const args: number[] = [];
+        if (peek() && peek()!.type !== "rparen") {
+          args.push(parseExpression());
+          while (peek() && peek()!.type === "comma") {
+            consume(); // ,
+            args.push(parseExpression());
+          }
+        }
+        if (peek() && peek()!.type === "rparen") {
+          consume(); // )
+        }
+
+        const fnUpper = identName.toUpperCase();
+        if (fnUpper === "SQRT" && args.length >= 1) {
+          return builder.addBinaryExpr(BinOp.Pow, args[0]!, builder.addRealLiteral(0.5));
+        }
+        if (fnUpper === "POW" && args.length >= 2) {
+          return builder.addBinaryExpr(BinOp.Pow, args[0]!, args[1]!);
+        }
+        if (fnUpper === "ABS" && args.length >= 1) {
+          if (typeof (builder as any).addCall === "function") {
+            return (builder as any).addCall(14, args[0]!, 1); // BuiltinMathFunc.Abs
+          }
+          return args[0]!;
+        }
+        if (fnUpper === "EXP" && args.length >= 1) {
+          if (typeof (builder as any).addCall === "function") {
+            return (builder as any).addCall(10, args[0]!, 1); // BuiltinMathFunc.Exp
+          }
+          return builder.addBinaryExpr(BinOp.Pow, builder.addRealLiteral(Math.E), args[0]!);
+        }
+        if (fnUpper === "SIN" && args.length >= 1 && typeof (builder as any).addCall === "function") {
+          return (builder as any).addCall(0, args[0]!, 1);
+        }
+        if (fnUpper === "COS" && args.length >= 1 && typeof (builder as any).addCall === "function") {
+          return (builder as any).addCall(1, args[0]!, 1);
+        }
+        if (
+          (fnUpper === "LOG" || fnUpper === "ALOG") &&
+          args.length >= 1 &&
+          typeof (builder as any).addCall === "function"
+        ) {
+          return (builder as any).addCall(11, args[0]!, 1);
+        }
+
+        return args[0] ?? builder.addRealLiteral(0.0);
+      }
+
+      // Check if state reference like S_1
+      const sSubMatch = /^(?:S|SD)_?([0-9]+)$/i.exec(identName);
+      if (sSubMatch) {
+        const varIdx = getOrAddVar(`s_${sSubMatch[1]!}`, true);
+        return builder.addName(varIdx);
+      }
+
+      const varIdx = getOrAddVar(identName, false);
+      return builder.addName(varIdx);
+    }
+
+    if (tok.type === "lparen") {
+      consume(); // (
+      const expr = parseExpression();
+      if (peek() && peek()!.type === "rparen") {
+        consume(); // )
+      }
+      return expr;
+    }
+
+    consume();
+    return builder.addRealLiteral(0.0);
+  }
+
+  if (tokens.length === 0) return builder.addRealLiteral(0.0);
+  return parseExpression();
 }

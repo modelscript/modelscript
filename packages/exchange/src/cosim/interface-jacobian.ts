@@ -103,9 +103,10 @@ export class InterfaceJacobianSolver {
   computeResidual(
     currentU: Float64Array,
     outputs: Map<string, Map<string, CosimValue>>,
+    outResidual?: Float64Array,
   ): { residual: Float64Array; norm: number } {
     const n = this.variables.length;
-    const residual = new Float64Array(n);
+    const residual = outResidual ?? new Float64Array(n);
     let sumSq = 0;
 
     for (let i = 0; i < n; i++) {
@@ -232,9 +233,9 @@ export class InterfaceJacobianSolver {
    * Solves the linear system J * deltaU = -residual using LU decomposition with partial pivoting
    * and Tikhonov regularization fallback if ill-conditioned.
    */
-  solveLinearSystem(J: Float64Array, residual: Float64Array): Float64Array {
+  solveLinearSystem(J: Float64Array, residual: Float64Array, outDeltaU?: Float64Array): Float64Array {
     const n = this.variables.length;
-    const deltaU = new Float64Array(n);
+    const deltaU = outDeltaU ?? new Float64Array(n);
     const A = this.scratchA;
     A.set(J);
     const b = this.scratchB;

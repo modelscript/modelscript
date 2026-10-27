@@ -61,19 +61,86 @@ export function solveAc(circuit: SpiceCircuit, options?: Partial<AcOptions>): Ac
     branchCurrents.set(branch, createEmptyAcSignal(frequencies.length));
   }
 
+  const baseMatrix = new DenseMatrix(augSize);
+  const baseRhs = new Float64Array(augSize);
+
+  const addG_base = (r: number, c: number, val: number) => {
+    baseMatrix.add(r, c, val);
+    baseMatrix.add(n + r, n + c, val);
+  };
+
+  // 1. Pre-stamp Resistors (Pure Real Conductance)
+  for (const comp of components) {
+    if (comp.kind === "R") {
+      const n1 = comp.nodes[0] ?? "";
+      const n2 = comp.nodes[1] ?? "";
+      const rVal = comp.value ?? 1e3;
+      const g = rVal > 0 ? 1.0 / rVal : 1e12;
+      stampTwoTerminal(indexing, n1, n2, g, addG_base);
+    }
+  }
+
+  // 2. Pre-stamp AC Independent Sources
+  for (const comp of components) {
+    const n1 = comp.nodes[0] ?? "";
+    const n2 = comp.nodes[1] ?? "";
+
+    if (comp.kind === "V") {
+      const acMag = comp.sourceSpec?.acMag ?? (comp.sourceSpec?.dc !== undefined ? 0 : (comp.value ?? 0));
+      const acPhaseDeg = comp.sourceSpec?.acPhase ?? 0;
+      const phaseRad = (acPhaseDeg * Math.PI) / 180.0;
+      const realVal = acMag * Math.cos(phaseRad);
+      const imagVal = acMag * Math.sin(phaseRad);
+
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+
+        if (i1 >= 0) {
+          addG_base(i1, bIdx, 1.0);
+          addG_base(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          addG_base(i2, bIdx, -1.0);
+          addG_base(bIdx, i2, -1.0);
+        }
+
+        baseRhs[bIdx] = realVal;
+        baseRhs[n + bIdx] = imagVal;
+      }
+    } else if (comp.kind === "I") {
+      const acMag = comp.sourceSpec?.acMag ?? 0;
+      const acPhaseDeg = comp.sourceSpec?.acPhase ?? 0;
+      const phaseRad = (acPhaseDeg * Math.PI) / 180.0;
+      const realVal = acMag * Math.cos(phaseRad);
+      const imagVal = acMag * Math.sin(phaseRad);
+
+      const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+
+      if (i1 >= 0) {
+        baseRhs[i1] = (baseRhs[i1] ?? 0) - realVal;
+        baseRhs[n + i1] = (baseRhs[n + i1] ?? 0) - imagVal;
+      }
+      if (i2 >= 0) {
+        baseRhs[i2] = (baseRhs[i2] ?? 0) + realVal;
+        baseRhs[n + i2] = (baseRhs[n + i2] ?? 0) + imagVal;
+      }
+    }
+  }
+
+  // Pre-filter reactive components
+  const capComponents = components.filter((c) => c.kind === "C");
+  const indComponents = components.filter((c) => c.kind === "L");
+
   // Frequency Sweep Loop
   for (let fIdx = 0; fIdx < frequencies.length; fIdx++) {
     const freq = frequencies[fIdx] ?? 1.0;
     const omega = 2.0 * Math.PI * freq;
 
-    matrix.clear();
-    rhs.fill(0);
-
-    // Helpers to stamp real conductance G into top-left and bottom-right blocks
-    const addG = (r: number, c: number, val: number) => {
-      matrix.add(r, c, val);
-      matrix.add(n + r, n + c, val);
-    };
+    matrix.data.set(baseMatrix.data);
+    rhs.set(baseRhs);
 
     // Helpers to stamp susceptance B: +B into bottom-left, -B into top-right
     // [ G   -B ]
@@ -83,90 +150,22 @@ export function solveAc(circuit: SpiceCircuit, options?: Partial<AcOptions>): Ac
       matrix.add(r, n + c, -val);
     };
 
-    // 1. Stamp Resistors (Pure Real Conductance)
-    for (const comp of components) {
+    // 1. Stamp Capacitors (Susceptance B = omega * C)
+    for (const comp of capComponents) {
       const n1 = comp.nodes[0] ?? "";
       const n2 = comp.nodes[1] ?? "";
-
-      if (comp.kind === "R") {
-        const rVal = comp.value ?? 1e3;
-        const g = rVal > 0 ? 1.0 / rVal : 1e12;
-        stampTwoTerminal(indexing, n1, n2, g, addG);
-      }
+      const cVal = comp.value ?? 1e-9;
+      const b = omega * cVal;
+      stampTwoTerminal(indexing, n1, n2, b, addB);
     }
 
-    // 2. Stamp Capacitors (Susceptance B = omega * C)
-    for (const comp of components) {
+    // 2. Stamp Inductors (Susceptance B = -1 / (omega * L))
+    for (const comp of indComponents) {
       const n1 = comp.nodes[0] ?? "";
       const n2 = comp.nodes[1] ?? "";
-
-      if (comp.kind === "C") {
-        const cVal = comp.value ?? 1e-9;
-        const b = omega * cVal;
-        stampTwoTerminal(indexing, n1, n2, b, addB);
-      }
-    }
-
-    // 3. Stamp Inductors (Susceptance B = -1 / (omega * L))
-    for (const comp of components) {
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
-
-      if (comp.kind === "L") {
-        const lVal = comp.value ?? 1e-6;
-        const b = lVal > 0 ? -1.0 / (omega * lVal) : -1e12;
-        stampTwoTerminal(indexing, n1, n2, b, addB);
-      }
-    }
-
-    // 4. Stamp AC Sources
-    for (const comp of components) {
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
-
-      if (comp.kind === "V") {
-        const acMag = comp.sourceSpec?.acMag ?? (comp.sourceSpec?.dc !== undefined ? 0 : (comp.value ?? 0));
-        const acPhaseDeg = comp.sourceSpec?.acPhase ?? 0;
-        const phaseRad = (acPhaseDeg * Math.PI) / 180.0;
-        const realVal = acMag * Math.cos(phaseRad);
-        const imagVal = acMag * Math.sin(phaseRad);
-
-        const bIdx = indexing.branchToIdx.get(comp.name);
-        if (bIdx !== undefined) {
-          const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-          const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-
-          if (i1 >= 0) {
-            addG(i1, bIdx, 1.0);
-            addG(bIdx, i1, 1.0);
-          }
-          if (i2 >= 0) {
-            addG(i2, bIdx, -1.0);
-            addG(bIdx, i2, -1.0);
-          }
-
-          rhs[bIdx] = realVal;
-          rhs[n + bIdx] = imagVal;
-        }
-      } else if (comp.kind === "I") {
-        const acMag = comp.sourceSpec?.acMag ?? 0;
-        const acPhaseDeg = comp.sourceSpec?.acPhase ?? 0;
-        const phaseRad = (acPhaseDeg * Math.PI) / 180.0;
-        const realVal = acMag * Math.cos(phaseRad);
-        const imagVal = acMag * Math.sin(phaseRad);
-
-        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-
-        if (i1 >= 0) {
-          rhs[i1] = (rhs[i1] ?? 0) - realVal;
-          rhs[n + i1] = (rhs[n + i1] ?? 0) - imagVal;
-        }
-        if (i2 >= 0) {
-          rhs[i2] = (rhs[i2] ?? 0) + realVal;
-          rhs[n + i2] = (rhs[n + i2] ?? 0) + imagVal;
-        }
-      }
+      const lVal = comp.value ?? 1e-6;
+      const b = lVal > 0 ? -1.0 / (omega * lVal) : -1e12;
+      stampTwoTerminal(indexing, n1, n2, b, addB);
     }
 
     // Solve augmented linear system

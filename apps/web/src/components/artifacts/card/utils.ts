@@ -31,29 +31,41 @@ export function resolvePlaceholder(vt?: string): PlaceholderType {
   if (v === "simulation-plot" || v === "vega" || v === "vega-plot" || v === "psout") {
     return "plot";
   }
+  if (v === "pscad" || v === "pscx" || v === "pslx" || v === "spice" || v === "ibis" || v === "circuit") {
+    return "circuit";
+  }
+  if (v === "psse" || v === "raw" || v === "opendss" || v === "grid" || v === "powerflow") {
+    return "network";
+  }
   if (
-    v === "pscad" ||
-    v === "pscx" ||
-    v === "pslx" ||
-    v === "psse" ||
-    v === "raw" ||
-    v === "easy5" ||
-    v === "rocets" ||
-    v === "lps" ||
-    v === "sima" ||
-    v === "gtsuite" ||
-    v === "aspen" ||
     v === "swmm" ||
-    v === "touchstone" ||
-    v === "ibis" ||
-    v === "opendss" ||
-    v === "openscenario" ||
+    v === "epanet" ||
+    v === "lps" ||
+    v === "olga" ||
     v === "relap5" ||
     v === "eclipse" ||
-    v === "sbml" ||
-    v === "jsbsim"
+    v === "rocets" ||
+    v === "hydraulic" ||
+    v === "piping"
   ) {
-    return "plot";
+    return "hydraulic";
+  }
+  if (
+    v === "easy5" ||
+    v === "sima" ||
+    v === "gtsuite" ||
+    v === "gensys" ||
+    v === "simpack" ||
+    v === "spck" ||
+    v === "sim" ||
+    v === "aspen" ||
+    v === "touchstone" ||
+    v === "openscenario" ||
+    v === "sbml" ||
+    v === "jsbsim" ||
+    v === "schematic"
+  ) {
+    return "schematic";
   }
   if (v === "fea-deck" || v === "fea-inp") return "fea";
   if (v === "cfd-config" || v === "cfd-su2") return "cfd";

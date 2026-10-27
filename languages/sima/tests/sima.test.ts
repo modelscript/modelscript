@@ -14,6 +14,7 @@ import {
   SimaWorkspaceIndex,
   solveCatenary,
   verifyDnvMooringCompliance,
+  WasmCatenaryBridge,
 } from "../src/index.js";
 
 const SAMPLE_SIMO_DECK = `
@@ -153,6 +154,23 @@ describe("@modelscript/sima catenary solver suite", () => {
     });
     assert.equal(res.isLiftedOff, true);
     assert.ok(res.fairleadTotalTension > 0);
+  });
+
+  it("executes Catenary solve directly via WasmCatenaryBridge with zero allocations", () => {
+    const bridge = WasmCatenaryBridge.getInstance();
+    assert.ok(bridge, "WasmCatenaryBridge instance should be created");
+    const res = bridge.solve({
+      waterDepth: 200,
+      horizontalSpan: 700,
+      lineLength: 850,
+      submergedWeight: 2500,
+      axialStiffnessEA: 1e9,
+    });
+    assert.ok(res);
+    assert.ok(res.horizontalTension > 0);
+    assert.ok(res.fairleadTotalTension > res.horizontalTension);
+    assert.equal(res.isLiftedOff, false);
+    assert.equal(res.profile.length, 41);
   });
 });
 

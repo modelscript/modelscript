@@ -12,6 +12,7 @@
  * - Dynamic fault impedance injection (3PH, SLG, DLG, LL) & IBR LVRT current control
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { EmtNetlist } from "../types.js";
 
 export interface EmtSolverOptions {
@@ -22,6 +23,8 @@ export interface EmtSolverOptions {
   enableCda?: boolean | undefined;
   /** Maximum number of simulation steps. Default: 50,000. */
   maxSteps?: number | undefined;
+  /** Whether to execute via native WebAssembly companion solver kernel. Default: false. */
+  useWasm?: boolean | undefined;
 }
 
 export interface EmtSolverMetrics {
@@ -46,6 +49,9 @@ interface CompanionBranch {
   id: string;
   fromIdx: number;
   toIdx: number;
+  rOhm: number;
+  lHenry: number;
+  cFarad: number;
   gEq: number;
   alphaHist: number;
   shuntG: number;
@@ -143,12 +149,15 @@ export class EmtSolver {
   private switchingEventCount: number = 0;
   private chatterDampedCount: number = 0;
 
+  private readonly useWasm: boolean;
+
   constructor(netlist: EmtNetlist, options: EmtSolverOptions) {
     this.netlist = netlist;
     this.timeStepSec = Math.max(1e-7, options.timeStepSec);
     this.durationSec = Math.max(this.timeStepSec * 2, options.durationSec);
     this.omega = 2 * Math.PI * (options.nominalFrequencyHz ?? netlist.nominalFrequencyHz ?? 60.0);
     this.enableCda = options.enableCda ?? true;
+    this.useWasm = options.useWasm ?? false;
 
     const maxSteps = options.maxSteps ?? 50000;
     this.nSteps = Math.max(10, Math.min(maxSteps, Math.floor(this.durationSec / this.timeStepSec)));
@@ -234,6 +243,9 @@ export class EmtSolver {
         id,
         fromIdx,
         toIdx,
+        rOhm: R,
+        lHenry: L,
+        cFarad,
         gEq,
         alphaHist,
         shuntG,
@@ -398,9 +410,113 @@ export class EmtSolver {
   }
 
   /**
+   * Delegates simulation to the native WebAssembly EMT companion solver kernel in linear memory.
+   */
+  private solveWithWasm(): EmtSolverResult | null {
+    const wasm: any = getDefaultWasmExports();
+    if (!wasm || typeof wasm.emt_create !== "function") return null;
+
+    try {
+      const nNodes = this.nBuses * 3;
+      const maxBranches = Math.max(32, (this.companionBranches.length + this.switchStates.length + 5) * 3);
+      const maxSources = Math.max(16, (this.busSources.size + 5) * 3);
+      const dt = this.timeStepSec;
+
+      const solverPtr = wasm.emt_create(nNodes, maxBranches, maxSources, dt);
+      if (!solverPtr) return null;
+
+      const branchIndices: { id: string; idxA: number; idxB: number; idxC: number }[] = [];
+      for (const br of this.companionBranches) {
+        const fromA = br.fromIdx >= 0 ? br.fromIdx * 3 + 0 : -1;
+        const fromB = br.fromIdx >= 0 ? br.fromIdx * 3 + 1 : -1;
+        const fromC = br.fromIdx >= 0 ? br.fromIdx * 3 + 2 : -1;
+
+        const toA = br.toIdx >= 0 ? br.toIdx * 3 + 0 : -1;
+        const toB = br.toIdx >= 0 ? br.toIdx * 3 + 1 : -1;
+        const toC = br.toIdx >= 0 ? br.toIdx * 3 + 2 : -1;
+
+        const idxA = wasm.emt_add_branch(solverPtr, fromA, toA, br.rOhm, br.lHenry, br.cFarad);
+        const idxB = wasm.emt_add_branch(solverPtr, fromB, toB, br.rOhm, br.lHenry, br.cFarad);
+        const idxC = wasm.emt_add_branch(solverPtr, fromC, toC, br.rOhm, br.lHenry, br.cFarad);
+        branchIndices.push({ id: br.id, idxA, idxB, idxC });
+      }
+
+      for (const [bIdx, srcList] of this.busSources) {
+        for (const src of srcList) {
+          const vPeakKv = src.vPeak / 1e3;
+          const freqHz = src.freqRad / (2 * Math.PI);
+          const phase = src.phaseRad;
+          wasm.emt_add_source(solverPtr, bIdx * 3 + 0, vPeakKv, freqHz, phase, src.gSrc, 1);
+          wasm.emt_add_source(solverPtr, bIdx * 3 + 1, vPeakKv, freqHz, phase - (2 * Math.PI) / 3, src.gSrc, 1);
+          wasm.emt_add_source(solverPtr, bIdx * 3 + 2, vPeakKv, freqHz, phase + (2 * Math.PI) / 3, src.gSrc, 1);
+        }
+      }
+
+      const ok = wasm.emt_build_and_factorize(solverPtr);
+      if (!ok) return null;
+
+      const startTime = performance.now();
+      const vVecPtr = wasm.emt_get_voltages_ptr(solverPtr);
+      const vView = new Float64Array(wasm.memory.buffer, vVecPtr, this.nBuses * 3);
+
+      for (let k = 0; k < this.nSteps; k++) {
+        wasm.emt_step(solverPtr);
+
+        for (let b = 0; b < this.nBuses; b++) {
+          const busName = this.busList[b]!.id;
+          const va = vView[b * 3 + 0]!;
+          const vb = vView[b * 3 + 1]!;
+          const vc = vView[b * 3 + 2]!;
+
+          const pv = this.busPhaseVoltages.get(busName)!;
+          pv.a[k] = va;
+          pv.b[k] = vb;
+          pv.c[k] = vc;
+          this.busVoltages.get(busName)![k] = va;
+        }
+
+        for (const br of branchIndices) {
+          const ia = wasm.emt_get_branch_current(solverPtr, br.idxA);
+          const ib = wasm.emt_get_branch_current(solverPtr, br.idxB);
+          const ic = wasm.emt_get_branch_current(solverPtr, br.idxC);
+
+          const pb = this.branchPhaseCurrents.get(br.id)!;
+          pb.a[k] = ia;
+          pb.b[k] = ib;
+          pb.c[k] = ic;
+          this.branchCurrents.get(br.id)![k] = ia;
+        }
+      }
+
+      const executionTimeMs = performance.now() - startTime;
+      return {
+        time: this.time,
+        busVoltages: this.busVoltages,
+        busPhaseVoltages: this.busPhaseVoltages,
+        branchCurrents: this.branchCurrents,
+        branchPhaseCurrents: this.branchPhaseCurrents,
+        metrics: {
+          totalSteps: this.nSteps,
+          luFactorizations: 3,
+          switchingEvents: 0,
+          chatterDampedSteps: 0,
+          executionTimeMs,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Executes the full time-domain simulation loop.
    */
   public solve(): EmtSolverResult {
+    if (this.useWasm) {
+      const wasmRes = this.solveWithWasm();
+      if (wasmRes) return wasmRes;
+    }
+
     const startTime = performance.now();
     const n = this.nBuses;
 

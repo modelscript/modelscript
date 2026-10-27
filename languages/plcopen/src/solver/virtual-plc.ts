@@ -37,6 +37,8 @@ export class VirtualPlc {
   private variables = new Map<string, any>();
   private timers = new Map<string, TimerState>();
   private counters = new Map<string, CounterState>();
+  private pouVarMap = new Map<string, Map<string, any>>();
+  private timeCache = new Map<string, number>();
   private cycleCount = 0;
   private defaultDtMs = 10; // Default 10ms cycle time
 
@@ -51,10 +53,18 @@ export class VirtualPlc {
     this.variables.clear();
     this.timers.clear();
     this.counters.clear();
+    this.pouVarMap.clear();
+    this.timeCache.clear();
     this.cycleCount = 0;
 
     // Initialize variables from all POUs
     for (const pou of project.pous) {
+      const vMap = new Map<string, any>();
+      for (const v of pou.variables) {
+        vMap.set(v.name.toLowerCase(), v);
+      }
+      this.pouVarMap.set(pou.name, vMap);
+
       for (const v of pou.variables) {
         let val: any = 0;
         const dtUpper = v.dataType.toUpperCase();
@@ -199,7 +209,9 @@ export class VirtualPlc {
 
   private executeCall(pou: PlcPou, callee: string, args: PlcCallArg[], _dtMs: number): void {
     const calleeUpper = callee.toUpperCase();
-    const calleeVar = pou.variables.find((v) => v.name.toLowerCase() === callee.toLowerCase());
+    const calleeVar =
+      this.pouVarMap.get(pou.name)?.get(callee.toLowerCase()) ??
+      pou.variables.find((v) => v.name.toLowerCase() === callee.toLowerCase());
     const resolvedType = (calleeVar?.dataType ?? callee).toUpperCase();
 
     // Check if this is TON / TOF / TP standard timer call
@@ -387,17 +399,24 @@ export class VirtualPlc {
   private parseTimeMs(val: any): number {
     if (typeof val === "number") return val;
     if (typeof val === "string") {
+      const cached = this.timeCache.get(val);
+      if (cached !== undefined) return cached;
+
+      let result = 0;
       const m = /(?:T|TIME)#(\d+)(ms|s|m|h)?/i.exec(val);
       if (m) {
         const n = parseInt(m[1]!, 10);
         const u = (m[2] ?? "ms").toLowerCase();
-        if (u === "ms") return n;
-        if (u === "s") return n * 1000;
-        if (u === "m") return n * 60000;
-        if (u === "h") return n * 3600000;
+        if (u === "ms") result = n;
+        else if (u === "s") result = n * 1000;
+        else if (u === "m") result = n * 60000;
+        else if (u === "h") result = n * 3600000;
+      } else {
+        const num = parseFloat(val);
+        if (!isNaN(num)) result = num;
       }
-      const num = parseFloat(val);
-      if (!isNaN(num)) return num;
+      this.timeCache.set(val, result);
+      return result;
     }
     return 0;
   }

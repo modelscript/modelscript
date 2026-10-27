@@ -16,7 +16,7 @@ import {
   type PvtInterpolatedState,
   type PvtTableData,
 } from "../parser/pvt-table-parser.js";
-import { evaluateEmulsionViscosity } from "./emulsion-rheology.js";
+import { evaluateEmulsionViscosity, evaluateEmulsionViscosityFast } from "./emulsion-rheology.js";
 import { evaluateBlackOilPvt } from "./zuber-findlay.js";
 
 export interface EvaluatedCellFluid {
@@ -108,6 +108,69 @@ export function evaluateCellFluidProperties(
     dRhoLdP,
     isExtrapolated: false,
   };
+}
+
+/**
+ * High-performance zero-allocation evaluation of cell fluid properties directly into flat typed arrays.
+ * Suitable for high-frequency inner loops of 1D spatial discretizations.
+ */
+export function evaluateCellFluidPropertiesFlat(
+  pvtTable: PvtTableData | null | undefined,
+  count: number,
+  pressures: Float64Array,
+  temps: Float64Array,
+  waterCuts: Float64Array | null | undefined,
+  outRhoG: Float64Array,
+  outRhoL: Float64Array,
+  outMuG: Float64Array,
+  outMuL: Float64Array,
+  outSigma?: Float64Array | undefined,
+  outSoundSpeedG?: Float64Array | undefined,
+  outSoundSpeedL?: Float64Array | undefined,
+  outDRhoGdP?: Float64Array | undefined,
+  outDRhoLdP?: Float64Array | undefined,
+): void {
+  for (let i = 0; i < count; i++) {
+    const p = pressures[i]!;
+    const t = temps[i]!;
+    const wc = waterCuts ? Math.max(0.0, Math.min(1.0, waterCuts[i] ?? 0.0)) : 0.0;
+
+    if (pvtTable) {
+      const pvt = interpolatePvt(pvtTable, p, t);
+      outRhoG[i] = pvt.rhoG;
+      outMuG[i] = pvt.muG;
+
+      if (pvt.rhoO != null && pvt.rhoW != null && pvt.muO != null && pvt.muW != null) {
+        outRhoL[i] = wc * pvt.rhoW + (1.0 - wc) * pvt.rhoO;
+        outMuL[i] = evaluateEmulsionViscosityFast(wc, pvt.muO, pvt.muW);
+      } else {
+        outRhoL[i] = pvt.rhoL;
+        outMuL[i] = evaluateEmulsionViscosityFast(wc, pvt.muL, 0.001);
+      }
+
+      if (outSigma) outSigma[i] = pvt.sigma;
+      if (outSoundSpeedG) outSoundSpeedG[i] = pvt.soundSpeedGas;
+      if (outSoundSpeedL) outSoundSpeedL[i] = pvt.soundSpeedLiquid;
+      if (outDRhoGdP) outDRhoGdP[i] = pvt.dRhoGdP;
+      if (outDRhoLdP) outDRhoLdP[i] = pvt.dRhoLdP;
+    } else {
+      // Analytical Black Oil
+      const bo = evaluateBlackOilPvt(p, t);
+      outRhoG[i] = bo.rhoG;
+      outRhoL[i] = bo.rhoL;
+      outMuG[i] = bo.muG;
+      outMuL[i] = evaluateEmulsionViscosityFast(wc, bo.muL, 0.001);
+
+      const dRhoGdP = bo.rhoG / Math.max(1.0e5, p);
+      const dRhoLdP = 1.0e-9 * bo.rhoL;
+
+      if (outSigma) outSigma[i] = 0.025;
+      if (outSoundSpeedG) outSoundSpeedG[i] = Math.sqrt(Math.max(100.0, 1.0 / Math.max(1e-9, dRhoGdP)));
+      if (outSoundSpeedL) outSoundSpeedL[i] = Math.sqrt(Math.max(1000.0, 1.0 / Math.max(1e-11, dRhoLdP)));
+      if (outDRhoGdP) outDRhoGdP[i] = dRhoGdP;
+      if (outDRhoLdP) outDRhoLdP[i] = dRhoLdP;
+    }
+  }
 }
 
 /**

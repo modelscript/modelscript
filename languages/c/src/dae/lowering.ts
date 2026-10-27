@@ -7,7 +7,7 @@
  * and explicit algebraic relations directly into @modelscript/runtime's linear-memory IDaeBuilder.
  */
 
-import { BinOp, Causality, EqKind, IDaeBuilder, VarType, Variability } from "@modelscript/runtime";
+import { BinOp, Causality, EqKind, IDaeBuilder, UnaryOp, VarType, Variability } from "@modelscript/runtime";
 
 export interface CDaeLoweringResult {
   stateVarIndices: number[];
@@ -107,69 +107,298 @@ function lowerCExprToArena(
   expr: string,
   getOrAddVar: (name: string, isContinuousState?: boolean) => number,
 ): number {
-  const trimmed = expr.trim();
-
-  // Numeric literal
-  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eEdD][+-]?\d+)?[fFlLuU]*$/.test(trimmed)) {
-    return builder.addRealLiteral(parseFloat(trimmed.replace(/[fFlLuU]/g, "")));
-  }
-
-  // State Array Subscript: x[i] or s[i]
-  const stateSubMatch = /^(?:x|s)\s*\[\s*([0-9]+)\s*\]$/i.exec(trimmed);
-  if (stateSubMatch) {
-    const varIdx = getOrAddVar(`s_${stateSubMatch[1]!}`, true);
-    return builder.addName(varIdx);
-  }
-
-  // Variable reference
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-    const varIdx = getOrAddVar(trimmed, false);
-    return builder.addName(varIdx);
-  }
-
-  // Top level addition / subtraction
-  const addIdx = findTopLevelOp(trimmed, ["+", "-"]);
-  if (addIdx > 0) {
-    const op = trimmed[addIdx]!;
-    const leftStr = trimmed.slice(0, addIdx).trim();
-    const rightStr = trimmed.slice(addIdx + 1).trim();
-    const leftId = lowerCExprToArena(builder, leftStr, getOrAddVar);
-    const rightId = lowerCExprToArena(builder, rightStr, getOrAddVar);
-    const binOp = op === "+" ? BinOp.Add : BinOp.Sub;
-    return builder.addBinaryExpr(binOp, leftId, rightId);
-  }
-
-  // Top level multiplication / division
-  const mulIdx = findTopLevelOp(trimmed, ["*", "/"]);
-  if (mulIdx > 0) {
-    const op = trimmed[mulIdx]!;
-    const leftStr = trimmed.slice(0, mulIdx).trim();
-    const rightStr = trimmed.slice(mulIdx + 1).trim();
-    const leftId = lowerCExprToArena(builder, leftStr, getOrAddVar);
-    const rightId = lowerCExprToArena(builder, rightStr, getOrAddVar);
-    const binOp = op === "*" ? BinOp.Mul : BinOp.Div;
-    return builder.addBinaryExpr(binOp, leftId, rightId);
-  }
-
-  // Parentheses: (inner)
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
-    return lowerCExprToArena(builder, trimmed.slice(1, -1), getOrAddVar);
-  }
-
-  return builder.addRealLiteral(0.0);
+  const tokens = tokenizeCExpr(expr);
+  if (tokens.length === 0) return builder.addRealLiteral(0.0);
+  return parseCExprTokens(tokens, builder, getOrAddVar);
 }
 
-function findTopLevelOp(str: string, ops: string[]): number {
-  let depth = 0;
-  for (let i = str.length - 1; i >= 0; i--) {
-    const ch = str[i]!;
-    if (ch === ")") depth++;
-    else if (ch === "(") depth--;
-    if (depth === 0 && ops.includes(ch)) {
-      if (i > 0 && !/[+\-*/^(]/.test(str[i - 1]!)) {
-        return i;
+interface CExprToken {
+  type: "num" | "ident" | "state" | "op" | "lparen" | "rparen" | "comma";
+  value: string;
+  num?: number;
+}
+
+function tokenizeCExpr(expr: string): CExprToken[] {
+  const tokens: CExprToken[] = [];
+  let i = 0;
+  const n = expr.length;
+
+  while (i < n) {
+    const ch = expr[i]!;
+
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+
+    // Number literal
+    if (/\d/.test(ch) || (ch === "." && i + 1 < n && /\d/.test(expr[i + 1]!))) {
+      const start = i;
+      while (i < n && /[0-9.eEdD+-]/.test(expr[i]!)) {
+        if ((expr[i] === "+" || expr[i] === "-") && !/[eEdD]/.test(expr[i - 1] ?? "")) {
+          break;
+        }
+        i++;
+      }
+      while (i < n && /[fFlLuU]/.test(expr[i]!)) {
+        i++;
+      }
+      const raw = expr
+        .slice(start, i)
+        .replace(/[fFlLuU]/g, "")
+        .replace(/[dD]/g, "e");
+      tokens.push({ type: "num", value: raw, num: parseFloat(raw) });
+      continue;
+    }
+
+    // Power operator: ** or ^
+    if (ch === "*" && i + 1 < n && expr[i + 1] === "*") {
+      tokens.push({ type: "op", value: "**" });
+      i += 2;
+      continue;
+    }
+    if (ch === "^") {
+      tokens.push({ type: "op", value: "^" });
+      i++;
+      continue;
+    }
+
+    // Single-character operators & punctuation
+    if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+      tokens.push({ type: "op", value: ch });
+      i++;
+      continue;
+    }
+    if (ch === "(") {
+      tokens.push({ type: "lparen", value: "(" });
+      i++;
+      continue;
+    }
+    if (ch === ")") {
+      tokens.push({ type: "rparen", value: ")" });
+      i++;
+      continue;
+    }
+    if (ch === ",") {
+      tokens.push({ type: "comma", value: "," });
+      i++;
+      continue;
+    }
+
+    // Identifiers, states (e.g. x[0], s[0], state->x, state.x)
+    if (/[A-Za-z_]/.test(ch)) {
+      const start = i;
+      while (i < n && /[A-Za-z0-9_]/.test(expr[i]!)) {
+        i++;
+      }
+      let ident = expr.slice(start, i);
+
+      // Check for arrow -> or dot . member access
+      while (i < n) {
+        if (expr.slice(i, i + 2) === "->") {
+          i += 2;
+          const mStart = i;
+          while (i < n && /[A-Za-z0-9_]/.test(expr[i]!)) i++;
+          ident += `_${expr.slice(mStart, i)}`;
+        } else if (expr[i] === "." && i + 1 < n && /[A-Za-z_]/.test(expr[i + 1]!)) {
+          i++;
+          const mStart = i;
+          while (i < n && /[A-Za-z0-9_]/.test(expr[i]!)) i++;
+          ident += `_${expr.slice(mStart, i)}`;
+        } else {
+          break;
+        }
+      }
+
+      // Check for array subscript [0-9+]
+      if (i < n && expr[i] === "[") {
+        const bracketClose = expr.indexOf("]", i);
+        if (bracketClose > i) {
+          const indexStr = expr.slice(i + 1, bracketClose).trim();
+          if (/^\d+$/.test(indexStr)) {
+            i = bracketClose + 1;
+            if (/^(?:x|s|state|s_dot|x_dot)$/i.test(ident)) {
+              tokens.push({ type: "state", value: indexStr });
+              continue;
+            } else {
+              ident = `${ident}_${indexStr}`;
+            }
+          }
+        }
+      }
+
+      tokens.push({ type: "ident", value: ident });
+      continue;
+    }
+
+    i++;
+  }
+
+  return tokens;
+}
+
+function parseCExprTokens(
+  tokens: CExprToken[],
+  builder: IDaeBuilder,
+  getOrAddVar: (name: string, isContinuousState?: boolean) => number,
+): number {
+  let pos = 0;
+
+  function peek(): CExprToken | undefined {
+    return tokens[pos];
+  }
+
+  function consume(): CExprToken {
+    return tokens[pos++]!;
+  }
+
+  function parseExpression(): number {
+    return parseBinary(1);
+  }
+
+  function getPrecedence(op: string): number {
+    if (op === "+" || op === "-") return 1;
+    if (op === "*" || op === "/") return 2;
+    if (op === "^" || op === "**") return 3;
+    return 0;
+  }
+
+  function parseBinary(minPrec: number): number {
+    let left = parseUnary();
+
+    while (pos < tokens.length) {
+      const tok = peek();
+      if (!tok || tok.type !== "op") break;
+
+      const prec = getPrecedence(tok.value);
+      if (prec < minPrec) break;
+
+      consume();
+      const nextMinPrec = tok.value === "^" || tok.value === "**" ? prec : prec + 1;
+      const right = parseBinary(nextMinPrec);
+
+      if (tok.value === "+") {
+        left = builder.addBinaryExpr(BinOp.Add, left, right);
+      } else if (tok.value === "-") {
+        left = builder.addBinaryExpr(BinOp.Sub, left, right);
+      } else if (tok.value === "*") {
+        left = builder.addBinaryExpr(BinOp.Mul, left, right);
+      } else if (tok.value === "/") {
+        left = builder.addBinaryExpr(BinOp.Div, left, right);
+      } else if (tok.value === "^" || tok.value === "**") {
+        left = builder.addBinaryExpr(BinOp.Pow, left, right);
       }
     }
+
+    return left;
   }
-  return -1;
+
+  function parseUnary(): number {
+    const tok = peek();
+    if (tok && tok.type === "op" && (tok.value === "+" || tok.value === "-")) {
+      consume();
+      const op = tok.value;
+      const operand = parseUnary();
+      if (op === "+") return operand;
+      if (typeof (builder as any).addUnaryExpr === "function") {
+        return (builder as any).addUnaryExpr(UnaryOp.Negate, operand);
+      }
+      return builder.addBinaryExpr(BinOp.Sub, builder.addRealLiteral(0.0), operand);
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): number {
+    const tok = peek();
+    if (!tok) {
+      return builder.addRealLiteral(0.0);
+    }
+
+    if (tok.type === "num") {
+      consume();
+      return builder.addRealLiteral(tok.num ?? 0.0);
+    }
+
+    if (tok.type === "state") {
+      consume();
+      const varIdx = getOrAddVar(`s_${tok.value}`, true);
+      return builder.addName(varIdx);
+    }
+
+    if (tok.type === "ident") {
+      consume();
+      const identName = tok.value;
+
+      // Check if function call: ident(arg1, arg2, ...)
+      if (peek() && peek()!.type === "lparen") {
+        consume(); // (
+        const args: number[] = [];
+        if (peek() && peek()!.type !== "rparen") {
+          args.push(parseExpression());
+          while (peek() && peek()!.type === "comma") {
+            consume(); // ,
+            args.push(parseExpression());
+          }
+        }
+        if (peek() && peek()!.type === "rparen") {
+          consume(); // )
+        }
+
+        const fnLower = identName.toLowerCase();
+        if (fnLower === "sqrt" && args.length >= 1) {
+          return builder.addBinaryExpr(BinOp.Pow, args[0]!, builder.addRealLiteral(0.5));
+        }
+        if (fnLower === "pow" && args.length >= 2) {
+          return builder.addBinaryExpr(BinOp.Pow, args[0]!, args[1]!);
+        }
+        if ((fnLower === "abs" || fnLower === "fabs") && args.length >= 1) {
+          if (typeof (builder as any).addCall === "function") {
+            return (builder as any).addCall(14, args[0]!, 1); // BuiltinMathFunc.Abs
+          }
+          return args[0]!;
+        }
+        if (fnLower === "exp" && args.length >= 1) {
+          if (typeof (builder as any).addCall === "function") {
+            return (builder as any).addCall(10, args[0]!, 1); // BuiltinMathFunc.Exp
+          }
+          return builder.addBinaryExpr(BinOp.Pow, builder.addRealLiteral(Math.E), args[0]!);
+        }
+        if (fnLower === "sin" && args.length >= 1 && typeof (builder as any).addCall === "function") {
+          return (builder as any).addCall(0, args[0]!, 1); // BuiltinMathFunc.Sin
+        }
+        if (fnLower === "cos" && args.length >= 1 && typeof (builder as any).addCall === "function") {
+          return (builder as any).addCall(1, args[0]!, 1); // BuiltinMathFunc.Cos
+        }
+        if (fnLower === "log" && args.length >= 1 && typeof (builder as any).addCall === "function") {
+          return (builder as any).addCall(11, args[0]!, 1); // BuiltinMathFunc.Log
+        }
+
+        return args[0] ?? builder.addRealLiteral(0.0);
+      }
+
+      const sSubMatch = /^(?:x|s)_?([0-9]+)$/i.exec(identName);
+      if (sSubMatch) {
+        const varIdx = getOrAddVar(`s_${sSubMatch[1]!}`, true);
+        return builder.addName(varIdx);
+      }
+
+      const varIdx = getOrAddVar(identName, false);
+      return builder.addName(varIdx);
+    }
+
+    if (tok.type === "lparen") {
+      consume(); // (
+      const expr = parseExpression();
+      if (peek() && peek()!.type === "rparen") {
+        consume(); // )
+      }
+      return expr;
+    }
+
+    consume();
+    return builder.addRealLiteral(0.0);
+  }
+
+  if (tokens.length === 0) return builder.addRealLiteral(0.0);
+  return parseExpression();
 }

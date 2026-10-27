@@ -123,10 +123,12 @@ export function computeMaxSingularValue(S: Complex[][], numPorts: number): numbe
     return cMag(S[0]![0]!);
   }
 
-  // Construct M = S^H * S
-  const M: Complex[][] = [];
+  // Construct flat M = S^H * S
+  const mRe = new Float64Array(numPorts * numPorts);
+  const mIm = new Float64Array(numPorts * numPorts);
+
   for (let i = 0; i < numPorts; i++) {
-    M.push([]);
+    const rowOffset = i * numPorts;
     for (let j = 0; j < numPorts; j++) {
       let sumRe = 0;
       let sumIm = 0;
@@ -137,52 +139,65 @@ export function computeMaxSingularValue(S: Complex[][], numPorts: number): numbe
         sumRe += ski.re * skj.re + ski.im * skj.im;
         sumIm += ski.re * skj.im - ski.im * skj.re;
       }
-      M[i]!.push({ re: sumRe, im: sumIm });
+      mRe[rowOffset + j] = sumRe;
+      mIm[rowOffset + j] = sumIm;
     }
   }
 
   // 2-Port analytical solution
   if (numPorts === 2) {
-    const m00 = M[0]![0]!.re;
-    const m11 = M[1]![1]!.re;
+    const m00 = mRe[0]!;
+    const m11 = mRe[3]!;
     const tr = m00 + m11;
-    // det(M) = m00*m11 - |m01|^2
-    const m01_mag2 = M[0]![1]!.re * M[0]![1]!.re + M[0]![1]!.im * M[0]![1]!.im;
+    const m01_re = mRe[1]!;
+    const m01_im = mIm[1]!;
+    const m01_mag2 = m01_re * m01_re + m01_im * m01_im;
     const det = m00 * m11 - m01_mag2;
     const disc = Math.max(0, tr * tr - 4 * det);
     const lambdaMax = (tr + Math.sqrt(disc)) / 2;
     return Math.sqrt(Math.max(0, lambdaMax));
   }
 
-  // Power iteration for N >= 3
-  let v: Complex[] = [];
+  // Power iteration for N >= 3 using flat Float64Array buffers (zero heap allocations)
+  const vRe = new Float64Array(numPorts);
+  const vIm = new Float64Array(numPorts);
+  const invSqrtN = 1.0 / Math.sqrt(numPorts);
   for (let i = 0; i < numPorts; i++) {
-    v.push({ re: 1 / Math.sqrt(numPorts), im: 0 });
+    vRe[i] = invSqrtN;
   }
+
+  const wRe = new Float64Array(numPorts);
+  const wIm = new Float64Array(numPorts);
 
   let eigenvalue = 1.0;
   const maxIters = 25;
   for (let iter = 0; iter < maxIters; iter++) {
-    // w = M * v
-    const w: Complex[] = [];
-    let normW = 0;
+    let normW = 0.0;
     for (let i = 0; i < numPorts; i++) {
-      let wRe = 0;
-      let wIm = 0;
+      let sumRe = 0.0;
+      let sumIm = 0.0;
+      const rowOffset = i * numPorts;
       for (let j = 0; j < numPorts; j++) {
-        const prod = cMul(M[i]![j]!, v[j]!);
-        wRe += prod.re;
-        wIm += prod.im;
+        const mijRe = mRe[rowOffset + j]!;
+        const mijIm = mIm[rowOffset + j]!;
+        const vjRe = vRe[j]!;
+        const vjIm = vIm[j]!;
+        sumRe += mijRe * vjRe - mijIm * vjIm;
+        sumIm += mijRe * vjIm + mijIm * vjRe;
       }
-      w.push({ re: wRe, im: wIm });
-      normW += wRe * wRe + wIm * wIm;
+      wRe[i] = sumRe;
+      wIm[i] = sumIm;
+      normW += sumRe * sumRe + sumIm * sumIm;
     }
+
     const magW = Math.sqrt(normW);
     if (magW < 1e-15) break;
 
     eigenvalue = magW;
+    const invMag = 1.0 / magW;
     for (let i = 0; i < numPorts; i++) {
-      v[i] = { re: w[i]!.re / magW, im: w[i]!.im / magW };
+      vRe[i] = wRe[i]! * invMag;
+      vIm[i] = wIm[i]! * invMag;
     }
   }
 

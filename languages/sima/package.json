@@ -47,10 +47,12 @@
   },
   "files": [
     "src/**",
-    "dist/**"
+    "dist/**",
+    "assembly/**"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:wasm && tsc",
+    "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",

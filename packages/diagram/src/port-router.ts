@@ -1053,6 +1053,43 @@ export class BinaryHeap<T> {
  * Routes an orthogonal path on a 2D occupancy grid (`cols x rows`) using the WebAssembly
  * binary-heap A* kernel (`diagram_route_orthogonal_astar`) when available.
  */
+interface DiagramAStarScratch {
+  wasm: any;
+  maxCells: number;
+  gridPtr: number;
+  gScorePtr: number;
+  parentPtr: number;
+  closedPtr: number;
+  heapStatesPtr: number;
+  heapPrioritiesPtr: number;
+  outWaypointsPtr: number;
+}
+
+let diagramAStarScratch: DiagramAStarScratch | null = null;
+
+function ensureDiagramAStarScratch(wasm: any, totalCells: number): DiagramAStarScratch {
+  if (diagramAStarScratch && diagramAStarScratch.wasm === wasm && diagramAStarScratch.maxCells >= totalCells) {
+    return diagramAStarScratch;
+  }
+  const maxCells = Math.max(totalCells, 16384);
+  const totalStates = maxCells * 4;
+  const maxWaypoints = Math.min(maxCells, 1024);
+  const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+
+  diagramAStarScratch = {
+    wasm,
+    maxCells,
+    gridPtr: alloc(maxCells),
+    gScorePtr: alloc(totalStates * 8),
+    parentPtr: alloc(totalStates * 4),
+    closedPtr: alloc(totalStates),
+    heapStatesPtr: alloc(totalStates * 4),
+    heapPrioritiesPtr: alloc(totalStates * 8),
+    outWaypointsPtr: alloc(maxWaypoints * 2 * 4),
+  };
+  return diagramAStarScratch;
+}
+
 export function routeOrthogonalGridAStar(options: {
   cols: number;
   rows: number;
@@ -1070,21 +1107,11 @@ export function routeOrthogonalGridAStar(options: {
   if (wasm && typeof wasm.diagram_route_orthogonal_astar === "function") {
     // Each grid cell has 4 directional states (N, E, S, W) to penalize 90-degree bends accurately
     const totalCells = cols * rows;
-    const totalStates = totalCells * 4;
     const maxWaypoints = Math.min(totalCells, 1024);
-    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
-
-    // Allocate linear-memory scratch buffers for the binary-heap A* search
-    const gridPtr = alloc(totalCells);
-    const gScorePtr = alloc(totalStates * 8);
-    const parentPtr = alloc(totalStates * 4);
-    const closedPtr = alloc(totalStates);
-    const heapStatesPtr = alloc(totalStates * 4);
-    const heapPrioritiesPtr = alloc(totalStates * 8);
-    const outWaypointsPtr = alloc(maxWaypoints * 2 * 4);
+    const sc = ensureDiagramAStarScratch(wasm, totalCells);
 
     // Copy occupancy grid (0 = free, 1 = obstacle, 2 = existing wire) into WASM linear memory
-    new Uint8Array(wasm.memory.buffer, gridPtr, totalCells).set(grid.subarray(0, totalCells));
+    new Uint8Array(wasm.memory.buffer, sc.gridPtr, totalCells).set(grid.subarray(0, totalCells));
 
     const count: number = wasm.diagram_route_orthogonal_astar(
       cols,
@@ -1096,18 +1123,18 @@ export function routeOrthogonalGridAStar(options: {
       options.startDir ?? -1,
       options.bendPenalty ?? 2.5,
       options.crossingPenalty ?? 4.0,
-      gridPtr,
-      gScorePtr,
-      parentPtr,
-      closedPtr,
-      heapStatesPtr,
-      heapPrioritiesPtr,
-      outWaypointsPtr,
+      sc.gridPtr,
+      sc.gScorePtr,
+      sc.parentPtr,
+      sc.closedPtr,
+      sc.heapStatesPtr,
+      sc.heapPrioritiesPtr,
+      sc.outWaypointsPtr,
       maxWaypoints,
     );
 
     // Unpack interleaved (x, y) int32 waypoint pairs returned by the WASM kernel
-    const outView = new Int32Array(wasm.memory.buffer, outWaypointsPtr, count * 2);
+    const outView = new Int32Array(wasm.memory.buffer, sc.outWaypointsPtr, count * 2);
     const waypoints: [number, number][] = [];
     for (let i = 0; i < count; i++) {
       waypoints.push([outView[i * 2]!, outView[i * 2 + 1]!]);

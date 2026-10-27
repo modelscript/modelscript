@@ -8,7 +8,7 @@
  * and MNA matrix stamping.
  */
 
-import type { OperatingPoint, SpiceCircuit, SpiceComponent } from "../types.js";
+import type { OperatingPoint, SpiceCircuit } from "../types.js";
 import {
   DenseLU,
   DenseMatrix,
@@ -18,7 +18,6 @@ import {
   stampConductance,
   stampCurrentSource,
   stampVoltageSource,
-  type MnaIndexing,
 } from "./mna.js";
 
 const THERMAL_VOLTAGE_VT = 0.02585; // Vt = kT/q at 300K (~26mV)
@@ -55,6 +54,121 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
     }
   }
 
+  const baseMatrix = new DenseMatrix(indexing.totalSize);
+  const baseRhs = new Float64Array(indexing.totalSize);
+
+  // 1. Pre-stamp all linear components into baseMatrix & baseRhs once
+  for (const comp of components) {
+    const n1 = comp.nodes[0] ?? "";
+    const n2 = comp.nodes[1] ?? "";
+
+    if (comp.kind === "R") {
+      const val = comp.value ?? 1e3;
+      const g = val > 0 ? 1.0 / val : 1e12;
+      stampConductance(baseMatrix, indexing, n1, n2, g);
+    } else if (comp.kind === "L") {
+      // In DC, inductor is short circuit (modeled as small series resistance 1uOhm)
+      const gInd = 1e6;
+      stampConductance(baseMatrix, indexing, n1, n2, gInd);
+    } else if (comp.kind === "C") {
+      // In DC, capacitor is open circuit (conductance = 0, no stamp)
+    } else if (comp.kind === "V") {
+      const vVal = comp.sourceSpec?.dc ?? comp.value ?? 0;
+      stampVoltageSource(baseMatrix, baseRhs, indexing, comp.name, n1, n2, vVal);
+    } else if (comp.kind === "I") {
+      const iVal = comp.sourceSpec?.dc ?? comp.value ?? 0;
+      stampCurrentSource(baseRhs, indexing, n1, n2, iVal);
+    } else if (comp.kind === "E" && comp.controlNodes) {
+      // VCVS: V(n1) - V(n2) - gain * (V(nc1) - V(nc2)) = 0
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
+        const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+
+        if (i1 >= 0) {
+          baseMatrix.add(i1, bIdx, 1.0);
+          baseMatrix.add(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          baseMatrix.add(i2, bIdx, -1.0);
+          baseMatrix.add(bIdx, i2, -1.0);
+        }
+        if (c1 >= 0) baseMatrix.add(bIdx, c1, -gain);
+        if (c2 >= 0) baseMatrix.add(bIdx, c2, gain);
+      }
+    } else if (comp.kind === "G" && comp.controlNodes) {
+      // VCCS: I(n1->n2) = gm * (V(nc1) - V(nc2))
+      const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+      const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
+      const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
+      const gm = comp.gain ?? comp.value ?? 1e-3;
+
+      if (i1 >= 0 && c1 >= 0) baseMatrix.add(i1, c1, gm);
+      if (i1 >= 0 && c2 >= 0) baseMatrix.add(i1, c2, -gm);
+      if (i2 >= 0 && c1 >= 0) baseMatrix.add(i2, c1, -gm);
+      if (i2 >= 0 && c2 >= 0) baseMatrix.add(i2, c2, gm);
+    }
+  }
+
+  // 2. Pre-extract and cache semiconductor parameters and integer node indices
+  const precomputedDiodes: PrecomputedDiode[] = [];
+  const precomputedBjts: PrecomputedBjt[] = [];
+  const precomputedMosfets: PrecomputedMosfet[] = [];
+
+  for (const comp of components) {
+    if (comp.kind === "D") {
+      const modelName = (comp.model ?? "").toUpperCase();
+      const model = circuit.models.get(modelName);
+      const Is = model?.params.get("IS") ?? DEFAULT_DIODE_IS;
+      const N = model?.params.get("N") ?? DEFAULT_DIODE_N;
+      const nVt = N * THERMAL_VOLTAGE_VT;
+      const n1 = comp.nodes[0] ?? "";
+      const n2 = comp.nodes[1] ?? "";
+      const iAnode = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const iCathode = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+      precomputedDiodes.push({ iAnode, iCathode, Is, nVt });
+    } else if (comp.kind === "Q") {
+      const modelName = (comp.model ?? "").toUpperCase();
+      const model = circuit.models.get(modelName);
+      const betaF = model?.params.get("BF") ?? 100.0;
+      const Is = model?.params.get("IS") ?? 1e-14;
+      const colNode = comp.nodes[0] ?? "";
+      const baseNode = comp.nodes[1] ?? "";
+      const emitNode = comp.nodes[2] ?? "";
+      const iCol = indexing.nodeToIdx.get(colNode.toUpperCase()) ?? -1;
+      const iBase = indexing.nodeToIdx.get(baseNode.toUpperCase()) ?? -1;
+      const iEmit = indexing.nodeToIdx.get(emitNode.toUpperCase()) ?? -1;
+      precomputedBjts.push({ iCol, iBase, iEmit, betaF, Is });
+    } else if (comp.kind === "M") {
+      const modelName = (comp.model ?? "").toUpperCase();
+      const model = circuit.models.get(modelName);
+      const isPmos = model?.type === "PMOS";
+      const Vth = model?.params.get("VTO") ?? (isPmos ? -0.7 : 0.7);
+      const Kp = model?.params.get("KP") ?? 1e-4;
+      const W = Number(comp.params.get("W") ?? 10e-6);
+      const L = Number(comp.params.get("L") ?? 1e-6);
+      const beta = Kp * (W / L);
+      const drainNode = comp.nodes[0] ?? "";
+      const gateNode = comp.nodes[1] ?? "";
+      const sourceNode = comp.nodes[2] ?? "";
+      const iDrain = indexing.nodeToIdx.get(drainNode.toUpperCase()) ?? -1;
+      const iGate = indexing.nodeToIdx.get(gateNode.toUpperCase()) ?? -1;
+      const iSource = indexing.nodeToIdx.get(sourceNode.toUpperCase()) ?? -1;
+      precomputedMosfets.push({
+        iDrain,
+        iGate,
+        iSource,
+        isPmos,
+        absVth: Math.abs(Vth),
+        beta,
+      });
+    }
+  }
+
   const matrix = new DenseMatrix(indexing.totalSize);
   const rhs = new Float64Array(indexing.totalSize);
   const newSolution = new Float64Array(indexing.totalSize);
@@ -65,75 +179,18 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
 
   for (let iter = 0; iter < maxIters; iter++) {
     iterations++;
-    matrix.clear();
-    rhs.fill(0);
+    matrix.data.set(baseMatrix.data);
+    rhs.set(baseRhs);
 
-    // 1. Stamp linear components
-    for (const comp of components) {
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
-
-      if (comp.kind === "R") {
-        const val = comp.value ?? 1e3;
-        const g = val > 0 ? 1.0 / val : 1e12;
-        stampConductance(matrix, indexing, n1, n2, g);
-      } else if (comp.kind === "L") {
-        // In DC, inductor is short circuit (modeled as small series resistance 1uOhm)
-        const gInd = 1e6;
-        stampConductance(matrix, indexing, n1, n2, gInd);
-      } else if (comp.kind === "C") {
-        // In DC, capacitor is open circuit (conductance = 0, no stamp)
-      } else if (comp.kind === "V") {
-        const vVal = comp.sourceSpec?.dc ?? comp.value ?? 0;
-        stampVoltageSource(matrix, rhs, indexing, comp.name, n1, n2, vVal);
-      } else if (comp.kind === "I") {
-        const iVal = comp.sourceSpec?.dc ?? comp.value ?? 0;
-        stampCurrentSource(rhs, indexing, n1, n2, iVal);
-      } else if (comp.kind === "E" && comp.controlNodes) {
-        // VCVS: V(n1) - V(n2) - gain * (V(nc1) - V(nc2)) = 0
-        const bIdx = indexing.branchToIdx.get(comp.name);
-        if (bIdx !== undefined) {
-          const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-          const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-          const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
-          const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
-          const gain = comp.gain ?? comp.value ?? 1.0;
-
-          if (i1 >= 0) {
-            matrix.add(i1, bIdx, 1.0);
-            matrix.add(bIdx, i1, 1.0);
-          }
-          if (i2 >= 0) {
-            matrix.add(i2, bIdx, -1.0);
-            matrix.add(bIdx, i2, -1.0);
-          }
-          if (c1 >= 0) matrix.add(bIdx, c1, -gain);
-          if (c2 >= 0) matrix.add(bIdx, c2, gain);
-        }
-      } else if (comp.kind === "G" && comp.controlNodes) {
-        // VCCS: I(n1->n2) = gm * (V(nc1) - V(nc2))
-        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-        const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
-        const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
-        const gm = comp.gain ?? comp.value ?? 1e-3;
-
-        if (i1 >= 0 && c1 >= 0) matrix.add(i1, c1, gm);
-        if (i1 >= 0 && c2 >= 0) matrix.add(i1, c2, -gm);
-        if (i2 >= 0 && c1 >= 0) matrix.add(i2, c1, -gm);
-        if (i2 >= 0 && c2 >= 0) matrix.add(i2, c2, gm);
-      }
+    // Stamp precomputed non-linear semiconductor models (D, Q, M) with zero lookup overhead
+    for (let i = 0; i < precomputedDiodes.length; i++) {
+      stampPrecomputedDiode(matrix, rhs, precomputedDiodes[i]!, solution);
     }
-
-    // 2. Stamp non-linear semiconductor models (D, Q, M)
-    for (const comp of components) {
-      if (comp.kind === "D") {
-        stampDiodeCompanion(matrix, rhs, indexing, comp, circuit, solution);
-      } else if (comp.kind === "Q") {
-        stampBjtCompanion(matrix, rhs, indexing, comp, circuit, solution);
-      } else if (comp.kind === "M") {
-        stampMosfetCompanion(matrix, rhs, indexing, comp, circuit, solution);
-      }
+    for (let i = 0; i < precomputedBjts.length; i++) {
+      stampPrecomputedBjt(matrix, rhs, precomputedBjts[i]!, solution);
+    }
+    for (let i = 0; i < precomputedMosfets.length; i++) {
+      stampPrecomputedMosfet(matrix, rhs, precomputedMosfets[i]!, solution);
     }
 
     // Solve linear system in-place
@@ -185,28 +242,40 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Non-Linear Semiconductor Companions
+// Non-Linear Semiconductor Companions (Pre-computed Zero-Lookup)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function stampDiodeCompanion(
+interface PrecomputedDiode {
+  iAnode: number;
+  iCathode: number;
+  Is: number;
+  nVt: number;
+}
+
+interface PrecomputedBjt {
+  iCol: number;
+  iBase: number;
+  iEmit: number;
+  betaF: number;
+  Is: number;
+}
+
+interface PrecomputedMosfet {
+  iDrain: number;
+  iGate: number;
+  iSource: number;
+  isPmos: boolean;
+  absVth: number;
+  beta: number;
+}
+
+function stampPrecomputedDiode(
   matrix: DenseMatrix,
   rhs: Float64Array,
-  indexing: MnaIndexing,
-  comp: SpiceComponent,
-  circuit: SpiceCircuit,
+  diode: PrecomputedDiode,
   currentSol: Float64Array,
 ): void {
-  const modelName = (comp.model ?? "").toUpperCase();
-  const model = circuit.models.get(modelName);
-  const Is = model?.params.get("IS") ?? DEFAULT_DIODE_IS;
-  const N = model?.params.get("N") ?? DEFAULT_DIODE_N;
-  const nVt = N * THERMAL_VOLTAGE_VT;
-
-  const n1 = comp.nodes[0] ?? "";
-  const n2 = comp.nodes[1] ?? "";
-  const iAnode = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-  const iCathode = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-
+  const { iAnode, iCathode, Is, nVt } = diode;
   const vAnode = iAnode >= 0 ? (currentSol[iAnode] ?? 0) : 0;
   const vCathode = iCathode >= 0 ? (currentSol[iCathode] ?? 0) : 0;
   let vd = vAnode - vCathode;
@@ -221,34 +290,25 @@ function stampDiodeCompanion(
   const ieq = id - gd * vd;
 
   // Stamp gd
-  stampConductance(matrix, indexing, n1, n2, gd);
+  if (iAnode >= 0) matrix.add(iAnode, iAnode, gd);
+  if (iCathode >= 0) matrix.add(iCathode, iCathode, gd);
+  if (iAnode >= 0 && iCathode >= 0) {
+    matrix.add(iAnode, iCathode, -gd);
+    matrix.add(iCathode, iAnode, -gd);
+  }
 
   // Stamp ieq (parallel current source leaving anode, entering cathode)
   if (iAnode >= 0) rhs[iAnode] = (rhs[iAnode] ?? 0) - ieq;
   if (iCathode >= 0) rhs[iCathode] = (rhs[iCathode] ?? 0) + ieq;
 }
 
-function stampBjtCompanion(
+function stampPrecomputedBjt(
   matrix: DenseMatrix,
   rhs: Float64Array,
-  indexing: MnaIndexing,
-  comp: SpiceComponent,
-  circuit: SpiceCircuit,
+  bjt: PrecomputedBjt,
   currentSol: Float64Array,
 ): void {
-  // Simple Ebers-Moll model
-  const modelName = (comp.model ?? "").toUpperCase();
-  const model = circuit.models.get(modelName);
-  const betaF = model?.params.get("BF") ?? 100.0;
-  const Is = model?.params.get("IS") ?? 1e-14;
-
-  const colNode = comp.nodes[0] ?? "";
-  const baseNode = comp.nodes[1] ?? "";
-  const emitNode = comp.nodes[2] ?? "";
-  const iCol = indexing.nodeToIdx.get(colNode.toUpperCase()) ?? -1;
-  const iBase = indexing.nodeToIdx.get(baseNode.toUpperCase()) ?? -1;
-  const iEmit = indexing.nodeToIdx.get(emitNode.toUpperCase()) ?? -1;
-
+  const { iCol, iBase, iEmit, betaF, Is } = bjt;
   const vBase = iBase >= 0 ? (currentSol[iBase] ?? 0) : 0;
   const vEmit = iEmit >= 0 ? (currentSol[iEmit] ?? 0) : 0;
 
@@ -264,7 +324,12 @@ function stampBjtCompanion(
   const ieqCol = betaF * ib - gm * vbe;
 
   // Base-emitter conductance
-  stampConductance(matrix, indexing, baseNode, emitNode, gpi);
+  if (iBase >= 0) matrix.add(iBase, iBase, gpi);
+  if (iEmit >= 0) matrix.add(iEmit, iEmit, gpi);
+  if (iBase >= 0 && iEmit >= 0) {
+    matrix.add(iBase, iEmit, -gpi);
+    matrix.add(iEmit, iBase, -gpi);
+  }
 
   // Transconductance gm * (Vb - Ve) into collector
   if (iCol >= 0 && iBase >= 0) matrix.add(iCol, iBase, gm);
@@ -279,30 +344,13 @@ function stampBjtCompanion(
   if (iEmit >= 0) rhs[iEmit] = (rhs[iEmit] ?? 0) + ieqCol;
 }
 
-function stampMosfetCompanion(
+function stampPrecomputedMosfet(
   matrix: DenseMatrix,
   rhs: Float64Array,
-  indexing: MnaIndexing,
-  comp: SpiceComponent,
-  circuit: SpiceCircuit,
+  mos: PrecomputedMosfet,
   currentSol: Float64Array,
 ): void {
-  // Shichman-Hodges Level 1 model
-  const modelName = (comp.model ?? "").toUpperCase();
-  const model = circuit.models.get(modelName);
-  const isPmos = model?.type === "PMOS";
-  const Vth = model?.params.get("VTO") ?? (isPmos ? -0.7 : 0.7);
-  const Kp = model?.params.get("KP") ?? 1e-4;
-  const W = Number(comp.params.get("W") ?? 10e-6);
-  const L = Number(comp.params.get("L") ?? 1e-6);
-  const beta = Kp * (W / L);
-
-  const drainNode = comp.nodes[0] ?? "";
-  const gateNode = comp.nodes[1] ?? "";
-  const sourceNode = comp.nodes[2] ?? "";
-  const iDrain = indexing.nodeToIdx.get(drainNode.toUpperCase()) ?? -1;
-  const iGate = indexing.nodeToIdx.get(gateNode.toUpperCase()) ?? -1;
-  const iSource = indexing.nodeToIdx.get(sourceNode.toUpperCase()) ?? -1;
+  const { iDrain, iGate, iSource, isPmos, absVth, beta } = mos;
 
   const vDrain = iDrain >= 0 ? (currentSol[iDrain] ?? 0) : 0;
   const vGate = iGate >= 0 ? (currentSol[iGate] ?? 0) : 0;
@@ -310,7 +358,7 @@ function stampMosfetCompanion(
 
   const vgs = isPmos ? vSource - vGate : vGate - vSource;
   const vds = isPmos ? vSource - vDrain : vDrain - vSource;
-  const vov = vgs - Math.abs(Vth);
+  const vov = vgs - absVth;
 
   let id = 0;
   let gm = 0;
@@ -334,7 +382,12 @@ function stampMosfetCompanion(
   const ieq = id - gm * vgs - gds * vds;
 
   // Stamp gds between Drain and Source
-  stampConductance(matrix, indexing, drainNode, sourceNode, gds);
+  if (iDrain >= 0) matrix.add(iDrain, iDrain, gds);
+  if (iSource >= 0) matrix.add(iSource, iSource, gds);
+  if (iDrain >= 0 && iSource >= 0) {
+    matrix.add(iDrain, iSource, -gds);
+    matrix.add(iSource, iDrain, -gds);
+  }
 
   // Stamp gm * (Vg - Vs)
   if (iDrain >= 0 && iGate >= 0) matrix.add(iDrain, iGate, gm);

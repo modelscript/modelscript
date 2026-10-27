@@ -70,9 +70,10 @@ function computeJacobian(
   const n = y.length;
   let J = outJ;
   if (!J) {
+    const flat = new Float64Array(n * n);
     J = new Array(n);
     for (let i = 0; i < n; i++) {
-      J[i] = new Float64Array(n);
+      J[i] = new Float64Array(flat.buffer, i * n * 8, n);
     }
   }
 
@@ -197,11 +198,13 @@ export function trbdf2(
   const yGamma = new Array<number>(n);
   const yNew = new Array<number>(n);
   const yPertScratch = new Array<number>(n);
+  const flatJ = new Float64Array(n * n);
+  const flatW = new Float64Array(n * n);
   const JScratch: Float64Array[] = new Array(n);
   const W: Float64Array[] = new Array(n);
   for (let i = 0; i < n; i++) {
-    JScratch[i] = new Float64Array(n);
-    W[i] = new Float64Array(n);
+    JScratch[i] = new Float64Array(flatJ.buffer, i * n * 8, n);
+    W[i] = new Float64Array(flatW.buffer, i * n * 8, n);
   }
 
   while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {

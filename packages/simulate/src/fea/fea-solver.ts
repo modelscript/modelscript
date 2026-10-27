@@ -98,43 +98,75 @@ export class FeaSolver {
   }
 
   private assembleSparsityPattern(): void {
-    const { elements, numElements } = this.mesh;
+    const { elements, numElements, numNodes } = this.mesh;
     const numDofs = this.numDofs;
     const npe = this.nodesPerElement;
 
-    // Build adjacency list for each DOF
-    const adj = new Array<Set<number>>(numDofs);
-    for (let i = 0; i < numDofs; i++) {
-      adj[i] = new Set<number>();
+    // 1. Invert element-node connectivity (node-to-element CSR)
+    const nodeElemCounts = new Int32Array(numNodes);
+    const totalElemRefs = numElements * npe;
+    for (let i = 0; i < totalElemRefs; i++) {
+      const n = elements[i]!;
+      if (n >= 0 && n < numNodes) {
+        nodeElemCounts[n] = (nodeElemCounts[n] ?? 0) + 1;
+      }
     }
 
-    for (let e = 0; e < numElements; e++) {
-      const elNodes: number[] = [];
-      for (let i = 0; i < npe; i++) {
-        elNodes.push(elements[e * npe + i]!);
-      }
+    const nodeElemOffsets = new Int32Array(numNodes + 1);
+    for (let n = 0; n < numNodes; n++) {
+      nodeElemOffsets[n + 1] = (nodeElemOffsets[n] ?? 0) + (nodeElemCounts[n] ?? 0);
+    }
 
+    const nodeElemIndices = new Int32Array(totalElemRefs);
+    const fillPtrs = new Int32Array(nodeElemOffsets);
+    for (let e = 0; e < numElements; e++) {
+      const base = e * npe;
       for (let i = 0; i < npe; i++) {
-        const ni = elNodes[i]!;
-        for (let j = 0; j < npe; j++) {
-          const nj = elNodes[j]!;
-          for (let di = 0; di < 3; di++) {
-            const row = ni * 3 + di;
-            for (let dj = 0; dj < 3; dj++) {
-              const col = nj * 3 + dj;
-              adj[row]!.add(col);
-            }
-          }
+        const n = elements[base + i]!;
+        if (n >= 0 && n < numNodes) {
+          const ptr = fillPtrs[n]!;
+          nodeElemIndices[ptr] = e;
+          fillPtrs[n] = ptr + 1;
         }
       }
     }
 
-    // Count non-zeros
+    // 2. Count unique neighbor nodes per node without heap allocations
+    const neighborCounts = new Int32Array(numNodes);
+    const visited = new Int32Array(numNodes);
+    let currentTag = 1;
     let totalNnz = 0;
+
+    for (let n = 0; n < numNodes; n++) {
+      currentTag++;
+      visited[n] = currentTag;
+      let count = 1;
+
+      const eStart = nodeElemOffsets[n]!;
+      const eEnd = nodeElemOffsets[n + 1]!;
+      for (let ep = eStart; ep < eEnd; ep++) {
+        const e = nodeElemIndices[ep]!;
+        const base = e * npe;
+        for (let i = 0; i < npe; i++) {
+          const neighbor = elements[base + i]!;
+          if (visited[neighbor] !== currentTag) {
+            visited[neighbor] = currentTag;
+            count++;
+          }
+        }
+      }
+      neighborCounts[n] = count;
+      totalNnz += count * 9; // 3 rows * (count * 3 cols)
+    }
+
     this.rowOffsets = new Int32Array(numDofs + 1);
-    for (let i = 0; i < numDofs; i++) {
-      this.rowOffsets[i] = totalNnz;
-      totalNnz += adj[i]!.size;
+    let offset = 0;
+    for (let n = 0; n < numNodes; n++) {
+      const rowLen = neighborCounts[n]! * 3;
+      for (let d = 0; d < 3; d++) {
+        this.rowOffsets[n * 3 + d] = offset;
+        offset += rowLen;
+      }
     }
     this.rowOffsets[numDofs] = totalNnz;
 
@@ -142,11 +174,53 @@ export class FeaSolver {
     this.values = new Float64Array(totalNnz);
     this.diagInv = new Float64Array(numDofs);
 
-    let ptr = 0;
-    for (let i = 0; i < numDofs; i++) {
-      const sortedCols = Array.from(adj[i]!).sort((a, b) => a - b);
-      for (const col of sortedCols) {
-        this.colIndices[ptr++] = col;
+    // 3. Populate sorted colIndices for all 3 DOFs per node
+    const neighborBuf = new Int32Array(numNodes);
+    currentTag++;
+    for (let n = 0; n < numNodes; n++) {
+      currentTag++;
+      visited[n] = currentTag;
+      neighborBuf[0] = n;
+      let count = 1;
+
+      const eStart = nodeElemOffsets[n]!;
+      const eEnd = nodeElemOffsets[n + 1]!;
+      for (let ep = eStart; ep < eEnd; ep++) {
+        const e = nodeElemIndices[ep]!;
+        const base = e * npe;
+        for (let i = 0; i < npe; i++) {
+          const neighbor = elements[base + i]!;
+          if (visited[neighbor] !== currentTag) {
+            visited[neighbor] = currentTag;
+            neighborBuf[count++] = neighbor;
+          }
+        }
+      }
+
+      neighborBuf.subarray(0, count).sort();
+
+      const baseRow = n * 3;
+      const startPtr0 = this.rowOffsets[baseRow]!;
+      const startPtr1 = this.rowOffsets[baseRow + 1]!;
+      const startPtr2 = this.rowOffsets[baseRow + 2]!;
+
+      for (let k = 0; k < count; k++) {
+        const c0 = neighborBuf[k]! * 3;
+        const c1 = c0 + 1;
+        const c2 = c0 + 2;
+        const idx = k * 3;
+
+        this.colIndices[startPtr0 + idx] = c0;
+        this.colIndices[startPtr0 + idx + 1] = c1;
+        this.colIndices[startPtr0 + idx + 2] = c2;
+
+        this.colIndices[startPtr1 + idx] = c0;
+        this.colIndices[startPtr1 + idx + 1] = c1;
+        this.colIndices[startPtr1 + idx + 2] = c2;
+
+        this.colIndices[startPtr2 + idx] = c0;
+        this.colIndices[startPtr2 + idx + 1] = c1;
+        this.colIndices[startPtr2 + idx + 2] = c2;
       }
     }
   }

@@ -179,8 +179,11 @@ export class SteadyNetworkSolver {
 
     const maxIter = 50;
     const pTol = 50.0; // 50 Pa (~0.0005 bar) convergence tolerance
+    let actualIterations = 0;
+    let converged = false;
 
     for (let iter = 0; iter < maxIter; iter++) {
+      actualIterations = iter + 1;
       let maxDeltaP = 0.0;
       for (const pipe of model.pipes) {
         const pIn = nodeStates[pipe.fromNode]?.pressure ?? basePressure;
@@ -245,8 +248,13 @@ export class SteadyNetworkSolver {
 
       // Check convergence across all pipes in network
       if (iter > 0 && maxDeltaP < pTol) {
+        converged = true;
         break;
       }
+    }
+
+    if (model.pipes.length === 0 || actualIterations <= 1) {
+      converged = true;
     }
 
     // Accumulate total network inventory
@@ -256,8 +264,8 @@ export class SteadyNetworkSolver {
     }
 
     return {
-      converged: true,
-      iterations: 10,
+      converged,
+      iterations: actualIterations,
       nodeStates,
       pipeStates,
       totalLinePackKg,

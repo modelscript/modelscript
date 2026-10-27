@@ -71,27 +71,83 @@ export function routeNetworkFlow(deck: SwmmDeck): SwmmRoutingResult {
   const nodeResults = new Map<string, NodeHydraulicResult>();
   const conduitResults = new Map<string, ConduitFlowResult>();
 
-  // Initialize node heads
+  // Map nodes to contiguous integer indices: junctions first [0, nJunctions-1], then outfalls [nJunctions, totalNodes-1]
+  const nJunctions = deck.junctions.size;
+  const nOutfalls = deck.outfalls.size;
+  const totalNodes = nJunctions + nOutfalls;
+
+  const nodeIdxMap = new Map<string, number>();
+  const junctionIds: string[] = new Array(nJunctions);
+  const elevations = new Float64Array(totalNodes);
+  const initDepths = new Float64Array(nJunctions);
+  const heads = new Float64Array(totalNodes);
+  const depths = new Float64Array(totalNodes);
+
+  let jIdx = 0;
   for (const [id, j] of deck.junctions) {
+    nodeIdxMap.set(id, jIdx);
+    junctionIds[jIdx] = id;
+    elevations[jIdx] = j.elevation;
+    initDepths[jIdx] = j.initDepth ?? 0.0;
     const depth = j.initDepth ?? j.maxDepth * 0.2;
+    depths[jIdx] = depth;
+    const head = j.elevation + depth;
+    heads[jIdx] = head;
     nodeResults.set(id, {
       nodeId: id,
-      head: j.elevation + depth,
+      head,
       depth,
       inflow: 0.0,
       overflow: 0.0,
     });
+    jIdx++;
   }
 
+  let oIdx = nJunctions;
   for (const [id, o] of deck.outfalls) {
+    nodeIdxMap.set(id, oIdx);
+    elevations[oIdx] = o.elevation;
     const stage = o.stage ?? (o.type === "FREE" ? 0.0 : 0.5);
+    depths[oIdx] = stage;
+    const head = o.elevation + stage;
+    heads[oIdx] = head;
     nodeResults.set(id, {
       nodeId: id,
-      head: o.elevation + stage,
+      head,
       depth: stage,
       inflow: 0.0,
       overflow: 0.0,
     });
+    oIdx++;
+  }
+
+  // Pre-extract conduit parameters into contiguous arrays
+  const nConduits = deck.conduits.size;
+  const conduitIds: string[] = new Array(nConduits);
+  const cDiam = new Float64Array(nConduits);
+  const cRoughness = new Float64Array(nConduits);
+  const cLength = new Float64Array(nConduits);
+  const cInletNode = new Int32Array(nConduits);
+  const cOutletNode = new Int32Array(nConduits);
+
+  let cIdx = 0;
+  for (const [id, c] of deck.conduits) {
+    conduitIds[cIdx] = id;
+    const inNodeIdx = nodeIdxMap.get(c.inletNode);
+    const outNodeIdx = nodeIdxMap.get(c.outletNode);
+    if (inNodeIdx === undefined || outNodeIdx === undefined) {
+      throw new Error(
+        `Conduit '${id}' references undefined junction: inlet '${c.inletNode}', outlet '${c.outletNode}'`,
+      );
+    }
+    cInletNode[cIdx] = inNodeIdx;
+    cOutletNode[cIdx] = outNodeIdx;
+
+    const xsec = deck.crossSections.get(id);
+    cDiam[cIdx] = xsec?.geom1 ?? 1.0;
+    cRoughness[cIdx] = Math.max(c.roughness, 0.005);
+    cLength[cIdx] = Math.max(c.length, 1.0);
+    cIdx++;
   }
 
   let totalInflow = 0.0;
@@ -103,71 +159,60 @@ export function routeNetworkFlow(deck: SwmmDeck): SwmmRoutingResult {
   const omega = 0.5; // Relaxation factor
   const dt = 30.0; // Nominal routing time step (s)
 
-  // Pre-allocated maps to eliminate heap allocation during iterations
-  const netFlows = new Map<string, number>();
-  const flowDerivs = new Map<string, number>();
-  for (const [id] of deck.junctions) {
-    netFlows.set(id, 0.0);
-    flowDerivs.set(id, 0.0);
-  }
+  // Pre-allocated contiguous working arrays for zero-allocation Picard iterations
+  const netFlows = new Float64Array(nJunctions);
+  const flowDerivs = new Float64Array(nJunctions);
 
   for (let iter = 0; iter < maxIters; iter++) {
-    // Reset junction net flows without recreating Map objects
-    for (const [id] of deck.junctions) {
-      netFlows.set(id, 0.0);
-      flowDerivs.set(id, 0.0);
-    }
+    netFlows.fill(0.0);
+    flowDerivs.fill(0.0);
 
     let maxNetError = 0.0;
 
     // Evaluate conduit flows
-    for (const [id, c] of deck.conduits) {
-      const xsec = deck.crossSections.get(id);
-      const D = xsec?.geom1 ?? 1.0;
-      const n = Math.max(c.roughness, 0.005);
-      const L = Math.max(c.length, 1.0);
+    for (let c = 0; c < nConduits; c++) {
+      const inIdx = cInletNode[c]!;
+      const outIdx = cOutletNode[c]!;
+      const L = cLength[c]!;
+      const D = cDiam[c]!;
+      const n = cRoughness[c]!;
 
-      const inNode = nodeResults.get(c.inletNode);
-      const outNode = nodeResults.get(c.outletNode);
-      if (!inNode || !outNode) {
-        throw new Error(
-          `Conduit '${id}' references undefined junction: inlet '${c.inletNode}', outlet '${c.outletNode}'`,
-        );
-      }
-
-      const deltaH = inNode.head - outNode.head;
+      const deltaH = heads[inIdx]! - heads[outIdx]!;
       const absDeltaH = Math.max(Math.abs(deltaH), 1e-6);
       const slope = absDeltaH / L;
       const flowSign = deltaH >= 0 ? 1.0 : -1.0;
 
       // Exact circular geometry with minimum 5% residual flow film
-      const inDepth = Math.min(D, Math.max(0.05 * D, inNode.depth));
+      const inDepth = Math.min(D, Math.max(0.05 * D, depths[inIdx]!));
       const { area, hydRadius } = computeCircularSection(D, inDepth);
       const flow = flowSign * (kManning / n) * area * Math.pow(Math.max(1e-4, hydRadius), 2.0 / 3.0) * Math.sqrt(slope);
       const dqdH = Math.max(1e-4, Math.abs(flow) / (2.0 * absDeltaH));
 
-      if (deck.junctions.has(c.inletNode)) {
-        netFlows.set(c.inletNode, (netFlows.get(c.inletNode) ?? 0.0) - flow);
-        flowDerivs.set(c.inletNode, (flowDerivs.get(c.inletNode) ?? 0.0) + dqdH);
+      if (inIdx < nJunctions) {
+        netFlows[inIdx] = (netFlows[inIdx] ?? 0) - flow;
+        flowDerivs[inIdx] = (flowDerivs[inIdx] ?? 0) + dqdH;
       }
-      if (deck.junctions.has(c.outletNode)) {
-        netFlows.set(c.outletNode, (netFlows.get(c.outletNode) ?? 0.0) + flow);
-        flowDerivs.set(c.outletNode, (flowDerivs.get(c.outletNode) ?? 0.0) + dqdH);
+      if (outIdx < nJunctions) {
+        netFlows[outIdx] = (netFlows[outIdx] ?? 0) + flow;
+        flowDerivs[outIdx] = (flowDerivs[outIdx] ?? 0) + dqdH;
       }
     }
 
     // Update junction heads using Newton/Picard step
-    for (const [id, j] of deck.junctions) {
-      const netQ = netFlows.get(id) ?? 0.0;
-      const dQdH = flowDerivs.get(id) ?? 1e-3;
-      maxNetError = Math.max(maxNetError, Math.abs(netQ));
+    const surfArea = 1.13; // Standard 1.2m diameter manhole surface area
+    for (let j = 0; j < nJunctions; j++) {
+      const netQ = netFlows[j]!;
+      const dQdH = flowDerivs[j]! > 0 ? flowDerivs[j]! : 1e-3;
+      const absNetQ = Math.abs(netQ);
+      if (absNetQ > maxNetError) {
+        maxNetError = absNetQ;
+      }
 
-      const surfArea = 1.13; // Standard 1.2m diameter manhole surface area
       const dH = (netQ / (dQdH + surfArea / dt)) * omega;
-      const node = nodeResults.get(id)!;
-      const newHead = Math.max(j.elevation, node.head + dH);
-      node.head = newHead;
-      node.depth = Math.max(j.initDepth ? j.initDepth * 0.5 : 0.0, newHead - j.elevation);
+      const elev = elevations[j]!;
+      const newHead = Math.max(elev, heads[j]! + dH);
+      heads[j] = newHead;
+      depths[j] = Math.max(initDepths[j]! ? initDepths[j]! * 0.5 : 0.0, newHead - elev);
     }
 
     if (maxNetError < 1e-4) {
@@ -175,21 +220,30 @@ export function routeNetworkFlow(deck: SwmmDeck): SwmmRoutingResult {
     }
   }
 
+  // Update node results from final contiguous vectors
+  for (let j = 0; j < nJunctions; j++) {
+    const id = junctionIds[j]!;
+    const node = nodeResults.get(id)!;
+    node.head = heads[j]!;
+    node.depth = depths[j]!;
+  }
+
   // Compute final conduit hydraulics and check flooding
-  for (const [id, c] of deck.conduits) {
-    const xsec = deck.crossSections.get(id);
-    const D = xsec?.geom1 ?? 1.0;
-    const n = Math.max(c.roughness, 0.005);
-    const L = Math.max(c.length, 1.0);
+  for (let c = 0; c < nConduits; c++) {
+    const id = conduitIds[c]!;
+    const inIdx = cInletNode[c]!;
+    const outIdx = cOutletNode[c]!;
+    const L = cLength[c]!;
+    const D = cDiam[c]!;
+    const n = cRoughness[c]!;
 
-    const inNode = nodeResults.get(c.inletNode)!;
-    const outNode = nodeResults.get(c.outletNode)!;
+    const inNode = nodeResults.get(deck.conduits.get(id)!.inletNode)!;
 
-    const deltaH = inNode.head - outNode.head;
+    const deltaH = heads[inIdx]! - heads[outIdx]!;
     const absDeltaH = Math.max(Math.abs(deltaH), 1e-6);
     const slope = absDeltaH / L;
 
-    const inDepth = Math.min(D, Math.max(0.05 * D, inNode.depth));
+    const inDepth = Math.min(D, Math.max(0.05 * D, depths[inIdx]!));
     const { area, hydRadius } = computeCircularSection(D, inDepth);
     const flow = Math.max(
       0.0,
@@ -216,7 +270,7 @@ export function routeNetworkFlow(deck: SwmmDeck): SwmmRoutingResult {
 
     inNode.inflow += flow;
     totalInflow += flow;
-    if (deck.outfalls.has(c.outletNode)) {
+    if (outIdx >= nJunctions) {
       totalOutflow += flow;
     }
   }

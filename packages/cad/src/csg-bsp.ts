@@ -189,6 +189,16 @@ function ensureBspWasmScratch(wasm: any) {
   return bspWasmScratch;
 }
 
+let sharedTypesBuffer = new Int32Array(64);
+function getTypesBuffer(size: number): Int32Array {
+  if (sharedTypesBuffer.length < size) {
+    let nextCap = sharedTypesBuffer.length * 2;
+    while (nextCap < size) nextCap *= 2;
+    sharedTypesBuffer = new Int32Array(nextCap);
+  }
+  return sharedTypesBuffer;
+}
+
 /**
  * Splits a convex `CsgPolygon` against a partitioning `CsgPlane`, routing the polygon
  * (or its clipped fragments) into `coplanarFront`, `coplanarBack`, `front`, or `back`.
@@ -306,14 +316,14 @@ export function splitPolygon(
 
   // 2. TypeScript fallback: classify each vertex against the plane with tolerance CSG_EPSILON
   let polygonType = 0;
-  const types: number[] = [];
+  const types = getTypesBuffer(nVerts);
 
   for (let i = 0; i < nVerts; i++) {
     const pos = polygon.vertices[i]!.pos;
     const t = nx * pos[0] + ny * pos[1] + nz * pos[2] - w;
     const type = t < -CSG_EPSILON ? BACK : t > CSG_EPSILON ? FRONT : COPLANAR;
     polygonType |= type;
-    types.push(type);
+    types[i] = type;
   }
 
   // 3. Dispatch according to the combined vertex classification bitmask
@@ -428,7 +438,12 @@ export class CsgBspNode {
       back = [];
     }
 
-    return front.concat(back);
+    if (back.length > 0) {
+      for (let i = 0; i < back.length; i++) {
+        front.push(back[i]!);
+      }
+    }
+    return front;
   }
 
   /** Clips all polygons stored in this BSP tree against another BSP tree `bsp`. */
@@ -439,10 +454,13 @@ export class CsgBspNode {
   }
 
   /** Collects and returns all polygons stored in this BSP subtree. */
-  public allPolygons(): CsgPolygon[] {
-    let polys = this.polygons.slice();
-    if (this.front) polys = polys.concat(this.front.allPolygons());
-    if (this.back) polys = polys.concat(this.back.allPolygons());
+  public allPolygons(out?: CsgPolygon[]): CsgPolygon[] {
+    const polys = out ?? [];
+    for (let i = 0; i < this.polygons.length; i++) {
+      polys.push(this.polygons[i]!);
+    }
+    if (this.front) this.front.allPolygons(polys);
+    if (this.back) this.back.allPolygons(polys);
     return polys;
   }
 

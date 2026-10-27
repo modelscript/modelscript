@@ -7,6 +7,7 @@
  * for steady-state pressure and flow convergence in municipal water networks.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { EpanetNetwork } from "../types.js";
 
 export interface EpanetHydraulicResult {
@@ -23,6 +24,8 @@ export interface EpanetHydraulicResult {
 export interface EpanetSolverOptions {
   maxIterations?: number | undefined;
   tolerance?: number | undefined;
+  /** Whether to execute Cholesky linear solves via native WebAssembly kernel. Default: false. */
+  useWasm?: boolean | undefined;
 }
 
 export function solveHydraulics(
@@ -32,6 +35,7 @@ export function solveHydraulics(
 ): EpanetHydraulicResult {
   let maxIterations = 50;
   let tolerance = 1e-4;
+  let useWasm = false;
 
   if (typeof options === "number") {
     maxIterations = options;
@@ -39,7 +43,9 @@ export function solveHydraulics(
   } else if (options && typeof options === "object") {
     if (options.maxIterations !== undefined) maxIterations = options.maxIterations;
     if (options.tolerance !== undefined) tolerance = options.tolerance;
+    if (options.useWasm !== undefined) useWasm = options.useWasm;
   }
+  const wasmExports: any = useWasm ? getDefaultWasmExports() : null;
   const junctions = net.junctions;
   const reservoirs = net.reservoirs;
   const pipes = net.pipes.filter((p) => p.status !== "CLOSED");
@@ -190,7 +196,13 @@ export function solveHydraulics(
     }
 
     // 3. Solve SPD linear system M * H_new = RHS via Cholesky decomposition
-    solveCholeskyFlat(M_flat, RHS, H_new, numJunctions, LScratch, yScratch);
+    let solved = false;
+    if (wasmExports) {
+      solved = solveCholeskyWasm(wasmExports, M_flat, RHS, H_new, numJunctions, yScratch);
+    }
+    if (!solved) {
+      solveCholeskyFlat(M_flat, RHS, H_new, numJunctions, LScratch, yScratch);
+    }
 
     // 4. Update pipe flows Q and check convergence
     maxDeltaQ = 0.0;
@@ -328,5 +340,72 @@ function solveCholeskyFlat(
     }
     const diag = L[i * n + i]!;
     x[i] = diag > 1e-12 ? sum / diag : 0.0;
+  }
+}
+
+/**
+ * Solves SPD linear system M * x = b using WebAssembly Cholesky factorization in linear memory.
+ */
+function solveCholeskyWasm(
+  wasm: any,
+  M: Float64Array,
+  b: Float64Array,
+  x: Float64Array,
+  n: number,
+  yScratch: Float64Array,
+): boolean {
+  if (!wasm || typeof wasm.ukf_cholesky !== "function" || !wasm.memory) {
+    return false;
+  }
+
+  const matBytes = (n * n * 8 + 7) & ~7;
+  const lBytes = (n * n * 8 + 7) & ~7;
+  const totalBytes = matBytes + lBytes;
+
+  const hasAlloc = typeof wasm.atomicChunkAlloc === "function";
+  const basePtr = hasAlloc ? wasm.atomicChunkAlloc(totalBytes) : 1024;
+  if (!basePtr) return false;
+
+  const mPtr = basePtr;
+  const lPtr = mPtr + matBytes;
+
+  try {
+    const memory: WebAssembly.Memory = wasm.memory;
+    const memF64 = new Float64Array(memory.buffer);
+    memF64.set(M, mPtr >>> 3);
+
+    const status = wasm.ukf_cholesky(n, mPtr, lPtr);
+    if (status !== 1) return false;
+
+    // Read computed lower-triangular L factor directly from WebAssembly linear memory
+    const L = new Float64Array(memory.buffer, lPtr, n * n);
+
+    // Forward substitution: L * y = b
+    for (let i = 0; i < n; i++) {
+      let sum = b[i]!;
+      const rowOffset = i * n;
+      for (let j = 0; j < i; j++) {
+        sum -= L[rowOffset + j]! * yScratch[j]!;
+      }
+      const diag = L[rowOffset + i]!;
+      yScratch[i] = diag > 1e-12 ? sum / diag : 0.0;
+    }
+
+    // Back substitution: L^T * x = y
+    for (let i = n - 1; i >= 0; i--) {
+      let sum = yScratch[i]!;
+      for (let j = i + 1; j < n; j++) {
+        sum -= L[j * n + i]! * x[j]!;
+      }
+      const diag = L[i * n + i]!;
+      x[i] = diag > 1e-12 ? sum / diag : 0.0;
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (hasAlloc && typeof wasm.atomicChunkFree === "function") {
+      wasm.atomicChunkFree(basePtr);
+    }
   }
 }

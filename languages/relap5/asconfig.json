@@ -1,0 +1,20 @@
+{
+  "targets": {
+    "release": {
+      "outFile": "dist/point_kinetics.wasm",
+      "textFile": "dist/point_kinetics.wat",
+      "sourceMap": false,
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "converge": false,
+      "noAssert": true,
+      "enable": ["simd"]
+    }
+  },
+  "options": {
+    "bindings": "raw",
+    "initialMemory": 16,
+    "maximumMemory": 2048,
+    "disableWarning": ["235"]
+  }
+}
