@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Link } from "react-router-dom";
-import { Button, ErrorBanner, FooterText, Form, GhostButton, Input } from "../styles";
+import { Button, ErrorBanner, FooterText, Form, Input } from "../styles";
 
 export interface LoginFormProps {
   email: string;
@@ -56,12 +56,17 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           autoComplete="current-password"
           required
         />
-        <Button type="submit" disabled={loading}>
-          {loading ? "Signing in…" : "Sign In"}
-        </Button>
-        <GhostButton type="button" onClick={onForgotPassword}>
+        <button
+          type="button"
+          className="ms-btn ms-btn-quiet ms-btn-sm"
+          onClick={onForgotPassword}
+          style={{ alignSelf: "flex-end", marginTop: "-6px" }}
+        >
           Forgot password?
-        </GhostButton>
+        </button>
+        <Button type="submit" disabled={loading}>
+          {loading ? "Signing in…" : "Sign in"}
+        </Button>
       </Form>
 
       <FooterText>

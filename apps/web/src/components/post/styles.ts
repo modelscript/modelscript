@@ -142,24 +142,30 @@ export const AiInsightRibbon = styled.div`
 `;
 
 export const EngActionButton = styled.button`
-  font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-family: inherit;
+  font-size: 12.5px;
   font-weight: 600;
-  padding: 5px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border-glass);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--color-text-primary);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  transition: all 0.2s;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    border-color 0.2s,
+    color 0.2s,
+    background 0.2s;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
-    color: var(--color-accent-cyan);
+    background: var(--ms-brand-soft);
+    border-color: var(--ms-brand);
+    color: var(--ms-brand);
   }
 `;
 
@@ -253,8 +259,17 @@ export const ActionButton = styled.button<{
       props.$noHoverColor
         ? "rgba(128, 128, 128, 0.15)"
         : props.$color
-          ? `${props.$color}22`
+          ? `color-mix(in srgb, ${props.$color} 14%, transparent)`
           : "rgba(128, 128, 128, 0.15)"};
+  }
+
+  /* Counts flow inline after the icon so they can never overlap the next action. */
+  .action-count {
+    font-size: 13px;
+    min-width: 1.5ch;
+    padding-right: 4px;
+    color: inherit;
+    font-variant-numeric: tabular-nums;
   }
 
   .icon-wrapper svg {
@@ -289,8 +304,8 @@ export const MenuButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: var(--color-accent-cyan);
+    background-color: var(--surface-row-hover);
+    color: var(--ms-brand);
   }
 `;
 

@@ -3,7 +3,6 @@
 import {
   BookIcon,
   CodeIcon,
-  ImageIcon,
   PackageIcon,
   PaperclipIcon,
   PulseIcon,
@@ -83,31 +82,13 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
         <CommandPill
           type="button"
           onClick={handleToggleNotebookMode}
+          aria-pressed={isNotebookMode}
           title="Toggle long-form Notebook Mode with interspersed Markdown & interactive Artifacts"
-          style={
-            isNotebookMode
-              ? {
-                  background: "rgba(139, 92, 246, 0.16)",
-                  borderColor: "var(--color-accent-cyan)",
-                  color: "var(--color-fg-default)",
-                }
-              : undefined
-          }
         >
           <span className="pill-icon">
-            <BookIcon size={11} />
+            <BookIcon size={12} />
           </span>
-          <span>{isNotebookMode ? "Notebook Mode: ON" : "📓 Notebook Mode"}</span>
-        </CommandPill>
-        <CommandPill
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          title="Attach CAD STEP model or FMU co-simulation container"
-        >
-          <span className="pill-icon">
-            <PaperclipIcon size={11} />
-          </span>
-          <span>Attach CAD/FMU</span>
+          <span>Notebook mode</span>
         </CommandPill>
       </Box>
       <Box display="flex" justifyContent="space-between" alignItems="center">
@@ -153,10 +134,10 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           <ActionIconButton
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingFile}
-            aria-label="Upload Media"
-            title="Upload Media (Images, Videos, USDZ 3D, CAD, PDFs, CSV, TEI)"
+            aria-label="Upload media or CAD/FMU"
+            title="Upload media, CAD (STEP/USD/glTF), FMU/SSP, PDFs, CSV, TEI"
           >
-            <ImageIcon size={20} />
+            <PaperclipIcon size={20} />
           </ActionIconButton>
           <ActionIconButton
             type="button"
@@ -210,13 +191,13 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
         >
           {editPostId
             ? isNotebookMode
-              ? "💾 Update Tutorial"
-              : "💾 Save Changes"
+              ? "Update tutorial"
+              : "Save changes"
             : replyToPost
               ? "Reply"
               : isNotebookMode
-                ? "📓 Publish Tutorial"
-                : "⚡ Publish & Run"}
+                ? "Publish tutorial"
+                : "Post"}
         </TweetButton>
       </Box>
     </Box>

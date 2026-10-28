@@ -19,10 +19,10 @@ import MsIcon from "./MsIcon.vue";
           workflows we support.
         </p>
         <div class="idx-actions">
-          <a class="ms-btn ms-btn-brand" href="/languages/overview">
+          <a class="ms-btn ms-btn-lg ms-btn-brand" href="/languages/overview">
             Browse all languages <MsIcon name="arrowRight" :size="16" :stroke="2" />
           </a>
-          <a class="ms-btn ms-btn-ghost" href="/guide/getting-started">Get started</a>
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/guide/getting-started">Get started</a>
         </div>
       </div>
     </section>

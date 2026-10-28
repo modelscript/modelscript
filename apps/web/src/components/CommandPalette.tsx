@@ -7,17 +7,21 @@ import {
   GlobeIcon,
   HomeIcon,
   PackageIcon,
+  PersonAddIcon,
   PersonIcon,
+  PlayIcon,
   PlusCircleIcon,
   RepoIcon,
   SearchIcon,
   ShieldLockIcon,
+  SignInIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { getSearchCompletions } from "../api";
 
 interface CommandItem {
@@ -247,7 +251,9 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onOpenCompose }) => {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const hasIde = useFeatureFlag("heavy_vscode_ide");
+  const hasCae = useFeatureFlag("cae_cloud_solver");
   const [query, setQuery] = useState("");
   const [completions, setCompletions] = useState<{
     users: UserCompletion[];
@@ -297,17 +303,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   // Build items list
   const allItems: CommandItem[] = useMemo(() => {
     const defaultNavItems: CommandItem[] = [
-      {
-        id: "nav-home",
-        category: "Navigation",
-        title: "Home Timeline",
-        subtitle: "View latest activity and models",
-        icon: <HomeIcon size={16} />,
-        action: () => {
-          navigate("/home");
-          onClose();
-        },
-      },
+      ...(user
+        ? [
+            {
+              id: "nav-home",
+              category: "Navigation" as const,
+              title: "Home Timeline",
+              subtitle: "View latest activity and models",
+              icon: <HomeIcon size={16} />,
+              action: () => {
+                navigate("/home");
+                onClose();
+              },
+            },
+          ]
+        : []),
       {
         id: "nav-explore",
         category: "Navigation",
@@ -316,6 +326,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         icon: <GlobeIcon size={16} />,
         action: () => {
           navigate("/explore");
+          onClose();
+        },
+      },
+      {
+        id: "nav-playground",
+        category: "Navigation",
+        title: "Playground",
+        subtitle: "Edit, simulate, and visualize models in the browser",
+        icon: <PlayIcon size={16} />,
+        action: () => {
+          navigate("/playground");
           onClose();
         },
       },
@@ -341,39 +362,51 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           onClose();
         },
       },
-      {
-        id: "nav-ide",
-        category: "Navigation",
-        title: "ModelScript IDE Workbench",
-        subtitle: "Launch VS Code Web editor with WASM solvers and CAD viewers",
-        icon: <CodeIcon size={16} />,
-        action: () => {
-          navigate("/ide");
-          onClose();
-        },
-      },
-      {
-        id: "nav-hpc",
-        category: "Navigation",
-        title: "Cloud Jobs & HPC Queue",
-        subtitle: "Run SLURM jobs, simulation templates, and compute pipelines",
-        icon: <CpuIcon size={16} />,
-        action: () => {
-          navigate("/jobs");
-          onClose();
-        },
-      },
-      {
-        id: "nav-settings",
-        category: "Navigation",
-        title: "Settings",
-        subtitle: "Account preferences and access tokens",
-        icon: <GearIcon size={16} />,
-        action: () => {
-          navigate("/settings");
-          onClose();
-        },
-      },
+      ...(hasIde
+        ? [
+            {
+              id: "nav-ide",
+              category: "Navigation" as const,
+              title: "ModelScript IDE Workbench",
+              subtitle: "Launch VS Code Web editor with WASM solvers and CAD viewers",
+              icon: <CodeIcon size={16} />,
+              action: () => {
+                navigate("/ide");
+                onClose();
+              },
+            },
+          ]
+        : []),
+      ...(hasCae
+        ? [
+            {
+              id: "nav-hpc",
+              category: "Navigation" as const,
+              title: "Cloud Jobs & HPC Queue",
+              subtitle: "Run SLURM jobs, simulation templates, and compute pipelines",
+              icon: <CpuIcon size={16} />,
+              action: () => {
+                navigate("/jobs");
+                onClose();
+              },
+            },
+          ]
+        : []),
+      ...(user
+        ? [
+            {
+              id: "nav-settings",
+              category: "Navigation" as const,
+              title: "Settings",
+              subtitle: "Account preferences and access tokens",
+              icon: <GearIcon size={16} />,
+              action: () => {
+                navigate("/settings");
+                onClose();
+              },
+            },
+          ]
+        : []),
       ...(isAdmin
         ? [
             {
@@ -435,19 +468,44 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         : []),
     ];
 
-    const defaultActionItems: CommandItem[] = [
-      {
-        id: "action-compose",
-        category: "Actions",
-        title: "Create New Post",
-        subtitle: "Share models, simulation results, or engineering queries",
-        icon: <PlusCircleIcon size={16} />,
-        action: () => {
-          onClose();
-          if (onOpenCompose) onOpenCompose();
-        },
-      },
-    ];
+    const defaultActionItems: CommandItem[] = user
+      ? [
+          {
+            id: "action-compose",
+            category: "Actions",
+            title: "Create New Post",
+            subtitle: "Share models, simulation results, or engineering queries",
+            icon: <PlusCircleIcon size={16} />,
+            action: () => {
+              onClose();
+              if (onOpenCompose) onOpenCompose();
+            },
+          },
+        ]
+      : [
+          {
+            id: "action-login",
+            category: "Actions",
+            title: "Sign in",
+            subtitle: "Log in to post, follow, and save models",
+            icon: <SignInIcon size={16} />,
+            action: () => {
+              navigate("/login");
+              onClose();
+            },
+          },
+          {
+            id: "action-signup",
+            category: "Actions",
+            title: "Create account",
+            subtitle: "Join the ModelScript community for free",
+            icon: <PersonAddIcon size={16} />,
+            action: () => {
+              navigate("/signup");
+              onClose();
+            },
+          },
+        ];
 
     if (!query.trim()) {
       return [...defaultActionItems, ...defaultNavItems];
@@ -541,7 +599,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     ];
 
     return [...aiItems, ...matchingNav, ...userItems, ...packageItems, ...repoItems];
-  }, [query, completions, navigate, onClose, onOpenCompose, isAdmin]);
+  }, [query, completions, navigate, onClose, onOpenCompose, isAdmin, user, hasIde, hasCae]);
 
   // Keyboard navigation
   useEffect(() => {

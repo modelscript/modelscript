@@ -4,100 +4,63 @@ body {
   overflow-x: clip;
 }
 
-/* ───────────────────────── Tokens ───────────────────────── */
+/* ───────────────────────── Tokens ─────────────────────────
+ * Brand, surface, hue, grid and glow tokens come from
+ * @modelscript/design-tokens (shared with apps/web). This block only maps
+ * them onto VitePress variables and defines docs-only tokens.
+ */
 :root {
-  /* Brand: engineering teal → cyan → sky */
-  --vp-c-brand-1: #0e7490;
-  --vp-c-brand-2: #0891b2;
-  --vp-c-brand-3: #0891b2;
-  --vp-c-brand-soft: rgba(8, 145, 178, 0.14);
+  --vp-c-brand-1: var(--ms-brand);
+  --vp-c-brand-2: var(--ms-brand-hover);
+  --vp-c-brand-3: var(--ms-brand-hover);
+  --vp-c-brand-soft: var(--ms-brand-soft);
 
-  --ms-accent-1: #14b8a6;
-  --ms-accent-2: #06b6d4;
-  --ms-accent-3: #6366f1;
-  --ms-gradient: linear-gradient(110deg, #14b8a6 0%, #06b6d4 45%, #6366f1 100%);
-  --ms-gradient-text: linear-gradient(110deg, #0f766e 0%, #0891b2 50%, #4f46e5 100%);
+  /* Legacy aliases used by docs components. */
+  --ms-accent-1: var(--ms-accent-teal);
+  --ms-accent-2: var(--ms-accent-cyan);
+  --ms-accent-3: var(--ms-accent-indigo);
 
-  --ms-border-strong: rgba(15, 23, 42, 0.12);
-  --ms-surface-glass: rgba(255, 255, 255, 0.92);
-  --ms-surface-hover: rgba(15, 23, 42, 0.045);
   --ms-surface-footer: rgba(15, 23, 42, 0.025);
-  --ms-grid-line: rgba(15, 23, 42, 0.045);
-  --ms-grid-sub: rgba(15, 23, 42, 0.02);
-  --ms-dot-matrix: rgba(15, 23, 42, 0.08);
   --ms-schematic-bg: #f8fafc;
-  --ms-glow-teal: rgba(20, 184, 166, 0.11);
-  --ms-glow-cyan: rgba(6, 182, 212, 0.12);
-  --ms-glow-indigo: rgba(99, 102, 241, 0.09);
   /* How much of an industry accent hue to use for text (rest is --vp-c-text-1). */
   --ms-accent-strength: 62%;
 
-  /* Illustration hues: saturated -600 shades for contrast on light surfaces. */
-  --hue-indigo: #4f46e5;
-  --hue-cyan: #0891b2;
-  --hue-teal: #0d9488;
-  --hue-emerald: #059669;
-  --hue-amber: #d97706;
-  --hue-rose: #e11d48;
-  --hue-violet: #7c3aed;
   --sx-ink: rgba(51, 65, 85, 0.42);
   --sx-ink-soft: rgba(51, 65, 85, 0.07);
   --sx-label: #475569;
 
-  --vp-font-family-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --vp-font-family-base: var(--ms-font-sans);
+  --vp-font-family-mono: var(--ms-font-mono);
 
   --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: var(--ms-gradient-text);
 
-  --vp-button-brand-bg: #0e7490;
-  --vp-button-brand-hover-bg: #0891b2;
-  --vp-button-brand-active-bg: #155e75;
+  --vp-button-brand-bg: var(--ms-brand);
+  --vp-button-brand-hover-bg: var(--ms-brand-hover);
+  --vp-button-brand-active-bg: var(--ms-brand-active);
 }
 
 .dark {
-  --vp-c-bg: #0a0f1c;
-  --vp-c-bg-alt: #070b15;
-  --vp-c-bg-elv: #0f1626;
-  --vp-c-bg-soft: #0f1728;
-  --vp-c-divider: rgba(148, 163, 184, 0.14);
-  --vp-c-border: rgba(148, 163, 184, 0.2);
+  --vp-c-bg: var(--ms-bg);
+  --vp-c-bg-alt: var(--ms-bg-alt);
+  --vp-c-bg-elv: var(--ms-bg-elv);
+  --vp-c-bg-soft: var(--ms-bg-soft);
+  --vp-c-divider: var(--ms-divider);
+  --vp-c-border: var(--ms-border);
   --vp-c-gutter: #050810;
 
-  --vp-c-brand-1: #22d3ee;
-  --vp-c-brand-2: #06b6d4;
-  --vp-c-brand-3: #0891b2;
-  --vp-c-brand-soft: rgba(34, 211, 238, 0.14);
+  /* Text-level brand stays luminous on dark; buttons use --ms-brand. */
+  --vp-c-brand-1: var(--ms-link);
+  --vp-c-brand-2: var(--ms-brand-hover);
+  --vp-c-brand-3: var(--ms-brand);
 
-  --ms-gradient-text: linear-gradient(110deg, #5eead4 0%, #22d3ee 45%, #a5b4fc 100%);
-  --ms-border-strong: rgba(148, 163, 184, 0.2);
-  --ms-surface-glass: rgba(10, 15, 28, 0.88);
-  --ms-surface-hover: rgba(148, 163, 184, 0.08);
   --ms-surface-footer: rgba(148, 163, 184, 0.04);
-  --ms-grid-line: rgba(148, 163, 184, 0.055);
-  --ms-grid-sub: rgba(148, 163, 184, 0.022);
-  --ms-dot-matrix: rgba(148, 163, 184, 0.14);
   --ms-schematic-bg: #080d19;
-  --ms-glow-teal: rgba(20, 184, 166, 0.14);
-  --ms-glow-cyan: rgba(34, 211, 238, 0.15);
-  --ms-glow-indigo: rgba(99, 102, 241, 0.13);
   --ms-accent-strength: 100%;
 
-  /* Illustration hues: luminous -400 shades for contrast on dark surfaces. */
-  --hue-indigo: #818cf8;
-  --hue-cyan: #22d3ee;
-  --hue-teal: #2dd4bf;
-  --hue-emerald: #34d399;
-  --hue-amber: #fbbf24;
-  --hue-rose: #fb7185;
-  --hue-violet: #a78bfa;
   --sx-ink: rgba(148, 163, 184, 0.5);
   --sx-ink-soft: rgba(148, 163, 184, 0.09);
   --sx-label: #94a3b8;
-
-  --vp-button-brand-bg: #0891b2;
-  --vp-button-brand-hover-bg: #06b6d4;
-  --vp-button-brand-active-bg: #0e7490;
 }
 
 .VPNavBar:not(.home.top) .content-body,
@@ -283,51 +246,8 @@ body {
   color: var(--vp-c-text-2);
 }
 
-.ms-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 22px;
-  height: 44px;
-  border-radius: 999px;
-  font-size: 14.5px;
-  font-weight: 600;
-  text-decoration: none !important;
-  white-space: nowrap;
-  transition:
-    background 0.2s,
-    border-color 0.2s,
-    color 0.2s,
-    transform 0.2s,
-    box-shadow 0.2s;
-}
-
-.ms-btn:hover {
-  transform: translateY(-1px);
-}
-
-.ms-btn-brand {
-  color: #fff !important;
-  background: var(--vp-button-brand-bg);
-  box-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.55);
-}
-
-.ms-btn-brand:hover {
-  background: var(--vp-button-brand-hover-bg);
-  box-shadow: 0 14px 34px -10px rgba(6, 182, 212, 0.7);
-}
-
-.ms-btn-ghost {
-  color: var(--vp-c-text-1) !important;
-  background: transparent;
-  border: 1px solid var(--vp-c-border);
-}
-
-.ms-btn-ghost:hover {
-  border-color: var(--vp-c-brand-1);
-  color: var(--vp-c-brand-1) !important;
-}
+/* .ms-btn / .ms-btn-brand / .ms-btn-ghost / .ms-btn-lg come from
+   @modelscript/design-tokens/components.css (shared with apps/web). */
 
 .ms-cta {
   position: relative;

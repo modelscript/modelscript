@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import "@modelscript/design-tokens/components.css";
+import "@modelscript/design-tokens/tokens.css";
 import type { Theme } from "vitepress";
 import DefaultTheme from "vitepress/theme";
 import { defineAsyncComponent } from "vue";

@@ -29,10 +29,10 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
           <p>Free and open source. Try it in the browser in seconds, or install the CLI.</p>
         </div>
         <div class="ms-cta-actions">
-          <a class="ms-btn ms-btn-brand" href="/guide/getting-started">
+          <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
             Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
           </a>
-          <a class="ms-btn ms-btn-ghost" href="https://github.com/modelscript/modelscript">
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript">
             <MsIcon name="github" :size="16" /> GitHub
           </a>
         </div>

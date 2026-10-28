@@ -9,55 +9,11 @@ import { createRepo, getPopularRepos, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
-import { CircleIconButton } from "../components/SharedStyles";
+import { CircleIconButton, PageTab as Tab, PageTabBar as TabBar } from "../components/SharedStyles";
 import type { RepositoryDTO } from "../types/api";
 import { usePageTitle } from "../util/title";
 
 /* ─── styled helpers ─── */
-
-const TabBar = styled.div`
-  display: flex;
-  border-bottom: 1px solid var(--color-border);
-  position: sticky;
-  top: var(--dev-header-height, 0px);
-  z-index: 10;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
-`;
-
-const Tab = styled.button<{ $active?: boolean | undefined }>`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: none;
-  border: none;
-  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
-  font-weight: ${(props) => (props.$active ? "700" : "500")};
-  cursor: pointer;
-  transition:
-    background-color 0.2s,
-    color 0.2s;
-  position: relative;
-
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.04);
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    height: 4px;
-    width: 56px;
-    background: var(--gradient-cta);
-    border-radius: 9999px;
-    display: ${(props) => (props.$active ? "block" : "none")};
-    box-shadow: var(--glow-purple-sm);
-  }
-`;
 
 const ResultCount = styled.span`
   font-size: 14px;
@@ -113,7 +69,7 @@ const RepositoryListPage: React.FC = () => {
   const [repos, setRepos] = useState<RepositoryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"all" | "my">("my");
+  const [activeTab, setActiveTab] = useState<"all" | "my">(token ? "my" : "all");
   const [repoInput, setRepoInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -207,9 +163,11 @@ const RepositoryListPage: React.FC = () => {
   return (
     <Box>
       <TabBar>
-        <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
-          My Repositories
-        </Tab>
+        {token && (
+          <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
+            My Repositories
+          </Tab>
+        )}
         <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
           All Repositories
         </Tab>

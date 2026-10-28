@@ -4,7 +4,7 @@ import { CheckCircleFillIcon, ClockIcon, CpuIcon, PlayIcon, ServerIcon, ZapIcon 
 import { Heading, Text } from "@primer/react";
 import React from "react";
 import Box from "../../../components/Box";
-import { MetricCard, pulseAnimation, SpinningIcon } from "../styles";
+import { MetricCard, SpinningIcon } from "../styles";
 import type { ClusterStatus } from "../types";
 
 export interface ScriptsHeaderHudProps {
@@ -199,7 +199,7 @@ export const ScriptsHeaderHud: React.FC<ScriptsHeaderHudProps> = ({
                 borderRadius: "50%",
                 backgroundColor: runningJobsCount > 0 ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
                 boxShadow: runningJobsCount > 0 ? "0 0 10px var(--color-accent-cyan)" : "none",
-                animation: runningJobsCount > 0 ? `${pulseAnimation} 1.5s infinite` : "none",
+                animation: runningJobsCount > 0 ? "ms-pulse 1.5s infinite" : "none",
               }}
             />
           </div>

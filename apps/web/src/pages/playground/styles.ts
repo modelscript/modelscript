@@ -30,6 +30,12 @@ export const PlaygroundNavbar = styled.header`
     padding: 0 8px;
     gap: 6px;
   }
+
+  @media (max-width: 600px) {
+    .nav-hide-sm {
+      display: none !important;
+    }
+  }
 `;
 
 export const NavLeft = styled.div`
@@ -37,6 +43,8 @@ export const NavLeft = styled.div`
   align-items: center;
   gap: 12px;
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 
   @media (max-width: 768px) {
     gap: 6px;
@@ -76,9 +84,9 @@ export const Badge = styled.span`
   font-family: var(--font-mono, monospace);
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(6, 182, 212, 0.12);
-  color: var(--color-accent-cyan, #06b6d4);
-  border: 1px solid rgba(6, 182, 212, 0.25);
+  background: var(--ms-brand-soft);
+  color: var(--ms-link);
+  border: 1px solid color-mix(in srgb, var(--ms-brand) 30%, transparent);
   font-weight: 600;
 
   @media (max-width: 600px) {

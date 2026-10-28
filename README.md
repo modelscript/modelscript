@@ -186,20 +186,21 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ### Packages (`packages/`)
 
-| Package                                         | Responsibility                                                                                                                       |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| [`@modelscript/dsl`](./packages/dsl/)           | Grammar DSL syntax combinators, WASM GLR parser compiler (`buildParser`), TGG rewriting compiler, CPA engine, term-rewriting         |
-| [`@modelscript/runtime`](./packages/runtime/)   | Linear-memory DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, Nelson-Oppen theory coordinator     |
-| [`@modelscript/simulate`](./packages/simulate/) | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, 3D FEA/LBM CFD, surrogate ROMs, Monte Carlo      |
-| [`@modelscript/lsp`](./packages/lsp/)           | Polyglot Language Server Protocol engine across all 44 languages, incremental Salsa workspace index, background worker pool          |
-| [`@modelscript/diagram`](./packages/diagram/)   | Polyglot diagram builder, Sugiyama/TSM auto-layout, Manhattan A\* port router, perceptual dark-mode SVG rendering, visual diffs      |
-| [`@modelscript/exchange`](./packages/exchange/) | FMI 2.0/3.0 FMU export/import, SSP 1.0 toolkit, `CoSimMaster` orchestrator, AASX/DDP/OKH lenses, MDF4/MCAP binary telemetry          |
-| [`@modelscript/cad`](./packages/cad/)           | MCAD & ECAD engine — CSG primitives, OpenCascade/Manifold B-Rep, STEP AP242 I/O, dynamic clearance, GD&T stack-up, Gerber/PCB DRC    |
-| [`@modelscript/mcp`](./packages/mcp/)           | Model Context Protocol (MCP) server exposing 47 compilation, simulation, ontology, TGG, RTM, and domain tools to AI agents           |
-| [`@modelscript/ide-client`](./packages/ide/)    | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 18 custom editors, 20+ panels   |
-| [`@modelscript/embed`](./packages/embed/)       | Embeddable `<modelscript-viewer>` Web Component, iframe postMessage RPC client, and compressed permalink URL codec                   |
-| [`@modelscript/react`](./packages/react/)       | React SDK & engineering UI widgets (`ModelScriptProvider`, `BlackboxInspector`, `StepResponseTestbench`, WebWorker/WASM hooks)       |
-| [`@modelscript/examples`](./packages/examples/) | End-to-end polyglot reference workspaces (`drone-reachability`, `drone-chassis`, and `pscad-microgrid` under `./packages/examples/`) |
+| Package                                                   | Responsibility                                                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [`@modelscript/dsl`](./packages/dsl/)                     | Grammar DSL syntax combinators, WASM GLR parser compiler (`buildParser`), TGG rewriting compiler, CPA engine, term-rewriting         |
+| [`@modelscript/runtime`](./packages/runtime/)             | Linear-memory DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, Nelson-Oppen theory coordinator     |
+| [`@modelscript/simulate`](./packages/simulate/)           | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, 3D FEA/LBM CFD, surrogate ROMs, Monte Carlo      |
+| [`@modelscript/lsp`](./packages/lsp/)                     | Polyglot Language Server Protocol engine across all 44 languages, incremental Salsa workspace index, background worker pool          |
+| [`@modelscript/diagram`](./packages/diagram/)             | Polyglot diagram builder, Sugiyama/TSM auto-layout, Manhattan A\* port router, perceptual dark-mode SVG rendering, visual diffs      |
+| [`@modelscript/exchange`](./packages/exchange/)           | FMI 2.0/3.0 FMU export/import, SSP 1.0 toolkit, `CoSimMaster` orchestrator, AASX/DDP/OKH lenses, MDF4/MCAP binary telemetry          |
+| [`@modelscript/cad`](./packages/cad/)                     | MCAD & ECAD engine — CSG primitives, OpenCascade/Manifold B-Rep, STEP AP242 I/O, dynamic clearance, GD&T stack-up, Gerber/PCB DRC    |
+| [`@modelscript/mcp`](./packages/mcp/)                     | Model Context Protocol (MCP) server exposing 47 compilation, simulation, ontology, TGG, RTM, and domain tools to AI agents           |
+| [`@modelscript/ide-client`](./packages/ide/)              | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 18 custom editors, 20+ panels   |
+| [`@modelscript/embed`](./packages/embed/)                 | Embeddable `<modelscript-viewer>` Web Component, iframe postMessage RPC client, and compressed permalink URL codec                   |
+| [`@modelscript/design-tokens`](./packages/design-tokens/) | Shared CSS design tokens (`--ms-*`) and primitive `.ms-btn` / `.ms-chip` styles for the docs site, web app, and IDE webviews         |
+| [`@modelscript/react`](./packages/react/)                 | React SDK & engineering UI widgets (`ModelScriptProvider`, `BlackboxInspector`, `StepResponseTestbench`, WebWorker/WASM hooks)       |
+| [`@modelscript/examples`](./packages/examples/)           | End-to-end polyglot reference workspaces (`drone-reachability`, `drone-chassis`, and `pscad-microgrid` under `./packages/examples/`) |
 
 ### Applications (`apps/`)
 

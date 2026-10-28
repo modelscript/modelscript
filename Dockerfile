@@ -28,6 +28,7 @@ COPY apps/web/package.json apps/web/
 
 # Packages manifests
 COPY packages/cad/package.json packages/cad/
+COPY packages/design-tokens/package.json packages/design-tokens/
 COPY packages/diagram/package.json packages/diagram/
 COPY packages/dsl/package.json packages/dsl/
 COPY packages/embed/package.json packages/embed/

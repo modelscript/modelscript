@@ -13,8 +13,8 @@ import {
   QuoteIcon,
   ShareIcon,
   SyncIcon,
+  ZapIcon,
 } from "@primer/octicons-react";
-import { Text } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
@@ -90,7 +90,8 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
       style={{ marginRight: "8px" }}
       title="Remix this artifact and reply in Playground / IDE"
     >
-      ⚡ Remix / Reply in Editor
+      <ZapIcon size={14} />
+      Remix in editor
     </EngActionButton>
   ) : null;
 
@@ -110,19 +111,9 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
       <div className="icon-wrapper">
         <CommentIcon size={18} />
       </div>
-      <Text
-        style={{
-          position: "absolute",
-          left: "36px",
-          fontSize: isDetail ? "14px" : "13px",
-          paddingRight: isDetail ? "8px" : undefined,
-          minWidth: "20px",
-          textAlign: "left",
-          color: "inherit",
-        }}
-      >
+      <span className="action-count">
         <AnimatedCount count={displayPost.reply_count || 0} />
-      </Text>
+      </span>
     </ActionButton>
   );
 
@@ -144,19 +135,9 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
         <div className="icon-wrapper">
           <SyncIcon size={18} />
         </div>
-        <Text
-          style={{
-            position: "absolute",
-            left: "36px",
-            fontSize: isDetail ? "14px" : "13px",
-            paddingRight: isDetail ? "8px" : undefined,
-            minWidth: "20px",
-            textAlign: "left",
-            color: "inherit",
-          }}
-        >
+        <span className="action-count">
           <AnimatedCount count={repostCount || 0} />
-        </Text>
+        </span>
       </ActionButton>
 
       {showRepostMenu && (
@@ -245,19 +226,9 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   const likeButton = (
     <ActionButton $active={liked} $color="#f91880" onClick={onLike}>
       <div className="icon-wrapper">{liked ? <HeartFillIcon size={18} /> : <HeartIcon size={18} />}</div>
-      <Text
-        style={{
-          position: "absolute",
-          left: "36px",
-          fontSize: isDetail ? "14px" : "13px",
-          paddingRight: isDetail ? "8px" : undefined,
-          minWidth: "20px",
-          textAlign: "left",
-          color: "inherit",
-        }}
-      >
+      <span className="action-count">
         <AnimatedCount count={likeCount || 0} />
-      </Text>
+      </span>
     </ActionButton>
   );
 
@@ -429,18 +400,9 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
         <div className="icon-wrapper">
           <GraphBarHorizontalIcon size={18} />
         </div>
-        <Text
-          style={{
-            position: "absolute",
-            left: "36px",
-            fontSize: "13px",
-            minWidth: "20px",
-            textAlign: "left",
-            color: "inherit",
-          }}
-        >
+        <span className="action-count">
           <AnimatedCount count={impressions} />
-        </Text>
+        </span>
       </ActionButton>
 
       {bookmarkAndShareButtons}

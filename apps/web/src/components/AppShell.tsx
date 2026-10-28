@@ -39,11 +39,17 @@ const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean | undefined }>
   justify-content: center;
 `;
 
+/* Fixed basis (not flex: 1) so the sidebar sits at the same x-position on every
+   route, regardless of how wide the main column is. Sidebar itself is 275px
+   (80px rail at <=1280px), right-aligned in this column. */
 const SidebarWrapper = styled.div`
-  flex: 1;
+  flex: 0 0 320px;
   display: flex;
   justify-content: flex-end;
-  max-width: 320px;
+
+  @media (max-width: 1280px) {
+    flex-basis: auto;
+  }
 `;
 
 const RightPanelWrapper = styled.div`
@@ -166,10 +172,16 @@ const Banner = styled.div`
   display: flex;
   justify-content: center;
   z-index: 100;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
 
   @media (min-width: 900px) {
     display: none;
+  }
+
+  /* Sit above the mobile bottom bar (60px) instead of underneath it. */
+  @media (max-width: 500px) {
+    bottom: 60px;
+    padding: 10px 16px;
   }
 `;
 
@@ -177,9 +189,43 @@ const BannerContent = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   max-width: 1280px;
   width: 100%;
   padding: 0 40px;
+
+  @media (max-width: 500px) {
+    padding: 0;
+  }
+`;
+
+const BannerTitle = styled.span`
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+
+  @media (max-width: 500px) {
+    font-size: 15px;
+  }
+`;
+
+const BannerSubtitle = styled.span`
+  font-size: 14px;
+  color: var(--color-text-muted);
+
+  @media (max-width: 500px) {
+    display: none;
+  }
+`;
+
+const BannerActions = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+
+  & > button {
+    white-space: nowrap;
+  }
 `;
 
 const AppShell: React.FC = () => {
@@ -524,51 +570,24 @@ const AppShell: React.FC = () => {
                     />
                   </RightPanelWrapper>
                 )}
-                {isFullScreenLayout && <div style={{ flex: 1, maxWidth: "max(0px, calc(340px - 275px))" }} />}
               </ContentWrapper>
             </ShellContainer>
 
             {!loading && !user && (
-              <Banner style={{ bottom: window.innerWidth <= 500 ? "60px" : "0" }}>
+              <Banner>
                 <BannerContent>
-                  <Box display="flex" flexDirection="column">
-                    <span style={{ fontSize: "22px", fontWeight: 800 }}>Don't miss what's happening</span>
-                    <span style={{ fontSize: "15px" }}>People on ModelScript are the first to know.</span>
+                  <Box display="flex" flexDirection="column" style={{ minWidth: 0 }}>
+                    <BannerTitle>Join the ModelScript community</BannerTitle>
+                    <BannerSubtitle>Share models, simulations, and results with engineers worldwide.</BannerSubtitle>
                   </Box>
-                  <Box display="flex" gap={3}>
-                    <button
-                      onClick={() => navigate("/login")}
-                      style={{
-                        background: "transparent",
-                        border: "1px solid var(--color-border)",
-                        color: "var(--color-text-primary)",
-                        borderRadius: 9999,
-                        padding: "8px 16px",
-                        fontWeight: "bold",
-                        cursor: "pointer",
-                        fontSize: 15,
-                        minWidth: 80,
-                      }}
-                    >
+                  <BannerActions>
+                    <button className="ms-btn ms-btn-secondary ms-btn-sm" onClick={() => navigate("/login")}>
                       Log in
                     </button>
-                    <button
-                      onClick={() => navigate("/signup")}
-                      style={{
-                        background: "#fff",
-                        border: "none",
-                        color: "#1f1f1f",
-                        borderRadius: 9999,
-                        padding: "8px 16px",
-                        fontWeight: "bold",
-                        cursor: "pointer",
-                        fontSize: 15,
-                        minWidth: 80,
-                      }}
-                    >
+                    <button className="ms-btn ms-btn-primary ms-btn-sm" onClick={() => navigate("/signup")}>
                       Sign up
                     </button>
-                  </Box>
+                  </BannerActions>
                 </BannerContent>
               </Banner>
             )}

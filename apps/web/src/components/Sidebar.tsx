@@ -7,6 +7,7 @@ import {
   GearIcon,
   HomeIcon,
   KebabHorizontalIcon,
+  MoonIcon,
   PackageIcon,
   PersonIcon,
   PlayIcon,
@@ -16,6 +17,7 @@ import {
   SearchIcon,
   ServerIcon,
   ShieldLockIcon,
+  SunIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
@@ -335,19 +337,29 @@ const LogoutMenu = styled.div`
   }
 
   button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     width: 100%;
-    padding: 12px 16px;
+    padding: 10px 16px;
     background: none;
     border: none;
     text-align: left;
-    font-size: 15px;
-    font-weight: bold;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--color-text-primary);
     cursor: pointer;
 
     &:hover {
       background-color: var(--surface-row-hover);
     }
+  }
+
+  hr {
+    margin: 6px 0;
+    border: none;
+    border-top: 1px solid var(--ms-divider);
   }
 `;
 
@@ -379,65 +391,8 @@ const GuestFooter = styled.div`
   }
 `;
 
-const GuestSignInBtn = styled(Link)`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 8px;
-  background: var(--color-bg-surface, #ffffff);
-  border: 1px solid var(--color-border-strong, rgba(0, 0, 0, 0.16));
-  color: var(--color-text-primary, #0f172a);
-  font-size: 13.5px;
-  font-weight: 600;
-  text-decoration: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-  &:hover {
-    background: var(--surface-row-hover, #f1f5f9);
-    border-color: var(--color-accent-blue-border);
-    color: var(--color-text-heading);
-    text-decoration: none;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-`;
-
-const GuestSignUpBtn = styled(Link)`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 8px;
-  background: var(--gradient-cta);
-  border: 1px solid transparent;
-  color: #ffffff !important;
-  font-size: 13.5px;
-  font-weight: 600;
-  text-decoration: none;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.28);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-  &:hover {
-    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
-    transform: translateY(-1px);
-    filter: brightness(1.05);
-    color: #ffffff !important;
-    text-decoration: none;
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
+const GuestThemeToggle = styled.button`
+  align-self: flex-start;
 `;
 
 interface SidebarProps {
@@ -446,7 +401,9 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const { user, isAdmin, logout, unreadCount, setUnreadCount } = useAuth();
-  const { theme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
+  const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
+  const themeLabel = theme === "dark" ? "Light theme" : "Dark theme";
   const location = useLocation();
   const [showLogoutMenu, setShowLogoutMenu] = React.useState(false);
 
@@ -579,32 +536,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
         {user && (
           <>
-            <Box mt={4} mb={4} px={4} className="sidebar-separator">
-              <div style={{ height: "1px", backgroundColor: "var(--color-border)", width: "100%" }} />
-            </Box>
-            <Box mt={4} width="100%" px={2} className="post-btn-container">
+            <Box mt={3} width="100%" px={2} className="post-btn-container">
               <button
-                style={{
-                  width: "100%",
-                  borderRadius: "10px",
-                  fontSize: "15px",
-                  padding: "12px 20px",
-                  background: "var(--gradient-cta)",
-                  color: "white",
-                  border: "none",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  boxShadow: "var(--glow-ai-sm)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  transition: "opacity 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease",
-                }}
+                type="button"
                 onClick={onPostClick}
-                className="post-btn"
+                className="ms-btn ms-btn-primary ms-btn-lg ms-btn-block post-btn"
+                aria-label="New post"
               >
-                <span className="post-text">✨ Synthesize / Post</span>
+                <span className="post-text">Post</span>
                 <span className="post-icon" style={{ display: "none" }}>
                   <PlusIcon size={20} />
                 </span>
@@ -619,6 +558,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
           {showLogoutMenu && (
             <LogoutMenu>
               <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTheme();
+                }}
+              >
+                <ThemeIcon size={16} /> {themeLabel}
+              </button>
+              <hr />
+              <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   logout();
@@ -658,13 +608,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
       {!user && (
         <GuestFooter>
+          <GuestThemeToggle type="button" className="ms-btn ms-btn-quiet ms-btn-sm" onClick={toggleTheme}>
+            <ThemeIcon size={14} /> {themeLabel}
+          </GuestThemeToggle>
           <Box display="flex" gap={2}>
-            <GuestSignInBtn to="/login" style={{ flex: 1 }}>
+            <Link to="/login" className="ms-btn ms-btn-secondary" style={{ flex: 1 }}>
               Log in
-            </GuestSignInBtn>
-            <GuestSignUpBtn to="/signup" style={{ flex: 1 }}>
+            </Link>
+            <Link to="/signup" className="ms-btn ms-btn-primary" style={{ flex: 1 }}>
               Sign up
-            </GuestSignUpBtn>
+            </Link>
           </Box>
         </GuestFooter>
       )}

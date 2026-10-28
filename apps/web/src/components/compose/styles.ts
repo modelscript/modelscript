@@ -3,64 +3,83 @@
 import styled from "styled-components";
 
 export const TweetButton = styled.button`
-  background: var(--gradient-cta);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 18px;
-  font-size: 13.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--ms-control-md);
+  padding: 0 18px;
+  background: var(--ms-brand);
+  color: var(--ms-brand-contrast);
+  border: 1px solid transparent;
+  border-radius: var(--ms-radius-pill);
+  font-size: 14px;
   font-weight: 600;
   font-family: inherit;
-  letter-spacing: -0.01em;
+  white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
-  transition: all 0.2s ease;
+  box-shadow: var(--ms-brand-shadow);
+  transition:
+    background-color 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
 
   &:hover:not(:disabled) {
-    box-shadow: 0 0 18px rgba(6, 182, 212, 0.5);
+    background: var(--ms-brand-hover);
     transform: translateY(-1px);
   }
 
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--ms-focus-ring);
+  }
+
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
     box-shadow: none;
-    background: var(--color-btn-disabled-bg, rgba(255, 255, 255, 0.08));
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border-subtle);
   }
 `;
 
 export const CommandPill = styled.button`
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
-  padding: 3px 8px;
-  border-radius: 6px;
+  gap: 6px;
+  height: 26px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ms-text-2);
+  background: transparent;
+  border: 1px solid var(--ms-border);
+  padding: 0 10px;
+  border-radius: var(--ms-radius-pill);
   cursor: pointer;
   outline: none;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    color 0.15s,
+    background-color 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 
   &:hover {
-    color: var(--color-text-heading);
-    background: var(--surface-row-hover, rgba(255, 255, 255, 0.08));
-    border-color: var(--color-border-strong, rgba(255, 255, 255, 0.25));
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    color: var(--ms-text-1);
+    border-color: var(--ms-border-strong);
+  }
+
+  &[aria-pressed="true"] {
+    color: var(--ms-brand);
+    background: var(--ms-brand-soft);
+    border-color: color-mix(in srgb, var(--ms-brand) 45%, transparent);
+  }
+
+  &:focus-visible {
+    box-shadow: var(--ms-focus-ring);
   }
 
   .pill-icon {
     display: inline-flex;
     align-items: center;
-    color: var(--color-accent-cyan);
-    opacity: 0.85;
   }
 `;
 

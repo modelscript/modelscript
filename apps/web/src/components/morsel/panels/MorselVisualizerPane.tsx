@@ -408,6 +408,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
           top: nestedModels.length > 1 ? "48px" : "16px",
           left: "50%",
           transform: "translateX(-50%)",
+          width: "max-content",
+          maxWidth: "calc(100% - 24px)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -418,20 +420,26 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         <div
           style={{
             display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "center",
             alignItems: "center",
             gap: 8,
-            padding: "8px 16px",
+            maxWidth: "100%",
+            boxSizing: "border-box",
+            padding: "6px 10px",
             borderRadius: 12,
-            backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.9)",
+            backgroundColor: colorMode === "dark" ? "rgba(15, 22, 38, 0.9)" : "rgba(255, 255, 255, 0.9)",
             backdropFilter: "blur(12px)",
             boxShadow:
               colorMode === "dark"
-                ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)"
-                : "0 4px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)",
+                ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.16)"
+                : "0 4px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.08)",
           }}
         >
           <SegmentedControl
             aria-label="Center Pane View"
+            size="small"
+            variant={isNarrow ? { narrow: "hideLabels", regular: "hideLabels", wide: "hideLabels" } : "default"}
             onChange={(i) => {
               if (i === 0) {
                 setShowResultsView(false);
@@ -531,15 +539,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 padding: "4px 10px",
                 fontSize: 11,
                 fontWeight: 600,
-                borderRadius: 8,
-                border:
-                  colorMode === "dark" ? "1px solid rgba(88, 166, 255, 0.35)" : "1px solid rgba(9, 105, 218, 0.35)",
-                background: showPalette
-                  ? colorMode === "dark"
-                    ? "rgba(88, 166, 255, 0.2)"
-                    : "rgba(9, 105, 218, 0.12)"
-                  : "transparent",
-                color: colorMode === "dark" ? "#58a6ff" : "#0969da",
+                borderRadius: 999,
+                border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 40%, transparent)",
+                background: showPalette ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : "transparent",
+                color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}

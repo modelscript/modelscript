@@ -39,10 +39,10 @@ const related = computed(() => {
           <h1 class="ind-title">{{ industry.headline }}</h1>
           <p class="ind-summary">{{ industry.summary }}</p>
           <div class="ind-actions">
-            <a class="ms-btn ms-btn-brand" href="/guide/getting-started">
+            <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
               Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
             </a>
-            <a class="ms-btn ms-btn-ghost" href="https://modelscript.org/playground">Open Playground</a>
+            <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://modelscript.org/playground">Open Playground</a>
           </div>
         </div>
 
@@ -171,8 +171,8 @@ const related = computed(() => {
             <p>Browser, CLI, VS Code, or your CI pipeline. AGPL-3.0, with no license server.</p>
           </div>
           <div class="ms-cta-actions">
-            <a class="ms-btn ms-btn-brand" href="/guide/installation">Install ModelScript</a>
-            <a class="ms-btn ms-btn-ghost" href="https://github.com/modelscript/modelscript">
+            <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/installation">Install ModelScript</a>
+            <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript">
               <MsIcon name="github" :size="16" /> Star on GitHub
             </a>
           </div>

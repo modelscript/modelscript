@@ -68,9 +68,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             width="24"
             height="24"
           />
-          <span>ModelScript</span>
+          <span className="nav-hide-sm">ModelScript</span>
         </BrandLink>
-        <Badge style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+        <Badge>
           <PulseIcon size={12} /> Playground
         </Badge>
 
@@ -100,7 +100,18 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         {/* Preset Example Picker */}
         <ActionMenu>
           <ActionMenu.Button size="small">
-            <span>{currentTitle}</span>
+            <span
+              style={{
+                display: "inline-block",
+                maxWidth: 180,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
+            >
+              {currentTitle}
+            </span>
           </ActionMenu.Button>
           <ActionMenu.Overlay width="large">
             <ActionList>
@@ -122,7 +133,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         {/* Language / Dialect Selector */}
         {onSelectLang && (
           <ActionMenu>
-            <ActionMenu.Button size="small" leadingVisual={CodeIcon}>
+            <ActionMenu.Button size="small" leadingVisual={CodeIcon} className="nav-hide-sm">
               <span>{currentLangOption.label}</span>
             </ActionMenu.Button>
             <ActionMenu.Overlay width="medium" style={{ maxHeight: "360px", overflowY: "auto" }}>
@@ -153,6 +164,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           leadingVisual={SearchIcon}
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
           title="Search models, packages & commands (Cmd+K)"
+          className="nav-hide-sm"
         >
           <span style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>⌘K</span>
         </Button>
@@ -165,8 +177,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             leadingVisual={TerminalIcon}
             onClick={onOpenInVsCode}
             title="Promote this model to the full multi-file VS Code Workbench"
+            className="nav-hide-sm"
           >
-            <NavText>Open in VS Code (Multi-File)</NavText>
+            <NavText>Open in VS Code</NavText>
           </Button>
         )}
 
@@ -205,7 +218,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Button>
         ) : (
           <div style={{ display: "flex", gap: "6px" }}>
-            <Link to="/login" style={{ textDecoration: "none" }}>
+            <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-sm">
               <Button size="small" variant="default">
                 Sign In
               </Button>

@@ -160,24 +160,8 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                     clutter.
                   </Text>
                 </Box>
-                <Link
-                  to="/ide"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "10px 20px",
-                    borderRadius: "8px",
-                    background: "var(--gradient-cta)",
-                    color: "white",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    boxShadow: "var(--glow-ai-sm)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <CodeIcon size={16} /> Launch Blank Workspace
+                <Link to="/ide" className="ms-btn ms-btn-primary">
+                  <CodeIcon size={16} /> Launch blank workspace
                 </Link>
               </Box>
 
@@ -187,9 +171,8 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                 mb={4}
                 borderRadius="12px"
                 style={{
-                  background: "linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.12) 100%)",
-                  border: "1px solid rgba(236, 72, 153, 0.35)",
-                  boxShadow: "0 0 20px rgba(236, 72, 153, 0.1)",
+                  background: "var(--color-bg-card)",
+                  border: "1px solid var(--ms-border)",
                 }}
                 display="flex"
                 flexDirection={["column", "row"]}
@@ -206,9 +189,9 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                         fontFamily: "var(--font-mono)",
                         padding: "2px 8px",
                         borderRadius: "9999px",
-                        backgroundColor: "rgba(236, 72, 153, 0.15)",
-                        color: "#f43f5e",
-                        border: "1px solid rgba(236, 72, 153, 0.4)",
+                        backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
+                        color: "var(--hue-indigo)",
+                        border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
                         fontWeight: 600,
                       }}
                     >
@@ -235,24 +218,8 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                     restitution coefficient, and real-time WebAssembly numerical integration.
                   </Text>
                 </Box>
-                <Link
-                  to="/ide/bouncing-ball"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "10px 20px",
-                    borderRadius: "8px",
-                    background: "linear-gradient(135deg, #e11d48, #9333ea)",
-                    color: "white",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    boxShadow: "0 2px 10px rgba(225, 29, 72, 0.35)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <CodeIcon size={16} /> Launch Bouncing Ball
+                <Link to="/ide/bouncing-ball" className="ms-btn ms-btn-secondary">
+                  <CodeIcon size={16} /> Launch bouncing ball
                 </Link>
               </Box>
             </Box>

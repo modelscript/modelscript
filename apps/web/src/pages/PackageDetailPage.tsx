@@ -451,15 +451,24 @@ const PackageDetailPage: React.FC = () => {
         </Suspense>
       )}
 
-      {/* ── Background Ingestion & Indexer Logs ── */}
-      {name && version && (
-        <TerminalLogViewer
-          packageName={name}
-          packageVersion={version}
-          jobId={pkg.jobInfo?.id}
-          isProcessing={pkg.jobStatus === "pending" || pkg.jobStatus === "running"}
-        />
-      )}
+      {/* ── Background Ingestion & Indexer Logs ──
+          Only shown while a job is pending/running, or when a job failed and left logs behind.
+          A 404 from the job-status API is mapped to { status: "failed" } with no logs and must not open this. */}
+      {name &&
+        version &&
+        pkg.jobInfo &&
+        (pkg.jobStatus === "pending" ||
+          pkg.jobStatus === "running" ||
+          (pkg.jobStatus === "failed" && (pkg.jobInfo.logs?.length ?? 0) > 0)) && (
+          <TerminalLogViewer
+            packageName={name}
+            packageVersion={version}
+            jobId={pkg.jobInfo.id}
+            initialJobInfo={pkg.jobInfo}
+            isProcessing={pkg.jobStatus === "pending" || pkg.jobStatus === "running"}
+            defaultCollapsed={pkg.jobStatus === "failed"}
+          />
+        )}
     </PageWrap>
   );
 };

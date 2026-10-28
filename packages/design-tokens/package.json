@@ -1,0 +1,22 @@
+{
+  "name": "@modelscript/design-tokens",
+  "version": "0.0.18",
+  "description": "ModelScript design system — shared CSS tokens and primitive component styles for the docs site, web app, and IDE webviews",
+  "license": "AGPL-3.0-or-later",
+  "sideEffects": [
+    "*.css"
+  ],
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./components.css": "./src/components.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**"
+  ],
+  "modelscript": {
+    "tier": "stable",
+    "category": "core"
+  }
+}

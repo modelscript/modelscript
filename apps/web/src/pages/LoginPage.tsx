@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { requestPasswordReset } from "../api";
 import { useAuth } from "../AuthContext";
 import { usePageTitle } from "../util/title";
@@ -35,6 +35,10 @@ export default function LoginPage() {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const { login, complete2FALogin } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Only same-origin relative paths ("/x", not "//evil.com") to avoid open redirects.
+  const nextParam = searchParams.get("next");
+  const redirectTo = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +51,7 @@ export default function LoginPage() {
         setMode("2fa");
         setTwoFactorCode("");
       } else {
-        navigate("/");
+        navigate(redirectTo);
       }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
@@ -67,7 +71,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await complete2FALogin(tempToken, twoFactorCode.trim());
-      navigate("/");
+      navigate(redirectTo);
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { data?: { error?: string | undefined } | undefined } | undefined };

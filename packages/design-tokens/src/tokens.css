@@ -1,0 +1,147 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/*
+ * ModelScript design tokens — single source of truth for color, type, radius,
+ * and elevation across apps/docs (VitePress), apps/web, and IDE webviews.
+ *
+ * Light is the :root default. Dark mode activates with either
+ *   - `.dark` on <html>               (VitePress)
+ *   - `[data-theme="dark"]` on <html> (apps/web)
+ *
+ * Consumers map their framework variables onto these (e.g. --vp-c-brand-1,
+ * Primer --bgColor-*, app --color-*). Do not hardcode hex values in app code;
+ * add a token here instead.
+ */
+
+:root {
+  /* ── Brand: engineering teal → cyan → indigo ── */
+  --ms-accent-teal: #14b8a6;
+  --ms-accent-cyan: #06b6d4;
+  --ms-accent-indigo: #6366f1;
+  --ms-gradient: linear-gradient(110deg, #14b8a6 0%, #06b6d4 45%, #6366f1 100%);
+  --ms-gradient-text: linear-gradient(110deg, #0f766e 0%, #0891b2 50%, #4f46e5 100%);
+
+  /* Interactive brand color (buttons, links, focus, active tabs). */
+  --ms-brand: #0e7490;
+  --ms-brand-hover: #0891b2;
+  --ms-brand-active: #155e75;
+  --ms-brand-soft: rgba(8, 145, 178, 0.12);
+  --ms-brand-contrast: #ffffff;
+  --ms-brand-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.45);
+  --ms-focus-ring: 0 0 0 3px rgba(8, 145, 178, 0.35);
+
+  /* ── Neutral surfaces ── */
+  --ms-bg: #ffffff;
+  --ms-bg-alt: #f6f8fa;
+  --ms-bg-elv: #ffffff;
+  --ms-bg-soft: #f1f5f9;
+  --ms-surface-glass: rgba(255, 255, 255, 0.86);
+  --ms-surface-hover: rgba(15, 23, 42, 0.045);
+  --ms-surface-selected: rgba(8, 145, 178, 0.1);
+  --ms-divider: rgba(15, 23, 42, 0.08);
+  --ms-border: rgba(15, 23, 42, 0.12);
+  --ms-border-strong: rgba(15, 23, 42, 0.18);
+
+  /* ── Text ── */
+  --ms-text-1: #0f172a;
+  --ms-text-2: #475569;
+  --ms-text-3: #64748b;
+  --ms-text-heading: #020617;
+  --ms-link: #0e7490;
+  --ms-link-hover: #155e75;
+
+  /* ── Semantic status ── */
+  --ms-success: #059669;
+  --ms-warning: #d97706;
+  --ms-danger: #e11d48;
+  --ms-info: #0891b2;
+
+  /* ── Illustration / domain hues (-600 on light) ── */
+  --hue-indigo: #4f46e5;
+  --hue-cyan: #0891b2;
+  --hue-teal: #0d9488;
+  --hue-emerald: #059669;
+  --hue-amber: #d97706;
+  --hue-rose: #e11d48;
+  --hue-violet: #7c3aed;
+
+  /* ── Atmosphere (CAD grid + glows) ── */
+  --ms-grid-line: rgba(15, 23, 42, 0.045);
+  --ms-grid-sub: rgba(15, 23, 42, 0.02);
+  --ms-dot-matrix: rgba(15, 23, 42, 0.08);
+  --ms-glow-teal: rgba(20, 184, 166, 0.11);
+  --ms-glow-cyan: rgba(6, 182, 212, 0.12);
+  --ms-glow-indigo: rgba(99, 102, 241, 0.09);
+  --ms-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.12);
+  --ms-shadow-pop: 0 16px 40px -12px rgba(15, 23, 42, 0.25);
+
+  /* ── Typography ── */
+  --ms-font-sans:
+    "Inter", "Inter var", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --ms-font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* ── Shape ── */
+  --ms-radius-sm: 6px;
+  --ms-radius-md: 10px;
+  --ms-radius-lg: 12px;
+  --ms-radius-xl: 16px;
+  --ms-radius-pill: 999px;
+
+  /* ── Controls ── */
+  --ms-control-sm: 30px;
+  --ms-control-md: 36px;
+  --ms-control-lg: 44px;
+}
+
+.dark,
+[data-theme="dark"] {
+  --ms-brand: #0891b2;
+  --ms-brand-hover: #06b6d4;
+  --ms-brand-active: #0e7490;
+  --ms-brand-soft: rgba(34, 211, 238, 0.14);
+  --ms-brand-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.55);
+  --ms-focus-ring: 0 0 0 3px rgba(34, 211, 238, 0.35);
+  --ms-gradient-text: linear-gradient(110deg, #5eead4 0%, #22d3ee 45%, #a5b4fc 100%);
+
+  --ms-bg: #0a0f1c;
+  --ms-bg-alt: #070b15;
+  --ms-bg-elv: #0f1626;
+  --ms-bg-soft: #0f1728;
+  --ms-surface-glass: rgba(10, 15, 28, 0.86);
+  --ms-surface-hover: rgba(148, 163, 184, 0.08);
+  --ms-surface-selected: rgba(34, 211, 238, 0.1);
+  --ms-divider: rgba(148, 163, 184, 0.14);
+  --ms-border: rgba(148, 163, 184, 0.2);
+  --ms-border-strong: rgba(148, 163, 184, 0.3);
+
+  --ms-text-1: #e2e8f0;
+  --ms-text-2: #94a3b8;
+  --ms-text-3: #64748b;
+  --ms-text-heading: #f8fafc;
+  --ms-link: #22d3ee;
+  --ms-link-hover: #67e8f9;
+
+  --ms-success: #34d399;
+  --ms-warning: #fbbf24;
+  --ms-danger: #fb7185;
+  --ms-info: #22d3ee;
+
+  /* Luminous -400 hues for contrast on dark surfaces. */
+  --hue-indigo: #818cf8;
+  --hue-cyan: #22d3ee;
+  --hue-teal: #2dd4bf;
+  --hue-emerald: #34d399;
+  --hue-amber: #fbbf24;
+  --hue-rose: #fb7185;
+  --hue-violet: #a78bfa;
+
+  --ms-grid-line: rgba(148, 163, 184, 0.055);
+  --ms-grid-sub: rgba(148, 163, 184, 0.022);
+  --ms-dot-matrix: rgba(148, 163, 184, 0.14);
+  --ms-glow-teal: rgba(20, 184, 166, 0.14);
+  --ms-glow-cyan: rgba(34, 211, 238, 0.15);
+  --ms-glow-indigo: rgba(99, 102, 241, 0.13);
+  --ms-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 30px -14px rgba(0, 0, 0, 0.6);
+  --ms-shadow-pop: 0 20px 48px -12px rgba(0, 0, 0, 0.7);
+}

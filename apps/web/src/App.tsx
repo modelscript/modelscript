@@ -10,6 +10,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
+import RequireAuth from "./components/RequireAuth";
 import { ToastProvider } from "./components/ToastContext";
 import { FeatureFlagProvider, useFeatureFlag, useFeatureFlags } from "./FeatureFlagContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
@@ -222,8 +223,9 @@ function App() {
     <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
       <BaseStyles
         style={{
-          backgroundColor: "var(--color-canvas-default)",
-          transition: "background-color 0.3s ease",
+          backgroundColor: "transparent",
+          fontFamily: "var(--ms-font-sans)",
+          color: "var(--ms-text-1)",
           minHeight: "100vh",
         }}
       >
@@ -255,9 +257,30 @@ function App() {
                     <Route path="/home" element={user ? <HomeFeedPage /> : <Navigate to="/explore" replace />} />
                     <Route path="/feed" element={<Navigate to="/home" replace />} />
                     <Route path="/explore" element={<ExplorePage />} />
-                    <Route path="/notifications" element={<NotificationsPage />} />
-                    <Route path="/bookmarks" element={<BookmarksPage />} />
-                    <Route path="/feeds" element={<FeedsPage />} />
+                    <Route
+                      path="/notifications"
+                      element={
+                        <RequireAuth feature="your notifications">
+                          <NotificationsPage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/bookmarks"
+                      element={
+                        <RequireAuth feature="your bookmarks">
+                          <BookmarksPage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/feeds"
+                      element={
+                        <RequireAuth feature="your RSS feeds">
+                          <FeedsPage />
+                        </RequireAuth>
+                      }
+                    />
 
                     {/* Package browser (unscoped & @scope/name) */}
                     <Route path="/packages" element={<LibraryListPage />} />
@@ -318,9 +341,30 @@ function App() {
                       }
                     />
 
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/settings/profile" element={<EditProfilePage />} />
-                    <Route path="/settings/:tab" element={<SettingsPage />} />
+                    <Route
+                      path="/settings"
+                      element={
+                        <RequireAuth feature="your settings">
+                          <SettingsPage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/settings/profile"
+                      element={
+                        <RequireAuth feature="your profile settings">
+                          <EditProfilePage />
+                        </RequireAuth>
+                      }
+                    />
+                    <Route
+                      path="/settings/:tab"
+                      element={
+                        <RequireAuth feature="your settings">
+                          <SettingsPage />
+                        </RequireAuth>
+                      }
+                    />
                     <Route path="/:username" element={<ProfilePage />} />
                     <Route path="/:username/status/:id" element={<PostDetailPage />} />
                     <Route path="/:username/status/:id/activity" element={<PostActivityPage />} />

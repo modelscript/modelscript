@@ -203,15 +203,14 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                 style={{
                   flexShrink: 0,
                   scrollSnapAlign: "start",
-                  background: "linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, rgba(163, 113, 247, 0.12) 100%)",
-                  border: "1px solid rgba(163, 113, 247, 0.35)",
-                  boxShadow: "0 0 16px rgba(163, 113, 247, 0.1)",
+                  background: "var(--color-bg-card)",
+                  border: "1px solid var(--ms-border)",
                 }}
                 sx={{
                   flexShrink: 0,
                   transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                   "&:hover": {
-                    borderColor: "var(--color-accent-cyan)",
+                    borderColor: "var(--ms-brand)",
                     transform: "translateY(-2px)",
                     boxShadow: "var(--glow-card)",
                   },
@@ -226,9 +225,9 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                         fontFamily: "var(--font-mono)",
                         padding: "2px 6px",
                         borderRadius: "4px",
-                        backgroundColor: "rgba(6, 182, 212, 0.15)",
-                        color: "var(--color-accent-cyan)",
-                        border: "1px solid rgba(6, 182, 212, 0.4)",
+                        backgroundColor: "var(--ms-brand-soft)",
+                        color: "var(--ms-brand)",
+                        border: "1px solid color-mix(in srgb, var(--ms-brand) 35%, transparent)",
                         fontWeight: 600,
                       }}
                     >
@@ -256,24 +255,8 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                     Clean slate in-browser workspace. Start fresh with Modelica, SysML v2, or 3D CAD modeling.
                   </div>
                 </Box>
-                <Link
-                  to="/ide"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    padding: "6px 12px",
-                    borderRadius: "6px",
-                    background: "var(--gradient-cta)",
-                    color: "white",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    boxShadow: "var(--glow-ai-sm)",
-                  }}
-                >
-                  <CodeIcon size={12} /> Launch Blank Workspace
+                <Link to="/ide" className="ms-btn ms-btn-primary ms-btn-sm ms-btn-block">
+                  <CodeIcon size={14} /> Launch blank workspace
                 </Link>
               </Box>
 
@@ -291,15 +274,14 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                 style={{
                   flexShrink: 0,
                   scrollSnapAlign: "start",
-                  background: "linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.12) 100%)",
-                  border: "1px solid rgba(236, 72, 153, 0.35)",
-                  boxShadow: "0 0 16px rgba(236, 72, 153, 0.1)",
+                  background: "var(--color-bg-card)",
+                  border: "1px solid var(--ms-border)",
                 }}
                 sx={{
                   flexShrink: 0,
                   transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                   "&:hover": {
-                    borderColor: "#f43f5e",
+                    borderColor: "var(--ms-brand)",
                     transform: "translateY(-2px)",
                     boxShadow: "var(--glow-card)",
                   },
@@ -314,9 +296,9 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                         fontFamily: "var(--font-mono)",
                         padding: "2px 6px",
                         borderRadius: "4px",
-                        backgroundColor: "rgba(236, 72, 153, 0.15)",
-                        color: "#f43f5e",
-                        border: "1px solid rgba(236, 72, 153, 0.4)",
+                        backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
+                        color: "var(--hue-indigo)",
+                        border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
                         fontWeight: 600,
                       }}
                     >
@@ -344,24 +326,8 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                     Continuous &amp; discrete hybrid events with restitution and zero-crossing detection.
                   </div>
                 </Box>
-                <Link
-                  to="/ide/bouncing-ball"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    padding: "6px 12px",
-                    borderRadius: "6px",
-                    background: "linear-gradient(135deg, #e11d48, #9333ea)",
-                    color: "white",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    boxShadow: "0 2px 8px rgba(225, 29, 72, 0.35)",
-                  }}
-                >
-                  <CodeIcon size={12} /> Launch Bouncing Ball
+                <Link to="/ide/bouncing-ball" className="ms-btn ms-btn-secondary ms-btn-sm ms-btn-block">
+                  <CodeIcon size={14} /> Launch bouncing ball
                 </Link>
               </Box>
             </Box>

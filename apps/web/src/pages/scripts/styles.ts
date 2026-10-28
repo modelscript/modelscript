@@ -4,16 +4,8 @@ import { SyncIcon } from "@primer/octicons-react";
 import styled, { keyframes } from "styled-components";
 
 // ── Animations ────────────────────────────────────────────────────────
-
-export const pulseAnimation = keyframes`
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(1.15); }
-`;
-
-export const shimmer = keyframes`
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-`;
+// Note: styled-components keyframes may only be interpolated inside styled/css templates.
+// For inline `style={{ animation }}` use the global keyframes in index.css (`ms-pulse`, `shimmer`, `spin`).
 
 export const spin = keyframes`
   from { transform: rotate(0deg); }

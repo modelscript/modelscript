@@ -3,7 +3,6 @@
 import { ArrowRightIcon, CheckCircleFillIcon, ClockIcon, PulseIcon, XCircleFillIcon } from "@primer/octicons-react";
 import React from "react";
 import Box from "../../../components/Box";
-import { pulseAnimation, shimmer } from "../styles";
 import type { UnifiedJobItem } from "../types";
 import { relativeTime } from "../utils";
 
@@ -58,7 +57,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect }
               size={18}
               style={{
                 color: "var(--color-accent-cyan)",
-                animation: `${pulseAnimation} 1.5s infinite`,
+                animation: "ms-pulse 1.5s infinite",
               }}
             />
           ) : isDone ? (
@@ -180,7 +179,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect }
                   ? "var(--color-status-verified, #10b981)"
                   : "linear-gradient(90deg, #06b6d4, #8b5cf6, #06b6d4)",
               backgroundSize: "200% 100%",
-              animation: isRunning ? `${shimmer} 2s linear infinite` : "none",
+              animation: isRunning ? "shimmer 2s linear infinite" : "none",
               borderRadius: "9999px",
               transition: "width 0.4s ease",
             }}

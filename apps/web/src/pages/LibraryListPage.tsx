@@ -179,14 +179,16 @@ const LibraryListPage: React.FC = () => {
         <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
           All Packages
         </Tab>
-        <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
-          My Packages
-          {pendingTransfers.length > 0 && (
-            <Label variant="attention" style={{ marginLeft: 8, fontSize: 11 }}>
-              {pendingTransfers.length}
-            </Label>
-          )}
-        </Tab>
+        {user && (
+          <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
+            My Packages
+            {pendingTransfers.length > 0 && (
+              <Label variant="attention" style={{ marginLeft: 8, fontSize: 11 }}>
+                {pendingTransfers.length}
+              </Label>
+            )}
+          </Tab>
+        )}
       </TabBar>
 
       <Box p={4}>

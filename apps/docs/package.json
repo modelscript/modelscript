@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@modelscript/design-tokens": "*",
     "@types/three": "^0.184.0",
     "markdown-it-mathjax3": "^4.3.2",
     "mermaid": "^11.16.1",

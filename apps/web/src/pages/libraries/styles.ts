@@ -2,49 +2,8 @@
 
 import styled from "styled-components";
 
-export const TabBar = styled.div`
-  display: flex;
-  border-bottom: 1px solid var(--color-border);
-  position: sticky;
-  top: var(--dev-header-height, 0px);
-  z-index: 10;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(6, 8, 15, 0.85);
-`;
-
-export const Tab = styled.button<{ $active?: boolean | undefined }>`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: none;
-  border: none;
-  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
-  font-weight: ${(props) => (props.$active ? "700" : "500")};
-  cursor: pointer;
-  transition:
-    background-color 0.2s,
-    color 0.2s;
-  position: relative;
-
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.04);
-  }
-
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    height: 3px;
-    width: 56px;
-    background: var(--gradient-cta);
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
-    border-radius: 9999px;
-    display: ${(props) => (props.$active ? "block" : "none")};
-  }
-`;
+// Shared, theme-aware tab strip (was a copy with a hardcoded dark background).
+export { PageTab as Tab, PageTabBar as TabBar } from "../../components/SharedStyles";
 
 export const ResultCount = styled.span`
   font-size: 13px;

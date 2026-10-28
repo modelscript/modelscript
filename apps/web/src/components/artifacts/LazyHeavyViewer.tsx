@@ -92,6 +92,10 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     resolvedColorMode === "dark" ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
   const currentThumbnailUrl = frozenSnapshot || defaultThumbnailUrl;
 
+  // Missing/404 thumbnails fall back to the placeholder instead of a broken <img>.
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
+  const showThumbnail = Boolean(currentThumbnailUrl) && failedThumbnailUrl !== currentThumbnailUrl;
+
   // Handle global mutual exclusion
   useEffect(() => {
     const handleActivate = (e: Event) => {
@@ -214,10 +218,11 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
         borderRadius: "8px",
       }}
     >
-      {currentThumbnailUrl ? (
+      {showThumbnail ? (
         <img
           src={currentThumbnailUrl}
           alt={title || "3D View"}
+          onError={() => setFailedThumbnailUrl(currentThumbnailUrl ?? null)}
           style={{
             width: "100%",
             height: "100%",

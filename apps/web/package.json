@@ -17,6 +17,7 @@
     "@antv/layout": "^0.3.25",
     "@antv/x6": "^3.1.7",
     "@modelscript/cad": "*",
+    "@modelscript/design-tokens": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/embed": "*",
