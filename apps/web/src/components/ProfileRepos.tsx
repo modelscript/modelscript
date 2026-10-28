@@ -16,6 +16,7 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
   const [showAddModal, setShowAddModal] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   const fetchRepos = async () => {
     try {
@@ -36,6 +37,7 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
   const handleAddRepo = async () => {
     if (!repoUrl) return;
     setLinking(true);
+    setLinkError(null);
 
     // Parse GitLab URL like https://gitlab.com/modelscript/msl
     let provider = "gitlab";
@@ -63,9 +65,16 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
 
       setShowAddModal(false);
       setRepoUrl("");
+      setLinkError(null);
       fetchRepos();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to link repo", err);
+      setLinkError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to link repository. Please verify the repository URL and try again.",
+      );
     } finally {
       setLinking(false);
     }
@@ -86,7 +95,14 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
           Repositories
         </Heading>
         {isOwnProfile && (
-          <Button variant="primary" leadingVisual={PlusIcon} onClick={() => setShowAddModal(true)}>
+          <Button
+            variant="primary"
+            leadingVisual={PlusIcon}
+            onClick={() => {
+              setLinkError(null);
+              setShowAddModal(true);
+            }}
+          >
             Add Repository
           </Button>
         )}
@@ -147,10 +163,28 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
             <Text as="p" mb={3} color="var(--color-fg-muted)">
               Enter the URL of a public GitLab or GitHub repository to link it to your profile.
             </Text>
+            {linkError && (
+              <Box
+                p={2}
+                mb={3}
+                style={{
+                  backgroundColor: "rgba(248, 81, 73, 0.12)",
+                  border: "1px solid rgba(248, 81, 73, 0.4)",
+                  borderRadius: "6px",
+                  color: "var(--color-danger-fg, #f85149)",
+                  fontSize: "13px",
+                }}
+              >
+                {linkError}
+              </Box>
+            )}
             <TextInput
               block
               value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
+              onChange={(e) => {
+                setRepoUrl(e.target.value);
+                if (linkError) setLinkError(null);
+              }}
               placeholder="e.g., https://gitlab.com/modelscript/msl"
               sx={{ mb: 3 }}
             />

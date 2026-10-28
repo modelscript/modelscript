@@ -187,7 +187,6 @@ export function extractDigitalThreadTwins(
   const twins: DigitalThreadTwin[] = [];
   const cadFiles = (artifactViewers || []).filter((a) => a.path.endsWith(".step") || a.path.endsWith(".stp"));
   const sysmlFiles = (artifactViewers || []).filter((a) => a.path.endsWith(".sysml") || a.path.endsWith(".kerml"));
-  const csvFiles = (artifactViewers || []).filter((a) => a.path.endsWith(".csv"));
 
   // 1. Inspect rootClass components and modifiers
   if (rootClass && rootClass.components) {
@@ -364,66 +363,6 @@ export function extractDigitalThreadTwins(
         });
       }
     }
-  }
-
-  // 3. Fallback twin thread for rich exploration if package is polyglot
-  if (twins.length === 0 && (cadFiles.length > 0 || sysmlFiles.length > 0 || csvFiles.length > 0)) {
-    const primaryClassName = classes?.[0]?.class_name || `${packageName}.AeroChassis`;
-    const primarySysmlName = sysmlFiles[0]?.displayName || sysmlFiles[0]?.path || "DroneArchitecture::FlightController";
-    twins.push(
-      {
-        id: "demo-twin-1",
-        source: {
-          domain: "modelica",
-          name: primaryClassName,
-          kind: classes?.[0]?.class_kind || "ModelicaModel",
-          variable: "angularSpeed",
-          unit: "rad/s",
-          quantity: "Rotor Velocity",
-        },
-        target: {
-          domain: "sysml2",
-          name: primarySysmlName,
-          kind: "PartDefinition",
-          attribute: "maxSpeed",
-          unit: "rad/s",
-          quantity: "ISQ::AngularVelocity",
-        },
-        relationship: "twin",
-        parity: {
-          status: "compatible",
-          sourceUnit: "rad/s",
-          targetUnit: "rad/s",
-          message: "Parity verified: 8500 rad/s operating envelope compliant",
-        },
-      },
-      {
-        id: "demo-twin-2",
-        source: {
-          domain: "modelica",
-          name: `${packageName}.FrameMount`,
-          kind: "Component",
-          variable: "position",
-          unit: "m",
-        },
-        target: {
-          domain: "cad",
-          name: cadFiles[0]?.path || "cad/frame.step#100",
-          kind: "STEP CAD Solid B-Rep",
-          resourcePath: cadFiles[0]?.path,
-        },
-        relationship: "cad-binding",
-        parity: {
-          status: "compatible",
-          sourceUnit: "m",
-          targetUnit: "mm",
-          message: "Spatial alignment verified: B-Rep manifold volume 38,500 mm³",
-        },
-        cadViewerConfig: {
-          url: cadFiles[0]?.path || "",
-        },
-      },
-    );
   }
 
   return twins;

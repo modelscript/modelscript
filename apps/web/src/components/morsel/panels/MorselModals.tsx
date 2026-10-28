@@ -5,15 +5,19 @@ import type { editor } from "monaco-editor";
 import React, { Suspense } from "react";
 import AddLibraryModal from "../AddLibraryModal";
 import { CloudDispatchModal } from "../CloudDispatchModal";
-import { detectLanguageFromFilename } from "../constants";
+import { detectLanguageFromFilename, getLanguageExtension } from "../constants";
 import OpenFileDropzone from "../OpenFileDropzone";
-import { installDependency, loadLibraryFromBuffer } from "../util/lsp-bridge";
+import { didOpen, installDependency, loadLibraryFromBuffer } from "../util/lsp-bridge";
+import { compressMorselPayload } from "../util/permalink";
 
 const CodeEditor = React.lazy(() => import("../Code"));
 
 export interface MorselModalsProps {
   dialect?: string | undefined;
+  documentUri?: string | undefined;
   onSelectDialect?: ((dialect: string) => void) | undefined;
+  setLastLoadedContent?: ((v: string) => void) | undefined;
+  parameterOverrides?: Map<string, number> | Record<string, number> | undefined;
   isShareDialogOpen: boolean;
   setShareDialogOpen: (v: boolean) => void;
   shareButtonRef: React.RefObject<HTMLButtonElement | null>;
@@ -49,7 +53,10 @@ export interface MorselModalsProps {
 
 export const MorselModals: React.FC<MorselModalsProps> = ({
   dialect = "modelica",
+  documentUri,
   onSelectDialect,
+  setLastLoadedContent,
+  parameterOverrides,
   isShareDialogOpen,
   setShareDialogOpen,
   shareButtonRef,
@@ -82,6 +89,26 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
   content,
   onCloudResultLoaded,
 }) => {
+  const buildShareUrl = () => {
+    const code = editor?.getValue() ?? content ?? "";
+    const title = documentModels[selectedModelIndex]?.name || selectedTreeClassName || "ModelScriptModel";
+    const encoded = compressMorselPayload({
+      v: 1,
+      lang: dialect,
+      dialect,
+      code,
+      title,
+    });
+    return `${window.location.protocol}//${window.location.host}/playground#m=${encoded}`;
+  };
+
+  const resolvedOverridesObj =
+    parameterOverrides instanceof Map
+      ? Object.fromEntries(parameterOverrides)
+      : parameterOverrides && typeof parameterOverrides === "object"
+        ? parameterOverrides
+        : undefined;
+
   return (
     <>
       {isShareDialogOpen && (
@@ -128,18 +155,14 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
               buttonType: "normal",
               content: translations.copyToClipboard,
               onClick: async () => {
-                await navigator.clipboard.writeText(
-                  `${window.location.protocol}//${window.location.host}/#${dialect}=${encodeURIComponent(editor?.getValue() ?? "")}`,
-                );
+                await navigator.clipboard.writeText(buildShareUrl());
                 toast.success(translations.copiedToClipboard);
                 setShareDialogOpen(false);
               },
             },
           ]}
         >
-          <div
-            style={{ wordBreak: "break-all" }}
-          >{`${window.location.protocol}//${window.location.host}/#${dialect}=${encodeURIComponent(editor?.getValue() ?? "")}`}</div>
+          <div style={{ wordBreak: "break-all" }}>{buildShareUrl()}</div>
         </Dialog>
       )}
 
@@ -182,13 +205,16 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
           <OpenFileDropzone
             translations={translations}
             onFileContent={(newContent, filename) => {
-              if (filename) {
-                const detected = detectLanguageFromFilename(filename);
-                if (detected && detected !== dialect) {
-                  onSelectDialect?.(detected);
-                }
-              }
+              const detectedDialect = (filename ? detectLanguageFromFilename(filename) : null) || dialect;
               editor?.setValue(newContent);
+              setLastLoadedContent?.(newContent);
+              if (detectedDialect !== dialect) {
+                onSelectDialect?.(detectedDialect);
+              } else {
+                const targetUri = documentUri || `file:///document.${getLanguageExtension(detectedDialect)}`;
+                didOpen(targetUri, newContent, detectedDialect);
+                setContextVersion((v) => v + 1);
+              }
               setIsOpenFileDialogOpen(false);
             }}
             colorMode={colorMode || "light"}
@@ -261,6 +287,17 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                 const buf = new Uint8Array(await item.arrayBuffer());
                 await loadLibraryFromBuffer(buf, item.name);
                 setContextVersion((v) => v + 1);
+                toast.success(`Loaded library '${item.name}'.`);
+              } else if (type === "url" && typeof item === "string") {
+                const res = await fetch(item);
+                if (!res.ok) {
+                  throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                }
+                const buf = new Uint8Array(await res.arrayBuffer());
+                const urlFilename = item.split("/").pop()?.split("?")[0] || "RemoteLibrary.mo";
+                await loadLibraryFromBuffer(buf, urlFilename);
+                setContextVersion((v) => v + 1);
+                toast.success(`Loaded library from '${urlFilename}'.`);
               }
             } catch (error) {
               console.error(error);
@@ -310,11 +347,17 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
         isOpen={isCloudModalOpen}
         onClose={() => setIsCloudModalOpen(false)}
         modelName={selectedTreeClassName || "Model"}
+        dialect={dialect}
         sourceCode={editor?.getValue() || content}
+        parameterOverrides={resolvedOverridesObj}
         experimentConfig={{
           startTime: experimentOverrides.startTime,
           stopTime: experimentOverrides.stopTime,
           interval: experimentOverrides.interval,
+          tolerance: experimentOverrides.tolerance,
+          numberOfIntervals: experimentOverrides.numberOfIntervals,
+          solver: experimentOverrides.solver,
+          parameterOverrides: resolvedOverridesObj,
         }}
         onResultLoaded={onCloudResultLoaded}
       />

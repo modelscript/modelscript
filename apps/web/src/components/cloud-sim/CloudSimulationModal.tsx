@@ -13,6 +13,7 @@ import {
   type ComputeProfileInfo,
   type UserWalletInfo,
 } from "../../api";
+import { useAuth } from "../../AuthContext";
 import Box from "../Box";
 import { ProfileSelector } from "./ProfileSelector";
 import { SimulationProgressSteps } from "./SimulationProgressSteps";
@@ -103,6 +104,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
   const [numberOfIntervals, setNumberOfIntervals] = useState<number>(initialIntervals);
   const [selectedProfile, setSelectedProfile] = useState<string>("standard");
 
+  const { refreshWallet } = useAuth();
   const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
   const [wallet, setWallet] = useState<UserWalletInfo | null>(null);
 
@@ -157,6 +159,10 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
         const s = String(status.status || "").toLowerCase();
         if (s === "completed" || s === "success") {
           setPhase("completed");
+          void refreshWallet();
+          getUserWallet()
+            .then(setWallet)
+            .catch(() => {});
           // Fetch result CSV
           try {
             const csv = await getCloudSimulationResultCsv(jobId);
@@ -172,6 +178,10 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
         } else if (s === "failed" || s === "cancelled") {
           setPhase("failed");
           setErrorMessage(status.error || "Simulation run failed on cluster.");
+          void refreshWallet();
+          getUserWallet()
+            .then(setWallet)
+            .catch(() => {});
         }
       } catch (err: unknown) {
         if (!active) return;
@@ -184,7 +194,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
       active = false;
       clearInterval(interval);
     };
-  }, [jobId, phase, onResultLoaded, onResultsLoaded]);
+  }, [jobId, phase, onResultLoaded, onResultsLoaded, refreshWallet]);
 
   // CSV parsing for preview
   const parsedCsv = useMemo<ParsedCsvData | null>(() => {
@@ -224,6 +234,10 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
 
       setJobId(res.jobId);
       setPhase("running");
+      void refreshWallet();
+      getUserWallet()
+        .then(setWallet)
+        .catch(() => {});
     } catch (err: unknown) {
       setPhase("failed");
       const axiosErr = err as {

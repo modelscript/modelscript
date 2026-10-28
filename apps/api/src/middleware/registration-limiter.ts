@@ -76,6 +76,7 @@ export class RegistrationRateLimiter {
         return;
       }
 
+      this.record(clientIp);
       next();
     };
   }

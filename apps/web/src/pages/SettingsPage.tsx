@@ -194,7 +194,7 @@ const SettingsPage: React.FC = () => {
     activeTab === "display" ||
     activeTab === "contentPreferences" ||
     activeTab === "other" ||
-    activeTab === "privacy" ||
+    activeTab === "security" ||
     activeTab === "modelingPreferences";
 
   return (

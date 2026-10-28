@@ -43,6 +43,7 @@ export interface UseComposeSubmitParams {
   editPostId?: string | number | null | undefined;
   forkedFromArtifactId?: number | null | undefined;
   pendingPin?: SpatialPin | undefined;
+  excludedUsers?: Set<string> | undefined;
   onPostCreated?: ((post: any) => void) | undefined;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
@@ -77,6 +78,7 @@ export function useComposeSubmit({
   editPostId,
   forkedFromArtifactId,
   pendingPin,
+  excludedUsers,
   onPostCreated,
   fileInputRef,
 }: UseComposeSubmitParams) {
@@ -177,6 +179,8 @@ export function useComposeSubmit({
             }
           : undefined;
 
+      const excludedList = excludedUsers && excludedUsers.size > 0 ? Array.from(excludedUsers) : undefined;
+
       const payload: any = {
         content: text,
         content_warning: contentWarning.trim() || undefined,
@@ -184,12 +188,14 @@ export function useComposeSubmit({
         quote_post_id: quotePost?.id,
         reply_to_id: replyToPost?.id,
         reply_visibility: replyVisibility,
+        ...(excludedList ? { excluded_mentions: excludedList } : {}),
         ...(notebookPayload ? { notebook: notebookPayload } : {}),
         metadata: {
           ...(pendingPin ? { spatialPin: pendingPin } : {}),
           ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
           ...(notebookPayload ? { notebook: notebookPayload } : {}),
           ...(forkedFromArtifactId ? { forkedFromArtifactId } : {}),
+          ...(excludedList ? { excludedMentions: excludedList } : {}),
         },
       };
 

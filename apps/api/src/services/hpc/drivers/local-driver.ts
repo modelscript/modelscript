@@ -217,11 +217,26 @@ export class LocalProcessDriver implements HpcDriver {
     const startCpuUsage = process.cpuUsage();
     const startTime = Date.now();
 
-    // 4. Spawn child process
+    // 4. Spawn child process with sensitive server secrets stripped from environment
+    const SENSITIVE_SECRETS = new Set([
+      "JWT_SECRET",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "AWS_SECRET_ACCESS_KEY",
+      "S3_SECRET_KEY",
+      "TURNSTILE_SECRET_KEY",
+      "GITLAB_TOKEN",
+      "OPENAI_API_KEY",
+      "GEMINI_API_KEY",
+    ]);
+    const sanitizedEnv: NodeJS.ProcessEnv = Object.fromEntries(
+      Object.entries(process.env).filter(([k]) => !SENSITIVE_SECRETS.has(k)),
+    );
+
     const child = spawn(execCmd, execArgs, {
       cwd: spec.workingDir,
       env: {
-        ...process.env,
+        ...sanitizedEnv,
         ...spec.env,
         OMP_NUM_THREADS: String(spec.resources.cpusPerTask ?? 4),
       },

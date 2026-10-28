@@ -9,6 +9,7 @@ import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import Box from "../Box";
 import { PostMarkdownContent } from "./PostMarkdownContent";
 import { PostNotebookHeader } from "./PostNotebookHeader";
+import { ContentWarningBox } from "./styles";
 
 export interface PostBodyContentProps {
   displayPost: any;
@@ -38,10 +39,51 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   const navigate = useNavigate();
   const [isNotebookExpanded, setIsNotebookExpanded] = useState(false);
 
+  const parsedMeta =
+    typeof displayPost?.metadata === "string"
+      ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
+      : displayPost?.metadata || {};
+  const contentWarning =
+    (typeof displayPost?.content_warning === "string" && displayPost.content_warning.trim()) ||
+    (typeof parsedMeta?.contentWarning === "string" && parsedMeta.contentWarning.trim()) ||
+    "";
+  const [cwRevealed, setCwRevealed] = useState(false);
+
   const wasUpdated =
     displayPost.updated_at &&
     displayPost.created_at &&
     new Date(displayPost.updated_at).getTime() - new Date(displayPost.created_at).getTime() > 5000;
+
+  const cwBanner = contentWarning ? (
+    <ContentWarningBox>
+      <span style={{ fontSize: "13px", fontWeight: 600, color: "#d29922" }}>⚠️ Content warning: {contentWarning}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          setCwRevealed((prev) => !prev);
+        }}
+        style={{
+          padding: "4px 10px",
+          borderRadius: "6px",
+          border: "1px solid rgba(210, 153, 34, 0.4)",
+          background: "rgba(210, 153, 34, 0.14)",
+          color: "var(--color-text-primary)",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {cwRevealed ? "Hide post" : "Show post"}
+      </button>
+    </ContentWarningBox>
+  ) : null;
+
+  if (contentWarning && !cwRevealed) {
+    return cwBanner;
+  }
 
   if (isNotebook && notebookData && notebookData.cells.length > 0) {
     let previewEndIdx = notebookData.cells.length;
@@ -78,6 +120,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
 
     return (
       <Box display="flex" flexDirection="column" gap={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+        {cwBanner}
         {/* Baeldung-style Tutorial Hero Banner */}
         <PostNotebookHeader
           notebookData={notebookData}
@@ -367,6 +410,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   // Standard Post Body
   return (
     <>
+      {cwBanner}
       <Box
         mt={0}
         style={{

@@ -20,6 +20,7 @@
  * The Web UI viewer allows in-browser simulation when a WASM binary is present.
  */
 
+import zlib from "node:zlib";
 import type { ArtifactHandler, ArtifactMetadata, ArtifactViewDescriptor } from "./registry.js";
 
 /** Parsed scalar variable from modelDescription.xml. */
@@ -287,7 +288,14 @@ export class FmuArtifactHandler implements ArtifactHandler {
           // Stored (uncompressed)
           return zipBuffer.subarray(dataStart, dataStart + uncompressedSize);
         }
-        // For compressed entries, we'd need zlib — return null for now
+        if (compressionMethod === 8) {
+          // Deflate compressed
+          try {
+            return zlib.inflateRawSync(zipBuffer.subarray(dataStart, dataStart + compressedSize));
+          } catch {
+            return null;
+          }
+        }
         return null;
       }
 

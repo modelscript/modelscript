@@ -119,7 +119,7 @@ function broadcastToRoom(room: CollabRoom, payload: unknown, excludePeerId?: str
 }
 
 export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/stream"): void {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
   const rooms = new Map<string, CollabRoom>();
 
   function getOrCreateRoom(documentUri: string, initialContent = ""): CollabRoom {

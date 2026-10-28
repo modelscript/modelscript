@@ -8,7 +8,7 @@ import Box from "../../components/Box";
 import FollowButton from "../../components/FollowButton";
 import Post from "../../components/Post";
 import type { PackageData, PersonData, PostData, RepoData } from "./constants";
-import { SEARCH_TABS } from "./constants";
+import { SEARCH_TABS, STARTER_TEMPLATES } from "./constants";
 import { ExploreSearchHeader } from "./ExploreSearchHeader";
 import { TabButton, TabContainer } from "./styles";
 
@@ -165,63 +165,78 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                 </Link>
               </Box>
 
-              {/* Bouncing Ball Workspace */}
-              <Box
-                p={4}
-                mb={4}
-                borderRadius="12px"
-                style={{
-                  background: "var(--color-bg-card)",
-                  border: "1px solid var(--ms-border)",
-                }}
-                display="flex"
-                flexDirection={["column", "row"]}
-                alignItems={["flex-start", "center"]}
-                justifyContent="space-between"
-                gap={3}
-              >
-                <Box>
-                  <Box display="flex" alignItems="center" gap={2} mb={2}>
-                    <span style={{ fontSize: "24px" }}>⚽</span>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontFamily: "var(--font-mono)",
-                        padding: "2px 8px",
-                        borderRadius: "9999px",
-                        backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
-                        color: "var(--hue-indigo)",
-                        border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Physical Simulation
-                    </span>
-                  </Box>
-                  <Heading
-                    as="h3"
+              {(() => {
+                const qLower = query.trim().toLowerCase();
+                const filteredTemplates = qLower
+                  ? STARTER_TEMPLATES.filter(
+                      (t) =>
+                        t.title.toLowerCase().includes(qLower) ||
+                        t.description.toLowerCase().includes(qLower) ||
+                        t.category.toLowerCase().includes(qLower) ||
+                        t.badge.toLowerCase().includes(qLower) ||
+                        t.id.toLowerCase().includes(qLower),
+                    )
+                  : STARTER_TEMPLATES;
+                const templatesToShow = filteredTemplates.length > 0 ? filteredTemplates : STARTER_TEMPLATES;
+                return templatesToShow.map((tpl) => (
+                  <Box
+                    key={tpl.id}
+                    p={4}
+                    mb={3}
+                    borderRadius="12px"
                     style={{
-                      fontSize: "18px",
-                      fontWeight: "bold",
-                      marginBottom: "6px",
-                      color: "var(--color-text-heading)",
+                      background: "var(--color-bg-card)",
+                      border: "1px solid var(--ms-border)",
                     }}
+                    display="flex"
+                    flexDirection={["column", "row"]}
+                    alignItems={["flex-start", "center"]}
+                    justifyContent="space-between"
+                    gap={3}
                   >
-                    Bouncing Ball Workspace
-                  </Heading>
-                  <Text
-                    as="p"
-                    color="var(--color-text-muted)"
-                    style={{ fontSize: "14px", lineHeight: 1.5, margin: 0, maxWidth: "620px" }}
-                  >
-                    Classic hybrid continuous/discrete physical modeling. Simulate zero-crossing state event detection,
-                    restitution coefficient, and real-time WebAssembly numerical integration.
-                  </Text>
-                </Box>
-                <Link to="/ide/bouncing-ball" className="ms-btn ms-btn-secondary">
-                  <CodeIcon size={16} /> Launch bouncing ball
-                </Link>
-              </Box>
+                    <Box>
+                      <Box display="flex" alignItems="center" gap={2} mb={2}>
+                        <span style={{ fontSize: "24px" }}>{tpl.icon}</span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontFamily: "var(--font-mono)",
+                            padding: "2px 8px",
+                            borderRadius: "9999px",
+                            backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
+                            color: "var(--hue-indigo)",
+                            border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {tpl.badge}
+                        </span>
+                      </Box>
+                      <Heading
+                        as="h3"
+                        style={{
+                          fontSize: "18px",
+                          fontWeight: "bold",
+                          marginBottom: "6px",
+                          color: "var(--color-text-heading)",
+                        }}
+                      >
+                        {tpl.title}
+                      </Heading>
+                      <Text
+                        as="p"
+                        color="var(--color-text-muted)"
+                        style={{ fontSize: "14px", lineHeight: 1.5, margin: 0, maxWidth: "620px" }}
+                      >
+                        {tpl.description}
+                      </Text>
+                    </Box>
+                    <Link to={`/ide/${tpl.id}`} className="ms-btn ms-btn-secondary">
+                      <CodeIcon size={16} /> Launch {tpl.title}
+                    </Link>
+                  </Box>
+                ));
+              })()}
             </Box>
           )}
 

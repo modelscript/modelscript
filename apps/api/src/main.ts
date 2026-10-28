@@ -166,6 +166,7 @@ async function shutdown(signal: string): Promise<void> {
 
   if (app.locals["database"]) {
     try {
+      app.locals["database"].releaseAllHeldEscrowsOnShutdown?.();
       app.locals["database"].close();
     } catch {
       // Best-effort

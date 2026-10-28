@@ -61,16 +61,65 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
 }
 
 /**
+ * Parse source-level `annotation(... cad(...))` / `CAD(...)` / `CAD="..."` from Modelica code
+ * into DAE-shaped variable objects `{ name, cad }` suitable for `extractCadComponents`.
+ */
+export function parseSourceCadVariables(source: string): { name: string; cad: string }[] {
+  if (!source || typeof source !== "string") return [];
+  const results: { name: string; cad: string }[] = [];
+  const seen = new Set<string>();
+
+  // 1. Match component declarations with annotation(... CAD(...) / cad(...) / CADPort(...) ...)
+  const declRegex =
+    /\b(?:parameter\s+|input\s+|output\s+|discrete\s+|constant\s+)?[A-Za-z_][\w.]*\s+([A-Za-z_]\w*)\b[^;]*?\bannotation\s*\(([\s\S]*?)\)\s*;/g;
+  let match: RegExpExecArray | null;
+  while ((match = declRegex.exec(source)) !== null) {
+    const varName = match[1]!;
+    const annBody = match[2] || "";
+    const cadMatch = /\b(CADPort|CAD|cad)\s*\(([^)]*)\)/.exec(annBody);
+    if (cadMatch) {
+      const prefix = cadMatch[1] === "CADPort" ? "CADPort" : "CAD";
+      const cadStr = `${prefix}(${cadMatch[2] || ""})`;
+      const key = `${varName}:${cadStr}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push({ name: varName, cad: cadStr });
+      }
+    }
+  }
+
+  // 2. Match explicit CAD="CAD(...)" string modifiers
+  const attrRegex = /\b([A-Za-z_]\w*)\s*\([^;]*?\bCAD\s*=\s*"((?:CADPort|CAD)\([^"]*\))"/g;
+  while ((match = attrRegex.exec(source)) !== null) {
+    const varName = match[1]!;
+    const cadStr = match[2]!;
+    const key = `${varName}:${cadStr}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push({ name: varName, cad: cadStr });
+    }
+  }
+
+  return results;
+}
+
+/**
  * Extract CadComponent entries from a DAE JSON representation.
  *
  * Expects variables in the format `{ name: "x", cad: "CAD(uri=\"...\")" }`
  * as produced by the updated ModelicaVariable.toJSON.
  */
-export function extractCadComponents(daeVariables: any[]): CadComponent[] {
+export function extractCadComponents(daeVariables: any[] | string): CadComponent[] {
+  const normalizedVars: any[] =
+    typeof daeVariables === "string"
+      ? parseSourceCadVariables(daeVariables)
+      : Array.isArray(daeVariables)
+        ? daeVariables
+        : [];
   const components: CadComponent[] = [];
   const portsByParent = new Map<string, { name: string; port: CadPortAnnotation }[]>();
 
-  for (const v of daeVariables) {
+  for (const v of normalizedVars) {
     if (!v || typeof v !== "object" || !v.cad) continue;
     const cadStr = v.cad as string;
     const parsed = parseCadAnnotationString(cadStr);

@@ -1028,13 +1028,29 @@ export class LibraryDatabase {
     }
 
     try {
+      const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+      const usersWithoutActorUrl = this.#db.prepare(`SELECT id, username FROM users WHERE actor_url IS NULL`).all() as {
+        id: number;
+        username: string;
+      }[];
+      if (usersWithoutActorUrl.length > 0) {
+        const updateActorStmt = this.#db.prepare(
+          `UPDATE users SET actor_url = ?, inbox_url = ?, outbox_url = ? WHERE id = ?`,
+        );
+        this.#db.transaction(() => {
+          for (const u of usersWithoutActorUrl) {
+            const actorUrl = `${publicUrl}/users/${u.username}`;
+            updateActorStmt.run(actorUrl, `${actorUrl}/inbox`, `${actorUrl}/outbox`, u.id);
+          }
+        })();
+      }
+
       const usersWithoutKeys = this.#db
-        .prepare(`SELECT id, username FROM users WHERE rsa_private_key IS NULL`)
+        .prepare(`SELECT id, username FROM users WHERE rsa_private_key IS NULL LIMIT 5`)
         .all() as { id: number; username: string }[];
       const updateStmt = this.#db.prepare(
-        `UPDATE users SET rsa_private_key = ?, rsa_public_key = ?, actor_url = ?, inbox_url = ?, outbox_url = ? WHERE id = ?`,
+        `UPDATE users SET rsa_private_key = ?, rsa_public_key = ?, actor_url = COALESCE(actor_url, ?), inbox_url = COALESCE(inbox_url, ?), outbox_url = COALESCE(outbox_url, ?) WHERE id = ?`,
       );
-      const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
       this.#db.transaction(() => {
         for (const u of usersWithoutKeys) {
           const keys = this.#generateRSAKeys();
@@ -1137,7 +1153,9 @@ export class LibraryDatabase {
     } catch {}
 
     try {
-      const usersWithoutEd = this.#db.prepare(`SELECT id FROM users WHERE ed25519_private_key IS NULL`).all() as {
+      const usersWithoutEd = this.#db
+        .prepare(`SELECT id FROM users WHERE ed25519_private_key IS NULL LIMIT 10`)
+        .all() as {
         id: number;
       }[];
       const updateEdStmt = this.#db.prepare(
@@ -2501,6 +2519,7 @@ export class LibraryDatabase {
   private hydratePost(
     p: (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined }) | null | undefined,
     currentUserId?: number,
+    depth: number = 0,
   ): PostRow | null {
     if (!p) return null;
     if (p.metadata && typeof p.metadata === "string") {
@@ -2559,16 +2578,18 @@ export class LibraryDatabase {
       }
       p.artifact_views = viewsMap;
     }
-    if (p.repost_of_id) {
-      p.repost_post = this.getPost(p.repost_of_id, currentUserId);
-    }
-    if (p.quote_post_id) {
-      p.quote_post = this.getPost(p.quote_post_id, currentUserId);
+    if (depth < 2) {
+      if (p.repost_of_id && p.repost_of_id !== p.id) {
+        p.repost_post = this.getPost(p.repost_of_id, currentUserId, depth + 1);
+      }
+      if (p.quote_post_id && p.quote_post_id !== p.id) {
+        p.quote_post = this.getPost(p.quote_post_id, currentUserId, depth + 1);
+      }
     }
     return p as PostRow;
   }
 
-  getPost(id: number, currentUserId?: number): PostRow | null {
+  getPost(id: number, currentUserId?: number, depth: number = 0): PostRow | null {
     const uid = currentUserId || -1;
     const p = this.#db
       .prepare(
@@ -2587,7 +2608,7 @@ export class LibraryDatabase {
       .get(uid, uid, uid, id) as
       | (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined })
       | undefined;
-    return this.hydratePost(p, currentUserId);
+    return this.hydratePost(p, currentUserId, depth);
   }
 
   getReplies(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
@@ -6350,6 +6371,29 @@ export class LibraryDatabase {
     return releaseTx();
   }
 
+  releaseAllHeldEscrowsOnShutdown(): number {
+    try {
+      const heldRows = this.#db
+        .prepare(`SELECT id, user_id, job_id, amount FROM credit_escrow_holds WHERE status = 'held'`)
+        .all() as { id: number; user_id: number; job_id: number; amount: number }[];
+      let releasedCount = 0;
+      for (const row of heldRows) {
+        try {
+          this.releaseUserEscrow(row.user_id, row.job_id, "Server shutdown recovery");
+          releasedCount++;
+        } catch {}
+      }
+      this.#db
+        .prepare(
+          `UPDATE jobs SET status = 'CANCELLED', completed_at = datetime('now') WHERE status IN ('RUNNING', 'QUEUED', 'PENDING')`,
+        )
+        .run();
+      return releasedCount;
+    } catch {
+      return 0;
+    }
+  }
+
   getUserTransactions(userId: number, limit: number = 50, offset: number = 0): CreditTransactionRow[] {
     return this.#db
       .prepare(
@@ -6587,15 +6631,20 @@ export class LibraryDatabase {
 
     const artifactId = this.createArtifactView(userId, artifactType, "hpc_job", JSON.stringify(viewConfig), title);
 
-    // Auto-generate technical caption
+    // Auto-generate technical caption using only verified scalar outputs
     let suggestedCaption = "";
     if (solver === "calculix") {
-      const maxStress = scalars["maxStressMpa"] || scalars["max_stress"] || "248.5";
-      suggestedCaption = `Completed structural FEA simulation on ${computeProfile} node (${cpuSeconds.toFixed(1)}s). Peak von Mises stress: ${maxStress} MPa under design load. Billed: ${costCredits.toFixed(2)} cr. #FEA #CalculiX #HPC`;
+      const maxStress = scalars["maxStressMpa"] ?? scalars["max_stress"];
+      const stressNote =
+        maxStress !== undefined && maxStress !== null
+          ? ` Peak von Mises stress: ${maxStress} MPa under design load.`
+          : "";
+      suggestedCaption = `Completed structural FEA simulation on ${computeProfile} node (${cpuSeconds.toFixed(1)}s).${stressNote} Billed: ${costCredits.toFixed(2)} cr. #FEA #CalculiX #HPC`;
     } else if (solver === "su2") {
-      const cd = scalars["cd"] || scalars["drag_coefficient"] || "0.0182";
-      const cl = scalars["cl"] || scalars["lift_coefficient"] || "0.284";
-      suggestedCaption = `Completed aerodynamic CFD simulation on ${computeProfile} node (${cpuSeconds.toFixed(1)}s). Drag Cd: ${cd}, Lift Cl: ${cl}. Billed: ${costCredits.toFixed(2)} cr. #CFD #SU2 #Aerodynamics`;
+      const cd = scalars["cd"] ?? scalars["drag_coefficient"];
+      const cl = scalars["cl"] ?? scalars["lift_coefficient"];
+      const aeroNote = cd !== undefined && cl !== undefined ? ` Drag Cd: ${cd}, Lift Cl: ${cl}.` : "";
+      suggestedCaption = `Completed aerodynamic CFD simulation on ${computeProfile} node (${cpuSeconds.toFixed(1)}s).${aeroNote} Billed: ${costCredits.toFixed(2)} cr. #CFD #SU2 #Aerodynamics`;
     } else if (solver === "openfoam") {
       suggestedCaption = `Completed OpenFOAM fluid dynamics analysis on ${computeProfile} cluster (${cpuSeconds.toFixed(1)}s). Billed: ${costCredits.toFixed(2)} cr. #OpenFOAM #CFD`;
     } else {

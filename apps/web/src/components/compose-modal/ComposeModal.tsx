@@ -93,14 +93,19 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     initializedPayloadRef.current = initialState;
 
     if (initialState.morselPayload && artifactId === null) {
-      const { code, title, dialect } = initialState.morselPayload;
+      const { code, title, dialect, isMultiFile, files, primaryFile, forkedFromArtifactId } =
+        initialState.morselPayload;
       const viewConfigObj: Record<string, any> = {
         code,
         dialect: dialect || "modelica",
         title: title || "Model",
+        ...(isMultiFile !== undefined ? { isMultiFile } : {}),
+        ...(files !== undefined ? { files } : {}),
+        ...(primaryFile !== undefined ? { primaryFile } : {}),
       };
-      if (initialState.forkedFromArtifactId) {
-        viewConfigObj["forkedFromArtifactId"] = initialState.forkedFromArtifactId;
+      const effectiveForkId = initialState.forkedFromArtifactId ?? forkedFromArtifactId;
+      if (effectiveForkId) {
+        viewConfigObj["forkedFromArtifactId"] = effectiveForkId;
       }
       createArtifactView({
         artifact_type: "morsel",
@@ -147,6 +152,26 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
 
   const hasUnsavedChanges = useCallback(() => {
+    if (initialState?.editPostId) {
+      const baselineContent = (
+        initialState.initialContent ??
+        initialState.content ??
+        initialState.defaultText ??
+        ""
+      ).trim();
+      const baselineArtifactId = initialState.artifactId ?? initialState.artifactViewId ?? null;
+      if (notebookMode) {
+        const baselineTitle = (initialState.notebookTitle ?? initialState.initialTitle ?? "").trim();
+        const baselineSummary = (initialState.notebookSummary ?? "").trim();
+        return (
+          content.trim() !== baselineContent ||
+          notebookTitle.trim() !== baselineTitle ||
+          notebookSummary.trim() !== baselineSummary ||
+          artifactId !== baselineArtifactId
+        );
+      }
+      return content.trim() !== baselineContent || artifactId !== baselineArtifactId;
+    }
     if (notebookMode) {
       return Boolean(
         notebookTitle.trim() ||
@@ -158,6 +183,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
       content.trim().length > 0 || artifactId !== null || currentQuotePost || currentReplyToPost || currentPendingPin,
     );
   }, [
+    initialState,
     notebookMode,
     notebookTitle,
     notebookSummary,
@@ -189,7 +215,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   };
 
   const commitDraftAndNavigate = () => {
-    if (hasUnsavedChanges()) {
+    if (hasUnsavedChanges() && !initialState?.editPostId) {
       upsertDraft({
         id: activeDraftId || Date.now().toString(),
         content,
@@ -274,240 +300,243 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   return (
     <>
       <Overlay
-        onClick={view === "compose" ? handleCloseClick : undefined}
+        onClick={view === "drafts" ? onClose : view === "compose" ? handleCloseClick : undefined}
         style={{ paddingTop: editorLayout === "split" || isExpandedWidth ? "3vh" : "7vh" }}
       >
         <ModalPanel
           onClick={(e) => e.stopPropagation()}
           style={{
-            maxWidth: computedMaxWidth,
+            maxWidth: view === "drafts" ? "600px" : computedMaxWidth,
             maxHeight: editorLayout === "split" || isExpandedWidth ? "92vh" : "86vh",
             margin: "0 auto",
-            display: view === "drafts" ? "none" : "flex",
+            display: "flex",
           }}
         >
-          <Header
-            style={{
-              gap: "8px",
-              borderBottom: "1px solid var(--color-border-subtle, rgba(255,255,255,0.06))",
-              paddingBottom: "8px",
-            }}
-          >
-            <IconButton
-              icon={XIcon}
-              variant="invisible"
-              onClick={handleCloseClick}
-              aria-label="Close"
-              style={{
-                color: "var(--color-text-primary)",
-                borderRadius: "50%",
-                width: "36px",
-                height: "36px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+          {view === "drafts" ? (
+            <DraftsView
+              draftsList={draftsList}
+              onBack={() => setView("compose")}
+              onSelectDraft={loadDraft}
+              onDeleteDraft={(id) => {
+                deleteDraft(id);
+                setDraftsList(getDrafts());
               }}
             />
-            {initialState?.editPostId && (
-              <span
+          ) : (
+            <>
+              <Header
                 style={{
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "var(--color-accent-cyan)",
+                  gap: "8px",
+                  borderBottom: "1px solid var(--color-border-subtle, rgba(255,255,255,0.06))",
+                  paddingBottom: "8px",
                 }}
               >
-                ✏️ Editing {notebookMode ? "Tutorial" : "Post"} #{initialState.editPostId}
-              </span>
-            )}
-            <Box flex={1} />
-            <div
-              style={{
-                display: "inline-flex",
-                gap: "4px",
-                padding: "3px",
-                borderRadius: "8px",
-                background: "rgba(255, 255, 255, 0.04)",
-                border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
-              }}
-            >
-              {(
-                [
-                  { id: "write", label: "✏️ Write" },
-                  { id: "split", label: "◫ Split Preview" },
-                  { id: "preview", label: "👁️ Preview" },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setEditorLayout(tab.id)}
+                <IconButton
+                  icon={XIcon}
+                  variant="invisible"
+                  onClick={handleCloseClick}
+                  aria-label="Close"
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: editorLayout === tab.id ? "rgba(6, 182, 212, 0.18)" : "transparent",
-                    color: editorLayout === tab.id ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
+                    color: "var(--color-text-primary)",
+                    borderRadius: "50%",
+                    width: "36px",
+                    height: "36px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                />
+                {initialState?.editPostId && (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "var(--color-accent-cyan)",
+                    }}
+                  >
+                    ✏️ Editing {notebookMode ? "Tutorial" : "Post"} #{initialState.editPostId}
+                  </span>
+                )}
+                <Box flex={1} />
+                <div
+                  style={{
+                    display: "inline-flex",
+                    gap: "4px",
+                    padding: "3px",
+                    borderRadius: "8px",
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+                  }}
+                >
+                  {(
+                    [
+                      { id: "write", label: "✏️ Write" },
+                      { id: "split", label: "◫ Split Preview" },
+                      { id: "preview", label: "👁️ Preview" },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setEditorLayout(tab.id)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "6px",
+                        border: "none",
+                        background: editorLayout === tab.id ? "rgba(6, 182, 212, 0.18)" : "transparent",
+                        color: editorLayout === tab.id ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
+                        fontFamily: "var(--font-mono, monospace)",
+                        fontSize: "11.5px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsExpandedWidth(!isExpandedWidth)}
+                  title="Toggle full-width tutorial studio"
+                  style={{
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: "1px solid var(--color-border-subtle)",
+                    borderRadius: "8px",
+                    color: "var(--color-text-secondary)",
                     fontFamily: "var(--font-mono, monospace)",
                     fontSize: "11.5px",
-                    fontWeight: 600,
+                    padding: "5px 10px",
                     cursor: "pointer",
                   }}
                 >
-                  {tab.label}
+                  {isExpandedWidth ? "🗗 Compact" : "⛶ Expand"}
                 </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsExpandedWidth(!isExpandedWidth)}
-              title="Toggle full-width tutorial studio"
-              style={{
-                background: "rgba(255, 255, 255, 0.04)",
-                border: "1px solid var(--color-border-subtle)",
-                borderRadius: "8px",
-                color: "var(--color-text-secondary)",
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: "11.5px",
-                padding: "5px 10px",
-                cursor: "pointer",
-              }}
-            >
-              {isExpandedWidth ? "🗗 Compact" : "⛶ Expand"}
-            </button>
-            <button
-              onClick={handleDraftsClick}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--color-accent-cyan)",
-                fontWeight: "bold",
-                fontSize: "14px",
-                cursor: "pointer",
-                paddingRight: "8px",
-              }}
-            >
-              Drafts
-            </button>
-          </Header>
-          <Body>
-            {initialState?.forkedFromArtifactId && (
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  background: "rgba(245, 158, 11, 0.12)",
-                  color: "#f59e0b",
-                  border: "1px solid rgba(245, 158, 11, 0.25)",
-                  marginBottom: "12px",
-                  fontWeight: 600,
-                  fontFamily: "var(--font-mono, monospace)",
-                }}
-              >
-                <span>⚡ Forking Artifact #{initialState.forkedFromArtifactId}</span>
-              </div>
-            )}
-            <div
-              style={{
-                display: editorLayout === "split" ? "grid" : "flex",
-                gridTemplateColumns: editorLayout === "split" ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
-                flexDirection: editorLayout === "split" ? undefined : "column",
-                gap: "16px",
-                alignItems: "start",
-              }}
-            >
-              {editorLayout === "preview" && (
-                <div style={{ minWidth: 0, width: "100%" }}>
-                  <TutorialPreview
-                    notebookMode={notebookMode}
-                    notebookTitle={notebookTitle}
-                    notebookSummary={notebookSummary}
-                    notebookDifficulty={notebookDifficulty}
-                    notebookSeries={notebookSeries}
-                    notebookDialect={notebookDialect}
-                    notebookCells={notebookCells}
-                    content={content}
-                  />
-                </div>
-              )}
-              <div style={{ minWidth: 0, width: "100%" }}>
-                <ComposeBox
-                  editPostId={initialState?.editPostId}
-                  forkedFromArtifactId={initialState?.forkedFromArtifactId}
-                  content={content}
-                  setContent={setContent}
-                  artifactId={artifactId}
-                  setArtifactId={setArtifactId}
-                  notebookMode={notebookMode}
-                  setNotebookMode={setNotebookMode}
-                  notebookTitle={notebookTitle}
-                  setNotebookTitle={setNotebookTitle}
-                  notebookSummary={notebookSummary}
-                  setNotebookSummary={setNotebookSummary}
-                  notebookDifficulty={notebookDifficulty}
-                  setNotebookDifficulty={setNotebookDifficulty}
-                  notebookSeries={notebookSeries}
-                  setNotebookSeries={setNotebookSeries}
-                  notebookDialect={notebookDialect}
-                  setNotebookDialect={setNotebookDialect}
-                  notebookCompanionRepo={notebookCompanionRepo}
-                  setNotebookCompanionRepo={setNotebookCompanionRepo}
-                  notebookCells={notebookCells}
-                  setNotebookCells={setNotebookCells}
-                  onPostCreated={(post) => {
-                    if (activeDraftId) {
-                      deleteDraft(activeDraftId);
-                      setActiveDraftId(null);
-                    }
-                    onPostCreated?.(post);
-                    onClose();
+                <button
+                  onClick={handleDraftsClick}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-accent-cyan)",
+                    fontWeight: "bold",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    paddingRight: "8px",
                   }}
-                  quotePost={currentQuotePost}
-                  replyToPost={currentReplyToPost}
-                  pendingPin={currentPendingPin}
-                  minRows={1}
-                  autoFocus={true}
-                  isModal={true}
-                  hideInput={editorLayout === "preview"}
-                />
-              </div>
-              {editorLayout === "split" && (
-                <div style={{ minWidth: 0, width: "100%" }}>
-                  <TutorialPreview
-                    notebookMode={notebookMode}
-                    notebookTitle={notebookTitle}
-                    notebookSummary={notebookSummary}
-                    notebookDifficulty={notebookDifficulty}
-                    notebookSeries={notebookSeries}
-                    notebookDialect={notebookDialect}
-                    notebookCells={notebookCells}
-                    content={content}
-                  />
+                >
+                  Drafts
+                </button>
+              </Header>
+              <Body>
+                {initialState?.forkedFromArtifactId && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "12px",
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      background: "rgba(245, 158, 11, 0.12)",
+                      color: "#f59e0b",
+                      border: "1px solid rgba(245, 158, 11, 0.25)",
+                      marginBottom: "12px",
+                      fontWeight: 600,
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  >
+                    <span>⚡ Forking Artifact #{initialState.forkedFromArtifactId}</span>
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: editorLayout === "split" ? "grid" : "flex",
+                    gridTemplateColumns: editorLayout === "split" ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
+                    flexDirection: editorLayout === "split" ? undefined : "column",
+                    gap: "16px",
+                    alignItems: "start",
+                  }}
+                >
+                  {editorLayout === "preview" && (
+                    <div style={{ minWidth: 0, width: "100%" }}>
+                      <TutorialPreview
+                        notebookMode={notebookMode}
+                        notebookTitle={notebookTitle}
+                        notebookSummary={notebookSummary}
+                        notebookDifficulty={notebookDifficulty}
+                        notebookSeries={notebookSeries}
+                        notebookDialect={notebookDialect}
+                        notebookCells={notebookCells}
+                        content={content}
+                      />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0, width: "100%" }}>
+                    <ComposeBox
+                      editPostId={initialState?.editPostId}
+                      forkedFromArtifactId={initialState?.forkedFromArtifactId}
+                      content={content}
+                      setContent={setContent}
+                      artifactId={artifactId}
+                      setArtifactId={setArtifactId}
+                      notebookMode={notebookMode}
+                      setNotebookMode={setNotebookMode}
+                      notebookTitle={notebookTitle}
+                      setNotebookTitle={setNotebookTitle}
+                      notebookSummary={notebookSummary}
+                      setNotebookSummary={setNotebookSummary}
+                      notebookDifficulty={notebookDifficulty}
+                      setNotebookDifficulty={setNotebookDifficulty}
+                      notebookSeries={notebookSeries}
+                      setNotebookSeries={setNotebookSeries}
+                      notebookDialect={notebookDialect}
+                      setNotebookDialect={setNotebookDialect}
+                      notebookCompanionRepo={notebookCompanionRepo}
+                      setNotebookCompanionRepo={setNotebookCompanionRepo}
+                      notebookCells={notebookCells}
+                      setNotebookCells={setNotebookCells}
+                      onPostCreated={(post) => {
+                        if (activeDraftId) {
+                          deleteDraft(activeDraftId);
+                          setActiveDraftId(null);
+                        }
+                        onPostCreated?.(post);
+                        onClose();
+                      }}
+                      quotePost={currentQuotePost}
+                      replyToPost={currentReplyToPost}
+                      pendingPin={currentPendingPin}
+                      minRows={1}
+                      autoFocus={true}
+                      isModal={true}
+                      hideInput={editorLayout === "preview"}
+                    />
+                  </div>
+                  {editorLayout === "split" && (
+                    <div style={{ minWidth: 0, width: "100%" }}>
+                      <TutorialPreview
+                        notebookMode={notebookMode}
+                        notebookTitle={notebookTitle}
+                        notebookSummary={notebookSummary}
+                        notebookDifficulty={notebookDifficulty}
+                        notebookSeries={notebookSeries}
+                        notebookDialect={notebookDialect}
+                        notebookCells={notebookCells}
+                        content={content}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </Body>
+              </Body>
+            </>
+          )}
         </ModalPanel>
-
-        {view === "drafts" && (
-          <DraftsView
-            draftsList={draftsList}
-            onBack={() => setView("compose")}
-            onSelectDraft={loadDraft}
-            onDeleteDraft={(id) => {
-              deleteDraft(id);
-              setDraftsList(getDrafts());
-            }}
-          />
-        )}
       </Overlay>
 
       {view === "confirm_save" && (
         <ConfirmSaveModal
+          isEditing={Boolean(initialState?.editPostId)}
           onCancel={() => setView("compose")}
           onSave={commitDraftAndNavigate}
           onDiscard={discardAndNavigate}

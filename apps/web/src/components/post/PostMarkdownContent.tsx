@@ -610,7 +610,12 @@ export const PostMarkdownContent: React.FC<{
   const [portals, setPortals] = useState<React.ReactPortal[]>([]);
 
   useEffect(() => {
-    if (!text || !containerRef.current) return;
+    if (!containerRef.current) return;
+    if (!text) {
+      containerRef.current.innerHTML = "";
+      setPortals([]);
+      return;
+    }
 
     // 1. Protect fenced code blocks and inline code spans before transforming math, hashtags, and mentions
     const codePlaceholders: string[] = [];
@@ -638,7 +643,10 @@ export const PostMarkdownContent: React.FC<{
 
     // 3. Transform hashtags and @mentions outside code/math
     safeText = safeText.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
-    safeText = safeText.replace(/(^|\s)@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g, "$1[@$2](/@$2)");
+    safeText = safeText.replace(
+      /(^|\s)@([a-zA-Z0-9_.-]*[a-zA-Z0-9_-](?:@[a-zA-Z0-9_.-]*[a-zA-Z0-9_-])?)/g,
+      "$1[@$2](/@$2)",
+    );
 
     // 4. Restore fenced code and inline code before marked parsing
     safeText = safeText.replace(/@@MSX_CODE_(\d+)@@/g, (_m, idxStr: string) => {
@@ -788,7 +796,9 @@ export const PostMarkdownContent: React.FC<{
         diagramDiv = document.createElement("div");
         diagramDiv.className = "msx-code-diagram";
         diagramDiv.style.display = "none";
-        diagramDiv.innerHTML = diagramSvg;
+        diagramDiv.innerHTML = DOMPurify.sanitize(diagramSvg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+        });
 
         const toggleBtn = document.createElement("button");
         toggleBtn.type = "button";

@@ -939,6 +939,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
           style={{
             position: "absolute",
             inset: 0,
+            paddingTop: 56,
             display: showResultsView && !showAnalysisView ? "flex" : "none",
             flexDirection: "column",
             overflow: "hidden",
@@ -952,6 +953,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             onDataSourceChange={setCosimDataSource}
             colorMode={colorMode}
             onReplaySession={handleReplaySession}
+            onPauseReplay={() => animationControllerRef.current?.pause()}
             sessions={recordedSessions}
           />
           {localSimulationData || simulationStatus?.status === "failed" ? (

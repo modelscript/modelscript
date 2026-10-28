@@ -92,7 +92,17 @@ export class S3StorageDriver implements StorageDriver {
   async list(prefix = ""): Promise<string[]> {
     const fullPrefix = this.#fullKey(prefix);
     const query = new URLSearchParams({ "list-type": "2", prefix: fullPrefix });
-    const url = `${this.#endpoint}/${this.#bucket}?${query.toString()}`;
+    query.sort();
+    const baseUrl =
+      this.#config.forcePathStyle !== false ||
+      this.#endpoint.includes("localhost") ||
+      this.#endpoint.includes("127.0.0.1")
+        ? `${this.#endpoint}/${this.#bucket}`
+        : (() => {
+            const urlObj = new URL(this.#endpoint);
+            return `${urlObj.protocol}//${this.#bucket}.${urlObj.host}/`;
+          })();
+    const url = `${baseUrl}?${query.toString()}`;
     const headers = this.#sign("GET", url, Buffer.alloc(0));
 
     const res = await fetch(url, { method: "GET", headers });
@@ -182,6 +192,7 @@ export class S3StorageDriver implements StorageDriver {
     }
 
     const url = new URL(urlStr);
+    url.searchParams.sort();
     const now = new Date();
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
     const dateStamp = amzDate.slice(0, 8);

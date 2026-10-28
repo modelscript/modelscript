@@ -18,45 +18,66 @@ export type { NotificationCategory };
 
 const NotificationsPage: React.FC = () => {
   usePageTitle("Notifications");
-  const { token, user, setUnreadCount } = useAuth();
+  const { token, user, setUnreadCount, refreshUnreadCount } = useAuth();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<NotificationCategory>("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const fetchNotifications = useCallback(
-    async (cat?: NotificationCategory) => {
-      if (!token) return;
-      try {
-        const data = await getNotifications(cat === "all" ? undefined : cat);
-        setNotifications(groupNotifications(data.notifications || []));
-        if (typeof data.unreadCount === "number") {
-          setUnreadCount(data.unreadCount);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+  const fetchNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await getNotifications();
+      const grouped = groupNotifications(data.notifications || []);
+      setNotifications(grouped);
+      if (typeof data.unreadCount === "number") {
+        setUnreadCount(data.unreadCount);
+      } else {
+        setUnreadCount(grouped.filter((n) => !n.read).length);
       }
-    },
-    [token, setUnreadCount],
-  );
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, setUnreadCount]);
 
   useEffect(() => {
     if (!token) {
       setLoading(false);
       return;
     }
-    void fetchNotifications(activeTab);
-  }, [token, activeTab, fetchNotifications]);
+    void fetchNotifications();
+  }, [token, fetchNotifications]);
+
+  const markSingleRead = useCallback(
+    (id: string | number) => {
+      setNotifications((prev) => {
+        let decremented = false;
+        const next = prev.map((n) => {
+          if (n.id === id && !n.read) {
+            decremented = true;
+            return { ...n, read: 1 };
+          }
+          return n;
+        });
+        if (decremented) {
+          const remainingUnread = next.filter((n) => !n.read).length;
+          setUnreadCount(remainingUnread);
+        }
+        return next;
+      });
+    },
+    [setUnreadCount],
+  );
 
   const markAllRead = () => {
     if (!token) return;
     const cat = activeTab === "all" ? undefined : activeTab;
     markNotificationsRead(cat)
       .then(() => {
-        setNotifications((prev) =>
-          prev.map((n) => {
+        setNotifications((prev) => {
+          const next = prev.map((n) => {
             if (activeTab === "all") return { ...n, read: 1 };
             if (
               activeTab === "engineering" &&
@@ -74,9 +95,12 @@ const NotificationsPage: React.FC = () => {
               return { ...n, read: 1 };
             }
             return n;
-          }),
-        );
-        setUnreadCount(0);
+          });
+          const remainingUnread = next.filter((n) => !n.read).length;
+          setUnreadCount(activeTab === "all" ? 0 : remainingUnread);
+          return next;
+        });
+        refreshUnreadCount();
       })
       .catch(() => {});
   };
@@ -155,10 +179,17 @@ const NotificationsPage: React.FC = () => {
             const isCredit = notif.type === "credit_warning";
 
             if (isSimulation || isSimFailed || isPackage || isSecurity || isCredit) {
-              return <EngineeringNotificationCard key={notif.id} notif={notif} />;
+              return <EngineeringNotificationCard key={notif.id} notif={notif} onMarkRead={markSingleRead} />;
             }
 
-            return <SocialNotificationRow key={notif.id} notif={notif} currentUsername={user?.username} />;
+            return (
+              <SocialNotificationRow
+                key={notif.id}
+                notif={notif}
+                currentUsername={user?.username}
+                onMarkRead={markSingleRead}
+              />
+            );
           })}
         </Box>
       )}

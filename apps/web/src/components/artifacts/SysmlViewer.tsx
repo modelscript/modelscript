@@ -280,6 +280,17 @@ function parseSysmlSource(code: string): {
   }
 
   // Extract requirement definitions and usages
+  const verifyTargetSet = new Set<string>();
+  const satisfyTargetSet = new Set<string>();
+  const verifyRe = /\bverify\s+(?:requirement\s+)?([A-Za-z_]\w*)\b/g;
+  while ((m = verifyRe.exec(code)) !== null) {
+    verifyTargetSet.add(m[1]!);
+  }
+  const satisfyRe = /\bsatisfy\s+(?:requirement\s+)?([A-Za-z_]\w*)\b/g;
+  while ((m = satisfyRe.exec(code)) !== null) {
+    satisfyTargetSet.add(m[1]!);
+  }
+
   const reqRe = /\brequirement\s+(?:def\s+)?([A-Za-z_]\w*)\s*\{([\s\S]*?)\}/g;
   let reqIdx = 1;
   while ((m = reqRe.exec(code)) !== null) {
@@ -287,12 +298,21 @@ function parseSysmlSource(code: string): {
     const body = m[2] || "";
     const docMatch = body.match(/\/\*([\s\S]*?)\*\//);
     const text = docMatch ? docMatch[1]!.trim() : `Requirement specification for ${reqName}`;
-    const isVerified = new RegExp(`\\bsatisfy\\s+${reqName}\\b|\\bverify\\s+${reqName}\\b`).test(code);
+    let status: SysmlRequirement["status"] = "unverified";
+    if (verifyTargetSet.size > 0 || satisfyTargetSet.size > 0) {
+      if (verifyTargetSet.has(reqName)) {
+        status = "verified";
+      } else if (satisfyTargetSet.has(reqName)) {
+        status = "satisfied";
+      } else {
+        status = "unsatisfied";
+      }
+    }
     requirements.push({
       id: `REQ-${String(reqIdx++).padStart(2, "0")}`,
       name: reqName,
       text,
-      status: isVerified ? "satisfied" : "verified",
+      status,
     });
   }
 

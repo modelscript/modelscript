@@ -262,6 +262,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   }>({ users: [], packages: [], repositories: [] });
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultsListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -478,7 +479,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             icon: <PlusCircleIcon size={16} />,
             action: () => {
               onClose();
-              if (onOpenCompose) onOpenCompose();
+              if (onOpenCompose) {
+                onOpenCompose();
+              } else {
+                window.dispatchEvent(new CustomEvent("modelscript:open-compose"));
+              }
             },
           },
         ]
@@ -611,10 +616,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         onClose();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActiveIndex((prev) => (allItems.length > 0 ? (prev + 1) % allItems.length : 0));
+        setActiveIndex((prev) => {
+          const next = allItems.length > 0 ? (prev + 1) % allItems.length : 0;
+          requestAnimationFrame(() => {
+            const el = resultsListRef.current?.querySelector(`[data-result-index="${next}"]`);
+            if (el && "scrollIntoView" in el) {
+              (el as HTMLElement).scrollIntoView({ block: "nearest" });
+            }
+          });
+          return next;
+        });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setActiveIndex((prev) => (allItems.length > 0 ? (prev - 1 + allItems.length) % allItems.length : 0));
+        setActiveIndex((prev) => {
+          const next = allItems.length > 0 ? (prev - 1 + allItems.length) % allItems.length : 0;
+          requestAnimationFrame(() => {
+            const el = resultsListRef.current?.querySelector(`[data-result-index="${next}"]`);
+            if (el && "scrollIntoView" in el) {
+              (el as HTMLElement).scrollIntoView({ block: "nearest" });
+            }
+          });
+          return next;
+        });
       } else if (e.key === "Enter") {
         e.preventDefault();
         if (allItems[activeIndex]) {
@@ -643,7 +666,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           <kbd>ESC</kbd>
         </InputHeader>
 
-        <ResultsList>
+        <ResultsList ref={resultsListRef}>
           {allItems.length === 0 ? (
             <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--color-fg-muted)" }}>
               No matching commands or entities found for &quot;{query}&quot;
@@ -655,6 +678,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                 <React.Fragment key={item.id}>
                   {isFirstInCategory && <CategoryHeader>{item.category}</CategoryHeader>}
                   <ResultItem
+                    data-result-index={index}
                     $active={index === activeIndex}
                     onClick={item.action}
                     onMouseEnter={() => setActiveIndex(index)}

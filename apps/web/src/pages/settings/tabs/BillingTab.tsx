@@ -15,7 +15,7 @@ import {
   ZapIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import { getUserBillingSummary, topUpCredits, type UserBillingSummary } from "../../../api";
 import Box from "../../../components/Box";
@@ -276,7 +276,13 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSummary = async () => {
+  const fetchSummary = useCallback(async () => {
+    if (!isStripeFeatureEnabled) {
+      setBillingSummary(DEFAULT_COMMUNITY_VIEW);
+      setIsLiveActive(false);
+      setError(null);
+      return;
+    }
     try {
       const data = await getUserBillingSummary();
       setBillingSummary(data as BillingSummaryView);
@@ -287,11 +293,11 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
       setBillingSummary(DEFAULT_COMMUNITY_VIEW);
       setIsLiveActive(false);
     }
-  };
+  }, [isStripeFeatureEnabled]);
 
   useEffect(() => {
     fetchSummary();
-  }, [isStripeFeatureEnabled]);
+  }, [fetchSummary]);
 
   const toggleSandboxBilling = () => {
     const nextState = !isStripeFeatureEnabled;

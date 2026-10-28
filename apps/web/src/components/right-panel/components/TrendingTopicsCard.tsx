@@ -14,6 +14,15 @@ export interface TrendingTopicsCardProps {
   setActiveTrendMenu: (id: number | null) => void;
 }
 
+const DISMISSED_TRENDS_STORAGE_KEY = "modelscript:dismissed_trends";
+
+const FALLBACK_TOPICS = [
+  { concept: "modelica", tag: "#Modelica 3.4", category: "Physical Systems" },
+  { concept: "cfd", tag: "#CFD Aerodynamics", category: "Finite Volume" },
+  { concept: "cvode", tag: "#SUNDIALS CVODE", category: "Stiff DAE Integrators" },
+  { concept: "fmu", tag: "#FMI 3.0 Standard", category: "Co-Simulation" },
+];
+
 export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
   trending,
   activeTrendMenu,
@@ -21,9 +30,33 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const toast = useToast();
-  const [dismissedIds, setDismissedIds] = useState<Set<number | string>>(new Set());
+  const [dismissedIds, setDismissedIds] = useState<Set<number | string>>(() => {
+    try {
+      const raw = localStorage.getItem(DISMISSED_TRENDS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return new Set(parsed);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return new Set();
+  });
 
-  const visibleTrending = trending.filter((t) => !dismissedIds.has(t.id ?? t.concept));
+  const handleDismissTopic = (topicKey: number | string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev).add(topicKey);
+      try {
+        localStorage.setItem(DISMISSED_TRENDS_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+
+  const visibleTrending = trending.filter((t) => !dismissedIds.has(t.id ?? t.concept) && !dismissedIds.has(t.concept));
+  const visibleFallbacks = FALLBACK_TOPICS.filter((t) => !dismissedIds.has(t.concept));
 
   return (
     <Card>
@@ -101,7 +134,8 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDismissedIds((prev) => new Set(prev).add(topicKey));
+                              handleDismissTopic(topicKey);
+                              if (topic.concept) handleDismissTopic(topic.concept);
                               setActiveTrendMenu(null);
                               toast.info("Thanks for your feedback — trend hidden.");
                             }}
@@ -135,14 +169,9 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
               </TrendingItem>
             );
           })
-        ) : (
+        ) : trending.length === 0 && visibleFallbacks.length > 0 ? (
           <Box display="flex" flexDirection="column" gap={1} py={1}>
-            {[
-              { concept: "modelica", tag: "#Modelica 3.4", category: "Physical Systems" },
-              { concept: "cfd", tag: "#CFD Aerodynamics", category: "Finite Volume" },
-              { concept: "cvode", tag: "#SUNDIALS CVODE", category: "Stiff DAE Integrators" },
-              { concept: "fmu", tag: "#FMI 3.0 Standard", category: "Co-Simulation" },
-            ].map((topic, i) => (
+            {visibleFallbacks.map((topic, i) => (
               <Box
                 key={i}
                 onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}
@@ -161,6 +190,12 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                 </Text>
               </Box>
             ))}
+          </Box>
+        ) : (
+          <Box py={2} px={1}>
+            <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              No additional trending topics right now.
+            </Text>
           </Box>
         )}
 

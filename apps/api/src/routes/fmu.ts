@@ -12,6 +12,8 @@ import type { FmiScalarVariable, StoredFmu } from "@modelscript/exchange/cosim";
 import { FmuStorage } from "@modelscript/exchange/cosim";
 import express from "express";
 
+export const defaultFmuStorage = new FmuStorage();
+
 /**
  * Create FMU management router.
  *
@@ -19,7 +21,7 @@ import express from "express";
  */
 export function fmuRouter(storage?: FmuStorage): express.Router {
   const router = express.Router();
-  const fmuStorage = storage ?? new FmuStorage();
+  const fmuStorage = storage ?? defaultFmuStorage;
 
   // POST /api/v1/fmus — Upload an FMU archive
   router.post("/", express.raw({ type: "application/octet-stream", limit: "100mb" }), (req, res) => {

@@ -106,7 +106,7 @@ export class SqliteMigrationRunner {
     let actuallyAppliedCount = 0;
     for (const migration of pending) {
       const startTime = Date.now();
-      const checksum = crypto.createHash("sha256").update(migration.name).digest("hex");
+      const checksum = crypto.createHash("sha256").update(`${migration.name}:${migration.up.toString()}`).digest("hex");
       let applied = false;
 
       const tx = this.#db.transaction(() => {

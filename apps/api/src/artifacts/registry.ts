@@ -175,11 +175,7 @@ export class ArtifactRegistry {
    * Process all artifacts declared in a package manifest.
    * Returns enriched metadata for each artifact.
    */
-  async processArtifacts(
-    artifacts: Record<string, unknown>[],
-
-    _tarballBuffer?: Buffer,
-  ): Promise<ArtifactMetadata[]> {
+  async processArtifacts(artifacts: Record<string, unknown>[], tarballBuffer?: Buffer): Promise<ArtifactMetadata[]> {
     const results: ArtifactMetadata[] = [];
 
     for (const artifact of artifacts) {
@@ -206,13 +202,27 @@ export class ArtifactRegistry {
         console.warn(`[ArtifactRegistry] Validation warnings for ${type}@${artifactPath}:`, errors);
       }
 
-      // Create metadata from the declaration (without tarball extraction for now)
-      results.push({
-        type,
-        path: artifactPath,
-        description: (artifact["description"] as string) ?? undefined,
-        details: { ...artifact },
-      });
+      let extracted: ArtifactMetadata | null = null;
+      if (tarballBuffer && typeof handler.extractMetadata === "function") {
+        try {
+          extracted = await handler.extractMetadata(tarballBuffer, artifactPath);
+        } catch {}
+      }
+
+      if (extracted) {
+        results.push({
+          ...extracted,
+          description: (artifact["description"] as string) ?? extracted.description,
+          details: { ...extracted.details, ...artifact },
+        });
+      } else {
+        results.push({
+          type,
+          path: artifactPath,
+          description: (artifact["description"] as string) ?? undefined,
+          details: { ...artifact },
+        });
+      }
     }
 
     return results;

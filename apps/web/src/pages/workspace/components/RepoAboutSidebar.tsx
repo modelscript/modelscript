@@ -35,21 +35,21 @@ export const RepoAboutSidebar: React.FC<RepoAboutSidebarProps> = ({ repo }) => {
         <Box display="flex" alignItems="center" gap={2} mb={3}>
           <StarIcon fill="var(--color-fg-muted)" />
           <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
-            {(repo as any).star_count ?? "9.3k"}
+            {(repo as any).star_count ?? 0}
           </Text>{" "}
           <Text color="var(--color-fg-muted)">stars</Text>
         </Box>
         <Box display="flex" alignItems="center" gap={2} mb={3}>
           <EyeIcon fill="var(--color-fg-muted)" />
           <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
-            {(repo as any).watchers_count ?? "198"}
+            {(repo as any).watchers_count ?? 0}
           </Text>{" "}
           <Text color="var(--color-fg-muted)">watching</Text>
         </Box>
         <Box display="flex" alignItems="center" gap={2} mb={3}>
           <RepoForkedIcon fill="var(--color-fg-muted)" />
           <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
-            {(repo as any).forks_count ?? "736"}
+            {(repo as any).forks_count ?? 0}
           </Text>{" "}
           <Text color="var(--color-fg-muted)">forks</Text>
         </Box>

@@ -36,7 +36,7 @@ export interface AccountTabProps {
 }
 
 export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onBack }) => {
-  const { user, isAdmin, updateToken } = useAuth();
+  const { user, isAdmin, updateToken, refreshUser } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -110,7 +110,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         avatar_url: avatarUrl || undefined,
         banner_url: bannerUrl || undefined,
       });
-      setSuccess("Account updated successfully! Please refresh to see all changes.");
+      await refreshUser();
+      setSuccess("Account updated successfully!");
     } catch (err: any) {
       setError(err.response?.data?.error || "Update failed");
     } finally {

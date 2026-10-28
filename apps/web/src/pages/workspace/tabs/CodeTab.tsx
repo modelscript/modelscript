@@ -22,6 +22,7 @@ import { getGitlabCommits, getGitlabFileRaw, getGitlabTree } from "../../../api"
 import Box from "../../../components/Box";
 import CloudSimulationModal from "../../../components/CloudSimulationModal";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { useTheme } from "../../../theme";
 import CommitInfoBar from "../components/CommitInfoBar";
 import RepoAboutSidebar from "../components/RepoAboutSidebar";
 import { FileRow, MarkdownBody, StyledBox } from "../styles";
@@ -45,7 +46,9 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
   const [showCloudSim, setShowCloudSim] = useState(false);
   const [copiedClone, setCopiedClone] = useState(false);
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const { theme } = useTheme();
   const navigate = useNavigate();
+  const cloneUrl = `${typeof window !== "undefined" ? window.location.origin : "https://modelscript.org"}/git/${repo.path_with_namespace || repo.name}.git`;
 
   useEffect(() => {
     async function load() {
@@ -120,13 +123,16 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
                 Quick setup — if you've done this kind of thing before
               </Heading>
               <Box mb={4} display="flex" gap={2}>
-                <TextInput
-                  value={`https://modelscript.com/${repo.path_with_namespace}.git`}
-                  readOnly
-                  block
-                  style={{ fontFamily: "monospace" }}
-                />
-                <Button>Copy</Button>
+                <TextInput value={cloneUrl} readOnly block style={{ fontFamily: "monospace" }} />
+                <Button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(cloneUrl);
+                    setCopiedClone(true);
+                    setTimeout(() => setCopiedClone(false), 2000);
+                  }}
+                >
+                  {copiedClone ? "Copied!" : "Copy"}
+                </Button>
               </Box>
 
               <Text
@@ -153,7 +159,7 @@ git init
 git add README.md
 git commit -m "first commit"
 git branch -M main
-git remote add origin https://modelscript.com/${repo.path_with_namespace}.git
+git remote add origin ${cloneUrl}
 git push -u origin main`}
                 </pre>
               </Box>
@@ -176,7 +182,7 @@ git push -u origin main`}
                 style={{ border: "1px solid var(--color-border-default)", overflowX: "auto" }}
               >
                 <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", lineHeight: "1.5" }}>
-                  {`git remote add origin https://modelscript.com/${repo.path_with_namespace}.git
+                  {`git remote add origin ${cloneUrl}
 git branch -M main
 git push -u origin main`}
                 </pre>
@@ -391,9 +397,7 @@ git push -u origin main`}
                   </ActionList.Item>
                   <ActionList.Item
                     onSelect={() => {
-                      navigator.clipboard?.writeText(
-                        `https://modelscript.com/${repo.path_with_namespace || repo.name}.git`,
-                      );
+                      navigator.clipboard?.writeText(cloneUrl);
                       setCopiedClone(true);
                       setTimeout(() => setCopiedClone(false), 2000);
                     }}
@@ -466,7 +470,7 @@ git push -u origin main`}
                   <Editor
                     height="100%"
                     language={getLanguageFromFileName(currentFile)}
-                    theme="vs-dark"
+                    theme={theme === "dark" ? "vs-dark" : "light"}
                     value={fileContent}
                     options={{
                       readOnly: true,

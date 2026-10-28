@@ -21,8 +21,9 @@ const orchestrators = new Map<string, Orchestrator>();
 /**
  * Create the co-simulation router.
  * @param mqttClient  Optional MQTT client (null in environments without MQTT broker)
+ * @param storage     Optional shared FmuStorage instance
  */
-export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router {
+export function cosimRouter(mqttClient: CosimMqttClient | null, storage: FmuStorage = fmuStorage): express.Router {
   const router = express.Router();
 
   // ── Session Management ──
@@ -63,7 +64,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
             .json({ error: "Missing SSP archive payload (send binary ZIP or JSON with base64 data)" });
         }
 
-        const { session, system, fmuIds, warnings } = importSsp(buffer, fmuStorage);
+        const { session, system, fmuIds, warnings } = importSsp(buffer, storage);
 
         // Enroll participants for each imported FMU
         for (const [componentName, fmuId] of fmuIds.entries()) {
@@ -71,7 +72,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
             const participant = new FmuJsParticipant({
               id: componentName,
               fmuId,
-              storage: fmuStorage,
+              storage,
             });
             session.addParticipant(participant);
           } catch (err: unknown) {
@@ -175,7 +176,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
       const participant = new FmuJsParticipant({
         id: pid,
         fmuId,
-        storage: fmuStorage,
+        storage,
       });
       session.addParticipant(participant);
       res.status(201).json({
@@ -293,7 +294,7 @@ export function cosimRouter(mqttClient: CosimMqttClient | null): express.Router 
     orchestrators.set(session.sessionId, orchestrator);
 
     // Run asynchronously — don't await
-    void orchestrator.run();
+    void orchestrator.run().catch((err: unknown) => console.error("[cosim] Orchestrator run failed:", err));
 
     res.json({ ok: true, state: "initializing", sessionId: session.sessionId });
     return;

@@ -285,6 +285,9 @@ export class CaeSolverRunner {
     if (spec.solver === "su2" && this.isExecutableInPath("SU2_CFD")) {
       return { command: "SU2_CFD", args: [deckFileName], simulatedFallback: false };
     }
+    if (spec.solver === "openfoam" && this.isExecutableInPath("simpleFoam")) {
+      return { command: "simpleFoam", args: [], simulatedFallback: false };
+    }
 
     // Built-in synthetic fallback runner for CI / local test
     const scriptPath = path.join(tmpDir, "fallback_runner.cjs");

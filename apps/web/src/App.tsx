@@ -220,6 +220,25 @@ function PreserveParamsNavigate({ to }: { to: string }) {
   return <Navigate to={`${to}${location.search}${location.hash}`} replace />;
 }
 
+function IdeFallbackNavigate() {
+  const location = useLocation();
+  const params = useParams<{
+    templateId?: string | undefined;
+    provider?: string | undefined;
+    namespace?: string | undefined;
+    project?: string | undefined;
+  }>();
+  const searchParams = new URLSearchParams(location.search);
+  if (params.templateId && !searchParams.has("template")) {
+    searchParams.set("template", params.templateId);
+  }
+  if (params.provider && params.namespace && params.project && !searchParams.has("repo")) {
+    searchParams.set("repo", `${params.provider}/${params.namespace}/${params.project}`);
+  }
+  const qs = searchParams.toString();
+  return <Navigate to={`/playground${qs ? `?${qs}` : ""}${location.hash}`} replace />;
+}
+
 /**
  * Core ModelScript Hub React router and layout shell.
  */
@@ -306,20 +325,14 @@ function App() {
                     <Route path="/packages/:scope/:name/:version/classes/:className" element={<ClassDetailPage />} />
 
                     {/* ModelScript IDE Workbench */}
-                    <Route
-                      path="/ide"
-                      element={hasIde ? <IdeWorkspacePage /> : <PreserveParamsNavigate to="/playground" />}
-                    />
-                    <Route
-                      path="/ide/:templateId"
-                      element={hasIde ? <IdeWorkspacePage /> : <PreserveParamsNavigate to="/playground" />}
-                    />
+                    <Route path="/ide" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
+                    <Route path="/ide/:templateId" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
 
                     {/* Repositories */}
                     <Route path="/repos" element={<RepositoryListPage />} />
                     <Route
                       path="/repos/:provider/:namespace/:project/ide"
-                      element={hasIde ? <IdeWorkspacePage /> : <PreserveParamsNavigate to="/playground" />}
+                      element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
                     />
                     <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
 

@@ -81,7 +81,12 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
       const decompressed = pako.inflate(bytes, { to: "string" });
       const parsed = JSON.parse(decompressed);
       if (parsed && typeof parsed.code === "string") {
-        return parsed as CompressedMorselPayload;
+        const resolvedDialect = parsed.dialect ?? parsed.lang ?? "modelica";
+        return {
+          ...parsed,
+          lang: parsed.lang ?? resolvedDialect,
+          dialect: resolvedDialect,
+        } as CompressedMorselPayload;
       }
     } catch (err) {
       console.warn("Failed to decompress Morsel payload:", err);
@@ -95,6 +100,7 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
       return {
         v: 1,
         lang: "modelica",
+        dialect: "modelica",
         code,
       };
     } catch (err) {
@@ -110,11 +116,29 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
         return {
           v: 1,
           lang: "modelica",
+          dialect: "modelica",
           code: dataUrl.data,
         };
       }
     } catch (err) {
       console.warn("Failed to parse data URL:", err);
+    }
+  }
+
+  // 4. Support #<dialect>=<encoded> for any supported dialect
+  const dialectMatch = /^([a-z0-9_-]+)=([\s\S]+)$/i.exec(cleaned);
+  if (dialectMatch && dialectMatch[1] && dialectMatch[1].toLowerCase() !== "m") {
+    try {
+      const dialect = dialectMatch[1].toLowerCase();
+      const code = decodeURIComponent(dialectMatch[2]!);
+      return {
+        v: 1,
+        lang: dialect,
+        dialect,
+        code,
+      };
+    } catch (err) {
+      console.warn(`Failed to decode #${dialectMatch[1]} URL:`, err);
     }
   }
 

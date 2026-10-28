@@ -3,7 +3,8 @@
 export function getAvatarUrl(username: string, originalUrl?: string): string {
   if (originalUrl) {
     try {
-      const hostname = new URL(originalUrl).hostname;
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://modelscript.org";
+      const hostname = new URL(originalUrl, baseUrl).hostname;
       if (hostname !== "ui-avatars.com" && !hostname.endsWith(".ui-avatars.com")) {
         return originalUrl;
       }

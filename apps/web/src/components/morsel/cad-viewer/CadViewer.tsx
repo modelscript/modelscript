@@ -388,14 +388,6 @@ function SceneContents({
     onSelect?.(null);
   }, [onSelect]);
 
-  useEffect(() => {
-    gl.domElement.addEventListener("pointerdown", (e) => {
-      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
-        // Will be caught by mesh onClick or pointerMissed
-      }
-    });
-  }, [gl]);
-
   return (
     <>
       {/* Lighting */}

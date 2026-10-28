@@ -8,6 +8,7 @@ export interface ComposeInitialState {
   editPostId?: number | null | undefined;
   replyToPostId?: number | null | undefined;
   content?: string | undefined;
+  initialContent?: string | undefined;
   defaultText?: string | undefined;
   artifactId?: number | null | undefined;
   artifactViewId?: number | null | undefined;

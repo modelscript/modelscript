@@ -31,6 +31,8 @@ const TemplateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [template, setTemplate] = useState<ScriptTemplate | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   usePageTitle(template ? template.name : "Template Details");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,10 +43,28 @@ const TemplateDetailPage: React.FC = () => {
   const focusRef = useRef(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      setLoadError("Template ID is missing.");
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
     getJobTemplate(id)
-      .then((data) => setTemplate(data.template))
-      .catch(console.error);
+      .then((data) => {
+        if (data?.template) {
+          setTemplate(data.template);
+        } else {
+          setLoadError(`Template #${id} not found.`);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoadError(err?.response?.data?.error || err?.message || `Failed to load template #${id}.`);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [id]);
 
   const handleRun = async () => {
@@ -71,10 +91,27 @@ const TemplateDetailPage: React.FC = () => {
     }
   };
 
-  if (!template) {
+  if (loading) {
     return (
-      <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+      <Box display="flex" alignItems="center" justifyContent="center" height="100%" p={5}>
         <Text color="var(--color-fg-muted)">Loading...</Text>
+      </Box>
+    );
+  }
+
+  if (loadError || !template) {
+    return (
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="center"
+        justifyContent="center"
+        height="100%"
+        p={5}
+        gap={3}
+      >
+        <Flash variant="danger">{loadError || "Template not found."}</Flash>
+        <Button onClick={() => navigate("/jobs")}>Back to Cloud Jobs</Button>
       </Box>
     );
   }

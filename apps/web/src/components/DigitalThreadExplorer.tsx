@@ -9,6 +9,7 @@ import {
   type ClassSummary,
   type ThreadAuditLogDto,
   type ThreadProposalDto,
+  api,
   createThreadProposal,
   getThreadAuditLogs,
   getThreadProposals,
@@ -257,7 +258,11 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
       const updated = await reviewThreadProposal(reviewDialogProposal.id, {
         status: reviewAction,
         ...(reviewComment.trim() ? { comment: reviewComment.trim() } : {}),
-        safetyStandard: "ISO-26262",
+        safetyStandard:
+          reviewDialogProposal.safety_standard ||
+          (reviewDialogProposal as any).safetyStandard ||
+          propSafetyStandard ||
+          "ISO-26262",
       });
       setProposals((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setReviewDialogProposal(null);
@@ -427,8 +432,18 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
       <CreateSemanticLinkModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onSave={(newTwin) => {
-          setCustomTwins((prev) => [newTwin, ...prev]);
+        onSave={async (newTwin) => {
+          try {
+            const res = await api.post("/threads/links", {
+              packageName,
+              packageVersion: resolvedVersion,
+              link: newTwin,
+            });
+            const savedTwin = res.data?.link || newTwin;
+            setCustomTwins((prev) => [savedTwin, ...prev]);
+          } catch {
+            setCustomTwins((prev) => [newTwin, ...prev]);
+          }
           setIsCreateModalOpen(false);
         }}
         packageName={packageName}

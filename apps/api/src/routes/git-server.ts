@@ -8,7 +8,7 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
-import { JWT_SECRET } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
 
 function pktLine(str: string): Buffer {
   const length = Buffer.byteLength(str) + 4;
@@ -67,7 +67,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         const password = credentials.slice(sepIndex + 1);
 
         const user = database.getUserByUsername(username) || database.getUserByEmail(username);
-        if (!user) return { user: null };
+        if (!user || isAccountBlocked(user.status)) return { user: null };
 
         const passwordHash = database.getPasswordHash(user.id);
         if (passwordHash && bcrypt.compareSync(password, passwordHash)) {
@@ -75,8 +75,22 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         }
 
         try {
-          const decoded = jwt.verify(password, JWT_SECRET) as { id?: number | undefined } | string;
-          if (typeof decoded === "object" && decoded !== null && decoded.id === user.id) {
+          const decoded = jwt.verify(password, JWT_SECRET) as
+            | {
+                id?: number | undefined;
+                scope?: string | undefined;
+                purpose?: string | undefined;
+                tokenVersion?: number | undefined;
+              }
+            | string;
+          if (
+            typeof decoded === "object" &&
+            decoded !== null &&
+            decoded.id === user.id &&
+            decoded.scope !== "2fa_challenge" &&
+            decoded.purpose !== "2fa_challenge" &&
+            (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)
+          ) {
             return { user };
           }
         } catch {
@@ -88,16 +102,44 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     } else if (authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.slice(7);
-        const decoded = jwt.verify(token, JWT_SECRET) as { id?: number | undefined } | string;
-        if (typeof decoded === "object" && decoded !== null && decoded.id) {
+        const decoded = jwt.verify(token, JWT_SECRET) as
+          | {
+              id?: number | undefined;
+              scope?: string | undefined;
+              purpose?: string | undefined;
+              tokenVersion?: number | undefined;
+            }
+          | string;
+        if (
+          typeof decoded === "object" &&
+          decoded !== null &&
+          decoded.id &&
+          decoded.scope !== "2fa_challenge" &&
+          decoded.purpose !== "2fa_challenge"
+        ) {
           const user = database.getUserById(decoded.id);
-          return { user: user ?? null };
+          if (user && !isAccountBlocked(user.status) && (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)) {
+            return { user };
+          }
+          return { user: null };
         }
       } catch {
         return { user: null };
       }
     }
     return { user: null };
+  }
+
+  function isAuthorizedToPush(
+    user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>,
+    namespace: string,
+  ): boolean {
+    if (process.env["NODE_ENV"] !== "production") {
+      return true;
+    }
+    const cleanNs = namespace.toLowerCase();
+    const isAdmin = user.account_type === "admin" || (user as { role?: string | undefined }).role === "admin";
+    return user.username.toLowerCase() === cleanNs || isAdmin;
   }
 
   function ensureBareRepo(repoPath: string): void {
@@ -136,6 +178,10 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       if (!user) {
         res.setHeader("WWW-Authenticate", 'Basic realm="ModelScript Git"');
         res.status(401).send("Authentication required for push");
+        return;
+      }
+      if (!isAuthorizedToPush(user, namespace)) {
+        res.status(403).send("Forbidden: Insufficient permissions to push to this namespace");
         return;
       }
       // Auto-create bare repository if pushing to user's namespace or organization
@@ -210,6 +256,10 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     if (!user) {
       res.setHeader("WWW-Authenticate", 'Basic realm="ModelScript Git"');
       res.status(401).send("Authentication required for push");
+      return;
+    }
+    if (!isAuthorizedToPush(user, namespace)) {
+      res.status(403).send("Forbidden: Insufficient permissions to push to this namespace");
       return;
     }
 

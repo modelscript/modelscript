@@ -37,7 +37,12 @@ const viewedPostIds = new Set<number>();
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
-  const displayPost = post.repost_post || post;
+  const basePost = post.repost_post || post;
+  const [editedOverrides, setEditedOverrides] = useState<Record<string, any>>({});
+  useEffect(() => {
+    setEditedOverrides({});
+  }, [basePost.id, basePost.content]);
+  const displayPost = useMemo(() => ({ ...basePost, ...editedOverrides }), [basePost, editedOverrides]);
   const canEditPost = Boolean(
     token && user && (user.username === displayPost.username || (user as any)?.role === "admin"),
   );
@@ -96,17 +101,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     return null;
   }, [displayPost.url, displayPost.ap_id]);
 
-  const hasSignature = Boolean(
-    displayPost.client_signature ||
-    displayPost.metadata?.client_signature ||
-    displayPost.metadata?.clientSignature ||
-    displayPost.metadata?.proof ||
-    displayPost.key_id_string ||
-    displayPost.metadata?.key_id_string ||
-    displayPost.metadata?.keyIdString,
-  );
-
   const signatureDigest =
+    (displayPost as any).signature ||
     displayPost.client_signature ||
     displayPost.metadata?.client_signature ||
     displayPost.metadata?.clientSignature ||
@@ -114,6 +110,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     displayPost.metadata?.proof?.signature ||
     displayPost.metadata?.signature ||
     "";
+
+  const hasSignature = Boolean(signatureDigest);
 
   const signatureScheme = displayPost.metadata?.proof?.cryptosuite
     ? `Data Integrity (${displayPost.metadata.proof.cryptosuite})`
@@ -328,6 +326,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           initialState={{
             editPostId: displayPost.id,
             content: displayPost.content,
+            initialContent: displayPost.content,
             artifactId: displayPost.artifact_view_id,
             notebookMode: isNotebook,
             notebookTitle: notebookData?.title || "",
@@ -339,9 +338,15 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             notebookCells: notebookData?.cells,
           }}
           onClose={() => setShowEditModal(false)}
-          onPostCreated={() => {
+          onPostCreated={(updatedPost) => {
             setShowEditModal(false);
-            window.location.reload();
+            if (updatedPost && typeof updatedPost === "object") {
+              setEditedOverrides((prev) => ({
+                ...prev,
+                ...updatedPost,
+                content: updatedPost.content ?? prev.content ?? displayPost.content,
+              }));
+            }
           }}
         />
       )}

@@ -33,8 +33,7 @@ export function isPrivateIp(ip: string): boolean {
       lower === "::1" ||
       lower === "::" ||
       lower.startsWith("fe80:") || // link-local
-      lower.startsWith("fc00:") || // unique local
-      lower.startsWith("fd00:") || // unique local
+      /^f[cd][0-9a-f]{1,2}:/i.test(lower) || // unique local fc00::/7
       lower.startsWith("ff00:") || // multicast
       lower.startsWith("2001:db8:") // documentation
     ) {

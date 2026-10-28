@@ -56,7 +56,7 @@ function playNotificationChime(): void {
  * actionable in-app Toast notifications.
  */
 export const RealtimeNotificationListener: React.FC = () => {
-  const { token, unreadCount } = useAuth();
+  const { token, unreadCount, refreshUnreadCount } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const seenIdsRef = useRef<Set<number>>(new Set());
@@ -92,6 +92,7 @@ export const RealtimeNotificationListener: React.FC = () => {
 
             const meta = notif.metadata || {};
             const type = notif.type;
+            const actorHandle = notif.actor_username ? `@${notif.actor_username}` : "Someone";
 
             if (type === "simulation_completed") {
               const modelName = meta.name || "Simulation";
@@ -113,6 +114,18 @@ export const RealtimeNotificationListener: React.FC = () => {
             } else if (type === "credit_warning") {
               const bal = meta.balance !== undefined ? ` (Balance: ${meta.balance} credits)` : "";
               toast.warning(`Compute wallet balance threshold warning${bal}.`, "Compute Quota");
+            } else if (type === "like") {
+              toast.info(`${actorHandle} liked your post.`, "New Like");
+            } else if (type === "reply") {
+              toast.info(`${actorHandle} replied to your post.`, "New Reply");
+            } else if (type === "repost") {
+              toast.info(`${actorHandle} reposted your post.`, "New Repost");
+            } else if (type === "follow") {
+              toast.info(`${actorHandle} started following you.`, "New Follower");
+            } else if (type === "mention") {
+              toast.info(`${actorHandle} mentioned you in a post.`, "New Mention");
+            } else if (type === "quote") {
+              toast.info(`${actorHandle} quoted your post.`, "New Quote");
             }
           }
         }
@@ -122,7 +135,18 @@ export const RealtimeNotificationListener: React.FC = () => {
     }
 
     void checkNewNotifications();
-  }, [token, unreadCount, toast, navigate]);
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshUnreadCount();
+        void checkNewNotifications();
+      }
+    }, 30000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [token, unreadCount, refreshUnreadCount, toast, navigate]);
 
   return null;
 };

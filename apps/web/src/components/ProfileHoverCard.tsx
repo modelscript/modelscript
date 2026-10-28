@@ -3,7 +3,7 @@
 /* eslint-disable */
 import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { blockUser, followUser, getUserProfile, unblockUser, unfollowUser } from "../api";
@@ -142,8 +142,17 @@ export default function ProfileHoverCard({
   const [isBlocked, setIsBlocked] = useState(false);
   const [showUnblockModal, setShowUnblockModal] = useState(false);
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   React.useEffect(() => {
     setData(null);
@@ -182,7 +191,11 @@ export default function ProfileHoverCard({
   const handleFollowToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!user || isBlocked) return;
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    if (isBlocked) return;
 
     try {
       const json = isFollowing ? await unfollowUser(username) : await followUser(username);

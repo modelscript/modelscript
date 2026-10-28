@@ -13,11 +13,45 @@ import type {
   GitTreeItem,
   IGitProvider,
 } from "../interfaces/git-provider.js";
+import { assertSafePublicUrl } from "./ssrf.js";
 
 const CACHE_DIR = process.env["GIT_CACHE_DIR"] || path.join(os.tmpdir(), "modelscript-git-cache");
 
+function hasControlChar(str: string): boolean {
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if ((code >= 0 && code <= 31) || code === 127) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sanitizeGitRef(ref: string): string {
+  const clean = (ref || "HEAD").trim();
+  if (!clean || clean.startsWith("-") || clean.includes("..") || hasControlChar(clean) || /[~^:?*[\\]/.test(clean)) {
+    throw new Error("Invalid git reference");
+  }
+  return clean;
+}
+
+function sanitizeGitSubpath(subpath: string): string {
+  const clean = (subpath || "").trim().replace(/^\/+/, "");
+  if (clean.startsWith("-") || clean.includes("..") || hasControlChar(clean)) {
+    throw new Error("Invalid repository file path");
+  }
+  return clean;
+}
+
 export class LocalGitProvider implements IGitProvider {
   private async getRepoPath(url: string): Promise<string> {
+    if (url.startsWith("-") || hasControlChar(url)) {
+      throw new Error("Invalid git repository URL");
+    }
+    if (/^https?:\/\//i.test(url) && process.env["NODE_ENV"] === "production") {
+      assertSafePublicUrl(url);
+    }
+
     await fs.mkdir(CACHE_DIR, { recursive: true });
 
     // Hash the URL or use a safe folder name
@@ -36,7 +70,7 @@ export class LocalGitProvider implements IGitProvider {
       await localGit.fetch(["--all"]);
     } catch {
       // If not, clone bare repo
-      await git.clone(url, repoPath, ["--bare"]);
+      await git.clone(url, repoPath, ["--bare", "--"]);
     }
 
     return repoPath;
@@ -52,11 +86,13 @@ export class LocalGitProvider implements IGitProvider {
   }
 
   async getRepositoryTree(idOrUrl: string, ref = "HEAD", treePath = ""): Promise<GitTreeItem[]> {
+    const safeRef = sanitizeGitRef(ref);
+    const safeTreePath = sanitizeGitSubpath(treePath);
     const repoPath = await this.getRepoPath(idOrUrl);
     const git = simpleGit(repoPath);
 
     // Use ls-tree
-    const targetPath = treePath ? `${ref}:${treePath}` : ref;
+    const targetPath = safeTreePath ? `${safeRef}:${safeTreePath}` : safeRef;
     const output = await git.raw(["ls-tree", targetPath]);
 
     const items: GitTreeItem[] = [];
@@ -71,7 +107,7 @@ export class LocalGitProvider implements IGitProvider {
             id,
             name,
             type: type as "tree" | "blob" | "commit",
-            path: treePath ? `${treePath}/${name}` : name,
+            path: safeTreePath ? `${safeTreePath}/${name}` : name,
             mode: mode as string,
           });
         }
@@ -82,16 +118,19 @@ export class LocalGitProvider implements IGitProvider {
   }
 
   async getRepositoryFileRaw(idOrUrl: string, filePath: string, ref = "HEAD"): Promise<string> {
+    const safeRef = sanitizeGitRef(ref);
+    const safeFilePath = sanitizeGitSubpath(filePath);
     const repoPath = await this.getRepoPath(idOrUrl);
     const git = simpleGit(repoPath);
-    return git.show([`${ref}:${filePath}`]);
+    return git.show([`${safeRef}:${safeFilePath}`]);
   }
 
   async getCommits(idOrUrl: string, refName = "HEAD"): Promise<GitCommitItem[]> {
+    const safeRefName = sanitizeGitRef(refName);
     const repoPath = await this.getRepoPath(idOrUrl);
     const git = simpleGit(repoPath);
 
-    const log = await git.log([refName]);
+    const log = await git.log([safeRefName]);
 
     return log.all.map((c) => ({
       id: c.hash,

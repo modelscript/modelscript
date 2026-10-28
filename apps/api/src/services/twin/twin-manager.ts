@@ -452,6 +452,19 @@ export class TwinManager {
     const severity: "low" | "medium" | "high" =
       rawSeverity === "low" || rawSeverity === "high" ? rawSeverity : "medium";
 
+    const driftMagnitude = driftEvent?.magnitude ?? 1.5;
+    const estimatedDamage = Math.min(0.95, Math.max(0.05, 1 - session.healthScore / 100));
+    const rulForecast = session.rulPredictor.predictRul(
+      estimatedDamage,
+      343.15 + Math.max(0, driftMagnitude) * 2,
+      Math.max(0.05, Math.abs(driftMagnitude) * 0.1),
+    );
+    const rulMedianHours = rulForecast.rulP50 / 3600;
+    const computedRulHours =
+      Number.isFinite(rulMedianHours) && rulMedianHours > 0
+        ? Math.round(rulMedianHours * 10) / 10
+        : Math.max(10, Math.round((500 / Math.max(0.1, Math.abs(driftMagnitude))) * 10) / 10);
+
     await notifier.notifyDriftAndOpenProposal({
       twinId,
       twinName: session.name,
@@ -459,14 +472,14 @@ export class TwinManager {
       modelicaClass: session.modelicaClass,
       channel: session.config.channels[0] ?? "T",
       direction: driftEvent?.direction ?? "positive",
-      magnitude: driftEvent?.magnitude ?? 1.5,
+      magnitude: driftMagnitude,
       score: alertScore,
       severity,
       timestamp: range.endTime,
       calibratedParameters: result.calibratedParameters,
       parameterDeltas: result.parameterDeltas,
       healthScore: session.healthScore,
-      rulHours: 340.0,
+      rulHours: computedRulHours,
       adaptationId,
     });
 

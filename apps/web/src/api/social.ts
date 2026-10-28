@@ -253,12 +253,37 @@ export const createRepo = async (repoData: Record<string, any>): Promise<any> =>
 export const getSearchCompletions = async (
   query: string,
   limit = 6,
-): Promise<{ suggestions?: any[] | undefined; completions?: any[] | undefined }> => {
+): Promise<{ suggestions?: any[] | undefined; completions?: any[] | undefined; posts?: any[] | undefined }> => {
   const { data } = await api.get("/search/completions", { params: { q: query, limit } });
   return data;
 };
 
+export const searchPosts = async (query: string, limit = 30): Promise<{ posts: any[] }> => {
+  try {
+    const { data } = await api.get("/social/explore", { params: { q: query, limit } });
+    if (Array.isArray(data?.posts)) {
+      return { posts: data.posts };
+    }
+  } catch {
+    // Fall through to completions fallback
+  }
+  try {
+    const { data } = await api.get("/search/completions", { params: { q: query, limit } });
+    if (Array.isArray(data?.posts)) {
+      return { posts: data.posts };
+    }
+  } catch {
+    // Ignore search failure
+  }
+  return { posts: [] };
+};
+
 export const resolveFederatedActor = async (handle: string): Promise<any> => {
   const { data } = await api.post("/federation/resolve", { handle });
+  return data;
+};
+
+export const deletePost = async (id: number | string): Promise<any> => {
+  const { data } = await api.delete(`/social/posts/${id}`);
   return data;
 };

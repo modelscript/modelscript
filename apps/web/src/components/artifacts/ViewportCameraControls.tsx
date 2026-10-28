@@ -14,11 +14,17 @@ interface ViewportCameraControlsProps {
   onTogglePinMode?: (() => void) | undefined;
   isWireframe?: boolean | undefined;
   onToggleWireframe?: ((wireframe: boolean) => void) | undefined;
+  topOffset?: string | number | undefined;
 }
 
-const ControlsContainer = styled.div`
+const ControlsContainer = styled.div<{ $topOffset?: string | number | undefined }>`
   position: absolute;
-  top: 12px;
+  top: ${(props) =>
+    props.$topOffset !== undefined
+      ? typeof props.$topOffset === "number"
+        ? `${props.$topOffset}px`
+        : props.$topOffset
+      : "12px"};
   left: 12px;
   z-index: 10;
   display: flex;
@@ -67,9 +73,10 @@ export const ViewportCameraControls: React.FC<ViewportCameraControlsProps> = ({
   onTogglePinMode,
   isWireframe,
   onToggleWireframe,
+  topOffset,
 }) => {
   return (
-    <ControlsContainer onClick={(e) => e.stopPropagation()}>
+    <ControlsContainer $topOffset={topOffset} onClick={(e) => e.stopPropagation()}>
       <PresetButton onClick={() => onPresetSelect("iso")} title="Isometric perspective view">
         ISO
       </PresetButton>

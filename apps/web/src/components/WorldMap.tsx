@@ -465,7 +465,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
   }, [regionData]);
 
   const updateTooltipPosition = (e: React.MouseEvent) => {
-    const container = e.currentTarget.closest("div")?.parentElement;
+    const container = e.currentTarget.closest("svg")?.parentElement;
     if (container) {
       const rect = container.getBoundingClientRect();
       const x = e.clientX - rect.left;

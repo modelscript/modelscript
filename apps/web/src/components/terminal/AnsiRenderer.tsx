@@ -98,7 +98,7 @@ export function renderSpan(span: StyledSpan, index: number): React.ReactNode {
   // Tokenize plain segments: e.g. [publish], ✔, ERR, (342ms), @scope/pkg
   const text = span.text;
   const tagRegex =
-    /(\[[a-zA-Z0-9_-]+\]|✔|✖|⚠|ERR|Error|failed|completed|done|\(\d+(\.\d+)?ms\)|@[\w-]+\/[\w-]+@[\d.]+|[\w-]+\.(wasm|mo|sysml|step|json|db|zip))/g;
+    /(\[[a-zA-Z0-9_-]+\]|✔|✖|⚠|ERR|Error|failed|completed|done|\(\d+(?:\.\d+)?ms\)|@[\w-]+\/[\w-]+@[\d.]+|[\w-]+\.(?:wasm|mo|sysml|step|json|db|zip))/g;
 
   const parts = text.split(tagRegex);
   if (parts.length === 1) {

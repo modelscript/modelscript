@@ -44,8 +44,17 @@ async function processQueue(): Promise<void> {
   isProcessingQueue = false;
 }
 
+const MAX_THUMBNAIL_QUEUE = 100;
+
 export function generateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
   if (process.env["NODE_ENV"] === "test") {
+    return Promise.resolve(null);
+  }
+  if (!Number.isSafeInteger(artifactId) || artifactId <= 0) {
+    return Promise.resolve(null);
+  }
+  if (queue.length >= MAX_THUMBNAIL_QUEUE) {
+    console.warn(`[Thumbnail Worker] Queue full (${MAX_THUMBNAIL_QUEUE}), dropping thumbnail task for ${artifactId}`);
     return Promise.resolve(null);
   }
   return new Promise((resolve) => {

@@ -76,7 +76,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 
         {fromArtifactParam && (
           <Link
-            to={`/home?artifact=${fromArtifactParam}`}
+            to={`/render-artifact/${fromArtifactParam}`}
             style={{
               display: "inline-flex",
               alignItems: "center",

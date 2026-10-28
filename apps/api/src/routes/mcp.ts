@@ -7,8 +7,10 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import jwt from "jsonwebtoken";
 import type { LibraryDatabase } from "../database.js";
-import { JWT_SECRET } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+
+const MAX_MCP_SESSIONS = 200;
 
 interface ActiveSession {
   transport: SSEServerTransport;
@@ -34,14 +36,31 @@ export function mcpRouter(database: LibraryDatabase): Router {
       if (token.startsWith("ms_bot_")) {
         const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
         const botUser = database.getUserByBotTokenHash(tokenHash);
-        if (botUser) return botUser.id;
+        if (botUser && !isAccountBlocked(botUser.status)) return botUser.id;
+        return null;
       }
       try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { id?: number | undefined } | string;
-        if (typeof decoded === "object" && decoded !== null && decoded.id) {
+        const decoded = jwt.verify(token, JWT_SECRET) as
+          | {
+              id?: number | undefined;
+              scope?: string | undefined;
+              purpose?: string | undefined;
+              tokenVersion?: number | undefined;
+            }
+          | string;
+        if (
+          typeof decoded === "object" &&
+          decoded !== null &&
+          decoded.id &&
+          decoded.scope !== "2fa_challenge" &&
+          decoded.purpose !== "2fa_challenge"
+        ) {
           const u = database.getUserById(decoded.id);
-          if (u) return u.id;
+          if (u && !isAccountBlocked(u.status) && (decoded.tokenVersion ?? 1) === (u.token_version ?? 1)) {
+            return u.id;
+          }
         }
+        return null;
       } catch {
         return null;
       }
@@ -58,6 +77,13 @@ export function mcpRouter(database: LibraryDatabase): Router {
         error: "Unauthorized",
         message:
           "Valid authentication token required to connect to hosted MCP gateway. Pass Authorization header or '?token=<token>'.",
+      });
+      return;
+    }
+
+    if (sessions.size >= MAX_MCP_SESSIONS) {
+      res.status(429).json({
+        error: "Too many active MCP sessions. Please close unused connections and try again.",
       });
       return;
     }

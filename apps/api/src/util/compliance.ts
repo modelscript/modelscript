@@ -91,54 +91,82 @@ export function isOfacSanctioned(countryCode?: string | null, regionCode?: strin
 export const isExportRestricted = isOfacSanctioned;
 
 export function extractRequestCountry(req: Request): string | undefined {
-  const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
-  if (cfCountry && cfCountry !== "XX" && cfCountry !== "T1") {
-    return cfCountry.toUpperCase();
-  }
-
-  const customCountry =
-    (req.headers["x-country-code"] as string | undefined) ||
-    (req.headers["x-client-geo-country"] as string | undefined);
-  if (customCountry) {
-    return customCountry.toUpperCase().trim();
-  }
+  const isProd = process.env["NODE_ENV"] === "production";
+  const trustGeoHeaders = !isProd || process.env["TRUST_GEO_HEADERS"] === "true";
+  const trustCloudflare = !isProd || process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" || trustGeoHeaders;
 
   const user = (req as Request & { user?: { id?: number | undefined; country?: string | undefined } | undefined }).user;
-  if (user?.country) {
-    return String(user.country).toUpperCase().trim();
-  }
+  const userCountry = user?.country ? String(user.country).toUpperCase().trim() : undefined;
 
-  // Fallback to IP geolocation via locationService if available
+  let geoIpCountry: string | undefined;
   try {
     const ip = locationService.extractIp(req);
     const loc = locationService.lookupIp(ip);
     if (loc?.countryCode) {
-      return loc.countryCode.toUpperCase().trim();
+      geoIpCountry = loc.countryCode.toUpperCase().trim();
     }
   } catch {
     // Ignore location lookup error
   }
 
-  return undefined;
+  // If authenticated user country or server-side GeoIP indicates a sanctioned jurisdiction, never allow client headers to override it
+  if (userCountry && isOfacSanctioned(userCountry)) {
+    return userCountry;
+  }
+  if (geoIpCountry && isOfacSanctioned(geoIpCountry)) {
+    return geoIpCountry;
+  }
+
+  if (trustCloudflare) {
+    const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
+    if (cfCountry && cfCountry !== "XX" && cfCountry !== "T1") {
+      return cfCountry.toUpperCase().trim();
+    }
+  }
+
+  if (trustGeoHeaders) {
+    const customCountry =
+      (req.headers["x-country-code"] as string | undefined) ||
+      (req.headers["x-client-geo-country"] as string | undefined);
+    if (customCountry) {
+      return customCountry.toUpperCase().trim();
+    }
+  }
+
+  if (userCountry) {
+    return userCountry;
+  }
+
+  return geoIpCountry;
 }
 
 export function extractRequestRegion(req: Request): string | undefined {
-  const customRegion = (req.headers["x-region-code"] as string | undefined)?.toUpperCase().trim();
-  if (customRegion) {
-    return customRegion;
-  }
+  const isProd = process.env["NODE_ENV"] === "production";
+  const trustGeoHeaders = !isProd || process.env["TRUST_GEO_HEADERS"] === "true";
 
+  let geoIpRegion: string | undefined;
   try {
     const ip = locationService.extractIp(req);
     const loc = locationService.lookupIp(ip);
     if (loc?.regionCode && loc?.countryCode) {
-      return `${loc.countryCode}-${loc.regionCode}`.toUpperCase().trim();
+      geoIpRegion = `${loc.countryCode}-${loc.regionCode}`.toUpperCase().trim();
     }
   } catch {
     // Ignore location lookup error
   }
 
-  return undefined;
+  if (geoIpRegion && isOfacSanctioned(undefined, geoIpRegion)) {
+    return geoIpRegion;
+  }
+
+  if (trustGeoHeaders) {
+    const customRegion = (req.headers["x-region-code"] as string | undefined)?.toUpperCase().trim();
+    if (customRegion) {
+      return customRegion;
+    }
+  }
+
+  return geoIpRegion;
 }
 
 /**

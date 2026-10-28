@@ -554,8 +554,13 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
+    const handleOpenShareModal = () => setShareDialogOpen(true);
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener("modelscript:open-share-modal", handleOpenShareModal);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("modelscript:open-share-modal", handleOpenShareModal);
+    };
   }, []);
 
   useEffect(() => {
@@ -1094,7 +1099,10 @@ export default function MorselEditor(props: MorselEditorProps) {
           toast={toast}
           colorMode={colorMode}
           dialect={dialect}
+          documentUri={documentUri}
           onSelectDialect={handleSelectDialect}
+          setLastLoadedContent={setLastLoadedContent}
+          parameterOverrides={parameterOverrides}
           isDirtyDialogOpen={isDirtyDialogOpen}
           setDirtyDialogOpen={setDirtyDialogOpen}
           pendingSelection={pendingSelection}

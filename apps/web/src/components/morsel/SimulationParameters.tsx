@@ -397,7 +397,7 @@ export function SimulationExperimentSettings({
     stopTime: experiment?.stopTime ?? 10,
     interval: experiment?.interval ?? ((experiment?.stopTime ?? 10) - (experiment?.startTime ?? 0)) / 500,
     tolerance: experiment?.tolerance ?? 1e-6,
-    solver: experiment?.solver ?? "dopri5",
+    solver: experiment?.solver ?? "dassl",
     numberOfIntervals: experiment?.numberOfIntervals ?? 500,
     atol: 1e-6,
     equidistant: true,
@@ -454,6 +454,7 @@ export function SimulationExperimentSettings({
           }}
           title="Select numerical solver algorithm"
         >
+          <option value="dassl">DASSL (DAE Variable-Order)</option>
           <option value="dopri5">DOPRI5 (Adaptive 5(4))</option>
           <option value="cvode">CVODE (SUNDIALS BDF)</option>
           <option value="tsit5">TSIT5 (Adaptive 5(4))</option>

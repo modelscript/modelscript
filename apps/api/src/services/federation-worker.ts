@@ -1,9 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import dns from "node:dns/promises";
 import type { LibraryDatabase } from "../database.js";
 import { sendSignedRequest } from "../util/activitypub-crypto.js";
 import { isOfacSanctioned } from "../util/compliance.js";
 import { locationService } from "./location.js";
+
+const SANCTIONED_TLDS: Record<string, string> = {
+  ".ru": "RU",
+  ".by": "BY",
+  ".ir": "IR",
+  ".kp": "KP",
+  ".sy": "SY",
+  ".cu": "CU",
+};
 
 export class FederationWorker {
   private timer: NodeJS.Timeout | null = null;
@@ -67,10 +77,31 @@ export class FederationWorker {
         }
 
         // Pre-delivery export-control geofencing guard
-        const targetIpMatch = item.target_domain.match(/^\d+\.\d+\.\d+\.\d+$/);
-        const geoResult = targetIpMatch
+        const lowerDomain = item.target_domain.toLowerCase();
+        const targetIpMatch = lowerDomain.match(/^\d+\.\d+\.\d+\.\d+$/);
+        let geoResult = targetIpMatch
           ? locationService.lookupIp(targetIpMatch[0])
-          : locationService.lookupIp(item.target_domain);
+          : locationService.lookupIp(lowerDomain);
+
+        if (!geoResult) {
+          for (const [tld, countryCode] of Object.entries(SANCTIONED_TLDS)) {
+            if (lowerDomain.endsWith(tld)) {
+              geoResult = { countryCode };
+              break;
+            }
+          }
+        }
+
+        if (!geoResult && !targetIpMatch && process.env["NODE_ENV"] !== "test") {
+          try {
+            const resolved = await dns.lookup(lowerDomain);
+            if (resolved?.address) {
+              geoResult = locationService.lookupIp(resolved.address);
+            }
+          } catch {
+            // Ignore DNS resolution error here; sendSignedRequest handles SSRF/DNS validation
+          }
+        }
 
         if (geoResult && isOfacSanctioned(geoResult.countryCode, geoResult.regionCode)) {
           this.db.updateFederationDeliveryStatus(

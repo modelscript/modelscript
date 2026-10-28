@@ -2,6 +2,7 @@
 
 import { Link } from "react-router-dom";
 import styled from "styled-components";
+import { safeCssImageUrl } from "../../util/url";
 
 export const PostWrapper = styled.div<{ $isDetail?: boolean | undefined; $isThread?: boolean | undefined }>`
   display: flex;
@@ -31,7 +32,7 @@ export const Avatar = styled.div<{ $url?: string | undefined }>`
   height: 40px;
   border-radius: 50%;
   background-color: var(--color-accent-emphasis);
-  background-image: ${(props) => (props.$url ? `url("${props.$url}")` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url) ?? "none"};
   background-size: cover;
   display: flex;
   align-items: center;

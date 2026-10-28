@@ -34,6 +34,7 @@ async function lsp(initialLanguageId?: string): Promise<ProtocolConnection> {
 
 /** Version counter for incremental didChange notifications. */
 const versions = new Map<string, number>();
+const openedDocuments = new Map<string, { text: string; languageId: string }>();
 
 function nextVersion(uri: string): number {
   const v = (versions.get(uri) ?? 0) + 1;
@@ -47,6 +48,11 @@ function nextVersion(uri: string): number {
 
 /** Notify the LSP that a document was opened. */
 export function didOpen(uri: string, text: string, languageId = "modelica"): void {
+  const existing = openedDocuments.get(uri);
+  if (existing && existing.text === text && existing.languageId === languageId) {
+    return;
+  }
+  openedDocuments.set(uri, { text, languageId });
   lsp(languageId).then((c) => {
     c.sendNotification("textDocument/didOpen", {
       textDocument: { uri, languageId, version: nextVersion(uri), text },
@@ -56,6 +62,10 @@ export function didOpen(uri: string, text: string, languageId = "modelica"): voi
 
 /** Notify the LSP that the full content of a document changed. */
 export function didChange(uri: string, text: string): void {
+  const existing = openedDocuments.get(uri);
+  if (existing) {
+    openedDocuments.set(uri, { ...existing, text });
+  }
   lsp().then((c) => {
     c.sendNotification("textDocument/didChange", {
       textDocument: { uri, version: nextVersion(uri) },
@@ -66,6 +76,7 @@ export function didChange(uri: string, text: string): void {
 
 /** Notify the LSP that a document was closed. */
 export function didClose(uri: string): void {
+  openedDocuments.delete(uri);
   lsp().then((c) => {
     c.sendNotification("textDocument/didClose", {
       textDocument: { uri },

@@ -138,7 +138,7 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
       className="animation-timeline"
       style={{
         position: "absolute",
-        bottom: 16,
+        bottom: 72,
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",

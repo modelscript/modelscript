@@ -9,7 +9,6 @@ import {
   KebabHorizontalIcon,
   LinkExternalIcon,
   LinkIcon,
-  ListUnorderedIcon,
   LocationIcon,
   MuteIcon,
   NoEntryIcon,
@@ -23,6 +22,7 @@ import Box from "../../../components/Box";
 import FederatedDomainPill from "../../../components/FederatedDomainPill";
 import FollowButton from "../../../components/FollowButton";
 import { CircleIconButton, StickyHeader } from "../../../components/SharedStyles";
+import { useToast } from "../../../components/ToastContext";
 import { parseFederatedHandle } from "../../../util/federation";
 import { safeCssImageUrl, sanitizeHttpUrl } from "../../../util/url";
 import type { LinkedAccount, ProfileData } from "../types";
@@ -67,6 +67,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   onEditProfile,
 }) => {
   const parsed = parseFederatedHandle(profile.username);
+  const { showToast } = useToast();
 
   return (
     <>
@@ -173,6 +174,16 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                         }}
                       >
                         <button
+                          onClick={() => {
+                            const joinedText = profile.created_at
+                              ? ` • Joined ${new Date(profile.created_at).toLocaleDateString()}`
+                              : "";
+                            showToast(
+                              `@${profile.username} (${profile.account_type || "standard"} account)${joinedText}`,
+                              "info",
+                            );
+                            setShowBlockMenu(false);
+                          }}
                           style={{
                             width: "100%",
                             padding: "12px 16px",
@@ -192,44 +203,11 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                           <InfoIcon size={20} /> About this account
                         </button>
                         <button
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
+                          onClick={() => {
+                            navigator.clipboard?.writeText(window.location.href);
+                            showToast("Profile link copied to clipboard", "success");
+                            setShowBlockMenu(false);
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <ListUnorderedIcon size={20} /> Add/remove from Lists
-                        </button>
-                        <button
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <ListUnorderedIcon size={20} /> View Lists
-                        </button>
-                        <button
                           style={{
                             width: "100%",
                             padding: "12px 16px",

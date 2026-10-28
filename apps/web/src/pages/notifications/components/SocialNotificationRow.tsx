@@ -12,9 +12,10 @@ import type { NotificationItem } from "../types";
 export interface SocialNotificationRowProps {
   notif: NotificationItem;
   currentUsername?: string | undefined;
+  onMarkRead?: ((id: string | number) => void) | undefined;
 }
 
-export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ notif, currentUsername }) => {
+export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ notif, currentUsername, onMarkRead }) => {
   const navigate = useNavigate();
 
   let thumbnail: string | null = null;
@@ -34,6 +35,9 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
 
   const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("a, button, .interactive-element")) return;
+    if (!notif.read) {
+      onMarkRead?.(notif.id);
+    }
     const postAuthor = notif.post_author || notif.author_username || primaryActor.username || currentUsername;
     const url =
       notif.type === "follow"

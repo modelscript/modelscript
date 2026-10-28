@@ -330,7 +330,7 @@ const LogoutMenu = styled.div`
   border-radius: 16px;
   box-shadow: var(--glow-card);
   padding: 12px 0;
-  z-index: 99999;
+  z-index: 50;
 
   @media (max-width: 1280px) {
     width: max-content;
@@ -552,7 +552,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
       </Box>
 
       {user && (
-        <Box className="profile-footer-container" position="relative" zIndex={99999}>
+        <Box className="profile-footer-container" position="relative" zIndex={20}>
           {showLogoutMenu && (
             <LogoutMenu>
               <button

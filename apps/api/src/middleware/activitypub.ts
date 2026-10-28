@@ -100,7 +100,6 @@ export class ActivityPubInboxRateLimiter {
       const xff = trustForwarded ? (req.headers["x-forwarded-for"] as string | undefined) : undefined;
       const forwardedIp = xff ? xff.split(",")[0]?.trim() : undefined;
       const clientIp = forwardedIp || req.ip || req.socket.remoteAddress || "127.0.0.1";
-      const hostHeader = (req.headers["host"] as string) || "";
       const ipKey = `ip:${clientIp}`;
 
       // Check IP limit
@@ -114,9 +113,6 @@ export class ActivityPubInboxRateLimiter {
       }
 
       this.record(ipKey);
-      if (hostHeader) {
-        this.record(`host:${hostHeader}`);
-      }
 
       next();
     };
@@ -144,7 +140,11 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
     try {
       if (process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-sig"] === "true") {
         const actor = req.body?.actor || "https://test.example.com/users/test";
-        (req as Request & { actorId?: string | undefined }).actorId = actor;
+        (req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }).actorId =
+          actor;
+        (
+          req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }
+        ).activityPubVerifiedKeyId = `${actor}#main-key`;
         (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = {
           id: actor,
           preferredUsername: typeof actor === "string" ? actor.split("/").pop() || "testuser" : "testuser",
@@ -369,7 +369,12 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           return;
         }
 
-        (req as Request & { actorId?: string | undefined }).actorId = (keyId as string).split("#")[0];
+        (req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }).actorId = (
+          keyId as string
+        ).split("#")[0];
+        (
+          req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }
+        ).activityPubVerifiedKeyId = keyId as string;
         (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = actorPayload;
         next();
         return;
@@ -545,7 +550,12 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
       }
 
       // Add actor data to request for downstream handlers
-      (req as Request & { actorId?: string | undefined }).actorId = (parts["keyId"] as string).split("#")[0];
+      (req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }).actorId = (
+        parts["keyId"] as string
+      ).split("#")[0];
+      (
+        req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }
+      ).activityPubVerifiedKeyId = parts["keyId"] as string;
       (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = actor;
 
       next();

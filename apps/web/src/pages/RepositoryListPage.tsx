@@ -73,6 +73,14 @@ const RepositoryListPage: React.FC = () => {
   const [repoInput, setRepoInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [followedRepos, setFollowedRepos] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem("modelscript.followed_repos");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const query = searchParams.get("q") || "";
 
   useEffect(() => {
@@ -348,36 +356,40 @@ const RepositoryListPage: React.FC = () => {
                       <ShareIcon size={14} /> Share
                     </button>
                   )}
-                  <button
-                    style={{
-                      backgroundColor: "#f1f5f9",
-                      color: "#0f172a",
-                      border: "1px solid transparent",
-                      borderRadius: "9999px",
-                      padding: "6px 16px",
-                      fontWeight: 700,
-                      fontSize: "14px",
-                      cursor: "pointer",
-                      transition: "all 0.2s ease",
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const btn = e.currentTarget;
-                      if (btn.innerText === "Follow") {
-                        btn.innerText = "Following";
-                        btn.style.backgroundColor = "transparent";
-                        btn.style.color = "var(--color-text-primary)";
-                        btn.style.border = "1px solid var(--color-border)";
-                      } else {
-                        btn.innerText = "Follow";
-                        btn.style.backgroundColor = "#f1f5f9";
-                        btn.style.color = "#0f172a";
-                        btn.style.border = "1px solid transparent";
-                      }
-                    }}
-                  >
-                    Follow
-                  </button>
+                  {(() => {
+                    const repoKey = `${r.namespace}/${r.project}`;
+                    const isFollowing = Boolean(followedRepos[repoKey]);
+                    return (
+                      <button
+                        type="button"
+                        style={{
+                          backgroundColor: isFollowing ? "transparent" : "#f1f5f9",
+                          color: isFollowing ? "var(--color-text-primary)" : "#0f172a",
+                          border: isFollowing ? "1px solid var(--color-border)" : "1px solid transparent",
+                          borderRadius: "9999px",
+                          padding: "6px 16px",
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setFollowedRepos((prev) => {
+                            const next = { ...prev, [repoKey]: !prev[repoKey] };
+                            try {
+                              localStorage.setItem("modelscript.followed_repos", JSON.stringify(next));
+                            } catch {
+                              // Ignore storage error
+                            }
+                            return next;
+                          });
+                        }}
+                      >
+                        {isFollowing ? "Following" : "Follow"}
+                      </button>
+                    );
+                  })()}
                 </Box>
               </Box>
             ))}

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import net from "node:net";
+import tls from "node:tls";
+
 export interface SendMailOptions {
   to: string;
   subject: string;
@@ -103,14 +106,131 @@ export class MailerService {
     }
 
     if (this.driver === "smtp") {
-      // Basic SMTP notification logging if external socket transport is not attached
-      console.log(
-        `[Mailer:smtp] Dispatching to ${opts.to} via ${process.env["SMTP_HOST"]}:${process.env["SMTP_PORT"] || 587}`,
-      );
-      return { success: true, messageId: id };
+      const smtpHost = process.env["SMTP_HOST"];
+      const smtpPort = Number(process.env["SMTP_PORT"] || 587);
+      if (!smtpHost) {
+        if (process.env["NODE_ENV"] === "production") {
+          return { success: false, error: "SMTP_HOST is not configured" };
+        }
+        return { success: true, messageId: id };
+      }
+
+      if (process.env["NODE_ENV"] === "test" && process.env["SMTP_LIVE_TEST"] !== "true") {
+        return { success: true, messageId: id };
+      }
+
+      try {
+        await this.deliverViaSmtpSocket(smtpHost, smtpPort, record);
+        return { success: true, messageId: id };
+      } catch (err: unknown) {
+        if (process.env["NODE_ENV"] !== "production") {
+          console.warn(`[Mailer:smtp] Non-production fallback after SMTP connection error:`, err);
+          return { success: true, messageId: id };
+        }
+        return {
+          success: false,
+          error: (err instanceof Error ? err.message : String(err)) || "SMTP delivery failed",
+        };
+      }
     }
 
     return { success: true, messageId: id };
+  }
+
+  private deliverViaSmtpSocket(host: string, port: number, record: SentMailRecord): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const useImplicitTls = port === 465 || process.env["SMTP_SECURE"] === "true";
+      const socket = useImplicitTls
+        ? tls.connect({ host, port, servername: host })
+        : net.createConnection({ host, port });
+      socket.setTimeout(10000);
+
+      const extractAddress = (addr: string): string => {
+        const m = addr.match(/<([^>]+)>/);
+        return (m ? m[1]! : addr).replace(/[\r\n<>]/g, "").trim();
+      };
+      const fromAddr = extractAddress(record.from || this.defaultFrom);
+      const toAddr = extractAddress(record.to);
+      const smtpUser = process.env["SMTP_USER"];
+      const smtpPass = process.env["SMTP_PASS"];
+
+      const boundary = `ms_boundary_${record.id}`;
+      const mimeBody = [
+        `From: ${(record.from || this.defaultFrom).replace(/[\r\n]/g, "")}`,
+        `To: ${record.to.replace(/[\r\n]/g, "")}`,
+        `Subject: ${record.subject.replace(/[\r\n]/g, "")}`,
+        `Message-ID: <${record.id}@modelscript.org>`,
+        `Date: ${new Date(record.timestamp).toUTCString()}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: multipart/alternative; boundary="${boundary}"`,
+        ``,
+        `--${boundary}`,
+        `Content-Type: text/plain; charset="utf-8"`,
+        ``,
+        record.text,
+        ...(record.html ? [``, `--${boundary}`, `Content-Type: text/html; charset="utf-8"`, ``, record.html] : []),
+        ``,
+        `--${boundary}--`,
+        `.`,
+        ``,
+      ].join("\r\n");
+
+      const commands: string[] = [
+        `EHLO modelscript.org`,
+        ...(smtpUser && smtpPass ? [`AUTH PLAIN ${Buffer.from(`\0${smtpUser}\0${smtpPass}`).toString("base64")}`] : []),
+        `MAIL FROM:<${fromAddr}>`,
+        `RCPT TO:<${toAddr}>`,
+        `DATA`,
+        mimeBody,
+        `QUIT`,
+      ];
+
+      let step = 0;
+      let buffer = "";
+
+      const cleanup = () => {
+        socket.removeAllListeners();
+        socket.destroy();
+      };
+
+      socket.on("timeout", () => {
+        cleanup();
+        reject(new Error("SMTP connection timed out"));
+      });
+
+      socket.on("error", (err) => {
+        cleanup();
+        reject(err);
+      });
+
+      socket.on("data", (chunk: Buffer) => {
+        buffer += chunk.toString("utf-8");
+        const lines = buffer.split("\r\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line) continue;
+          const code = parseInt(line.slice(0, 3), 10);
+          // Multi-line response continues with '-'
+          if (line[3] === "-") continue;
+
+          if (code >= 400) {
+            cleanup();
+            reject(new Error(`SMTP error (${code}): ${line}`));
+            return;
+          }
+
+          if (step < commands.length) {
+            const cmd = commands[step++]!;
+            socket.write(cmd.endsWith("\r\n") ? cmd : `${cmd}\r\n`);
+          } else {
+            cleanup();
+            resolve();
+            return;
+          }
+        }
+      });
+    });
   }
 
   public async sendVerificationEmail(

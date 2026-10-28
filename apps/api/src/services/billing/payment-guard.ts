@@ -115,7 +115,9 @@ export async function createStripePaymentIntent(
   }
 
   // 3. Radar Risk Evaluation
-  let riskScore = simulateRadarScore ?? 15; // default low risk
+  const allowSimulation =
+    process.env["NODE_ENV"] !== "production" || process.env["ALLOW_BILLING_SIMULATION"] === "true";
+  let riskScore = (allowSimulation ? simulateRadarScore : undefined) ?? 15; // default low risk
   let requires3DS = true; // 3DS mandatory for all compute top-ups
 
   // Geographic mismatch rule (IP/Customer country != Card issue country)
@@ -134,6 +136,50 @@ export async function createStripePaymentIntent(
   }
 
   const amountCents = Math.round(amountCredits * 100);
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+  if (stripeKey) {
+    const bodyParams = new URLSearchParams({
+      amount: String(amountCents),
+      currency: "usd",
+      "metadata[userId]": String(userId),
+      "payment_method_options[card][request_three_d_secure]": "any",
+    });
+    const response = await fetch("https://api.stripe.com/v1/payment_intents", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${stripeKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: bodyParams.toString(),
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => "");
+      throw new Error(`Stripe PaymentIntent creation failed (${response.status}): ${errBody}`);
+    }
+    const stripeIntent = (await response.json()) as {
+      id?: string;
+      client_secret?: string;
+      status?: string;
+    };
+    const paymentIntentId = stripeIntent.id ?? `pi_${crypto.randomBytes(12).toString("hex")}`;
+    const clientSecret =
+      stripeIntent.client_secret ?? `${paymentIntentId}_secret_${crypto.randomBytes(16).toString("hex")}`;
+    return {
+      clientSecret,
+      paymentIntentId,
+      amountCents,
+      requires3DS,
+      status:
+        stripeIntent.status === "succeeded"
+          ? "succeeded"
+          : stripeIntent.status === "requires_payment_method"
+            ? "requires_payment_method"
+            : "requires_action",
+      riskScore,
+      radarAction: requires3DS ? "challenge_3ds" : "allow",
+    };
+  }
+
   const paymentIntentId = `pi_${crypto.randomBytes(12).toString("hex")}`;
   const clientSecret = `${paymentIntentId}_secret_${crypto.randomBytes(16).toString("hex")}`;
 

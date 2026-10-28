@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { followUser, unfollowUser } from "../api";
@@ -67,6 +68,7 @@ const StyledFollowBtn = styled.button<{ $isFollowing: boolean; $size?: string | 
 
 const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowing, onToggle, size, isRssFeed }) => {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
   const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
   const [loading, setLoading] = useState(false);
 
@@ -79,7 +81,10 @@ const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowin
   const toggleFollow = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!token) return; // In a real app, redirect to login
+    if (!token) {
+      navigate("/login");
+      return;
+    }
 
     setLoading(true);
     try {

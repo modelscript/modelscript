@@ -13,7 +13,7 @@ export interface PackageVersionsTabProps {
   version: string;
   versionList: string[];
   packument?: NpmPackument | null | undefined;
-  onCompare: () => void;
+  onCompare: (version?: string) => void;
 }
 
 export const PackageVersionsTab: React.FC<PackageVersionsTabProps> = ({
@@ -103,7 +103,7 @@ export const PackageVersionsTab: React.FC<PackageVersionsTabProps> = ({
                       size="small"
                       variant="invisible"
                       leadingVisual={GitCompareIcon}
-                      onClick={onCompare}
+                      onClick={() => onCompare(v)}
                       style={{ fontSize: 12, padding: "2px 8px" }}
                     >
                       Compare

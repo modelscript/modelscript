@@ -3,7 +3,7 @@
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
-import { JWT_SECRET } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
 
 export interface OidcClaims {
   sub: string;
@@ -234,7 +234,13 @@ export class OidcService {
   public async handleOidcLogin(
     database: LibraryDatabase,
     claims: OidcClaims,
-  ): Promise<{ token: string; user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>; isNewUser: boolean }> {
+  ): Promise<{
+    token: string;
+    tempToken?: string | undefined;
+    requires2FA?: boolean | undefined;
+    user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>;
+    isNewUser: boolean;
+  }> {
     const userGroups = [...(claims.groups || []), ...(claims.roles || [])];
     const isAdmin =
       userGroups.includes(this.adminGroup) || userGroups.includes("admin") || userGroups.includes("administrators");
@@ -246,9 +252,29 @@ export class OidcService {
     if (existingOauth) {
       const user = database.getUserById(existingOauth.user_id);
       if (user) {
+        if (isAccountBlocked(user.status)) {
+          const err = new Error(`Account is ${user.status}. Please contact support.`) as Error & { status?: number };
+          err.status = 403;
+          throw err;
+        }
         if (isAdmin && user.account_type !== "admin") {
           database.setUserAccountType(user.id, "admin");
           user.account_type = "admin";
+        }
+        if (user.totp_enabled === 1) {
+          const tempToken = jwt.sign(
+            {
+              id: user.id,
+              username: user.username,
+              email: user.email,
+              scope: "2fa_challenge",
+              purpose: "2fa_challenge",
+              tokenVersion: user.token_version ?? 1,
+            },
+            JWT_SECRET,
+            { expiresIn: "5m" },
+          );
+          return { token: tempToken, tempToken, requires2FA: true, user, isNewUser: false };
         }
         const sessionToken = jwt.sign(
           {
@@ -266,8 +292,13 @@ export class OidcService {
     }
 
     // 2. Check if user exists by email address
-    let user = database.getUserByEmail(claims.email);
+    const user = database.getUserByEmail(claims.email);
     if (user) {
+      if (isAccountBlocked(user.status)) {
+        const err = new Error(`Account is ${user.status}. Please contact support.`) as Error & { status?: number };
+        err.status = 403;
+        throw err;
+      }
       if (isAdmin && user.account_type !== "admin") {
         database.setUserAccountType(user.id, "admin");
         user.account_type = "admin";
@@ -277,6 +308,21 @@ export class OidcService {
         database.linkOAuthAccount(user.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
       }
       database.updateOAuthTokens(user.id, "oidc", "linked_oidc", undefined, undefined);
+      if (user.totp_enabled === 1) {
+        const tempToken = jwt.sign(
+          {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            scope: "2fa_challenge",
+            purpose: "2fa_challenge",
+            tokenVersion: user.token_version ?? 1,
+          },
+          JWT_SECRET,
+          { expiresIn: "5m" },
+        );
+        return { token: tempToken, tempToken, requires2FA: true, user, isNewUser: false };
+      }
       const sessionToken = jwt.sign(
         {
           id: user.id,

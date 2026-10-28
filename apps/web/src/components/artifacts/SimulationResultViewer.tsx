@@ -252,6 +252,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
 
       {/* Viewport Camera & Render Controls */}
       <ViewportCameraControls
+        topOffset={!isThumbnail ? "52px" : "12px"}
         onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
         isWireframe={isWireframe}
         onToggleWireframe={setIsWireframe}

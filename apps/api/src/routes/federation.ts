@@ -609,11 +609,20 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     const username = req.params["username"];
     const activity = req.body;
     const remoteActorUrl = (req as Request & { actorId?: string | undefined }).actorId;
+    const verifiedKeyId = (req as Request & { activityPubVerifiedKeyId?: string | undefined }).activityPubVerifiedKeyId;
     const remoteActorProfile = (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile;
 
     if (activity?.actor && remoteActorUrl && typeof activity.actor === "string" && activity.actor !== remoteActorUrl) {
       res.status(403).json({ error: "Actor mismatch between HTTP signature and activity payload" });
       return;
+    }
+
+    if (verifiedKeyId && activity?.actor && typeof activity.actor === "string") {
+      const keyActorPrefix = verifiedKeyId.split("#")[0];
+      if (keyActorPrefix && keyActorPrefix !== activity.actor) {
+        res.status(403).json({ error: "Signature keyId does not belong to activity actor" });
+        return;
+      }
     }
 
     let fullLocalUser: ReturnType<typeof db.getUserFederationInfo> | null = null;

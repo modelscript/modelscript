@@ -119,13 +119,13 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
                 style={{
                   fontSize: "10px",
                   fontWeight: 700,
-                  color: "#10b981",
-                  background: "rgba(16, 185, 129, 0.15)",
+                  color: clusterInfo?.connected ? "#10b981" : "var(--color-text-muted)",
+                  background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)",
                   padding: "1px 6px",
                   borderRadius: "4px",
                 }}
               >
-                UP
+                {clusterInfo?.connected ? "UP" : "OFFLINE (Standalone Mode)"}
               </span>
             </Box>
             <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
@@ -142,13 +142,16 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
               }}
             >
               <span>
-                Nodes: <strong>{clusterInfo?.nodesCount || 4}</strong>
+                Nodes: <strong>{clusterInfo?.connected ? clusterInfo.nodesCount || 4 : 0}</strong>
               </span>
               <span>
                 Max Time: <strong>04:00:00</strong>
               </span>
               <span>
-                State: <strong style={{ color: "#34d399" }}>Idle / Ready</strong>
+                State:{" "}
+                <strong style={{ color: clusterInfo?.connected ? "#34d399" : "var(--color-text-muted)" }}>
+                  {clusterInfo?.connected ? "Idle / Ready" : "Offline (Local WASM Active)"}
+                </strong>
               </span>
             </div>
           </Box>
@@ -170,13 +173,13 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
                 style={{
                   fontSize: "10px",
                   fontWeight: 700,
-                  color: "#10b981",
-                  background: "rgba(16, 185, 129, 0.15)",
+                  color: clusterInfo?.connected ? "#10b981" : "var(--color-text-muted)",
+                  background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)",
                   padding: "1px 6px",
                   borderRadius: "4px",
                 }}
               >
-                UP
+                {clusterInfo?.connected ? "UP" : "OFFLINE (Standalone Mode)"}
               </span>
             </Box>
             <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
@@ -193,13 +196,16 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
               }}
             >
               <span>
-                GPUs: <strong>16x A100</strong>
+                GPUs: <strong>{clusterInfo?.connected ? "16x A100" : "0"}</strong>
               </span>
               <span>
                 VRAM: <strong>80 GB / node</strong>
               </span>
               <span>
-                State: <strong style={{ color: "#34d399" }}>Ready</strong>
+                State:{" "}
+                <strong style={{ color: clusterInfo?.connected ? "#34d399" : "var(--color-text-muted)" }}>
+                  {clusterInfo?.connected ? "Ready" : "Offline (Local WebGPU Active)"}
+                </strong>
               </span>
             </div>
           </Box>

@@ -48,6 +48,28 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   const activeStreamers = new Map<string, CaeTelemetryStreamer>();
   const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);
 
+  const isAuthorizedForCaeJob = (req: express.Request, dbJob: { user_id?: number | null | undefined }): boolean => {
+    if (process.env["NODE_ENV"] !== "production") return true;
+    if (!dbJob.user_id) return true;
+    const reqAny = req as {
+      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
+    };
+    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
+    const reqUserId = resolveRequestUserId(req, database);
+    return reqUserId === dbJob.user_id;
+  };
+
+  const isAuthorizedForCaeSweep = (req: express.Request, sweep: { userId?: number | null | undefined }): boolean => {
+    if (process.env["NODE_ENV"] !== "production") return true;
+    if (!sweep.userId) return true;
+    const reqAny = req as {
+      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
+    };
+    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
+    const reqUserId = resolveRequestUserId(req, database);
+    return reqUserId === sweep.userId;
+  };
+
   ensureCaeDir();
 
   // 0. List Available Compute Profiles & Costs
@@ -126,6 +148,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         // Pre-flight quota check
         const profile = options.profile || "standard";
         const userId = resolveRequestUserId(req, database);
+        if (process.env["NODE_ENV"] === "production" && !userId) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
         let estimatedCost = 0;
         if (userId) {
           const quota = checkComputeQuota(userId, profile, database);
@@ -150,7 +175,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           "ADHOC",
           "ide",
           null,
-          { resultDir },
+          { resultDir, solver: solverType, profile },
           userId,
         );
 
@@ -188,6 +213,11 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           profile,
           resultDir,
         };
+
+        try {
+          fs.mkdirSync(resultDir, { recursive: true });
+          fs.writeFileSync(path.join(resultDir, "job_spec.json"), JSON.stringify(jobSpec, null, 2), "utf8");
+        } catch {}
 
         // Enqueue job execution
         jobQueue.enqueue(`cae-${dbJobId}`, async () => {
@@ -264,6 +294,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) {
       return res.status(404).json({ error: "Job not found." });
+    }
+    if (!isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const queueStatus = jobQueue.getStatus(`cae-${req.params.id}`);
@@ -354,6 +387,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     try {
       const dbJob = database.getJob(parseInt(req.params.id, 10));
       if (!dbJob) return res.status(404).json({ error: "Job not found." });
+      if (!isAuthorizedForCaeJob(req, dbJob)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
       const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
         resultDir?: string | undefined;
@@ -403,6 +439,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const idParam = String(req.params["id"] || "");
     const jobId = parseInt(idParam, 10);
     const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
+    if (dbJob && !isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     const cancelled = runner.cancelJob(idParam);
     if (dbJob && dbJob.status !== "SUCCESS" && dbJob.status !== "FAILED" && dbJob.status !== "CANCELLED") {
       database.updateJobStatus(jobId, "CANCELLED");
@@ -410,7 +449,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         database.releaseUserEscrow(dbJob.user_id, jobId, "User cancelled CAE job");
       }
     }
-    res.json({ success: true, cancelled });
+    return res.json({ success: true, cancelled });
   };
 
   router.delete("/cae/jobs/:id", handleCancelCaeJob);
@@ -422,6 +461,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const jobId = parseInt(idParam, 10);
     const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
       resultDir?: string | undefined;
@@ -450,6 +492,15 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const jobId = parseInt(idParam, 10);
     const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
+      resultDir?: string | undefined;
+      solver?: CaeSolverType | undefined;
+      profile?: string | undefined;
+    };
 
     const newJobId = database.createJob(
       dbJob.name,
@@ -457,9 +508,45 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       dbJob.type || "ADHOC",
       dbJob.trigger_source || "ide",
       dbJob.repository_id ?? null,
-      dbJob.metadata ? JSON.parse(dbJob.metadata) : {},
+      metadata,
       dbJob.user_id ?? null,
     );
+
+    if (metadata.resultDir) {
+      const specFile = path.join(metadata.resultDir, "job_spec.json");
+      if (fs.existsSync(specFile)) {
+        try {
+          const parsedSpec = JSON.parse(fs.readFileSync(specFile, "utf8")) as CaeJobSpec;
+          if (parsedSpec && parsedSpec.deckContent) {
+            const retrySolver: CaeSolverType = parsedSpec.solver || metadata.solver || "calculix";
+            const streamer = new CaeTelemetryStreamer(retrySolver);
+            activeStreamers.set(newJobId.toString(), streamer);
+            const retrySpec: CaeJobSpec = {
+              ...parsedSpec,
+              jobId: newJobId.toString(),
+            };
+            jobQueue.enqueue(`cae-${newJobId}`, async () => {
+              try {
+                database.updateJobStatus(newJobId, "RUNNING");
+                const result = await runner.executeJob(retrySpec, streamer);
+                if (result.status === "completed") {
+                  database.updateJobStatus(newJobId, "SUCCESS");
+                } else if (result.status === "cancelled") {
+                  database.updateJobStatus(newJobId, "CANCELLED");
+                } else {
+                  database.updateJobStatus(newJobId, "FAILED");
+                }
+              } catch {
+                database.updateJobStatus(newJobId, "FAILED");
+              } finally {
+                activeStreamers.delete(newJobId.toString());
+              }
+            });
+          }
+        } catch {}
+      }
+    }
+
     return res.status(202).json({
       success: true,
       jobId: newJobId.toString(),
@@ -470,6 +557,10 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 5. Real-Time Telemetry Stream (Server-Sent Events)
   router.get("/cae/jobs/:id/events", (req, res) => {
+    const dbJob = database.getJob(parseInt(req.params.id, 10));
+    if (dbJob && !isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     const streamer = activeStreamers.get(req.params.id);
     if (!streamer) {
       // If job is already done or not found, send single completion or error event
@@ -488,6 +579,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.get("/cae/jobs/:id/results", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
@@ -507,6 +601,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.get("/cae/jobs/:id/scalars", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
@@ -525,6 +622,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.get("/cae/jobs/:id/mesh-payload", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForCaeJob(req, dbJob)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
@@ -577,6 +677,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       const solverType: CaeSolverType = solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix";
       const profile = options?.profile || "standard";
       const userId = resolveRequestUserId(req, database);
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const userExists = userId ? Boolean(database.getUserById(userId)) : false;
 
       let estimatedCost = 0;
@@ -714,6 +817,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
+    if (!isAuthorizedForCaeSweep(req, sweep)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     res.json(sweep);
     return;
   });
@@ -723,6 +829,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const sweep = sweepOrchestrator.getSweep(req.params.id);
     if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+    }
+    if (!isAuthorizedForCaeSweep(req, sweep)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
     const wasAlreadyTerminal =
       sweep.status === "cancelled" ||
@@ -748,6 +857,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const sweep = sweepOrchestrator.getSweep(req.params.id);
     if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+    }
+    if (!isAuthorizedForCaeSweep(req, sweep)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
     sweepOrchestrator.attachSseStream(req.params.id, res);
     return;

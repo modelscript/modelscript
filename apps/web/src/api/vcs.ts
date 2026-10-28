@@ -125,8 +125,9 @@ export const getGitlabTree = async (
   provider: string = "gitlab",
 ): Promise<GitlabTreeNode[]> => {
   if (provider === "github") {
-    const url = path
-      ? `https://api.github.com/repos/${projectIdOrPath}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`
+    const encodedPath = path ? path.split("/").map(encodeURIComponent).join("/") : "";
+    const url = encodedPath
+      ? `https://api.github.com/repos/${projectIdOrPath}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`
       : `https://api.github.com/repos/${projectIdOrPath}/contents?ref=${encodeURIComponent(ref)}`;
     const { data } = await axios.get(url);
     const items = Array.isArray(data) ? data : [data];
@@ -154,8 +155,9 @@ export const getGitlabFileRaw = async (
   provider: string = "gitlab",
 ): Promise<string> => {
   if (provider === "github") {
+    const encodedFilePath = filePath.split("/").map(encodeURIComponent).join("/");
     const { data } = await axios.get(
-      `https://raw.githubusercontent.com/${projectIdOrPath}/${encodeURIComponent(ref)}/${encodeURIComponent(filePath)}`,
+      `https://raw.githubusercontent.com/${projectIdOrPath}/${encodeURIComponent(ref)}/${encodedFilePath}`,
     );
     return typeof data === "string" ? data : JSON.stringify(data, null, 2);
   }
@@ -200,7 +202,35 @@ export const getGitlabPipelines = async (
   provider: string = "gitlab",
 ): Promise<GitlabPipeline[]> => {
   if (provider === "github") {
-    return []; // Simplified for now
+    try {
+      const { data } = await axios.get(
+        `https://api.github.com/repos/${projectIdOrPath}/actions/runs?branch=${encodeURIComponent(refName)}&per_page=20`,
+      );
+      const runs = Array.isArray(data?.workflow_runs) ? data.workflow_runs : [];
+      return runs.map((run: any) => ({
+        id: run.id,
+        iid: run.run_number || run.id,
+        project_id: run.repository?.id || 0,
+        status:
+          run.status === "completed"
+            ? run.conclusion === "success"
+              ? "success"
+              : run.conclusion === "cancelled"
+                ? "canceled"
+                : "failed"
+            : run.status === "in_progress"
+              ? "running"
+              : "pending",
+        source: run.event || "push",
+        ref: run.head_branch || refName,
+        sha: run.head_sha || "",
+        web_url: run.html_url || `https://github.com/${projectIdOrPath}/actions/runs/${run.id}`,
+        created_at: run.created_at,
+        updated_at: run.updated_at,
+      }));
+    } catch {
+      return [];
+    }
   }
   const { data } = await api.get<GitlabPipeline[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines`,
@@ -216,7 +246,40 @@ export const getGitlabPipelineJobs = async (
   pipelineId: number,
   provider: string = "gitlab",
 ): Promise<GitlabJob[]> => {
-  if (provider === "github") return [];
+  if (provider === "github") {
+    try {
+      const { data } = await axios.get(
+        `https://api.github.com/repos/${projectIdOrPath}/actions/runs/${pipelineId}/jobs`,
+      );
+      const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+      return jobs.map((job: any) => ({
+        id: job.id,
+        status:
+          job.status === "completed"
+            ? job.conclusion === "success"
+              ? "success"
+              : job.conclusion === "skipped"
+                ? "skipped"
+                : "failed"
+            : job.status === "in_progress"
+              ? "running"
+              : "pending",
+        stage: job.workflow_name || "build",
+        name: job.name || `Job #${job.id}`,
+        ref: job.head_branch || "main",
+        created_at: job.created_at || job.started_at,
+        started_at: job.started_at || null,
+        finished_at: job.completed_at || null,
+        duration:
+          job.started_at && job.completed_at
+            ? Math.max(0, (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000)
+            : null,
+        web_url: job.html_url || `https://github.com/${projectIdOrPath}/actions/runs/${pipelineId}`,
+      }));
+    } catch {
+      return [];
+    }
+  }
   const { data } = await api.get<GitlabJob[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
   );
@@ -256,11 +319,19 @@ export const createGitlabIssue = async (
   provider: string = "gitlab",
 ): Promise<GitlabIssue> => {
   if (provider === "github") throw new Error("Creating issues on GitHub is not supported yet.");
-  const { data } = await api.post<GitlabIssue>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`, {
-    title,
-    description,
-  });
-  return data;
+  try {
+    const { data } = await api.post<GitlabIssue>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`, {
+      title,
+      description,
+    });
+    return data;
+  } catch {
+    const { data } = await api.post<GitlabIssue>(`/git/projects/${encodeURIComponent(projectIdOrPath)}/issues`, {
+      title,
+      description,
+    });
+    return data;
+  }
 };
 
 export const getGitlabMergeRequests = async (
@@ -330,9 +401,17 @@ export const createGitlabMergeRequest = async (
       },
     };
   }
-  const { data } = await api.post<GitlabMergeRequest>(
-    `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
-    payload,
-  );
-  return data;
+  try {
+    const { data } = await api.post<GitlabMergeRequest>(
+      `/git/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
+      payload,
+    );
+    return data;
+  } catch {
+    const { data } = await api.post<GitlabMergeRequest>(
+      `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
+      payload,
+    );
+    return data;
+  }
 };

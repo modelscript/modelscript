@@ -261,7 +261,7 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
         name: b.name,
         type: isWheel ? "wheelset" : "body",
         position: pos,
-        color: isWheel ? "var(--ms-text-3)" : "#58a6ff",
+        color: isWheel ? "#94a3b8" : "#58a6ff",
       });
     });
 

@@ -30,12 +30,13 @@ export interface SlurmDriverOptions {
 
 /**
  * Parses raw sacct pipe-delimited output line.
- * Format: JobID|CPUTimeRAW|TotalCPU|MaxRSS|AllocCPUs|ElapsedRaw|State|ExitCode
+ * Format: JobID|CPUTimeRAW|TotalCPU|MaxRSS|AllocCPUs|ElapsedRaw|State|ExitCode[|AllocTRES]
  */
 export function parseSacctOutput(output: string): {
   elapsedSeconds: number;
   cpuCoreSeconds: number;
   peakMemoryMb: number;
+  allocatedGpus?: number | undefined;
   state: HpcJobState;
   exitCode: number;
 } {
@@ -51,6 +52,7 @@ export function parseSacctOutput(output: string): {
   let maxMemoryBytes = 0;
   let cpuCoreSec = 0;
   let elapsedSec = 0;
+  let allocatedGpus: number | undefined;
   let finalState: HpcJobState = "COMPLETED";
   let finalExitCode = 0;
 
@@ -58,7 +60,7 @@ export function parseSacctOutput(output: string): {
     const parts = line.split("|");
     if (parts.length < 8) continue;
 
-    const [, cpuTimeRaw, , maxRss, , elapsedRaw, stateStr, exitCodeStr] = parts;
+    const [, cpuTimeRaw, , maxRss, , elapsedRaw, stateStr, exitCodeStr, allocTres] = parts;
 
     const parsedElapsed = parseInt(elapsedRaw || "0", 10);
     if (!isNaN(parsedElapsed) && parsedElapsed > elapsedSec) {
@@ -74,6 +76,24 @@ export function parseSacctOutput(output: string): {
     if (maxRss && maxRss.length > 0) {
       const bytes = parseMemoryStringToBytes(maxRss);
       if (bytes > maxMemoryBytes) maxMemoryBytes = bytes;
+    }
+
+    // Parse AllocTRES (e.g., "billing=8,cpu=8,gres/gpu=2,mem=32G,node=1")
+    if (allocTres && allocTres.length > 0) {
+      const gpuMatch = allocTres.match(/gres\/gpu(?:[:=][^,=]+)?=(\d+)/i);
+      if (gpuMatch?.[1]) {
+        const parsedGpus = parseInt(gpuMatch[1], 10);
+        if (!isNaN(parsedGpus) && (allocatedGpus === undefined || parsedGpus > allocatedGpus)) {
+          allocatedGpus = parsedGpus;
+        }
+      }
+      if (maxMemoryBytes === 0) {
+        const memMatch = allocTres.match(/(?:^|,)mem=([0-9.]+[KMGTPkmgtp]?)/);
+        if (memMatch?.[1]) {
+          const tresMemBytes = parseMemoryStringToBytes(memMatch[1]);
+          if (tresMemBytes > maxMemoryBytes) maxMemoryBytes = tresMemBytes;
+        }
+      }
     }
 
     // Parse state
@@ -102,6 +122,7 @@ export function parseSacctOutput(output: string): {
     elapsedSeconds: elapsedSec,
     cpuCoreSeconds: cpuCoreSec,
     peakMemoryMb: Math.round(maxMemoryBytes / (1024 * 1024)),
+    ...(allocatedGpus !== undefined ? { allocatedGpus } : {}),
     state: finalState,
     exitCode: finalExitCode,
   };
@@ -198,7 +219,7 @@ export class SlurmDriver implements HpcDriver {
         "-P",
         "-j",
         nativeJobId,
-        "--format=JobID,CPUTimeRAW,TotalCPU,MaxRSS,AllocCPUs,ElapsedRaw,State,ExitCode",
+        "--format=JobID,CPUTimeRAW,TotalCPU,MaxRSS,AllocCPUs,ElapsedRaw,State,ExitCode,AllocTRES",
       ]);
 
       const parsed = parseSacctOutput(sacctOut);
@@ -224,17 +245,18 @@ export class SlurmDriver implements HpcDriver {
         "-P",
         "-j",
         nativeJobId,
-        "--format=JobID,CPUTimeRAW,TotalCPU,MaxRSS,AllocCPUs,ElapsedRaw,State,ExitCode",
+        "--format=JobID,CPUTimeRAW,TotalCPU,MaxRSS,AllocCPUs,ElapsedRaw,State,ExitCode,AllocTRES",
       ]);
 
       const parsed = parseSacctOutput(sacctOut);
       const costCredits = calculateCostCredits(parsed.elapsedSeconds, profile);
+      const gpusUsed = parsed.allocatedGpus ?? profile.gpus ?? 0;
 
       return {
         wallClockSeconds: parsed.elapsedSeconds,
         cpuCoreSeconds: parsed.cpuCoreSeconds,
         peakMemoryMb: parsed.peakMemoryMb,
-        gpuSeconds: profile.gpus ? parsed.elapsedSeconds * profile.gpus : 0,
+        gpuSeconds: gpusUsed ? parsed.elapsedSeconds * gpusUsed : 0,
         costCredits,
         nativeJobId,
         exitCode: parsed.exitCode,

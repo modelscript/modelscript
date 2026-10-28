@@ -476,6 +476,18 @@ export function authRouter(database: LibraryDatabase): Router {
   router.post("/2fa/challenge", express.json(), async (req: Request, res: Response): Promise<void> => {
     const { tempToken, code } = req.body || {};
     const clientIp = getClientIp(req);
+    const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
+
+    if (!bypassRateLimit) {
+      const ipRateCheck = defaultLoginLimiter.check(clientIp);
+      if (!ipRateCheck.allowed) {
+        res.status(429).json({
+          error: "Too many failed 2FA attempts. Please try again in 15 minutes.",
+          retryAfterSeconds: Math.ceil(ipRateCheck.resetInMs / 1000),
+        });
+        return;
+      }
+    }
 
     if (!tempToken || typeof tempToken !== "string") {
       res.status(400).json({ error: "Temporary challenge token is required" });
@@ -491,13 +503,25 @@ export function authRouter(database: LibraryDatabase): Router {
       const decoded = jwt.verify(tempToken, JWT_SECRET) as {
         id: number;
         email: string;
-        scope: string;
+        scope?: string | undefined;
+        purpose?: string | undefined;
         tokenVersion?: number | undefined;
       };
 
-      if (decoded.scope !== "2fa_challenge") {
+      if (decoded.scope !== "2fa_challenge" && decoded.purpose !== "2fa_challenge") {
         res.status(400).json({ error: "Invalid challenge token" });
         return;
+      }
+
+      if (!bypassRateLimit && decoded.email) {
+        const rateCheck = defaultLoginLimiter.check(clientIp, decoded.email);
+        if (!rateCheck.allowed) {
+          res.status(429).json({
+            error: "Too many failed 2FA attempts. Please try again in 15 minutes.",
+            retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+          });
+          return;
+        }
       }
 
       const user = database.getUserById(decoded.id);
@@ -528,7 +552,9 @@ export function authRouter(database: LibraryDatabase): Router {
 
       // 1. Check if it's a valid 6-digit TOTP code
       if (/^\d{6}$/.test(cleanCode.replace(/\s+/g, ""))) {
-        verified = verifyTotpCode(state2FA.totp_secret, cleanCode);
+        verified = verifyTotpCode(state2FA.totp_secret, cleanCode, {
+          preventReplay: process.env["NODE_ENV"] === "production",
+        });
       }
 
       // 2. If not verified via TOTP, check if it's a valid backup recovery code
@@ -542,6 +568,7 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       if (!verified) {
+        defaultLoginLimiter.recordFailure(clientIp, user.email);
         database.logAudit({
           actorId: user.id,
           action: "auth_login_failure",
@@ -553,6 +580,8 @@ export function authRouter(database: LibraryDatabase): Router {
         res.status(401).json({ error: "Invalid authentication code or backup recovery code" });
         return;
       }
+
+      defaultLoginLimiter.recordSuccess(clientIp, user.email);
 
       const sessionToken = jwt.sign(
         { id: user.id, username: user.username, email: user.email, tokenVersion: user.token_version ?? 1 },
@@ -660,7 +689,9 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const valid = verifyTotpCode(resolvedSecret, code);
+    const valid = verifyTotpCode(resolvedSecret, code, {
+      preventReplay: process.env["NODE_ENV"] === "production",
+    });
     if (!valid) {
       res.status(400).json({ error: "Invalid 6-digit code. Please verify your authenticator app time and try again." });
       return;
@@ -729,7 +760,9 @@ export function authRouter(database: LibraryDatabase): Router {
 
       let codeValid = false;
       if (state2FA.totp_secret && /^\d{6}$/.test(code.trim().replace(/\s+/g, ""))) {
-        codeValid = verifyTotpCode(state2FA.totp_secret, code.trim());
+        codeValid = verifyTotpCode(state2FA.totp_secret, code.trim(), {
+          preventReplay: process.env["NODE_ENV"] === "production",
+        });
       }
       if (!codeValid && state2FA.backup_codes.length > 0) {
         const backupResult = verifyAndConsumeBackupCode(code.trim(), state2FA.backup_codes);
@@ -932,6 +965,13 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
     const signedState = jwt.sign({ action: "login", provider }, JWT_SECRET, { expiresIn: "10m" });
+    res.cookie("oauth_state", signedState, {
+      httpOnly: true,
+      secure: process.env["NODE_ENV"] === "production",
+      sameSite: "lax",
+      maxAge: 10 * 60 * 1000,
+      path: "/",
+    });
     if (clientId) {
       const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
       if (authorizeUrl) {
@@ -942,6 +982,10 @@ export function authRouter(database: LibraryDatabase): Router {
         res.status(501).json({ error: `Unsupported OAuth provider '${provider}'.` });
         return;
       }
+    }
+    if (process.env["NODE_ENV"] === "production") {
+      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+      return;
     }
     // Dev/test mock OAuth flow when provider client credentials are not configured
     res.redirect(
@@ -986,9 +1030,10 @@ export function authRouter(database: LibraryDatabase): Router {
       const decoded = jwt.verify(token, JWT_SECRET) as {
         id: number;
         scope?: string | undefined;
+        purpose?: string | undefined;
         tokenVersion?: number | undefined;
       };
-      if (decoded.scope === "2fa_challenge") {
+      if (decoded.scope === "2fa_challenge" || decoded.purpose === "2fa_challenge") {
         res.redirect(`${frontendUrl}/settings?error=InvalidToken`);
         return;
       }
@@ -998,12 +1043,23 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
       const signedState = jwt.sign({ action: "link", userId: decoded.id, provider }, JWT_SECRET, { expiresIn: "10m" });
+      res.cookie("oauth_state", signedState, {
+        httpOnly: true,
+        secure: process.env["NODE_ENV"] === "production",
+        sameSite: "lax",
+        maxAge: 10 * 60 * 1000,
+        path: "/",
+      });
       if (clientId) {
         const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
         if (authorizeUrl) {
           res.redirect(authorizeUrl);
           return;
         }
+      }
+      if (process.env["NODE_ENV"] === "production") {
+        res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+        return;
       }
       res.redirect(
         `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
@@ -1051,9 +1107,10 @@ export function authRouter(database: LibraryDatabase): Router {
       const decoded = jwt.verify(token, JWT_SECRET) as {
         id: number;
         scope?: string | undefined;
+        purpose?: string | undefined;
         tokenVersion?: number | undefined;
       };
-      if (decoded.scope === "2fa_challenge") {
+      if (decoded.scope === "2fa_challenge" || decoded.purpose === "2fa_challenge") {
         res.status(401).json({ error: "Two-factor authentication required" });
         return;
       }
@@ -1063,12 +1120,23 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
       const signedState = jwt.sign({ action: "link", userId: decoded.id, provider }, JWT_SECRET, { expiresIn: "10m" });
+      res.cookie("oauth_state", signedState, {
+        httpOnly: true,
+        secure: process.env["NODE_ENV"] === "production",
+        sameSite: "lax",
+        maxAge: 10 * 60 * 1000,
+        path: "/",
+      });
       if (clientId) {
         const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
         if (authorizeUrl) {
           res.json({ redirectUrl: authorizeUrl });
           return;
         }
+      }
+      if (process.env["NODE_ENV"] === "production") {
+        res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+        return;
       }
       res.json({
         redirectUrl: `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
@@ -1086,19 +1154,34 @@ export function authRouter(database: LibraryDatabase): Router {
     const stateParam = req.query["state"] as string;
     const code = req.query["code"] as string | undefined;
     const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
+    const isProductionEnv = process.env["NODE_ENV"] === "production";
 
-    let email = `mockuser@${provider}.com`;
-    let username = `mockuser_${provider}`;
-    let providerUserId = `12345_${provider}`;
-    let accessToken = `mock_access_token_${provider}`;
-    let refreshToken: string | null = `mock_refresh_token_${provider}`;
+    let email = isProductionEnv ? "" : `mockuser@${provider}.com`;
+    let username = isProductionEnv ? "" : `mockuser_${provider}`;
+    let providerUserId = isProductionEnv ? "" : `12345_${provider}`;
+    let accessToken = isProductionEnv ? "" : `mock_access_token_${provider}`;
+    let refreshToken: string | null = isProductionEnv ? null : `mock_refresh_token_${provider}`;
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
 
     const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
     const clientSecret = process.env[`${provider.toUpperCase()}_CLIENT_SECRET`];
 
-    if (process.env["NODE_ENV"] === "production" && (!clientId || !clientSecret)) {
+    if (isProductionEnv && (!clientId || !clientSecret)) {
       res.status(501).json({ error: `OAuth provider '${provider}' is not configured in production.` });
+      return;
+    }
+
+    // Validate OAuth state cookie when present
+    const cookieHeader = req.headers.cookie || "";
+    const oauthCookieMatch = cookieHeader.match(/(?:^|;\s*)oauth_state=([^;]+)/);
+    const cookieState =
+      req.cookies?.["oauth_state"] || (oauthCookieMatch?.[1] ? decodeURIComponent(oauthCookieMatch[1]) : undefined);
+    if (cookieState && stateParam && decodeURIComponent(stateParam) !== cookieState && stateParam !== cookieState) {
+      res.redirect(`${frontendUrl}/settings?error=InvalidState`);
+      return;
+    }
+    if (isProductionEnv && !stateParam) {
+      res.redirect(`${frontendUrl}/login?error=InvalidState`);
       return;
     }
 
@@ -1170,18 +1253,23 @@ export function authRouter(database: LibraryDatabase): Router {
             }
           }
         }
-        if (!verifiedLiveProfile && process.env["NODE_ENV"] === "production") {
+        if (!verifiedLiveProfile && isProductionEnv) {
           res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
           return;
         }
       } catch (oauthErr) {
-        if (process.env["NODE_ENV"] === "production") {
+        if (isProductionEnv) {
           console.error(`[OAuth] Live provider exchange failed in production:`, oauthErr);
           res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
           return;
         }
         console.warn(`[OAuth] Live provider exchange failed, falling back to mock profile:`, oauthErr);
       }
+    }
+
+    if (isProductionEnv && (!email || !username || !providerUserId || !accessToken)) {
+      res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+      return;
     }
 
     try {
@@ -1197,6 +1285,10 @@ export function authRouter(database: LibraryDatabase): Router {
             userId?: number | undefined;
             provider?: string | undefined;
           };
+          if (stateData.provider && stateData.provider !== provider) {
+            res.redirect(`${frontendUrl}/settings?error=InvalidState`);
+            return;
+          }
         } catch {
           res.redirect(`${frontendUrl}/settings?error=InvalidState`);
           return;
@@ -1209,6 +1301,10 @@ export function authRouter(database: LibraryDatabase): Router {
         const user = database.getUserById(userId);
         if (!user) {
           res.redirect(`${frontendUrl}/settings?error=UserNotFound`);
+          return;
+        }
+        if (isAccountBlocked(user.status)) {
+          res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
           return;
         }
 
@@ -1230,11 +1326,19 @@ export function authRouter(database: LibraryDatabase): Router {
 
       if (userId) {
         user = database.getUserById(userId);
+        if (user && isAccountBlocked(user.status)) {
+          res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
+          return;
+        }
         database.updateOAuthTokens(userId, provider, accessToken, refreshToken, expiresAt);
       } else {
         // Ensure email/username are not already taken by a regular account
         const existing = database.getUserByEmail(email);
         if (existing) {
+          if (isAccountBlocked(existing.status)) {
+            res.status(403).json({ error: `Account is ${existing.status}. Please contact support.` });
+            return;
+          }
           // Pre-Account Takeover Defense:
           // If the account has a password, do NOT auto-link on unauthenticated login!
           if (existing.password_hash) {
@@ -1255,6 +1359,31 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       const fullUser = database.getUserById(user.id) || user;
+      const userStatus = "status" in fullUser && typeof fullUser.status === "string" ? fullUser.status : undefined;
+      if (isAccountBlocked(userStatus)) {
+        res.status(403).json({ error: `Account is ${userStatus}. Please contact support.` });
+        return;
+      }
+
+      if ("totp_enabled" in fullUser && fullUser.totp_enabled === 1) {
+        const tempToken = jwt.sign(
+          {
+            id: fullUser.id,
+            username: fullUser.username,
+            email: fullUser.email,
+            scope: "2fa_challenge",
+            purpose: "2fa_challenge",
+            tokenVersion: ("token_version" in fullUser ? fullUser.token_version : undefined) ?? 1,
+          },
+          JWT_SECRET,
+          {
+            expiresIn: "5m",
+          },
+        );
+        res.redirect(`${frontendUrl}/oauth/callback?requires2FA=true&tempToken=${encodeURIComponent(tempToken)}`);
+        return;
+      }
+
       const token = jwt.sign(
         {
           id: fullUser.id,
@@ -1301,27 +1430,66 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(501).json({ error: "Enterprise OIDC is not configured on this node" });
       return;
     }
-    const state = Math.random().toString(36).substring(2);
-    const nonce = Math.random().toString(36).substring(2);
+    const state = crypto.randomBytes(16).toString("hex");
+    const nonce = crypto.randomBytes(16).toString("hex");
+    res.cookie("oidc_state", state, {
+      httpOnly: true,
+      secure: process.env["NODE_ENV"] === "production",
+      sameSite: "lax",
+      maxAge: 10 * 60 * 1000,
+      path: "/",
+    });
     const authUrl = defaultOidcService.getAuthorizationUrl(state, nonce);
     res.redirect(authUrl);
   });
 
   router.get("/oidc/callback", async (req: Request, res: Response) => {
-    const { code } = req.query;
+    const { code, state } = req.query;
     if (!code || typeof code !== "string") {
       res.status(400).json({ error: "Authorization code is required" });
       return;
     }
 
+    const cookieHeader = req.headers.cookie || "";
+    const oidcCookieMatch = cookieHeader.match(/(?:^|;\s*)oidc_state=([^;]+)/);
+    const cookieState =
+      req.cookies?.["oidc_state"] || (oidcCookieMatch?.[1] ? decodeURIComponent(oidcCookieMatch[1]) : undefined);
+    if (cookieState && state !== cookieState) {
+      res.status(400).json({ error: "Invalid OIDC state parameter" });
+      return;
+    }
+    if (process.env["NODE_ENV"] === "production" && !state) {
+      res.status(400).json({ error: "OIDC state parameter is required" });
+      return;
+    }
+
     try {
-      const { idToken } = await defaultOidcService.exchangeCode(code);
-      const claims = await defaultOidcService.verifyIdToken(idToken);
+      const tokenData = await defaultOidcService.exchangeCode(code);
+      let claims;
+      if (defaultOidcService.isConfigured() || process.env["NODE_ENV"] === "production") {
+        claims = await defaultOidcService.verifyIdToken(tokenData.idToken);
+      } else {
+        try {
+          claims = await defaultOidcService.verifyIdToken(tokenData.idToken);
+        } catch {
+          claims = defaultOidcService.extractClaims(tokenData.idToken);
+        }
+      }
       const result = await defaultOidcService.handleOidcLogin(database, claims);
 
       const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
+      if (result.requires2FA) {
+        res.redirect(`${frontendUrl}/oauth/callback?requires2FA=true&tempToken=${encodeURIComponent(result.token)}`);
+        return;
+      }
+      setSessionCookie(res, result.token);
       res.redirect(`${frontendUrl}/oauth/callback?token=${result.token}`);
     } catch (err: unknown) {
+      const status = (err as { status?: number | undefined })?.status;
+      if (status === 403) {
+        res.status(403).json({ error: err instanceof Error ? err.message : "Account is blocked" });
+        return;
+      }
       res.status(500).json({ error: err instanceof Error ? err.message : "OIDC authentication failed" });
     }
   });
@@ -1338,6 +1506,11 @@ export function authRouter(database: LibraryDatabase): Router {
       const result = await defaultOidcService.handleOidcLogin(database, claims);
       res.json(result);
     } catch (err: unknown) {
+      const status = (err as { status?: number | undefined })?.status;
+      if (status === 403) {
+        res.status(403).json({ error: err instanceof Error ? err.message : "Account is blocked" });
+        return;
+      }
       res.status(401).json({ error: err instanceof Error ? err.message : "Invalid OIDC token payload" });
     }
   });
@@ -1400,18 +1573,29 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       if (username || email) {
-        const u = username || req.user!.username;
-        const e = email || req.user!.email;
+        const currentUser = database.getUserById(userId);
+        const currentUsername = currentUser?.username ?? req.user!.username;
+        const currentEmail = currentUser?.email ?? req.user!.email;
+        const u = username || currentUsername;
+        const e = email ? String(email).toLowerCase().trim() : currentEmail;
+        const emailChanged = Boolean(email && e.toLowerCase() !== currentEmail.toLowerCase());
 
         // check uniqueness if changed
-        if (u !== req.user!.username) {
+        if (u !== currentUsername) {
           const existU = database.getUserByUsername(u);
           if (existU && existU.id !== userId) {
             res.status(409).json({ error: "Username is taken" });
             return;
           }
         }
-        if (e !== req.user!.email) {
+        if (emailChanged) {
+          if (isDisposableEmail(e)) {
+            res.status(403).json({
+              error:
+                "Disposable and temporary email addresses are not permitted. Please use a permanent email address.",
+            });
+            return;
+          }
           const existE = database.getUserByEmail(e);
           if (existE && existE.id !== userId) {
             res.status(409).json({ error: "Email is taken" });
@@ -1420,6 +1604,18 @@ export function authRouter(database: LibraryDatabase): Router {
         }
 
         database.updateAccount(userId, u, e);
+
+        if (emailChanged) {
+          try {
+            database.db.prepare(`UPDATE users SET email_verified = 0 WHERE id = ?`).run(userId);
+          } catch {
+            // Ignore if raw db handle is unavailable
+          }
+          const verificationToken = signEmailVerificationToken(userId, e);
+          void defaultMailer.sendVerificationEmail(e, u, verificationToken).catch((err) => {
+            console.error("[Auth] Failed to dispatch verification email on email change:", err);
+          });
+        }
       }
 
       database.updateProfile(userId, {

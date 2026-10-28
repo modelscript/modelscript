@@ -147,6 +147,12 @@ export function billingRouter(database: LibraryDatabase): Router {
           }),
         );
         const timestamp = parts["t"] || "";
+        if (isProd && timestamp) {
+          const tsNum = Number(timestamp);
+          if (!Number.isFinite(tsNum) || Math.abs(Date.now() / 1000 - tsNum) > 300) {
+            return res.status(400).json({ error: "Stripe webhook timestamp outside 5-minute replay window" });
+          }
+        }
         const v1 = parts["v1"] || sigHeader;
         const rawPayload =
           (req as express.Request & { rawBody?: string | Buffer | undefined }).rawBody ?? JSON.stringify(req.body);
@@ -185,6 +191,15 @@ export function billingRouter(database: LibraryDatabase): Router {
       const userId = resolveRequestUserId(req, database);
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const isProd = process.env["NODE_ENV"] === "production";
+      const paymentIntentId = typeof req.body.paymentIntentId === "string" ? req.body.paymentIntentId.trim() : "";
+      if (isProd && process.env["ALLOW_SANDBOX_TOPUP"] !== "true" && !paymentIntentId) {
+        return res.status(403).json({
+          error:
+            "Direct sandbox top-up is disabled in production. Use /api/v1/billing/payment-intent and Stripe webhook settlement.",
+        });
       }
 
       const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
@@ -228,6 +243,7 @@ export function billingRouter(database: LibraryDatabase): Router {
       const description = (req.body.description as string) || "Credit top-up reload";
       const newBalance = database.grantUserCredits(userId, amount, "top_up", description, {
         paymentMethod: req.body.paymentMethod || "sandbox_card",
+        ...(paymentIntentId ? { paymentIntentId } : {}),
         antiCardingVerified: true,
       });
 

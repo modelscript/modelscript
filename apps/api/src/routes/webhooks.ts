@@ -85,6 +85,12 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
     const rawPayload = reqWithRaw.rawBody ? reqWithRaw.rawBody.toString("utf-8") : JSON.stringify(req.body);
 
     let authenticatedWebhook = null;
+    const timingSafeStringMatch = (a: string, b: string): boolean => {
+      const bufA = Buffer.from(a, "utf-8");
+      const bufB = Buffer.from(b, "utf-8");
+      if (bufA.length !== bufB.length) return false;
+      return crypto.timingSafeEqual(bufA, bufB);
+    };
 
     for (const wh of matchingWebhooks) {
       if (provider === "github") {
@@ -95,7 +101,7 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
         }
       } else if (provider === "gitlab") {
         const token = (req.headers["x-gitlab-token"] as string) || (req.headers["x-gitlab-event-token"] as string);
-        if (token && token === wh.secret) {
+        if (token && wh.secret && timingSafeStringMatch(token, wh.secret)) {
           authenticatedWebhook = wh;
           break;
         }
@@ -103,7 +109,7 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
         const token =
           (req.headers["x-webhook-secret"] as string) ||
           (req.headers["authorization"]?.replace(/^Bearer\s+/i, "") as string);
-        if (token && token === wh.secret) {
+        if (token && wh.secret && timingSafeStringMatch(token, wh.secret)) {
           authenticatedWebhook = wh;
           break;
         }
@@ -153,9 +159,13 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
     let versionMatched = false;
     let extractedVersion: string | null = null;
 
-    if (tagName) {
+    if (tagName && tagName.length <= 256) {
       try {
-        const pattern = new RegExp(authenticatedWebhook.tag_pattern);
+        const rawPattern = authenticatedWebhook.tag_pattern || "^v?(.*)$";
+        if (rawPattern.length > 256 || /(\+|\*|\{[0-9,]+\})\s*\)(\+|\*|\{[0-9,]+\})/.test(rawPattern)) {
+          throw new Error("Unsafe tag regex pattern");
+        }
+        const pattern = new RegExp(rawPattern);
         const match = tagName.match(pattern);
         if (match) {
           versionMatched = true;

@@ -8,6 +8,7 @@ import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { compressMorselPayload, decompressMorselPayload } from "../components/morsel/util/permalink";
 import { useToast } from "../components/ToastContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import {
   getExtensionForDialect,
   inferDialectFromArtifact,
@@ -27,14 +28,30 @@ import {
   PlaygroundShareModal,
 } from "./playground";
 
+const TEMPLATE_ALIASES: Record<string, string> = {
+  rlc: "rlc-circuit",
+  "rlc-circuit": "rlc-circuit",
+  "bouncing-ball": "bouncing-ball",
+  sysml2: "rover-sysml",
+  "drone-chassis": "hex-bolt-cad",
+  scad: "hex-bolt-cad",
+  simpack: "simpack-pendulum",
+  gensys: "gensys-bogie",
+  pscad: "pscad-fault",
+  fea: "fea-bracket",
+  cfd: "cfd-airfoil",
+};
+
 export const PlaygroundPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { openCompose } = useContext(ComposeContext);
   const toast = useToast();
+  const hasIde = useFeatureFlag("heavy_vscode_ide");
 
   const modelParam = searchParams.get("model");
+  const templateParam = searchParams.get("template");
   const sourceParam = searchParams.get("source");
   const fromArtifactParam = searchParams.get("fromArtifact");
   const langParam = searchParams.get("lang") || searchParams.get("dialect") || searchParams.get("language");
@@ -79,8 +96,90 @@ export const PlaygroundPage: React.FC = () => {
       return `/ide${qs ? `?${qs}` : ""}#memfs:artifact-${artifactId}`;
     };
 
+    // 0. Check #memfs:... hash when redirected from /ide
+    let memfsArtifactId: string | null = null;
+    let memfsTemplateId: string | null = null;
+    if (location.hash && location.hash.startsWith("#memfs:")) {
+      const memfsTarget = decodeURIComponent(location.hash.slice("#memfs:".length));
+      if (memfsTarget.startsWith("package-")) {
+        const pkgName = memfsTarget.slice("package-".length);
+        try {
+          const rawPkg = localStorage.getItem(`modelscript.pkg.${pkgName}`);
+          if (rawPkg) {
+            const parsed = JSON.parse(rawPkg) as {
+              name?: string;
+              version?: string;
+              files?: Record<string, string>;
+            };
+            const files = parsed?.files || {};
+            const entries = Object.entries(files);
+            if (entries.length > 0) {
+              const preferred =
+                entries.find(
+                  ([k]) => /\.(mo|msx|sysml|scad|spck|gen|pscx|fea|cfd)$/i.test(k) && !/package\.mo$/i.test(k),
+                ) ||
+                entries.find(([k]) => /\.(mo|msx|sysml|scad|spck|gen|pscx|fea|cfd)$/i.test(k)) ||
+                entries[0]!;
+              const [fileName, fileCode] = preferred;
+              const detectedLang = langParam || inferDialectFromFilename(fileName) || "modelica";
+              const resolvedTitle = titleParam || `${parsed.name || pkgName} (${fileName})`;
+              setCurrentCode(fileCode);
+              setCurrentTitle(resolvedTitle);
+              setCurrentLang(detectedLang);
+              setPayload({
+                v: 1,
+                lang: detectedLang,
+                code: fileCode,
+                title: resolvedTitle,
+              });
+              return;
+            }
+          }
+        } catch {
+          // Ignore malformed localStorage package payload
+        }
+      } else if (memfsTarget.startsWith("artifact-")) {
+        memfsArtifactId = memfsTarget.slice("artifact-".length);
+        try {
+          const scratchRaw = sessionStorage.getItem("modelscript.artifact_scratch");
+          if (scratchRaw) {
+            const scratch = JSON.parse(scratchRaw) as {
+              id?: string | number;
+              title?: string;
+              language?: string;
+              code?: string;
+              files?: Record<string, string>;
+            };
+            const firstFile =
+              scratch.code ||
+              (scratch.files && typeof scratch.files === "object" ? Object.values(scratch.files)[0] : undefined);
+            if (firstFile && (!scratch.id || String(scratch.id) === memfsArtifactId)) {
+              const resolvedTitle = titleParam || scratch.title || `Artifact #${memfsArtifactId}`;
+              const detectedLang =
+                langParam || scratch.language || inferDialectFromFilename(resolvedTitle) || "modelica";
+              setResolvedFromArtifact(memfsArtifactId);
+              setCurrentCode(firstFile);
+              setCurrentTitle(resolvedTitle);
+              setCurrentLang(detectedLang);
+              setPayload({
+                v: 1,
+                lang: detectedLang,
+                code: firstFile,
+                title: resolvedTitle,
+              });
+              return;
+            }
+          }
+        } catch {
+          // Fall through to API artifact load
+        }
+      } else if (memfsTarget) {
+        memfsTemplateId = memfsTarget;
+      }
+    }
+
     // 1. Check URL hash (#m=...)
-    if (location.hash && location.hash.length > 1) {
+    if (location.hash && location.hash.length > 1 && !location.hash.startsWith("#memfs:")) {
       const p = decompressMorselPayload(location.hash) as
         | (MorselDecodedPayload & {
             isMultiFile?: boolean;
@@ -89,7 +188,7 @@ export const PlaygroundPage: React.FC = () => {
         | null;
 
       if (p) {
-        if (p.isMultiFile && (p.artifactId || fromArtifactParam)) {
+        if (hasIde && p.isMultiFile && (p.artifactId || fromArtifactParam)) {
           navigate(buildIdeRedirectUrl((p.artifactId || fromArtifactParam)!), { replace: true });
           return;
         }
@@ -167,17 +266,19 @@ export const PlaygroundPage: React.FC = () => {
       return;
     }
 
-    // 4. Check ?fromArtifact=<id> (fetch artifact from API when code wasn't embedded in #m= or ?source=)
-    if (fromArtifactParam) {
+    // 4. Check ?fromArtifact=<id> (or #memfs:artifact-<id>)
+    const effectiveArtifactId = fromArtifactParam || memfsArtifactId;
+    if (effectiveArtifactId) {
+      setResolvedFromArtifact(effectiveArtifactId);
       (async () => {
         try {
-          const res = await getArtifactView(fromArtifactParam);
+          const res = await getArtifactView(effectiveArtifactId);
           if (cancelled) return;
           const art = res?.artifactView || res;
           if (!art) return;
 
-          if (isMultiFileArtifact(art)) {
-            navigate(buildIdeRedirectUrl(fromArtifactParam), { replace: true });
+          if (hasIde && isMultiFileArtifact(art)) {
+            navigate(buildIdeRedirectUrl(effectiveArtifactId), { replace: true });
             return;
           }
 
@@ -211,7 +312,7 @@ export const PlaygroundPage: React.FC = () => {
             cfg.title ||
             cfg.modelName ||
             cfg.projectTitle ||
-            `Artifact #${fromArtifactParam}`;
+            `Artifact #${effectiveArtifactId}`;
           const detectedLang = langParam || inferDialectFromArtifact(art, resolvedTitle);
 
           setCurrentTitle(resolvedTitle);
@@ -229,7 +330,7 @@ export const PlaygroundPage: React.FC = () => {
               lang: detectedLang,
               code,
               title: resolvedTitle,
-              artifactId: String(fromArtifactParam),
+              artifactId: String(effectiveArtifactId),
             });
             window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
           } else {
@@ -240,7 +341,7 @@ export const PlaygroundPage: React.FC = () => {
             }));
           }
         } catch (err) {
-          console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", fromArtifactParam, err);
+          console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", effectiveArtifactId, err);
         }
       })();
       return () => {
@@ -248,11 +349,15 @@ export const PlaygroundPage: React.FC = () => {
       };
     }
 
-    // 5. Check ?model=<name>
-    if (modelParam) {
+    // 5. Check ?template=<id> or ?model=<name> or #memfs:<templateId>
+    const effectiveModelOrTemplate = templateParam || memfsTemplateId || modelParam;
+    if (effectiveModelOrTemplate) {
+      const normalizedKey = TEMPLATE_ALIASES[effectiveModelOrTemplate.toLowerCase()] || effectiveModelOrTemplate;
       const match = HERO_EXAMPLES.find(
         (ex) =>
-          ex.id.toLowerCase() === modelParam.toLowerCase() || ex.title.toLowerCase().includes(modelParam.toLowerCase()),
+          ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
+          ex.id.toLowerCase() === effectiveModelOrTemplate.toLowerCase() ||
+          ex.title.toLowerCase().includes(effectiveModelOrTemplate.toLowerCase()),
       );
       if (match) {
         setCurrentCode(match.code);
@@ -272,10 +377,10 @@ export const PlaygroundPage: React.FC = () => {
         });
         window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
       } else {
-        const rawIdent = modelParam.split(".").pop() || modelParam;
+        const rawIdent = effectiveModelOrTemplate.split(".").pop() || effectiveModelOrTemplate;
         const safeIdent = rawIdent.replace(/[^A-Za-z0-9_]/g, "_") || "UntitledModel";
         const detectedLang = langParam || "modelica";
-        const code = `model ${safeIdent}\n  // ${modelParam}\nend ${safeIdent};\n`;
+        const code = `model ${safeIdent}\n  // ${effectiveModelOrTemplate}\nend ${safeIdent};\n`;
         setCurrentCode(code);
         setCurrentTitle(safeIdent);
         setCurrentLang(detectedLang);
@@ -329,12 +434,14 @@ export const PlaygroundPage: React.FC = () => {
     location.search,
     location.state,
     modelParam,
+    templateParam,
     sourceParam,
     fromArtifactParam,
     langParam,
     titleParam,
     editPostId,
     replyToPostId,
+    hasIde,
     navigate,
   ]);
 

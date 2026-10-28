@@ -396,6 +396,10 @@ const AppShell: React.FC = () => {
 
       if ((e.key === "c" || e.key === "C") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
+        if (!user) {
+          navigate("/login");
+          return;
+        }
         setIsComposeOpen(true);
         return;
       }
@@ -404,7 +408,7 @@ const AppShell: React.FC = () => {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [location.pathname]);
+  }, [location.pathname, user, navigate]);
 
   const [composeInitialState, setComposeInitialState] = React.useState<ComposeInitialState | undefined>(undefined);
 

@@ -111,6 +111,19 @@ export function generateTotpCode(secret: string, timestampMs: number = Date.now(
   return otp.toString().padStart(6, "0");
 }
 
+const MAX_REPLAY_ENTRIES = 10_000;
+const consumedTotpSteps = new Map<string, number>();
+
+export function clearTotpReplayCache(): void {
+  consumedTotpSteps.clear();
+}
+
+export interface VerifyTotpOptions {
+  windowSteps?: number | undefined;
+  timestampMs?: number | undefined;
+  preventReplay?: boolean | undefined;
+}
+
 /**
  * Verifies a 6-digit TOTP code against a secret with clock drift tolerance.
  * Window = 1 means checking [current - 30s, current, current + 30s].
@@ -118,8 +131,9 @@ export function generateTotpCode(secret: string, timestampMs: number = Date.now(
 export function verifyTotpCode(
   secret: string,
   inputCode: string,
-  windowSteps: number = 1,
+  windowStepsOrOptions: number | VerifyTotpOptions = 1,
   timestampMs: number = Date.now(),
+  options?: { preventReplay?: boolean | undefined },
 ): boolean {
   if (!secret || !inputCode) return false;
   const cleanCode = inputCode.replace(/\s+/g, "").trim();
@@ -127,14 +141,40 @@ export function verifyTotpCode(
     return false;
   }
 
+  const windowSteps =
+    typeof windowStepsOrOptions === "number" ? windowStepsOrOptions : (windowStepsOrOptions.windowSteps ?? 1);
+  const effectiveTimestampMs =
+    typeof windowStepsOrOptions === "object" && windowStepsOrOptions.timestampMs !== undefined
+      ? windowStepsOrOptions.timestampMs
+      : timestampMs;
+  const preventReplay =
+    typeof windowStepsOrOptions === "object"
+      ? Boolean(windowStepsOrOptions.preventReplay)
+      : Boolean(options?.preventReplay);
+
   const inputBuf = Buffer.from(cleanCode, "utf8");
 
   for (let step = -windowSteps; step <= windowSteps; step++) {
-    const candidateTime = timestampMs + step * 30_000;
+    const candidateTime = effectiveTimestampMs + step * 30_000;
     const expected = generateTotpCode(secret, candidateTime);
     const expectedBuf = Buffer.from(expected, "utf8");
 
     if (expectedBuf.length === inputBuf.length && crypto.timingSafeEqual(expectedBuf, inputBuf)) {
+      const matchedStep = Math.floor(candidateTime / 1000 / 30);
+      const secretKey = crypto.createHash("sha256").update(secret).digest("hex");
+      if (preventReplay) {
+        const lastStep = consumedTotpSteps.get(secretKey);
+        if (lastStep !== undefined && matchedStep <= lastStep) {
+          return false;
+        }
+      }
+      if (consumedTotpSteps.size >= MAX_REPLAY_ENTRIES) {
+        const oldestKey = consumedTotpSteps.keys().next().value;
+        if (oldestKey !== undefined) {
+          consumedTotpSteps.delete(oldestKey);
+        }
+      }
+      consumedTotpSteps.set(secretKey, matchedStep);
       return true;
     }
   }

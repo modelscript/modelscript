@@ -230,6 +230,71 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
     return deltas;
   }, [parentCode, currentCode]);
 
+  const diffLanguage = useMemo(() => {
+    let config: any = {};
+    const raw = currentArtifact?.view_config ?? (currentArtifact as any)?.viewConfigJson;
+    if (typeof raw === "string") {
+      try {
+        config = JSON.parse(raw || "{}");
+      } catch {
+        config = {};
+      }
+    } else if (raw && typeof raw === "object") {
+      config = raw;
+    }
+
+    const rawType = String(
+      config.language ||
+        config.dialect ||
+        currentArtifact?.view_type ||
+        (currentArtifact as any)?.viewType ||
+        parentArtifact?.view_type ||
+        config.filename ||
+        config.title ||
+        "",
+    ).toLowerCase();
+
+    if (rawType.includes("sysml") || rawType.endsWith(".sysml") || rawType.endsWith(".kerml") || config.sysmlCode) {
+      return "sysml2";
+    }
+    if (rawType.includes("step") || rawType.endsWith(".step") || rawType.endsWith(".stp") || config.stepCode) {
+      return "step";
+    }
+    if (rawType.includes("scad") || rawType.includes("csg") || rawType.endsWith(".scad") || config.scadCode) {
+      return "scad";
+    }
+    if (
+      rawType.includes("xml") ||
+      rawType.includes("ssp") ||
+      rawType.includes("pscad") ||
+      rawType.includes("sbml") ||
+      rawType.includes("jsbsim") ||
+      rawType.includes("urdf") ||
+      rawType.includes("autosar") ||
+      rawType.includes("reqif") ||
+      rawType.includes("openscenario") ||
+      rawType.includes("opendrive")
+    ) {
+      return "xml";
+    }
+    if (rawType.includes("json")) {
+      return "json";
+    }
+    if (rawType.includes("csv") || rawType.includes("tsv")) {
+      return "plaintext";
+    }
+    if (rawType.includes("c99") || rawType === "c" || rawType.endsWith(".c") || rawType.endsWith(".h")) {
+      return "c";
+    }
+    if (rawType.includes("python") || rawType.endsWith(".py")) {
+      return "python";
+    }
+    if (rawType.includes("modelscript") || rawType.includes("msx") || rawType.endsWith(".msx")) {
+      return "modelscript";
+    }
+    return "modelica";
+  }, [currentArtifact, parentArtifact]);
+
   if (!isOpen) return null;
 
   return (
@@ -306,7 +371,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               height="100%"
               original={parentCode}
               modified={currentCode}
-              language="modelica"
+              language={diffLanguage}
               theme={theme === "dark" ? "vs-dark" : "light"}
               options={{
                 readOnly: true,

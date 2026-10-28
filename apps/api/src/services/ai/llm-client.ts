@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { assertSafePublicUrl } from "../../util/ssrf.js";
+
 export interface LLMMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -68,7 +70,12 @@ export class OpenAICompatibleProvider implements LLMProvider {
       max_tokens: options?.maxTokens ?? 1024,
     };
 
-    const res = await fetch(`${this.#baseUrl}/chat/completions`, {
+    const targetUrl = `${this.#baseUrl}/chat/completions`;
+    if (process.env["NODE_ENV"] === "production") {
+      assertSafePublicUrl(targetUrl);
+    }
+
+    const res = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

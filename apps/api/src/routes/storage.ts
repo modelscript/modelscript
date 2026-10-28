@@ -17,9 +17,11 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const rawExt = path.extname(file.originalname || "").toLowerCase();
+    const ext = /^\.[a-z0-9]{1,16}$/.test(rawExt) ? rawExt : "";
+    const safeField = (file.fieldname || "file").replace(/[^a-zA-Z0-9_-]/g, "_");
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+    cb(null, safeField + "-" + uniqueSuffix + ext);
   },
 });
 

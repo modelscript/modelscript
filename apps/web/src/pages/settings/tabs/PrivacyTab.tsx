@@ -396,7 +396,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate }) =
             </DetailSubtitle>
           </Box>
           <a
-            href="/PRIVACY.md"
+            href="/privacy"
             target="_blank"
             rel="noreferrer"
             style={{

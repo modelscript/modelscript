@@ -2,7 +2,16 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { getExplore, getLibraries, getRepos, getSearchCompletions, getTopicPosts, getTrending } from "../api";
+import {
+  getExplore,
+  getLibraries,
+  getPopularRepos,
+  getRepos,
+  getSearchCompletions,
+  getTopicPosts,
+  getTrending,
+  searchPosts,
+} from "../api";
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { usePageTitle } from "../util/title";
@@ -89,6 +98,31 @@ const ExplorePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!query || topic) return;
+    let active = true;
+    searchPosts(query, 40)
+      .then((res) => {
+        if (!active || !Array.isArray(res.posts) || res.posts.length === 0) return;
+        setPosts((prev) => {
+          const byId = new Map<string, PostData>();
+          for (const p of res.posts as PostData[]) {
+            if (p && p.id !== undefined) byId.set(String(p.id), p);
+          }
+          for (const p of prev) {
+            if (p && p.id !== undefined && !byId.has(String(p.id))) {
+              byId.set(String(p.id), p);
+            }
+          }
+          return Array.from(byId.values());
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [query, topic]);
+
+  useEffect(() => {
     if (!query) return;
     if (activeTab === "Artifacts") {
       async function fetchPackages() {
@@ -112,18 +146,22 @@ const ExplorePage: React.FC = () => {
       async function fetchRepos() {
         setReposLoading(true);
         try {
-          const data = await getRepos();
-          const userRepos = data.repos || [];
+          const [popularRes, userRes] = await Promise.all([
+            getPopularRepos(50).catch(() => ({ repos: [] })),
+            token ? getRepos().catch(() => ({ repos: [] })) : Promise.resolve({ repos: [] }),
+          ]);
+          const allRepos: RepoData[] = [...(popularRes.repos || []), ...(userRes.repos || [])];
 
-          const filteredUser = userRepos.filter(
+          const qLower = query.toLowerCase();
+          const filtered = allRepos.filter(
             (r: RepoData) =>
-              r.project.toLowerCase().includes(query.toLowerCase()) ||
-              r.namespace.toLowerCase().includes(query.toLowerCase()) ||
-              (r.description && r.description.toLowerCase().includes(query.toLowerCase())),
+              (r.project && r.project.toLowerCase().includes(qLower)) ||
+              (r.namespace && r.namespace.toLowerCase().includes(qLower)) ||
+              (r.description && r.description.toLowerCase().includes(qLower)),
           );
 
           const seen = new Set<string>();
-          const combined = filteredUser.filter((r: RepoData) => {
+          const combined = filtered.filter((r: RepoData) => {
             const key = `${r.namespace}/${r.project}`;
             if (seen.has(key)) return false;
             seen.add(key);

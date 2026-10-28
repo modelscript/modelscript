@@ -340,6 +340,26 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
     };
   }, [runner, uri, className, staticTensor]);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === "undefined") return;
+    const syncSize = () => {
+      if (hasTransferredRef.current) return;
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      const rect = canvas.getBoundingClientRect();
+      const targetW = Math.max(1, Math.round((rect.width || 640) * dpr));
+      const targetH = Math.max(1, Math.round((rect.height || 360) * dpr));
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
+    };
+    syncSize();
+    const observer = new ResizeObserver(syncSize);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
   const isZeroCopyActive = Boolean(runner || uri);
 
   return (
@@ -372,7 +392,7 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
           {status}
         </Text>
       </Box>
-      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+      <canvas ref={canvasRef} width={640} height={360} style={{ width: "100%", height: "100%", display: "block" }} />
     </Box>
   );
 };

@@ -494,7 +494,7 @@ export interface NpmSearchResult {
  */
 export const getPackument = async (name: string): Promise<NpmPackument | null> => {
   try {
-    const { data } = await api.get<NpmPackument>(`/npm/${encodeURIComponent(name)}`);
+    const { data } = await api.get<NpmPackument>(`/npm/${encodePackagePath(name)}`);
     if (typeof data !== "object" || !data || !data.versions) {
       return null;
     }

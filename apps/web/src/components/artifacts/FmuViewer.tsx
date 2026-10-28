@@ -271,6 +271,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
   const [causalityFilter, setCausalityFilter] = useState<string>("all");
   const [copiedGuid, setCopiedGuid] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isSimulatedFallback, setIsSimulatedFallback] = useState(false);
   const [simResults, setSimResults] = useState<{ t: number[]; y: number[] } | null>(null);
 
   // Collect and deduplicate all scalar variables
@@ -331,6 +332,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
 
   const handleRunSimulation = async () => {
     setIsSimulating(true);
+    setIsSimulatedFallback(false);
     const steps = 100;
     const stopTime = 5.0;
 
@@ -358,6 +360,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       const payload = res.data;
       if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
         setSimResults({ t: payload.t, y: payload.y });
+        setIsSimulatedFallback(false);
         setIsSimulating(false);
         return;
       }
@@ -370,6 +373,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
         );
         const y = payload.data.map((r: Record<string, unknown>) => Number(r[outKey] ?? 0));
         setSimResults({ t, y });
+        setIsSimulatedFallback(false);
         setIsSimulating(false);
         return;
       }
@@ -385,6 +389,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
           const payload = res.data;
           if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
             setSimResults({ t: payload.t, y: payload.y });
+            setIsSimulatedFallback(false);
             setIsSimulating(false);
             return;
           }
@@ -476,6 +481,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       }
     }
 
+    setIsSimulatedFallback(true);
     setSimResults({ t, y });
     setIsSimulating(false);
   };
@@ -486,8 +492,24 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
 
   const handleOpenInPlayground = () => {
     const safeIdent = modelName.replace(/[^A-Za-z0-9_]/g, "_") || "FmuModel";
-    const varDecls = allVariables
+    const seenSafeNames = new Set<string>();
+    const normalizedVars = allVariables
+      .filter((v) => !/^der\(.+\)$/.test(v.name))
       .slice(0, 40)
+      .map((v) => {
+        let safeName = v.name.replace(/[^A-Za-z0-9_]/g, "_") || "v";
+        if (/^[0-9]/.test(safeName)) safeName = `v_${safeName}`;
+        let idx = 2;
+        while (seenSafeNames.has(safeName)) {
+          safeName = `${v.name.replace(/[^A-Za-z0-9_]/g, "_")}_${idx++}`;
+        }
+        seenSafeNames.add(safeName);
+        const causality = v.causality.toLowerCase();
+        const typeName = ["Real", "Integer", "Boolean", "String"].includes(v.type) ? v.type : "Real";
+        return { ...v, safeName, causality, typeName };
+      });
+
+    const varDecls = normalizedVars
       .map((v) => {
         const prefix =
           v.causality === "parameter"
@@ -497,16 +519,62 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               : v.causality === "output"
                 ? "output "
                 : "";
-        const typeName = ["Real", "Integer", "Boolean", "String"].includes(v.type) ? v.type : "Real";
-        const startStr = v.start !== undefined ? `(start = ${v.start})` : "";
+        const defaultStart =
+          v.start !== undefined
+            ? v.start
+            : v.causality === "parameter" || v.causality === "input"
+              ? v.typeName === "Boolean"
+                ? "false"
+                : v.typeName === "String"
+                  ? '""'
+                  : v.typeName === "Integer"
+                    ? 1
+                    : 1.0
+              : undefined;
+        const startStr =
+          defaultStart !== undefined
+            ? v.causality === "parameter"
+              ? ` = ${defaultStart}`
+              : `(start = ${defaultStart})`
+            : "";
         const descStr = v.description ? ` "${v.description.replace(/"/g, "'")}"` : "";
-        return `  ${prefix}${typeName} ${v.name.replace(/[^A-Za-z0-9_]/g, "_")}${startStr}${descStr};`;
+        return `  ${prefix}${v.typeName} ${v.safeName}${startStr}${descStr};`;
       })
       .join("\n");
+
+    const firstInput = normalizedVars.find((v) => v.causality === "input" && v.typeName === "Real")?.safeName;
+    const firstState = normalizedVars.find(
+      (v) =>
+        v.causality !== "parameter" && v.causality !== "input" && v.causality !== "output" && v.typeName === "Real",
+    )?.safeName;
+
+    const eqLines: string[] = [];
+    for (const v of normalizedVars) {
+      if (v.causality === "parameter" || v.causality === "input") continue;
+      if (v.typeName === "Real") {
+        if (v.causality === "output") {
+          const rhs = firstState || firstInput || String(Number.isFinite(Number(v.start)) ? Number(v.start) : 0.0);
+          eqLines.push(`  ${v.safeName} = ${rhs};`);
+        } else {
+          const drive = firstInput || "1.0";
+          eqLines.push(`  der(${v.safeName}) = ${drive} - ${v.safeName};`);
+        }
+      } else if (v.typeName === "Integer") {
+        eqLines.push(`  ${v.safeName} = ${Math.trunc(Number(v.start) || 0)};`);
+      } else if (v.typeName === "Boolean") {
+        eqLines.push(`  ${v.safeName} = ${v.start === true || v.start === "true" ? "true" : "false"};`);
+      } else {
+        eqLines.push(`  ${v.safeName} = "${String(v.start ?? "")}";`);
+      }
+    }
+
+    const finalDecls = varDecls || "  Real x(start = 0.0);\n  output Real y;";
+    const finalEqs = eqLines.length > 0 ? eqLines.join("\n") : varDecls ? "" : "  der(x) = 1.0 - x;\n  y = x;";
+
     const wrapperCode =
       typeof viewConfig.code === "string" && viewConfig.code.trim()
         ? viewConfig.code
-        : `model ${safeIdent} "FMI ${fmiVer} FMU Wrapper (${viewConfig.guid || "unverified"})"\n${varDecls || "  Real y(start = 0.0);"}\nequation\nend ${safeIdent};\n`;
+        : `model ${safeIdent} "FMI ${fmiVer} FMU Wrapper (${viewConfig.guid || "unverified"})"\n${finalDecls}\nequation\n${finalEqs}\nend ${safeIdent};\n`;
     const hash = compressMorselPayload({
       v: 1,
       lang: "modelica" as any,
@@ -689,48 +757,74 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               </Button>
             </Box>
 
+            {isSimulatedFallback && simResults && (
+              <Box
+                px={3}
+                py={2}
+                bg="rgba(245, 158, 11, 0.12)"
+                border="1px solid rgba(245, 158, 11, 0.35)"
+                borderRadius="6px"
+                display="flex"
+                alignItems="center"
+                gap={2}
+              >
+                <Text style={{ fontSize: "11.5px", fontWeight: 600, color: "#fbbf24" }}>
+                  Local Approximation (Backend FMI runtime unavailable)
+                </Text>
+              </Box>
+            )}
+
             <SimulationCanvasContainer>
               {simResults ? (
-                <svg
-                  width="100%"
-                  height="100%"
-                  viewBox="0 0 500 200"
-                  preserveAspectRatio="none"
-                  style={{ padding: "10px" }}
-                >
-                  <defs>
-                    <linearGradient id="fmuLineGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#06b6d4" />
-                      <stop offset="100%" stopColor="#a855f7" />
-                    </linearGradient>
-                  </defs>
-                  {/* Grid lines */}
-                  <line x1="40" y1="30" x2="480" y2="30" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
-                  <line x1="40" y1="90" x2="480" y2="90" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
-                  <line x1="40" y1="150" x2="480" y2="150" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
-                  {/* Axes */}
-                  <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-                  <line x1="40" y1="20" x2="40" y2="170" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-                  {/* Trajectory */}
-                  <polyline
-                    fill="none"
-                    stroke="url(#fmuLineGrad)"
-                    strokeWidth="2.5"
-                    points={simResults.t
-                      .map((time, idx) => {
-                        const x = 40 + (time / 5.0) * 440;
-                        const y = 170 - (simResults.y[idx] || 0) * 110;
-                        return `${x},${y}`;
-                      })
-                      .join(" ")}
-                  />
-                  <text x="50" y="25" fill="#22d3ee" fontSize="11" fontFamily="monospace">
-                    Trajectory: y(t) [Step Response]
-                  </text>
-                  <text x="440" y="185" fill="var(--ms-text-3)" fontSize="10" fontFamily="monospace">
-                    t = 5.0s
-                  </text>
-                </svg>
+                (() => {
+                  const maxTime = Math.max(1e-6, ...simResults.t);
+                  const minY = simResults.y.length > 0 ? Math.min(...simResults.y) : 0;
+                  const maxY = simResults.y.length > 0 ? Math.max(...simResults.y) : 1;
+                  const spanY = Math.max(1e-6, maxY - minY);
+                  return (
+                    <svg
+                      width="100%"
+                      height="100%"
+                      viewBox="0 0 500 200"
+                      preserveAspectRatio="none"
+                      style={{ padding: "10px" }}
+                    >
+                      <defs>
+                        <linearGradient id="fmuLineGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#06b6d4" />
+                          <stop offset="100%" stopColor="#a855f7" />
+                        </linearGradient>
+                      </defs>
+                      {/* Grid lines */}
+                      <line x1="40" y1="30" x2="480" y2="30" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
+                      <line x1="40" y1="90" x2="480" y2="90" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
+                      <line x1="40" y1="150" x2="480" y2="150" stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
+                      {/* Axes */}
+                      <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+                      <line x1="40" y1="20" x2="40" y2="170" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+                      {/* Trajectory */}
+                      <polyline
+                        fill="none"
+                        stroke="url(#fmuLineGrad)"
+                        strokeWidth="2.5"
+                        points={simResults.t
+                          .map((time, idx) => {
+                            const x = 40 + (time / maxTime) * 440;
+                            const valY = simResults.y[idx] ?? minY;
+                            const y = 165 - ((valY - minY) / spanY) * 130;
+                            return `${x},${y}`;
+                          })
+                          .join(" ")}
+                      />
+                      <text x="50" y="25" fill="#22d3ee" fontSize="11" fontFamily="monospace">
+                        Trajectory: y(t) [Step Response]
+                      </text>
+                      <text x="440" y="185" fill="var(--ms-text-3)" fontSize="10" fontFamily="monospace">
+                        t = {maxTime.toFixed(1)}s
+                      </text>
+                    </svg>
+                  );
+                })()
               ) : (
                 <Box textAlign="center" color="var(--color-text-muted)">
                   <PlayIcon size={28} />

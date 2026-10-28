@@ -9,6 +9,7 @@ import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
+import { assertSafePublicUrl } from "../util/ssrf.js";
 
 export function usersRouter(
   database: LibraryDatabase,
@@ -529,6 +530,19 @@ export function usersRouter(
       return;
     }
 
+    if (endpoint_url && typeof endpoint_url === "string" && endpoint_url.trim().length > 0) {
+      try {
+        if (process.env["NODE_ENV"] === "production") {
+          assertSafePublicUrl(endpoint_url.trim());
+        } else {
+          new URL(endpoint_url.trim());
+        }
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : "Invalid bot endpoint URL" });
+        return;
+      }
+    }
+
     // Generate a secure API token for the bot
     const rawToken = crypto.randomBytes(32).toString("hex");
     const tokenPrefix = "ms_bot_";
@@ -573,6 +587,18 @@ export function usersRouter(
     }
 
     const { display_name, bio, avatar_url, scopes, system_prompt, model, api_key, endpoint_url } = req.body;
+    if (endpoint_url && typeof endpoint_url === "string" && endpoint_url.trim().length > 0) {
+      try {
+        if (process.env["NODE_ENV"] === "production") {
+          assertSafePublicUrl(endpoint_url.trim());
+        } else {
+          new URL(endpoint_url.trim());
+        }
+      } catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : "Invalid bot endpoint URL" });
+        return;
+      }
+    }
     database.updateBotSettings(userId, botId, {
       displayName: display_name,
       bio,

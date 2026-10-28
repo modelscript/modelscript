@@ -4,7 +4,7 @@ import { FilterIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { FILTER_CHIPS } from "../constants";
-import { ActiveFilterBanner, FilterChipButton, FilterChipsScroll, FilterSection } from "../styles";
+import { ActiveFilterBanner, FilterChipButton, FilterChipsScroll, FilterSection, HashtagPill } from "../styles";
 import type { TopicItem } from "../types";
 
 export interface FeedFilterToolbarProps {
@@ -53,6 +53,22 @@ export const FeedFilterToolbar: React.FC<FeedFilterToolbarProps> = ({
                 </span>
                 <span>{chip.label}</span>
               </FilterChipButton>
+            );
+          })}
+          {trendingTopics.slice(0, 5).map((topic) => {
+            const tagClean = topic.tag.replace(/^#/, "");
+            const isTagActive = activeTag?.toLowerCase() === tagClean.toLowerCase();
+            return (
+              <HashtagPill
+                key={topic.tag}
+                $active={isTagActive}
+                onClick={() => setActiveTag(isTagActive ? null : tagClean)}
+                title={`${topic.postsCount} posts`}
+                aria-pressed={isTagActive}
+              >
+                <span className="hash">#</span>
+                <span>{tagClean}</span>
+              </HashtagPill>
             );
           })}
         </FilterChipsScroll>

@@ -315,8 +315,16 @@ export default function TwoFactorModal({
     URL.revokeObjectURL(url);
   };
 
+  const handleRequestClose = () => {
+    if (!isEnabled && step === "backup" && !acknowledgedBackup) {
+      setError("Please confirm that you have saved your recovery backup codes before closing.");
+      return;
+    }
+    onClose();
+  };
+
   return (
-    <Overlay onClick={onClose}>
+    <Overlay onClick={handleRequestClose}>
       <ModalCard onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <ModalTitle>
@@ -337,7 +345,11 @@ export default function TwoFactorModal({
               </>
             )}
           </ModalTitle>
-          <CloseButton onClick={onClose} aria-label="Close modal">
+          <CloseButton
+            onClick={handleRequestClose}
+            disabled={!isEnabled && step === "backup" && !acknowledgedBackup}
+            aria-label="Close modal"
+          >
             <XIcon size={18} />
           </CloseButton>
         </ModalHeader>

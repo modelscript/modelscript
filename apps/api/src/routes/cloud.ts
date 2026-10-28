@@ -63,6 +63,7 @@ export interface CloudJobRecord {
   domain: string;
   name: string;
   profile: string;
+  payload?: CloudDispatchPayload | undefined;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   logs: string[];
   resultPath?: string | undefined;
@@ -105,6 +106,382 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
   if (!fs.existsSync(CAE_CACHE_DIR)) {
     fs.mkdirSync(CAE_CACHE_DIR, { recursive: true });
   }
+
+  const isAuthorizedForCloudJob = (req: Request, job: CloudJobRecord): boolean => {
+    if (process.env["NODE_ENV"] !== "production") return true;
+    const reqAny = req as Request & {
+      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
+      userId?: number | undefined;
+    };
+    const isAdmin = reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin";
+    if (isAdmin) return true;
+    const reqUserId = reqAny.user?.id ?? reqAny.userId ?? (database ? resolveRequestUserId(req, database) : null);
+    if (job.userId !== undefined && job.userId !== null && job.userId !== reqUserId) {
+      return false;
+    }
+    return true;
+  };
+
+  const enqueueCloudExecution = (jobRecord: CloudJobRecord, payload: CloudDispatchPayload): void => {
+    const { domain = "modelica", name } = payload;
+    const profile = getComputeProfile(jobRecord.profile);
+    const jobId = jobRecord.jobId;
+    const dbJobId = jobRecord.dbJobId ?? null;
+    const userId = jobRecord.userId ?? null;
+
+    const broadcast = (event: { type: string; data: unknown }) => {
+      for (const sub of jobRecord.subscribers) {
+        try {
+          sub(event);
+        } catch {}
+      }
+    };
+
+    jobQueue.enqueue(jobId, async () => {
+      if ((jobRecord.status as string) === "cancelled") {
+        return;
+      }
+      jobRecord.status = "running";
+      jobRecord.logs.push(`[Cloud] Job started running on compute cluster.`);
+      broadcast({ type: "status", data: { status: "running" } });
+
+      if (domain === "cfd" || domain === "fea") {
+        // Handle CAE (CalculiX or SU2)
+        const format = payload.deck?.format || (domain === "cfd" ? "cfg" : "inp");
+        const solver: CaeSolverType = domain === "cfd" ? "su2" : "calculix";
+        const resultDir = path.join(CAE_CACHE_DIR, jobId);
+
+        const streamer = new CaeTelemetryStreamer(solver);
+        streamer.on("telemetry", (event: CaeTelemetryEvent) => {
+          if (event.type === "iteration") {
+            broadcast({ type: "iteration", data: event });
+            if (event.rawLog) {
+              jobRecord.logs.push(event.rawLog);
+              broadcast({ type: "log", data: event.rawLog });
+            }
+          } else if (event.type === "phase") {
+            if (event.message) {
+              jobRecord.logs.push(`[${event.phase}] ${event.message}`);
+              broadcast({ type: "log", data: `[${event.phase}] ${event.message}` });
+            }
+          } else if (event.type === "error") {
+            jobRecord.logs.push(`[Error] ${event.message}`);
+            broadcast({ type: "log", data: `[Error] ${event.message}` });
+          }
+        });
+
+        let safeGeometryPath: string | undefined;
+        if (payload.geometryPath && typeof payload.geometryPath === "string") {
+          try {
+            safeGeometryPath = getValidatedGeometryPath(payload.geometryPath);
+          } catch {
+            safeGeometryPath = undefined;
+          }
+        }
+
+        const caeSpec: CaeJobSpec = {
+          jobId,
+          solver,
+          deckContent: payload.deck?.content || payload.sourceContent || "",
+          deckFormat: format,
+          geometryPath: safeGeometryPath,
+          cores: profile.cpus,
+          profile: profile.id,
+          resultDir,
+        };
+
+        try {
+          const result = await caeRunner.executeJob(caeSpec, streamer);
+          jobRecord.endTime = Date.now();
+          jobRecord.usage = result.usage;
+
+          if ((jobRecord.status as string) === "cancelled" || result.status === "cancelled") {
+            jobRecord.status = "cancelled";
+            return;
+          }
+
+          if (result.status === "completed") {
+            jobRecord.status = "completed";
+            jobRecord.resultPath = result.resultVtuPath || path.join(resultDir, "result.vtu");
+            jobRecord.logs.push(`[Cloud] CAE computation completed successfully.`);
+            broadcast({ type: "status", data: { status: "completed", resultPath: jobRecord.resultPath } });
+
+            if (database && dbJobId) {
+              database.updateJobStatus(dbJobId, "SUCCESS");
+              if (result.usage) {
+                const effectiveCost = result.simulatedFallback ? 0 : (result.usage.costCredits ?? 0);
+                database.updateJobAccounting(dbJobId, {
+                  ...result.usage,
+                  costCredits: effectiveCost,
+                });
+                if (userId) {
+                  database.settleUserEscrow(userId, dbJobId, effectiveCost, `Cloud CAE: ${name}`, {
+                    profile: profile.id,
+                    ...result.usage,
+                    costCredits: effectiveCost,
+                    simulatedFallback: Boolean(result.simulatedFallback),
+                  });
+                }
+              }
+              if (userId) {
+                database.createNotification(userId, userId, "simulation_completed", null, {
+                  jobId: jobRecord.jobId,
+                  dbJobId,
+                  name: name || caeSpec.solver,
+                  domain: "cae",
+                  solver: caeSpec.solver,
+                  duration: ((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(2),
+                  profile: profile.id,
+                  status: "completed",
+                });
+              }
+            }
+          } else {
+            jobRecord.status = "failed";
+            jobRecord.error = result.error || "CAE solver failed";
+            broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
+            if (database && dbJobId) {
+              database.updateJobStatus(dbJobId, "FAILED");
+              if (userId) {
+                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE solver failed");
+                database.createNotification(userId, userId, "simulation_failed", null, {
+                  jobId: jobRecord.jobId,
+                  dbJobId,
+                  name: name || caeSpec.solver,
+                  domain: "cae",
+                  solver: caeSpec.solver,
+                  error: jobRecord.error,
+                  profile: profile.id,
+                  status: "failed",
+                });
+              }
+            }
+          }
+        } catch (err: unknown) {
+          if ((jobRecord.status as string) === "cancelled") return;
+          jobRecord.status = "failed";
+          jobRecord.error = err instanceof Error ? err.message : String(err);
+          broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
+          if (database && dbJobId) {
+            database.updateJobStatus(dbJobId, "FAILED");
+            if (userId) {
+              database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE execution error");
+              database.createNotification(userId, userId, "simulation_failed", null, {
+                jobId: jobRecord.jobId,
+                dbJobId,
+                name: name || caeSpec.solver,
+                domain: "cae",
+                solver: caeSpec.solver,
+                error: jobRecord.error,
+                profile: profile.id,
+                status: "failed",
+              });
+            }
+          }
+        }
+      } else {
+        // Handle Modelica / Monte Carlo
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-cloud-${jobId}-`));
+        jobRecord.tmpDir = tmpDir;
+        try {
+          const mosScriptPath = path.join(tmpDir, "simulate.mos");
+          const fileNamePrefix = path.basename(name).replace(/[^a-zA-Z0-9_]/g, "_") || "model";
+          const adhocMoPath = path.resolve(tmpDir, `${fileNamePrefix}.mo`);
+          if (!adhocMoPath.startsWith(tmpDir + path.sep)) {
+            throw new Error("Invalid model file path");
+          }
+
+          const source = payload.sourceContent || "";
+          fs.writeFileSync(adhocMoPath, source, "utf8");
+
+          const stopTime = payload.experiment?.stopTime ?? 10.0;
+          const startTime = payload.experiment?.startTime ?? 0.0;
+          const numberOfIntervals = payload.experiment?.numberOfIntervals ?? 500;
+          const tolerance = payload.experiment?.tolerance ?? 1e-6;
+
+          const safeModelName = String(name).replace(/[^a-zA-Z0-9_.]/g, "") || "Model";
+          const simArgs = [
+            safeModelName,
+            `startTime=${Number(startTime) || 0}`,
+            `stopTime=${Number(stopTime) || 10}`,
+            `numberOfIntervals=${Math.max(1, Math.floor(Number(numberOfIntervals) || 500))}`,
+            `tolerance=${Number(tolerance) || 1e-6}`,
+            `outputFormat="csv"`,
+          ];
+          if (payload.parameters && Object.keys(payload.parameters).length > 0) {
+            const overrides = Object.entries(payload.parameters)
+              .map(([k, v]) => {
+                const safeKey = String(k).replace(/[^a-zA-Z0-9_.[\]]/g, "");
+                const safeVal = String(v).replace(/["\r\n;\\]/g, "");
+                return safeKey ? `${safeKey}=${safeVal}` : "";
+              })
+              .filter(Boolean)
+              .join(",");
+            if (overrides) {
+              simArgs.push(`simflags="-override=${overrides}"`);
+            }
+          }
+
+          const mosContents = `
+loadFile("${adhocMoPath.replace(/\\/g, "/").replace(/"/g, "")}");
+simulate(${simArgs.join(", ")});
+getErrorString();
+`;
+          fs.writeFileSync(mosScriptPath, mosContents, "utf8");
+
+          // Native ModelScript simulation engine vs OMC
+          const enginePreference = payload.engine ?? "modelscript";
+          let prep: NativeSimPrepResult | null = null;
+          if (enginePreference !== "omc") {
+            prep = await prepareNativeSimulation(tmpDir, {
+              modelName: name,
+              sourceFiles: [adhocMoPath],
+              startTime,
+              stopTime,
+              numberOfIntervals,
+              tolerance,
+            });
+          }
+
+          const isNative = prep !== null;
+
+          let hpcSpec: HpcJobSpec;
+          if (isNative && prep) {
+            hpcSpec = {
+              jobId,
+              name: `Cloud-${fileNamePrefix}`,
+              command: "bash",
+              args: [prep.runScript],
+              workingDir: tmpDir,
+              env: {
+                OMP_NUM_THREADS: String(profile.cpus),
+              },
+              profileId: profile.id,
+              resources: {
+                cpusPerTask: profile.cpus,
+                memoryMb: profile.memoryMb,
+                partition: profile.partition,
+                gpus: profile.gpus,
+              },
+            };
+          } else {
+            hpcSpec = {
+              jobId,
+              name: `Cloud-${fileNamePrefix}`,
+              command: "omc",
+              args: [mosScriptPath],
+              workingDir: tmpDir,
+              env: {
+                OMP_NUM_THREADS: String(profile.cpus),
+              },
+              profileId: profile.id,
+              resources: {
+                cpusPerTask: profile.cpus,
+                memoryMb: profile.memoryMb,
+                partition: profile.partition,
+                gpus: profile.gpus,
+              },
+            };
+          }
+
+          const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
+          jobRecord.nativeJobId = submission.nativeJobId;
+
+          if ((jobRecord.status as string) === "cancelled") {
+            await hpcEngine.cancel(submission.nativeJobId);
+            return;
+          }
+
+          const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
+
+          if ((jobRecord.status as string) === "cancelled") {
+            return;
+          }
+
+          const csvFilePath = path.resolve(tmpDir, `${fileNamePrefix}_res.csv`);
+          if (csvFilePath.startsWith(tmpDir + path.sep) && fs.existsSync(csvFilePath)) {
+            jobRecord.status = "completed";
+            jobRecord.resultPath = csvFilePath;
+            jobRecord.usage = usage;
+            jobRecord.endTime = Date.now();
+            jobRecord.logs.push(
+              `[Cloud] Modelica simulation completed in ${((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(1)}s.`,
+            );
+            broadcast({ type: "status", data: { status: "completed", resultPath: csvFilePath, usage } });
+
+            if (database && dbJobId) {
+              database.updateJobStatus(dbJobId, "SUCCESS");
+              database.updateJobAccounting(dbJobId, usage);
+              if (userId) {
+                database.settleUserEscrow(userId, dbJobId, usage.costCredits ?? 0, `Cloud Sim: ${name}`, {
+                  profile: profile.id,
+                  ...usage,
+                });
+                database.createNotification(userId, userId, "simulation_completed", null, {
+                  jobId: jobRecord.jobId,
+                  dbJobId,
+                  name,
+                  domain: "modelica",
+                  engine: isNative ? "modelscript" : "omc",
+                  duration: ((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(2),
+                  profile: profile.id,
+                  status: "completed",
+                });
+              }
+            }
+          } else {
+            jobRecord.status = "failed";
+            const logPath = path.join(tmpDir, "simulate.log");
+            let details = "";
+            if (fs.existsSync(logPath)) {
+              details = fs.readFileSync(logPath, "utf8");
+            }
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+            jobRecord.error = details || "Simulation failed to produce CSV results";
+            broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
+            if (database && dbJobId) {
+              database.updateJobStatus(dbJobId, "FAILED");
+              if (userId) {
+                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation failed");
+                database.createNotification(userId, userId, "simulation_failed", null, {
+                  jobId: jobRecord.jobId,
+                  dbJobId,
+                  name,
+                  domain: "modelica",
+                  engine: isNative ? "modelscript" : "omc",
+                  error: jobRecord.error,
+                  profile: profile.id,
+                  status: "failed",
+                });
+              }
+            }
+          }
+        } catch (err: unknown) {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          jobRecord.status = "failed";
+          jobRecord.error = err instanceof Error ? err.message : String(err);
+          broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
+          if (database && dbJobId) {
+            database.updateJobStatus(dbJobId, "FAILED");
+            if (userId) {
+              database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation error");
+              database.createNotification(userId, userId, "simulation_failed", null, {
+                jobId: jobRecord.jobId,
+                dbJobId,
+                name,
+                domain: "modelica",
+                engine: payload.engine ?? "modelscript",
+                error: jobRecord.error,
+                profile: profile.id,
+                status: "failed",
+              });
+            }
+          }
+        }
+      }
+      pruneCloudJobs();
+    });
+  };
 
   // ── 1. GET /api/v1/cloud/profiles ──
   // List all available compute profiles with hardware specs & credit rates
@@ -159,6 +536,10 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
 
       const profile = getComputeProfile(requestedProfile);
       const userId = database ? resolveRequestUserId(req, database) : null;
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
 
       // Pre-flight quota check
       let estimatedCost = 0;
@@ -184,6 +565,7 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
         domain,
         name,
         profile: profile.id,
+        payload,
         status: "queued",
         logs: [
           `[Cloud] Job ${jobId} queued with profile '${profile.name}' (${profile.cpus} CPUs, ${profile.memoryMb}MB RAM)`,
@@ -231,353 +613,8 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
         }
       }
 
-      const broadcast = (event: { type: string; data: unknown }) => {
-        for (const sub of jobRecord.subscribers) {
-          try {
-            sub(event);
-          } catch {}
-        }
-      };
-
       // Dispatch asynchronously to job queue
-      jobQueue.enqueue(jobId, async () => {
-        if ((jobRecord.status as string) === "cancelled") {
-          return;
-        }
-        jobRecord.status = "running";
-        jobRecord.logs.push(`[Cloud] Job started running on compute cluster.`);
-        broadcast({ type: "status", data: { status: "running" } });
-
-        if (domain === "cfd" || domain === "fea") {
-          // Handle CAE (CalculiX or SU2)
-          const format = payload.deck?.format || (domain === "cfd" ? "cfg" : "inp");
-          const solver: CaeSolverType = domain === "cfd" ? "su2" : "calculix";
-          const resultDir = path.join(CAE_CACHE_DIR, jobId);
-
-          const streamer = new CaeTelemetryStreamer(solver);
-          streamer.on("telemetry", (event: CaeTelemetryEvent) => {
-            if (event.type === "iteration") {
-              broadcast({ type: "iteration", data: event });
-              if (event.rawLog) {
-                jobRecord.logs.push(event.rawLog);
-                broadcast({ type: "log", data: event.rawLog });
-              }
-            } else if (event.type === "phase") {
-              if (event.message) {
-                jobRecord.logs.push(`[${event.phase}] ${event.message}`);
-                broadcast({ type: "log", data: `[${event.phase}] ${event.message}` });
-              }
-            } else if (event.type === "error") {
-              jobRecord.logs.push(`[Error] ${event.message}`);
-              broadcast({ type: "log", data: `[Error] ${event.message}` });
-            }
-          });
-
-          let safeGeometryPath: string | undefined;
-          if (payload.geometryPath && typeof payload.geometryPath === "string") {
-            try {
-              safeGeometryPath = getValidatedGeometryPath(payload.geometryPath);
-            } catch {
-              safeGeometryPath = undefined;
-            }
-          }
-
-          const caeSpec: CaeJobSpec = {
-            jobId,
-            solver,
-            deckContent: payload.deck?.content || payload.sourceContent || "",
-            deckFormat: format,
-            geometryPath: safeGeometryPath,
-            cores: profile.cpus,
-            profile: profile.id,
-            resultDir,
-          };
-
-          try {
-            const result = await caeRunner.executeJob(caeSpec, streamer);
-            jobRecord.endTime = Date.now();
-            jobRecord.usage = result.usage;
-
-            if ((jobRecord.status as string) === "cancelled" || result.status === "cancelled") {
-              jobRecord.status = "cancelled";
-              return;
-            }
-
-            if (result.status === "completed") {
-              jobRecord.status = "completed";
-              jobRecord.resultPath = result.resultVtuPath || path.join(resultDir, "result.vtu");
-              jobRecord.logs.push(`[Cloud] CAE computation completed successfully.`);
-              broadcast({ type: "status", data: { status: "completed", resultPath: jobRecord.resultPath } });
-
-              if (database && dbJobId) {
-                database.updateJobStatus(dbJobId, "SUCCESS");
-                if (result.usage) {
-                  database.updateJobAccounting(dbJobId, result.usage);
-                  if (userId) {
-                    database.settleUserEscrow(userId, dbJobId, result.usage.costCredits ?? 0, `Cloud CAE: ${name}`, {
-                      profile: profile.id,
-                      ...result.usage,
-                    });
-                  }
-                }
-                if (userId) {
-                  database.createNotification(userId, userId, "simulation_completed", null, {
-                    jobId: jobRecord.jobId,
-                    dbJobId,
-                    name: name || caeSpec.solver,
-                    domain: "cae",
-                    solver: caeSpec.solver,
-                    duration: ((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(2),
-                    profile: profile.id,
-                    status: "completed",
-                  });
-                }
-              }
-            } else {
-              jobRecord.status = "failed";
-              jobRecord.error = result.error || "CAE solver failed";
-              broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
-              if (database && dbJobId) {
-                database.updateJobStatus(dbJobId, "FAILED");
-                if (userId) {
-                  database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE solver failed");
-                  database.createNotification(userId, userId, "simulation_failed", null, {
-                    jobId: jobRecord.jobId,
-                    dbJobId,
-                    name: name || caeSpec.solver,
-                    domain: "cae",
-                    solver: caeSpec.solver,
-                    error: jobRecord.error,
-                    profile: profile.id,
-                    status: "failed",
-                  });
-                }
-              }
-            }
-          } catch (err: unknown) {
-            if ((jobRecord.status as string) === "cancelled") return;
-            jobRecord.status = "failed";
-            jobRecord.error = err instanceof Error ? err.message : String(err);
-            broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
-            if (database && dbJobId) {
-              database.updateJobStatus(dbJobId, "FAILED");
-              if (userId) {
-                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE execution error");
-                database.createNotification(userId, userId, "simulation_failed", null, {
-                  jobId: jobRecord.jobId,
-                  dbJobId,
-                  name: name || caeSpec.solver,
-                  domain: "cae",
-                  solver: caeSpec.solver,
-                  error: jobRecord.error,
-                  profile: profile.id,
-                  status: "failed",
-                });
-              }
-            }
-          }
-        } else {
-          // Handle Modelica / Monte Carlo
-          const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-cloud-${jobId}-`));
-          jobRecord.tmpDir = tmpDir;
-          try {
-            const mosScriptPath = path.join(tmpDir, "simulate.mos");
-            const fileNamePrefix = path.basename(name).replace(/[^a-zA-Z0-9_]/g, "_") || "model";
-            const adhocMoPath = path.resolve(tmpDir, `${fileNamePrefix}.mo`);
-            if (!adhocMoPath.startsWith(tmpDir + path.sep)) {
-              throw new Error("Invalid model file path");
-            }
-
-            const source = payload.sourceContent || "";
-            fs.writeFileSync(adhocMoPath, source, "utf8");
-
-            const stopTime = payload.experiment?.stopTime ?? 10.0;
-            const startTime = payload.experiment?.startTime ?? 0.0;
-            const numberOfIntervals = payload.experiment?.numberOfIntervals ?? 500;
-            const tolerance = payload.experiment?.tolerance ?? 1e-6;
-
-            const safeModelName = String(name).replace(/[^a-zA-Z0-9_.]/g, "") || "Model";
-            const simArgs = [
-              safeModelName,
-              `startTime=${Number(startTime) || 0}`,
-              `stopTime=${Number(stopTime) || 10}`,
-              `numberOfIntervals=${Math.max(1, Math.floor(Number(numberOfIntervals) || 500))}`,
-              `tolerance=${Number(tolerance) || 1e-6}`,
-              `outputFormat="csv"`,
-            ];
-            if (payload.parameters && Object.keys(payload.parameters).length > 0) {
-              const overrides = Object.entries(payload.parameters)
-                .map(([k, v]) => {
-                  const safeKey = String(k).replace(/[^a-zA-Z0-9_.[\]]/g, "");
-                  const safeVal = String(v).replace(/["\r\n;\\]/g, "");
-                  return safeKey ? `${safeKey}=${safeVal}` : "";
-                })
-                .filter(Boolean)
-                .join(",");
-              if (overrides) {
-                simArgs.push(`simflags="-override=${overrides}"`);
-              }
-            }
-
-            const mosContents = `
-loadFile("${adhocMoPath.replace(/\\/g, "/").replace(/"/g, "")}");
-simulate(${simArgs.join(", ")});
-getErrorString();
-`;
-            fs.writeFileSync(mosScriptPath, mosContents, "utf8");
-
-            // Native ModelScript simulation engine vs OMC
-            const enginePreference = payload.engine ?? "modelscript";
-            let prep: NativeSimPrepResult | null = null;
-            if (enginePreference !== "omc") {
-              prep = await prepareNativeSimulation(tmpDir, {
-                modelName: name,
-                sourceFiles: [adhocMoPath],
-                startTime,
-                stopTime,
-                numberOfIntervals,
-                tolerance,
-              });
-            }
-
-            const isNative = prep !== null;
-
-            let hpcSpec: HpcJobSpec;
-            if (isNative && prep) {
-              hpcSpec = {
-                jobId,
-                name: `Cloud-${fileNamePrefix}`,
-                command: "bash",
-                args: [prep.runScript],
-                workingDir: tmpDir,
-                env: {
-                  OMP_NUM_THREADS: String(profile.cpus),
-                },
-                profileId: profile.id,
-                resources: {
-                  cpusPerTask: profile.cpus,
-                  memoryMb: profile.memoryMb,
-                  partition: profile.partition,
-                  gpus: profile.gpus,
-                },
-              };
-            } else {
-              hpcSpec = {
-                jobId,
-                name: `Cloud-${fileNamePrefix}`,
-                command: "omc",
-                args: [mosScriptPath],
-                workingDir: tmpDir,
-                env: {
-                  OMP_NUM_THREADS: String(profile.cpus),
-                },
-                profileId: profile.id,
-                resources: {
-                  cpusPerTask: profile.cpus,
-                  memoryMb: profile.memoryMb,
-                  partition: profile.partition,
-                  gpus: profile.gpus,
-                },
-              };
-            }
-
-            const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
-            jobRecord.nativeJobId = submission.nativeJobId;
-
-            if ((jobRecord.status as string) === "cancelled") {
-              await hpcEngine.cancel(submission.nativeJobId);
-              return;
-            }
-
-            const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
-
-            if ((jobRecord.status as string) === "cancelled") {
-              return;
-            }
-
-            const csvFilePath = path.resolve(tmpDir, `${fileNamePrefix}_res.csv`);
-            if (csvFilePath.startsWith(tmpDir + path.sep) && fs.existsSync(csvFilePath)) {
-              jobRecord.status = "completed";
-              jobRecord.resultPath = csvFilePath;
-              jobRecord.usage = usage;
-              jobRecord.endTime = Date.now();
-              jobRecord.logs.push(
-                `[Cloud] Modelica simulation completed in ${((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(1)}s.`,
-              );
-              broadcast({ type: "status", data: { status: "completed", resultPath: csvFilePath, usage } });
-
-              if (database && dbJobId) {
-                database.updateJobStatus(dbJobId, "SUCCESS");
-                database.updateJobAccounting(dbJobId, usage);
-                if (userId) {
-                  database.settleUserEscrow(userId, dbJobId, usage.costCredits ?? 0, `Cloud Sim: ${name}`, {
-                    profile: profile.id,
-                    ...usage,
-                  });
-                  database.createNotification(userId, userId, "simulation_completed", null, {
-                    jobId: jobRecord.jobId,
-                    dbJobId,
-                    name,
-                    domain: "modelica",
-                    engine: isNative ? "modelscript" : "omc",
-                    duration: ((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(2),
-                    profile: profile.id,
-                    status: "completed",
-                  });
-                }
-              }
-            } else {
-              jobRecord.status = "failed";
-              const logPath = path.join(tmpDir, "simulate.log");
-              let details = "";
-              if (fs.existsSync(logPath)) {
-                details = fs.readFileSync(logPath, "utf8");
-              }
-              fs.rmSync(tmpDir, { recursive: true, force: true });
-              jobRecord.error = details || "Simulation failed to produce CSV results";
-              broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
-              if (database && dbJobId) {
-                database.updateJobStatus(dbJobId, "FAILED");
-                if (userId) {
-                  database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation failed");
-                  database.createNotification(userId, userId, "simulation_failed", null, {
-                    jobId: jobRecord.jobId,
-                    dbJobId,
-                    name,
-                    domain: "modelica",
-                    engine: isNative ? "modelscript" : "omc",
-                    error: jobRecord.error,
-                    profile: profile.id,
-                    status: "failed",
-                  });
-                }
-              }
-            }
-          } catch (err: unknown) {
-            fs.rmSync(tmpDir, { recursive: true, force: true });
-            jobRecord.status = "failed";
-            jobRecord.error = err instanceof Error ? err.message : String(err);
-            broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
-            if (database && dbJobId) {
-              database.updateJobStatus(dbJobId, "FAILED");
-              if (userId) {
-                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation error");
-                database.createNotification(userId, userId, "simulation_failed", null, {
-                  jobId: jobRecord.jobId,
-                  dbJobId,
-                  name,
-                  domain: "modelica",
-                  engine: payload.engine ?? "modelscript",
-                  error: jobRecord.error,
-                  profile: profile.id,
-                  status: "failed",
-                });
-              }
-            }
-          }
-        }
-        pruneCloudJobs();
-      });
+      enqueueCloudExecution(jobRecord, payload);
 
       res.status(202).json({
         jobId,
@@ -635,6 +672,10 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
+    if (!isAuthorizedForCloudJob(req, job)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     const elapsed = (((job.endTime || Date.now()) - job.startTime) / 1000).toFixed(1);
     res.json({
@@ -660,6 +701,10 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
+    if (!isAuthorizedForCloudJob(req, job)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     res.json({
       jobId: job.jobId,
@@ -674,6 +719,10 @@ getErrorString();
     const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
+      return;
+    }
+    if (!isAuthorizedForCloudJob(req, job)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -707,7 +756,15 @@ getErrorString();
   // Stream or download result file (CSV or VTU)
   router.get("/cloud/jobs/:id/result", (req: Request, res: Response): void => {
     const job = activeJobs.get(req.params["id"] as string);
-    if (!job || !job.resultPath || !fs.existsSync(job.resultPath)) {
+    if (!job) {
+      res.status(404).json({ error: `Results for job '${req.params["id"]}' not available or job still in progress` });
+      return;
+    }
+    if (!isAuthorizedForCloudJob(req, job)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!job.resultPath || !fs.existsSync(job.resultPath)) {
       res.status(404).json({ error: `Results for job '${req.params["id"]}' not available or job still in progress` });
       return;
     }
@@ -732,6 +789,10 @@ getErrorString();
     const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
+      return;
+    }
+    if (!isAuthorizedForCloudJob(req, job)) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -775,13 +836,23 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
+    if (!isAuthorizedForCloudJob(req, existing)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
 
     const newJobId = `cloud-${existing.domain}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const retryPayload: CloudDispatchPayload = existing.payload ?? {
+      domain: (existing.domain as CloudDispatchPayload["domain"]) || "modelica",
+      name: existing.name,
+      profile: existing.profile,
+    };
     const retried: CloudJobRecord = {
       jobId: newJobId,
       domain: existing.domain,
       name: existing.name,
       profile: existing.profile,
+      payload: retryPayload,
       status: "queued",
       startTime: Date.now(),
       logs: [`[Cloud] Retried from job ${existing.jobId}`],
@@ -789,6 +860,10 @@ getErrorString();
       userId: existing.userId,
     };
     activeJobs.set(newJobId, retried);
+
+    if (existing.payload) {
+      enqueueCloudExecution(retried, retryPayload);
+    }
 
     res.status(202).json({
       success: true,

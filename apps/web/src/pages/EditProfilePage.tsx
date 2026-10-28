@@ -12,7 +12,7 @@ import { safeCssImageUrl } from "../util/url";
 
 const EditProfilePage: React.FC = () => {
   usePageTitle("Edit Profile");
-  const { user, token } = useAuth();
+  const { user, token, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [displayName, setDisplayName] = useState("");
@@ -71,6 +71,7 @@ const EditProfilePage: React.FC = () => {
         avatar_url: avatarUrl,
         banner_url: bannerUrl,
       });
+      await refreshUser();
 
       setSuccess(true);
       setTimeout(() => {

@@ -45,22 +45,37 @@ const ScriptDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
   const [job, setJob] = useState<ComputeJob | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [steps, setSteps] = useState<ComputeJobStep[]>([]);
   const [logs, setLogs] = useState<string>("");
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      setLoadError("Job ID is missing.");
+      return;
+    }
     let active = true;
+    setLoading(true);
+    setLoadError(null);
 
     const loadInitial = async () => {
       try {
         const res = await getJob(id);
         if (!active) return;
-        const resolvedJob = res.job ?? res;
+        const resolvedJob = res?.job ?? res;
+        if (!resolvedJob || (typeof resolvedJob === "object" && "error" in resolvedJob && !("status" in resolvedJob))) {
+          setJob(null);
+          setLoadError((resolvedJob as { error?: string })?.error || `Job #${id} not found.`);
+          setLoading(false);
+          return;
+        }
         const normStatus = normalizeJobStatus(resolvedJob.status);
         setJob({ ...resolvedJob, status: normStatus });
         if (res.steps) setSteps(res.steps);
+        setLoading(false);
 
         getJobLogs(id)
           .then((text) => {
@@ -69,9 +84,11 @@ const ScriptDetailPage: React.FC = () => {
           .catch(() => {
             /* ignore log fetch fallback */
           });
-      } catch {
+      } catch (err: any) {
         if (!active) return;
         setJob(null);
+        setLoadError(err?.response?.data?.error || err?.message || `Job #${id} could not be found.`);
+        setLoading(false);
       }
     };
 
@@ -84,15 +101,17 @@ const ScriptDetailPage: React.FC = () => {
     }
 
     const strId = String(id);
+    const isCloudJob = strId.startsWith("cloud-") || strId.startsWith("cloud_");
+    const isCaeJob = strId.startsWith("cae-") || strId.startsWith("cae_");
     const rawId = strId.startsWith("cloud-")
       ? strId.slice("cloud-".length)
       : strId.startsWith("cae-")
         ? strId.slice("cae-".length)
         : strId;
 
-    const baseStreamPath = strId.startsWith("cloud-")
+    const baseStreamPath = isCloudJob
       ? `/api/v1/cloud/jobs/${rawId}/events`
-      : strId.startsWith("cae-")
+      : isCaeJob
         ? `/api/v1/cae/jobs/${rawId}/events`
         : `/api/v1/jobs/${rawId}/stream`;
 
@@ -187,14 +206,16 @@ const ScriptDetailPage: React.FC = () => {
   const handleDownloadResult = () => {
     if (!id) return;
     const strId = String(id);
+    const isCloudJob = strId.startsWith("cloud-") || strId.startsWith("cloud_");
+    const isCaeJob = strId.startsWith("cae-") || strId.startsWith("cae_");
     const rawId = strId.startsWith("cloud-")
       ? strId.slice("cloud-".length)
       : strId.startsWith("cae-")
         ? strId.slice("cae-".length)
         : strId;
-    const baseResultPath = strId.startsWith("cloud-")
+    const baseResultPath = isCloudJob
       ? `/api/v1/cloud/jobs/${rawId}/result`
-      : strId.startsWith("cae-")
+      : isCaeJob
         ? `/api/v1/cae/jobs/${rawId}/results`
         : `/api/v1/jobs/${rawId}/result`;
     const url = `${baseResultPath}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
@@ -202,6 +223,38 @@ const ScriptDetailPage: React.FC = () => {
   };
 
   const normalizedStatus = job ? normalizeJobStatus(job.status) : "QUEUED";
+
+  if (!loading && loadError && !job) {
+    return (
+      <Box display="flex" flexDirection="column" style={{ minHeight: "100%", height: "100%" }}>
+        <Box
+          p={3}
+          display="flex"
+          alignItems="center"
+          gap={3}
+          borderBottom="1px solid var(--color-border-subtle)"
+          bg="var(--color-canvas-default)"
+        >
+          <CircleIconButton onClick={() => navigate("/jobs")} aria-label="Back">
+            <ArrowLeftIcon size={20} />
+          </CircleIconButton>
+          <Heading as="h2" style={{ fontSize: "20px", fontWeight: 800, margin: 0, color: "var(--color-fg-default)" }}>
+            Job #{id}
+          </Heading>
+        </Box>
+        <Box p={5} display="flex" flexDirection="column" alignItems="center" justifyContent="center" gap={3}>
+          <XCircleFillIcon size={32} fill="var(--color-danger-fg)" />
+          <Text fontWeight="bold" fontSize={2} color="var(--color-fg-default)">
+            Job Not Found
+          </Text>
+          <Text color="var(--color-fg-muted)" fontSize={1}>
+            {loadError}
+          </Text>
+          <Button onClick={() => navigate("/jobs")}>Back to Cloud Jobs</Button>
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box display="flex" flexDirection="column" style={{ minHeight: "100%", height: "100%" }}>

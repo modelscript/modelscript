@@ -191,35 +191,66 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
         {/* ── Tab: Regulatory Audit Trail ── */}
         {governanceTab === "audit" && !isLoadingGovernance && (
           <Box display="flex" flexDirection="column" gap={3}>
-            <Box
-              p={3}
-              bg="rgba(46, 160, 67, 0.1)"
-              border="1px solid rgba(46, 160, 67, 0.3)"
-              borderRadius={8}
-              display="flex"
-              alignItems="center"
-              gap={2}
-            >
-              <VerifiedIcon size={18} fill="var(--ms-success)" />
-              <div>
-                <Text
-                  sx={{
-                    fontWeight: 600,
-                    fontSize: 13,
-                    color: auditVerification?.valid ? "var(--ms-success)" : "#d29922",
-                    display: "block",
-                  }}
-                >
-                  {auditVerification?.valid
-                    ? `Cryptographic Hash Chain Verified (${auditVerification.totalEntries} block${auditVerification.totalEntries === 1 ? "" : "s"}, SHA-256)`
-                    : "Cryptographic Hash Chain Active (SHA-256)"}
-                </Text>
-                <Text sx={{ fontSize: 12, color: "var(--color-fg-muted)" }}>
-                  Every mutation in this digital thread is anchored in a 256-bit cryptographic Merkle chain in
-                  compliance with ISO 26262 Part 8 and DO-178C qualification standards.
-                </Text>
-              </div>
-            </Box>
+            {auditVerification && !auditVerification.valid ? (
+              <Box
+                p={3}
+                bg="rgba(248, 81, 73, 0.12)"
+                border="1px solid rgba(248, 81, 73, 0.4)"
+                borderRadius={8}
+                display="flex"
+                alignItems="center"
+                gap={2}
+              >
+                <XIcon size={18} fill="var(--color-danger-fg, #f85149)" />
+                <div>
+                  <Text
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: 13,
+                      color: "var(--color-danger-fg, #f85149)",
+                      display: "block",
+                    }}
+                  >
+                    Cryptographic Hash Chain Verification Failed ({auditVerification.totalEntries} block
+                    {auditVerification.totalEntries === 1 ? "" : "s"}, SHA-256)
+                  </Text>
+                  <Text sx={{ fontSize: 12, color: "var(--color-fg-muted)" }}>
+                    Tampering or checksum discontinuity detected in the regulatory audit trail. Re-verify baseline
+                    integrity before qualification sign-off.
+                  </Text>
+                </div>
+              </Box>
+            ) : (
+              <Box
+                p={3}
+                bg="rgba(46, 160, 67, 0.1)"
+                border="1px solid rgba(46, 160, 67, 0.3)"
+                borderRadius={8}
+                display="flex"
+                alignItems="center"
+                gap={2}
+              >
+                <VerifiedIcon size={18} fill="var(--ms-success)" />
+                <div>
+                  <Text
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: 13,
+                      color: auditVerification?.valid ? "var(--ms-success)" : "#d29922",
+                      display: "block",
+                    }}
+                  >
+                    {auditVerification?.valid
+                      ? `Cryptographic Hash Chain Verified (${auditVerification.totalEntries} block${auditVerification.totalEntries === 1 ? "" : "s"}, SHA-256)`
+                      : "Cryptographic Hash Chain Active (SHA-256)"}
+                  </Text>
+                  <Text sx={{ fontSize: 12, color: "var(--color-fg-muted)" }}>
+                    Every mutation in this digital thread is anchored in a 256-bit cryptographic Merkle chain in
+                    compliance with ISO 26262 Part 8 and DO-178C qualification standards.
+                  </Text>
+                </div>
+              </Box>
+            )}
 
             <table
               style={{

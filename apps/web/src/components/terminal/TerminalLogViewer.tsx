@@ -69,17 +69,25 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamActiveRef = useRef(false);
+  const onJobCompletedRef = useRef(onJobCompleted);
+  useEffect(() => {
+    onJobCompletedRef.current = onJobCompleted;
+  }, [onJobCompleted]);
+  const isTerminal = status === "completed" || status === "failed";
 
   /* ─── Server-Sent Events (SSE) with Polling Fallback ─── */
   useEffect(() => {
     if (!packageName || !packageVersion) return;
-    if (status === "completed" || status === "failed") return;
+    if (isTerminal) return;
 
     let eventSource: EventSource | null = null;
     let pollInterval: NodeJS.Timeout | null = null;
     streamActiveRef.current = true;
 
-    const streamUrl = `/api/v1/libraries/${packageName}/${packageVersion}/logs/stream`;
+    const encodedPkg = packageName.startsWith("@")
+      ? packageName.split("/").map(encodeURIComponent).join("/")
+      : encodeURIComponent(packageName);
+    const streamUrl = `/api/v1/libraries/${encodedPkg}/${encodeURIComponent(packageVersion)}/logs/stream`;
 
     try {
       eventSource = new EventSource(streamUrl);
@@ -94,7 +102,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
           if (data.status) {
             setStatus(data.status);
             if (data.status === "completed") {
-              onJobCompleted?.();
+              onJobCompletedRef.current?.();
             }
           }
         } catch (e) {
@@ -120,7 +128,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
             setStatus(data.status);
             if (data.status === "completed") {
               setIsStreaming(false);
-              onJobCompleted?.();
+              onJobCompletedRef.current?.();
             } else if (data.status === "failed") {
               setIsStreaming(false);
             }
@@ -149,7 +157,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
                 setStatus(job.status);
                 if (job.status === "completed") {
                   if (pollInterval) clearInterval(pollInterval);
-                  onJobCompleted?.();
+                  onJobCompletedRef.current?.();
                 } else if (job.status === "failed") {
                   if (pollInterval) clearInterval(pollInterval);
                 }
@@ -170,7 +178,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
             setStatus(job.status);
             if (job.status === "completed" || job.status === "failed") {
               if (pollInterval) clearInterval(pollInterval);
-              if (job.status === "completed") onJobCompleted?.();
+              if (job.status === "completed") onJobCompletedRef.current?.();
             }
           }
         } catch {
@@ -189,7 +197,7 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
       }
       setIsStreaming(false);
     };
-  }, [packageName, packageVersion, status, onJobCompleted]);
+  }, [packageName, packageVersion, isTerminal]);
 
   /* ─── Auto-Scroll Management ─── */
   const scrollToBottom = useCallback(() => {

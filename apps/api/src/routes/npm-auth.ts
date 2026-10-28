@@ -23,6 +23,7 @@ import { defaultMailer } from "../services/mailer.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { isDisposableEmail } from "../util/email-filter.js";
 import { signEmailVerificationToken } from "../util/email-verification.js";
+import { verifyTotpCode } from "../util/totp.js";
 
 export function npmAuthRouter(database: LibraryDatabase): Router {
   const router = createRouter();
@@ -60,6 +61,11 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
         const existing = database.getUserByUsername(effectiveUsername);
 
         if (existing) {
+          if (isAccountBlocked(existing.status)) {
+            res.status(403).json({ error: `Account is ${existing.status}. Please contact support.` });
+            return;
+          }
+
           // Verify password
           const fullUser = database.getUserByEmail(existing.email);
           if (!fullUser || !fullUser.password_hash) {
@@ -76,6 +82,22 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
           if (isAccountBlocked(fullUser.status)) {
             res.status(403).json({ error: `Account is ${fullUser.status}. Please contact support.` });
             return;
+          }
+
+          if (fullUser.totp_enabled === 1 && fullUser.totp_secret) {
+            const otpHeader = (req.headers["npm-otp"] as string | undefined)?.trim();
+            if (process.env["NODE_ENV"] === "production" || otpHeader) {
+              if (
+                !otpHeader ||
+                !verifyTotpCode(fullUser.totp_secret, otpHeader, {
+                  preventReplay: process.env["NODE_ENV"] === "production",
+                })
+              ) {
+                res.setHeader("WWW-Authenticate", "OTP");
+                res.status(401).json({ error: "Two-factor authentication OTP required (npm-otp header)" });
+                return;
+              }
+            }
           }
 
           // Return a token

@@ -5,6 +5,7 @@ import { Heading, IconButton, Text, Tooltip } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import { getPostAnalytics } from "../../api";
+import { safeCssImageUrl } from "../../util/url";
 import Box from "../Box";
 import { RenderContent } from "../Post";
 import WorldMap from "../WorldMap";
@@ -87,7 +88,7 @@ const ModalAvatar = styled.div<{ $url?: string | undefined }>`
   height: 40px;
   border-radius: 50%;
   background-color: var(--color-accent-emphasis);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => safeCssImageUrl(props.$url) ?? "none"};
   background-size: cover;
   background-position: center;
   display: flex;

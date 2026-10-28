@@ -312,37 +312,53 @@ const StatBox = styled(Box)`
   border: 1px solid var(--color-border-muted);
 `;
 
-const DOMAIN_META: Record<string, { badge: string; accent: string; commentPrefix: RegExp }> = {
-  aspen: { badge: "ASPEN PLUS FLOWSHEET", accent: "#10b981", commentPrefix: /^\s*(;|\*)/ },
-  swmm: { badge: "EPA SWMM HYDRAULICS", accent: "#0ea5e9", commentPrefix: /^\s*;/ },
-  touchstone: { badge: "TOUCHSTONE S-PARAMS", accent: "#8b5cf6", commentPrefix: /^\s*!/ },
-  ibis: { badge: "IBIS I/O BUFFER", accent: "#ec4899", commentPrefix: /^\s*\|/ },
-  opendss: { badge: "OPENDSS POWER GRID", accent: "#f59e0b", commentPrefix: /^\s*(!|\/\/)/ },
-  openscenario: { badge: "ASAM OPENSCENARIO", accent: "#3b82f6", commentPrefix: /^\s*<!--/ },
-  relap5: { badge: "RELAP5 THERMAL-HYDRAULICS", accent: "#ef4444", commentPrefix: /^\s*(\*|=)/ },
-  eclipse: { badge: "ECLIPSE RESERVOIR", accent: "#d97706", commentPrefix: /^\s*--/ },
-  sbml: { badge: "SBML SYSTEMS BIOLOGY", accent: "#14b8a6", commentPrefix: /^\s*<!--/ },
-  jsbsim: { badge: "JSBSIM FLIGHT DYNAMICS", accent: "#6366f1", commentPrefix: /^\s*<!--/ },
-  scad: { badge: "OPENSCAD CSG SOLID", accent: "#06b6d4", commentPrefix: /^\s*\/\// },
-  csg: { badge: "OPENSCAD CSG SOLID", accent: "#06b6d4", commentPrefix: /^\s*\/\// },
-  adams: { badge: "MSC ADAMS MULTIBODY", accent: "#f97316", commentPrefix: /^\s*!/ },
-  autosar: { badge: "AUTOSAR ARXML", accent: "#0284c7", commentPrefix: /^\s*<!--/ },
-  ccsds: { badge: "CCSDS ORBIT DATA", accent: "#7c3aed", commentPrefix: /^\s*COMMENT\b/i },
-  energyplus: { badge: "ENERGYPLUS IDF", accent: "#22c55e", commentPrefix: /^\s*!/ },
-  epanet: { badge: "EPANET WATER NETWORK", accent: "#06b6d4", commentPrefix: /^\s*;/ },
-  opendrive: { badge: "ASAM OPENDRIVE ROAD", accent: "#64748b", commentPrefix: /^\s*<!--/ },
-  plcopen: { badge: "IEC 61131-3 PLCOPEN", accent: "#eab308", commentPrefix: /^\s*(\(\*|\/\/)/ },
-  reqif: { badge: "OMG REQIF REQUIREMENTS", accent: "#a855f7", commentPrefix: /^\s*<!--/ },
-  simulink: { badge: "SIMULINK BLOCK DIAGRAM", accent: "#f43f5e", commentPrefix: /^\s*(%|<!--)/ },
-  spice: { badge: "SPICE CIRCUIT NETLIST", accent: "#f59e0b", commentPrefix: /^\s*\*/ },
-  urdf: { badge: "ROS URDF KINEMATICS", accent: "#ec4899", commentPrefix: /^\s*<!--/ },
-  "verilog-a": { badge: "VERILOG-A / AMS", accent: "#3b82f6", commentPrefix: /^\s*\/\// },
-  c: { badge: "C99 / EMBEDDED SOURCE", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/ },
-  fortran: { badge: "FORTRAN 90 NUMERICAL", accent: "#818cf8", commentPrefix: /^\s*(!|c\s|C\s)/ },
-  csv: { badge: "TABULAR DATASET (CSV)", accent: "#10b981", commentPrefix: /^\s*#/ },
-  gcode: { badge: "CNC G-CODE TOOLPATH", accent: "#f97316", commentPrefix: /^\s*(;|\()/ },
-  modelscript: { badge: "MODELSCRIPT (.MSX)", accent: "#06b6d4", commentPrefix: /^\s*\/\// },
-  msx: { badge: "MODELSCRIPT (.MSX)", accent: "#06b6d4", commentPrefix: /^\s*\/\// },
+const DOMAIN_META: Record<string, { badge: string; accent: string; commentPrefix: RegExp; ext?: string }> = {
+  aspen: { badge: "ASPEN PLUS FLOWSHEET", accent: "#10b981", commentPrefix: /^\s*(;|\*)/, ext: ".bkp" },
+  swmm: { badge: "EPA SWMM HYDRAULICS", accent: "#0ea5e9", commentPrefix: /^\s*;/, ext: ".inp" },
+  touchstone: { badge: "TOUCHSTONE S-PARAMS", accent: "#8b5cf6", commentPrefix: /^\s*!/, ext: ".s2p" },
+  ibis: { badge: "IBIS I/O BUFFER", accent: "#ec4899", commentPrefix: /^\s*\|/, ext: ".ibs" },
+  opendss: { badge: "OPENDSS POWER GRID", accent: "#f59e0b", commentPrefix: /^\s*(!|\/\/)/, ext: ".dss" },
+  openscenario: { badge: "ASAM OPENSCENARIO", accent: "#3b82f6", commentPrefix: /^\s*<!--/, ext: ".xosc" },
+  relap5: { badge: "RELAP5 THERMAL-HYDRAULICS", accent: "#ef4444", commentPrefix: /^\s*(\*|=)/, ext: ".i" },
+  eclipse: { badge: "ECLIPSE RESERVOIR", accent: "#d97706", commentPrefix: /^\s*--/, ext: ".data" },
+  sbml: { badge: "SBML SYSTEMS BIOLOGY", accent: "#14b8a6", commentPrefix: /^\s*<!--/, ext: ".sbml" },
+  jsbsim: { badge: "JSBSIM FLIGHT DYNAMICS", accent: "#6366f1", commentPrefix: /^\s*<!--/, ext: ".xml" },
+  scad: { badge: "OPENSCAD CSG SOLID", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".scad" },
+  csg: { badge: "OPENSCAD CSG SOLID", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".scad" },
+  adams: { badge: "MSC ADAMS MULTIBODY", accent: "#f97316", commentPrefix: /^\s*!/, ext: ".adm" },
+  autosar: { badge: "AUTOSAR ARXML", accent: "#0284c7", commentPrefix: /^\s*<!--/, ext: ".arxml" },
+  ccsds: { badge: "CCSDS ORBIT DATA", accent: "#7c3aed", commentPrefix: /^\s*COMMENT\b/i, ext: ".oem" },
+  energyplus: { badge: "ENERGYPLUS IDF", accent: "#22c55e", commentPrefix: /^\s*!/, ext: ".idf" },
+  epanet: { badge: "EPANET WATER NETWORK", accent: "#06b6d4", commentPrefix: /^\s*;/, ext: ".inp" },
+  opendrive: { badge: "ASAM OPENDRIVE ROAD", accent: "#64748b", commentPrefix: /^\s*<!--/, ext: ".xodr" },
+  plcopen: { badge: "IEC 61131-3 PLCOPEN", accent: "#eab308", commentPrefix: /^\s*(\(\*|\/\/)/, ext: ".st" },
+  reqif: { badge: "OMG REQIF REQUIREMENTS", accent: "#a855f7", commentPrefix: /^\s*<!--/, ext: ".reqif" },
+  simulink: { badge: "SIMULINK BLOCK DIAGRAM", accent: "#f43f5e", commentPrefix: /^\s*(%|<!--)/, ext: ".slx" },
+  spice: { badge: "SPICE CIRCUIT NETLIST", accent: "#f59e0b", commentPrefix: /^\s*\*/, ext: ".cir" },
+  urdf: { badge: "ROS URDF KINEMATICS", accent: "#ec4899", commentPrefix: /^\s*<!--/, ext: ".urdf" },
+  "verilog-a": { badge: "VERILOG-A / AMS", accent: "#3b82f6", commentPrefix: /^\s*\/\//, ext: ".va" },
+  c: { badge: "C99 / EMBEDDED SOURCE", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".c" },
+  fortran: { badge: "FORTRAN 90 NUMERICAL", accent: "#818cf8", commentPrefix: /^\s*(!|c\s|C\s)/, ext: ".f90" },
+  csv: { badge: "TABULAR DATASET (CSV)", accent: "#10b981", commentPrefix: /^\s*#/, ext: ".csv" },
+  gcode: { badge: "CNC G-CODE TOOLPATH", accent: "#f97316", commentPrefix: /^\s*(;|\()/, ext: ".gcode" },
+  modelscript: { badge: "MODELSCRIPT (.MSX)", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".msx" },
+  msx: { badge: "MODELSCRIPT (.MSX)", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".msx" },
+  cfd: { badge: "SU2 / OPENFOAM CFD", accent: "#0ea5e9", commentPrefix: /^\s*(%|\/\/|#)/, ext: ".cfg" },
+  fea: { badge: "ABAQUS / CALCULIX FEA", accent: "#f97316", commentPrefix: /^\s*\*\*/, ext: ".inp" },
+  owl2: { badge: "OWL2 ONTOLOGY", accent: "#a855f7", commentPrefix: /^\s*#/, ext: ".owl" },
+  pscad: { badge: "PSCAD EMT POWER", accent: "#eab308", commentPrefix: /^\s*<!--/, ext: ".pscx" },
+  psse: { badge: "PSS/E POWER FLOW", accent: "#f59e0b", commentPrefix: /^\s*(@!|\/\*)/, ext: ".raw" },
+  rocets: { badge: "ROCETS PROPULSION", accent: "#ef4444", commentPrefix: /^\s*(\*|!|#)/, ext: ".inp" },
+  lps: { badge: "LPS LIQUID PROPULSION", accent: "#ec4899", commentPrefix: /^\s*(#|\/\/|!)/, ext: ".lps" },
+  gensys: { badge: "GENSYS RAIL DYNAMICS", accent: "#10b981", commentPrefix: /^\s*#/, ext: ".gen" },
+  simpack: { badge: "SIMPACK MULTIBODY", accent: "#3b82f6", commentPrefix: /^\s*(!|#)/, ext: ".spck" },
+  olga: { badge: "OLGA MULTIPHASE FLOW", accent: "#14b8a6", commentPrefix: /^\s*!/, ext: ".olga" },
+  sima: { badge: "SIMA MARINE OPERATIONS", accent: "#0284c7", commentPrefix: /^\s*(#|!|<!--)/, ext: ".sima" },
+  gtsuite: { badge: "GT-SUITE POWERTRAIN", accent: "#f43f5e", commentPrefix: /^\s*(#|!|<!--)/, ext: ".gtm" },
+  easy5: { badge: "MSC EASY5 CONTROLS", accent: "#6366f1", commentPrefix: /^\s*(\*|#)/, ext: ".ez5" },
+  ssp: { badge: "FMI SSP ARCHITECTURE", accent: "#8b5cf6", commentPrefix: /^\s*<!--/, ext: ".ssp" },
+  sysml: { badge: "OMG SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
+  sysml2: { badge: "OMG SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
 };
 
 export function highlightPolyglotLine(line: string, dialect: string): React.ReactNode {
@@ -496,14 +512,20 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
     const resolvedId = artifactId ?? viewConfig?.artifactId ?? Date.now();
     if (isMultiFile && viewConfig?.files) {
       const wsId = `artifact-${resolvedId}`;
+      localStorage.setItem(
+        `modelscript:ide:memfs:artifact-${resolvedId}`,
+        JSON.stringify({ files: viewConfig.files, primaryFile: viewConfig.primaryFile }),
+      );
       navigate(`/ide#memfs:${wsId}`);
       return;
     }
+    const ext = meta.ext || ".msx";
+    const resolvedTitle = title.includes(".") ? title : `${title.replace(/\s+/g, "_")}${ext}`;
     const hash = compressMorselPayload({
       v: 1,
       lang: dialect as any,
       code: rawCode || `// ${title}\n`,
-      title,
+      title: resolvedTitle,
     });
     navigate(`/playground?fromArtifact=${resolvedId}#m=${hash}`);
   };

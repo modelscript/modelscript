@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import Box from "../../components/Box";
 import Post from "../../components/Post";
 import type { PostData, TopicData } from "./constants";
-import { CURATED_ENGINEERING_DOMAINS } from "./constants";
+import { CURATED_ENGINEERING_DOMAINS, STARTER_TEMPLATES } from "./constants";
 import { MobileSearchWrapper } from "./styles";
 
 export interface ExploreLandingViewProps {
@@ -260,76 +260,77 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                 </Link>
               </Box>
 
-              {/* Bouncing Ball Workspace Card */}
-              <Box
-                key="bouncing-ball-carousel"
-                bg="var(--color-bg-card)"
-                borderRadius="10px"
-                p="14px"
-                minWidth="240px"
-                maxWidth="260px"
-                display="flex"
-                flexDirection="column"
-                justifyContent="space-between"
-                style={{
-                  flexShrink: 0,
-                  scrollSnapAlign: "start",
-                  background: "var(--color-bg-card)",
-                  border: "1px solid var(--ms-border)",
-                }}
-                sx={{
-                  flexShrink: 0,
-                  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-                  "&:hover": {
-                    borderColor: "var(--ms-brand)",
-                    transform: "translateY(-2px)",
-                    boxShadow: "var(--glow-card)",
-                  },
-                }}
-              >
-                <Box>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                    <span style={{ fontSize: "20px" }}>⚽</span>
-                    <span
+              {STARTER_TEMPLATES.map((tpl) => (
+                <Box
+                  key={`${tpl.id}-carousel`}
+                  bg="var(--color-bg-card)"
+                  borderRadius="10px"
+                  p="14px"
+                  minWidth="240px"
+                  maxWidth="260px"
+                  display="flex"
+                  flexDirection="column"
+                  justifyContent="space-between"
+                  style={{
+                    flexShrink: 0,
+                    scrollSnapAlign: "start",
+                    background: "var(--color-bg-card)",
+                    border: "1px solid var(--ms-border)",
+                  }}
+                  sx={{
+                    flexShrink: 0,
+                    transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                    "&:hover": {
+                      borderColor: "var(--ms-brand)",
+                      transform: "translateY(-2px)",
+                      boxShadow: "var(--glow-card)",
+                    },
+                  }}
+                >
+                  <Box>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <span style={{ fontSize: "20px" }}>{tpl.icon}</span>
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontFamily: "var(--font-mono)",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
+                          color: "var(--hue-indigo)",
+                          border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {tpl.badge}
+                      </span>
+                    </Box>
+                    <div
                       style={{
-                        fontSize: "10px",
-                        fontFamily: "var(--font-mono)",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
-                        color: "var(--hue-indigo)",
-                        border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
-                        fontWeight: 600,
+                        fontWeight: "bold",
+                        fontSize: "14px",
+                        color: "var(--color-text-heading)",
+                        marginBottom: "4px",
                       }}
                     >
-                      Physical Simulation
-                    </span>
+                      {tpl.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--color-text-muted)",
+                        lineHeight: 1.4,
+                        marginBottom: "12px",
+                      }}
+                    >
+                      {tpl.description}
+                    </div>
                   </Box>
-                  <div
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "14px",
-                      color: "var(--color-text-heading)",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Bouncing Ball
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--color-text-muted)",
-                      lineHeight: 1.4,
-                      marginBottom: "12px",
-                    }}
-                  >
-                    Continuous &amp; discrete hybrid events with restitution and zero-crossing detection.
-                  </div>
+                  <Link to={`/ide/${tpl.id}`} className="ms-btn ms-btn-secondary ms-btn-sm ms-btn-block">
+                    <CodeIcon size={14} /> Launch {tpl.title}
+                  </Link>
                 </Box>
-                <Link to="/ide/bouncing-ball" className="ms-btn ms-btn-secondary ms-btn-sm ms-btn-block">
-                  <CodeIcon size={14} /> Launch bouncing ball
-                </Link>
-              </Box>
+              ))}
             </Box>
           </Box>
 

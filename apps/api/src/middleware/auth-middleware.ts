@@ -100,7 +100,7 @@ export function requireTokenScope(...allowedScopes: string[]) {
   };
 }
 
-function extractTokenFromRequest(req: Request): string | undefined {
+export function extractTokenFromRequest(req: Request): string | undefined {
   const authHeader = req.headers["authorization"];
   if (authHeader && authHeader.startsWith("Bearer ")) {
     return authHeader.substring(7);
@@ -121,10 +121,24 @@ function extractTokenFromRequest(req: Request): string | undefined {
     }
   }
   if (typeof req.query["token"] === "string" && req.query["token"].length > 0) {
-    return req.query["token"];
+    const reqPath = (req.originalUrl || req.path || "").split("?")[0] || "";
+    const isAllowedQueryTokenRoute =
+      reqPath.endsWith("/stream") ||
+      reqPath.endsWith("/events") ||
+      reqPath.endsWith("/result") ||
+      reqPath.endsWith("/results") ||
+      reqPath.endsWith("/download") ||
+      reqPath.endsWith("/sse") ||
+      reqPath.includes("/logs/stream") ||
+      process.env["NODE_ENV"] !== "production";
+    if (isAllowedQueryTokenRoute) {
+      return req.query["token"];
+    }
   }
   return undefined;
 }
+
+export const extractToken = extractTokenFromRequest;
 
 export function isEnterpriseHeaderAuthEnabled(): boolean {
   return process.env["ENTERPRISE_HEADER_AUTH"] === "true" || process.env["SAML_PROXY_AUTH"] === "true";
@@ -133,10 +147,14 @@ export function isEnterpriseHeaderAuthEnabled(): boolean {
 export function isIpTrustedProxy(ip: string): boolean {
   const trustedList = process.env["TRUSTED_PROXY_IPS"];
   if (trustedList) {
-    if (trustedList === "*") return true;
+    if (trustedList === "*" && process.env["NODE_ENV"] !== "production") return true;
     const ips = trustedList.split(",").map((s) => s.trim().toLowerCase());
     const normalizedIp = ip.replace(/^::ffff:/, "").toLowerCase();
     return ips.includes(normalizedIp) || ips.includes(ip.toLowerCase());
+  }
+
+  if (process.env["NODE_ENV"] === "production") {
+    return false;
   }
 
   // If not explicitly configured, trust loopback and private container subnets in trust-proxy mode or tests
@@ -164,6 +182,8 @@ export function isIpTrustedProxy(ip: string): boolean {
     normalized.startsWith("192.168.")
   );
 }
+
+export const isTrustedProxyIp = isIpTrustedProxy;
 
 export function tryEnterpriseProxyAuth(req: Request): boolean {
   if (!isEnterpriseHeaderAuthEnabled() || !sharedAuthDatabase) {
@@ -225,6 +245,10 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
   if (!user && rawEmailHeader) {
     const userByEmail = sharedAuthDatabase.getUserByEmail(email);
     if (userByEmail) user = userByEmail;
+  }
+
+  if (user && isAccountBlocked(user.status)) {
+    return false;
   }
 
   if (!user) {
@@ -344,10 +368,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   // Otherwise, handle as a JWT
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string | undefined };
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & {
+      scope?: string | undefined;
+      purpose?: string | undefined;
+    };
 
     // Intermediate 2FA challenge token cannot access authenticated endpoints
-    if (decoded.scope === "2fa_challenge") {
+    if (decoded.scope === "2fa_challenge" || decoded.purpose === "2fa_challenge") {
       res.status(401).json({ error: "Two-factor authentication required" });
       return;
     }
@@ -474,8 +501,11 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & { scope?: string | undefined };
-    if (decoded.scope === "2fa_challenge") {
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthUser & {
+      scope?: string | undefined;
+      purpose?: string | undefined;
+    };
+    if (decoded.scope === "2fa_challenge" || decoded.purpose === "2fa_challenge") {
       next();
       return;
     }

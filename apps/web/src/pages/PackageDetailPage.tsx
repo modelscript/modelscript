@@ -175,6 +175,7 @@ const PackageDetailPage: React.FC = () => {
   const [selectedDomain, setSelectedDomain] = useState<PolyglotDomain>("all");
   const [artifactTabDomainFilter, setArtifactTabDomainFilter] = useState<PolyglotDomain>("all");
   const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [compareBaseVersion, setCompareBaseVersion] = useState<string | undefined>(undefined);
 
   const setTab = (tab: TabId) => {
     setSearchParams({ tab });
@@ -361,12 +362,20 @@ const PackageDetailPage: React.FC = () => {
                 version={version!}
                 versionList={pkg.versionList}
                 packument={pkg.packument}
-                onCompare={() => setTab("compare")}
+                onCompare={(v) => {
+                  setCompareBaseVersion(v);
+                  setTab("compare");
+                }}
               />
             )}
 
             {activeTab === "compare" && name && version && (
-              <PackageCompareTab name={name} version={version} versionList={pkg.versionList} />
+              <PackageCompareTab
+                name={name}
+                version={version}
+                versionList={pkg.versionList}
+                baseVersion={compareBaseVersion}
+              />
             )}
 
             {activeTab === "digital-thread" && (

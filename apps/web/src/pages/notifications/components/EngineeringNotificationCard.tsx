@@ -19,9 +19,10 @@ import type { NotificationItem } from "../types";
 
 export interface EngineeringNotificationCardProps {
   notif: NotificationItem;
+  onMarkRead?: ((id: string | number) => void) | undefined;
 }
 
-export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardProps> = ({ notif }) => {
+export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardProps> = ({ notif, onMarkRead }) => {
   const navigate = useNavigate();
   const meta = notif.metadata || {};
   const isSimulation = notif.type === "simulation_completed" || notif.type === "simulation";
@@ -41,6 +42,9 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
           : "package";
 
   const handleCardClick = () => {
+    if (!notif.read) {
+      onMarkRead?.(notif.id);
+    }
     if (isSimulation || isSimFailed) {
       const targetModel = meta.name;
       if (targetModel) {
@@ -55,7 +59,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
     } else if (isCredit) {
       navigate("/settings/billing");
     } else if (isSecurity) {
-      navigate("/settings");
+      navigate("/settings/security");
     }
   };
 
@@ -217,7 +221,8 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 leadingVisual={ShieldIcon}
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate("/settings");
+                  if (!notif.read) onMarkRead?.(notif.id);
+                  navigate("/settings/security");
                 }}
               >
                 Review Security Settings

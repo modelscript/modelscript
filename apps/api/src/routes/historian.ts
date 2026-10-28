@@ -284,6 +284,10 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
         if (replayer.state === "completed" || replayer.state === "error") {
           activeReplayers.delete(replayId);
         }
+      })
+      .catch((err: unknown) => {
+        activeReplayers.delete(replayId);
+        console.error("[Historian] Replay error:", err);
       });
 
     res.json({ ok: true, replayId, sessionId, speedFactor, state: replayer.state });

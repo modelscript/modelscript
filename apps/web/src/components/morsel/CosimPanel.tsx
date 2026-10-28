@@ -42,6 +42,8 @@ interface CosimPanelProps {
   sessions?: HistorianSession[] | undefined;
   /** Optional handler when a recorded historian session is selected or replayed. */
   onReplaySession?: ((session: HistorianSession, speed: number) => void) | undefined;
+  /** Optional handler when a recorded historian session replay is paused. */
+  onPauseReplay?: (() => void) | undefined;
 }
 
 const STATUS_COLORS: Record<MqttConnectionState, string> = {
@@ -81,6 +83,7 @@ export function CosimPanel({
   colorMode = "light",
   sessions = [],
   onReplaySession,
+  onPauseReplay,
 }: CosimPanelProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
@@ -313,6 +316,8 @@ export function CosimPanel({
                       setIsReplaying(next);
                       if (next) {
                         onReplaySession?.(selectedSession, replaySpeed);
+                      } else {
+                        onPauseReplay?.();
                       }
                     }}
                   >

@@ -111,18 +111,25 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
           const title = classNameMatch ? `Model: ${classNameMatch[1]}` : "Synthesized Engineering Model";
 
           if (isSimulationInquiry) {
-            // Synthesize deterministic trajectory plot for visualization
+            // Synthesize trajectory plot parameterized by model declarations when available
+            const dampingMatch = /parameter\s+Real\s+(?:d|c|damping)\s*=\s*([0-9.]+)/i.exec(modelCode);
+            const inertiaMatch = /parameter\s+Real\s+(?:J|m|L|inertia)\s*=\s*([0-9.]+)/i.exec(modelCode);
+            const damping = dampingMatch
+              ? Math.max(0.05, Number(dampingMatch[1]) / Math.max(0.1, Number(inertiaMatch?.[1] || 1)))
+              : 0.4;
+            const freqHz = 1.5;
+
             const times: number[] = [];
             const trajectoryData: { time: number; variable: string; value: number }[] = [];
             for (let i = 0; i <= 20; i++) {
               const t = Number((i * 0.05).toFixed(2));
               times.push(t);
-              // Damped harmonic response x(t) = exp(-d*t) * cos(omega*t)
-              const angle = Number((Math.exp(-0.4 * t) * Math.cos(2 * Math.PI * 1.5 * t)).toFixed(4));
+              // Analytical damped harmonic response x(t) = exp(-d*t) * cos(omega*t)
+              const angle = Number((Math.exp(-damping * t) * Math.cos(2 * Math.PI * freqHz * t)).toFixed(4));
               const velocity = Number(
                 (
-                  -0.4 * Math.exp(-0.4 * t) * Math.cos(2 * Math.PI * 1.5 * t) -
-                  2 * Math.PI * 1.5 * Math.exp(-0.4 * t) * Math.sin(2 * Math.PI * 1.5 * t)
+                  -damping * Math.exp(-damping * t) * Math.cos(2 * Math.PI * freqHz * t) -
+                  2 * Math.PI * freqHz * Math.exp(-damping * t) * Math.sin(2 * Math.PI * freqHz * t)
                 ).toFixed(4),
               );
               trajectoryData.push({ time: t, variable: "angle (rad)", value: angle });
@@ -131,7 +138,7 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
 
             const vegaSpec = {
               $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-              description: `Simulated Trajectory for ${title}`,
+              description: `Representative Damped Response (Reference Trajectory) for ${title}`,
               mark: "line",
               encoding: {
                 x: { field: "time", type: "quantitative", title: "Time (s)" },

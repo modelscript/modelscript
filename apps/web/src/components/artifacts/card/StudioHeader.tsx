@@ -159,7 +159,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               title={`Forked from Artifact #${resolvedForkedFromId}${paramDeltaCount !== null ? ` (${paramDeltaCount} parameter${paramDeltaCount === 1 ? "" : "s"} changed)` : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(`/?artifact=${resolvedForkedFromId}`);
+                navigate(`/render-artifact/${resolvedForkedFromId}`);
               }}
             >
               ⚡ Fork of #{resolvedForkedFromId}

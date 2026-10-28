@@ -47,6 +47,10 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
   onProposeResolution,
 }) => {
   const cadSide = twin.target.domain === "cad" ? twin.target : twin.source;
+  const modelicaSide =
+    twin.source.domain === "modelica" ? twin.source : twin.target.domain === "modelica" ? twin.target : null;
+  const sysmlSide =
+    twin.target.domain === "sysml2" ? twin.target : twin.source.domain === "sysml2" ? twin.source : null;
 
   return (
     <TwinCard>
@@ -180,23 +184,23 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
       {/* 1-Click Cross-Domain Action Triggers */}
       <ActionsRow>
         <Box display="flex" gap={2} flexWrap="wrap">
-          {twin.source.domain === "modelica" && (
+          {modelicaSide && (
             <Button
               size="small"
               variant="invisible"
               leadingVisual={CodeIcon}
-              onClick={() => onJumpToClass(twin.source.name.split(".").pop() || twin.source.name)}
+              onClick={() => onJumpToClass(modelicaSide.name.split(".").pop() || modelicaSide.name)}
             >
               View Modelica Code
             </Button>
           )}
 
-          {twin.target.domain === "sysml2" && (
+          {sysmlSide && (
             <Button
               size="small"
               variant="invisible"
               leadingVisual={LinkExternalIcon}
-              onClick={() => onJumpToArtifact(twin.target.resourcePath || "sysml/chassis.sysml")}
+              onClick={() => onJumpToArtifact(sysmlSide.resourcePath || "sysml/chassis.sysml")}
             >
               Open SysML Architecture
             </Button>

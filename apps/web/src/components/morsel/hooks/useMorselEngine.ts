@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { extractParametersFromCode } from "../../../util/modelica-params";
 import { type CadComponent } from "../cad-viewer";
 import { AnimationController } from "../cad-viewer/animation-controller";
-import { extractCadComponents } from "../cad-viewer/parse-cad-annotations";
+import { extractCadComponents, parseSourceCadVariables } from "../cad-viewer/parse-cad-annotations";
 import { type HistorianSession } from "../CosimPanel";
 import { type ExperimentOverrides, type ParameterInfo, type SweepState } from "../SimulationParameters";
 import { getCadComponents, simulate } from "../util/lsp-bridge";
@@ -785,23 +785,23 @@ export function useMorselEngine({
     let cancelled = false;
 
     if (isStepSource(editorValue, dialect)) {
-      const { vtkBuffer: stepVtk, components: stepComps } = tessellateStepSource(editorValue);
-      setVtkBuffer(stepVtk);
+      const { components: stepComps } = tessellateStepSource(editorValue);
+      setVtkBuffer(null);
       setCadComponents(stepComps);
       return;
     }
 
     if (dialect === "scad") {
-      const { vtkBuffer: scadVtk, components: scadComps } = tessellateScadSource(editorValue);
-      setVtkBuffer(scadVtk);
+      const { components: scadComps } = tessellateScadSource(editorValue);
+      setVtkBuffer(null);
       setCadComponents(scadComps);
       return;
     }
 
     const stepFileDirective = extractStepFilename(editorValue);
     if (stepFileDirective && !selectedTreeClassName) {
-      const { vtkBuffer: stepVtk, components: stepComps } = tessellateStepSource(editorValue);
-      setVtkBuffer(stepVtk);
+      const { components: stepComps } = tessellateStepSource(editorValue);
+      setVtkBuffer(null);
       setCadComponents(stepComps);
       return;
     }
@@ -818,11 +818,12 @@ export function useMorselEngine({
         if (cancelled) return;
         let parsed: any[] = components;
         if (!parsed || parsed.length === 0) {
-          parsed = (extractCadComponents as any)(editorValue);
+          const sourceVars = parseSourceCadVariables(editorValue);
+          parsed = extractCadComponents(sourceVars);
         }
         if ((!parsed || parsed.length === 0) && stepFileDirective) {
-          const { vtkBuffer: stepVtk, components: stepComps } = tessellateStepSource(editorValue);
-          setVtkBuffer(stepVtk);
+          const { components: stepComps } = tessellateStepSource(editorValue);
+          setVtkBuffer(null);
           parsed = stepComps;
         }
         setCadComponents(parsed as CadComponent[]);
@@ -933,9 +934,11 @@ export function useMorselEngine({
           });
           setLocalSimulationData(chartData);
         }
+        setSimulationStatus({ status: "completed", error: null });
       } catch (e) {
         if ((e as Error).name === "AbortError" || (e as Error).message === "Simulation aborted") return;
-        console.error("Re-simulation failed:", e);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        setSimulationStatus({ status: "failed", error: errMsg });
       }
     }, 300);
     return () => {

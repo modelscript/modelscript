@@ -83,8 +83,8 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
         infiniteGrid
         cellSize={0.5}
         sectionSize={2.0}
-        cellColor="var(--ms-bg-soft)"
-        sectionColor="var(--ms-border)"
+        cellColor="#1e293b"
+        sectionColor="#334155"
         fadeDistance={40}
         position={[0, 0, 0]}
       />
@@ -93,8 +93,9 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
       {nodes.map((node) => {
         const [x, y, z] = node.position;
         const [dx, dy, dz] = node.dimensions || (node.type === "body" ? [1.2, 0.6, 0.4] : [0.15, 0.15, 0.15]);
-        const color =
-          node.color || (node.type === "body" ? "#58a6ff" : node.type === "wheelset" ? "#d29922" : "var(--ms-success)");
+        const rawColor =
+          node.color || (node.type === "body" ? "#58a6ff" : node.type === "wheelset" ? "#d29922" : "#22c55e");
+        const color = rawColor.startsWith("var(") ? "#94a3b8" : rawColor;
 
         return (
           <group key={node.id} position={[x, z, -y]}>
@@ -115,15 +116,19 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
       })}
 
       {/* Render Joint/Spring links */}
-      {linkGeometries.map(({ link, geom }) => (
-        <mesh key={link.id} geometry={geom}>
-          <meshStandardMaterial color={link.color || (link.type === "joint" ? "#f0883e" : "#a371f7")} roughness={0.3} />
-        </mesh>
-      ))}
+      {linkGeometries.map(({ link, geom }) => {
+        const rawLinkColor = link.color || (link.type === "joint" ? "#f0883e" : "#a371f7");
+        const linkColor = rawLinkColor.startsWith("var(") ? "#94a3b8" : rawLinkColor;
+        return (
+          <mesh key={link.id} geometry={geom}>
+            <meshStandardMaterial color={linkColor} roughness={0.3} />
+          </mesh>
+        );
+      })}
 
       <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-        <GizmoViewport axisColors={["var(--ms-danger)", "var(--ms-success)", "#58a6ff"]} labelColor="#ffffff" />
+        <GizmoViewport axisColors={["#ef4444", "#22c55e", "#58a6ff"]} labelColor="#ffffff" />
       </GizmoHelper>
     </>
   );

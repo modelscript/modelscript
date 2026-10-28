@@ -88,6 +88,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [excludedUsers, setExcludedUsers] = useState<Set<string>>(new Set());
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Autocomplete for mentions & hashtags
@@ -135,9 +136,36 @@ export default function ComposeBox(props: ComposeBoxProps) {
     editPostId,
     forkedFromArtifactId,
     pendingPin,
+    excludedUsers,
     onPostCreated,
     fileInputRef,
   });
+
+  const handleInsertEmoji = (emoji: string) => {
+    if (notebook.isNotebookMode) {
+      const targetCell =
+        notebook.notebookCells.find((c) => c.id === notebook.activeCellId && c.type === "markdown") ||
+        [...notebook.notebookCells].reverse().find((c) => c.type === "markdown");
+      if (targetCell && targetCell.type === "markdown") {
+        notebook.updateMarkdownCell(targetCell.id, targetCell.content + emoji);
+      }
+      return;
+    }
+    const el = textareaRef.current;
+    if (el) {
+      const start = el.selectionStart ?? content.length;
+      const end = el.selectionEnd ?? start;
+      const next = content.slice(0, start) + emoji + content.slice(end);
+      setContent(next);
+      requestAnimationFrame(() => {
+        el.focus();
+        const cursor = start + emoji.length;
+        el.setSelectionRange(cursor, cursor);
+      });
+    } else {
+      setContent(content + emoji);
+    }
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -231,102 +259,110 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   />
                 </Box>
               )}
-              {notebook.isNotebookMode ? (
-                <NotebookContainer>
-                  <ComposeTutorialMetaEditor
-                    notebookTitle={notebook.notebookTitle}
-                    setNotebookTitle={notebook.setNotebookTitle}
-                    notebookSummary={notebook.notebookSummary}
-                    setNotebookSummary={notebook.setNotebookSummary}
-                    notebookDifficulty={notebook.notebookDifficulty}
-                    setNotebookDifficulty={notebook.setNotebookDifficulty}
-                    notebookSeries={notebook.notebookSeries}
-                    setNotebookSeries={notebook.setNotebookSeries}
-                    notebookDialect={notebook.notebookDialect}
-                    setNotebookDialect={notebook.setNotebookDialect}
-                    notebookCompanionRepo={notebook.notebookCompanionRepo}
-                    setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
-                    showTutorialMetaEditor={notebook.showTutorialMetaEditor}
-                    setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
-                    handleLoadBaeldungTemplate={notebook.handleLoadBaeldungTemplate}
-                    handleToggleNotebookMode={notebook.handleToggleNotebookMode}
-                    onTitleChange={(nextTitle) =>
-                      notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
-                    }
-                  />
-
-                  <ComposeNotebookCellsEditor
-                    notebookCells={notebook.notebookCells}
-                    activeCellId={notebook.activeCellId}
-                    setActiveCellId={notebook.setActiveCellId}
-                    insertMarkdownSnippet={notebook.insertMarkdownSnippet}
-                    moveCell={notebook.moveCell}
-                    addMarkdownCellAfter={notebook.addMarkdownCellAfter}
-                    removeCell={notebook.removeCell}
-                    updateMarkdownCell={notebook.updateMarkdownCell}
-                    updateArtifactCellCaption={notebook.updateArtifactCellCaption}
-                    updateTokenState={autocomplete.updateTokenState}
-                    handleInteraction={handleInteraction}
-                    handleSubmit={submitHandler.handleSubmit}
-                    setMentionQuery={autocomplete.setMentionQuery}
-                    setHashtagQuery={autocomplete.setHashtagQuery}
-                    setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
-                    setShowCodeSnippetModal={setShowCodeSnippetModal}
-                    setShowMorselModal={setShowMorselModal}
-                    fileInputRef={fileInputRef}
-                  />
-                </NotebookContainer>
-              ) : (
-                <OverlayWrapper>
-                  <Backdrop>
-                    {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
-                      part.startsWith("@") ? (
-                        <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
-                          {part}
-                        </span>
-                      ) : part.startsWith("#") ? (
-                        <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
-                          {part}
-                        </span>
-                      ) : (
-                        part
-                      ),
-                    )}
-                    {content.endsWith("\n") && <br />}
-                  </Backdrop>
-                  <ComposeInput
-                    ref={textareaRef}
-                    value={content}
-                    onChange={handleContentChange}
-                    onKeyUp={handleInteraction}
-                    onClick={handleInteraction}
-                    placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
-                    rows={minRows}
-                    autoFocus={autoFocus}
-                    style={{ marginBottom: replyToPost ? "0px" : "12px" }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                        submitHandler.handleSubmit();
+              <div style={{ position: "relative", width: "100%" }}>
+                {notebook.isNotebookMode ? (
+                  <NotebookContainer>
+                    <ComposeTutorialMetaEditor
+                      notebookTitle={notebook.notebookTitle}
+                      setNotebookTitle={notebook.setNotebookTitle}
+                      notebookSummary={notebook.notebookSummary}
+                      setNotebookSummary={notebook.setNotebookSummary}
+                      notebookDifficulty={notebook.notebookDifficulty}
+                      setNotebookDifficulty={notebook.setNotebookDifficulty}
+                      notebookSeries={notebook.notebookSeries}
+                      setNotebookSeries={notebook.setNotebookSeries}
+                      notebookDialect={notebook.notebookDialect}
+                      setNotebookDialect={notebook.setNotebookDialect}
+                      notebookCompanionRepo={notebook.notebookCompanionRepo}
+                      setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
+                      showTutorialMetaEditor={notebook.showTutorialMetaEditor}
+                      setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
+                      handleLoadBaeldungTemplate={notebook.handleLoadBaeldungTemplate}
+                      handleToggleNotebookMode={notebook.handleToggleNotebookMode}
+                      onTitleChange={(nextTitle) =>
+                        notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
                       }
-                    }}
-                    onBlur={() => {
-                      setTimeout(() => {
-                        autocomplete.setMentionQuery(null);
-                        autocomplete.setHashtagQuery(null);
-                      }, 150);
-                    }}
-                  />
-                </OverlayWrapper>
-              )}
+                    />
 
-              <ComposeMentionHashtagPopups
-                mentionQuery={autocomplete.mentionQuery}
-                mentionSuggestions={autocomplete.mentionSuggestions}
-                onSelectMention={autocomplete.insertMention}
-                hashtagQuery={autocomplete.hashtagQuery}
-                hashtagSuggestions={autocomplete.hashtagSuggestions}
-                onSelectHashtag={autocomplete.insertHashtag}
-              />
+                    <ComposeNotebookCellsEditor
+                      notebookCells={notebook.notebookCells}
+                      activeCellId={notebook.activeCellId}
+                      setActiveCellId={notebook.setActiveCellId}
+                      insertMarkdownSnippet={notebook.insertMarkdownSnippet}
+                      moveCell={notebook.moveCell}
+                      addMarkdownCellAfter={notebook.addMarkdownCellAfter}
+                      removeCell={notebook.removeCell}
+                      updateMarkdownCell={notebook.updateMarkdownCell}
+                      updateArtifactCellCaption={notebook.updateArtifactCellCaption}
+                      updateTokenState={autocomplete.updateTokenState}
+                      handleInteraction={handleInteraction}
+                      handleSubmit={submitHandler.handleSubmit}
+                      setMentionQuery={autocomplete.setMentionQuery}
+                      setHashtagQuery={autocomplete.setHashtagQuery}
+                      setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
+                      setShowCodeSnippetModal={setShowCodeSnippetModal}
+                      setShowMorselModal={setShowMorselModal}
+                      fileInputRef={fileInputRef}
+                    />
+                  </NotebookContainer>
+                ) : (
+                  <OverlayWrapper>
+                    <Backdrop ref={backdropRef}>
+                      {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
+                        part.startsWith("@") ? (
+                          <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
+                            {part}
+                          </span>
+                        ) : part.startsWith("#") ? (
+                          <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
+                            {part}
+                          </span>
+                        ) : (
+                          part
+                        ),
+                      )}
+                      {content.endsWith("\n") && <br />}
+                    </Backdrop>
+                    <ComposeInput
+                      ref={textareaRef}
+                      value={content}
+                      onChange={handleContentChange}
+                      onKeyUp={handleInteraction}
+                      onClick={handleInteraction}
+                      onScroll={(e) => {
+                        if (backdropRef.current) {
+                          backdropRef.current.scrollTop = e.currentTarget.scrollTop;
+                          backdropRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                        }
+                      }}
+                      placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
+                      rows={minRows}
+                      autoFocus={autoFocus}
+                      style={{ marginBottom: replyToPost ? "0px" : "12px" }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          submitHandler.handleSubmit();
+                        }
+                      }}
+                      onBlur={() => {
+                        setTimeout(() => {
+                          autocomplete.setMentionQuery(null);
+                          autocomplete.setHashtagQuery(null);
+                        }, 150);
+                      }}
+                    />
+                  </OverlayWrapper>
+                )}
+
+                <ComposeMentionHashtagPopups
+                  mentionQuery={autocomplete.mentionQuery}
+                  mentionSuggestions={autocomplete.mentionSuggestions}
+                  onSelectMention={autocomplete.insertMention}
+                  hashtagQuery={autocomplete.hashtagQuery}
+                  hashtagSuggestions={autocomplete.hashtagSuggestions}
+                  onSelectHashtag={autocomplete.insertHashtag}
+                />
+              </div>
 
               {!notebook.isNotebookMode && (
                 <ComposeAttachedArtifact
@@ -372,6 +408,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
               hasNotebookContent={submitHandler.hasNotebookContent}
               editPostId={editPostId}
               replyToPost={replyToPost}
+              textareaRef={textareaRef}
+              onInsertEmoji={handleInsertEmoji}
             />
           </Box>
         </Box>

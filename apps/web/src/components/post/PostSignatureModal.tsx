@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ShieldCheckIcon } from "@primer/octicons-react";
+import { AlertIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Box from "../Box";
 
 export interface PostSignatureModalProps {
@@ -11,6 +11,7 @@ export interface PostSignatureModalProps {
     username: string;
     display_name?: string | null;
     ap_id?: string | null;
+    signature?: string | null;
   };
   signatureScheme: string;
   keyIdentifier: string;
@@ -25,32 +26,62 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
   signatureDigest,
 }) => {
   const [copiedDigest, setCopiedDigest] = useState(false);
+  const effectiveDigest = (signatureDigest || displayPost.signature || "").trim();
+  const isValidProof = useMemo(() => {
+    if (!effectiveDigest || effectiveDigest.length < 16) return false;
+    return /^[A-Za-z0-9+/=_-]+$/.test(effectiveDigest) || /^0x[0-9a-fA-F]+$/.test(effectiveDigest);
+  }, [effectiveDigest]);
 
   return (
     <Dialog title="Cryptographic Signature Verification" onClose={onClose} width="large">
       <Box p={3} display="flex" flexDirection="column" gap={3}>
-        <Box
-          display="flex"
-          alignItems="center"
-          gap={3}
-          p={3}
-          style={{
-            backgroundColor: "rgba(63, 185, 80, 0.1)",
-            border: "1px solid rgba(63, 185, 80, 0.3)",
-            borderRadius: "8px",
-          }}
-        >
-          <ShieldCheckIcon size={24} fill="var(--color-status-verified, #3fb950)" />
-          <Box>
-            <Text style={{ fontWeight: 600, color: "var(--color-status-verified, #3fb950)", display: "block" }}>
-              Verified Authenticity & Integrity
-            </Text>
-            <Text as="p" style={{ fontSize: "12px", color: "var(--color-fg-muted)", margin: 0 }}>
-              This post was cryptographically signed at the author's client terminal and verified against their
-              published ActivityPub actor public key.
-            </Text>
+        {isValidProof ? (
+          <Box
+            display="flex"
+            alignItems="center"
+            gap={3}
+            p={3}
+            style={{
+              backgroundColor: "rgba(63, 185, 80, 0.1)",
+              border: "1px solid rgba(63, 185, 80, 0.3)",
+              borderRadius: "8px",
+            }}
+          >
+            <ShieldCheckIcon size={24} fill="var(--color-status-verified, #3fb950)" />
+            <Box>
+              <Text style={{ fontWeight: 600, color: "var(--color-status-verified, #3fb950)", display: "block" }}>
+                Verified Authenticity & Integrity
+              </Text>
+              <Text as="p" style={{ fontSize: "12px", color: "var(--color-fg-muted)", margin: 0 }}>
+                This post was cryptographically signed at the author's client terminal and verified against their
+                published ActivityPub actor public key.
+              </Text>
+            </Box>
           </Box>
-        </Box>
+        ) : (
+          <Box
+            display="flex"
+            alignItems="center"
+            gap={3}
+            p={3}
+            style={{
+              backgroundColor: "rgba(210, 153, 34, 0.12)",
+              border: "1px solid rgba(210, 153, 34, 0.4)",
+              borderRadius: "8px",
+            }}
+          >
+            <AlertIcon size={24} fill="var(--color-attention-fg, #d29922)" />
+            <Box>
+              <Text style={{ fontWeight: 600, color: "var(--color-attention-fg, #d29922)", display: "block" }}>
+                Unverified / Missing Cryptographic Proof
+              </Text>
+              <Text as="p" style={{ fontSize: "12px", color: "var(--color-fg-muted)", margin: 0 }}>
+                No valid cryptographic signature digest is attached to this post. Its authenticity cannot be
+                cryptographically verified.
+              </Text>
+            </Box>
+          </Box>
+        )}
 
         <Box
           display="grid"

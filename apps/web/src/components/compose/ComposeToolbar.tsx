@@ -38,6 +38,8 @@ export interface ComposeToolbarProps {
   hasNotebookContent: boolean;
   editPostId?: string | number | null | undefined;
   replyToPost?: any;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null> | undefined;
+  onInsertEmoji?: ((emoji: string) => void) | undefined;
 }
 
 export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
@@ -64,7 +66,32 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   hasNotebookContent,
   editPostId,
   replyToPost,
+  textareaRef,
+  onInsertEmoji,
 }) => {
+  const emojiWrapperRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setShowEmojiPicker(false);
+      }
+    };
+    const handleMouseDown = (e: MouseEvent) => {
+      if (emojiWrapperRef.current && !emojiWrapperRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleMouseDown);
+    };
+  }, [showEmojiPicker, setShowEmojiPicker]);
+
   return (
     <Box
       style={{
@@ -154,7 +181,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           >
             CW
           </ActionIconButton>
-          <div style={{ position: "relative" }}>
+          <div ref={emojiWrapperRef} style={{ position: "relative" }}>
             <ActionIconButton
               onClick={() => setShowEmojiPicker((prev) => !prev)}
               aria-label="Add Emoji"
@@ -174,7 +201,24 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
                 <div style={{ position: "absolute", top: "100%", zIndex: 1000, marginTop: "8px" }}>
                   <SimpleEmojiPicker
                     onEmojiClick={(emojiData) => {
-                      setContent(content + emojiData.emoji);
+                      if (onInsertEmoji) {
+                        onInsertEmoji(emojiData.emoji);
+                        return;
+                      }
+                      const el = textareaRef?.current;
+                      if (el) {
+                        const start = el.selectionStart ?? content.length;
+                        const end = el.selectionEnd ?? start;
+                        const next = content.slice(0, start) + emojiData.emoji + content.slice(end);
+                        setContent(next);
+                        requestAnimationFrame(() => {
+                          el.focus();
+                          const cursor = start + emojiData.emoji.length;
+                          el.setSelectionRange(cursor, cursor);
+                        });
+                      } else {
+                        setContent(content + emojiData.emoji);
+                      }
                     }}
                   />
                 </div>

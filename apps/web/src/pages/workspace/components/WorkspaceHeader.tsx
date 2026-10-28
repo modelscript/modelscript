@@ -13,9 +13,10 @@ import {
   TriangleDownIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Label, Link as PrimerLink, Text, UnderlineNav } from "@primer/react";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Box from "../../../components/Box";
+import { useToast } from "../../../components/ToastContext";
 
 export interface WorkspaceHeaderProps {
   namespace: string;
@@ -25,6 +26,54 @@ export interface WorkspaceHeaderProps {
 }
 
 export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({ namespace, project, basePath, currentTab }) => {
+  const { showToast } = useToast();
+  const repoKey = `${namespace}/${project}`;
+  const [watching, setWatching] = useState(false);
+  const [starred, setStarred] = useState(false);
+  const [forked, setForked] = useState(false);
+
+  useEffect(() => {
+    try {
+      setWatching(localStorage.getItem(`modelscript.repo.watch.${repoKey}`) === "1");
+      setStarred(localStorage.getItem(`modelscript.repo.star.${repoKey}`) === "1");
+      setForked(localStorage.getItem(`modelscript.repo.fork.${repoKey}`) === "1");
+    } catch {
+      // Ignore storage errors
+    }
+  }, [repoKey]);
+
+  const toggleWatch = () => {
+    const next = !watching;
+    setWatching(next);
+    try {
+      localStorage.setItem(`modelscript.repo.watch.${repoKey}`, next ? "1" : "0");
+    } catch {
+      // Ignore
+    }
+    showToast(next ? `Watching ${repoKey}` : `Unwatched ${repoKey}`, "info");
+  };
+
+  const toggleStar = () => {
+    const next = !starred;
+    setStarred(next);
+    try {
+      localStorage.setItem(`modelscript.repo.star.${repoKey}`, next ? "1" : "0");
+    } catch {
+      // Ignore
+    }
+    showToast(next ? `Starred ${repoKey}` : `Unstarred ${repoKey}`, "info");
+  };
+
+  const handleFork = () => {
+    setForked(true);
+    try {
+      localStorage.setItem(`modelscript.repo.fork.${repoKey}`, "1");
+    } catch {
+      // Ignore
+    }
+    showToast(`Forked ${repoKey} to your workspace`, "success");
+  };
+
   return (
     <Box style={{ borderBottom: "1px solid var(--color-border-default)", paddingTop: "16px" }}>
       <Box maxWidth="1280px" mx="auto" px={4}>
@@ -47,14 +96,30 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({ namespace, pro
             </Label>
           </Box>
           <Box display="flex" gap={2}>
-            <Button leadingVisual={EyeIcon} trailingVisual={TriangleDownIcon} size="small" variant="default">
-              Watch
+            <Button
+              leadingVisual={EyeIcon}
+              trailingVisual={TriangleDownIcon}
+              size="small"
+              variant={watching ? "primary" : "default"}
+              onClick={toggleWatch}
+            >
+              {watching ? "Watching" : "Watch"}
             </Button>
-            <Button leadingVisual={RepoForkedIcon} size="small" variant="default">
-              Fork
+            <Button
+              leadingVisual={RepoForkedIcon}
+              size="small"
+              variant={forked ? "primary" : "default"}
+              onClick={handleFork}
+            >
+              {forked ? "Forked" : "Fork"}
             </Button>
-            <Button leadingVisual={StarIcon} size="small" variant="default">
-              Star
+            <Button
+              leadingVisual={StarIcon}
+              size="small"
+              variant={starred ? "primary" : "default"}
+              onClick={toggleStar}
+            >
+              {starred ? "Starred" : "Star"}
             </Button>
           </Box>
         </Box>

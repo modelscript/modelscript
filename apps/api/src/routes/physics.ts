@@ -237,6 +237,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       // Pre-flight quota check
       const profile = getComputeProfile(config["profile"] as string | undefined);
       const userId = resolveRequestUserId(req, database);
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       if (userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
         if (!quota.allowed) {
@@ -392,6 +395,11 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         return res.status(400).json({ error: "Missing geometryHash or config." });
       }
 
+      const userId = resolveRequestUserId(req, database);
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
       let safeGeometryHash: string;
       try {
         safeGeometryHash = sanitizeHash(geometryHash);
@@ -412,7 +420,7 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       }
 
       // Create job in the database
-      const dbJobId = database.createJob(`CAM Generation`, "RUNNING", "ADHOC", "ide", null, { resultDir });
+      const dbJobId = database.createJob(`CAM Generation`, "RUNNING", "ADHOC", "ide", null, { resultDir }, userId);
       const cachedResult = path.resolve(resultDir, "toolpath.gcode");
 
       if (fs.existsSync(cachedResult)) {
@@ -431,6 +439,17 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       // but we use tsx watch during dev. For safety, we use the tsx compatible path or worker path.
       const ext = path.extname(import.meta.url) === ".ts" ? "ts" : "js";
       const camWorkerPath = path.resolve(process.cwd(), "apps", "api", "src", "workers", `camWorker.${ext}`);
+
+      const onCamStatus = (evt: { status: string; error?: string | undefined }) => {
+        if (evt.status === "completed") {
+          database.updateJobStatus(dbJobId, "SUCCESS");
+          jobQueue.off(`status:cam-${dbJobId}`, onCamStatus);
+        } else if (evt.status === "failed") {
+          database.updateJobStatus(dbJobId, "FAILED");
+          jobQueue.off(`status:cam-${dbJobId}`, onCamStatus);
+        }
+      };
+      jobQueue.on(`status:cam-${dbJobId}`, onCamStatus);
 
       // We use enqueueProcess for CPU-intensive/isolated tasks
       jobQueue.enqueueProcess(`cam-${dbJobId}`, camWorkerPath, {

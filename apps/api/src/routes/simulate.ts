@@ -48,6 +48,9 @@ export function simulateRouter(
       // Pre-flight quota check
       const profile = getComputeProfile(req.body.profile as string | undefined);
       const userId = database ? resolveRequestUserId(req, database) : null;
+      if (process.env["NODE_ENV"] === "production" && !userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       if (database && userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
         if (!quota.allowed) {

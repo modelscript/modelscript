@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { MarkGithubIcon } from "@primer/octicons-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
@@ -296,11 +296,66 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+
+  useEffect(() => {
+    if (!turnstileSiteKey || typeof window === "undefined") return;
+
+    let widgetId: string | undefined;
+    const renderWidget = () => {
+      const turnstile = (window as any).turnstile;
+      if (turnstile && turnstileContainerRef.current && !widgetId) {
+        widgetId = turnstile.render(turnstileContainerRef.current, {
+          sitekey: turnstileSiteKey,
+          callback: (token: string) => {
+            (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__ = token;
+            setCaptchaToken(token);
+          },
+          "expired-callback": () => {
+            (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__ = "";
+            setCaptchaToken("");
+          },
+        });
+      }
+    };
+
+    if ((window as any).turnstile) {
+      renderWidget();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        'script[src^="https://challenges.cloudflare.com/turnstile/v0/api.js"]',
+      );
+      if (existingScript) {
+        existingScript.addEventListener("load", renderWidget);
+      } else {
+        const script = document.createElement("script");
+        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+        script.async = true;
+        script.defer = true;
+        script.addEventListener("load", renderWidget);
+        document.head.appendChild(script);
+      }
+    }
+
+    return () => {
+      const turnstile = (window as any).turnstile;
+      if (turnstile && widgetId) {
+        try {
+          turnstile.remove(widgetId);
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    };
+  }, [turnstileSiteKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -323,17 +378,18 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const captchaToken =
+      const effectiveCaptchaToken =
+        captchaToken ||
         (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) ||
-        (import.meta.env.VITE_TURNSTILE_SITE_KEY ? "" : "mock-token");
+        (turnstileSiteKey ? "" : "mock-token");
 
-      if (import.meta.env.VITE_TURNSTILE_SITE_KEY && !captchaToken) {
+      if (turnstileSiteKey && !effectiveCaptchaToken) {
         setError("Please complete the security verification challenge before registering.");
         setLoading(false);
         return;
       }
 
-      const res = await register(username, email, password, acceptTerms, captchaToken);
+      const res = await register(username, email, password, acceptTerms, effectiveCaptchaToken);
       if (res?.verificationRequired) {
         setVerificationSent(true);
       } else {
@@ -478,6 +534,14 @@ export default function SignupPage() {
                   </Link>
                 </span>
               </CheckboxWrapper>
+
+              {turnstileSiteKey && (
+                <div
+                  ref={turnstileContainerRef}
+                  data-testid="turnstile-widget"
+                  style={{ display: "flex", justifyContent: "center", minHeight: "65px", marginTop: "4px" }}
+                />
+              )}
 
               <Button type="submit" disabled={loading || !acceptTerms}>
                 {loading ? "Creating account…" : "Create Account"}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { CosimMqttClient } from "@modelscript/exchange/cosim";
+import { FmuStorage, type CosimMqttClient } from "@modelscript/exchange/cosim";
 import bcrypt from "bcryptjs";
 import express from "express";
 import rateLimit from "express-rate-limit";
@@ -591,8 +591,8 @@ graph TD
     ...sparqlGuard,
   );
   app.use("/api/v1/libraries", sparqlHandler);
-  app.use("/api/v1", simulateRouter(libraryStorage, jobQueue, database));
-  app.use("/api/v1", physicsRouter(jobQueue, database));
+  app.use("/api/v1", optionalAuth, simulateRouter(libraryStorage, jobQueue, database));
+  app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
 
   // Gated HPC / CAE Compute routes
   app.use(
@@ -641,12 +641,13 @@ graph TD
     threadRouter(undefined, database),
   );
 
-  // Co-simulation routes (with MQTT client injection)
+  // Co-simulation routes (with MQTT client and shared FMU storage injection)
+  const fmuStorage = new FmuStorage();
   app.use(
     "/api/v1/cosim",
     optionalAuth,
     requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
-    cosimRouter(mqttClient),
+    cosimRouter(mqttClient, fmuStorage),
   );
   app.use(
     "/api/v1/mqtt/participants",
@@ -672,9 +673,9 @@ graph TD
     requireFeatureFlag(() => featureFlagService, "digital_twins"),
     twinsRouter(database),
   );
-  app.use("/api/v1/fmus", fmuRouter());
-  app.use("/api/v1/git", gitRouter());
-  app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility
+  app.use("/api/v1/fmus", optionalAuth, fmuRouter(fmuStorage));
+  app.use("/api/v1/git", optionalAuth, gitRouter());
+  app.use("/api/v1/gitlab", optionalAuth, gitRouter()); // Keep for backwards compatibility
   app.use("/git", gitServerRouter(database));
   app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
@@ -794,7 +795,7 @@ graph TD
     optionalAuth,
     requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
   );
-  app.use("/", omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
+  app.use("/", optionalAuth, omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
 
   // ── npm-compatible registry (mounted at /api/v1/npm) ──
   app.use("/api/v1/npm", npmAuthRouter(database));
@@ -831,7 +832,11 @@ graph TD
         req.path.startsWith("/legal") ||
         req.path.startsWith("/projects") ||
         req.path.startsWith("/nodeinfo") ||
+        req.path.startsWith("/actor") ||
+        req.path.startsWith("/users/") ||
+        req.path.startsWith("/ide") ||
         req.path.startsWith("/-/") ||
+        req.path.includes("/-/") ||
         req.path.startsWith("/@")
       ) {
         next();

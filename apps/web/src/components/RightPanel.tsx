@@ -98,6 +98,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
 
   useEffect(() => {
     if (!hasCloudSolver) return;
+    if (!token && propClusterInfo !== undefined) return;
     const poll = () => {
       if (document.visibilityState === "visible") {
         fetchJobsAndCluster();
@@ -106,7 +107,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     poll();
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
-  }, [fetchJobsAndCluster, hasCloudSolver]);
+  }, [fetchJobsAndCluster, hasCloudSolver, token, propClusterInfo]);
 
   useEffect(() => {
     async function fetchSuggestions() {

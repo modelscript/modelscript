@@ -44,6 +44,7 @@ interface AuthContextType {
   refreshUnreadCount: () => void;
   creditBalance: number;
   refreshWallet: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -167,10 +168,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setIsLoading(false));
   }, [token, user]);
 
+  const refreshUser = useCallback(async () => {
+    const activeToken = token || localStorage.getItem(TOKEN_KEY);
+    if (!activeToken) return;
+    try {
+      const res = await api.get("/auth/me");
+      if (res.data?.user) {
+        setUser(res.data.user);
+        if (typeof res.data.user.credit_balance === "number") {
+          setCreditBalance(res.data.user.credit_balance);
+        }
+      }
+    } catch {
+      // Ignore refresh error
+    }
+  }, [token]);
+
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await api.post("/auth/login", { email, password });
     if (data.requires2FA) {
       return { requires2FA: true, tempToken: data.tempToken };
+    }
+    if (data.token) {
+      localStorage.setItem(TOKEN_KEY, data.token);
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
     }
     setToken(data.token);
     setUser(data.user);
@@ -182,6 +203,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const complete2FALogin = useCallback(async (tempToken: string, code: string) => {
     const { data } = await api.post("/auth/2fa/challenge", { tempToken, code });
+    if (data.token) {
+      localStorage.setItem(TOKEN_KEY, data.token);
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+    }
     setToken(data.token);
     setUser(data.user);
     if (typeof data.user?.credit_balance === "number") {
@@ -205,6 +230,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         captchaToken,
       });
       if (data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+        api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
         setToken(data.token);
         setUser(data.user);
         if (typeof data.user?.credit_balance === "number") {
@@ -267,6 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshUnreadCount,
         creditBalance,
         refreshWallet,
+        refreshUser,
       }}
     >
       {children}

@@ -72,6 +72,17 @@ export default function ProfileSolutions({ username, isOwnProfile }: { username:
   const [downloadDropdownId, setDownloadDropdownId] = useState<number | null>(null);
 
   useEffect(() => {
+    if (downloadDropdownId === null) return;
+    const handleOutsideMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("[data-download-dropdown]")) return;
+      setDownloadDropdownId(null);
+    };
+    document.addEventListener("mousedown", handleOutsideMouseDown);
+    return () => document.removeEventListener("mousedown", handleOutsideMouseDown);
+  }, [downloadDropdownId]);
+
+  useEffect(() => {
     let mounted = true;
     const loadSolutions = async () => {
       try {
@@ -280,7 +291,7 @@ export default function ProfileSolutions({ username, isOwnProfile }: { username:
 
                 {/* Download Desktop Binary Dropdown */}
                 {(solution.tauri_windows_url || solution.tauri_linux_url || solution.tauri_darwin_url) && (
-                  <div style={{ position: "relative" }}>
+                  <div data-download-dropdown="true" style={{ position: "relative" }}>
                     <Button
                       size="small"
                       onClick={() => setDownloadDropdownId(downloadDropdownId === solution.id ? null : solution.id)}
@@ -447,17 +458,34 @@ export default function ProfileSolutions({ username, isOwnProfile }: { username:
                 </Box>
 
                 <IframeWrapper>
-                  <iframe
-                    title={solution.name}
-                    src={solution.bundle_url || `/embed/solution/${solution.id}`}
-                    sandbox="allow-scripts allow-downloads allow-forms allow-same-origin"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      border: "none",
-                      backgroundColor: "#090d16",
-                    }}
-                  />
+                  {(() => {
+                    const iframeSrc = solution.bundle_url || `/embed/solution/${solution.id}`;
+                    let isSameOrigin = iframeSrc.startsWith("/") && !iframeSrc.startsWith("//");
+                    if (!isSameOrigin && typeof window !== "undefined") {
+                      try {
+                        isSameOrigin = new URL(iframeSrc, window.location.origin).origin === window.location.origin;
+                      } catch {
+                        isSameOrigin = true;
+                      }
+                    }
+                    return (
+                      <iframe
+                        title={solution.name}
+                        src={iframeSrc}
+                        sandbox={
+                          isSameOrigin
+                            ? "allow-scripts allow-downloads allow-forms"
+                            : "allow-scripts allow-downloads allow-forms allow-same-origin"
+                        }
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          border: "none",
+                          backgroundColor: "#090d16",
+                        }}
+                      />
+                    );
+                  })()}
                 </IframeWrapper>
               </InlineAppContainer>
             )}

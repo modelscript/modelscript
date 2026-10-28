@@ -86,11 +86,24 @@ const styleProps = new Set([
   "display",
   "flexDirection",
   "alignItems",
+  "alignSelf",
   "justifyContent",
+  "justifySelf",
   "gap",
+  "rowGap",
+  "columnGap",
+  "gridGap",
+  "gridTemplateColumns",
+  "gridTemplateRows",
+  "gridColumn",
+  "gridRow",
   "p",
   "px",
   "py",
+  "pt",
+  "pb",
+  "pl",
+  "pr",
   "m",
   "mx",
   "my",
@@ -105,6 +118,7 @@ const styleProps = new Set([
   "minWidth",
   "maxWidth",
   "backgroundColor",
+  "background",
   "bg",
   "border",
   "borderWidth",
@@ -116,10 +130,16 @@ const styleProps = new Set([
   "borderLeft",
   "borderRight",
   "flex",
+  "flexGrow",
+  "flexShrink",
+  "flexBasis",
   "flexWrap",
   "opacity",
   "fontWeight",
   "fontSize",
+  "fontFamily",
+  "lineHeight",
+  "letterSpacing",
   "textAlign",
   "color",
   "position",
@@ -134,8 +154,81 @@ const styleProps = new Set([
   "overflow",
   "overflowX",
   "overflowY",
+  "cursor",
+  "userSelect",
   "sx",
 ]);
+
+function formatSpace(val: string | number | undefined): string | undefined {
+  if (val === undefined) return undefined;
+  return typeof val === "number" ? `${val * 4}px` : val;
+}
+
+function normalizeSx(sx: any): any {
+  if (!sx || typeof sx !== "object" || Array.isArray(sx)) return sx;
+  const result: Record<string, any> = {};
+  for (const [key, val] of Object.entries(sx)) {
+    if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+      result[key] = normalizeSx(val);
+      continue;
+    }
+    switch (key) {
+      case "bg":
+        result.backgroundColor = val;
+        break;
+      case "p":
+        result.padding = formatSpace(val as string | number);
+        break;
+      case "px":
+        result.paddingLeft = formatSpace(val as string | number);
+        result.paddingRight = formatSpace(val as string | number);
+        break;
+      case "py":
+        result.paddingTop = formatSpace(val as string | number);
+        result.paddingBottom = formatSpace(val as string | number);
+        break;
+      case "pt":
+        result.paddingTop = formatSpace(val as string | number);
+        break;
+      case "pb":
+        result.paddingBottom = formatSpace(val as string | number);
+        break;
+      case "pl":
+        result.paddingLeft = formatSpace(val as string | number);
+        break;
+      case "pr":
+        result.paddingRight = formatSpace(val as string | number);
+        break;
+      case "m":
+        result.margin = formatSpace(val as string | number);
+        break;
+      case "mx":
+        result.marginLeft = formatSpace(val as string | number);
+        result.marginRight = formatSpace(val as string | number);
+        break;
+      case "my":
+        result.marginTop = formatSpace(val as string | number);
+        result.marginBottom = formatSpace(val as string | number);
+        break;
+      case "mt":
+        result.marginTop = formatSpace(val as string | number);
+        break;
+      case "mb":
+        result.marginBottom = formatSpace(val as string | number);
+        break;
+      case "ml":
+        result.marginLeft = formatSpace(val as string | number);
+        break;
+      case "mr":
+        result.marginRight = formatSpace(val as string | number);
+        break;
+      default:
+        result[key] = val;
+        break;
+    }
+  }
+  return result;
+}
 
 const Box = styled.div.withConfig({
   shouldForwardProp: (prop) => !styleProps.has(prop),
@@ -144,50 +237,32 @@ const Box = styled.div.withConfig({
   text-align: ${(props) => props.textAlign};
   flex-direction: ${(props) => props.flexDirection};
   align-items: ${(props) => props.alignItems};
+  align-self: ${(props) => props.alignSelf};
   justify-content: ${(props) => props.justifyContent};
-  gap: ${(props) => (typeof props.gap === "number" ? `${props.gap * 4}px` : props.gap)};
-  padding: ${(props) => (typeof props.p === "number" ? `${props.p * 4}px` : props.p)};
-  padding-left: ${(props) => (typeof props.px === "number" ? `${props.px * 4}px` : props.px || props.p)};
-  padding-right: ${(props) => (typeof props.px === "number" ? `${props.px * 4}px` : props.px || props.p)};
-  padding-top: ${(props) => (typeof props.py === "number" ? `${props.py * 4}px` : props.py || props.p)};
-  padding-bottom: ${(props) => (typeof props.py === "number" ? `${props.py * 4}px` : props.py || props.p)};
-  margin: ${(props) => (typeof props.m === "number" ? `${props.m * 4}px` : props.m)};
-  margin-left: ${(props) =>
-    typeof props.ml === "number"
-      ? `${props.ml * 4}px`
-      : props.ml !== undefined
-        ? props.ml
-        : typeof props.mx === "number"
-          ? `${props.mx * 4}px`
-          : props.mx || props.m};
-  margin-right: ${(props) =>
-    typeof props.mr === "number"
-      ? `${props.mr * 4}px`
-      : props.mr !== undefined
-        ? props.mr
-        : typeof props.mx === "number"
-          ? `${props.mx * 4}px`
-          : props.mx || props.m};
-  margin-top: ${(props) =>
-    typeof props.mt === "number"
-      ? `${props.mt * 4}px`
-      : props.mt !== undefined
-        ? props.mt
-        : typeof props.my === "number"
-          ? `${props.my * 4}px`
-          : props.my || props.m};
-  margin-bottom: ${(props) =>
-    typeof props.mb === "number"
-      ? `${props.mb * 4}px`
-      : props.mb !== undefined
-        ? props.mb
-        : typeof props.my === "number"
-          ? `${props.my * 4}px`
-          : props.my || props.m};
+  justify-self: ${(props) => props.justifySelf};
+  gap: ${(props) => formatSpace(props.gap ?? props.gridGap)};
+  row-gap: ${(props) => formatSpace(props.rowGap)};
+  column-gap: ${(props) => formatSpace(props.columnGap)};
+  grid-gap: ${(props) => formatSpace(props.gridGap)};
+  grid-template-columns: ${(props) => props.gridTemplateColumns};
+  grid-template-rows: ${(props) => props.gridTemplateRows};
+  grid-column: ${(props) => props.gridColumn};
+  grid-row: ${(props) => props.gridRow};
+  padding: ${(props) => formatSpace(props.p)};
+  padding-left: ${(props) => formatSpace(props.pl ?? props.px ?? props.p)};
+  padding-right: ${(props) => formatSpace(props.pr ?? props.px ?? props.p)};
+  padding-top: ${(props) => formatSpace(props.pt ?? props.py ?? props.p)};
+  padding-bottom: ${(props) => formatSpace(props.pb ?? props.py ?? props.p)};
+  margin: ${(props) => formatSpace(props.m)};
+  margin-left: ${(props) => formatSpace(props.ml ?? props.mx ?? props.m)};
+  margin-right: ${(props) => formatSpace(props.mr ?? props.mx ?? props.m)};
+  margin-top: ${(props) => formatSpace(props.mt ?? props.my ?? props.m)};
+  margin-bottom: ${(props) => formatSpace(props.mb ?? props.my ?? props.m)};
   width: ${(props) => (typeof props.width === "number" ? `${props.width}px` : props.width)};
   height: ${(props) => (typeof props.height === "number" ? `${props.height}px` : props.height)};
   min-height: ${(props) => (typeof props.minHeight === "number" ? `${props.minHeight}px` : props.minHeight)};
   background-color: ${(props) => props.bg || props.backgroundColor};
+  background: ${(props) => props.background};
   color: ${(props) => props.color};
   border: ${(props) => props.border};
   border-width: ${(props) => (typeof props.borderWidth === "number" ? `${props.borderWidth}px` : props.borderWidth)};
@@ -200,10 +275,17 @@ const Box = styled.div.withConfig({
   border-radius: ${(props) =>
     typeof props.borderRadius === "number" ? `${props.borderRadius * 4}px` : props.borderRadius};
   flex: ${(props) => props.flex};
+  flex-grow: ${(props) => props.flexGrow};
+  flex-shrink: ${(props) => props.flexShrink};
+  flex-basis: ${(props) => (typeof props.flexBasis === "number" ? `${props.flexBasis}px` : props.flexBasis)};
   flex-wrap: ${(props) => props.flexWrap};
   opacity: ${(props) => props.opacity};
   font-weight: ${(props) => props.fontWeight};
   font-size: ${(props) => (typeof props.fontSize === "number" ? `${props.fontSize}px` : props.fontSize)};
+  font-family: ${(props) => props.fontFamily};
+  line-height: ${(props) => props.lineHeight};
+  letter-spacing: ${(props) =>
+    typeof props.letterSpacing === "number" ? `${props.letterSpacing}px` : props.letterSpacing};
   position: ${(props) => props.position};
   top: ${(props) => (typeof props.top === "number" ? `${props.top}px` : props.top)};
   bottom: ${(props) => (typeof props.bottom === "number" ? `${props.bottom}px` : props.bottom)};
@@ -219,7 +301,9 @@ const Box = styled.div.withConfig({
   overflow: ${(props) => props.overflow};
   overflow-x: ${(props) => props.overflowX};
   overflow-y: ${(props) => props.overflowY};
-  ${(props) => (props.sx ? css(props.sx) : "")};
+  cursor: ${(props) => props.cursor};
+  user-select: ${(props) => props.userSelect};
+  ${(props) => (props.sx ? css(normalizeSx(props.sx)) : "")};
 `;
 
 export default Box;

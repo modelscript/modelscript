@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { IssueOpenedIcon } from "@primer/octicons-react";
-import { Button, Dialog, Heading, Label, Spinner, Text, TextInput, Textarea } from "@primer/react";
+import { Button, Dialog, Flash, Heading, Label, Spinner, Text, TextInput, Textarea } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useState } from "react";
@@ -22,6 +22,8 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newIssueTitle, setNewIssueTitle] = useState("");
   const [newIssueBody, setNewIssueBody] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<GitlabIssue | null>(null);
 
   const loadIssues = async () => {
@@ -44,11 +46,19 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
   }, [projectId, provider]);
 
   const handleCreateIssue = async () => {
-    await createGitlabIssue(projectId, newIssueTitle, newIssueBody, provider);
-    setIsDialogOpen(false);
-    setNewIssueTitle("");
-    setNewIssueBody("");
-    loadIssues();
+    setCreateError(null);
+    setIsSubmitting(true);
+    try {
+      await createGitlabIssue(projectId, newIssueTitle, newIssueBody, provider);
+      setIsDialogOpen(false);
+      setNewIssueTitle("");
+      setNewIssueBody("");
+      loadIssues();
+    } catch (err: any) {
+      setCreateError(err?.response?.data?.error || err?.message || "Failed to create issue.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -57,7 +67,13 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
         <Heading as="h2" style={{ fontSize: "20px" }}>
           Issues
         </Heading>
-        <Button variant="primary" onClick={() => setIsDialogOpen(true)}>
+        <Button
+          variant="primary"
+          onClick={() => {
+            setCreateError(null);
+            setIsDialogOpen(true);
+          }}
+        >
           New issue
         </Button>
       </Box>
@@ -140,6 +156,7 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
       {isDialogOpen && (
         <Dialog onClose={() => setIsDialogOpen(false)} title="Create New Issue">
           <Box p={3} display="flex" flexDirection="column" gap={3}>
+            {createError && <Flash variant="danger">{createError}</Flash>}
             <TextInput
               value={newIssueTitle}
               onChange={(e) => setNewIssueTitle(e.target.value)}
@@ -155,8 +172,8 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
             />
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
               <Button onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-              <Button variant="primary" onClick={handleCreateIssue} disabled={!newIssueTitle}>
-                Submit new issue
+              <Button variant="primary" onClick={handleCreateIssue} disabled={!newIssueTitle || isSubmitting}>
+                {isSubmitting ? "Submitting..." : "Submit new issue"}
               </Button>
             </Box>
           </Box>

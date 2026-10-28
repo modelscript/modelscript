@@ -116,7 +116,9 @@ function parseStepExpressDiagram(
     AXIS2_PLACEMENT_3D: 0,
   };
 
+  const allParsedEntities = new Map<string, StepEntityNode>();
   const allNodes: StepEntityNode[] = [];
+  const otherNodes: StepEntityNode[] = [];
   const stmtRegex = /(#[0-9]+)\s*=\s*([A-Z][A-Z0-9_]*)\s*\(([^;]*)\)\s*;/g;
   let match: RegExpExecArray | null;
   let totalEntities = 0;
@@ -129,6 +131,18 @@ function parseStepExpressDiagram(
 
     entityCounts[entityType] = (entityCounts[entityType] || 0) + 1;
 
+    const strMatch = argsText.match(/'([^']+)'/);
+    const rawName = strMatch?.[1]?.trim() || "";
+    const refs = Array.from(new Set(Array.from(argsText.matchAll(/#(\d+)/g), (m) => `#${m[1]}`)));
+    const node: StepEntityNode = {
+      id,
+      entityType,
+      label: rawName || entityType,
+      refs,
+      tier: getEntityTier(entityType),
+    };
+    allParsedEntities.set(id, node);
+
     const isCore = (CORE_STEP_ENTITY_TYPES as readonly string[]).includes(entityType);
     const isSecondary =
       entityType === "PRODUCT_DEFINITION" ||
@@ -137,61 +151,60 @@ function parseStepExpressDiagram(
       entityType === "CARTESIAN_POINT";
 
     if (isCore || (isSecondary && allNodes.length < 12)) {
-      const strMatch = argsText.match(/'([^']+)'/);
-      const rawName = strMatch?.[1]?.trim() || "";
-      const refs = Array.from(new Set(argsText.match(/#[0-9]+/g) || []));
-      allNodes.push({
-        id,
-        entityType,
-        label: rawName || entityType,
-        refs,
-        tier: getEntityTier(entityType),
-      });
+      allNodes.push(node);
+    } else if (otherNodes.length < 12) {
+      otherNodes.push(node);
     }
   }
 
-  // Ensure canonical EXPRESS schema representation if raw file is minimal or still loading
-  const presentTypes = new Set(allNodes.map((n) => n.entityType));
-  const syntheticDefaults: StepEntityNode[] = [
-    {
-      id: "#10",
-      entityType: "PRODUCT",
-      label: fallbackTitle || "CAD_Product",
-      refs: ["#12"],
-      tier: 0,
-    },
-    {
-      id: "#20",
-      entityType: "NEXT_ASSEMBLY_USAGE_OCCURRENCE",
-      label: "NAUO_Assembly_Link",
-      refs: ["#10", "#30"],
-      tier: 0,
-    },
-    {
-      id: "#30",
-      entityType: "ADVANCED_BREP_SHAPE_REPRESENTATION",
-      label: "BRep_Surface_Topology",
-      refs: ["#40", "#50"],
-      tier: 1,
-    },
-    {
-      id: "#40",
-      entityType: "MANIFOLD_SOLID_BREP",
-      label: "Closed_Shell_Solid",
-      refs: ["#50"],
-      tier: 2,
-    },
-    {
-      id: "#50",
-      entityType: "AXIS2_PLACEMENT_3D",
-      label: "Local_CSYS_Placement",
-      refs: [],
-      tier: 2,
-    },
-  ];
+  if (allNodes.length < 12 && otherNodes.length > 0) {
+    for (const n of otherNodes) {
+      if (allNodes.length >= 12) break;
+      allNodes.push(n);
+    }
+  }
 
-  for (const defNode of syntheticDefaults) {
-    if (!presentTypes.has(defNode.entityType)) {
+  // Only inject default placeholder entities when the STEP source itself is empty / has no parsed entities
+  if (allNodes.length === 0 && !stepText.trim()) {
+    const syntheticDefaults: StepEntityNode[] = [
+      {
+        id: "#10",
+        entityType: "PRODUCT",
+        label: fallbackTitle || "CAD_Product",
+        refs: ["#12"],
+        tier: 0,
+      },
+      {
+        id: "#20",
+        entityType: "NEXT_ASSEMBLY_USAGE_OCCURRENCE",
+        label: "NAUO_Assembly_Link",
+        refs: ["#10", "#30"],
+        tier: 0,
+      },
+      {
+        id: "#30",
+        entityType: "ADVANCED_BREP_SHAPE_REPRESENTATION",
+        label: "BRep_Surface_Topology",
+        refs: ["#40", "#50"],
+        tier: 1,
+      },
+      {
+        id: "#40",
+        entityType: "MANIFOLD_SOLID_BREP",
+        label: "Closed_Shell_Solid",
+        refs: ["#50"],
+        tier: 2,
+      },
+      {
+        id: "#50",
+        entityType: "AXIS2_PLACEMENT_3D",
+        label: "Local_CSYS_Placement",
+        refs: [],
+        tier: 2,
+      },
+    ];
+
+    for (const defNode of syntheticDefaults) {
       allNodes.push(defNode);
       if (!entityCounts[defNode.entityType]) {
         entityCounts[defNode.entityType] = 1;
@@ -222,7 +235,7 @@ function parseStepExpressDiagram(
   const svgWidth = 920;
   const svgHeight = Math.max(300, 96 + maxRows * 92);
 
-  // Build edges between visible nodes (plus logical EXPRESS tier links)
+  // Build directed edges from actual #id references in entity argument lists (direct + 1-hop transitive)
   const edgePaths: string[] = [];
   const drawnPairs = new Set<string>();
 
@@ -257,24 +270,35 @@ function parseStepExpressDiagram(
   for (const node of selectedNodes) {
     for (const ref of node.refs) {
       if (nodePositions.has(ref)) {
-        addEdge(node.id, ref, "ref");
+        addEdge(node.id, ref, ref);
+      } else {
+        const intermediate = allParsedEntities.get(ref);
+        if (intermediate) {
+          for (const subRef of intermediate.refs) {
+            if (nodePositions.has(subRef)) {
+              addEdge(node.id, subRef, `${ref}→${subRef}`);
+            }
+          }
+        }
       }
     }
   }
 
-  // Ensure clear EXPRESS hierarchy flow across the 3 tiers
-  const tier0First = tiers[0][0];
-  const tier0Second = tiers[0][1];
-  const tier1First = tiers[1][0];
-  const tier2First = tiers[2][0];
-  const tier2Second = tiers[2][1];
+  // Only fall back to logical tier links when no #id reference edges exist between visible nodes
+  if (edgePaths.length === 0) {
+    const tier0First = tiers[0][0];
+    const tier0Second = tiers[0][1];
+    const tier1First = tiers[1][0];
+    const tier2First = tiers[2][0];
+    const tier2Second = tiers[2][1];
 
-  if (tier0First && tier0Second) addEdge(tier0Second.id, tier0First.id, "relating_product");
-  if (tier0Second && tier1First) addEdge(tier0Second.id, tier1First.id, "related_shape");
-  else if (tier0First && tier1First) addEdge(tier0First.id, tier1First.id, "shape_rep");
-  if (tier1First && tier2First) addEdge(tier1First.id, tier2First.id, "items[solid]");
-  if (tier1First && tier2Second) addEdge(tier1First.id, tier2Second.id, "items[axis2]");
-  if (tier2First && tier2Second) addEdge(tier2First.id, tier2Second.id, "placement");
+    if (tier0First && tier0Second) addEdge(tier0Second.id, tier0First.id, "relating_product");
+    if (tier0Second && tier1First) addEdge(tier0Second.id, tier1First.id, "related_shape");
+    else if (tier0First && tier1First) addEdge(tier0First.id, tier1First.id, "shape_rep");
+    if (tier1First && tier2First) addEdge(tier1First.id, tier2First.id, "items[solid]");
+    if (tier1First && tier2Second) addEdge(tier1First.id, tier2Second.id, "items[axis2]");
+    if (tier2First && tier2Second) addEdge(tier2First.id, tier2Second.id, "placement");
+  }
 
   const tierColors: { stroke: string; badgeBg: string; badgeFg: string; title: string }[] = [
     {
@@ -487,7 +511,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   // Physics Config State
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [className, setClassName] = useState("SimulationConfig");
-  const [config, setConfig] = useState<any>({ parameters: {} });
+  const [config, setConfig] = useState<any>({ workflowClass: "StaticStructuralFEA", parameters: {} });
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>("standard");
@@ -644,8 +668,9 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   const runSimulation = async () => {
     setIsSubmitting(true);
     try {
+      const workflowClass = config.workflowClass || "StaticStructuralFEA";
       const runConfig = {
-        type: config.workflowClass?.includes("FEA") ? "FEA" : config.workflowClass?.includes("CFD") ? "CFD" : "unknown",
+        type: workflowClass.includes("FEA") ? "FEA" : workflowClass.includes("CFD") ? "CFD" : "FEA",
         version: 1,
         className: className,
         stepFile: stepUrl.split("/").pop() || "geometry.step",
@@ -653,10 +678,11 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
         profile: selectedProfileId,
       };
 
-      // 1. Fetch step file blob or construct from inline STEP code
+      // 1. Fetch step file blob or construct from inline STEP code / stepSource state
       let stepBlob: Blob;
-      if (!stepUrl && viewConfig?.code) {
-        stepBlob = new Blob([String(viewConfig.code)], { type: "text/plain" });
+      if (!stepUrl) {
+        const inlineStep = viewConfig?.code || stepSource || effectiveStepSource;
+        stepBlob = new Blob([String(inlineStep)], { type: "text/plain" });
       } else {
         const stepRes = await fetch(stepUrl);
         stepBlob = await stepRes.blob();

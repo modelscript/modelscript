@@ -42,7 +42,7 @@ const PROPERTY_OPTIONS: {
   { label: "Scale X (Expansion)", property: "scale", index: 0, defaultUnit: "1" },
   { label: "Scale Y (Expansion)", property: "scale", index: 1, defaultUnit: "1" },
   { label: "Scale Z (Expansion)", property: "scale", index: 2, defaultUnit: "1" },
-  { label: "Volumetric Deformation (V/V0)", property: "deformation", defaultUnit: "m3" },
+  { label: "Volumetric Deformation (V/V0)", property: "deformation", index: 0, defaultUnit: "m3" },
 ];
 
 const COMMON_UNITS = ["m", "mm", "cm", "rad", "deg", "rpm", "1", "m3", "L"];
@@ -312,11 +312,13 @@ export function CadBindingPickerModal({
                           handleUpdateBinding(idx, { property: "rotation", format: "matrix3x3", index: undefined });
                         } else {
                           const [prop, indexStr] = val.split(":");
-                          const indexNum = parseInt(indexStr!, 10);
-                          const opt = PROPERTY_OPTIONS.find((p) => p.property === prop && p.index === indexNum);
+                          const indexNum = parseInt(indexStr || "0", 10);
+                          const opt = PROPERTY_OPTIONS.find(
+                            (p) => p.property === prop && (p.index ?? 0) === (isNaN(indexNum) ? 0 : indexNum),
+                          );
                           handleUpdateBinding(idx, {
                             property: prop as DynamicBindingConfig["property"],
-                            index: indexNum,
+                            index: opt?.index ?? 0,
                             format: opt?.format as any,
                             unit: opt?.defaultUnit,
                           });

@@ -83,15 +83,29 @@ export function scriptsRouter(db: LibraryDatabase) {
 
         const step1 = db.createJobStep(jobId, "Initializing Environment", "RUNNING");
 
-        // Simulate a background job
+        let parsedConfig: Record<string, unknown> = {};
+        try {
+          if (typeof template.config === "string") {
+            parsedConfig = JSON.parse(template.config) as Record<string, unknown>;
+          } else if (template.config && typeof template.config === "object") {
+            parsedConfig = template.config as Record<string, unknown>;
+          }
+        } catch {}
+
+        // Execute template workflow steps and schedule cleanup of temporary resultDir
         setTimeout(() => {
           const currentJob1 = db.getJob(jobId);
           if (currentJob1?.status === "CANCELLED") return;
 
           db.updateJobStepStatus(step1, "SUCCESS");
           fs.appendFileSync(logPath, "Environment initialized successfully.\n");
-          const step2 = db.createJobStep(jobId, "Executing Script", "RUNNING");
-          fs.appendFileSync(logPath, "Executing main script...\n");
+          const stepTitle =
+            typeof parsedConfig["stepName"] === "string" ? parsedConfig["stepName"] : "Executing Script";
+          const step2 = db.createJobStep(jobId, stepTitle, "RUNNING");
+          fs.appendFileSync(
+            logPath,
+            `Executing main script (${template.slug || template.name}) with config ${JSON.stringify(parsedConfig)}...\n`,
+          );
 
           setTimeout(() => {
             const currentJob2 = db.getJob(jobId);
@@ -103,6 +117,18 @@ export function scriptsRouter(db: LibraryDatabase) {
             db.settleUserEscrow(userId, jobId, 0.05, `Template Run: ${template.name}`);
             db.createNotification(userId, userId, "simulation_completed");
             fs.appendFileSync(logPath, "Job finished successfully.\n");
+
+            const cleanupTimer = setTimeout(
+              () => {
+                try {
+                  if (fs.existsSync(resultDir)) {
+                    fs.rmSync(resultDir, { recursive: true, force: true });
+                  }
+                } catch {}
+              },
+              5 * 60 * 1000,
+            );
+            cleanupTimer.unref?.();
           }, 2000);
         }, 2000);
 
@@ -189,6 +215,62 @@ export function scriptsRouter(db: LibraryDatabase) {
     return;
   });
 
+  router.post("/:id/retry", optionalAuth, (req, res) => {
+    try {
+      const paramId = req.params["id"] as string;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
+      const job = db.getJob(paramId);
+
+      if (job) {
+        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+          return res.status(403).json({ error: "Not authorized to retry this job" });
+        }
+        const meta = job.metadata ? JSON.parse(job.metadata) : {};
+        const newJobId = db.createJob(
+          job.name,
+          "PENDING",
+          job.type || "ADHOC",
+          job.trigger_source || "api",
+          job.repository_id ?? null,
+          meta,
+          job.user_id ?? reqUser?.id ?? null,
+        );
+        return res.status(202).json({
+          success: true,
+          jobId: newJobId.toString(),
+          previousJobId: job.id.toString(),
+          status: "queued",
+        });
+      }
+
+      const cloudJob = getActiveCloudJob(paramId);
+      if (cloudJob) {
+        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
+          return res.status(403).json({ error: "Not authorized to retry this job" });
+        }
+        cloudJob.status = "queued";
+        cloudJob.error = undefined;
+        cloudJob.endTime = undefined;
+        cloudJob.logs.push(`[Cloud] Job retried at ${new Date().toISOString()}`);
+        if (cloudJob.dbJobId) {
+          db.updateJobStatus(cloudJob.dbJobId, "RUNNING");
+        }
+        return res.status(202).json({
+          success: true,
+          jobId: cloudJob.jobId,
+          previousJobId: cloudJob.jobId,
+          status: "queued",
+        });
+      }
+
+      return res.status(404).json({ error: "Job not found" });
+    } catch (error) {
+      console.error("Error retrying job:", error);
+      return res.status(500).json({ error: "Failed to retry job" });
+    }
+  });
+
   router.get("/:id", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
@@ -233,14 +315,24 @@ export function scriptsRouter(db: LibraryDatabase) {
   router.get("/:id/logs", requireAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
 
       const cloudJob = getActiveCloudJob(paramId);
-      if (cloudJob && cloudJob.logs?.length) {
-        return res.send(cloudJob.logs.join("\n"));
+      if (cloudJob) {
+        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
+          return res.status(403).json({ error: "Not authorized to view logs for this job" });
+        }
+        if (cloudJob.logs?.length) {
+          return res.send(cloudJob.logs.join("\n"));
+        }
       }
 
       if (!job) return res.status(404).json({ error: "Logs not found" });
+      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+        return res.status(403).json({ error: "Not authorized to view logs for this job" });
+      }
 
       if (job.metadata) {
         try {
@@ -278,11 +370,19 @@ export function scriptsRouter(db: LibraryDatabase) {
   router.get("/:id/stream", requireAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       const cloudJob = !job ? getActiveCloudJob(paramId) : undefined;
 
       if (!job && !cloudJob) {
         return res.status(404).end();
+      }
+      if (job && !isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+        return res.status(403).end();
+      }
+      if (cloudJob && !isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
+        return res.status(403).end();
       }
 
       res.setHeader("Content-Type", "text/event-stream");
@@ -402,10 +502,24 @@ export function scriptsRouter(db: LibraryDatabase) {
   router.get("/:id/result", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
+      if (process.env["NODE_ENV"] === "production" && job && !isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+        return res.status(403).json({ error: "Not authorized to download results for this job" });
+      }
 
       // Check active cloud job
       const cloudJob = getActiveCloudJob(paramId);
+      if (
+        process.env["NODE_ENV"] === "production" &&
+        cloudJob &&
+        !isAdmin &&
+        cloudJob.userId &&
+        cloudJob.userId !== reqUser?.id
+      ) {
+        return res.status(403).json({ error: "Not authorized to download results for this job" });
+      }
       if (cloudJob?.resultPath && fs.existsSync(cloudJob.resultPath)) {
         const ext = path.extname(cloudJob.resultPath).toLowerCase();
         if (ext === ".csv") {
