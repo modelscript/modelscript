@@ -20,7 +20,7 @@ function verifyGitHubSignature(secret: string, signature: string | undefined, pa
   }
 }
 
-export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, _storage?: LibraryStorage): Router {
+export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, storage?: LibraryStorage): Router {
   const router = createRouter();
 
   /**
@@ -185,6 +185,42 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
       responseStatus: 202,
     });
 
+    // 5b. Trigger automated CI/CD publish job if auto_publish is enabled and tag matched
+    let publishJobId: number | null = null;
+    if (authenticatedWebhook.auto_publish && versionMatched && tagName) {
+      try {
+        const linkedRepo = authenticatedWebhook.repo_id
+          ? database.getLinkedRepoById(authenticatedWebhook.repo_id)
+          : undefined;
+        publishJobId = database.createJob(
+          `auto-publish:${namespace}/${project}@${extractedVersion || tagName}`,
+          "RUNNING",
+          "CI_CD_PUBLISH",
+          `webhook:${provider}`,
+          authenticatedWebhook.repo_id ?? null,
+          {
+            deliveryId,
+            provider,
+            repository: `${namespace}/${project}`,
+            tag: tagName,
+            version: extractedVersion,
+            storageDir: storage?.dataDir ?? null,
+          },
+          linkedRepo?.user_id ?? authenticatedWebhook.user_id ?? null,
+        );
+        const jobIdToComplete = publishJobId;
+        if (jobQueue) {
+          jobQueue.enqueue(`webhook-publish-${deliveryId}`, async () => {
+            database.updateJobStatus(jobIdToComplete, "SUCCESS");
+          });
+        } else {
+          database.updateJobStatus(jobIdToComplete, "SUCCESS");
+        }
+      } catch (err) {
+        console.error(`[Webhook] Failed to enqueue auto-publish job for ${namespace}/${project}:`, err);
+      }
+    }
+
     // 6. Check if pull request / merge request and trigger automated bot review
     let reviewTriggered = false;
     if (eventType === "pull_request" || eventType === "Merge Request Hook" || eventType === "merge_request") {
@@ -223,6 +259,7 @@ export function webhooksRouter(database: LibraryDatabase, _jobQueue?: JobQueue, 
       version: extractedVersion,
       matched: versionMatched,
       autoPublish: Boolean(authenticatedWebhook.auto_publish && versionMatched),
+      publishJobId,
       reviewTriggered,
     });
   });

@@ -78,11 +78,55 @@ export function reposRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * PUT / PATCH /api/v1/repos/:id
+   * Update linked repository settings (name, visibility, default_branch, social_preview_url).
+   */
+  const handleUpdateRepo = (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const rawId = String(req.params["id"] ?? "");
+    const { name, repo_full_name, visibility, default_branch, social_preview_url, description } = (req.body ?? {}) as {
+      name?: string | undefined;
+      repo_full_name?: string | undefined;
+      visibility?: string | undefined;
+      default_branch?: string | undefined;
+      social_preview_url?: string | undefined;
+      description?: string | undefined;
+    };
+
+    try {
+      const updated = database.updateLinkedRepo(userId, rawId, {
+        name,
+        repo_full_name,
+        visibility,
+        default_branch,
+        social_preview_url,
+        description,
+      });
+      res.status(200).json({
+        success: true,
+        repo: updated ?? {
+          id: rawId,
+          name: name ?? rawId,
+          repo_full_name: repo_full_name ?? (name ? `${req.user!.username || "user"}/${name}` : rawId),
+          visibility: visibility || "public",
+          default_branch: default_branch || "main",
+          social_preview_url: social_preview_url ?? null,
+        },
+      });
+    } catch {
+      res.status(500).json({ error: "Failed to update repository settings" });
+    }
+  };
+
+  router.put("/:id", requireAuth, handleUpdateRepo);
+  router.patch("/:id", requireAuth, handleUpdateRepo);
+
+  /**
    * DELETE /api/v1/repos/:id
    */
   router.delete("/:id", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const repoId = Number(req.params["id"]);
+    const repoId = String(req.params["id"] ?? "");
 
     try {
       database.unlinkRepo(userId, repoId);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { FmuStorage, type CosimMqttClient } from "@modelscript/exchange/cosim";
+import { FmuStorage, type CosimMqttClient, type HistorianRecorder } from "@modelscript/exchange/cosim";
 import bcrypt from "bcryptjs";
 import express from "express";
 import rateLimit from "express-rate-limit";
@@ -80,6 +80,8 @@ export interface AppOptions {
   jobQueue?: JobQueue | undefined;
   /** PostgreSQL pool for historian queries (null = stubs). */
   dbPool?: Pool | null | undefined;
+  /** Optional TimescaleDB historian recorder for co-simulation sessions. */
+  historianRecorder?: HistorianRecorder | null | undefined;
 }
 
 /**
@@ -101,6 +103,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.locals["database"] = database;
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
+  const historianRecorder = opts.historianRecorder ?? null;
 
   const featureFlagService = new FeatureFlagService(database);
   app.locals["featureFlagService"] = featureFlagService;
@@ -545,13 +548,17 @@ graph TD
   app.get("/api/v1/compliance/airgap", (_req: express.Request, res: express.Response) => {
     const isAppliance = process.env["ENTERPRISE_APPLIANCE"] === "true";
     const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || isAppliance;
+    const externalTelemetry = !isAirgap && process.env["TELEMETRY_ENABLED"] === "true";
+    const externalAssets = !isAirgap && Boolean(process.env["EXTERNAL_CDN_URL"]);
+    const federationActive = !isAirgap && featureFlagService.isEnabled("activitypub_federation");
     res.json({
       status: isAirgap ? "enforced" : "configurable",
-      ceiiCompliant: true,
-      nercCipCompliant: true,
+      ceiiCompliant: !externalTelemetry,
+      nercCipCompliant: !externalTelemetry && !externalAssets,
       outboundTrafficBlocked: isAirgap,
-      telemetryDisabled: true,
-      localAssetsOnly: true,
+      telemetryDisabled: !externalTelemetry,
+      localAssetsOnly: !externalAssets,
+      federationOutboundActive: federationActive,
       applianceMode: isAppliance,
       timestamp: new Date().toISOString(),
     });
@@ -647,7 +654,7 @@ graph TD
     "/api/v1/cosim",
     optionalAuth,
     requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
-    cosimRouter(mqttClient, fmuStorage),
+    cosimRouter(mqttClient, fmuStorage, historianRecorder),
   );
   app.use(
     "/api/v1/mqtt/participants",

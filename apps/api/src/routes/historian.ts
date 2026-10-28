@@ -4,6 +4,7 @@ import type { CosimMqttClient } from "@modelscript/exchange/cosim";
 import { HistorianReplayer } from "@modelscript/exchange/cosim";
 import express from "express";
 import type { Pool } from "pg";
+import { getCosimSessionForHistorian, listCosimSessionsForHistorian } from "./cosim.js";
 
 /** Historian query parameters. */
 interface HistorianQueryParams {
@@ -30,7 +31,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
 
   // GET /api/v1/historian/sessions — List recorded sessions
   router.get("/sessions", async (_req, res) => {
-    if (!pool) return res.json({ sessions: [] });
+    if (!pool) return res.json({ sessions: listCosimSessionsForHistorian() });
 
     try {
       const result = await pool.query(`SELECT id, start_time, stop_time, state FROM sessions ORDER BY start_time DESC`);
@@ -53,7 +54,13 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
   // GET /api/v1/historian/sessions/:id — Get session metadata
   router.get("/sessions/:id", async (req, res) => {
     const sessionId = req.params["id"] ?? "";
-    if (!pool) return res.json({ sessionId, startTime: null, stopTime: null, participantCount: 0, sampleCount: 0 });
+    if (!pool) {
+      const memSession = getCosimSessionForHistorian(sessionId);
+      if (memSession) {
+        return res.json(memSession);
+      }
+      return res.json({ sessionId, startTime: null, stopTime: null, participantCount: 0, sampleCount: 0 });
+    }
 
     try {
       const sessionResult = await pool.query(

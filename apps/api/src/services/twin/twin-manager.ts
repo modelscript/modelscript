@@ -56,12 +56,15 @@ export interface TwinConfig {
     | undefined;
 }
 
+export type TwinDomain = "thermal" | "rotational" | "electrical";
+
 export interface ActiveTwinSession {
   twinId: number;
   instanceId: number;
   serialNumber: string;
   name: string;
   modelicaClass: string;
+  domain: TwinDomain;
   status: string;
   healthScore: number;
   config: TwinConfig;
@@ -101,14 +104,145 @@ export class TwinManager {
   }
 
   /**
+   * Detect the engineering domain of a digital twin from its class name, parameters, and channels.
+   */
+  private detectDomain(
+    modelicaClass: string,
+    initialParams: Record<string, number>,
+    channels: string[] = [],
+  ): TwinDomain {
+    if ("R_th" in initialParams || "C_th" in initialParams || channels.includes("T")) {
+      return "thermal";
+    }
+    const cls = modelicaClass.toLowerCase();
+    if (
+      "J" in initialParams ||
+      "b" in initialParams ||
+      cls.includes("rotational") ||
+      cls.includes("drivetrain") ||
+      cls.includes("rotor") ||
+      channels.includes("w") ||
+      channels.includes("omega")
+    ) {
+      return "rotational";
+    }
+    if (
+      "C" in initialParams ||
+      "V_in" in initialParams ||
+      cls.includes("electrical") ||
+      cls.includes("circuit") ||
+      cls.includes("battery") ||
+      channels.includes("v")
+    ) {
+      return "electrical";
+    }
+    return "thermal";
+  }
+
+  /**
    * Helper to construct a standard DAE arena for the digital twin model.
    */
   private buildArenaForClass(
-    _modelicaClass: string,
+    modelicaClass: string,
     initialParams: Record<string, number>,
     channels: string[] = [],
   ): DAEBuilder {
     const arena = new DAEBuilder();
+    const domain = this.detectDomain(modelicaClass, initialParams, channels);
+
+    if (domain === "rotational") {
+      // Rotational Drivetrain / Inertia-Damper model:
+      // der(w) = (tau_load - b * w) / J
+      const stateName = channels[0] && channels[0] !== "T" ? channels[0] : "w";
+      const jVal = initialParams["J"] ?? 0.25;
+      const bVal = initialParams["b"] ?? 0.05;
+      const tauVal = initialParams["tau_load"] ?? initialParams["tau"] ?? 10.0;
+
+      const vW = arena.addVariable(stateName, VarType.Real, Variability.Continuous, 0, 0.0);
+      arena.setVarStartValue(vW, 0.0);
+
+      const pJ = arena.addVariable("J", VarType.Real, Variability.Parameter, 0, jVal);
+      arena.setVarExpression(pJ, arena.addRealLiteral(jVal));
+      const pB = arena.addVariable("b", VarType.Real, Variability.Parameter, 0, bVal);
+      arena.setVarExpression(pB, arena.addRealLiteral(bVal));
+      const pTau = arena.addVariable("tau_load", VarType.Real, Variability.Parameter, 0, tauVal);
+      arena.setVarExpression(pTau, arena.addRealLiteral(tauVal));
+
+      const builtInNames = new Set([stateName, "J", "b", "tau_load"]);
+      for (const [paramName, paramVal] of Object.entries(initialParams)) {
+        if (!builtInNames.has(paramName) && typeof paramVal === "number") {
+          const pIdx = arena.addVariable(paramName, VarType.Real, Variability.Parameter, 0, paramVal);
+          arena.setVarExpression(pIdx, arena.addRealLiteral(paramVal));
+          builtInNames.add(paramName);
+        }
+      }
+      for (const ch of channels) {
+        if (!builtInNames.has(ch)) {
+          const chIdx = arena.addVariable(ch, VarType.Real, Variability.Continuous, 0, 0.0);
+          arena.setVarStartValue(chIdx, 0.0);
+          builtInNames.add(ch);
+        }
+      }
+
+      const wExpr = arena.addNameExpr(stateName);
+      const derW = arena.addDerExpr(wExpr);
+      const tauExpr = arena.addNameExpr("tau_load");
+      const bExpr = arena.addNameExpr("b");
+      const jExpr = arena.addNameExpr("J");
+
+      const dampingTorque = arena.addBinaryExpr(BinOp.Mul, bExpr, wExpr);
+      const netTorque = arena.addBinaryExpr(BinOp.Sub, tauExpr, dampingTorque);
+      const rhsDerW = arena.addBinaryExpr(BinOp.Div, netTorque, jExpr);
+      arena.addEquation(EqKind.Simple, derW, rhsDerW);
+      return arena;
+    }
+
+    if (domain === "electrical") {
+      // Electrical RC / Bus Voltage model:
+      // der(v) = (V_in - v) / (R * C)
+      const stateName = channels[0] && channels[0] !== "T" ? channels[0] : "v";
+      const rVal = initialParams["R"] ?? 2.0;
+      const cVal = initialParams["C"] ?? 0.5;
+      const vInVal = initialParams["V_in"] ?? 48.0;
+
+      const vState = arena.addVariable(stateName, VarType.Real, Variability.Continuous, 0, 0.0);
+      arena.setVarStartValue(vState, 0.0);
+
+      const pR = arena.addVariable("R", VarType.Real, Variability.Parameter, 0, rVal);
+      arena.setVarExpression(pR, arena.addRealLiteral(rVal));
+      const pC = arena.addVariable("C", VarType.Real, Variability.Parameter, 0, cVal);
+      arena.setVarExpression(pC, arena.addRealLiteral(cVal));
+      const pVin = arena.addVariable("V_in", VarType.Real, Variability.Parameter, 0, vInVal);
+      arena.setVarExpression(pVin, arena.addRealLiteral(vInVal));
+
+      const builtInNames = new Set([stateName, "R", "C", "V_in"]);
+      for (const [paramName, paramVal] of Object.entries(initialParams)) {
+        if (!builtInNames.has(paramName) && typeof paramVal === "number") {
+          const pIdx = arena.addVariable(paramName, VarType.Real, Variability.Parameter, 0, paramVal);
+          arena.setVarExpression(pIdx, arena.addRealLiteral(paramVal));
+          builtInNames.add(paramName);
+        }
+      }
+      for (const ch of channels) {
+        if (!builtInNames.has(ch)) {
+          const chIdx = arena.addVariable(ch, VarType.Real, Variability.Continuous, 0, 0.0);
+          arena.setVarStartValue(chIdx, 0.0);
+          builtInNames.add(ch);
+        }
+      }
+
+      const vExpr = arena.addNameExpr(stateName);
+      const derV = arena.addDerExpr(vExpr);
+      const vInExpr = arena.addNameExpr("V_in");
+      const rExpr = arena.addNameExpr("R");
+      const cExpr = arena.addNameExpr("C");
+
+      const vDiff = arena.addBinaryExpr(BinOp.Sub, vInExpr, vExpr);
+      const rc = arena.addBinaryExpr(BinOp.Mul, rExpr, cExpr);
+      const rhsDerV = arena.addBinaryExpr(BinOp.Div, vDiff, rc);
+      arena.addEquation(EqKind.Simple, derV, rhsDerV);
+      return arena;
+    }
 
     // Inverter Thermal Cooling Loop model:
     // der(T) = (P_loss - (T - T_amb) / R_th) / C_th
@@ -199,6 +333,7 @@ export class TwinManager {
       currentParams = { R_th: 0.15, P_loss: 100.0, C_th: 20.0, T_amb: 25.0 };
     }
 
+    const domain = this.detectDomain(row.modelica_class, currentParams, config.channels);
     const arena = this.buildArenaForClass(row.modelica_class, currentParams, config.channels);
 
     const buffer = new CircularTelemetryBuffer({
@@ -257,6 +392,7 @@ export class TwinManager {
       serialNumber: row.instance_serial ?? "UNKNOWN",
       name: row.name,
       modelicaClass: row.modelica_class,
+      domain,
       status: row.status,
       healthScore: row.health_score,
       config,
@@ -330,10 +466,25 @@ export class TwinManager {
     // 2. Innovation residual comparison against expected nominal baseline
     // In an operational twin, residual is y_meas - y_nominal
     const measuredVal = channels[0] ?? 0;
-    const rThNom = session.currentParameters["R_th"] ?? 0.12;
-    const tau = Math.max(0.1, 20.0 * rThNom);
-    const nominalT = 25.0 + 100.0 * rThNom * (1.0 - Math.exp(-timestamp / tau));
-    const residual = measuredVal - nominalT;
+    let nominalVal: number;
+    if (session.domain === "rotational") {
+      const jNom = Math.max(1e-3, session.currentParameters["J"] ?? 0.25);
+      const bNom = Math.max(1e-3, session.currentParameters["b"] ?? 0.05);
+      const tauNom = session.currentParameters["tau_load"] ?? session.currentParameters["tau"] ?? 10.0;
+      const tauTime = Math.max(0.1, jNom / bNom);
+      nominalVal = (tauNom / bNom) * (1.0 - Math.exp(-timestamp / tauTime));
+    } else if (session.domain === "electrical") {
+      const rNom = Math.max(1e-3, session.currentParameters["R"] ?? 2.0);
+      const cNom = Math.max(1e-3, session.currentParameters["C"] ?? 0.5);
+      const vInNom = session.currentParameters["V_in"] ?? 48.0;
+      const tauTime = Math.max(0.1, rNom * cNom);
+      nominalVal = vInNom * (1.0 - Math.exp(-timestamp / tauTime));
+    } else {
+      const rThNom = session.currentParameters["R_th"] ?? 0.12;
+      const tau = Math.max(0.1, 20.0 * rThNom);
+      nominalVal = 25.0 + 100.0 * rThNom * (1.0 - Math.exp(-timestamp / tau));
+    }
+    const residual = measuredVal - nominalVal;
 
     // 3. Test sequential CUSUM drift
     const driftEvent = session.driftDetector.update(timestamp, [residual]);

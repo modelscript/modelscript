@@ -149,6 +149,9 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
   }, [twinId]);
 
   const deltas = viewConfig.parameterDeltas ?? {};
+  const healthScore = viewConfig.healthScore ?? twinData?.activeSession?.healthScore ?? 85.0;
+  const rulHours = viewConfig.rulHours;
+  const [isoAngleDeg, setIsoAngleDeg] = useState<number>(35);
 
   const handleInjectTestStep = () => {
     const firstDelta = Object.values(deltas)[0];
@@ -156,12 +159,24 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
       ? Object.values(viewConfig.calibratedParameters)[0]
       : undefined;
     const rThNominal = deltas["R_th"]?.prior ?? firstDelta?.prior ?? 0.12;
+    const degradationRatio = 1 + Math.max(0.05, (100 - healthScore) / 100);
     const rThDegraded =
       viewConfig.calibratedParameters?.["R_th"] ??
       deltas["R_th"]?.calibrated ??
       firstCalibrated ??
       firstDelta?.calibrated ??
-      rThNominal;
+      rThNominal * degradationRatio;
+    const ambientTemp =
+      viewConfig.calibratedParameters?.["T_amb"] ?? deltas["T_amb"]?.calibrated ?? deltas["T_amb"]?.prior ?? 25.0;
+    const powerLoad =
+      viewConfig.calibratedParameters?.["P_loss"] ?? deltas["P_loss"]?.calibrated ?? deltas["P_loss"]?.prior ?? 100.0;
+    const tauNominal = deltas["tau"]?.prior ?? 8.0;
+    const tauDegraded =
+      viewConfig.calibratedParameters?.["tau"] ??
+      deltas["tau"]?.calibrated ??
+      Math.max(2.5, tauNominal * (healthScore / 100));
+    const driftShift = (viewConfig.driftMetrics?.magnitude ?? Math.max(0.1, (100 - healthScore) * 0.02)) * 0.5;
+
     setTelemetry((prev) => {
       const nextIndex = prev.length;
       if (nextIndex === 0) {
@@ -169,9 +184,10 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
         for (let i = 0; i < 12; i++) {
           const t = i * 2.0;
           const activeRth = t < 10.0 ? rThNominal : rThDegraded;
-          const baseline = 25.0 + 100.0 * rThNominal * (1.0 - Math.exp(-t / 8.0));
-          const twin = 25.0 + 100.0 * activeRth * (1.0 - Math.exp(-t / 8.0));
-          const meas = twin + (t >= 10.0 ? 0.35 : 0.1);
+          const activeTau = t < 10.0 ? tauNominal : tauDegraded;
+          const baseline = ambientTemp + powerLoad * rThNominal * (1.0 - Math.exp(-t / tauNominal));
+          const twin = ambientTemp + powerLoad * activeRth * (1.0 - Math.exp(-t / activeTau));
+          const meas = twin + (t >= 10.0 ? driftShift : driftShift * 0.25);
           stepSeries.push({ t, meas, baseline, twin });
         }
         return stepSeries;
@@ -179,9 +195,10 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
       const lastPoint = prev[prev.length - 1]!;
       const t = Number((lastPoint.t + 1.0).toFixed(1));
       const activeRth = t < 10.0 ? rThNominal : rThDegraded;
-      const baseline = 25.0 + 100.0 * rThNominal * (1.0 - Math.exp(-t / 8.0));
-      const twin = 25.0 + 100.0 * activeRth * (1.0 - Math.exp(-t / 8.0));
-      const meas = twin + (t >= 10.0 ? 0.3 : 0.08);
+      const activeTau = t < 10.0 ? tauNominal : tauDegraded;
+      const baseline = ambientTemp + powerLoad * rThNominal * (1.0 - Math.exp(-t / tauNominal));
+      const twin = ambientTemp + powerLoad * activeRth * (1.0 - Math.exp(-t / activeTau));
+      const meas = twin + (t >= 10.0 ? driftShift * 0.85 : driftShift * 0.2);
       return [...prev, { t, meas, baseline, twin }];
     });
   };
@@ -227,9 +244,6 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
       setActionLoading(false);
     }
   };
-
-  const healthScore = viewConfig.healthScore ?? twinData?.activeSession?.healthScore ?? 85.0;
-  const rulHours = viewConfig.rulHours;
 
   // Compute spatial hotspots from viewConfig.hotspots or extracted digital thread twins
   const computedHotspots = useMemo<DigitalTwinHotspot[]>(() => {
@@ -289,16 +303,36 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     [computedHotspots, selectedHotspotId],
   );
 
-  // Render SVG Sparkline
-  const minVal = 20.0;
-  const maxVal = 50.0;
+  // Render SVG Sparkline with dynamic parameter-aware bounds
+  const { minVal, maxVal, gridLevels } = useMemo(() => {
+    const allVals: number[] = [];
+    for (const p of telemetry) {
+      if (Number.isFinite(p.meas)) allVals.push(p.meas);
+      if (Number.isFinite(p.baseline)) allVals.push(p.baseline);
+      if (Number.isFinite(p.twin)) allVals.push(p.twin);
+    }
+    if (allVals.length === 0) {
+      return { minVal: 20.0, maxVal: 50.0, gridLevels: [25, 35, 45] };
+    }
+    const rawMin = Math.min(...allVals);
+    const rawMax = Math.max(...allVals);
+    const span = Math.max(10.0, rawMax - rawMin);
+    const lo = Math.floor(rawMin - span * 0.15);
+    const hi = Math.ceil(rawMax + span * 0.15);
+    const mid = Math.round((lo + hi) / 2);
+    return {
+      minVal: lo,
+      maxVal: hi,
+      gridLevels: [Math.round(lo + (hi - lo) * 0.2), mid, Math.round(lo + (hi - lo) * 0.8)],
+    };
+  }, [telemetry]);
   const width = 640;
   const height = 180;
   const pad = 24;
   const maxTime = useMemo(() => Math.max(20.0, ...telemetry.map((p) => (Number.isFinite(p.t) ? p.t : 0))), [telemetry]);
 
   const toX = (t: number) => pad + (t / maxTime) * (width - 2 * pad);
-  const toY = (val: number) => height - pad - ((val - minVal) / (maxVal - minVal)) * (height - 2 * pad);
+  const toY = (val: number) => height - pad - ((val - minVal) / Math.max(1e-6, maxVal - minVal)) * (height - 2 * pad);
 
   const measPath = telemetry
     .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.t).toFixed(1)} ${toY(p.meas).toFixed(1)}`)
@@ -519,7 +553,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               ) : (
                 <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
                   {/* Horizontal gridlines */}
-                  {[25, 35, 45].map((val) => (
+                  {gridLevels.map((val) => (
                     <g key={val}>
                       <line
                         x1={pad}
@@ -576,7 +610,16 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               borderColor: "border.default",
             }}
           >
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 3,
+                flexWrap: "wrap",
+                gap: 2,
+              }}
+            >
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
                 <FlameIcon size={20} fill="#d29922" />
                 <Box>
@@ -586,19 +629,37 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                   </Text>
                 </Box>
               </Box>
-              {activeHotspot && (
-                <Label
-                  variant={
-                    activeHotspot.severity === "critical"
-                      ? "danger"
-                      : activeHotspot.severity === "warning"
-                        ? "attention"
-                        : "success"
-                  }
-                >
-                  Active Node: {activeHotspot.name} ({activeHotspot.value.toFixed(1)} {activeHotspot.unit})
-                </Label>
-              )}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  {[
+                    { label: "Iso 35°", angle: 35 },
+                    { label: "Oblique 60°", angle: 60 },
+                    { label: "Top Plan", angle: 12 },
+                  ].map((preset) => (
+                    <Button
+                      key={preset.label}
+                      size="small"
+                      variant={isoAngleDeg === preset.angle ? "primary" : "default"}
+                      onClick={() => setIsoAngleDeg(preset.angle)}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </Box>
+                {activeHotspot && (
+                  <Label
+                    variant={
+                      activeHotspot.severity === "critical"
+                        ? "danger"
+                        : activeHotspot.severity === "warning"
+                          ? "attention"
+                          : "success"
+                    }
+                  >
+                    Active Node: {activeHotspot.name} ({activeHotspot.value.toFixed(1)} {activeHotspot.unit})
+                  </Label>
+                )}
+              </Box>
             </Box>
 
             {computedHotspots.length === 0 ? (
@@ -616,7 +677,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
               </Box>
             ) : (
               <>
-                {/* Interactive SVG Spatial Thermal/Stress Map */}
+                {/* Interactive Isometric 3D Multi-Layer Thermal/Stress Mesh */}
                 <Box
                   sx={{
                     mb: 3,
@@ -625,74 +686,192 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
                     borderRadius: 2,
                     border: "1px solid",
                     borderColor: "border.subtle",
+                    position: "relative",
                   }}
                 >
-                  <svg width="100%" height={220} viewBox="0 0 600 220">
-                    <defs>
-                      <radialGradient id="hotspot-critical" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" stopColor="#f85149" stopOpacity="0.65" />
-                        <stop offset="60%" stopColor="#d29922" stopOpacity="0.25" />
-                        <stop offset="100%" stopColor="#f85149" stopOpacity="0" />
-                      </radialGradient>
-                      <radialGradient id="hotspot-warning" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" stopColor="#d29922" stopOpacity="0.55" />
-                        <stop offset="100%" stopColor="#d29922" stopOpacity="0" />
-                      </radialGradient>
-                      <radialGradient id="hotspot-normal" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.45" />
-                        <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
-                      </radialGradient>
-                    </defs>
+                  {(() => {
+                    const rad = (isoAngleDeg * Math.PI) / 180;
+                    const cosA = Math.cos(rad);
+                    const sinA = Math.sin(rad);
+                    const projectIso = (nx: number, ny: number, nz: number): [number, number] => {
+                      const cx = (nx - 300) * 0.62;
+                      const cy = (ny - 110) * 0.62;
+                      const px = 300 + cx * cosA - cy * sinA;
+                      const py = 128 + (cx * sinA + cy * cosA) * 0.52 - nz * 1.15;
+                      return [px, py];
+                    };
+                    const layers = [0, 18, 36];
+                    const driftSeverityFactor = Math.min(
+                      1,
+                      Math.max(0.15, (viewConfig.driftMetrics?.score ?? (100 - healthScore) / 10) / 5),
+                    );
 
-                    {/* Isometric wireframe chassis envelope */}
-                    <rect
-                      x={40}
-                      y={24}
-                      width={520}
-                      height={172}
-                      rx={10}
-                      fill="rgba(13, 17, 23, 0.55)"
-                      stroke="#30363d"
-                      strokeWidth="1.5"
-                    />
-                    <line x1={40} y1={110} x2={560} y2={110} stroke="#21262d" strokeDasharray="4 4" />
-                    <line x1={300} y1={24} x2={300} y2={196} stroke="#21262d" strokeDasharray="4 4" />
+                    return (
+                      <svg width="100%" height={240} viewBox="0 0 600 240">
+                        <defs>
+                          <radialGradient id="hotspot-critical" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stopColor="#f85149" stopOpacity="0.75" />
+                            <stop offset="55%" stopColor="#d29922" stopOpacity="0.35" />
+                            <stop offset="100%" stopColor="#f85149" stopOpacity="0" />
+                          </radialGradient>
+                          <radialGradient id="hotspot-warning" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stopColor="#d29922" stopOpacity="0.65" />
+                            <stop offset="100%" stopColor="#d29922" stopOpacity="0" />
+                          </radialGradient>
+                          <radialGradient id="hotspot-normal" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.55" />
+                            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                          </radialGradient>
+                          <linearGradient id="thermal-layer-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#0ea5e9" stopOpacity={0.18} />
+                            <stop offset="50%" stopColor="#f59e0b" stopOpacity={0.14 + driftSeverityFactor * 0.18} />
+                            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.2 + driftSeverityFactor * 0.25} />
+                          </linearGradient>
+                        </defs>
 
-                    {/* Thermal / stress contour overlays */}
-                    {computedHotspots.map((hs) => {
-                      const [x, y, z] = hs.coords;
-                      const isSelected = activeHotspot?.id === hs.id;
-                      const gradId =
-                        hs.severity === "critical"
-                          ? "url(#hotspot-critical)"
-                          : hs.severity === "warning"
-                            ? "url(#hotspot-warning)"
-                            : "url(#hotspot-normal)";
-                      const strokeColor =
-                        hs.severity === "critical" ? "#f85149" : hs.severity === "warning" ? "#d29922" : "#06b6d4";
+                        {/* Multi-layer isometric 3D FEA/CFD planes */}
+                        {layers.map((lz, lIdx) => {
+                          const c1 = projectIso(80, 40, lz);
+                          const c2 = projectIso(520, 40, lz);
+                          const c3 = projectIso(520, 180, lz);
+                          const c4 = projectIso(80, 180, lz);
+                          const poly = `${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${c3[0].toFixed(1)},${c3[1].toFixed(1)} ${c4[0].toFixed(1)},${c4[1].toFixed(1)}`;
+                          return (
+                            <g key={lz}>
+                              <polygon
+                                points={poly}
+                                fill={lIdx === 1 ? "url(#thermal-layer-grad)" : "rgba(15, 23, 42, 0.45)"}
+                                stroke={lIdx === 2 ? "#38bdf8" : "#30363d"}
+                                strokeWidth={lIdx === 2 ? 1.4 : 1}
+                                strokeDasharray={lIdx === 0 ? "4 3" : undefined}
+                              />
+                              {[0.25, 0.5, 0.75].map((f) => {
+                                const gx1 = projectIso(80 + 440 * f, 40, lz);
+                                const gx2 = projectIso(80 + 440 * f, 180, lz);
+                                const gy1 = projectIso(80, 40 + 140 * f, lz);
+                                const gy2 = projectIso(520, 40 + 140 * f, lz);
+                                return (
+                                  <g key={`${lz}-${f}`} stroke="#21262d" strokeWidth="0.7" opacity={0.7}>
+                                    <line x1={gx1[0]} y1={gx1[1]} x2={gx2[0]} y2={gx2[1]} />
+                                    <line x1={gy1[0]} y1={gy1[1]} x2={gy2[0]} y2={gy2[1]} />
+                                  </g>
+                                );
+                              })}
+                            </g>
+                          );
+                        })}
 
-                      return (
-                        <g key={hs.id} style={{ cursor: "pointer" }} onClick={() => setSelectedHotspotId(hs.id)}>
-                          <circle cx={x} cy={y} r={38} fill={gradId} />
-                          <circle
-                            cx={x}
-                            cy={y}
-                            r={isSelected ? 9 : 6}
-                            fill={strokeColor}
-                            stroke="#ffffff"
-                            strokeWidth={isSelected ? 2.5 : 1}
-                          />
-                          <text x={x} y={y - 12} fill="#e6edf3" fontSize="10" fontWeight="bold" textAnchor="middle">
-                            {hs.value.toFixed(1)}
-                            {hs.unit}
-                          </text>
-                          <text x={x} y={y + 20} fill="#8b949e" fontSize="9" textAnchor="middle">
-                            ({x}, {y}, {z})
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
+                        {/* Vertical corner pillars connecting 3D mesh layers */}
+                        {[
+                          [80, 40],
+                          [520, 40],
+                          [520, 180],
+                          [80, 180],
+                        ].map(([cx, cy], idx) => {
+                          const bot = projectIso(cx!, cy!, layers[0]!);
+                          const top = projectIso(cx!, cy!, layers[layers.length - 1]!);
+                          return (
+                            <line
+                              key={idx}
+                              x1={bot[0]}
+                              y1={bot[1]}
+                              x2={top[0]}
+                              y2={top[1]}
+                              stroke="#30363d"
+                              strokeDasharray="2 2"
+                            />
+                          );
+                        })}
+
+                        {/* 3D Hotspot nodes with elevation stems and radial heatmap fields */}
+                        {computedHotspots.map((hs) => {
+                          const [x, y, z] = hs.coords;
+                          const [px, py] = projectIso(x, y, z);
+                          const [bx, by] = projectIso(x, y, 0);
+                          const isSelected = activeHotspot?.id === hs.id;
+                          const gradId =
+                            hs.severity === "critical"
+                              ? "url(#hotspot-critical)"
+                              : hs.severity === "warning"
+                                ? "url(#hotspot-warning)"
+                                : "url(#hotspot-normal)";
+                          const strokeColor =
+                            hs.severity === "critical" ? "#f85149" : hs.severity === "warning" ? "#d29922" : "#06b6d4";
+
+                          return (
+                            <g key={hs.id} style={{ cursor: "pointer" }} onClick={() => setSelectedHotspotId(hs.id)}>
+                              <line
+                                x1={bx}
+                                y1={by}
+                                x2={px}
+                                y2={py}
+                                stroke={strokeColor}
+                                strokeWidth="1.5"
+                                strokeDasharray="2 2"
+                              />
+                              <ellipse cx={bx} cy={by} rx={6} ry={3} fill={strokeColor} opacity={0.45} />
+                              <circle cx={px} cy={py} r={isSelected ? 42 : 34} fill={gradId} />
+                              <circle
+                                cx={px}
+                                cy={py}
+                                r={isSelected ? 9 : 6.5}
+                                fill={strokeColor}
+                                stroke="#ffffff"
+                                strokeWidth={isSelected ? 2.5 : 1.2}
+                              />
+                              <text
+                                x={px}
+                                y={py - 12}
+                                fill="#e6edf3"
+                                fontSize="10"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                              >
+                                {hs.value.toFixed(1)}
+                                {hs.unit}
+                              </text>
+                              <text x={px} y={py + 20} fill="#8b949e" fontSize="9" textAnchor="middle">
+                                ({x}, {y}, {z})
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    );
+                  })()}
+
+                  {activeHotspot && (
+                    <Box
+                      sx={{
+                        mt: 2,
+                        p: 2,
+                        borderRadius: 2,
+                        backgroundColor: "canvas.subtle",
+                        border: "1px solid",
+                        borderColor: "border.default",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        fontSize: 0,
+                        flexWrap: "wrap",
+                        gap: 2,
+                      }}
+                    >
+                      <Text>
+                        <strong>3D Node Inspection:</strong> {activeHotspot.name} [{activeHotspot.domain.toUpperCase()}]
+                        at ({activeHotspot.coords[0]}, {activeHotspot.coords[1]}, {activeHotspot.coords[2]}) mm
+                      </Text>
+                      <Text>
+                        Field:{" "}
+                        <strong>
+                          {activeHotspot.value.toFixed(1)} {activeHotspot.unit}
+                        </strong>{" "}
+                        vs Nominal {activeHotspot.nominal.toFixed(1)} {activeHotspot.unit} (
+                        {activeHotspot.deltaPct >= 0 ? "+" : ""}
+                        {activeHotspot.deltaPct.toFixed(1)}%)
+                      </Text>
+                    </Box>
+                  )}
                 </Box>
 
                 {/* Hotspot Table */}

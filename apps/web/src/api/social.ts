@@ -250,6 +250,31 @@ export const createRepo = async (repoData: Record<string, any>): Promise<any> =>
   return data;
 };
 
+export const updateRepo = async (id: string | number, updates: Record<string, any>): Promise<any> => {
+  const { data } = await api.put(`/repos/${encodeURIComponent(String(id))}`, updates);
+  return data;
+};
+
+export const deleteRepo = async (id: string | number): Promise<any> => {
+  const { data } = await api.delete(`/repos/${encodeURIComponent(String(id))}`);
+  return data;
+};
+
+export const getRepoWebhooks = async (id: string | number): Promise<{ webhooks: any[] }> => {
+  const { data } = await api.get(`/repos/${encodeURIComponent(String(id))}/webhooks`);
+  return data;
+};
+
+export const createRepoWebhook = async (id: string | number, payload: Record<string, any>): Promise<any> => {
+  const { data } = await api.post(`/repos/${encodeURIComponent(String(id))}/webhooks`, payload);
+  return data;
+};
+
+export const deleteRepoWebhook = async (repoId: string | number, webhookId: number): Promise<any> => {
+  const { data } = await api.delete(`/repos/${encodeURIComponent(String(repoId))}/webhooks/${webhookId}`);
+  return data;
+};
+
 export const getSearchCompletions = async (
   query: string,
   limit = 6,

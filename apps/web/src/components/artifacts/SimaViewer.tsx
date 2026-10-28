@@ -147,13 +147,15 @@ const StatItem = styled.div`
 export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [rawText, setRawText] = useState(viewConfig.code || "");
+  const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
+  const [rawText, setRawText] = useState(initialSource);
   const [viewMode, setViewMode] = useState<"spread" | "catenary" | "code">("spread");
   const title = viewConfig.title || viewConfig.vesselName || "SIMA Mooring & Hydrodynamics (.sima)";
 
   useEffect(() => {
-    if (viewConfig.code) {
-      setRawText(viewConfig.code);
+    const inlineCode = (viewConfig.code || (viewConfig.source as string | undefined)) as string | undefined;
+    if (inlineCode) {
+      setRawText(inlineCode);
       return;
     }
     if (viewConfig.url) {
@@ -168,15 +170,21 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
         .catch((err) => console.warn("[SimaViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
-  }, [viewConfig.code, viewConfig.url]);
+  }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
   const parsedSima = useMemo(() => {
     const depthMatch = rawText.match(/\b(?:water_depth|waterDepth|depth)\s*[=:]?\s*([0-9.]+)/i);
+    const lengthMatch = rawText.match(/\b(?:line_length|lineLength|mooring_length|length)\s*[=:]?\s*([0-9.]+)/i);
     const lineMatches = rawText ? Array.from(rawText.matchAll(/\b(?:MOORING_LINE|LINE|mooringLine)\b/gi)) : [];
     const tensionMatch = rawText.match(/\b(?:pretension|max_tension|tension)\s*[=:]?\s*([0-9.]+)/i);
+    const depthM =
+      viewConfig.waterDepthM ?? viewConfig.waterDepthMeters ?? (depthMatch ? Number(depthMatch[1]) : undefined);
+    const lineLengthM =
+      (viewConfig.lineLengthM as number | undefined) ??
+      (lengthMatch ? Number(lengthMatch[1]) : depthM ? Math.round(depthM * 2.6) : 850);
     return {
-      waterDepthM:
-        viewConfig.waterDepthM ?? viewConfig.waterDepthMeters ?? (depthMatch ? Number(depthMatch[1]) : undefined),
+      waterDepthM: depthM,
+      lineLengthM,
       lineCount: viewConfig.lineCount ?? viewConfig.mooringLinesCount ?? lineMatches.length,
       maxTensionKn: viewConfig.maxTensionKn ?? (tensionMatch ? Number(tensionMatch[1]) : undefined),
       watchCircleRadiusM: viewConfig.watchCircleRadiusM ?? viewConfig.watchCircleRadiusMeters,
@@ -185,20 +193,50 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
 
   const sanitizedSvg = useMemo(() => {
     if (viewMode === "catenary") {
-      const depthLabel = parsedSima.waterDepthM !== undefined ? `-${parsedSima.waterDepthM}m` : "Seabed";
+      const depthVal = parsedSima.waterDepthM ?? 320;
+      const tensionVal = parsedSima.maxTensionKn ?? 2400;
+      const lengthVal = parsedSima.lineLengthM ?? 850;
+      const depthLabel = parsedSima.waterDepthM !== undefined ? `-${parsedSima.waterDepthM}m` : `-${depthVal}m`;
       const tensionLabel = parsedSima.maxTensionKn !== undefined ? ` (${parsedSima.maxTensionKn} kN)` : "";
+
+      // Compute parameterized catenary points between Anchor (x=110, y=280) and Fairlead (x=520, y=70)
+      const anchorX = 110;
+      const fairleadX = 520;
+      const seabedY = 280;
+      const fairleadY = Math.max(64, Math.min(130, 280 - Math.min(210, Math.max(110, depthVal * 0.45))));
+      const slackRatio = Math.max(0.15, Math.min(0.85, (lengthVal / Math.max(100, depthVal) - 1.2) / 3.0));
+      const tensionStiffness = Math.max(0.6, Math.min(1.8, tensionVal / 2200));
+      const touchdownX = Math.round(anchorX + (fairleadX - anchorX) * Math.min(0.45, slackRatio * 0.38));
+
+      const catenaryPts: string[] = [`M ${anchorX} ${seabedY}`, `L ${touchdownX} ${seabedY}`];
+      const steps = 24;
+      const aParam = Math.max(0.7, 1.35 * tensionStiffness * (1 - slackRatio * 0.4));
+      const coshMax = Math.cosh(1 / aParam) - 1;
+      for (let i = 1; i <= steps; i++) {
+        const u = i / steps;
+        const px = touchdownX + (fairleadX - touchdownX) * u;
+        const normY = (Math.cosh(u / aParam) - 1) / Math.max(1e-6, coshMax);
+        const py = seabedY - (seabedY - fairleadY) * normY;
+        catenaryPts.push(`L ${px.toFixed(1)} ${py.toFixed(1)}`);
+      }
+      const catenaryPath = catenaryPts.join(" ");
+
       return DOMPurify.sanitize(`
         <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
+          <rect x="445" y="14" width="185" height="22" rx="11" fill="rgba(6, 182, 212, 0.15)" stroke="rgba(6, 182, 212, 0.4)" />
+          <text x="537" y="29" fill="#22d3ee" font-size="10" font-family="monospace" font-weight="600" text-anchor="middle">Analytical Model Preview</text>
           <line x1="50" y1="60" x2="600" y2="60" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="6 3" />
-          <text x="60" y="52" fill="#38bdf8" font-size="10" font-family="sans-serif">Mean Water Level (0m)</text>
+          <text x="60" y="52" fill="#38bdf8" font-size="10" font-family="sans-serif">Mean Water Level (0m) • L = ${lengthVal}m</text>
           <line x1="50" y1="280" x2="600" y2="280" stroke="#475569" stroke-width="2" />
           <text x="60" y="272" fill="#94a3b8" font-size="10" font-family="sans-serif">Seabed (${depthLabel})</text>
-          <path d="M 520 70 Q 300 278 120 280" fill="none" stroke="#22d3ee" stroke-width="3" />
-          <circle cx="520" cy="70" r="6" fill="#f59e0b" />
-          <text x="520" y="95" fill="#fde68a" font-size="10" font-family="sans-serif" text-anchor="middle">Fairlead${tensionLabel}</text>
-          <circle cx="120" cy="280" r="6" fill="#ef4444" />
-          <text x="120" y="305" fill="#fca5a5" font-size="10" font-family="sans-serif" text-anchor="middle">Anchor</text>
+          <path d="${catenaryPath}" fill="none" stroke="#22d3ee" stroke-width="3" />
+          <circle cx="${touchdownX}" cy="${seabedY}" r="4.5" fill="#38bdf8" />
+          <text x="${touchdownX}" y="${seabedY - 10}" fill="#7dd3fc" font-size="9" font-family="sans-serif" text-anchor="middle">Touchdown</text>
+          <circle cx="${fairleadX}" cy="${fairleadY.toFixed(1)}" r="6" fill="#f59e0b" />
+          <text x="${fairleadX}" y="${(fairleadY + 22).toFixed(1)}" fill="#fde68a" font-size="10" font-family="sans-serif" text-anchor="middle">Fairlead${tensionLabel}</text>
+          <circle cx="${anchorX}" cy="${seabedY}" r="6" fill="#ef4444" />
+          <text x="${anchorX}" y="305" fill="#fca5a5" font-size="10" font-family="sans-serif" text-anchor="middle">Anchor</text>
         </svg>
       `);
     }

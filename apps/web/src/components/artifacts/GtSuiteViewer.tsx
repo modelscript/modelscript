@@ -143,13 +143,15 @@ const StatItem = styled.div`
 export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [rawText, setRawText] = useState(viewConfig.code || "");
+  const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
+  const [rawText, setRawText] = useState(initialSource);
   const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">("schematic");
   const title = viewConfig.title || viewConfig.engineModel || "GT-SUITE Powertrain (.gtm)";
 
   useEffect(() => {
-    if (viewConfig.code) {
-      setRawText(viewConfig.code);
+    const inlineCode = (viewConfig.code || (viewConfig.source as string | undefined)) as string | undefined;
+    if (inlineCode) {
+      setRawText(inlineCode);
       return;
     }
     if (viewConfig.url) {
@@ -164,7 +166,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
         .catch((err) => console.warn("[GtSuiteViewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
-  }, [viewConfig.code, viewConfig.url]);
+  }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
   const parsedEngine = useMemo(() => {
     const cylMatches = rawText ? Array.from(rawText.matchAll(/\b(EngCylinder|Cylinder)\b/gi)) : [];
@@ -178,21 +180,29 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
     const boreMatch = rawText.match(/\bbore\s*[=:]\s*([0-9.]+)/i);
     const strokeMatch = rawText.match(/\bstroke\s*[=:]\s*([0-9.]+)/i);
     const crMatch = rawText.match(/\b(?:compression_ratio|cr)\s*[=:]\s*([0-9.]+)/i);
+    const rpmMatch = rawText.match(/\b(?:rpm|engine_speed|speed)\s*[=:]\s*([0-9.]+)/i);
+    const boostMatch = rawText.match(/\b(?:boost_bar|intake_pressure|p_intake)\s*[=:]\s*([0-9.]+)/i);
     const cylCount = viewConfig.cylinderCount ?? cylMatches.length;
     const boreMm = boreMatch ? Number(boreMatch[1]) : undefined;
     const strokeMm = strokeMatch ? Number(strokeMatch[1]) : undefined;
     const cr = crMatch ? Number(crMatch[1]) : 10.5;
+    const rpm = rpmMatch ? Number(rpmMatch[1]) : 3000;
+    const intakeBar = boostMatch ? Math.max(0.5, Number(boostMatch[1])) : 1.0;
     let dispL = viewConfig.displacementLiters;
-    if (dispL === undefined && boreMm && strokeMm && cylCount > 0) {
+    if (dispL === undefined && boreMm && strokeMm && Math.max(1, cylCount) > 0) {
       const bMm = boreMm < 1 ? boreMm * 1000 : boreMm;
       const sMm = strokeMm < 1 ? strokeMm * 1000 : strokeMm;
-      dispL = +((cylCount * Math.PI * Math.pow(bMm / 20, 2) * (sMm / 10)) / 1000).toFixed(2);
+      dispL = +((Math.max(1, cylCount) * Math.PI * Math.pow(bMm / 20, 2) * (sMm / 10)) / 1000).toFixed(2);
     }
     return {
       cylinderCount: cylCount,
       componentCount: viewConfig.componentCount ?? compMatches.length,
       displacementLiters: dispL,
+      boreMm,
+      strokeMm,
       cr,
+      rpm,
+      intakeBar,
     };
   }, [rawText, viewConfig]);
 
@@ -206,11 +216,18 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
     return "";
   }, [viewConfig.svg, rawText, title]);
 
+  const isAnalyticalPreview = !(viewConfig.pvData && Array.isArray(viewConfig.pvData));
+
   const pvData = useMemo(() => {
     if (viewConfig.pvData && Array.isArray(viewConfig.pvData)) {
       return viewConfig.pvData;
     }
-    if (parsedEngine.cylinderCount === 0 && !viewConfig.peakPressureBar) {
+    if (
+      parsedEngine.cylinderCount === 0 &&
+      !viewConfig.peakPressureBar &&
+      parsedEngine.boreMm === undefined &&
+      parsedEngine.strokeMm === undefined
+    ) {
       return [];
     }
     const points = [];
@@ -219,12 +236,14 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       : 450;
     const vClearance = cylSweptCc / Math.max(2, parsedEngine.cr - 1);
     const gamma = 1.35;
+    const volumetricEff = Math.max(0.78, Math.min(1.05, 1.0 - Math.abs(parsedEngine.rpm - 3200) / 18000));
+    const pIntake = parsedEngine.intakeBar * volumetricEff;
     const step = Math.max(5, Math.round(cylSweptCc / 20));
     for (let v = vClearance + cylSweptCc; v >= vClearance; v -= step) {
-      const p = 1.0 * Math.pow((vClearance + cylSweptCc) / v, gamma);
+      const p = pIntake * Math.pow((vClearance + cylSweptCc) / v, gamma);
       points.push({ volumeCc: Math.round(v), pressureBar: Number(p.toFixed(1)) });
     }
-    const peakP = viewConfig.peakPressureBar ?? Number((1.0 * Math.pow(parsedEngine.cr, gamma) * 2.8).toFixed(1));
+    const peakP = viewConfig.peakPressureBar ?? Number((pIntake * Math.pow(parsedEngine.cr, gamma) * 2.8).toFixed(1));
     points.push({ volumeCc: Math.round(vClearance), pressureBar: peakP });
     for (let v = vClearance; v <= vClearance + cylSweptCc; v += step) {
       const p = peakP * Math.pow(vClearance / v, gamma);
@@ -287,37 +306,48 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
         ) : viewMode === "schematic" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         ) : viewMode === "pv" && pvData.length > 0 ? (
-          <ChartCanvas>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={pvData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
-                <XAxis
-                  dataKey="volumeCc"
-                  stroke="var(--ms-text-3)"
-                  tick={{ fontSize: 11 }}
-                  unit="cc"
-                  name="Cylinder Volume"
-                />
-                <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} unit="bar" name="Pressure" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--ms-bg-alt)",
-                    borderColor: "var(--ms-border)",
-                    borderRadius: "6px",
-                    fontSize: "12px",
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: "12px" }} />
-                <Line
-                  type="monotone"
-                  dataKey="pressureBar"
-                  stroke="#fb923c"
-                  dot={false}
-                  strokeWidth={2.2}
-                  name="In-Cylinder Pressure (bar)"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <ChartCanvas style={{ display: "flex", flexDirection: "column" }}>
+            {isAnalyticalPreview && (
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Text style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>
+                  CR = {parsedEngine.cr.toFixed(1)}:1, Speed = {parsedEngine.rpm} RPM
+                  {parsedEngine.displacementLiters ? `, V_d = ${parsedEngine.displacementLiters} L` : ""}
+                </Text>
+                <PillBadge>Analytical Model Preview</PillBadge>
+              </Box>
+            )}
+            <Box flex={1} style={{ minHeight: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={pvData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
+                  <XAxis
+                    dataKey="volumeCc"
+                    stroke="var(--ms-text-3)"
+                    tick={{ fontSize: 11 }}
+                    unit="cc"
+                    name="Cylinder Volume"
+                  />
+                  <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} unit="bar" name="Pressure" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--ms-bg-alt)",
+                      borderColor: "var(--ms-border)",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} />
+                  <Line
+                    type="monotone"
+                    dataKey="pressureBar"
+                    stroke="#fb923c"
+                    dot={false}
+                    strokeWidth={2.2}
+                    name="In-Cylinder Pressure (bar)"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </Box>
           </ChartCanvas>
         ) : (
           <Box

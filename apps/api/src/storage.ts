@@ -198,12 +198,29 @@ export class LibraryStorage {
   storeSvg(name: string, version: string, className: string, icon: string | null, diagram: string | null): void {
     const dir = this.#svgDir(name, version, className);
     fs.mkdirSync(dir, { recursive: true });
+    const safeName = this.#safe(name);
+    const safeVersion = this.#safe(version);
+    const safeClass = this.#safe(className);
 
     if (icon) {
       fs.writeFileSync(path.join(dir, "icon.svg"), icon, "utf-8");
+      if (this.#driver.driverName === "s3") {
+        void this.#driver
+          .write(`${safeName}/${safeVersion}/svgs/${safeClass}/icon.svg`, Buffer.from(icon, "utf-8"), {
+            contentType: "image/svg+xml",
+          })
+          .catch(() => {});
+      }
     }
     if (diagram) {
       fs.writeFileSync(path.join(dir, "diagram.svg"), diagram, "utf-8");
+      if (this.#driver.driverName === "s3") {
+        void this.#driver
+          .write(`${safeName}/${safeVersion}/svgs/${safeClass}/diagram.svg`, Buffer.from(diagram, "utf-8"), {
+            contentType: "image/svg+xml",
+          })
+          .catch(() => {});
+      }
     }
   }
 
@@ -225,6 +242,22 @@ export class LibraryStorage {
       return null;
     }
     return fs.readFileSync(filePath, "utf-8");
+  }
+
+  /**
+   * Read a single SVG file for a class with S3 storage driver fallback.
+   */
+  async readSvgAsync(
+    name: string,
+    version: string,
+    className: string,
+    type: "icon" | "diagram",
+  ): Promise<string | null> {
+    const local = this.readSvg(name, version, className, type);
+    if (local !== null) return local;
+    const key = `${this.#safe(name)}/${this.#safe(version)}/svgs/${this.#safe(className)}/${type}.svg`;
+    const buf = await this.#driver.read(key);
+    return buf ? buf.toString("utf-8") : null;
   }
 
   /**
@@ -316,12 +349,29 @@ export class LibraryStorage {
   }
 
   /**
+   * Read the cached .aasx buffer with S3 storage driver fallback.
+   */
+  async readCachedAasxAsync(name: string, version: string): Promise<Buffer | null> {
+    const local = this.readCachedAasx(name, version);
+    if (local !== null) return local;
+    const key = `${this.#safe(name)}/${this.#safe(version)}/package.aasx`;
+    return this.#driver.read(key);
+  }
+
+  /**
    * Store a generated .aasx container into cache.
    */
   storeCachedAasx(name: string, version: string, buffer: Buffer): void {
     const p = this.getCachedAasxPath(name, version);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, buffer);
+    if (this.#driver.driverName === "s3") {
+      void this.#driver
+        .write(`${this.#safe(name)}/${this.#safe(version)}/package.aasx`, buffer, {
+          contentType: "application/asset-administration-shell-package",
+        })
+        .catch(() => {});
+    }
   }
 
   /**
@@ -342,12 +392,34 @@ export class LibraryStorage {
   }
 
   /**
+   * Read the cached CAD mesh JSON with S3 storage driver fallback.
+   */
+  async readCadMeshAsync(name: string, version: string, relPath: string): Promise<string | null> {
+    const local = this.readCadMesh(name, version, relPath);
+    if (local !== null) return local;
+    const cleanRel = relPath.replace(/^(\.\/|\/)+/, "").replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const key = `${this.#safe(name)}/${this.#safe(version)}/cad-meshes/${cleanRel}.mesh.json`;
+    const buf = await this.#driver.read(key);
+    return buf ? buf.toString("utf-8") : null;
+  }
+
+  /**
    * Store pre-tessellated CAD mesh JSON.
    */
   storeCadMesh(name: string, version: string, relPath: string, meshContent: string): void {
     const p = this.getCadMeshPath(name, version, relPath);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, meshContent, "utf-8");
+    if (this.#driver.driverName === "s3") {
+      const cleanRel = relPath.replace(/^(\.\/|\/)+/, "").replace(/[^a-zA-Z0-9_.-]/g, "_");
+      void this.#driver
+        .write(
+          `${this.#safe(name)}/${this.#safe(version)}/cad-meshes/${cleanRel}.mesh.json`,
+          Buffer.from(meshContent, "utf-8"),
+          { contentType: "application/json" },
+        )
+        .catch(() => {});
+    }
   }
 
   /**

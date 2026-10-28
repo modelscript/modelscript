@@ -4,7 +4,7 @@ import type { DynamicBindingConfig } from "@modelscript/cad";
 import { PauseIcon, PlayIcon, PlusIcon, PulseIcon, StackIcon, TableIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner } from "@primer/react";
 import type { editor } from "monaco-editor";
-import React, { Suspense, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { CadComponent } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";
@@ -291,7 +291,32 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const activeLangInfo = getLanguageInfo(dialect);
   const stencils = useMemo(() => getStencilsForDialect(dialect), [dialect]);
 
+  const [backendHistorianSessions, setBackendHistorianSessions] = useState<HistorianSession[]>([]);
+
+  useEffect(() => {
+    if (cosimDataSource !== "historian-replay") return;
+    let cancelled = false;
+    fetch("/api/v1/historian/sessions")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const list = Array.isArray(data.sessions) ? data.sessions : Array.isArray(data) ? data : [];
+        if (list.length > 0) {
+          setBackendHistorianSessions(list);
+        }
+      })
+      .catch(() => {
+        // Fallback to local simulation buffer when backend historian is unavailable
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cosimDataSource]);
+
   const recordedSessions = useMemo<HistorianSession[]>(() => {
+    if (backendHistorianSessions.length > 0) {
+      return backendHistorianSessions;
+    }
     if (!localSimulationData || localSimulationData.length === 0) return [];
     const lastRow = localSimulationData[localSimulationData.length - 1];
     const durationSec = typeof lastRow?.time === "number" ? lastRow.time : localSimulationData.length * 0.01;
@@ -299,14 +324,21 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     return [
       {
         id: `sim-${selectedTreeClassName || dialect}-latest`,
-        name: `${selectedTreeClassName || activeLangInfo.label} (${localSimulationData.length} pts)`,
+        name: `Local Simulation Buffer: ${selectedTreeClassName || activeLangInfo.label} (${localSimulationData.length} pts)`,
         recordedAt: nowStr,
         durationSeconds: Number(durationSec),
         participantCount: 1,
         signalCount: simulationVariables.length,
       },
     ];
-  }, [localSimulationData, selectedTreeClassName, dialect, activeLangInfo.label, simulationVariables]);
+  }, [
+    backendHistorianSessions,
+    localSimulationData,
+    selectedTreeClassName,
+    dialect,
+    activeLangInfo.label,
+    simulationVariables,
+  ]);
 
   if (!((view === MorselView.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code"))) {
     return null;
@@ -955,6 +987,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             onReplaySession={handleReplaySession}
             onPauseReplay={() => animationControllerRef.current?.pause()}
             sessions={recordedSessions}
+            sessionId={selectedTreeClassName ? `live-${dialect}-${selectedTreeClassName}` : `live-${dialect}-default`}
           />
           {localSimulationData || simulationStatus?.status === "failed" ? (
             <Suspense fallback={null}>

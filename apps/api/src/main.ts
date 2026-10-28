@@ -81,7 +81,7 @@ if (mqttClient && dbPool) {
 
 // ── Create Express app ──
 
-const app = createApp({ mqttClient, dbPool, storage: undefined });
+const app = createApp({ mqttClient, dbPool, storage: undefined, historianRecorder: recorder });
 
 // ── Start HTTP server ──
 

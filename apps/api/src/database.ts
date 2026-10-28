@@ -946,6 +946,12 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_dmca_notices_status ON dmca_notices(status);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+
+      CREATE TABLE IF NOT EXISTS pending_totp_secrets (
+        user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        secret     TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+      );
     `);
 
     // Migrations
@@ -990,6 +996,9 @@ export class LibraryDatabase {
       "ALTER TABLE users ADD COLUMN backup_codes TEXT DEFAULT '[]'",
       "ALTER TABLE users ADD COLUMN bot_token_hash TEXT",
       "ALTER TABLE follows ADD COLUMN state TEXT DEFAULT 'accepted'",
+      "ALTER TABLE linked_repos ADD COLUMN visibility TEXT DEFAULT 'public'",
+      "ALTER TABLE linked_repos ADD COLUMN default_branch TEXT DEFAULT 'main'",
+      "ALTER TABLE linked_repos ADD COLUMN social_preview_url TEXT",
     ];
     for (const sql of userColumns) {
       try {
@@ -2192,16 +2201,40 @@ export class LibraryDatabase {
     return res?.password_hash;
   }
 
+  setPendingTotpSecret(userId: number, secret: string, expiresAt: number): void {
+    this.#db
+      .prepare(`INSERT OR REPLACE INTO pending_totp_secrets (user_id, secret, expires_at) VALUES (?, ?, ?)`)
+      .run(userId, secret, expiresAt);
+  }
+
+  getPendingTotpSecret(userId: number): string | undefined {
+    const row = this.#db
+      .prepare(`SELECT secret, expires_at FROM pending_totp_secrets WHERE user_id = ?`)
+      .get(userId) as { secret: string; expires_at: number } | undefined;
+    if (!row) return undefined;
+    if (row.expires_at < Date.now()) {
+      this.deletePendingTotpSecret(userId);
+      return undefined;
+    }
+    return row.secret;
+  }
+
+  deletePendingTotpSecret(userId: number): void {
+    this.#db.prepare(`DELETE FROM pending_totp_secrets WHERE user_id = ?`).run(userId);
+  }
+
   enableUser2FA(userId: number, secret: string, hashedBackupCodes: string[]): void {
     this.#db
       .prepare(`UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?`)
       .run(secret, JSON.stringify(hashedBackupCodes), userId);
+    this.deletePendingTotpSecret(userId);
   }
 
   disableUser2FA(userId: number): void {
     this.#db
       .prepare(`UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = '[]' WHERE id = ?`)
       .run(userId);
+    this.deletePendingTotpSecret(userId);
   }
 
   getUser2FAState(userId: number):
@@ -4402,8 +4435,85 @@ export class LibraryDatabase {
     }
   }
 
-  unlinkRepo(userId: number, repoId: number): void {
-    this.#db.prepare(`DELETE FROM linked_repos WHERE id = ? AND user_id = ?`).run(repoId, userId);
+  unlinkRepo(userId: number, repoIdOrName: number | string): void {
+    const idStr = String(repoIdOrName);
+    const numId = Number(repoIdOrName);
+    if (!Number.isNaN(numId) && Number.isFinite(numId)) {
+      this.#db
+        .prepare(`DELETE FROM linked_repos WHERE (id = ? OR external_id = ?) AND user_id = ?`)
+        .run(numId, idStr, userId);
+    } else {
+      this.#db
+        .prepare(
+          `DELETE FROM linked_repos WHERE (external_id = ? OR (namespace || '/' || project) = ? OR project = ?) AND user_id = ?`,
+        )
+        .run(idStr, idStr, idStr, userId);
+    }
+  }
+
+  updateLinkedRepo(
+    userId: number,
+    repoIdOrName: number | string,
+    updates: {
+      name?: string | undefined;
+      repo_full_name?: string | undefined;
+      visibility?: string | undefined;
+      default_branch?: string | undefined;
+      social_preview_url?: string | undefined;
+      description?: string | undefined;
+    },
+  ): LinkedRepoRow | undefined {
+    const idStr = String(repoIdOrName);
+    const numId = Number(repoIdOrName);
+    const existing = (
+      !Number.isNaN(numId) && Number.isFinite(numId)
+        ? this.#db
+            .prepare(`SELECT * FROM linked_repos WHERE (id = ? OR external_id = ?) AND user_id = ?`)
+            .get(numId, idStr, userId)
+        : this.#db
+            .prepare(
+              `SELECT * FROM linked_repos WHERE (external_id = ? OR (namespace || '/' || project) = ? OR project = ?) AND user_id = ?`,
+            )
+            .get(idStr, idStr, idStr, userId)
+    ) as LinkedRepoRow | undefined;
+
+    if (!existing) return undefined;
+
+    let nextNamespace = existing.namespace;
+    let nextProject = existing.project;
+    if (updates.repo_full_name) {
+      const parts = updates.repo_full_name.split("/");
+      nextNamespace = parts[0] || existing.namespace;
+      nextProject = parts.slice(1).join("/") || updates.name || existing.project;
+    } else if (updates.name) {
+      nextProject = updates.name;
+    }
+
+    this.#db
+      .prepare(
+        `UPDATE linked_repos
+         SET namespace = ?,
+             project = ?,
+             visibility = COALESCE(?, visibility),
+             default_branch = COALESCE(?, default_branch),
+             social_preview_url = COALESCE(?, social_preview_url),
+             description = COALESCE(?, description),
+             avatar_url = COALESCE(?, avatar_url)
+         WHERE id = ? AND user_id = ?`,
+      )
+      .run(
+        nextNamespace,
+        nextProject,
+        updates.visibility ?? null,
+        updates.default_branch ?? null,
+        updates.social_preview_url ?? null,
+        updates.description ?? null,
+        updates.social_preview_url ?? null,
+        existing.id,
+        userId,
+      );
+
+    return this.getLinkedRepoById(existing.id);
   }
 
   getLinkedRepoById(id: number): LinkedRepoRow | undefined {

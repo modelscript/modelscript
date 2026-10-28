@@ -644,6 +644,7 @@ export function authRouter(database: LibraryDatabase): Router {
 
       const secret = generateTotpSecret();
       pendingTotpSecrets.set(user.id, secret);
+      database.setPendingTotpSecret(user.id, secret, Date.now() + 15 * 60 * 1000);
       const otpAuthUri = generateTotpUri({
         accountName: user.email,
         secret,
@@ -668,7 +669,7 @@ export function authRouter(database: LibraryDatabase): Router {
   router.post("/2fa/verify", requireAuth, express.json(), (req: Request, res: Response): void => {
     const { secret, code } = req.body || {};
     const clientIp = getClientIp(req);
-    const pendingSecret = pendingTotpSecrets.get(req.user!.id);
+    const pendingSecret = database.getPendingTotpSecret(req.user!.id) ?? pendingTotpSecrets.get(req.user!.id);
     if (pendingSecret && typeof secret === "string" && secret.trim() && secret.trim() !== pendingSecret) {
       res.status(400).json({ error: "Provided secret does not match active 2FA setup session" });
       return;
@@ -700,6 +701,7 @@ export function authRouter(database: LibraryDatabase): Router {
     try {
       const { plainCodes, hashedCodes } = generateBackupCodes(10);
       database.enableUser2FA(req.user!.id, resolvedSecret, hashedCodes);
+      database.deletePendingTotpSecret(req.user!.id);
       pendingTotpSecrets.delete(req.user!.id);
 
       database.logAudit({

@@ -626,7 +626,8 @@ export function useMorselEngine({
   const animationControllerRef = useRef<AnimationController | null>(null);
   const [animationMode, setAnimationMode] = useState<"stopped" | "playing" | "paused" | "live">("stopped");
   const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
-  const mqtt = useMqttSimulation({ source: cosimDataSource });
+  const mqttSessionId = selectedTreeClassName ? `live-${dialect}-${selectedTreeClassName}` : `live-${dialect}-default`;
+  const mqtt = useMqttSimulation({ source: cosimDataSource, sessionId: mqttSessionId });
 
   // ── Ribbon Parameters ──
   const ribbonParams = useMemo(() => {

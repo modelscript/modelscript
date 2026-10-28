@@ -144,13 +144,15 @@ const StatItem = styled.div`
 export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [rawText, setRawText] = useState(viewConfig.code || "");
+  const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
+  const [rawText, setRawText] = useState(initialSource);
   const [viewMode, setViewMode] = useState<"diagram" | "bode" | "code">("diagram");
   const title = viewConfig.title || viewConfig.modelName || "EASY5 Control Model (.ez5)";
 
   useEffect(() => {
-    if (viewConfig.code) {
-      setRawText(viewConfig.code);
+    const inlineCode = (viewConfig.code || (viewConfig.source as string | undefined)) as string | undefined;
+    if (inlineCode) {
+      setRawText(inlineCode);
       return;
     }
     if (viewConfig.url) {
@@ -165,7 +167,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
         .catch((err) => console.warn("[Easy5Viewer] Failed to fetch source:", err))
         .finally(() => setLoading(false));
     }
-  }, [viewConfig.code, viewConfig.url]);
+  }, [viewConfig.code, viewConfig.source, viewConfig.url]);
 
   const parsedModel = useMemo(() => {
     let compCount = 0;
@@ -173,20 +175,23 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
     let stateCount = 0;
     let wn = 0;
     let zeta = 0.7;
+    let gain = 1.0;
     for (const rawLine of rawText.split(/\r?\n/)) {
       const line = rawLine.trim();
-      if (/^(COMPONENT|BLOCK)\b/i.test(line)) {
+      if (/^(COMPONENT|BLOCK|SUBMODEL)\b/i.test(line)) {
         compCount++;
-        if (/\b(IN|INTEGRATOR|LAG|POLE|TF|SECOND_ORDER)\b/i.test(line)) stateCount++;
-      } else if (/^CONNECT\b/i.test(line) || line.includes("->")) {
+        if (/\b(IN|INTEGRATOR|LAG|POLE|TF|SECOND_ORDER|ACTUATOR|VALVE)\b/i.test(line)) stateCount++;
+      } else if (/^CONNECT\b/i.test(line) || line.includes("->") || line.includes("-->")) {
         connCount++;
       }
-      const wnMatch = line.match(/\b(?:WN|OMEGA_N)\s*=\s*([0-9.eE+-]+)/i);
+      const wnMatch = line.match(/\b(?:WN|OMEGA_N|FREQ_N|NATURAL_FREQ)\s*[=:]\s*([0-9.eE+-]+)/i);
       if (wnMatch) wn = Number(wnMatch[1]) || wn;
-      const tauMatch = line.match(/\bTAU\s*=\s*([0-9.eE+-]+)/i);
+      const tauMatch = line.match(/\b(?:TAU|TIME_CONSTANT)\s*[=:]\s*([0-9.eE+-]+)/i);
       if (tauMatch && Number(tauMatch[1]) > 0) wn = 1 / Number(tauMatch[1]);
-      const zetaMatch = line.match(/\bZETA\s*=\s*([0-9.eE+-]+)/i);
+      const zetaMatch = line.match(/\b(?:ZETA|DAMPING|DAMPING_RATIO)\s*[=:]\s*([0-9.eE+-]+)/i);
       if (zetaMatch) zeta = Number(zetaMatch[1]) || zeta;
+      const gainMatch = line.match(/\b(?:GAIN|KP|K_GAIN|STATIC_GAIN)\s*[=:]\s*([0-9.eE+-]+)/i);
+      if (gainMatch && Number(gainMatch[1]) > 0) gain = Number(gainMatch[1]);
     }
     return {
       componentCount: viewConfig.componentCount ?? compCount,
@@ -196,6 +201,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
       outputCount: viewConfig.outputCount,
       wn: wn > 0 ? wn : compCount > 0 ? 5.0 : 0,
       zeta,
+      gain,
     };
   }, [rawText, viewConfig]);
 
@@ -209,6 +215,8 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
     return "";
   }, [viewConfig.svg, rawText, title]);
 
+  const isAnalyticalPreview = !(viewConfig.bodeData && Array.isArray(viewConfig.bodeData));
+
   const bodeData = useMemo(() => {
     if (viewConfig.bodeData && Array.isArray(viewConfig.bodeData)) {
       return viewConfig.bodeData;
@@ -217,10 +225,11 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
     const points = [];
     const wn = parsedModel.wn;
     const zeta = parsedModel.zeta;
+    const gain = parsedModel.gain;
     for (let f = 0.1; f <= 100; f *= 1.25) {
       const w = 2 * Math.PI * f;
-      const mag = 1.0 / Math.sqrt(Math.pow(1 - Math.pow(w / wn, 2), 2) + Math.pow(2 * zeta * (w / wn), 2));
-      const magDb = 20 * Math.log10(mag);
+      const mag = gain / Math.sqrt(Math.pow(1 - Math.pow(w / wn, 2), 2) + Math.pow(2 * zeta * (w / wn), 2));
+      const magDb = 20 * Math.log10(Math.max(1e-9, mag));
       const phase = (-Math.atan2(2 * zeta * (w / wn), 1 - Math.pow(w / wn, 2)) * 180) / Math.PI;
       points.push({
         freq: Number(f.toFixed(2)),
@@ -229,7 +238,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
       });
     }
     return points;
-  }, [viewConfig.bodeData, parsedModel.wn, parsedModel.zeta]);
+  }, [viewConfig.bodeData, parsedModel.wn, parsedModel.zeta, parsedModel.gain]);
 
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
@@ -285,39 +294,50 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
         ) : viewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         ) : viewMode === "bode" && bodeData.length > 0 ? (
-          <ChartCanvas>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={bodeData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
-                <XAxis dataKey="freq" stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} scale="log" unit="Hz" />
-                <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--ms-bg-alt)",
-                    borderColor: "var(--ms-border)",
-                    borderRadius: "6px",
-                    fontSize: "12px",
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: "12px" }} />
-                <Line
-                  type="monotone"
-                  dataKey="magnitudeDb"
-                  stroke="#38bdf8"
-                  dot={false}
-                  strokeWidth={2}
-                  name="Magnitude (dB)"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="phaseDeg"
-                  stroke="#ec4899"
-                  dot={false}
-                  strokeWidth={2}
-                  name="Phase (deg)"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+          <ChartCanvas style={{ display: "flex", flexDirection: "column" }}>
+            {isAnalyticalPreview && (
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Text style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>
+                  ω_n = {parsedModel.wn.toFixed(2)} rad/s, ζ = {parsedModel.zeta.toFixed(2)}, K ={" "}
+                  {parsedModel.gain.toFixed(2)}
+                </Text>
+                <PillBadge>Analytical Model Preview</PillBadge>
+              </Box>
+            )}
+            <Box flex={1} style={{ minHeight: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={bodeData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
+                  <XAxis dataKey="freq" stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} scale="log" unit="Hz" />
+                  <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--ms-bg-alt)",
+                      borderColor: "var(--ms-border)",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} />
+                  <Line
+                    type="monotone"
+                    dataKey="magnitudeDb"
+                    stroke="#38bdf8"
+                    dot={false}
+                    strokeWidth={2}
+                    name="Magnitude (dB)"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="phaseDeg"
+                    stroke="#ec4899"
+                    dot={false}
+                    strokeWidth={2}
+                    name="Phase (deg)"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </Box>
           </ChartCanvas>
         ) : (
           <Box

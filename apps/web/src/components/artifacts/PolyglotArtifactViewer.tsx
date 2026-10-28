@@ -167,8 +167,84 @@ export function renderSourceToDiagramSvg(
     });
   }
 
+  // Arrow & keyword connections: a -> b, a --> b, CONNECT a TO b
+  const arrowRe =
+    /\b([A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z0-9_]+)?\s*(?:-->|->|\s+TO\s+)\s*([A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z0-9_]+)?/gi;
+  while ((cm = arrowRe.exec(content)) !== null) {
+    const src = cm[1]!;
+    const tgt = cm[2]!;
+    if (src === tgt) continue;
+    addNode(src, dslLang);
+    addNode(tgt, dslLang);
+    edges.push({
+      id: `e-${edges.length + 1}`,
+      source: src,
+      sourcePort: `${src}.out`,
+      target: tgt,
+      targetPort: `${tgt}.in`,
+    });
+  }
+
+  // STEP / EXPRESS #id references: #10 = ENTITY_NAME(..., #20, ...);
+  const stepEntityRe = /#(\d+)\s*=\s*([A-Z0-9_]+)\s*\(([^;]*)\)\s*;/g;
+  while ((cm = stepEntityRe.exec(content)) !== null) {
+    const srcId = `#${cm[1]}`;
+    const entityType = cm[2]!;
+    const args = cm[3] || "";
+    addNode(srcId, entityType, `${srcId} ${entityType}`);
+    const refRe = /#(\d+)/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = refRe.exec(args)) !== null) {
+      const tgtId = `#${rm[1]}`;
+      if (tgtId !== srcId) {
+        addNode(tgtId, "STEP_ENTITY", tgtId);
+        edges.push({
+          id: `e-${edges.length + 1}`,
+          source: srcId,
+          sourcePort: `${srcId}.out`,
+          target: tgtId,
+          targetPort: `${tgtId}.in`,
+        });
+      }
+    }
+  }
+
+  // Shared port / signal name matching across components (e.g. port="sig" or net="sig" or from/to attributes)
+  const fromToRe =
+    /\b(?:from|source|inlet)\s*[=:]\s*["']?([A-Za-z0-9_.-]+)["']?[^>]*?\b(?:to|target|outlet)\s*[=:]\s*["']?([A-Za-z0-9_.-]+)["']?/gi;
+  while ((cm = fromToRe.exec(content)) !== null) {
+    const src = cm[1]!;
+    const tgt = cm[2]!;
+    if (src !== tgt) {
+      addNode(src, dslLang);
+      addNode(tgt, dslLang);
+      edges.push({
+        id: `e-${edges.length + 1}`,
+        source: src,
+        sourcePort: `${src}.out`,
+        target: tgt,
+        targetPort: `${tgt}.in`,
+      });
+    }
+  }
+
   if (nodes.length === 0) {
     addNode(fallbackTitle || dslLang, dslLang, `${fallbackTitle || dslLang} (${dslLang.toUpperCase()})`);
+  }
+
+  // Fallback to sequential links only when multiple nodes exist without explicit edges
+  if (nodes.length > 1 && edges.length === 0) {
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const src = nodes[i]!.id;
+      const tgt = nodes[i + 1]!.id;
+      edges.push({
+        id: `e-${edges.length + 1}`,
+        source: src,
+        sourcePort: `${src}.out`,
+        target: tgt,
+        targetPort: `${tgt}.in`,
+      });
+    }
   }
 
   try {

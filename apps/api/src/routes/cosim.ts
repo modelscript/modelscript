@@ -7,7 +7,12 @@
  * MQTT participant discovery, variable couplings, and orchestrator control.
  */
 
-import type { CosimMqttClient, DirectFeedthroughInput, MasterAlgorithm } from "@modelscript/exchange/cosim";
+import type {
+  CosimMqttClient,
+  DirectFeedthroughInput,
+  HistorianRecorder,
+  MasterAlgorithm,
+} from "@modelscript/exchange/cosim";
 import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/exchange/cosim";
 import { applySspParameters, importSsp, wireSspCouplings } from "@modelscript/exchange/ssp";
 import express from "express";
@@ -18,12 +23,51 @@ const fmuStorage = new FmuStorage();
 /** Track running orchestrators by session ID for pause/stop. */
 const orchestrators = new Map<string, Orchestrator>();
 
+export function listCosimSessionsForHistorian(): {
+  id: string;
+  startTime: string | null;
+  stopTime: string | null;
+  state: string;
+}[] {
+  return sessionManager.listSessions().map((s) => ({
+    id: s.sessionId,
+    startTime: null,
+    stopTime: null,
+    state: s.state,
+  }));
+}
+
+export function getCosimSessionForHistorian(sessionId: string): {
+  sessionId: string;
+  startTime: string | null;
+  stopTime: string | null;
+  state: string;
+  participantCount: number;
+  sampleCount: number;
+} | null {
+  const s = sessionManager.getSession(sessionId);
+  if (!s) return null;
+  return {
+    sessionId: s.sessionId,
+    startTime: null,
+    stopTime: null,
+    state: s.state,
+    participantCount: s.participants.size,
+    sampleCount: 0,
+  };
+}
+
 /**
  * Create the co-simulation router.
- * @param mqttClient  Optional MQTT client (null in environments without MQTT broker)
- * @param storage     Optional shared FmuStorage instance
+ * @param mqttClient         Optional MQTT client (null in environments without MQTT broker)
+ * @param storage            Optional shared FmuStorage instance
+ * @param historianRecorder  Optional TimescaleDB historian recorder started/stopped per session
  */
-export function cosimRouter(mqttClient: CosimMqttClient | null, storage: FmuStorage = fmuStorage): express.Router {
+export function cosimRouter(
+  mqttClient: CosimMqttClient | null,
+  storage: FmuStorage = fmuStorage,
+  historianRecorder?: HistorianRecorder | null,
+): express.Router {
   const router = express.Router();
 
   // ── Session Management ──
@@ -267,14 +311,28 @@ export function cosimRouter(mqttClient: CosimMqttClient | null, storage: FmuStor
       return res.status(400).json({ error: `Cannot start session in state '${session.state}'` });
     }
 
+    if (historianRecorder) {
+      void historianRecorder
+        .startRecording(session.sessionId, { site: "default", area: "default" })
+        .catch((err: unknown) => {
+          console.warn(`[cosim] Historian startRecording failed for ${session.sessionId}:`, err);
+        });
+    }
+
     const orchestrator = new Orchestrator(session, mqttClient, {
       onComplete: () => {
         console.log(`[cosim] Session ${session.sessionId} completed`);
         orchestrators.delete(session.sessionId);
+        if (historianRecorder) {
+          void historianRecorder.stopRecording().catch(() => {});
+        }
       },
       onError: (err: Error) => {
         console.error(`[cosim] Session ${session.sessionId} error:`, err.message);
         orchestrators.delete(session.sessionId);
+        if (historianRecorder) {
+          void historianRecorder.stopRecording().catch(() => {});
+        }
       },
       onJacobianConvergence: (stats) => {
         console.log(
@@ -333,6 +391,9 @@ export function cosimRouter(mqttClient: CosimMqttClient | null, storage: FmuStor
     }
     orchestrator.abort();
     orchestrators.delete(sessionId);
+    if (historianRecorder) {
+      void historianRecorder.stopRecording().catch(() => {});
+    }
     res.json({ ok: true, state: "stopping" });
     return;
   });
