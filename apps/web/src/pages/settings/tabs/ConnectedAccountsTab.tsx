@@ -5,7 +5,7 @@ import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { getConnectedAccounts, initiateOAuthLink, unlinkConnectedAccount, type ConnectedAccount } from "../../../api";
 import Box from "../../../components/Box";
-import { DetailSubtitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
+import { DangerButton, DetailSubtitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
 export interface ConnectedAccountsTabProps {
   onBack: () => void;
@@ -13,6 +13,7 @@ export interface ConnectedAccountsTabProps {
 
 export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBack }) => {
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [confirmingDisconnectId, setConfirmingDisconnectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,27 +151,43 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                 </Box>
 
                 {isConnected ? (
-                  <SecondaryButton
-                    type="button"
-                    style={{ borderColor: "rgba(239, 68, 68, 0.4)", color: "var(--color-danger-fg, #ef4444)" }}
-                    onClick={async () => {
-                      if (
-                        confirm(`Unlink ${prov.name}? You may need to reconnect it later to access linked features.`)
-                      ) {
-                        try {
-                          await unlinkConnectedAccount(prov.id);
-                          setConnectedAccounts((prev) =>
-                            prev.map((a) => (a.provider === prov.id ? { ...a, connected: false } : a)),
-                          );
-                          setSuccess(`Unlinked ${prov.name} successfully.`);
-                        } catch {
-                          setError(`Failed to unlink ${prov.name}.`);
-                        }
-                      }
-                    }}
-                  >
-                    Disconnect
-                  </SecondaryButton>
+                  confirmingDisconnectId === prov.id ? (
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <SecondaryButton
+                        type="button"
+                        style={{ padding: "6px 12px", fontSize: "13px" }}
+                        onClick={() => setConfirmingDisconnectId(null)}
+                      >
+                        Cancel
+                      </SecondaryButton>
+                      <DangerButton
+                        type="button"
+                        style={{ padding: "6px 14px", fontSize: "13px" }}
+                        onClick={async () => {
+                          setConfirmingDisconnectId(null);
+                          try {
+                            await unlinkConnectedAccount(prov.id);
+                            setConnectedAccounts((prev) =>
+                              prev.map((a) => (a.provider === prov.id ? { ...a, connected: false } : a)),
+                            );
+                            setSuccess(`Unlinked ${prov.name} successfully.`);
+                          } catch {
+                            setError(`Failed to unlink ${prov.name}.`);
+                          }
+                        }}
+                      >
+                        Confirm Disconnect?
+                      </DangerButton>
+                    </Box>
+                  ) : (
+                    <SecondaryButton
+                      type="button"
+                      style={{ borderColor: "rgba(239, 68, 68, 0.4)", color: "var(--color-danger-fg, #ef4444)" }}
+                      onClick={() => setConfirmingDisconnectId(prov.id)}
+                    >
+                      Disconnect
+                    </SecondaryButton>
+                  )
                 ) : (
                   <SaveButton
                     type="button"

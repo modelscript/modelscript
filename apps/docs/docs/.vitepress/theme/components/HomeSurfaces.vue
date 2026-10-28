@@ -16,6 +16,7 @@ interface Surface {
   cta: string;
   link: string;
   tag?: string;
+  target?: string;
 }
 
 const surfaces: Surface[] = [
@@ -26,8 +27,9 @@ const surfaces: Surface[] = [
     title: "Playground",
     body: "Edit, lint, and simulate models in your browser. Nothing to install.",
     cta: "Open Playground",
-    link: "https://modelscript.org/playground",
+    link: "/playground",
     tag: "Zero install",
+    target: "_self",
   },
   {
     id: "webide",
@@ -36,7 +38,8 @@ const surfaces: Surface[] = [
     title: "Web IDE",
     body: "A full VS Code-based workbench with diagrams, plots, and a simulation debugger.",
     cta: "Launch IDE",
-    link: "https://ide.modelscript.org",
+    link: "/ide",
+    target: "_self",
   },
   {
     id: "vscode",
@@ -90,7 +93,14 @@ const surfaces: Surface[] = [
       </header>
 
       <div class="surf-grid">
-        <a v-for="s in surfaces" :key="s.title" :href="s.link" class="surf-card" :style="toneStyle(s.tone)">
+        <a
+          v-for="s in surfaces"
+          :key="s.title"
+          :href="s.link"
+          :target="s.target"
+          class="surf-card"
+          :style="toneStyle(s.tone)"
+        >
           <div class="ms-schematic surf-schematic" aria-hidden="true">
             <svg viewBox="0 0 280 100" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
               <!-- 1. Browser Playground: editor + live plot -->

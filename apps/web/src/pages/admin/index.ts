@@ -2,6 +2,7 @@
 
 export * from "./components/AdminMenuSidebar";
 export * from "./styles";
+export * from "./tabs/AdminAnalyticsTab";
 export * from "./tabs/AdminAuditLogsTab";
 export * from "./tabs/AdminDatabaseTab";
 export * from "./tabs/AdminDmcaTab";

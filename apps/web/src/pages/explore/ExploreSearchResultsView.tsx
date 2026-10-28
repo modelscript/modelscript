@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import Box from "../../components/Box";
 import FollowButton from "../../components/FollowButton";
 import Post from "../../components/Post";
+import { safeCssImageUrl } from "../../util/url";
 import type { PackageData, PersonData, PostData, RepoData } from "./constants";
 import { SEARCH_TABS, STARTER_TEMPLATES } from "./constants";
 import { ExploreSearchHeader } from "./ExploreSearchHeader";
@@ -281,11 +282,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                             color: "white",
                             fontWeight: "bold",
                             backgroundSize: "cover",
-                            backgroundImage: u.avatar
-                              ? `url(${u.avatar})`
-                              : (u as any).avatar_url
-                                ? `url(${(u as any).avatar_url})`
-                                : "none",
+                            backgroundImage: safeCssImageUrl(u.avatar || (u as any).avatar_url),
                             flexShrink: 0,
                           }}
                         >
@@ -491,7 +488,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                             color: "white",
                             fontWeight: "bold",
                             backgroundSize: "cover",
-                            backgroundImage: r.avatar_url ? `url(${r.avatar_url})` : "none",
+                            backgroundImage: safeCssImageUrl(r.avatar_url),
                             flexShrink: 0,
                           }}
                         >
@@ -510,7 +507,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                             {r.project}
                           </Heading>
                           <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
-                            @{r.provider}.com/{r.namespace}/{r.project}
+                            {r.provider}.com/{r.namespace}/{r.project}
                           </Text>
                           <Text
                             as="p"

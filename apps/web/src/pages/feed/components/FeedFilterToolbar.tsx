@@ -56,14 +56,14 @@ export const FeedFilterToolbar: React.FC<FeedFilterToolbarProps> = ({
             );
           })}
           {trendingTopics.slice(0, 5).map((topic) => {
-            const tagClean = topic.tag.replace(/^#/, "");
+            const tagClean = (topic.displayName || topic.concept || "").replace(/^#/, "");
             const isTagActive = activeTag?.toLowerCase() === tagClean.toLowerCase();
             return (
               <HashtagPill
-                key={topic.tag}
+                key={topic.concept || topic.displayName}
                 $active={isTagActive}
                 onClick={() => setActiveTag(isTagActive ? null : tagClean)}
-                title={`${topic.postsCount} posts`}
+                title={`${topic.postCount ?? 0} posts`}
                 aria-pressed={isTagActive}
               >
                 <span className="hash">#</span>

@@ -2,7 +2,7 @@
 
 import { CopyIcon } from "@primer/octicons-react";
 import { Dialog, IconButton } from "@primer/react";
-import React from "react";
+import React, { useState } from "react";
 
 export interface PlaygroundShareModalProps {
   isOpen: boolean;
@@ -10,6 +10,7 @@ export interface PlaygroundShareModalProps {
   copyStatus: string | null;
   shareUrl: string;
   embedCode: string;
+  getEmbedCode?: (format: "iframe" | "custom-tag" | "morsel-tag") => string;
   markdownBadge: string;
   onCopy: (text: string, label: string) => void;
 }
@@ -20,10 +21,25 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
   copyStatus,
   shareUrl,
   embedCode,
+  getEmbedCode,
   markdownBadge,
   onCopy,
 }) => {
+  const [embedFormat, setEmbedFormat] = useState<"iframe" | "custom-tag" | "morsel-tag">("iframe");
+
   if (!isOpen) return null;
+
+  const embedSrc = shareUrl.replace("/playground", "/embed/playground");
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://hub.modelscript.org";
+  const defaultMorselTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel src="${embedSrc}" height="480px"></modelscript-morsel>`;
+  const defaultCustomTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-viewer src="${embedSrc}" height="480px"></modelscript-viewer>`;
+  const activeEmbedCode = getEmbedCode
+    ? getEmbedCode(embedFormat)
+    : embedFormat === "morsel-tag"
+      ? defaultMorselTag
+      : embedFormat === "custom-tag"
+        ? defaultCustomTag
+        : embedCode;
 
   return (
     <Dialog
@@ -72,6 +88,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
                 whiteSpace: "nowrap",
                 fontSize: "12px",
                 fontFamily: "var(--font-mono)",
+                userSelect: "all",
               }}
             >
               {shareUrl}
@@ -81,9 +98,78 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
         </div>
 
         <div>
-          <p style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "var(--color-fg-default)" }}>
-            Embed Widget (for Substack, Notion, blogs, docs)
-          </p>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+              marginBottom: "6px",
+            }}
+          >
+            <p style={{ fontSize: "12px", fontWeight: "bold", margin: 0, color: "var(--color-fg-default)" }}>
+              Embed Widget (for Intranet, Confluence, Notion, docs)
+            </p>
+            <div
+              role="group"
+              aria-label="Embed format"
+              style={{
+                display: "inline-flex",
+                borderRadius: "6px",
+                border: "1px solid var(--color-border-default)",
+                overflow: "hidden",
+                background: "var(--color-canvas-subtle)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("iframe")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: embedFormat === "iframe" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "iframe" ? "var(--color-accent-fg, #0969da)" : "transparent",
+                  color: embedFormat === "iframe" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                Iframe
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("morsel-tag")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: embedFormat === "morsel-tag" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "morsel-tag" ? "var(--color-accent-fg, #0969da)" : "transparent",
+                  color: embedFormat === "morsel-tag" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                &lt;modelscript-morsel&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("custom-tag")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: embedFormat === "custom-tag" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "custom-tag" ? "var(--color-accent-fg, #0969da)" : "transparent",
+                  color: embedFormat === "custom-tag" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                &lt;modelscript-viewer&gt;
+              </button>
+            </div>
+          </div>
           <div
             style={{
               display: "flex",
@@ -103,15 +189,16 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
                 whiteSpace: "nowrap",
                 fontSize: "12px",
                 fontFamily: "var(--font-mono)",
+                userSelect: "all",
               }}
             >
-              {embedCode}
+              {activeEmbedCode}
             </div>
             <IconButton
               aria-label="Copy Embed Code"
               icon={CopyIcon}
               size="small"
-              onClick={() => onCopy(embedCode, "Embed Code")}
+              onClick={() => onCopy(activeEmbedCode, "Embed Code")}
             />
           </div>
         </div>
@@ -139,6 +226,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
                 whiteSpace: "nowrap",
                 fontSize: "12px",
                 fontFamily: "var(--font-mono)",
+                userSelect: "all",
               }}
             >
               {markdownBadge}

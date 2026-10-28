@@ -34,7 +34,7 @@ import "./style.css";
 export default {
   extends: DefaultTheme,
   Layout,
-  enhanceApp({ app }) {
+  enhanceApp({ app, router }) {
     // Lazy: pulls in the generated CLI / lint-rule metadata only on pages that use it.
     app.component(
       "CliCommand",
@@ -47,6 +47,10 @@ export default {
     app.component(
       "CapabilityMatrix",
       defineAsyncComponent(() => import("./components/CapabilityMatrix.vue")),
+    );
+    app.component(
+      "LanguageExample",
+      defineAsyncComponent(() => import("./components/LanguageExample.vue")),
     );
     app.component("HomeAiAgent", HomeAiAgent);
     app.component("HomeStats", HomeStats);
@@ -71,5 +75,46 @@ export default {
     app.component("LanguageExplorer", LanguageExplorer);
     app.component("MermaidBlock", MermaidBlock);
     app.component("ModelScriptViewer", ModelScriptViewer);
+
+    if (typeof window !== "undefined") {
+      let lastReportedPath = "";
+      const sendPageView = (rawPath: string) => {
+        const cleanPath = (rawPath || window.location.pathname || "/").split(/[?#]/)[0] || "/";
+        if (cleanPath === lastReportedPath) return;
+        lastReportedPath = cleanPath;
+
+        const payload = JSON.stringify({
+          path: cleanPath,
+          surface: "docs",
+        });
+
+        try {
+          if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+            const blob = new Blob([payload], { type: "application/json" });
+            navigator.sendBeacon("/api/v1/analytics/pageview", blob);
+          } else {
+            fetch("/api/v1/analytics/pageview", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: payload,
+              keepalive: true,
+            }).catch(() => {});
+          }
+        } catch {
+          // Ignore analytics beacon errors in offline or static preview environments
+        }
+      };
+
+      const prevAfterRouteChanged = router.onAfterRouteChanged;
+      router.onAfterRouteChanged = (to) => {
+        if (prevAfterRouteChanged) {
+          prevAfterRouteChanged(to);
+        }
+        sendPageView(to);
+      };
+
+      // Initial hydration page view
+      sendPageView(window.location.pathname);
+    }
   },
 } satisfies Theme;

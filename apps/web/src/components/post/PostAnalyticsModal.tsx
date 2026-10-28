@@ -167,14 +167,43 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
   onClose,
 }) => {
   const [analyticsData, setAnalyticsData] = useState<PostAnalyticsData | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     if (postId) {
+      setIsLoading(true);
+      setFetchError(null);
       getPostAnalytics(postId)
-        .then((data) => setAnalyticsData(data))
-        .catch(console.error);
+        .then((data) => {
+          if (!cancelled) {
+            setAnalyticsData(data);
+            setIsLoading(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setFetchError("Could not load geographic breakdown.");
+            setIsLoading(false);
+          }
+        });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [postId]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const impressions = analyticsData?.view_count ?? displayPost.views_count ?? displayPost.view_count ?? 0;
   const likes = likeCount ?? displayPost.likes_count ?? displayPost.like_count ?? 0;
@@ -182,6 +211,7 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
   const replies = displayPost.replies_count ?? displayPost.reply_count ?? 0;
   const bookmarks = bookmarkCount ?? displayPost.bookmark_count ?? 0;
   const engagements = likes + reposts + replies + bookmarks;
+  const engagementRate = impressions > 0 ? `${Math.min(100, (engagements / impressions) * 100).toFixed(1)}%` : "0.0%";
 
   return (
     <AnalyticsModalOverlay
@@ -190,7 +220,12 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
         onClose();
       }}
     >
-      <AnalyticsModalContainer onClick={(e) => e.stopPropagation()}>
+      <AnalyticsModalContainer
+        role="dialog"
+        aria-modal="true"
+        aria-label="Post Analytics"
+        onClick={(e) => e.stopPropagation()}
+      >
         <AnalyticsHeader>
           <IconButton icon={XIcon} variant="invisible" onClick={onClose} aria-label="Close" />
           <Heading as="h2" style={{ fontSize: "20px" }}>
@@ -258,12 +293,36 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
             </Box>
           </AnalyticsCard>
 
-          <Box mb={4}>
-            <WorldMap
-              data={analyticsData?.location_stats || []}
-              regionData={analyticsData?.region_stats || []}
-              totalViews={impressions}
-            />
+          <Box mb={4} style={{ padding: "0 16px" }}>
+            {isLoading && !analyticsData ? (
+              <div
+                className="skeleton"
+                style={{ width: "100%", height: "260px", borderRadius: "12px" }}
+                aria-label="Loading geographic analytics"
+              />
+            ) : (
+              <>
+                {fetchError && (
+                  <Box
+                    mb={2}
+                    p={2}
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-fg-muted)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    {fetchError}
+                  </Box>
+                )}
+                <WorldMap
+                  data={analyticsData?.location_stats || []}
+                  regionData={analyticsData?.region_stats || []}
+                  totalViews={impressions}
+                />
+              </>
+            )}
           </Box>
           <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
             <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
@@ -357,8 +416,11 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
             <Box width="33.333%" display="flex" justifyContent="center">
               <AnalyticsStatGroup style={{ alignItems: "center" }}>
                 <AnalyticsStatTitle>
-                  Bookmarks{" "}
-                  <Tooltip text="Times this post was bookmarked." type="label">
+                  Engagement Rate{" "}
+                  <Tooltip
+                    text="Percentage of impressions that resulted in a like, repost, reply, or bookmark."
+                    type="label"
+                  >
                     <button
                       type="button"
                       style={{
@@ -375,7 +437,7 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
                     </button>
                   </Tooltip>
                 </AnalyticsStatTitle>
-                <AnalyticsStatValue>{formatNumber(bookmarks)}</AnalyticsStatValue>
+                <AnalyticsStatValue>{engagementRate}</AnalyticsStatValue>
               </AnalyticsStatGroup>
             </Box>
           </Box>

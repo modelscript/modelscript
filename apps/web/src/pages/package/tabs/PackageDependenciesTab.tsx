@@ -42,7 +42,12 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({ 
           <GlassCard>
             {Object.entries(devDependencies).map(([dep, range]) => (
               <DepRow key={dep}>
-                <Text style={{ color: "var(--color-text-primary)", fontSize: 14 }}>{dep}</Text>
+                <Link
+                  to={`/packages/${dep}`}
+                  style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}
+                >
+                  {dep}
+                </Link>
                 <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>{range}</Text>
               </DepRow>
             ))}

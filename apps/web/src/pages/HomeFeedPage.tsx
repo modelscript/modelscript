@@ -2,7 +2,7 @@
 
 import { Spinner } from "@primer/react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { followUser, getTimeline, getTrending, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
@@ -38,7 +38,9 @@ const HomeFeedPage: React.FC = () => {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const headerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const { openCompose } = React.useContext(ComposeContext);
   const [followedHandles, setFollowedHandles] = useState<Record<string, boolean>>({});
 
@@ -59,10 +61,33 @@ const HomeFeedPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (listRef.current) {
-      setScrollMargin(listRef.current.offsetTop);
+    const updateScrollMargin = () => {
+      if (listRef.current) {
+        setScrollMargin(listRef.current.offsetTop);
+      }
+    };
+    updateScrollMargin();
+
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      updateScrollMargin();
+    });
+    if (headerRef.current) {
+      ro.observe(headerRef.current);
     }
-  }, [loading]);
+    const prevSibling = listRef.current?.previousElementSibling;
+    if (prevSibling) {
+      ro.observe(prevSibling);
+    }
+    if (listRef.current?.parentElement) {
+      ro.observe(listRef.current.parentElement);
+    }
+    window.addEventListener("resize", updateScrollMargin);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateScrollMargin);
+    };
+  }, [loading, activeFilter, activeTag, user]);
 
   const rowVirtualizer = useWindowVirtualizer({
     count: posts.length,
@@ -138,7 +163,7 @@ const HomeFeedPage: React.FC = () => {
     fetchTimeline();
   }, [token, activeTab, followingSort, activeFilter, activeTag]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
@@ -165,7 +190,24 @@ const HomeFeedPage: React.FC = () => {
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [loadingMore, hasMore, activeTab, followingSort, posts.length, activeFilter, activeTag]);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel || loading || loadingMore || !hasMore || posts.length === 0) return;
+    if (typeof IntersectionObserver === "undefined") return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void handleLoadMore();
+        }
+      },
+      { rootMargin: "300px 0px" },
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [loading, loadingMore, hasMore, posts.length, handleLoadMore]);
 
   useEffect(() => {
     const handlePostCreated = (e: any) => {
@@ -183,31 +225,35 @@ const HomeFeedPage: React.FC = () => {
 
   return (
     <Box style={{ paddingBottom: "200px" }}>
-      <FeedTabBar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        followingSort={followingSort}
-        setFollowingSort={setFollowingSort}
-        showSortMenu={showSortMenu}
-        setShowSortMenu={setShowSortMenu}
-      />
+      <div ref={headerRef}>
+        <FeedTabBar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          followingSort={followingSort}
+          setFollowingSort={setFollowingSort}
+          showSortMenu={showSortMenu}
+          setShowSortMenu={setShowSortMenu}
+        />
 
-      <FeedFilterToolbar
-        activeFilter={activeFilter}
-        setActiveFilter={setActiveFilter}
-        activeTag={activeTag}
-        setActiveTag={setActiveTag}
-        trendingTopics={trendingTopics}
-        postsCount={posts.length}
-      />
+        <FeedFilterToolbar
+          activeFilter={activeFilter}
+          setActiveFilter={setActiveFilter}
+          activeTag={activeTag}
+          setActiveTag={setActiveTag}
+          trendingTopics={trendingTopics}
+          postsCount={posts.length}
+        />
 
-      {user && (
-        <ComposePrompt>
-          <ComposeBox
-            onPostCreated={(post) => setPosts((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]))}
-          />
-        </ComposePrompt>
-      )}
+        {user && (
+          <ComposePrompt>
+            <ComposeBox
+              onPostCreated={(post) =>
+                setPosts((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]))
+              }
+            />
+          </ComposePrompt>
+        )}
+      </div>
 
       <div id="feed-tabpanel" role="tabpanel" aria-labelledby={`feed-tab-${activeTab}`}>
         {loading ? (
@@ -248,7 +294,7 @@ const HomeFeedPage: React.FC = () => {
               </div>
             )}
             {posts.length > 0 && hasMore && (
-              <Box p={3} display="flex" justifyContent="center">
+              <Box ref={loadMoreSentinelRef} p={3} display="flex" justifyContent="center">
                 <SecondaryActionButton onClick={handleLoadMore} disabled={loadingMore}>
                   {loadingMore ? <Spinner size="small" /> : "Load more posts"}
                 </SecondaryActionButton>

@@ -20,6 +20,7 @@ export interface PullRequestsTabProps {
 export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, provider, defaultBranch = "main" }) => {
   const [mrs, setMrs] = useState<GitlabMergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedMr, setSelectedMr] = useState<GitlabMergeRequest | null>(null);
   const [isNewMrDialogOpen, setIsNewMrDialogOpen] = useState(false);
@@ -27,18 +28,22 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
   const [newMrDesc, setNewMrDesc] = useState("");
   const [newMrSource, setNewMrSource] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const data = await getGitlabMergeRequests(projectId, provider);
-        setMrs(data);
-      } catch {
-        // ignore
-      }
+  const loadMrs = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await getGitlabMergeRequests(projectId, provider);
+      setMrs(data);
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load pull requests.");
+    } finally {
       setLoading(false);
     }
-    load();
+  };
+
+  useEffect(() => {
+    loadMrs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, provider]);
 
   const handleCreateMr = async () => {
@@ -85,60 +90,71 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
         </Flash>
       )}
 
-      <StyledBox>
-        <Box
-          bg="var(--color-canvas-subtle)"
-          p={3}
-          style={{ borderBottom: "1px solid var(--color-border-default)" }}
-          display="flex"
-          alignItems="center"
-          gap={2}
-        >
-          <GitPullRequestIcon />
-          <Text style={{ fontWeight: "bold" }}>{mrs.length} Open</Text>
-        </Box>
+      {loadError ? (
+        <Flash variant="danger" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 3 }}>
+          <span>{loadError}</span>
+          <Button size="small" onClick={loadMrs}>
+            Retry
+          </Button>
+        </Flash>
+      ) : (
+        <StyledBox>
+          <Box
+            bg="var(--color-canvas-subtle)"
+            p={3}
+            style={{ borderBottom: "1px solid var(--color-border-default)" }}
+            display="flex"
+            alignItems="center"
+            gap={2}
+          >
+            <GitPullRequestIcon />
+            <Text style={{ fontWeight: "bold" }}>{mrs.length} Open</Text>
+          </Box>
 
-        {loading ? (
-          <Box p={4} display="flex" justifyContent="center">
-            <Spinner />
-          </Box>
-        ) : mrs.length === 0 ? (
-          <Box display="flex" flexDirection="column" alignItems="center" p={8} textAlign="center">
-            <GitPullRequestIcon size={32} fill="var(--color-fg-muted)" />
-            <Heading as="h3" style={{ fontSize: "20px", marginTop: "16px", marginBottom: "8px" }}>
-              Welcome to pull requests!
-            </Heading>
-            <Text color="var(--color-fg-muted)">Pull requests help you collaborate on code with other people.</Text>
-          </Box>
-        ) : (
-          <Box display="flex" flexDirection="column">
-            {mrs.map((mr) => (
-              <CommitRow key={mr.id} style={{ cursor: "pointer" }} onClick={() => setSelectedMr(mr)}>
-                <Box display="flex" gap={3}>
-                  <div style={{ marginTop: "4px" }}>
-                    <GitPullRequestIcon fill="var(--color-success-fg)" />
-                  </div>
-                  <Box display="flex" flexDirection="column">
-                    <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}>
-                      {mr.title}
-                    </Text>
-                    <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
-                      #{mr.iid} opened {getRelativeTime(mr.created_at)} by {mr.author.username}
-                    </Text>
+          {loading ? (
+            <Box p={4} display="flex" justifyContent="center">
+              <Spinner />
+            </Box>
+          ) : mrs.length === 0 ? (
+            <Box display="flex" flexDirection="column" alignItems="center" p={8} textAlign="center">
+              <GitPullRequestIcon size={32} fill="var(--color-fg-muted)" />
+              <Heading as="h3" style={{ fontSize: "20px", marginTop: "16px", marginBottom: "8px" }}>
+                Welcome to pull requests!
+              </Heading>
+              <Text color="var(--color-fg-muted)">Pull requests help you collaborate on code with other people.</Text>
+            </Box>
+          ) : (
+            <Box display="flex" flexDirection="column">
+              {mrs.map((mr) => (
+                <CommitRow key={mr.id} style={{ cursor: "pointer" }} onClick={() => setSelectedMr(mr)}>
+                  <Box display="flex" gap={3}>
+                    <div style={{ marginTop: "4px" }}>
+                      <GitPullRequestIcon fill="var(--color-success-fg)" />
+                    </div>
+                    <Box display="flex" flexDirection="column">
+                      <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}>
+                        {mr.title}
+                      </Text>
+                      <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
+                        #{mr.iid} opened {getRelativeTime(mr.created_at)} by {mr.author.username}
+                      </Text>
+                    </Box>
                   </Box>
-                </Box>
-              </CommitRow>
-            ))}
-          </Box>
-        )}
-      </StyledBox>
+                </CommitRow>
+              ))}
+            </Box>
+          )}
+        </StyledBox>
+      )}
 
       {selectedMr && (
         <Dialog onClose={() => setSelectedMr(null)} title={`#${selectedMr.iid} ${selectedMr.title}`}>
           <Box p={3} display="flex" flexDirection="column" gap={3}>
             <Box display="flex" alignItems="center" gap={2}>
-              <Label variant={selectedMr.state === "opened" ? "success" : "secondary"}>
-                {selectedMr.state === "opened" ? "Open" : "Merged"}
+              <Label
+                variant={selectedMr.state === "opened" ? "success" : selectedMr.state === "merged" ? "done" : "danger"}
+              >
+                {selectedMr.state === "opened" ? "Open" : selectedMr.state === "merged" ? "Merged" : "Closed"}
               </Label>
               <Text color="var(--color-fg-muted)" fontSize={1}>
                 {selectedMr.source_branch} &rarr; {selectedMr.target_branch} by{" "}

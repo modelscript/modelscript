@@ -13,16 +13,18 @@ const columns: MegaMenuColumn[] = [
       {
         name: "Browser Playground",
         tagline: "Zero-install editor, linter & live simulator",
-        href: "https://modelscript.org/playground",
+        href: "/playground",
         icon: "play",
         accent: "#22d3ee",
+        target: "_self",
       },
       {
         name: "Web IDE",
         tagline: "VS Code workbench with schematics, 3D CAD & plots",
-        href: "https://ide.modelscript.org",
+        href: "/ide",
         icon: "layers",
         accent: "#818cf8",
+        target: "_self",
       },
       {
         name: "VS Code Extension",

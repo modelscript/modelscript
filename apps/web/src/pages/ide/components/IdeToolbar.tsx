@@ -4,7 +4,7 @@ import { ArrowLeftIcon, CodeIcon, GitBranchIcon, LinkExternalIcon, ShareIcon, Sy
 import { Button, IconButton, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
-import { Badge, BreadcrumbText, Toolbar, ToolbarLeft, ToolbarRight } from "../styles";
+import { Badge, BreadcrumbText, Toolbar, ToolbarLeft, ToolbarRight, ToolbarText } from "../styles";
 import type { IdeArtifactMetadata, LspStatusState } from "../types";
 
 export interface IdeToolbarProps {
@@ -78,7 +78,7 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
             </>
           ) : (
             <>
-              <Text style={{ fontWeight: 600 }}>{displayTitle}</Text>
+              <Text style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>{displayTitle}</Text>
               <Badge>memfs</Badge>
               {artifactMetadata?.viewType && (
                 <Badge sx={{ textTransform: "uppercase", background: "rgba(6, 182, 212, 0.15)", color: "#06b6d4" }}>
@@ -90,6 +90,7 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
               )}
               {isDeprecated && (
                 <span
+                  className="ide-hide-sm"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -115,6 +116,7 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
       <ToolbarRight>
         {lspStatus && (
           <span
+            className="ide-hide-sm"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -157,13 +159,25 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
         )}
 
         {onOpenInPlayground && (
-          <Button size="small" variant="default" leadingVisual={CodeIcon} onClick={onOpenInPlayground}>
-            Open in Playground
+          <Button
+            size="small"
+            variant="default"
+            leadingVisual={CodeIcon}
+            onClick={onOpenInPlayground}
+            title="Open in Playground"
+          >
+            <ToolbarText>Open in Playground</ToolbarText>
           </Button>
         )}
 
-        <Button size="small" variant="primary" leadingVisual={ShareIcon} onClick={onShare}>
-          {shareLabel || "Share to Feed"}
+        <Button
+          size="small"
+          variant="primary"
+          leadingVisual={ShareIcon}
+          onClick={onShare}
+          title={shareLabel || "Share to Feed"}
+        >
+          <ToolbarText>{shareLabel || "Share to Feed"}</ToolbarText>
         </Button>
 
         <IconButton

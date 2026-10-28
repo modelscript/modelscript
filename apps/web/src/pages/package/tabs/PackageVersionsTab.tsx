@@ -99,15 +99,17 @@ export const PackageVersionsTab: React.FC<PackageVersionsTabProps> = ({
                     )}
                   </Box>
                   <Box display="flex" alignItems="center" gap="12px">
-                    <Button
-                      size="small"
-                      variant="invisible"
-                      leadingVisual={GitCompareIcon}
-                      onClick={() => onCompare(v)}
-                      style={{ fontSize: 12, padding: "2px 8px" }}
-                    >
-                      Compare
-                    </Button>
+                    {v !== version && (
+                      <Button
+                        size="small"
+                        variant="invisible"
+                        leadingVisual={GitCompareIcon}
+                        onClick={() => onCompare(v)}
+                        style={{ fontSize: 12, padding: "2px 8px" }}
+                      >
+                        Compare
+                      </Button>
+                    )}
                     <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
                       {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
                     </Text>

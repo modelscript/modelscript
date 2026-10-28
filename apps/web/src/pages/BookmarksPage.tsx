@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { SearchIcon } from "@primer/octicons-react";
+import { BookmarkIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { getBookmarks } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import EmptyState from "../components/EmptyState";
+import PageHeader from "../components/PageHeader";
 import Post from "../components/Post";
 import type { PostItem } from "../types/api";
 import { usePageTitle } from "../util/title";
-
-import PageHeader from "../components/PageHeader";
 
 const SearchInputWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: center;
 
-  svg {
+  & > svg {
     position: absolute;
     left: 14px;
     color: var(--color-text-muted);
+    pointer-events: none;
   }
 
   input {
     width: 100%;
-    padding: 10px 16px 10px 40px;
+    padding: 10px 36px 10px 40px;
     border-radius: 9999px;
     background-color: var(--color-search-bg);
     border: 1px solid var(--color-search-border);
@@ -46,6 +47,25 @@ const SearchInputWrapper = styled.div`
       color: var(--color-text-muted);
       opacity: 0.7;
     }
+  }
+`;
+
+const ClearButton = styled.button`
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 50%;
+
+  &:hover {
+    color: var(--color-text-primary);
+    background-color: var(--surface-row-hover);
   }
 `;
 
@@ -74,6 +94,22 @@ const BookmarksPage: React.FC = () => {
     fetchBookmarks();
   }, [token]);
 
+  useEffect(() => {
+    const handleBookmarkToggled = (e: Event) => {
+      const detail = (e as CustomEvent<{ postId: number | string; bookmarked: boolean }>).detail;
+      if (!detail || detail.bookmarked) return;
+      setPosts((prev) =>
+        prev.filter(
+          (post) =>
+            String(post.id) !== String(detail.postId) &&
+            String((post as any).repost_post?.id) !== String(detail.postId),
+        ),
+      );
+    };
+    window.addEventListener("modelscript:bookmark-toggled", handleBookmarkToggled);
+    return () => window.removeEventListener("modelscript:bookmark-toggled", handleBookmarkToggled);
+  }, []);
+
   const filteredPosts = useMemo(() => {
     if (!searchQuery.trim()) return posts;
     const lowerQuery = searchQuery.toLowerCase();
@@ -91,6 +127,11 @@ const BookmarksPage: React.FC = () => {
         <SearchInputWrapper>
           <SearchIcon size={16} />
           <input placeholder="Search Bookmarks" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          {searchQuery && (
+            <ClearButton type="button" onClick={() => setSearchQuery("")} aria-label="Clear search">
+              <XIcon size={14} />
+            </ClearButton>
+          )}
         </SearchInputWrapper>
       </PageHeader>
 
@@ -104,19 +145,26 @@ const BookmarksPage: React.FC = () => {
             <Post key={post.id} post={post} />
           ))}
           {filteredPosts.length === 0 && posts.length > 0 && token && (
-            <Box p={6} textAlign="center" color="var(--color-text-muted)">
-              No bookmarks match your search.
-            </Box>
+            <EmptyState
+              icon={<SearchIcon size={24} />}
+              title="No bookmarks match your search."
+              body="Try searching for a different keyword or author."
+              compact
+            />
           )}
           {posts.length === 0 && token && (
-            <Box p={6} textAlign="center" color="var(--color-text-muted)">
-              You haven't bookmarked any posts yet.
-            </Box>
+            <EmptyState
+              icon={<BookmarkIcon size={24} />}
+              title="You haven't bookmarked any posts yet."
+              body="Save posts, simulations, and engineering tutorials for quick reference later."
+            />
           )}
           {!token && (
-            <Box p={6} textAlign="center" color="var(--color-text-muted)">
-              Please log in to view your bookmarks.
-            </Box>
+            <EmptyState
+              icon={<BookmarkIcon size={24} />}
+              title="Please log in to view your bookmarks."
+              body="Sign in to access your saved posts and engineering artifacts."
+            />
           )}
         </Box>
       )}

@@ -18,7 +18,15 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect }
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={() => onInspect(job.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onInspect(job.id);
+        }
+      }}
       style={{
         padding: "16px 20px",
         borderRadius: "12px",

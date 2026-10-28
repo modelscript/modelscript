@@ -200,14 +200,20 @@ export function lintFortranSource(
     }
 
     const typeDeclMatch =
-      /^(?:REAL(?:\*[0-9]+)?|INTEGER(?:\*[0-9]+)?|DOUBLE\s+PRECISION|LOGICAL|DIMENSION)\b(?:\s*::)?\s*(.*)/i.exec(
+      /^(?:REAL(?:\*[0-9]+|\s*\([^)]*\))?|INTEGER(?:\*[0-9]+|\s*\([^)]*\))?|DOUBLE\s+PRECISION|LOGICAL|DIMENSION)\b(?:[^:]*::|\s+)(.*)/i.exec(
         trimmed,
       );
-    if (typeDeclMatch && !trimmed.startsWith("REALPOLE") && !trimmed.includes("=")) {
-      const decls = splitTopLevelCommas(typeDeclMatch[1]!);
+    if (typeDeclMatch && !trimmed.startsWith("REALPOLE") && (!trimmed.includes("=") || trimmed.includes("::"))) {
+      const rhsDecls = typeDeclMatch[1]!.includes("::")
+        ? typeDeclMatch[1]!.slice(typeDeclMatch[1]!.lastIndexOf("::") + 2)
+        : typeDeclMatch[1]!;
+      const decls = splitTopLevelCommas(rhsDecls);
       for (const d of decls) {
         const idMatch = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(d);
-        if (idMatch) declaredVars.add(idMatch[1]!);
+        if (idMatch) {
+          declaredVars.add(idMatch[1]!);
+          if (d.includes("=")) assignedVars.add(idMatch[1]!);
+        }
 
         // 4. Array Dimension Underflow Check (M4078)
         const openParen = d.indexOf("(");

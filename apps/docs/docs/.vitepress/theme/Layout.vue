@@ -8,6 +8,7 @@ import LanguageHeader from "./components/LanguageHeader.vue";
 
 const TurbineHero = defineAsyncComponent(() => import("./components/TurbineHero.vue"));
 const NotFound = defineAsyncComponent(() => import("./components/NotFound.vue"));
+const LanguageExample = defineAsyncComponent(() => import("./components/LanguageExample.vue"));
 
 const { Layout } = DefaultTheme;
 </script>
@@ -25,6 +26,7 @@ const { Layout } = DefaultTheme;
     <template #doc-before>
       <DocBreadcrumbs />
       <LanguageHeader />
+      <LanguageExample />
     </template>
     <template #not-found>
       <NotFound />

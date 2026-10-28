@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ZapIcon } from "@primer/octicons-react";
+import {
+  CheckIcon,
+  CopyIcon,
+  CrossReferenceIcon,
+  DownloadIcon,
+  GraphIcon,
+  PinIcon,
+  XIcon,
+  ZapIcon,
+} from "@primer/octicons-react";
 import React from "react";
 
 export interface SimulationToolbarProps {
@@ -147,7 +156,7 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
               }}
               title="Pin current simulation trajectory as Run A baseline"
             >
-              📌 Pin Baseline
+              <PinIcon size={12} /> Pin Baseline
             </button>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -175,10 +184,12 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
                   background: "transparent",
                   color: "var(--color-fg-muted)",
                   cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
                 }}
                 title="Clear pinned baseline comparison"
               >
-                ✕
+                <XIcon size={12} />
               </button>
             </div>
           )}
@@ -206,7 +217,7 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
             }}
             title="Toggle interactive dual-cursor measurement (click plot to place C1 / C2)"
           >
-            📏 Cursors
+            <CrossReferenceIcon size={12} /> Cursors
           </button>
           <button
             onClick={onToggleShowStats}
@@ -232,7 +243,7 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
             }}
             title="Toggle numerical statistical summary (Min, Max, Pk-Pk, Mean, Final)"
           >
-            📊 Stats
+            <GraphIcon size={12} /> Stats
           </button>
           <button
             onClick={onExportCsv}
@@ -252,7 +263,7 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
             }}
             title="Download simulated data as CSV"
           >
-            📥 CSV
+            <DownloadIcon size={12} /> CSV
           </button>
           <button
             onClick={onExportJson}
@@ -272,7 +283,7 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
             }}
             title="Download simulated data as JSON"
           >
-            📥 JSON
+            <DownloadIcon size={12} /> JSON
           </button>
           <button
             onClick={onExportParquet}
@@ -312,7 +323,15 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
             }}
             title="Copy tab-delimited simulation data to clipboard"
           >
-            {copied ? "✓ Copied!" : "📋 Copy"}
+            {copied ? (
+              <>
+                <CheckIcon size={12} /> Copied!
+              </>
+            ) : (
+              <>
+                <CopyIcon size={12} /> Copy
+              </>
+            )}
           </button>
         </div>
       </div>

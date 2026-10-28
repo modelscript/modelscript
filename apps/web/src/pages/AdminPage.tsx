@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   deleteAdminFederationDomainTier,
   deleteAdminPost,
+  getAdminAnalytics,
   getAdminAuditLogs,
   getAdminDbStatus,
   getAdminDmcaNotices,
@@ -13,11 +14,13 @@ import {
   getAdminFederationDomains,
   getAdminModerationQueue,
   patchAdminFeatureFlag,
+  pruneAdminAnalytics,
   resolveAdminDmcaNotice,
   resolveAdminModerationReport,
   runAdminDbUpgrade,
   setAdminFederationDomainTier,
   verifyAdminDbIntegrity,
+  type AdminAnalyticsSummary,
   type AdminAuditLog,
   type AdminDbStatus,
   type AdminDmcaNotice,
@@ -29,6 +32,7 @@ import Box from "../components/Box";
 import { usePageTitle } from "../util/title";
 import {
   ActionButton,
+  AdminAnalyticsTab,
   AdminAuditLogsTab,
   AdminContainer,
   AdminDatabaseTab,
@@ -39,6 +43,8 @@ import {
   AdminModerationTab,
   DetailColumn,
   Header,
+  ModalBox,
+  ModalOverlay,
   type AdminTab,
 } from "./admin";
 
@@ -48,7 +54,14 @@ export const AdminPage: React.FC = () => {
 
   const activeTab: AdminTab = useMemo(() => {
     const raw = (subRoute || "").split("/")[0]?.toLowerCase();
-    if (raw === "federation" || raw === "dmca" || raw === "audit" || raw === "database" || raw === "flags") {
+    if (
+      raw === "federation" ||
+      raw === "dmca" ||
+      raw === "audit" ||
+      raw === "database" ||
+      raw === "flags" ||
+      raw === "analytics"
+    ) {
       return raw;
     }
     return "moderation";
@@ -71,6 +84,11 @@ export const AdminPage: React.FC = () => {
   // Moderation state
   const [reports, setReports] = useState<AdminModerationReport[]>([]);
   const [modFilter, setModFilter] = useState<string>("all");
+
+  // Analytics state
+  const [analyticsSummary, setAnalyticsSummary] = useState<AdminAnalyticsSummary | null>(null);
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30);
+  const [analyticsSurface, setAnalyticsSurface] = useState<"all" | "web" | "docs">("all");
 
   // Federation state
   const [domains, setDomains] = useState<AdminFederationDomain[]>([]);
@@ -108,6 +126,19 @@ export const AdminPage: React.FC = () => {
       setFeatureFlags(data.flags || []);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load feature flags");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAnalytics = async () => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const data = await getAdminAnalytics(analyticsDays, analyticsSurface);
+      setAnalyticsSummary(data);
+    } catch {
+      setError("Failed to load analytics summary");
     } finally {
       setLoading(false);
     }
@@ -180,15 +211,32 @@ export const AdminPage: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === "moderation") void loadModerationQueue();
+    else if (activeTab === "analytics") void loadAnalytics();
     else if (activeTab === "federation") void loadFederationDomains();
     else if (activeTab === "dmca") void loadDmcaNotices();
     else if (activeTab === "audit") void loadAuditLogs();
     else if (activeTab === "database") void loadDbStatus();
     else if (activeTab === "flags") void loadFeatureFlags();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, modFilter, dmcaFilter, auditActionFilter]);
+  }, [activeTab, modFilter, dmcaFilter, auditActionFilter, analyticsDays, analyticsSurface]);
 
   // ── Action Handlers ──
+  const handlePruneAnalytics = async (retainDays: number) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await pruneAdminAnalytics(retainDays);
+      setSuccess(
+        `Pruned analytics older than ${res.retainDays} days (${res.deletedDailyRows} daily rows, ${res.deletedLocationRows} geo rows removed).`,
+      );
+      await loadAnalytics();
+    } catch {
+      setError("Failed to prune historical analytics");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleToggleFlag = async (flag: AdminFeatureFlag) => {
     setTogglingFlagKey(flag.key);
     clearMessages();
@@ -230,19 +278,44 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!confirmModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setConfirmModal(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmModal]);
+
   const handleDeletePostDirectly = async (postId: number) => {
-    if (!window.confirm(`Are you sure you want to permanently delete post #${postId}?`)) return;
-    setLoading(true);
-    clearMessages();
-    try {
-      const res = await deleteAdminPost(postId);
-      setSuccess(`Post #${postId} deleted.${res.tombstonePropagated ? " Tombstone propagated to Fediverse." : ""}`);
-      void loadModerationQueue();
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to delete post");
-    } finally {
-      setLoading(false);
-    }
+    setConfirmModal({
+      title: `Delete Post #${postId}`,
+      message: `Are you sure you want to permanently delete post #${postId}?`,
+      confirmLabel: "Confirm Delete",
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setLoading(true);
+        clearMessages();
+        try {
+          const res = await deleteAdminPost(postId);
+          setSuccess(`Post #${postId} deleted.${res.tombstonePropagated ? " Tombstone propagated to Fediverse." : ""}`);
+          void loadModerationQueue();
+        } catch (err: any) {
+          setError(err.response?.data?.error || "Failed to delete post");
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   const handleSaveDomainTier = async (domain: string, tier: "allow" | "silence" | "suspend", reason?: string) => {
@@ -260,18 +333,25 @@ export const AdminPage: React.FC = () => {
   };
 
   const handleDeleteDomainRule = async (domain: string) => {
-    if (!window.confirm(`Reset domain tier for ${domain} back to default (allow)?`)) return;
-    setLoading(true);
-    clearMessages();
-    try {
-      await deleteAdminFederationDomainTier(domain);
-      setSuccess(`Domain rule for ${domain} removed.`);
-      void loadFederationDomains();
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to remove domain rule");
-    } finally {
-      setLoading(false);
-    }
+    setConfirmModal({
+      title: "Remove Custom Federation Rule",
+      message: `Reset domain tier for ${domain} back to default (allow)?`,
+      confirmLabel: "Confirm Remove",
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setLoading(true);
+        clearMessages();
+        try {
+          await deleteAdminFederationDomainTier(domain);
+          setSuccess(`Domain rule for ${domain} removed.`);
+          void loadFederationDomains();
+        } catch (err: any) {
+          setError(err.response?.data?.error || "Failed to remove domain rule");
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   };
 
   const handleResolveDmca = async (noticeId: number, actionTaken: string) => {
@@ -324,6 +404,7 @@ export const AdminPage: React.FC = () => {
 
   const handleRefreshCurrentTab = () => {
     if (activeTab === "moderation") void loadModerationQueue();
+    else if (activeTab === "analytics") void loadAnalytics();
     else if (activeTab === "federation") void loadFederationDomains();
     else if (activeTab === "dmca") void loadDmcaNotices();
     else if (activeTab === "audit") void loadAuditLogs();
@@ -339,15 +420,17 @@ export const AdminPage: React.FC = () => {
         <Header>
           <span>
             {activeTab === "moderation" && "Moderation Queue"}
+            {activeTab === "analytics" && "Unified Analytics & Traffic"}
             {activeTab === "federation" && "Federation Domain Management"}
             {activeTab === "dmca" && "DMCA Takedown Notices"}
             {activeTab === "audit" && "System Audit Log"}
             {activeTab === "database" && "Database Status & Migrations"}
             {activeTab === "flags" && "Feature Flags Switchboard"}
           </span>
-          <Box ml="auto">
+          <Box ml="auto" display="flex" alignItems="center" gap={2}>
+            {loading && <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Loading…</span>}
             <ActionButton $variant="secondary" onClick={handleRefreshCurrentTab} disabled={loading}>
-              <SyncIcon size={14} />
+              <SyncIcon size={14} style={loading ? { animation: "spin 1s linear infinite" } : undefined} />
               <span>Refresh</span>
             </ActionButton>
           </Box>
@@ -405,6 +488,18 @@ export const AdminPage: React.FC = () => {
             />
           )}
 
+          {activeTab === "analytics" && (
+            <AdminAnalyticsTab
+              analytics={analyticsSummary}
+              analyticsDays={analyticsDays}
+              setAnalyticsDays={setAnalyticsDays}
+              analyticsSurface={analyticsSurface}
+              setAnalyticsSurface={setAnalyticsSurface}
+              onPruneAnalytics={handlePruneAnalytics}
+              loading={loading}
+            />
+          )}
+
           {activeTab === "federation" && (
             <AdminFederationTab
               domains={domains}
@@ -454,6 +549,32 @@ export const AdminPage: React.FC = () => {
           )}
         </Box>
       </DetailColumn>
+
+      {confirmModal && (
+        <ModalOverlay onClick={() => setConfirmModal(null)}>
+          <ModalBox
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={confirmModal.title}
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
+              {confirmModal.title}
+            </span>
+            <Box fontSize="14px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
+              {confirmModal.message}
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <ActionButton $variant="secondary" onClick={() => setConfirmModal(null)} disabled={loading}>
+                Cancel
+              </ActionButton>
+              <ActionButton $variant="danger" onClick={() => void confirmModal.onConfirm()} disabled={loading}>
+                {confirmModal.confirmLabel}
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
     </AdminContainer>
   );
 };

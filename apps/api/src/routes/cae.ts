@@ -502,6 +502,23 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       profile?: string | undefined;
     };
 
+    const userId = dbJob.user_id ?? resolveRequestUserId(req, database);
+    const retryProfile = metadata.profile || dbJob.compute_profile || "standard";
+    let estimatedCost = 0;
+    if (userId) {
+      const quota = checkComputeQuota(userId, retryProfile, database);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: "Payment Required: Insufficient Compute Credits",
+          message: quota.reason,
+          balance: quota.userBalance,
+          required: quota.estimatedCost,
+          profile: quota.profileId,
+        });
+      }
+      estimatedCost = quota.estimatedCost;
+    }
+
     const newJobId = database.createJob(
       dbJob.name,
       "PENDING",
@@ -509,8 +526,27 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       dbJob.trigger_source || "ide",
       dbJob.repository_id ?? null,
       metadata,
-      dbJob.user_id ?? null,
+      userId ?? null,
     );
+
+    if (userId && estimatedCost > 0) {
+      const holdRes = database.holdUserCredits(
+        userId,
+        estimatedCost,
+        newJobId,
+        `HPC Escrow Hold (Retry): ${dbJob.name}`,
+        { profile: retryProfile, previousJobId: dbJob.id },
+      );
+      if (!holdRes.success) {
+        database.updateJobStatus(newJobId, "FAILED");
+        return res.status(402).json({
+          error: "Payment Required: Escrow Hold Failed",
+          message: holdRes.reason,
+          balance: holdRes.newBalance,
+          required: estimatedCost,
+        });
+      }
+    }
 
     if (metadata.resultDir) {
       const specFile = path.join(metadata.resultDir, "job_spec.json");
@@ -531,13 +567,39 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
                 const result = await runner.executeJob(retrySpec, streamer);
                 if (result.status === "completed") {
                   database.updateJobStatus(newJobId, "SUCCESS");
+                  const effectiveCost = result.simulatedFallback ? 0 : (result.usage?.costCredits ?? 0);
+                  if (result.usage) {
+                    database.updateJobAccounting(newJobId, {
+                      computeProfile: result.profile || retryProfile,
+                      cpuSeconds: result.usage.cpuCoreSeconds,
+                      peakMemoryMb: result.usage.peakMemoryMb,
+                      gpuSeconds: result.usage.gpuSeconds,
+                      costCredits: effectiveCost,
+                    });
+                  }
+                  if (userId) {
+                    database.settleUserEscrow(userId, newJobId, effectiveCost, `${dbJob.name} (Retry)`);
+                  }
                 } else if (result.status === "cancelled") {
                   database.updateJobStatus(newJobId, "CANCELLED");
+                  if (userId) {
+                    database.releaseUserEscrow(userId, newJobId, "CAE retry job cancelled");
+                  }
                 } else {
                   database.updateJobStatus(newJobId, "FAILED");
+                  if (userId) {
+                    database.releaseUserEscrow(userId, newJobId, result.error || "CAE retry job failed");
+                  }
                 }
-              } catch {
+              } catch (err: unknown) {
                 database.updateJobStatus(newJobId, "FAILED");
+                if (userId) {
+                  database.releaseUserEscrow(
+                    userId,
+                    newJobId,
+                    err instanceof Error ? err.message : "CAE retry execution exception",
+                  );
+                }
               } finally {
                 activeStreamers.delete(newJobId.toString());
               }

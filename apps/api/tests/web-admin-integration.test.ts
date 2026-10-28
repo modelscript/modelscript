@@ -206,6 +206,141 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
     assert.strictEqual(upgradeRes.body.success, true);
   });
 
+  await t.test("Unified first-party pageview analytics, bot filtering, and post view geo-hygiene", async () => {
+    // 1. Web pageview beacon with Cloudflare country header
+    const webBeacon1 = await request(app)
+      .post("/api/v1/analytics/pageview")
+      .set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0")
+      .set("CF-IPCountry", "DE")
+      .set("X-Vercel-IP-Country-Region", "BY")
+      .send({ path: "/explore?tab=popular#top", surface: "web" })
+      .expect(202);
+
+    assert.strictEqual(webBeacon1.body.success, true);
+    assert.strictEqual(webBeacon1.body.counted, true);
+    assert.strictEqual(webBeacon1.body.isUnique, true);
+
+    // 2. Duplicate hit from the same visitor on the same route on the same day increments total views, not uniqueViews
+    const webBeacon2 = await request(app)
+      .post("/api/v1/analytics/pageview")
+      .set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0")
+      .set("CF-IPCountry", "DE")
+      .set("X-Vercel-IP-Country-Region", "BY")
+      .send({ path: "/explore", surface: "web" })
+      .expect(202);
+
+    assert.strictEqual(webBeacon2.body.counted, true);
+    assert.strictEqual(webBeacon2.body.isUnique, false);
+
+    // 3. Docs portal pageview beacon (text/plain sendBeacon payload)
+    const docsBeacon = await request(app)
+      .post("/api/v1/analytics/pageview")
+      .set("Content-Type", "text/plain")
+      .set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) Safari/605.1.15")
+      .set("CF-IPCountry", "US")
+      .set("X-Vercel-IP-Country-Region", "CA")
+      .send(JSON.stringify({ path: "/guide/getting-started.html", surface: "docs" }))
+      .expect(202);
+
+    assert.strictEqual(docsBeacon.body.counted, true);
+    assert.strictEqual(docsBeacon.body.isUnique, true);
+
+    // 4. Bot User-Agent is filtered and not counted
+    const botBeacon = await request(app)
+      .post("/api/v1/analytics/pageview")
+      .set("User-Agent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
+      .set("CF-IPCountry", "US")
+      .send({ path: "/guide/getting-started.html", surface: "docs" })
+      .expect(202);
+
+    assert.strictEqual(botBeacon.body.counted, false);
+
+    // 5. Post view geo-hygiene: free-text profile.location must not pollute post_location_stats
+    db.updateProfile(regularUser.id, { location: "San Francisco, Bay Area" });
+    const post = db.createPost(regularUser.id, "Testing post impression geo hygiene");
+
+    // View without proxy geo headers on loopback IP -> increments view_count, but does not insert "San Francisco, Bay Area"
+    const viewRes1 = await request(app)
+      .post(`/api/v1/social/posts/${post.id}/view`)
+      .set("Authorization", `Bearer ${regularToken}`)
+      .set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Firefox/126.0")
+      .expect(200);
+    assert.strictEqual(viewRes1.body.counted, true);
+
+    // Duplicate view from same visitor is deduplicated
+    const viewResDup = await request(app)
+      .post(`/api/v1/social/posts/${post.id}/view`)
+      .set("Authorization", `Bearer ${regularToken}`)
+      .set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Firefox/126.0")
+      .expect(200);
+    assert.strictEqual(viewResDup.body.counted, false);
+
+    // View from a second visitor with valid ISO header records country/region
+    const viewRes2 = await request(app)
+      .post(`/api/v1/social/posts/${post.id}/view`)
+      .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0")
+      .set("CF-IPCountry", "JP")
+      .set("X-Region-Code", "13")
+      .expect(200);
+    assert.strictEqual(viewRes2.body.counted, true);
+
+    const postAnalyticsRes = await request(app).get(`/api/v1/social/posts/${post.id}/analytics`).expect(200);
+    assert.strictEqual(postAnalyticsRes.body.view_count, 2);
+    assert.strictEqual(postAnalyticsRes.body.location_stats.length, 1);
+    assert.strictEqual(postAnalyticsRes.body.location_stats[0].country, "JP");
+    assert.strictEqual(postAnalyticsRes.body.location_stats[0].views, 1);
+
+    // 6. Query Admin Analytics summary across all surfaces and surface-filtered
+    const adminAnalyticsAll = await request(app)
+      .get("/api/v1/admin/analytics?days=30&surface=all")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    assert.strictEqual(adminAnalyticsAll.body.totals.totalViews, 3);
+    assert.strictEqual(adminAnalyticsAll.body.totals.uniqueViews, 2);
+    assert.strictEqual(adminAnalyticsAll.body.totals.webViews, 2);
+    assert.strictEqual(adminAnalyticsAll.body.totals.docsViews, 1);
+    assert.ok(
+      adminAnalyticsAll.body.topPages.some(
+        (p: { path: string; surface: string; views: number }) =>
+          p.path === "/explore" && p.surface === "web" && p.views === 2,
+      ),
+    );
+    assert.ok(
+      adminAnalyticsAll.body.topPages.some(
+        (p: { path: string; surface: string; views: number }) =>
+          p.path === "/guide/getting-started.html" && p.surface === "docs" && p.views === 1,
+      ),
+    );
+    assert.ok(
+      adminAnalyticsAll.body.countryBreakdown.some(
+        (c: { countryCode: string; views: number }) => c.countryCode === "DE" && c.views === 2,
+      ),
+    );
+    assert.ok(
+      adminAnalyticsAll.body.countryBreakdown.some(
+        (c: { countryCode: string; views: number }) => c.countryCode === "US" && c.views === 1,
+      ),
+    );
+
+    const adminAnalyticsDocs = await request(app)
+      .get("/api/v1/admin/analytics?days=30&surface=docs")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    assert.strictEqual(adminAnalyticsDocs.body.totals.totalViews, 1);
+    assert.strictEqual(adminAnalyticsDocs.body.topPages.length, 1);
+    assert.strictEqual(adminAnalyticsDocs.body.topPages[0].surface, "docs");
+
+    // 7. Prune analytics endpoint
+    const pruneRes = await request(app)
+      .post("/api/v1/admin/analytics/prune")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ retainDays: 90 })
+      .expect(200);
+    assert.strictEqual(pruneRes.body.success, true);
+    assert.strictEqual(pruneRes.body.retainDays, 90);
+  });
+
   await t.test("Audit Log records all administrative actions", async () => {
     const logsRes = await request(app)
       .get("/api/v1/admin/audit-logs")
@@ -219,5 +354,6 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
     assert.ok(actions.includes("report_resolved"));
     assert.ok(actions.includes("federation_tier_silence"));
     assert.ok(actions.includes("dmca_notice_resolved"));
+    assert.ok(actions.includes("analytics_pruned"));
   });
 });

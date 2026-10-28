@@ -16,17 +16,27 @@ export * from "./storage/driver.js";
 export * from "./storage/filesystem-driver.js";
 export * from "./storage/s3-driver.js";
 
-const DEFAULT_DATA_DIR = (() => {
+function resolveDefaultDataDir(): string {
+  const envDir =
+    process.env["STORAGE_DIR"] ||
+    (process.env["DATA_DIR"] ? path.join(process.env["DATA_DIR"], "libraries") : undefined);
+  if (envDir) {
+    return envDir;
+  }
   try {
     const repoRootLibDir = path.resolve(import.meta.dirname, "../../../data/libraries");
     if (fs.existsSync(repoRootLibDir)) {
       return repoRootLibDir;
     }
+    const applianceDataDir = "/app/apps/api/data";
+    if (fs.existsSync(applianceDataDir)) {
+      return path.join(applianceDataDir, "libraries");
+    }
   } catch {
     // fallback
   }
   return "data/libraries";
-})();
+}
 
 /**
  * Storage manager for ModelScript libraries, supporting pluggable drivers
@@ -39,9 +49,9 @@ export class LibraryStorage {
   constructor(dataDirOrDriver?: string | StorageDriver) {
     if (typeof dataDirOrDriver === "object" && dataDirOrDriver !== null && "driverName" in dataDirOrDriver) {
       this.#driver = dataDirOrDriver;
-      this.#dataDir = path.resolve(DEFAULT_DATA_DIR);
+      this.#dataDir = path.resolve(resolveDefaultDataDir());
     } else {
-      this.#dataDir = path.resolve(dataDirOrDriver ?? DEFAULT_DATA_DIR);
+      this.#dataDir = path.resolve(dataDirOrDriver ?? resolveDefaultDataDir());
       this.#driver = new FilesystemStorageDriver(this.#dataDir);
     }
   }
@@ -72,7 +82,7 @@ export class LibraryStorage {
       });
       return new LibraryStorage(driver);
     }
-    return new LibraryStorage(defaultDir);
+    return new LibraryStorage(defaultDir ?? resolveDefaultDataDir());
   }
 
   get dataDir(): string {

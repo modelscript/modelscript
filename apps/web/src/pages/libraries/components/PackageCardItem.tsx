@@ -30,7 +30,9 @@ export interface PackageCardItemProps {
 
 export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg, onCopyInstall }) => {
   const navigate = useNavigate();
-  const displayHandle = lib.name.startsWith("@") ? lib.name : `@${lib.author || lib.name}`;
+  const displayHandle = lib.name.startsWith("@")
+    ? lib.name.split("/")[0] || `@${lib.author || lib.name}`
+    : `@${lib.author || lib.name}`;
   const domains = lib.domains && lib.domains.length > 0 ? lib.domains : ["modelica"];
   const timeAgoText = formatTimeAgo(lib.publishedAt);
 
@@ -41,7 +43,13 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg
       justifyContent="space-between"
       p={3}
       borderBottom="1px solid var(--color-border)"
-      style={{ gap: 16 }}
+      sx={{
+        gap: "16px",
+        transition: "background 0.15s ease",
+        "&:hover": {
+          background: "var(--surface-row-hover)",
+        },
+      }}
     >
       <Link
         to={lib.latestVersion ? `/packages/${lib.name}/${lib.latestVersion}` : `/packages/${lib.name}`}

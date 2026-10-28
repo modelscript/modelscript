@@ -2,7 +2,7 @@
 
 import { SyncIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { bookmarkPost, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
@@ -26,6 +26,7 @@ import { PostSignatureModal } from "./post/PostSignatureModal";
 import type { PostProps } from "./post/styles";
 import { HoverAvatar, PostWrapper, ProfileNameLink } from "./post/styles";
 import ProfileHoverCard from "./ProfileHoverCard";
+import { useToast } from "./ToastContext";
 
 export { PostMarkdownContent as RenderContent } from "./post/PostMarkdownContent";
 export type { PostProps } from "./post/styles";
@@ -37,6 +38,7 @@ const viewedPostIds = new Set<number>();
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
+  const toast = useToast();
   const basePost = post.repost_post || post;
   const [editedOverrides, setEditedOverrides] = useState<Record<string, any>>({});
   useEffect(() => {
@@ -126,13 +128,36 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     displayPost.metadata?.proof?.verificationMethod ||
     (displayPost.ap_id ? `${displayPost.ap_id}#main-key` : `@${displayPost.username} device-key`);
 
-  // Automatically record view once per post per session
+  const postContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Record view once per post per session when entering viewport (or immediately on detail view)
   useEffect(() => {
-    if (displayPost?.id && !viewedPostIds.has(displayPost.id)) {
-      viewedPostIds.add(displayPost.id);
-      recordPostView(displayPost.id);
+    const postId = displayPost?.id;
+    if (!postId || viewedPostIds.has(postId)) return;
+
+    if (isDetail || typeof IntersectionObserver === "undefined" || !postContainerRef.current) {
+      viewedPostIds.add(postId);
+      recordPostView(postId);
+      return;
     }
-  }, [displayPost?.id, token]);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !viewedPostIds.has(postId)) {
+            viewedPostIds.add(postId);
+            recordPostView(postId);
+            observer.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: 0.4 },
+    );
+
+    observer.observe(postContainerRef.current);
+    return () => observer.disconnect();
+  }, [displayPost?.id, isDetail, token]);
 
   const impressions = displayPost.view_count ?? 0;
   const isNotebook = isNotebookPost(displayPost);
@@ -158,6 +183,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     e.stopPropagation();
     e.preventDefault();
     navigator.clipboard.writeText(`${window.location.origin}/${displayPost.username}/status/${displayPost.id}`);
+    toast.success("Link copied to clipboard");
   };
 
   const handleDownload = (e: React.MouseEvent) => {
@@ -227,6 +253,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       const data = await bookmarkPost(displayPost.id);
       setBookmarked(data.bookmarked);
       setBookmarkCount((prev: number) => prev + (data.bookmarked ? 1 : -1));
+      window.dispatchEvent(
+        new CustomEvent("modelscript:bookmark-toggled", {
+          detail: { postId: displayPost.id, bookmarked: data.bookmarked },
+        }),
+      );
     } catch (err) {
       console.error(err);
     }
@@ -393,6 +424,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   return (
     <>
       <div
+        ref={postContainerRef}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("a, button")) return;
           navigate(`/${displayPost.username}/status/${displayPost.id}`);

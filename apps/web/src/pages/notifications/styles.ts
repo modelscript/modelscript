@@ -8,6 +8,7 @@ export const NotificationWrapper = styled.div<{ $unread: boolean }>`
   gap: 14px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-border-default);
+  border-left: ${(props) => (props.$unread ? "3px solid var(--color-accent-cyan)" : "3px solid transparent")};
   background-color: ${(props) => (props.$unread ? "var(--color-canvas-subtle)" : "transparent")};
   cursor: pointer;
   transition: background-color 0.15s ease;
@@ -67,14 +68,24 @@ export const MetricChip = styled.span`
   border: 1px solid var(--color-border-default);
 `;
 
-export const Avatar = styled.div<{ $url?: string | undefined }>`
+export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string | undefined }>`
   width: 36px;
   height: 36px;
   border-radius: 50%;
   background: var(--gradient-ai, linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%));
   background-image: ${(props) => safeCssImageUrl(props.$url)};
   background-size: cover;
+  background-position: center;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #ffffff;
+  &::before {
+    content: "${(props) => (!props.$url && props.$letter ? props.$letter : "")}";
+  }
 `;
 
 export const AvatarsRow = styled.div`

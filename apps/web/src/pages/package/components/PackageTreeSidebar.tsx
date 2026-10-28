@@ -4,7 +4,6 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CodeIcon,
   CpuIcon,
   DatabaseIcon,
   FileCodeIcon,
@@ -15,11 +14,10 @@ import {
   XIcon,
 } from "@primer/octicons-react";
 import { Button, Label, Text, TextInput } from "@primer/react";
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import styled from "styled-components";
+import React from "react";
 import { getIconUrl, type ArtifactViewerInfo } from "../../../api";
 import Box from "../../../components/Box";
+import { ClassTreeNode } from "../../../components/ClassTree";
 import type { TreeNode } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
 import {
@@ -33,165 +31,6 @@ import {
   TreeSidebar,
   type PolyglotDomain,
 } from "../types";
-
-function getKindBadgeStyle(kind: string): { bg: string; color: string } | null {
-  const k = kind.toLowerCase();
-  if (k === "package" || k === "class") return null;
-  if (k === "model" || k === "block") {
-    return { bg: "rgba(6, 182, 212, 0.15)", color: "var(--color-accent-cyan, #06b6d4)" };
-  }
-  if (k === "function" || k === "algorithm") {
-    return { bg: "rgba(168, 85, 247, 0.15)", color: "#c084fc" };
-  }
-  if (k === "connector") {
-    return { bg: "rgba(234, 179, 8, 0.15)", color: "#eab308" };
-  }
-  if (k === "record" || k === "type") {
-    return { bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6" };
-  }
-  return { bg: "var(--color-border-glass, rgba(255,255,255,0.08))", color: "var(--color-text-muted)" };
-}
-
-const TreeItem = styled(Link)<{ $depth: number }>`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px 5px ${(p) => 8 + p.$depth * 10}px;
-  font-size: 13px;
-  font-family: var(--ms-font-sans, system-ui, -apple-system, sans-serif);
-  font-weight: 500;
-  color: var(--color-text-primary);
-  text-decoration: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  min-height: 28px;
-  box-sizing: border-box;
-
-  &:hover {
-    background: var(--color-glass-bg-hover, rgba(255, 255, 255, 0.05));
-    color: var(--color-accent-cyan, #06b6d4);
-  }
-`;
-
-const TreeToggle = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  padding: 0;
-  display: flex;
-  align-items: center;
-  &:hover {
-    color: var(--color-text-primary);
-  }
-`;
-
-const ClassTreeNode: React.FC<{
-  node: TreeNode;
-  depth: number;
-  libraryName: string;
-  version: string;
-  isFiltered?: boolean | undefined;
-}> = ({ node, depth, libraryName, version, isFiltered }) => {
-  const [expanded, setExpanded] = useState(depth < 1 || Boolean(isFiltered));
-
-  useEffect(() => {
-    if (isFiltered) {
-      setExpanded(true);
-    }
-  }, [isFiltered]);
-
-  const hasChildren = node.children.length > 0;
-  const iconUrl = getIconUrl(libraryName, version, node.fullName);
-  const badgeStyle = getKindBadgeStyle(node.classKind);
-
-  return (
-    <>
-      <TreeItem
-        to={`/packages/${libraryName}/${version}/classes/${node.fullName}`}
-        $depth={depth}
-        onClick={() => {
-          if (hasChildren && !expanded) {
-            setExpanded(true);
-          }
-        }}
-      >
-        {hasChildren ? (
-          <TreeToggle
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setExpanded(!expanded);
-            }}
-          >
-            {expanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
-          </TreeToggle>
-        ) : (
-          <span style={{ width: 14, flexShrink: 0 }} />
-        )}
-        <InvertedSvg
-          src={iconUrl}
-          alt=""
-          width={16}
-          height={16}
-          fallback={
-            node.classKind.includes("sysml") ? (
-              <WorkflowIcon size={15} style={{ color: "#a855f7", flexShrink: 0 }} />
-            ) : node.classKind.includes("cad") ||
-              node.classKind.includes("product") ||
-              node.classKind.includes("shape") ? (
-              <PackageIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
-            ) : node.classKind === "function" ? (
-              <CodeIcon size={15} style={{ color: "#c084fc", flexShrink: 0 }} />
-            ) : node.classKind === "connector" ? (
-              <WorkflowIcon size={15} style={{ color: "#eab308", flexShrink: 0 }} />
-            ) : node.classKind === "model" || node.classKind === "block" ? (
-              <CpuIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
-            ) : node.classKind === "record" ? (
-              <DatabaseIcon size={15} style={{ color: "#3b82f6", flexShrink: 0 }} />
-            ) : (
-              <PackageIcon size={15} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
-            )
-          }
-        />
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
-        {badgeStyle && (
-          <span
-            style={{
-              fontSize: "10px",
-              fontWeight: 600,
-              padding: "1px 5px",
-              borderRadius: "4px",
-              marginLeft: "auto",
-              flexShrink: 0,
-              textTransform: "uppercase",
-              letterSpacing: "0.4px",
-              background: badgeStyle.bg,
-              color: badgeStyle.color,
-            }}
-          >
-            {node.classKind}
-          </span>
-        )}
-      </TreeItem>
-      {expanded && hasChildren && (
-        <div style={{ borderLeft: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.07))", marginLeft: 16 }}>
-          {node.children.map((child) => (
-            <ClassTreeNode
-              key={child.fullName}
-              node={child}
-              depth={depth + 1}
-              libraryName={libraryName}
-              version={version}
-              isFiltered={isFiltered}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  );
-};
 
 export interface PackageTreeSidebarProps {
   name: string;
@@ -221,6 +60,14 @@ export interface PackageTreeSidebarProps {
   onToggleCollapse?: (() => void) | undefined;
 }
 
+function countTreeNodes(nodes: TreeNode[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    count += 1 + countTreeNodes(node.children);
+  }
+  return count;
+}
+
 export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   name,
   version,
@@ -242,12 +89,14 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   collapsed,
   onToggleCollapse,
 }) => {
+  const totalClassCount = countTreeNodes(filteredTree);
+
   return (
     <>
       <MobileTreeToggle type="button" onClick={() => setMobileTreeOpen((prev) => !prev)}>
         <span>
           Browse Components &amp; Artifacts (
-          {filteredTree.length +
+          {totalClassCount +
             filteredSysml.length +
             filteredCad.length +
             filteredDatasets.length +
@@ -271,7 +120,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
           }}
         >
           <InvertedSvg
-            src={getIconUrl(name, version, rootClassName || name)}
+            src={getIconUrl(name, version, rootClassName || name.replace(/^@[^/]+\//, ""))}
             alt=""
             width={32}
             height={32}

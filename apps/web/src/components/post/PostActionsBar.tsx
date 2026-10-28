@@ -336,10 +336,6 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
-              if (!token) {
-                onOpenLogin();
-                return;
-              }
               onOpenAnalytics();
             }}
             style={{ color: "var(--color-fg-muted)" }}

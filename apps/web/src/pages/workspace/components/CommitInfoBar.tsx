@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckCircleFillIcon, HistoryIcon, XCircleFillIcon } from "@primer/octicons-react";
-import { Avatar, Link as PrimerLink, Text } from "@primer/react";
+import { Avatar, Text } from "@primer/react";
 import React from "react";
 import type { GitlabCommit } from "../../../api";
 import Box from "../../../components/Box";
+import { getAvatarUrl } from "../../../util/avatar";
 import { getRelativeTime } from "../utils";
 
 export interface CommitInfoBarProps {
@@ -25,21 +26,20 @@ export const CommitInfoBar: React.FC<CommitInfoBarProps> = ({ latestCommit, comm
     >
       {latestCommit ? (
         <Box display="flex" alignItems="center" gap={2} style={{ overflow: "hidden" }}>
-          <Avatar src={`https://github.com/identicons/${latestCommit.author_email}.png`} size={24} />
+          <Avatar src={getAvatarUrl(undefined, latestCommit.author_name || "user")} size={24} />
           <Text style={{ fontWeight: "bold", fontSize: "14px" }}>{latestCommit.author_name}</Text>
-          <PrimerLink
-            href="#"
-            muted
+          <span
             style={{
-              textDecoration: "none",
+              color: "var(--color-fg-muted)",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
               maxWidth: "400px",
+              fontSize: "14px",
             }}
           >
             {latestCommit.title}
-          </PrimerLink>
+          </span>
           {(latestCommit as any).status && (
             <Box
               color={(latestCommit as any).status === "success" ? "var(--color-success-fg)" : "var(--color-danger-fg)"}
@@ -67,7 +67,7 @@ export const CommitInfoBar: React.FC<CommitInfoBarProps> = ({ latestCommit, comm
           fontSize={1}
           style={{ whiteSpace: "nowrap" }}
         >
-          <PrimerLink href="#" muted sx={{ "&:hover": { color: "var(--color-accent-fg)", textDecoration: "none" } }}>
+          <span>
             <code
               style={{
                 fontFamily: "ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace",
@@ -76,7 +76,7 @@ export const CommitInfoBar: React.FC<CommitInfoBarProps> = ({ latestCommit, comm
             >
               {latestCommit.short_id}
             </code>
-          </PrimerLink>
+          </span>
           <span>·</span>
           <span>{getRelativeTime(latestCommit.created_at)}</span>
           {!currentFile && (

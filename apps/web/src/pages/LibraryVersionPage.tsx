@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PackageIcon, TagIcon } from "@primer/octicons-react";
-import { Flash, Heading, Label, Spinner, Text } from "@primer/react";
+import { Flash, Heading, Label, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
@@ -37,6 +37,10 @@ const HeaderBar = styled.div`
   padding: 32px 40px 40px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--color-border);
+
+  @media (max-width: 768px) {
+    padding: 20px;
+  }
 `;
 
 const ContentArea = styled.div`
@@ -46,6 +50,10 @@ const ContentArea = styled.div`
   padding: 32px 40px 60px;
   box-sizing: border-box;
   animation: ${fadeIn} 0.4s ease;
+
+  @media (max-width: 768px) {
+    padding: 20px;
+  }
 `;
 
 const glassCard = css`
@@ -132,8 +140,43 @@ const LibraryVersionPage: React.FC = () => {
 
   if (loading) {
     return (
-      <PageWrap style={{ justifyContent: "center", alignItems: "center" }}>
-        <Spinner size="large" />
+      <PageWrap>
+        <HeaderBar>
+          <Box mb={3}>
+            <Breadcrumbs items={[{ label: "Libraries", href: "/packages" }, { label: name || "" }]} />
+          </Box>
+          <Box display="flex" alignItems="center" gap="16px">
+            <PackageIcon size={48} fill="var(--color-accent-purple)" style={{ flexShrink: 0 }} />
+            <Box>
+              <Box display="flex" alignItems="center" gap="8px">
+                <Heading
+                  as="h1"
+                  style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}
+                >
+                  {name}
+                </Heading>
+                <div className="skeleton" style={{ width: 80, height: 22, borderRadius: 12 }} />
+              </Box>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
+                Select a version to view documentation and details.
+              </Text>
+            </Box>
+          </Box>
+        </HeaderBar>
+        <ContentArea>
+          <SectionTitle as="h3">All Versions</SectionTitle>
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="skeleton"
+              style={{
+                height: 54,
+                borderRadius: 8,
+                marginBottom: 8,
+              }}
+            />
+          ))}
+        </ContentArea>
       </PageWrap>
     );
   }
@@ -191,20 +234,23 @@ const LibraryVersionPage: React.FC = () => {
               <TagIcon size={16} />
               {version}
             </VersionName>
-            {index === 0 && (
-              <Label
-                variant="accent"
-                style={{
-                  fontSize: 11,
-                  padding: "2px 8px",
-                  background: "var(--color-accent-blue-bg)",
-                  color: "var(--color-accent-blue)",
-                  border: "1px solid var(--color-accent-blue-border)",
-                }}
-              >
-                latest
-              </Label>
-            )}
+            <Box display="flex" alignItems="center" gap="12px">
+              {index === 0 && (
+                <Label
+                  variant="accent"
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    background: "var(--color-accent-blue-bg)",
+                    color: "var(--color-accent-blue)",
+                    border: "1px solid var(--color-accent-blue-border)",
+                  }}
+                >
+                  latest
+                </Label>
+              )}
+              <Text style={{ fontSize: 13, color: "var(--color-text-muted)", fontWeight: 500 }}>View Package →</Text>
+            </Box>
           </VersionCard>
         ))}
       </ContentArea>

@@ -16,7 +16,8 @@ export function CustomInspectionTooltip({
 
   const numLabel = typeof label === "number" ? label : Number(label);
   const formattedLabel = `${xAxisVar}: ${isNaN(numLabel) ? label : numLabel.toFixed(4)}${xAxisVar === "time" ? "s" : ""}`;
-  const rawRow = rawData?.find((r: any) => Math.abs(Number(r.time) - Number(label)) < 1e-6);
+  const xKey = xAxisVar || "time";
+  const rawRow = rawData?.find((r: any) => Math.abs(Number(r[xKey]) - Number(label)) < 1e-6);
 
   // Group items by base variable name to pair current value with baseline
   const grouped = new Map<string, { current?: any; baseline?: any; color: string }>();

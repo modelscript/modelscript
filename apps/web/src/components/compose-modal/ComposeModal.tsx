@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { XIcon } from "@primer/octicons-react";
+import { ColumnsIcon, EyeIcon, PencilIcon, ScreenFullIcon, XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createArtifactView } from "../../api";
@@ -353,9 +353,12 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       fontSize: "12px",
                       fontWeight: 700,
                       color: "var(--color-accent-cyan)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
                     }}
                   >
-                    ✏️ Editing {notebookMode ? "Tutorial" : "Post"} #{initialState.editPostId}
+                    <PencilIcon size={12} /> Editing {notebookMode ? "Tutorial" : "Post"} #{initialState.editPostId}
                   </span>
                 )}
                 <Box flex={1} />
@@ -371,30 +374,36 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 >
                   {(
                     [
-                      { id: "write", label: "✏️ Write" },
-                      { id: "split", label: "◫ Split Preview" },
-                      { id: "preview", label: "👁️ Preview" },
+                      { id: "write", label: "Write", icon: PencilIcon },
+                      { id: "split", label: "Split Preview", icon: ColumnsIcon },
+                      { id: "preview", label: "Preview", icon: EyeIcon },
                     ] as const
-                  ).map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setEditorLayout(tab.id)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: "6px",
-                        border: "none",
-                        background: editorLayout === tab.id ? "rgba(6, 182, 212, 0.18)" : "transparent",
-                        color: editorLayout === tab.id ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
-                        fontFamily: "var(--font-mono, monospace)",
-                        fontSize: "11.5px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                  ).map((tab) => {
+                    const TabIcon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setEditorLayout(tab.id)}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          border: "none",
+                          background: editorLayout === tab.id ? "rgba(6, 182, 212, 0.18)" : "transparent",
+                          color: editorLayout === tab.id ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: "11.5px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <TabIcon size={12} /> {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   type="button"
@@ -409,9 +418,20 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                     fontSize: "11.5px",
                     padding: "5px 10px",
                     cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
                   }}
                 >
-                  {isExpandedWidth ? "🗗 Compact" : "⛶ Expand"}
+                  {isExpandedWidth ? (
+                    <>
+                      <ColumnsIcon size={12} /> Compact
+                    </>
+                  ) : (
+                    <>
+                      <ScreenFullIcon size={12} /> Expand
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={handleDraftsClick}

@@ -24,6 +24,14 @@ export const Toolbar = styled.div`
   gap: 12px;
   z-index: 10;
   box-sizing: border-box;
+
+  @media (max-width: 768px) {
+    padding: 0 8px;
+    gap: 6px;
+    .ide-hide-sm {
+      display: none !important;
+    }
+  }
 `;
 
 export const ToolbarLeft = styled.div`
@@ -31,6 +39,12 @@ export const ToolbarLeft = styled.div`
   align-items: center;
   gap: 12px;
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    gap: 6px;
+  }
 `;
 
 export const ToolbarRight = styled.div`
@@ -38,6 +52,16 @@ export const ToolbarRight = styled.div`
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    gap: 4px;
+  }
+`;
+
+export const ToolbarText = styled.span`
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 export const BreadcrumbText = styled.div`
@@ -74,6 +98,10 @@ export const Badge = styled.span`
   background-color: rgba(6, 182, 212, 0.12);
   color: var(--color-accent-cyan);
   border: 1px solid rgba(6, 182, 212, 0.25);
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 export const DeprecationBanner = styled.div`

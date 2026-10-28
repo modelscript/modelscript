@@ -147,19 +147,24 @@ export const glassCard = css`
   border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
   border-radius: 14px;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-
-  &:hover {
-    border-color: rgba(139, 92, 246, 0.35);
-    box-shadow:
-      0 8px 24px -6px rgba(0, 0, 0, 0.5),
-      0 0 16px rgba(139, 92, 246, 0.12);
-  }
 `;
 
-export const GlassCard = styled.div`
+export const GlassCard = styled.div<{ $interactive?: boolean | undefined }>`
   ${glassCard}
   padding: 20px;
   margin-bottom: 16px;
+
+  ${(p) =>
+    p.$interactive &&
+    css`
+      cursor: pointer;
+      &:hover {
+        border-color: rgba(139, 92, 246, 0.35);
+        box-shadow:
+          0 8px 24px -6px rgba(0, 0, 0, 0.5),
+          0 0 16px rgba(139, 92, 246, 0.12);
+      }
+    `}
 `;
 
 export const DocCard = styled.div`
@@ -266,7 +271,7 @@ export const Divider = styled.hr`
 `;
 
 export const InstallBox = styled.div`
-  background: #020408;
+  background: var(--color-pre-bg);
   border: 1px solid var(--color-border-glass);
   border-radius: 8px;
   padding: 12px 16px;

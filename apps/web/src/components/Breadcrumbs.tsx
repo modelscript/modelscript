@@ -46,7 +46,7 @@ const Breadcrumbs: React.FC<{ items: BreadcrumbItem[] }> = ({ items }) => (
         <React.Fragment key={i}>
           {i > 0 && <Chevron size={14} />}
           {isLast || !item.href ? (
-            <CurrentItem>{item.label}</CurrentItem>
+            <CurrentItem aria-current="page">{item.label}</CurrentItem>
           ) : (
             <BreadcrumbLink to={item.href}>{item.label}</BreadcrumbLink>
           )}

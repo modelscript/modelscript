@@ -2,7 +2,7 @@
 
 import { BaseStyles, Spinner, ThemeProvider } from "@primer/react";
 import { Suspense, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { getArtifactView } from "../api";
 import { ViewerDispatcher, resolveThumbnailUrls } from "../components/artifacts/card";
 import Box from "../components/Box";
@@ -13,20 +13,47 @@ import { usePageTitle } from "../util/title";
 export default function RenderArtifactPage() {
   const { id } = useParams<{ id: string }>();
   const [artifact, setArtifact] = useState<ArtifactViewDTO | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   usePageTitle(artifact ? `Artifact: ${artifact.title || artifact.view_type}` : "Render Artifact");
 
   useEffect(() => {
+    let cancelled = false;
     async function fetchArtifact() {
-      if (!id) return;
+      if (!id) {
+        setLoading(false);
+        setError("Missing artifact ID.");
+        (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+        return;
+      }
+      setLoading(true);
+      setError(null);
       try {
         const data = await getArtifactView(id);
-        setArtifact(data.artifactView || data.artifact_view || data);
+        if (cancelled) return;
+        const resolved = data?.artifactView || data?.artifact_view || data;
+        if (!resolved || (!resolved.view_type && !resolved.view_config)) {
+          setError(`Artifact #${id} could not be found.`);
+          (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+        } else {
+          setArtifact(resolved);
+        }
       } catch (err) {
         console.error("Failed to fetch artifact", err);
+        if (!cancelled) {
+          setError(`Failed to load artifact #${id}.`);
+        }
         (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
     fetchArtifact();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -55,7 +82,58 @@ export default function RenderArtifactPage() {
     }
   }, [artifact]);
 
-  if (!artifact) return null;
+  if (loading) {
+    return (
+      <ThemeProvider colorMode="auto">
+        <BaseStyles style={{ width: "100vw", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            width="100%"
+            height="100%"
+            bg="var(--color-canvas-default)"
+          >
+            <Spinner size="large" />
+          </Box>
+        </BaseStyles>
+      </ThemeProvider>
+    );
+  }
+
+  if (error || !artifact) {
+    return (
+      <ThemeProvider colorMode="auto">
+        <BaseStyles style={{ width: "100vw", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
+          <Box
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            width="100%"
+            height="100%"
+            bg="var(--color-canvas-default)"
+            style={{ gap: "12px", padding: "24px", textAlign: "center" }}
+          >
+            <div style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-fg-default)" }}>
+              {error || "Artifact not found"}
+            </div>
+            <Link
+              to="/playground"
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "var(--color-accent-fg, #0969da)",
+                textDecoration: "none",
+              }}
+            >
+              ← Back to Playground
+            </Link>
+          </Box>
+        </BaseStyles>
+      </ThemeProvider>
+    );
+  }
 
   const parsedArtifactId = Number(artifact.id || id || 0);
   const viewConfig = {

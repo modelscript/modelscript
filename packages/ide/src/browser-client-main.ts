@@ -302,12 +302,22 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 13. UI Navigation & Diagram Commands
   context.subscriptions.push(
-    safeRegisterCommand("modelscript.openDiagram", async () => {
+    safeRegisterCommand("modelscript.openDiagram", async (uriArg?: unknown) => {
       const activeEditor = vscode.window.activeTextEditor;
-      if (activeEditor?.document && activeEditor.document.uri.scheme !== "output") {
+      let docUri: vscode.Uri | undefined;
+      if (typeof uriArg === "string") {
+        docUri = vscode.Uri.parse(uriArg);
+      } else if (uriArg instanceof vscode.Uri) {
+        docUri = uriArg;
+      } else if (uriArg && typeof (uriArg as { uri?: unknown }).uri === "string") {
+        docUri = vscode.Uri.parse((uriArg as { uri: string }).uri);
+      } else if (activeEditor?.document && activeEditor.document.uri.scheme !== "output") {
+        docUri = activeEditor.document.uri;
+      }
+
+      if (docUri) {
         try {
-          const docUri = activeEditor.document.uri;
-          if (docUri.scheme === "memfs") {
+          if (docUri.scheme === "memfs" && activeEditor?.document.uri.toString() === docUri.toString()) {
             const content = new TextEncoder().encode(activeEditor.document.getText());
             await workspace.fs.writeFile(docUri, content);
           }
@@ -315,7 +325,13 @@ export async function activate(context: vscode.ExtensionContext) {
           const targetViewType =
             filePath.endsWith(".step") || filePath.endsWith(".stp")
               ? StepEditorProvider.viewType
-              : filePath.endsWith(".inp") || filePath.endsWith(".inpt")
+              : (filePath.endsWith(".inp") || filePath.endsWith(".inpt")) &&
+                  !filePath.endsWith(".swmm.inp") &&
+                  !filePath.endsWith(".epanet.inp") &&
+                  !filePath.endsWith(".sima.inp") &&
+                  !filePath.endsWith(".relap5.inp") &&
+                  !filePath.endsWith(".aspen.inp") &&
+                  activeEditor?.document.languageId === "fea"
                 ? InpEditorProvider.viewType
                 : filePath.endsWith(".cfg") || filePath.endsWith(".cfgt")
                   ? CfgEditorProvider.viewType
@@ -332,9 +348,14 @@ export async function activate(context: vscode.ExtensionContext) {
                           ? PsoutEditorProvider.viewType
                           : DiagramEditorProvider.viewType;
           try {
-            await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType);
+            await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType, vscode.ViewColumn.Beside);
           } catch {
-            await vscode.commands.executeCommand("vscode.openWith", docUri, DiagramEditorProvider.viewType);
+            await vscode.commands.executeCommand(
+              "vscode.openWith",
+              docUri,
+              DiagramEditorProvider.viewType,
+              vscode.ViewColumn.Beside,
+            );
           }
         } catch (e: unknown) {
           vscode.window.showErrorMessage(`Failed to open diagram: ${(e as Error)?.message || e}`);

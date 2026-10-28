@@ -6,6 +6,7 @@ import {
   GraphIcon,
   LinkExternalIcon,
   MuteIcon,
+  PencilIcon,
   PersonAddIcon,
   ReportIcon,
   TrashIcon,
@@ -52,6 +53,15 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const [confirmingBlock, setConfirmingBlock] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      setConfirmingDelete(false);
+      setConfirmingBlock(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -65,6 +75,8 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
         onClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
+          setConfirmingDelete(false);
+          setConfirmingBlock(false);
           onClose();
         }}
       />
@@ -72,7 +84,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
         position="absolute"
         top="0"
         right="0"
-        bg="var(--color-bg-primary)"
+        bg="var(--surface-overlay)"
         border="1px solid var(--color-border-subtle)"
         borderRadius="12px"
         boxShadow="0 4px 12px rgba(0,0,0,0.15)"
@@ -81,6 +93,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
         minWidth="250px"
         display="flex"
         flexDirection="column"
+        style={{ backdropFilter: "blur(12px)" }}
       >
         {canEditPost && (
           <MenuButton
@@ -91,7 +104,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
               onOpenEditModal();
             }}
           >
-            <span>✏️</span> {isNotebook ? "Edit tutorial / notebook" : "Edit post"}
+            <PencilIcon size={16} /> {isNotebook ? "Edit tutorial / notebook" : "Edit post"}
           </MenuButton>
         )}
         {isOwnPost && Boolean(displayPost?.artifact_view_id) && (
@@ -117,15 +130,29 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
         )}
         {canDeletePost && (
           <MenuButton
-            style={{ color: "var(--color-danger-fg, #f85149)" }}
+            style={
+              confirmingDelete
+                ? {
+                    color: "#ffffff",
+                    backgroundColor: "var(--color-danger-emphasis, #da3633)",
+                    fontWeight: 700,
+                  }
+                : { color: "var(--color-danger-fg, #f85149)" }
+            }
             onClick={async (e) => {
               e.stopPropagation();
               e.preventDefault();
-              onClose();
               if (!token) {
+                onClose();
                 onOpenLoginModal();
                 return;
               }
+              if (!confirmingDelete) {
+                setConfirmingDelete(true);
+                return;
+              }
+              setConfirmingDelete(false);
+              onClose();
               try {
                 await deletePost(displayPost.id);
                 toast.success("Post deleted.");
@@ -136,7 +163,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
               }
             }}
           >
-            <TrashIcon size={16} /> Delete post
+            <TrashIcon size={16} /> {confirmingDelete ? "Confirm delete?" : "Delete post"}
           </MenuButton>
         )}
         {!isOwnPost && (
@@ -184,14 +211,29 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
         )}
         {!isOwnPost && (
           <MenuButton
+            style={
+              confirmingBlock
+                ? {
+                    color: "#ffffff",
+                    backgroundColor: "var(--color-danger-emphasis, #da3633)",
+                    fontWeight: 700,
+                  }
+                : { color: "var(--color-danger-fg, #f85149)" }
+            }
             onClick={async (e) => {
               e.stopPropagation();
               e.preventDefault();
-              onClose();
               if (!token) {
+                onClose();
                 onOpenLoginModal();
                 return;
               }
+              if (!confirmingBlock) {
+                setConfirmingBlock(true);
+                return;
+              }
+              setConfirmingBlock(false);
+              onClose();
               try {
                 await blockUser(displayPost.username);
                 toast.info(`Blocked @${displayPost.username}`);
@@ -200,7 +242,8 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
               }
             }}
           >
-            <BlockedIcon size={16} /> Block @{displayPost.username}
+            <BlockedIcon size={16} />{" "}
+            {confirmingBlock ? `Confirm block @${displayPost.username}?` : `Block @${displayPost.username}`}
           </MenuButton>
         )}
         <MenuButton

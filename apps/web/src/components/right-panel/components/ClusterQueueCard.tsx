@@ -125,7 +125,7 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
                   borderRadius: "6px",
                   transition: "background 0.15s ease",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.03)")}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
               >
                 <Box display="flex" justifyContent="space-between" alignItems="center">

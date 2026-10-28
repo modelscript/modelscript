@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleFillIcon, CircleIcon, XCircleFillIcon } from "@primer/octicons-react";
+import { CheckCircleFillIcon, SyncIcon, XCircleFillIcon } from "@primer/octicons-react";
 import { Heading, Label, Link as PrimerLink, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import type { GitlabJob } from "../../../api";
@@ -65,7 +65,9 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
               <Box display="flex" alignItems="center" gap={2}>
                 {job.status === "success" && <CheckCircleFillIcon fill="var(--color-success-fg)" />}
                 {job.status === "failed" && <XCircleFillIcon fill="var(--color-danger-fg)" />}
-                {job.status === "running" && <CircleIcon fill="var(--color-accent-fg)" />}
+                {job.status === "running" && (
+                  <SyncIcon size={16} fill="var(--color-accent-fg)" className="spinner-spin" />
+                )}
                 <Text style={{ fontWeight: "bold" }}>{job.name}</Text>
                 <Label variant="secondary" style={{ marginLeft: "8px" }}>
                   {job.stage}

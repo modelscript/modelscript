@@ -276,6 +276,7 @@ const ClassDetailPage: React.FC = () => {
                 jobStatus={jobStatus}
                 categorized={categorized}
                 renderTypeCell={renderTypeCell}
+                onViewParameters={() => setActiveTab("parameters")}
               />
             )}
 
@@ -300,7 +301,7 @@ const ClassDetailPage: React.FC = () => {
               </>
             )}
 
-            {activeTab === "equations" && <ClassEquationsTab equations={equations} />}
+            {activeTab === "equations" && <ClassEquationsTab equations={equations} className={className!} />}
 
             {activeTab === "source" && (
               <ClassSourceTab sourceCode={cls.sourceCode} sourceFile={cls.sourceFile} className={className!} />
@@ -316,11 +317,24 @@ const ClassDetailPage: React.FC = () => {
             allClasses={allClasses}
             retryCount={retryCount}
             twinInfo={twinInfo}
-            onSelectMember={(targetUrl) => {
+            onSelectMember={(targetUrl, memberName) => {
               if (targetUrl && targetUrl.includes("/classes/")) {
                 navigate(targetUrl);
               } else {
                 setActiveTab("parameters");
+                if (memberName) {
+                  setTimeout(() => {
+                    const rowEl = document.getElementById(`member-${memberName}`);
+                    if (rowEl) {
+                      rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                      rowEl.style.transition = "background-color 0.4s ease";
+                      rowEl.style.backgroundColor = "rgba(6, 182, 212, 0.18)";
+                      setTimeout(() => {
+                        rowEl.style.backgroundColor = "";
+                      }, 1600);
+                    }
+                  }, 60);
+                }
               }
             }}
             onNavigate={(path) => navigate(path)}

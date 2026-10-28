@@ -17,6 +17,7 @@ import {
 import { Button, Label, Text } from "@primer/react";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import styled from "styled-components";
 import {
   getPackageAasxExportUrl,
   getPackageDownloadUrl,
@@ -41,6 +42,25 @@ import {
   SparklineContainer,
   timeAgo,
 } from "../types";
+
+const ExportTile = styled.a<{ $activeColor?: string | undefined }>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-glass-bg, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border);
+  color: ${(p) => p.$activeColor || "var(--color-text-primary)"};
+  text-decoration: none;
+  transition: all 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-accent-cyan, #06b6d4);
+    background: var(--surface-row-hover, rgba(255, 255, 255, 0.08));
+    transform: translateY(-1px);
+  }
+`;
 
 export interface PackageRightSidebarProps {
   name: string;
@@ -91,12 +111,20 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
   const [copiedHash, setCopiedHash] = useState(false);
   const [installTab, setInstallTab] = useState<"cli" | "manifest" | "import">("cli");
 
+  const importIdentifier =
+    name
+      .replace(/^@[^/]+\//, "")
+      .replace(/[^a-zA-Z0-9]+(.)/g, (_, c: string) => c.toUpperCase())
+      .replace(/^[a-z]/, (c) => c.toUpperCase())
+      .replace(/[^a-zA-Z0-9_$]/g, "") || "Model";
+  const importSpecifier = name.startsWith("@") ? name : `@modelscript/${name}`;
+
   const currentSnippet =
     installTab === "cli"
       ? installCmd
       : installTab === "manifest"
         ? `"${name}": "^${version}"`
-        : `import { ${name} } from "@modelscript/${name}";`;
+        : `import { ${importIdentifier} } from "${importSpecifier}";`;
 
   const handleCopyInstall = () => {
     navigator.clipboard.writeText(currentSnippet);
@@ -147,7 +175,18 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           ))}
         </div>
       </div>
-      <InstallBox onClick={handleCopyInstall} title="Click to copy snippet">
+      <InstallBox
+        role="button"
+        tabIndex={0}
+        onClick={handleCopyInstall}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleCopyInstall();
+          }
+        }}
+        title="Click to copy snippet"
+      >
         <code style={{ fontSize: 12 }}>
           {installTab === "cli" && <span style={{ color: "var(--color-text-muted)" }}>&gt;&nbsp;</span>}
           {currentSnippet}
@@ -185,21 +224,9 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         <MetaBlock style={{ marginBottom: 16 }}>
           <MetaLabel style={{ marginBottom: 8 }}>Download &amp; Export</MetaLabel>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <a
+            <ExportTile
               href={getPackageDownloadUrl(name, version)}
               download
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text-primary)",
-                textDecoration: "none",
-                transition: "all 0.15s ease",
-              }}
               title="Download complete package ZIP archive"
             >
               <FileZipIcon size={16} style={{ color: "#eab308", flexShrink: 0 }} />
@@ -207,22 +234,10 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 <div style={{ fontSize: 12, fontWeight: 600 }}>Source</div>
                 <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.zip archive</div>
               </div>
-            </a>
-            <a
+            </ExportTile>
+            <ExportTile
               href={getPackageAasxExportUrl(name, version)}
               download
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text-primary)",
-                textDecoration: "none",
-                transition: "all 0.15s ease",
-              }}
               title="Export Industry 4.0 Asset Administration Shell (.aasx)"
             >
               <DownloadIcon size={16} style={{ color: "#a855f7", flexShrink: 0 }} />
@@ -230,22 +245,10 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 <div style={{ fontSize: 12, fontWeight: 600 }}>Asset Shell</div>
                 <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.aasx twin</div>
               </div>
-            </a>
-            <a
+            </ExportTile>
+            <ExportTile
               href={getPackageOkhExportUrl(name, version)}
               download
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text-primary)",
-                textDecoration: "none",
-                transition: "all 0.15s ease",
-              }}
               title="Export Open Know-How hardware manifest (.okh.json)"
             >
               <PackageIcon size={16} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
@@ -253,22 +256,11 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 <div style={{ fontSize: 12, fontWeight: 600 }}>Hardware</div>
                 <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.okh.json</div>
               </div>
-            </a>
-            <a
+            </ExportTile>
+            <ExportTile
               href={getPackageSalsaIndexUrl(name, version)}
               download
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
-                border: "1px solid var(--color-border)",
-                color: hasSalsaIndex ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)",
-                textDecoration: "none",
-                transition: "all 0.15s ease",
-              }}
+              $activeColor={hasSalsaIndex ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)"}
               title={
                 hasSalsaIndex
                   ? "Download pre-indexed Salsa query database for instant WASM IDE indexing"
@@ -280,7 +272,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 <div style={{ fontSize: 12, fontWeight: 600 }}>Salsa DB</div>
                 <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.db index</div>
               </div>
-            </a>
+            </ExportTile>
           </div>
         </MetaBlock>
       )}
@@ -512,7 +504,8 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {packageOwner && (
-            <span
+            <Link
+              to={`/${packageOwner}`}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -523,6 +516,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
+                textDecoration: "none",
               }}
             >
               <PeopleIcon size={12} />
@@ -530,11 +524,12 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
               <Label variant="accent" style={{ fontSize: 9, padding: "0 4px" }}>
                 owner
               </Label>
-            </span>
+            </Link>
           )}
           {collaborators.map((c) => (
-            <span
+            <Link
               key={c.username}
+              to={`/${c.username}`}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -545,6 +540,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
+                textDecoration: "none",
               }}
             >
               <PeopleIcon size={12} />
@@ -552,7 +548,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
               <Label variant="secondary" style={{ fontSize: 9, padding: "0 4px" }}>
                 {c.permission}
               </Label>
-            </span>
+            </Link>
           ))}
           {!packageOwner && collaborators.length === 0 && (
             <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>

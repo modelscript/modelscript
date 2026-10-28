@@ -24,7 +24,10 @@ export interface GitServerOptions {
 
 export function gitServerRouter(database: LibraryDatabase, options?: GitServerOptions): Router {
   const router = createRouter();
-  const baseDir = options?.reposDir || process.env["GIT_REPOS_DIR"] || path.join(process.cwd(), "data", "git-repos");
+  const baseDir =
+    options?.reposDir ||
+    process.env["GIT_REPOS_DIR"] ||
+    path.join(process.env["DATA_DIR"] || database.dbDir || path.join(process.cwd(), "data"), "git-repos");
 
   if (!fs.existsSync(baseDir)) {
     fs.mkdirSync(baseDir, { recursive: true });

@@ -33,7 +33,7 @@ const feature: MegaMenuFeature = {
 const footerLinks: MegaMenuFooterLink[] = [
   { label: "All industries", href: "/industries/", icon: "globe" },
   { label: `Browse all ${LANGUAGE_COUNT} languages & formats`, href: "/languages/overview", icon: "layers" },
-  { label: "Try it in the Playground", href: "https://modelscript.org/playground", icon: "terminal" },
+  { label: "Try it in the Playground", href: "/playground", icon: "terminal", target: "_self" },
 ];
 </script>
 

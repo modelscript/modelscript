@@ -131,27 +131,35 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
               </Box>
             )}
 
-            <Box display="flex" gap={2} mt={2}>
-              <ActionButton
-                $variant="primary"
-                onClick={() => {
-                  setActiveReportToResolve(report);
-                  setModResolutionStatus("resolved");
-                  setModResolutionAction(report.post_id ? "delete_post" : "none");
-                }}
-              >
-                Resolve / Action...
-              </ActionButton>
-              <ActionButton
-                $variant="secondary"
-                onClick={() => {
-                  setActiveReportToResolve(report);
-                  setModResolutionStatus("dismissed");
-                  setModResolutionAction("none");
-                }}
-              >
-                Dismiss
-              </ActionButton>
+            <Box display="flex" gap={2} mt={2} alignItems="center">
+              {report.status === "pending" ? (
+                <>
+                  <ActionButton
+                    $variant="primary"
+                    onClick={() => {
+                      setActiveReportToResolve(report);
+                      setModResolutionStatus("resolved");
+                      setModResolutionAction(report.post_id ? "delete_post" : "none");
+                    }}
+                  >
+                    Resolve / Action...
+                  </ActionButton>
+                  <ActionButton
+                    $variant="secondary"
+                    onClick={() => {
+                      setActiveReportToResolve(report);
+                      setModResolutionStatus("dismissed");
+                      setModResolutionAction("none");
+                    }}
+                  >
+                    Dismiss
+                  </ActionButton>
+                </>
+              ) : (
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                  Status: <strong style={{ textTransform: "capitalize" }}>{report.status}</strong>
+                </span>
+              )}
               {report.post_id && (
                 <ActionButton $variant="danger" onClick={() => onDeletePost(report.post_id!)} disabled={loading}>
                   <TrashIcon size={14} />

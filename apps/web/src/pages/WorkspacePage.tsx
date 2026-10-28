@@ -21,10 +21,8 @@ export default function WorkspacePage() {
 
   const basePath = `/repos/${provider}/${namespace}/${project}`;
 
-  const currentTab =
-    location.pathname === basePath || location.pathname === `${basePath}/`
-      ? "code"
-      : location.pathname.split("/").pop();
+  const normalizedPathname = location.pathname.replace(/\/+$/, "");
+  const currentTab = normalizedPathname === basePath ? "code" : normalizedPathname.split("/").pop() || "code";
 
   useEffect(() => {
     async function load() {
@@ -59,7 +57,13 @@ export default function WorkspacePage() {
 
   return (
     <Box>
-      <WorkspaceHeader namespace={namespace!} project={project!} basePath={basePath} currentTab={currentTab} />
+      <WorkspaceHeader
+        namespace={namespace!}
+        project={project!}
+        basePath={basePath}
+        currentTab={currentTab}
+        repo={repo}
+      />
 
       <Box style={{ paddingTop: "16px", paddingBottom: "24px" }}>
         <Box maxWidth="1280px" mx="auto" px={4}>

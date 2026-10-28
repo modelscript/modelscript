@@ -18,9 +18,9 @@ export const PackageIcon: React.FC<PackageIconProps> = ({ name, version }) => {
     return (
       <Box
         sx={{
-          width: 44,
-          height: 44,
-          borderRadius: "10px",
+          width: 40,
+          height: 40,
+          borderRadius: "8px",
           background: "var(--gradient-icon-box)",
           border: "1px solid var(--gradient-icon-box-border)",
           display: "flex",

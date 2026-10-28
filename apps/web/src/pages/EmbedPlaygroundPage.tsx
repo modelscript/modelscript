@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { LinkExternalIcon } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import styled from "styled-components";
 import { getArtifactView } from "../api";
@@ -18,8 +18,9 @@ import { safeJsonParse } from "../util/json";
 import { useOembedDiscovery, usePageTitle } from "../util/title";
 
 const EmbedContainer = styled.div`
-  width: 100vw;
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
   position: relative;
   overflow: hidden;
   background-color: var(--color-canvas-default, #0d1117);
@@ -96,9 +97,17 @@ export const EmbedPlaygroundPage: React.FC = () => {
   useOembedDiscovery(typeof window !== "undefined" ? window.location.href : undefined, embedTitle);
 
   const [showScrollHint, setShowScrollHint] = useState<boolean>(false);
+  const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(0);
+  const [externalParams, setExternalParams] = useState<Record<string, string | number | boolean> | undefined>(
+    undefined,
+  );
   const scrollHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+  const zoomMode = payload?.zoomMode || initialSearchParams.get("zoomMode") || "ctrl-wheel";
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (zoomMode === "always") return;
     if (!e.ctrlKey && !e.metaKey) {
       setShowScrollHint(true);
       if (scrollHintTimeoutRef.current) {
@@ -108,7 +117,7 @@ export const EmbedPlaygroundPage: React.FC = () => {
         setShowScrollHint(false);
       }, 1500);
     }
-  }, []);
+  };
 
   useEffect(() => {
     return () => {
@@ -118,16 +127,171 @@ export const EmbedPlaygroundPage: React.FC = () => {
     };
   }, []);
 
+  // Bidirectional postMessage RPC bridge with parent host page (@modelscript/embed)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleMessage = (ev: MessageEvent) => {
+      if (!ev.data || typeof ev.data !== "object" || typeof ev.data.type !== "string") return;
+      const msg = ev.data;
+      switch (msg.type) {
+        case "SET_CODE":
+          if (typeof msg.code === "string") {
+            setCurrentCode(msg.code);
+          }
+          break;
+        case "SET_VIEW":
+          if (typeof msg.view === "string") {
+            setPayload((prev: any) => ({ ...(prev || { v: 1 }), view: msg.view }));
+          }
+          break;
+        case "SET_ANCHOR":
+          if (msg.anchor && typeof msg.anchor === "object") {
+            setPayload((prev: any) => ({ ...(prev || { v: 1 }), anchor: msg.anchor }));
+          }
+          break;
+        case "SET_ZOOM_MODE":
+          if (typeof msg.zoomMode === "string") {
+            setPayload((prev: any) => ({ ...(prev || { v: 1 }), zoomMode: msg.zoomMode }));
+          }
+          break;
+        case "SET_THEME":
+          if (msg.theme === "dark" || msg.theme === "light") {
+            document.documentElement.setAttribute("data-color-mode", msg.theme);
+            document.documentElement.setAttribute("data-theme", msg.theme);
+          }
+          break;
+        case "SET_PARAM":
+          if (typeof msg.name === "string" && msg.value !== undefined) {
+            setExternalParams((prev) => ({ ...(prev || {}), [msg.name]: msg.value }));
+          }
+          break;
+        case "SET_PARAMETERS":
+          if (msg.params && typeof msg.params === "object") {
+            setExternalParams((prev) => ({ ...(prev || {}), ...msg.params }));
+            setPayload((prev: any) => ({ ...(prev || { v: 1 }), params: msg.params }));
+          }
+          break;
+        case "TRIGGER_SIMULATE":
+          setSimulateTriggerCount((c) => c + 1);
+          break;
+        case "REQUEST_EXPORT_SVG": {
+          const svgEl = containerRef.current?.querySelector("svg");
+          if (svgEl && window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { namespace: "modelscript-embed", type: "EXPORTED_SVG", svg: svgEl.outerHTML },
+              "*",
+            );
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        {
+          namespace: "modelscript-embed",
+          type: "EMBED_READY",
+          capabilities: [
+            "SET_CODE",
+            "SET_VIEW",
+            "SET_THEME",
+            "SET_ANCHOR",
+            "SET_ZOOM_MODE",
+            "SET_PARAM",
+            "SET_PARAMETERS",
+            "TRIGGER_SIMULATE",
+            "REQUEST_EXPORT_SVG",
+          ],
+        },
+        "*",
+      );
+    }
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, []);
+
+  const handleCodeChange = (nextCode: string) => {
+    setCurrentCode(nextCode);
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      window.parent.postMessage({ namespace: "modelscript-embed", type: "CODE_CHANGED", code: nextCode }, "*");
+    }
+  };
+
+  const handleAnchorClick = (anchor: { elementId: string; kind: "component" }) => {
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      window.parent.postMessage({ namespace: "modelscript-embed", type: "ANCHOR_CLICKED", anchor }, "*");
+    }
+  };
+
+  const handleSimulationStatus = (status: string, data?: unknown) => {
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      window.parent.postMessage({ namespace: "modelscript-embed", type: "SIMULATION_STATUS", status }, "*");
+      if (status === "completed" && data) {
+        window.parent.postMessage({ namespace: "modelscript-embed", type: "SIMULATION_RESULTS", results: data }, "*");
+      }
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams(location.search);
-    const fromArtifact = params.get("fromArtifact");
+    let fromArtifact = params.get("fromArtifact");
+    const embedToken = params.get("embed_token");
+    const morselId = params.get("morsel");
     const sourceParam = params.get("source");
     const langParam = params.get("lang") || params.get("dialect") || params.get("language");
     const titleParam = params.get("title");
 
+    // Support #m=artifact-<id> emitted by oEmbed for social post embeds
+    if (!fromArtifact && location.hash) {
+      const artifactHashMatch = location.hash.match(/m=artifact-([a-zA-Z0-9_-]+)/);
+      if (artifactHashMatch?.[1]) {
+        fromArtifact = artifactHashMatch[1];
+      }
+    }
+
+    // 0. Check ?morsel=<id> server-side short-link snippet storage
+    if (morselId) {
+      (async () => {
+        try {
+          const res = await fetch(`/api/v1/morsels/${encodeURIComponent(morselId)}`);
+          if (!res.ok || cancelled) return;
+          const data = await res.json();
+          if (cancelled || !data?.code) return;
+          const detectedLang = data.dialect || langParam || "modelica";
+          const resolvedTitle = data.title || titleParam || "Shared Engineering Model";
+          setCurrentCode(data.code);
+          setPayload({
+            ...(data.payload || {}),
+            v: 1,
+            lang: detectedLang,
+            code: data.code,
+            title: resolvedTitle,
+            view: data.view || params.get("view") || "diagram",
+          });
+          setTargetInfo({
+            target: "playground",
+            url: `/playground?morsel=${encodeURIComponent(morselId)}`,
+          });
+        } catch {
+          // Ignore fetch failure in offline fallback
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     // 1. Check URL hash (#m=...)
-    if (location.hash && location.hash.length > 1) {
+    if (location.hash && location.hash.length > 1 && !location.hash.includes("m=artifact-")) {
       const p = decompressMorselPayload(location.hash);
       if (p && p.code) {
         const detectedLang = p.lang || langParam || inferDialectFromFilename(p.title || titleParam) || "modelica";
@@ -174,11 +338,11 @@ export const EmbedPlaygroundPage: React.FC = () => {
       return;
     }
 
-    // 3. Check ?fromArtifact=<id>
+    // 3. Check ?fromArtifact=<id> (or #m=artifact-<id>)
     if (fromArtifact) {
       (async () => {
         try {
-          const res = await getArtifactView(fromArtifact);
+          const res = await getArtifactView(fromArtifact, embedToken);
           if (cancelled) return;
           const art = res?.artifactView || res?.artifact_view || res;
           if (!art) return;
@@ -270,15 +434,20 @@ export const EmbedPlaygroundPage: React.FC = () => {
     undefined;
 
   return (
-    <EmbedContainer onWheel={handleWheel}>
+    <EmbedContainer ref={containerRef} onWheel={handleWheel}>
       <MorselEditor
         dataUrl={null}
         initialCode={currentCode}
         embed={true}
         showParameterRibbon={showRibbon}
         initialDialect={resolvedDialect as any}
-        initialView={payload?.view || (searchParams.get("view") as any)}
+        initialView={payload?.view || (searchParams.get("view") as any) || "diagram"}
         initialAnchor={payload?.anchor}
+        simulateTriggerCount={simulateTriggerCount}
+        externalParams={externalParams}
+        onCodeChange={handleCodeChange}
+        onAnchorClick={handleAnchorClick}
+        onSimulationStatus={handleSimulationStatus}
       />
       <ScrollHintBadge $visible={showScrollHint}>{isMac ? "Hold ⌘ to zoom" : "Hold Ctrl to zoom"}</ScrollHintBadge>
       <WatermarkPill

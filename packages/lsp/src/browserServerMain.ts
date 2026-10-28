@@ -616,6 +616,7 @@ globalThis.getReadyMessage = getReadyMessage;
 
 // ── Multi-Body generation from STEP ───────────────────────────────
 globalThis.documentLSPBridges = validationService.documentLSPBridges;
+(globalThis as any).documents = documents;
 
 /** Global QueryEngines for cross-file dependency tracking and memoization */
 // Global Query Engines are now managed by workspaceManager
@@ -1631,7 +1632,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     globalLanguageRegistry.register({
       id: "swmm",
       name: "SWMM",
-      extensions: [".inp"],
+      extensions: [".swmm", ".inp"],
       languageDef: swmmLanguage,
       workspaceIndex: new SwmmWorkspaceIndex(),
       customHandlers: {
@@ -2079,7 +2080,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     globalLanguageRegistry.register({
       id: "jsbsim",
       name: "JSBSim Flight Dynamics",
-      extensions: [".xml"],
+      extensions: [".jsbsim", ".xml"],
       languageDef: jsbsimLanguage,
       workspaceIndex: new JsbsimWorkspaceIndex(),
       customHandlers: {
@@ -2629,7 +2630,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     globalLanguageRegistry.register({
       id: "epanet",
       name: "EPANET",
-      extensions: [".inp", ".net"],
+      extensions: [".epanet", ".inp", ".net"],
       languageDef: epanetLanguage,
       workspaceIndex: epanetWsIndex,
       customHandlers: {

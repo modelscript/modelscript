@@ -54,10 +54,70 @@ export const getUserBillingSummary = async (): Promise<UserBillingSummary> => {
   return data;
 };
 
+export const createPaymentIntent = async (
+  amount: number,
+): Promise<{ id: string; clientSecret: string; amount: number; currency: string; status: string }> => {
+  const { data } = await api.post("/billing/payment-intent", { amount });
+  return data;
+};
+
 export const topUpCredits = async (
   amount: number,
   paymentMethod = "sandbox_card",
+  paymentIntentId?: string,
 ): Promise<{ success: boolean; amountAdded: number; newBalance: number }> => {
-  const { data } = await api.post("/billing/topup", { amount, paymentMethod });
+  const { data } = await api.post("/billing/topup", {
+    amount,
+    paymentMethod,
+    ...(paymentIntentId ? { paymentIntentId } : {}),
+  });
+  return data;
+};
+
+export const createCheckoutSession = async (
+  amount: number,
+  orgId?: number,
+): Promise<{
+  success: boolean;
+  sessionId: string;
+  checkoutUrl: string;
+  amountCredits: number;
+  amountCents: number;
+  automaticTax: boolean;
+}> => {
+  const { data } = await api.post("/billing/checkout-session", {
+    amount,
+    ...(orgId ? { orgId } : {}),
+  });
+  return data;
+};
+
+export const getInvoiceDownloadUrl = (txId: number | string): string => {
+  return `/api/v1/billing/invoices/${encodeURIComponent(String(txId))}`;
+};
+
+export const getOrgWallet = async (
+  orgId: number,
+): Promise<{
+  orgId: number;
+  name: string;
+  slug: string;
+  balance: number;
+  totalSpent: number;
+  transactions: CreditTransaction[];
+}> => {
+  const { data } = await api.get(`/billing/orgs/${orgId}/wallet`);
+  return data;
+};
+
+export const topUpOrgCredits = async (
+  orgId: number,
+  amount: number,
+  paymentIntentId?: string,
+): Promise<{ success: boolean; orgId: number; amountAdded: number; newBalance: number }> => {
+  const { data } = await api.post(`/billing/orgs/${orgId}/topup`, {
+    amount,
+    ...(paymentIntentId ? { paymentIntentId } : {}),
+  });
   return data;
 };

@@ -14,6 +14,7 @@ import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
+import { verifySignedEmbedToken } from "./oembed.js";
 
 const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^[\]\r\n]*)\])?\{([^{}\r\n]*)\}/g;
 
@@ -801,37 +802,37 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/posts/:id/view", optionalAuth, (req: Request, res: Response) => {
     const postId = Number(req.params["id"]);
+    if (!Number.isFinite(postId) || postId <= 0) {
+      res.status(400).json({ error: "Invalid post ID" });
+      return;
+    }
     try {
-      // Check CDN headers first (Cloudflare, AWS CloudFront, Nginx reverse proxy)
-      const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
-      const cfRegion = (req.headers["cf-region-code"] || req.headers["cf-region"]) as string | undefined;
-      const xCountry = (req.headers["x-country-code"] || req.headers["x-country"]) as string | undefined;
-      const xRegion = (req.headers["x-region-code"] || req.headers["x-region"]) as string | undefined;
-
-      let countryCode = (cfCountry && cfCountry !== "XX" ? cfCountry : undefined) || xCountry;
-      let regionCode = cfRegion || xRegion;
-
-      if (!countryCode) {
-        const ip = locationService.extractIp(req);
-        const loc = locationService.lookupIp(ip);
-        if (loc) {
-          countryCode = loc.countryCode;
-          regionCode = loc.regionCode;
-        }
+      const ua = req.headers["user-agent"] as string | undefined;
+      if (locationService.isBotUserAgent(ua)) {
+        res.json({ success: true, counted: false, ignored: "bot" });
+        return;
       }
 
-      if (!countryCode && req.user) {
+      if (!locationService.checkAndMarkUniqueHit(req, `post:${postId}`)) {
+        res.json({ success: true, counted: false, deduplicated: true });
+        return;
+      }
+
+      let profileLocation: string | undefined;
+      if (req.user) {
         const user = database.getUserById(req.user.id);
         if (user) {
           const profile = database.getFullProfileByUsername(user.username);
           if (profile?.location) {
-            countryCode = profile.location.toUpperCase();
+            profileLocation = profile.location;
           }
         }
       }
 
+      const { countryCode, regionCode } = locationService.resolveRequestGeo(req, profileLocation);
+
       database.incrementPostView(postId, countryCode, regionCode);
-      res.json({ success: true });
+      res.json({ success: true, counted: true });
     } catch {
       res.status(500).json({ error: "Failed to increment view" });
     }
@@ -1104,11 +1105,43 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.get("/artifact-views/:id", optionalAuth, (req: Request, res: Response) => {
     const id = Number(req.params["id"]);
     try {
+      const embedToken =
+        (typeof req.query["embed_token"] === "string" ? req.query["embed_token"] : undefined) ||
+        (typeof req.headers["x-embed-token"] === "string" ? req.headers["x-embed-token"] : undefined);
+
+      if (embedToken) {
+        const verification = verifySignedEmbedToken(embedToken, String(id), req.headers.origin);
+        if (!verification.valid) {
+          res.status(403).json({ error: verification.reason || "Invalid embed token" });
+          return;
+        }
+      }
+
       const artifactView = database.getArtifactView(id);
       if (!artifactView) {
         res.status(404).json({ error: "Artifact view not found" });
         return;
       }
+
+      // Enforce private artifact visibility unless owner, admin, or valid embed_token
+      let isPrivate = false;
+      try {
+        const cfg =
+          typeof artifactView.view_config === "string"
+            ? (JSON.parse(artifactView.view_config) as Record<string, unknown>)
+            : (artifactView.view_config as Record<string, unknown> | undefined);
+        if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
+          isPrivate = true;
+        }
+      } catch {}
+
+      const ownerId = artifactView.creator_id ?? artifactView.author_id;
+      const isOwnerOrAdmin = Boolean(req.user && (req.user.id === ownerId || req.user.role === "admin"));
+      if (isPrivate && !isOwnerOrAdmin && !embedToken) {
+        res.status(403).json({ error: "Forbidden: Private artifact requires authentication or a signed embed token" });
+        return;
+      }
+
       res.json({ artifactView });
     } catch {
       res.status(500).json({ error: "Failed to fetch artifact view" });
@@ -1555,8 +1588,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
             console.error("Failed to fetch og:image for RSS avatar", e);
           }
         }
-        avatarUrl =
-          avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=random&color=fff`;
+        avatarUrl = avatarUrl || "";
 
         const feedId = database.createRssProfile(targetUrl, title, description, siteUrl, avatarUrl, customUsername);
         void feedId;

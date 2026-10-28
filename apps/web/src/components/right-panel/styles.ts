@@ -62,13 +62,15 @@ export const AiSearchBar = styled.div`
   box-sizing: border-box;
   user-select: none;
 
-  &:hover {
+  &:hover,
+  &:focus-visible {
     border-color: rgba(139, 92, 246, 0.55);
     background: rgba(255, 255, 255, 0.07);
     box-shadow:
       0 0 16px rgba(139, 92, 246, 0.22),
       0 0 0 1px rgba(139, 92, 246, 0.3);
     color: var(--color-text-primary);
+    outline: none;
   }
 
   .sparkle {

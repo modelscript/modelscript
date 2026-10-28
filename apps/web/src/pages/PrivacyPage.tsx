@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, ShieldCheckIcon } from "@primer/octicons-react";
-import { Link } from "react-router-dom";
+import { ArrowLeftIcon, LawIcon, ShieldCheckIcon } from "@primer/octicons-react";
+import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { usePageTitle } from "../util/title";
 
@@ -33,6 +33,37 @@ const Header = styled.div`
   margin-bottom: 36px;
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 24px;
+`;
+
+const DocSwitcher = styled.nav`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border);
+  margin-bottom: 18px;
+`;
+
+const DocPill = styled(Link)<{ $active?: boolean | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
+  background: ${(props) => (props.$active ? "var(--color-bg-card)" : "transparent")};
+  box-shadow: ${(props) => (props.$active ? "0 1px 3px rgba(0, 0, 0, 0.12)" : "none")};
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--color-text-heading);
+    text-decoration: none;
+  }
 `;
 
 const Title = styled.h1`
@@ -83,14 +114,31 @@ const Section = styled.section`
 
 export default function PrivacyPage() {
   usePageTitle("Privacy Policy");
+  const navigate = useNavigate();
 
   return (
     <Container>
-      <BackLink to="/">
+      <BackLink
+        to="/"
+        onClick={(e) => {
+          if (window.history.length > 1) {
+            e.preventDefault();
+            navigate(-1);
+          }
+        }}
+      >
         <ArrowLeftIcon size={16} /> Back to ModelScript
       </BackLink>
 
       <Header>
+        <DocSwitcher aria-label="Legal documents">
+          <DocPill to="/terms" replace>
+            <LawIcon size={14} /> Terms of Service
+          </DocPill>
+          <DocPill to="/privacy" replace $active aria-current="page">
+            <ShieldCheckIcon size={14} /> Privacy Policy
+          </DocPill>
+        </DocSwitcher>
         <Title>
           <ShieldCheckIcon size={32} /> Privacy Policy
         </Title>

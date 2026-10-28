@@ -79,7 +79,7 @@ export const FilterChip = styled.button<{ $isSelected: boolean; $activeColor?: s
   transition: all 0.15s ease;
 
   &:hover {
-    color: #ffffff;
+    color: var(--color-text-primary);
     border-color: rgba(255, 255, 255, 0.2);
   }
 `;

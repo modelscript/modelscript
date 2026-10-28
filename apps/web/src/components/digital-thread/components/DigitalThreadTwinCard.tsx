@@ -189,18 +189,18 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
               size="small"
               variant="invisible"
               leadingVisual={CodeIcon}
-              onClick={() => onJumpToClass(modelicaSide.name.split(".").pop() || modelicaSide.name)}
+              onClick={() => onJumpToClass(modelicaSide.name)}
             >
               View Modelica Code
             </Button>
           )}
 
-          {sysmlSide && (
+          {sysmlSide?.resourcePath && (
             <Button
               size="small"
               variant="invisible"
               leadingVisual={LinkExternalIcon}
-              onClick={() => onJumpToArtifact(sysmlSide.resourcePath || "sysml/chassis.sysml")}
+              onClick={() => onJumpToArtifact(sysmlSide.resourcePath!)}
             >
               Open SysML Architecture
             </Button>

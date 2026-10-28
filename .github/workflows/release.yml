@@ -181,18 +181,11 @@ jobs:
           external_repository: modelscript-ide/modelscript-ide.github.io
           publish_dir: ./apps/ide/dist/static
 
-      # --- Deploy Unified Site & Docs ---
+      # --- Build Unified Site & Docs (bundled into web/appliance Docker images) ---
       - name: Build PDF Manual
         run: npm run build:pdf --workspace=@modelscript/docs
       - name: Build Docs
         run: npx nx build @modelscript/docs
-      - name: Deploy Site (modelscript.org)
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
-          external_repository: modelscript/modelscript.github.io
-          publish_dir: ./apps/docs/docs/.vitepress/dist
-          cname: modelscript.org
 
       # --- Publish Docker images to GHCR ---
       - uses: docker/setup-buildx-action@v3

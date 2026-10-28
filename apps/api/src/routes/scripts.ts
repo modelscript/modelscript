@@ -227,6 +227,21 @@ export function scriptsRouter(db: LibraryDatabase) {
           return res.status(403).json({ error: "Not authorized to retry this job" });
         }
         const meta = job.metadata ? JSON.parse(job.metadata) : {};
+        const effectiveUserId = job.user_id ?? reqUser?.id ?? null;
+        const profileId = (meta.profile as string | undefined) || job.compute_profile || "standard";
+
+        if (effectiveUserId) {
+          const quota = checkComputeQuota(effectiveUserId, profileId, db, 0.05);
+          if (!quota.allowed) {
+            return res.status(402).json({
+              error: "Payment Required",
+              message: quota.reason,
+              balance: quota.userBalance,
+              required: quota.estimatedCost,
+            });
+          }
+        }
+
         const newJobId = db.createJob(
           job.name,
           "PENDING",
@@ -234,8 +249,29 @@ export function scriptsRouter(db: LibraryDatabase) {
           job.trigger_source || "api",
           job.repository_id ?? null,
           meta,
-          job.user_id ?? reqUser?.id ?? null,
+          effectiveUserId,
         );
+
+        if (effectiveUserId) {
+          const quota = checkComputeQuota(effectiveUserId, profileId, db, 0.05);
+          const holdRes = db.holdUserCredits(
+            effectiveUserId,
+            quota.estimatedCost,
+            newJobId,
+            `Escrow hold for retried job ${job.name}`,
+            { previousJobId: job.id, profile: profileId },
+          );
+          if (!holdRes.success) {
+            db.updateJobStatus(newJobId, "FAILED");
+            return res.status(402).json({
+              error: "Payment Required",
+              message: holdRes.reason,
+              balance: holdRes.newBalance,
+              required: quota.estimatedCost,
+            });
+          }
+        }
+
         return res.status(202).json({
           success: true,
           jobId: newJobId.toString(),
@@ -248,6 +284,35 @@ export function scriptsRouter(db: LibraryDatabase) {
       if (cloudJob) {
         if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
           return res.status(403).json({ error: "Not authorized to retry this job" });
+        }
+        const effectiveUserId = cloudJob.userId ?? reqUser?.id ?? null;
+        if (effectiveUserId) {
+          const quota = checkComputeQuota(effectiveUserId, cloudJob.profile || "standard", db, 0.05);
+          if (!quota.allowed) {
+            return res.status(402).json({
+              error: "Payment Required",
+              message: quota.reason,
+              balance: quota.userBalance,
+              required: quota.estimatedCost,
+            });
+          }
+          if (cloudJob.dbJobId) {
+            const holdRes = db.holdUserCredits(
+              effectiveUserId,
+              quota.estimatedCost,
+              cloudJob.dbJobId,
+              `Escrow hold for retried cloud job ${cloudJob.name}`,
+              { cloudJobId: cloudJob.jobId, profile: cloudJob.profile || "standard" },
+            );
+            if (!holdRes.success) {
+              return res.status(402).json({
+                error: "Payment Required",
+                message: holdRes.reason,
+                balance: holdRes.newBalance,
+                required: quota.estimatedCost,
+              });
+            }
+          }
         }
         cloudJob.status = "queued";
         cloudJob.error = undefined;

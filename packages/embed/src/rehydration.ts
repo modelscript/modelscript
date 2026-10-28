@@ -165,19 +165,19 @@ export class PackageRehydrationCache {
   }
 
   /**
-   * Loads a package from cache or streams from CDN, populating cache on miss.
+   * Loads a package from cache or streams from local/intranet package API, populating cache on miss.
    */
   public static async loadOrFetch(
     pkgName: string,
     version: string,
-    cdnBaseUrl = "https://cdn.modelscript.org/packages",
+    cdnBaseUrl = "/api/v1/packages",
   ): Promise<ArrayBuffer> {
     const cached = await this.getPackage(pkgName, version);
     if (cached) {
       return cached;
     }
 
-    const url = `${cdnBaseUrl}/${pkgName}/${version}/symbols.bin`;
+    const url = `${cdnBaseUrl.replace(/\/+$/, "")}/${pkgName}/${version}/symbols.bin`;
     const resp = await fetch(url);
     if (!resp.ok) {
       throw new Error(`Failed to fetch package ${pkgName}@${version} from ${url} (status: ${resp.status})`);
@@ -186,4 +186,95 @@ export class PackageRehydrationCache {
     await this.setPackage(pkgName, version, buffer);
     return buffer;
   }
+}
+
+const SUPPORTED_REHYDRATION_LANGUAGES = new Set([
+  "modelica",
+  "sysml2",
+  "step",
+  "scad",
+  "pscad",
+  "olga",
+  "csv",
+  "owl2",
+  "gensys",
+  "simpack",
+  "spice",
+  "fmu",
+  "ssp",
+  "cfd",
+  "fea",
+  "simulink",
+  "urdf",
+  "plcopen",
+  "opendss",
+]);
+
+/**
+ * Progressive-enhancement DOM rehydration helper for intranet documentation & wikis.
+ * Scans a DOM subtree for static `<pre><code class="language-modelica">...</code></pre>` blocks
+ * or `<svg data-modelscript-embed>` placeholders and upgrades them into interactive `<modelscript-morsel>` elements.
+ */
+export function rehydrateEmbeds(root?: ParentNode, options?: { embedOrigin?: string; view?: string }): number {
+  const targetRoot = root ?? (typeof document !== "undefined" ? document : null);
+  if (!targetRoot || typeof document === "undefined") return 0;
+
+  let upgraded = 0;
+
+  // 1. Upgrade <pre><code class="language-<dialect>"> blocks with data-modelscript-morsel or matching dialect
+  const codeNodes = Array.from(
+    targetRoot.querySelectorAll("pre > code[class*='language-'], [data-modelscript-morsel]"),
+  );
+  for (const node of codeNodes) {
+    const el = node as HTMLElement;
+    const classAttr = el.getAttribute("class") || "";
+    const langMatch = classAttr.match(/language-([a-z0-9_-]+)/i);
+    const dialect = (
+      el.getAttribute("data-dialect") || (langMatch?.[1] ? langMatch[1].toLowerCase() : "modelica")
+    ).toLowerCase();
+
+    if (!el.hasAttribute("data-modelscript-morsel") && !SUPPORTED_REHYDRATION_LANGUAGES.has(dialect)) {
+      continue;
+    }
+
+    const code = el.getAttribute("data-code") || el.textContent?.trim() || "";
+    if (!code) continue;
+
+    const viewer = document.createElement("modelscript-morsel");
+    viewer.setAttribute("dialect", dialect);
+    viewer.setAttribute("view", el.getAttribute("data-view") || options?.view || "diagram");
+    viewer.setAttribute("code", code);
+    if (options?.embedOrigin) {
+      viewer.setAttribute("origin", options.embedOrigin);
+    }
+    const anchor = el.getAttribute("data-anchor");
+    if (anchor) viewer.setAttribute("anchor", anchor);
+
+    const replaceTarget = el.parentElement?.tagName === "PRE" ? el.parentElement : el;
+    replaceTarget.replaceWith(viewer);
+    upgraded++;
+  }
+
+  // 2. Upgrade static <svg data-modelscript-embed> diagrams
+  const svgNodes = Array.from(targetRoot.querySelectorAll("svg[data-modelscript-embed]"));
+  for (const svg of svgNodes) {
+    const code = svg.getAttribute("data-code") || "";
+    const morselId = svg.getAttribute("data-morsel-id") || "";
+    const artifactId = svg.getAttribute("data-artifact-id") || "";
+    if (!code && !morselId && !artifactId) continue;
+
+    const viewer = document.createElement("modelscript-morsel");
+    viewer.setAttribute("dialect", svg.getAttribute("data-dialect") || "modelica");
+    viewer.setAttribute("view", svg.getAttribute("data-view") || options?.view || "diagram");
+    if (code) viewer.setAttribute("code", code);
+    if (morselId) viewer.setAttribute("morsel-id", morselId);
+    if (artifactId) viewer.setAttribute("artifact-id", artifactId);
+    if (options?.embedOrigin) {
+      viewer.setAttribute("origin", options.embedOrigin);
+    }
+    svg.replaceWith(viewer);
+    upgraded++;
+  }
+
+  return upgraded;
 }

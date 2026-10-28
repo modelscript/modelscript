@@ -6,15 +6,27 @@ import React, { useEffect, useState } from "react";
 import { createBot, deleteBot, getBots } from "../../../api";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
+import { useToast } from "../../../components/ToastContext";
 import { safeCssImageUrl } from "../../../util/url";
-import { DetailSubtitle, DetailTitle, FormInput, FormLabel, Header, PrimaryButton } from "../settingsStyles";
+import {
+  DangerButton,
+  DetailSubtitle,
+  DetailTitle,
+  FormInput,
+  FormLabel,
+  Header,
+  PrimaryButton,
+  SecondaryButton,
+} from "../settingsStyles";
 
 export interface BotsTabProps {
   onBack: () => void;
 }
 
 export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
+  const toast = useToast();
   const [bots, setBots] = useState<any[]>([]);
+  const [confirmingDeleteBotId, setConfirmingDeleteBotId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newBotToken, setNewBotToken] = useState<string | null>(null);
 
@@ -122,16 +134,33 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                       </Text>
                     </Box>
                   </Box>
-                  <CircleIconButton
-                    onClick={async () => {
-                      if (confirm("Are you sure you want to delete this bot?")) {
-                        await deleteBot(bot.id);
-                        setBots(bots.filter((b) => b.id !== bot.id));
-                      }
-                    }}
-                  >
-                    <TrashIcon size={16} color="var(--color-danger-fg)" />
-                  </CircleIconButton>
+                  {confirmingDeleteBotId === bot.id ? (
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <SecondaryButton
+                        type="button"
+                        style={{ padding: "6px 12px", fontSize: "13px" }}
+                        onClick={() => setConfirmingDeleteBotId(null)}
+                      >
+                        Cancel
+                      </SecondaryButton>
+                      <DangerButton
+                        type="button"
+                        style={{ padding: "6px 14px", fontSize: "13px" }}
+                        onClick={async () => {
+                          setConfirmingDeleteBotId(null);
+                          await deleteBot(bot.id);
+                          setBots(bots.filter((b) => b.id !== bot.id));
+                          toast.success(`Bot @${bot.username} deleted.`);
+                        }}
+                      >
+                        Confirm Delete?
+                      </DangerButton>
+                    </Box>
+                  ) : (
+                    <CircleIconButton title="Delete Bot" onClick={() => setConfirmingDeleteBotId(bot.id)}>
+                      <TrashIcon size={16} color="var(--color-danger-fg)" />
+                    </CircleIconButton>
+                  )}
                 </Box>
               ))}
             </Box>
@@ -185,9 +214,34 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                   borderRadius: "4px",
                   fontFamily: "monospace",
                   wordBreak: "break-all",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "8px",
                 }}
               >
-                {newBotToken}
+                <span>{newBotToken}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(newBotToken);
+                    toast.success("Bot token copied to clipboard!");
+                  }}
+                  style={{
+                    background: "var(--color-accent-emphasis)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "6px 12px",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                    fontSize: "13px",
+                    fontFamily: "var(--font-sans, sans-serif)",
+                    flexShrink: 0,
+                  }}
+                >
+                  Copy
+                </button>
               </Box>
             </Box>
           )}

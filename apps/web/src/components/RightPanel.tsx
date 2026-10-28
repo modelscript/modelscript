@@ -181,6 +181,65 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
 
       {location.pathname.startsWith("/repos") && <PopularReposCard popularRepos={popularRepos} />}
 
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "6px",
+          padding: "4px 12px 12px",
+          fontSize: "12px",
+          color: "var(--color-text-muted)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setLegalModal("terms")}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "inherit",
+            fontSize: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          Terms
+        </button>
+        <span>·</span>
+        <button
+          type="button"
+          onClick={() => setLegalModal("privacy")}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "inherit",
+            fontSize: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          Privacy
+        </button>
+        <span>·</span>
+        <button
+          type="button"
+          onClick={() => setLegalModal("cookies")}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "inherit",
+            fontSize: "inherit",
+            cursor: "pointer",
+          }}
+        >
+          Cookies
+        </button>
+        <span>·</span>
+        <span>© 2026 ModelScript</span>
+      </div>
+
       {legalModal && <LegalModal legalModal={legalModal} onClose={() => setLegalModal(null)} />}
 
       {isSimModalOpen && (

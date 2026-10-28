@@ -101,24 +101,25 @@ export function checkComputeQuota(
   profileId: string | undefined,
   database: LibraryDatabase,
   estimatedHours: number = 0.05,
+  orgId?: number | null,
 ): QuotaCheckResult {
   const profile = getComputeProfile(profileId);
-  const userBalance = database.getUserBalance(userId);
+  const effectiveBalance = orgId ? database.getOrgBalance(orgId) : database.getUserBalance(userId);
   const minRequired = profile.costCreditsPerHour * estimatedHours;
 
-  if (userBalance < minRequired) {
+  if (effectiveBalance < minRequired) {
     return {
       allowed: false,
-      userBalance,
+      userBalance: effectiveBalance,
       estimatedCost: minRequired,
-      reason: `Insufficient compute credits. Requires at least ${minRequired.toFixed(1)} cr to dispatch a '${profile.name}' job. Your current balance is ${userBalance.toFixed(1)} cr.`,
+      reason: `Insufficient compute credits. Requires at least ${minRequired.toFixed(1)} cr to dispatch a '${profile.name}' job. Current ${orgId ? "organization " : ""}balance is ${effectiveBalance.toFixed(1)} cr.`,
       profileId: profile.id,
     };
   }
 
   return {
     allowed: true,
-    userBalance,
+    userBalance: effectiveBalance,
     estimatedCost: minRequired,
     profileId: profile.id,
   };

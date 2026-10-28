@@ -34,7 +34,7 @@ const ScriptsListPage: React.FC = () => {
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [domainFilter] = useState<string>("ALL");
+  const [domainFilter, setDomainFilter] = useState<string>("ALL");
 
   const navigate = useNavigate();
 
@@ -159,7 +159,10 @@ const ScriptsListPage: React.FC = () => {
         j.domain.toLowerCase().includes(q);
 
       const matchesStatus = statusFilter === "ALL" || j.status === statusFilter;
-      const matchesDomain = domainFilter === "ALL" || j.domain.toLowerCase() === domainFilter.toLowerCase();
+      const matchesDomain =
+        domainFilter === "ALL" ||
+        j.domain.toLowerCase() === domainFilter.toLowerCase() ||
+        (domainFilter === "MODELICA" && j.domain.toLowerCase() === "simulation");
 
       return matchesSearch && matchesStatus && matchesDomain;
     });
@@ -262,6 +265,8 @@ const ScriptsListPage: React.FC = () => {
             setSearchQuery={setSearchQuery}
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
+            domainFilter={domainFilter}
+            setDomainFilter={setDomainFilter}
             filteredJobs={filteredJobs}
             onInspectJob={(id) => navigate(`/jobs/${id}`)}
             onBrowseTemplates={() => setSearchParams({ tab: "templates" })}

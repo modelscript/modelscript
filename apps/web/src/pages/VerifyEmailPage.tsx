@@ -7,50 +7,23 @@ import styled, { keyframes } from "styled-components";
 import { resendVerificationEmail, verifyEmail } from "../api";
 import { useAuth } from "../AuthContext";
 import { usePageTitle } from "../util/title";
+import {
+  Button,
+  Card,
+  ErrorBanner,
+  FieldGroup,
+  FieldLabel,
+  FooterText,
+  Input,
+  LogoBadge,
+  PageWrapper,
+  Subtitle,
+  Title,
+} from "./login/styles";
 
 const spin = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-`;
-
-const PageWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: calc(100vh - 60px);
-  padding: 40px 16px;
-`;
-
-const Card = styled.div`
-  width: 100%;
-  max-width: 480px;
-  background: var(--surface-overlay, rgba(14, 20, 36, 0.9));
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12));
-  border-radius: var(--radius-xl, 16px);
-  padding: 40px 32px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow:
-    0 20px 48px -12px rgba(0, 0, 0, 0.4),
-    var(--glow-card);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  box-sizing: border-box;
-`;
-
-const LogoBadge = styled.div`
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-lg, 14px);
-  background: var(--surface-hud, rgba(14, 20, 36, 0.65));
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 24px rgba(6, 182, 212, 0.22);
-  margin-bottom: 20px;
 `;
 
 const Spinner = styled.div`
@@ -61,21 +34,6 @@ const Spinner = styled.div`
   border-radius: 50%;
   animation: ${spin} 0.8s linear infinite;
   margin: 20px 0;
-`;
-
-const Title = styled.h1`
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--color-text-heading);
-  margin: 0 0 10px 0;
-  letter-spacing: -0.02em;
-`;
-
-const Description = styled.p`
-  font-size: 14px;
-  color: var(--color-text-muted);
-  margin: 0 0 24px 0;
-  line-height: 1.5;
 `;
 
 const SuccessBadge = styled.div`
@@ -90,57 +48,6 @@ const SuccessBadge = styled.div`
   font-size: 13px;
   font-weight: 600;
   margin-bottom: 20px;
-`;
-
-const ErrorBanner = styled.div`
-  background: var(--status-unstable-bg, rgba(248, 81, 73, 0.1));
-  border: 1px solid var(--status-unstable-border, rgba(248, 81, 73, 0.4));
-  color: var(--status-unstable-fg, #f85149);
-  padding: 12px 16px;
-  border-radius: var(--radius-md, 8px);
-  font-size: 13px;
-  line-height: 1.4;
-  margin-bottom: 20px;
-  width: 100%;
-  box-sizing: border-box;
-`;
-
-const ActionButton = styled.button`
-  height: 44px;
-  background: var(--gradient-cta);
-  color: #ffffff;
-  border: none;
-  border-radius: 9999px;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
-  width: 100%;
-
-  &:hover {
-    opacity: 0.95;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 18px rgba(6, 182, 212, 0.45);
-  }
-`;
-
-const Input = styled.input`
-  height: 44px;
-  padding: 0 14px;
-  background: var(--color-search-bg, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md, 8px);
-  color: var(--color-text-primary);
-  font-size: 14px;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-  margin-bottom: 12px;
-
-  &:focus {
-    border-color: var(--color-accent-cyan, #06b6d4);
-  }
 `;
 
 export default function VerifyEmailPage() {
@@ -158,6 +65,7 @@ export default function VerifyEmailPage() {
   const [resendEmail, setResendEmail] = useState("");
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
+  const [resendError, setResendError] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -191,11 +99,12 @@ export default function VerifyEmailPage() {
     if (!resendEmail) return;
     setResendLoading(true);
     setResendMessage("");
+    setResendError("");
     try {
       const res = await resendVerificationEmail(resendEmail);
       setResendMessage(res.message || "A fresh verification link has been sent to your email.");
     } catch (err: any) {
-      setResendMessage(err?.response?.data?.error || "Failed to resend verification email.");
+      setResendError(err?.response?.data?.error || "Failed to resend verification email.");
     } finally {
       setResendLoading(false);
     }
@@ -203,15 +112,17 @@ export default function VerifyEmailPage() {
 
   return (
     <PageWrapper>
-      <Card>
-        <LogoBadge>
+      <Card style={{ maxWidth: "480px", textAlign: "center" }}>
+        <LogoBadge style={{ width: "56px", height: "56px", marginBottom: "20px" }}>
           <img src="/ms-logo.png" alt="ModelScript" width="34" height="34" />
         </LogoBadge>
 
         {status === "loading" && (
           <>
-            <Title>Verifying Your Email…</Title>
-            <Description>Please wait while we validate your security token and activate compute credits.</Description>
+            <Title style={{ fontSize: "22px", marginBottom: "10px" }}>Verifying Your Email…</Title>
+            <Subtitle style={{ fontSize: "14px", lineHeight: 1.5 }}>
+              Please wait while we validate your security token and activate compute credits.
+            </Subtitle>
             <Spinner />
           </>
         )}
@@ -221,15 +132,15 @@ export default function VerifyEmailPage() {
             <div style={{ color: "#22c55e", marginBottom: "16px" }}>
               <CheckCircleIcon size={48} />
             </div>
-            <Title>Email Verified!</Title>
+            <Title style={{ fontSize: "22px", marginBottom: "10px" }}>Email Verified!</Title>
             <SuccessBadge>
               +{creditsGranted > 0 ? creditsGranted.toFixed(1) : "50.0"} Free Compute Credits Unlocked
             </SuccessBadge>
-            <Description>
+            <Subtitle style={{ fontSize: "14px", lineHeight: 1.5 }}>
               {message} Your account is fully active. You can now publish packages, submit HPC simulation jobs, and
               access cloud engineering workflows.
-            </Description>
-            <ActionButton onClick={() => navigate("/home")}>Go to Dashboard</ActionButton>
+            </Subtitle>
+            <Button onClick={() => navigate("/home")}>Go to Dashboard</Button>
           </>
         )}
 
@@ -238,34 +149,42 @@ export default function VerifyEmailPage() {
             <div style={{ color: "var(--ms-danger)", marginBottom: "16px" }}>
               <XCircleIcon size={48} />
             </div>
-            <Title>Verification Failed</Title>
-            <ErrorBanner>{message}</ErrorBanner>
-            <Description>
+            <Title style={{ fontSize: "22px", marginBottom: "10px" }}>Verification Failed</Title>
+            <ErrorBanner style={{ marginBottom: "20px", justifyContent: "center" }}>{message}</ErrorBanner>
+            <Subtitle style={{ fontSize: "14px", lineHeight: 1.5 }}>
               Need a fresh link? Enter your account email below to resend your verification token:
-            </Description>
+            </Subtitle>
             <form onSubmit={handleResend} style={{ width: "100%", marginBottom: "16px" }}>
-              <Input
-                type="email"
-                placeholder="your.email@organization.com"
-                value={resendEmail}
-                onChange={(e) => setResendEmail(e.target.value)}
-                required
-              />
-              <ActionButton type="submit" disabled={resendLoading}>
+              <FieldGroup style={{ marginBottom: "12px" }}>
+                <FieldLabel htmlFor="verify-resend-email">Account email address</FieldLabel>
+                <Input
+                  id="verify-resend-email"
+                  type="email"
+                  placeholder="your.email@organization.com"
+                  aria-label="Account email address"
+                  value={resendEmail}
+                  onChange={(e) => setResendEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </FieldGroup>
+              <Button type="submit" disabled={resendLoading}>
                 {resendLoading ? "Sending…" : "Resend Verification Link"}
-              </ActionButton>
+              </Button>
+              {resendError && (
+                <ErrorBanner role="alert" style={{ marginTop: "12px", marginBottom: 0 }}>
+                  {resendError}
+                </ErrorBanner>
+              )}
               {resendMessage && (
                 <p style={{ fontSize: "13px", color: "var(--color-accent-cyan)", marginTop: "12px" }}>
                   {resendMessage}
                 </p>
               )}
             </form>
-            <p style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-              Already verified?{" "}
-              <Link to="/login" style={{ color: "var(--color-accent-cyan)" }}>
-                Sign in here
-              </Link>
-            </p>
+            <FooterText style={{ marginTop: "8px", fontSize: "13px" }}>
+              Already verified? <Link to="/login">Sign in here</Link>
+            </FooterText>
           </>
         )}
       </Card>

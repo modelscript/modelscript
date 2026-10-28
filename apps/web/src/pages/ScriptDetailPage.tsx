@@ -16,7 +16,19 @@ import { cancelJob, getJob, getJobLogs, retryJob, type ComputeJob, type ComputeJ
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
+import { parseAnsiLine, renderSpan } from "../components/terminal/AnsiRenderer";
 import { usePageTitle } from "../util/title";
+
+const AnsiRenderer: React.FC<{ text: string }> = ({ text }) => {
+  const lines = text.split("\n");
+  return (
+    <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordWrap: "break-word", lineHeight: 1.55 }}>
+      {lines.map((line, lineIdx) => (
+        <div key={lineIdx}>{parseAnsiLine(line).map((span, spanIdx) => renderSpan(span, spanIdx))}</div>
+      ))}
+    </pre>
+  );
+};
 
 function normalizeJobStatus(status: unknown): string {
   const s = String(status || "").toUpperCase();
@@ -49,7 +61,8 @@ const ScriptDetailPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [steps, setSteps] = useState<ComputeJobStep[]>([]);
   const [logs, setLogs] = useState<string>("");
-  const terminalEndRef = useRef<HTMLDivElement>(null);
+  const [followLogs, setFollowLogs] = useState<boolean>(true);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) {
@@ -185,10 +198,11 @@ const ScriptDetailPage: React.FC = () => {
   }, [id, token]);
 
   useEffect(() => {
-    if (terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: "smooth" });
+    const container = logContainerRef.current;
+    if (container && followLogs) {
+      container.scrollTop = container.scrollHeight;
     }
-  }, [logs]);
+  }, [logs, followLogs]);
 
   const getStatusIcon = (status: string) => {
     switch (normalizeJobStatus(status)) {
@@ -262,6 +276,7 @@ const ScriptDetailPage: React.FC = () => {
         p={3}
         display="flex"
         alignItems="center"
+        flexWrap="wrap"
         gap={3}
         borderBottom="1px solid var(--color-border-subtle)"
         bg="var(--color-canvas-default)"
@@ -269,7 +284,7 @@ const ScriptDetailPage: React.FC = () => {
         <CircleIconButton onClick={() => navigate("/jobs")} aria-label="Back">
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
-        <Box flex={1}>
+        <Box flex={1} style={{ minWidth: 180 }}>
           <Heading as="h2" style={{ fontSize: "20px", fontWeight: 800, margin: 0, color: "var(--color-fg-default)" }}>
             {job ? job.name : `Job #${id}`}
           </Heading>
@@ -280,71 +295,93 @@ const ScriptDetailPage: React.FC = () => {
             </Text>
           )}
         </Box>
-        {job && (
-          <Box display="flex" alignItems="center" gap={2}>
-            <Label
-              variant={
-                normalizedStatus === "SUCCESS"
-                  ? "success"
-                  : normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED"
-                    ? "danger"
-                    : "attention"
-              }
-            >
-              {normalizedStatus}
-            </Label>
-            {normalizedStatus === "SUCCESS" && (
-              <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadResult}>
-                Download Result
-              </Button>
-            )}
-            {(normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED") && (
-              <Button
-                size="small"
-                leadingVisual={SyncIcon}
-                onClick={async () => {
-                  if (!id) return;
-                  try {
-                    const retried = await retryJob(id);
-                    const nextJob = retried.job ?? retried;
-                    setJob({ ...nextJob, status: normalizeJobStatus(nextJob.status) });
-                  } catch (err) {
-                    console.error("Failed to retry job:", err);
-                  }
-                }}
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          <Button
+            size="small"
+            variant={followLogs ? "primary" : "default"}
+            aria-pressed={followLogs}
+            onClick={() => setFollowLogs((prev) => !prev)}
+          >
+            {followLogs ? "Following Logs" : "Follow Logs"}
+          </Button>
+          {job && (
+            <>
+              <Label
+                variant={
+                  normalizedStatus === "SUCCESS"
+                    ? "success"
+                    : normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED"
+                      ? "danger"
+                      : "attention"
+                }
               >
-                Retry Run
-              </Button>
-            )}
-            {(normalizedStatus === "RUNNING" || normalizedStatus === "QUEUED") && (
-              <Button
-                variant="danger"
-                size="small"
-                onClick={async () => {
-                  if (!id) return;
-                  try {
-                    await cancelJob(id);
-                    setJob((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
-                  } catch (err) {
-                    console.error("Failed to cancel job:", err);
-                  }
-                }}
-              >
-                Cancel Run
-              </Button>
-            )}
-          </Box>
-        )}
+                {normalizedStatus}
+              </Label>
+              {normalizedStatus === "SUCCESS" && (
+                <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadResult}>
+                  Download Result
+                </Button>
+              )}
+              {(normalizedStatus === "FAILED" || normalizedStatus === "CANCELLED") && (
+                <Button
+                  size="small"
+                  leadingVisual={SyncIcon}
+                  onClick={async () => {
+                    if (!id) return;
+                    try {
+                      const retried = await retryJob(id);
+                      const nextJob = retried.job ?? retried;
+                      setJob({ ...nextJob, status: normalizeJobStatus(nextJob.status) });
+                    } catch (err) {
+                      console.error("Failed to retry job:", err);
+                    }
+                  }}
+                >
+                  Retry Run
+                </Button>
+              )}
+              {(normalizedStatus === "RUNNING" || normalizedStatus === "QUEUED") && (
+                <Button
+                  variant="danger"
+                  size="small"
+                  onClick={async () => {
+                    if (!id) return;
+                    try {
+                      await cancelJob(id);
+                      setJob((prev) => (prev ? { ...prev, status: "CANCELLED" } : prev));
+                    } catch (err) {
+                      console.error("Failed to cancel job:", err);
+                    }
+                  }}
+                >
+                  Cancel Run
+                </Button>
+              )}
+            </>
+          )}
+        </Box>
       </Box>
 
-      <Box display="flex" flex={1} style={{ overflow: "hidden" }}>
+      <Box
+        display="flex"
+        flex={1}
+        sx={{
+          flexDirection: ["column", "column", "row"],
+          overflow: "hidden",
+        }}
+      >
         {/* Left Sidebar (Steps) */}
         <Box
-          width="300px"
-          borderRight="1px solid var(--color-border-subtle)"
           bg="var(--color-canvas-subtle)"
           p={3}
-          style={{ overflowY: "auto" }}
+          sx={{
+            width: ["100%", "100%", "300px"],
+            maxHeight: ["200px", "200px", "none"],
+            borderRight: ["none", "none", "1px solid var(--color-border-subtle)"],
+            borderBottom: ["1px solid var(--color-border-subtle)", "1px solid var(--color-border-subtle)", "none"],
+            overflowY: "auto",
+            flexShrink: 0,
+          }}
         >
           <Text fontWeight="bold" display="block" mb={3}>
             Execution Steps
@@ -375,16 +412,23 @@ const ScriptDetailPage: React.FC = () => {
 
         {/* Right Main Content (Logs) */}
         <Box
+          ref={logContainerRef}
           flex={1}
           bg="var(--color-canvas-inset, var(--color-canvas-default, #0d1117))"
           color="var(--color-text-primary, #c9d1d9)"
           p={3}
           style={{ overflowY: "auto", fontFamily: "monospace", fontSize: "13px" }}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            if (!isNearBottom && followLogs) {
+              setFollowLogs(false);
+            } else if (isNearBottom && !followLogs) {
+              setFollowLogs(true);
+            }
+          }}
         >
-          <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordWrap: "break-word" }}>
-            {logs || "Waiting for logs..."}
-          </pre>
-          <div ref={terminalEndRef} />
+          <AnsiRenderer text={logs || "Waiting for logs..."} />
         </Box>
       </Box>
     </Box>

@@ -1,8 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { DynamicBindingConfig } from "@modelscript/cad";
-import { PauseIcon, PlayIcon, PlusIcon, PulseIcon, StackIcon, TableIcon, WorkflowIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl, Spinner } from "@primer/react";
+import {
+  ColumnsIcon,
+  FlowchartIcon,
+  PauseIcon,
+  PlayIcon,
+  PlusIcon,
+  PulseIcon,
+  RowsIcon,
+  ServerIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+  StackIcon,
+  TableIcon,
+  UnwrapIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
+import { Button, IconButton, SegmentedControl, Spinner } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { CadComponent } from "../cad-viewer";
@@ -224,6 +239,13 @@ export interface MorselVisualizerPaneProps {
   sweepResults: { value: number; y: number[][] }[] | null;
   simulationStatus: any;
   handleVariablesLoaded: (vars: string[]) => void;
+  treeVisible?: boolean | undefined;
+  setTreeVisible?: React.Dispatch<React.SetStateAction<boolean>> | undefined;
+  setView?: ((v: MorselView) => void) | undefined;
+  onAutoLayout?: (() => void) | undefined;
+  onSimulate?: (() => void) | undefined;
+  onOpenCloudModal?: (() => void) | undefined;
+  onFlatten?: (() => void) | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -284,12 +306,20 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   sweepResults,
   simulationStatus,
   handleVariablesLoaded,
+  treeVisible,
+  setTreeVisible,
+  setView,
+  onAutoLayout,
+  onSimulate,
+  onOpenCloudModal,
+  onFlatten,
 }) => {
   const isDraggingProperties = useRef(false);
   const [showAnalysisView, setShowAnalysisView] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const activeLangInfo = getLanguageInfo(dialect);
   const stencils = useMemo(() => getStencilsForDialect(dialect), [dialect]);
+  const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
 
   const [backendHistorianSessions, setBackendHistorianSessions] = useState<HistorianSession[]>([]);
 
@@ -455,7 +485,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             flexWrap: "wrap",
             justifyContent: "center",
             alignItems: "center",
-            gap: 8,
+            gap: 6,
             maxWidth: "100%",
             boxSizing: "border-box",
             padding: "6px 10px",
@@ -468,6 +498,28 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 : "0 4px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.08)",
           }}
         >
+          {isPlaygroundRoute && !isNarrow && setTreeVisible && (
+            <>
+              <IconButton
+                icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
+                size="small"
+                variant="invisible"
+                aria-label={translations.toggleTree}
+                title={translations.toggleTree}
+                onClick={() => setTreeVisible((prev) => !prev)}
+                style={
+                  treeVisible
+                    ? {
+                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
+                        borderRadius: 6,
+                      }
+                    : {}
+                }
+              />
+              <div style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+            </>
+          )}
+
           <SegmentedControl
             aria-label="Center Pane View"
             size="small"
@@ -638,6 +690,136 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               {animationMode === "playing" ? "Pause" : "Animate"}
             </Button>
           )}
+
+          {isPlaygroundRoute && !isNarrow && (
+            <>
+              <div style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+              {onAutoLayout && (
+                <IconButton
+                  icon={FlowchartIcon}
+                  size="small"
+                  variant="invisible"
+                  aria-label={translations.autoLayout}
+                  title={translations.autoLayout}
+                  onClick={onAutoLayout}
+                />
+              )}
+              {setView && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    padding: 2,
+                    borderRadius: 8,
+                    backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                  }}
+                >
+                  <IconButton
+                    icon={WorkflowIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={translations.diagramView}
+                    title={translations.diagramView}
+                    onClick={() => setView(MorselView.DIAGRAM)}
+                    style={
+                      view === MorselView.DIAGRAM
+                        ? {
+                            backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                            borderRadius: 6,
+                          }
+                        : {}
+                    }
+                  />
+                  <IconButton
+                    icon={ColumnsIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={translations.splitViewColumns}
+                    title={translations.splitViewColumns}
+                    onClick={() => setView(MorselView.SPLIT_COLUMNS)}
+                    style={
+                      view === MorselView.SPLIT_COLUMNS
+                        ? {
+                            backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                            borderRadius: 6,
+                          }
+                        : {}
+                    }
+                  />
+                  <IconButton
+                    icon={RowsIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={translations.splitViewRows}
+                    title={translations.splitViewRows}
+                    onClick={() => setView(MorselView.SPLIT_ROWS)}
+                    style={
+                      view === MorselView.SPLIT_ROWS
+                        ? {
+                            backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                            borderRadius: 6,
+                          }
+                        : {}
+                    }
+                  />
+                  <IconButton
+                    icon={UnwrapIcon}
+                    size="small"
+                    variant="invisible"
+                    aria-label={translations.codeView}
+                    title={translations.codeView}
+                    onClick={() => setView(MorselView.CODE)}
+                    style={
+                      view === MorselView.CODE
+                        ? {
+                            backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                            borderRadius: 6,
+                          }
+                        : {}
+                    }
+                  />
+                </div>
+              )}
+              {(onSimulate || onOpenCloudModal || onFlatten) && (
+                <>
+                  <div
+                    style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
+                  />
+                  {onSimulate && (
+                    <IconButton
+                      icon={PlayIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label={translations.simulateModel}
+                      title={translations.simulateModel}
+                      onClick={onSimulate}
+                    />
+                  )}
+                  {onOpenCloudModal && (
+                    <IconButton
+                      icon={ServerIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label="Run on ModelScript Cloud HPC"
+                      title="Run on ModelScript Cloud HPC"
+                      onClick={onOpenCloudModal}
+                    />
+                  )}
+                  {onFlatten && (
+                    <IconButton
+                      icon={StackIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label={translations.flattenModel}
+                      title={translations.flattenModel}
+                      onClick={onFlatten}
+                    />
+                  )}
+                </>
+              )}
+            </>
+          )}
         </div>
 
         {/* Collapsible Stencil Palette Bar */}
@@ -716,7 +898,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             <div
               style={{
                 position: "absolute",
-                top: 12,
+                top: showPalette ? 96 : 56,
                 left: 12,
                 zIndex: 90,
                 display: "flex",

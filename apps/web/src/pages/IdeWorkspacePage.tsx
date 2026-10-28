@@ -534,6 +534,11 @@ export const IdeWorkspacePage: React.FC = () => {
         workbenchUrl={workbenchUrl}
         iframeRef={iframeRef}
         onIframeLoad={handleIframeLoad}
+        onRetry={() => {
+          setIsLoading(true);
+          setReloadKey((k) => k + 1);
+        }}
+        onOpenInPlayground={handleOpenInPlayground}
       />
     </PageContainer>
   );

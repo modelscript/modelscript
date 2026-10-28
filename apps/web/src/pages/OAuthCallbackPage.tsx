@@ -2,7 +2,7 @@
 
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Box from "../components/Box";
 
 const OAuthCallbackPage: React.FC = () => {
@@ -31,7 +31,7 @@ const OAuthCallbackPage: React.FC = () => {
           ? `Authentication failed: ${errorParam}. Redirecting to login...`
           : "Authentication failed or was cancelled. Redirecting to login...",
       );
-      const timer = setTimeout(() => navigate("/login"), 2000);
+      const timer = setTimeout(() => navigate("/login"), 4000);
       return () => clearTimeout(timer);
     }
   }, [searchParams, navigate]);
@@ -54,7 +54,20 @@ const OAuthCallbackPage: React.FC = () => {
           <Text fontWeight="bold" display="block" mb={1}>
             OAuth Sign-In Failed
           </Text>
-          <Text fontSize={1}>{authError}</Text>
+          <Text fontSize={1} display="block" mb={2}>
+            {authError}
+          </Text>
+          <Link
+            to="/login"
+            style={{
+              color: "var(--color-accent-cyan)",
+              fontSize: "13px",
+              fontWeight: 600,
+              textDecoration: "underline",
+            }}
+          >
+            Return to Sign In
+          </Link>
         </Box>
       ) : (
         <>

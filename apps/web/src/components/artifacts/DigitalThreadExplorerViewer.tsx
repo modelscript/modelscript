@@ -170,6 +170,17 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
     void loadGraph();
   }, [loadGraph]);
 
+  useEffect(() => {
+    if (!activeConflict) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setActiveConflict(null);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [activeConflict]);
+
   const resolvedGraphData = useMemo<ThreadGraphData | null>(() => {
     if (data && data.threads && data.threads.length > 0) return data;
     if (effectiveTwins) return convertTwinsToGraphData(effectiveTwins);
@@ -577,10 +588,11 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
             <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">
               <Text fontSize="12px" fontWeight="600" display="block" mb={1}>
                 Physics Conservation Envelope: [{activeConflict.physicsEnvelope.min} -{" "}
-                {activeConflict.physicsEnvelope.max} V]
+                {activeConflict.physicsEnvelope.max} {activeConflict.sourceProposal.unit || ""}]
               </Text>
               <Text fontSize="14px" fontWeight="bold" color="#4caf50">
-                Calculated Simplex Consensus: {activeConflict.simplexConsensus} V
+                Calculated Simplex Consensus: {activeConflict.simplexConsensus}{" "}
+                {activeConflict.sourceProposal.unit || ""}
               </Text>
             </Box>
 
@@ -588,14 +600,15 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
             <Box display="flex" flexDirection="column" gap={2}>
               <Button variant="primary" disabled={reconciling} onClick={() => handleReconcile("physics-simplex")}>
                 {reconciling ? <Spinner size="small" /> : <PlayIcon />} Accept Physics Simplex (
-                {activeConflict.simplexConsensus} V)
+                {activeConflict.simplexConsensus} {activeConflict.sourceProposal.unit || ""})
               </Button>
               <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
                 <Button disabled={reconciling} onClick={() => handleReconcile("source-wins")}>
-                  Source Wins ({activeConflict.sourceProposal.value} V)
+                  Source Wins ({activeConflict.sourceProposal.value} {activeConflict.sourceProposal.unit || ""})
                 </Button>
                 <Button disabled={reconciling} onClick={() => handleReconcile("target-wins")}>
-                  Target Wins ({activeConflict.targetProposal.value} V)
+                  Target Wins ({activeConflict.targetProposal.value}{" "}
+                  {activeConflict.targetProposal.unit || activeConflict.sourceProposal.unit || ""})
                 </Button>
               </Box>
 

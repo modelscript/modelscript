@@ -98,11 +98,13 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
 }) => {
   const activeLangInfo = getLanguageInfo(dialect);
   const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
+  if (isNarrow) return null;
+  if (isPlaygroundRoute && view !== MorselView.CODE) return null;
   return (
     <div
       style={{
         position: "fixed",
-        bottom: 16,
+        ...(isPlaygroundRoute ? { top: 56 } : { bottom: 16 }),
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",

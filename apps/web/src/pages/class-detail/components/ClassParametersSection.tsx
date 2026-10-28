@@ -93,7 +93,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
               </thead>
               <tbody>
                 {filteredParams.map((param) => (
-                  <tr key={param.component_name}>
+                  <tr key={param.component_name} id={`member-${param.component_name}`}>
                     <td>
                       <Text
                         style={{
@@ -149,7 +149,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
               </thead>
               <tbody>
                 {filteredConnectors.map((conn) => (
-                  <tr key={conn.component_name}>
+                  <tr key={conn.component_name} id={`member-${conn.component_name}`}>
                     <td>
                       <Box display="flex" alignItems="center" gap="8px">
                         <InvertedSvg
@@ -213,7 +213,7 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
                     ...sub.otherModifiers,
                   ];
                   return (
-                    <tr key={sub.component_name}>
+                    <tr key={sub.component_name} id={`member-${sub.component_name}`}>
                       <td>
                         <Box display="flex" alignItems="center" gap="8px">
                           <InvertedSvg
@@ -258,6 +258,24 @@ export const ClassParametersSection: React.FC<ClassParametersSectionProps> = ({
           </JavadocTableWrap>
         </JavadocSection>
       )}
+
+      {memberFilter.trim() !== "" &&
+        filteredParams.length === 0 &&
+        filteredConnectors.length === 0 &&
+        filteredSubmodels.length === 0 && (
+          <Box
+            p={4}
+            style={{
+              textAlign: "center",
+              color: "var(--color-text-muted)",
+              border: "1px dashed var(--color-border)",
+              borderRadius: 12,
+              marginBottom: 24,
+            }}
+          >
+            <Text style={{ fontSize: 13 }}>No members matching '{memberFilter}'</Text>
+          </Box>
+        )}
     </>
   );
 };

@@ -3,6 +3,7 @@
 import crypto from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import net from "node:net";
 import { LibraryDatabase } from "../database.js";
 
 let sharedAuthDatabase: LibraryDatabase | null = null;
@@ -145,12 +146,54 @@ export function isEnterpriseHeaderAuthEnabled(): boolean {
 }
 
 export function isIpTrustedProxy(ip: string): boolean {
+  if (!ip) return false;
+  const normalizedIp = ip
+    .replace(/^::ffff:/i, "")
+    .trim()
+    .toLowerCase();
   const trustedList = process.env["TRUSTED_PROXY_IPS"];
   if (trustedList) {
     if (trustedList === "*" && process.env["NODE_ENV"] !== "production") return true;
-    const ips = trustedList.split(",").map((s) => s.trim().toLowerCase());
-    const normalizedIp = ip.replace(/^::ffff:/, "").toLowerCase();
-    return ips.includes(normalizedIp) || ips.includes(ip.toLowerCase());
+    const entries = trustedList
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const blockList = new net.BlockList();
+    for (const entry of entries) {
+      const lowerEntry = entry.toLowerCase();
+      if (lowerEntry === normalizedIp || lowerEntry === ip.toLowerCase()) {
+        return true;
+      }
+      if (entry.includes("/")) {
+        const [subnetIp, prefixStr] = entry.split("/");
+        const cleanSubnet = (subnetIp || "").replace(/^::ffff:/i, "").trim();
+        const prefix = Number(prefixStr);
+        const family = net.isIPv6(cleanSubnet) ? "ipv6" : net.isIPv4(cleanSubnet) ? "ipv4" : null;
+        if (family && Number.isInteger(prefix) && prefix >= 0 && prefix <= (family === "ipv6" ? 128 : 32)) {
+          try {
+            blockList.addSubnet(cleanSubnet, prefix, family);
+          } catch {
+            // Ignore malformed CIDR entry
+          }
+        }
+      } else {
+        const cleanAddr = entry.replace(/^::ffff:/i, "").trim();
+        const family = net.isIPv6(cleanAddr) ? "ipv6" : net.isIPv4(cleanAddr) ? "ipv4" : null;
+        if (family) {
+          try {
+            blockList.addAddress(cleanAddr, family);
+          } catch {
+            // Ignore malformed address entry
+          }
+        }
+      }
+    }
+
+    const ipFamily = net.isIPv6(normalizedIp) ? "ipv6" : net.isIPv4(normalizedIp) ? "ipv4" : null;
+    if (ipFamily && blockList.check(normalizedIp, ipFamily)) {
+      return true;
+    }
+    return false;
   }
 
   if (process.env["NODE_ENV"] === "production") {
@@ -158,28 +201,27 @@ export function isIpTrustedProxy(ip: string): boolean {
   }
 
   // If not explicitly configured, trust loopback and private container subnets in trust-proxy mode or tests
-  const normalized = ip.replace(/^::ffff:/, "").toLowerCase();
   return (
-    normalized === "127.0.0.1" ||
-    normalized === "::1" ||
-    normalized.startsWith("10.") ||
-    normalized.startsWith("172.16.") ||
-    normalized.startsWith("172.17.") ||
-    normalized.startsWith("172.18.") ||
-    normalized.startsWith("172.19.") ||
-    normalized.startsWith("172.20.") ||
-    normalized.startsWith("172.21.") ||
-    normalized.startsWith("172.22.") ||
-    normalized.startsWith("172.23.") ||
-    normalized.startsWith("172.24.") ||
-    normalized.startsWith("172.25.") ||
-    normalized.startsWith("172.26.") ||
-    normalized.startsWith("172.27.") ||
-    normalized.startsWith("172.28.") ||
-    normalized.startsWith("172.29.") ||
-    normalized.startsWith("172.30.") ||
-    normalized.startsWith("172.31.") ||
-    normalized.startsWith("192.168.")
+    normalizedIp === "127.0.0.1" ||
+    normalizedIp === "::1" ||
+    normalizedIp.startsWith("10.") ||
+    normalizedIp.startsWith("172.16.") ||
+    normalizedIp.startsWith("172.17.") ||
+    normalizedIp.startsWith("172.18.") ||
+    normalizedIp.startsWith("172.19.") ||
+    normalizedIp.startsWith("172.20.") ||
+    normalizedIp.startsWith("172.21.") ||
+    normalizedIp.startsWith("172.22.") ||
+    normalizedIp.startsWith("172.23.") ||
+    normalizedIp.startsWith("172.24.") ||
+    normalizedIp.startsWith("172.25.") ||
+    normalizedIp.startsWith("172.26.") ||
+    normalizedIp.startsWith("172.27.") ||
+    normalizedIp.startsWith("172.28.") ||
+    normalizedIp.startsWith("172.29.") ||
+    normalizedIp.startsWith("172.30.") ||
+    normalizedIp.startsWith("172.31.") ||
+    normalizedIp.startsWith("192.168.")
   );
 }
 

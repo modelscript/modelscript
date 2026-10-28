@@ -57,11 +57,13 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manifestWarning, setManifestWarning] = useState<string | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setError(null);
+      setManifestWarning(null);
       if (defaultPackageName) {
         setPackageName(defaultPackageName);
       } else if (user?.username) {
@@ -79,6 +81,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
       if (!file) return;
       setSelectedFile(file);
       setError(null);
+      setManifestWarning(null);
 
       try {
         const buffer = await file.arrayBuffer();
@@ -109,7 +112,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
         }
 
         if (!meta.hasManifest) {
-          setError(
+          setManifestWarning(
             "Warning: No root package.json or package.mo detected in archive. The server requires at least one manifest file.",
           );
         }
@@ -228,13 +231,13 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
                     ? "var(--color-accent-cyan, #06b6d4)"
                     : selectedFile
                       ? "rgba(45, 164, 78, 0.6)"
-                      : "var(--color-border, rgba(255,255,255,0.2))"
+                      : "var(--color-border)"
                 }`,
                 borderRadius: 10,
                 padding: "20px",
                 textAlign: "center",
                 cursor: "pointer",
-                background: isDragActive ? "rgba(6, 182, 212, 0.08)" : "rgba(255, 255, 255, 0.02)",
+                background: isDragActive ? "rgba(6, 182, 212, 0.08)" : "var(--color-bg-card)",
                 transition: "all 0.2s ease",
               }}
             >
@@ -340,6 +343,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
               </FormControl>
             </Box>
 
+            {manifestWarning && <Flash variant="warning">{manifestWarning}</Flash>}
             {error && <Flash variant="danger">{error}</Flash>}
 
             <Box display="flex" justifyContent="flex-end" gap={2} mt={1}>
@@ -377,7 +381,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
                 p={2}
                 mt={1}
                 style={{
-                  background: "#020408",
+                  background: "var(--color-pre-bg)",
                   border: "1px solid var(--color-border)",
                   borderRadius: 6,
                   fontFamily: "var(--font-mono)",
@@ -416,7 +420,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
                 p={2}
                 mt={1}
                 style={{
-                  background: "#020408",
+                  background: "var(--color-pre-bg)",
                   border: "1px solid var(--color-border)",
                   borderRadius: 6,
                   fontFamily: "var(--font-mono)",

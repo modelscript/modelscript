@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useContext, useEffect, useState } from "react";
+import { Button, Spinner } from "@primer/react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
 import { ComposeContext } from "../components/ComposeContext";
@@ -62,10 +63,21 @@ export const PlaygroundPage: React.FC = () => {
   const editPostId = editPostIdParam ? Number(editPostIdParam) : undefined;
   const replyToPostId = replyToPostIdParam ? Number(replyToPostIdParam) : undefined;
 
-  const [currentCode, setCurrentCode] = useState<string>(HERO_EXAMPLES[0]!.code);
-  const [currentTitle, setCurrentTitle] = useState<string>(HERO_EXAMPLES[0]!.title);
+  const hasInitialArtifactTarget = Boolean(
+    fromArtifactParam ||
+    (location.hash && (location.hash.startsWith("#memfs:artifact-") || location.hash.startsWith("#m=artifact-"))),
+  );
+
+  const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
+  const [currentCode, setCurrentCode] = useState<string>(hasInitialArtifactTarget ? "" : HERO_EXAMPLES[0]!.code);
+  const [currentTitle, setCurrentTitle] = useState<string>(
+    titleParam || (hasInitialArtifactTarget ? "Loading Artifact…" : HERO_EXAMPLES[0]!.title),
+  );
   const [currentLang, setCurrentLang] = useState<string>(langParam || HERO_EXAMPLES[0]!.lang);
   const [resolvedFromArtifact, setResolvedFromArtifact] = useState<string | null>(fromArtifactParam);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
+  const baselineCodeRef = useRef<string>(hasInitialArtifactTarget ? "" : HERO_EXAMPLES[0]!.code);
 
   usePageTitle(currentTitle ? `${currentTitle} — Playground` : "Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
@@ -99,7 +111,10 @@ export const PlaygroundPage: React.FC = () => {
     // 0. Check #memfs:... hash when redirected from /ide
     let memfsArtifactId: string | null = null;
     let memfsTemplateId: string | null = null;
-    if (location.hash && location.hash.startsWith("#memfs:")) {
+    let hashArtifactId: string | null = null;
+    if (location.hash && location.hash.startsWith("#m=artifact-")) {
+      hashArtifactId = decodeURIComponent(location.hash.slice("#m=artifact-".length));
+    } else if (location.hash && location.hash.startsWith("#memfs:")) {
       const memfsTarget = decodeURIComponent(location.hash.slice("#memfs:".length));
       if (memfsTarget.startsWith("package-")) {
         const pkgName = memfsTarget.slice("package-".length);
@@ -123,6 +138,9 @@ export const PlaygroundPage: React.FC = () => {
               const [fileName, fileCode] = preferred;
               const detectedLang = langParam || inferDialectFromFilename(fileName) || "modelica";
               const resolvedTitle = titleParam || `${parsed.name || pkgName} (${fileName})`;
+              baselineCodeRef.current = fileCode;
+              setIsDirty(false);
+              setIsLoadingArtifact(false);
               setCurrentCode(fileCode);
               setCurrentTitle(resolvedTitle);
               setCurrentLang(detectedLang);
@@ -158,6 +176,9 @@ export const PlaygroundPage: React.FC = () => {
               const detectedLang =
                 langParam || scratch.language || inferDialectFromFilename(resolvedTitle) || "modelica";
               setResolvedFromArtifact(memfsArtifactId);
+              baselineCodeRef.current = firstFile;
+              setIsDirty(false);
+              setIsLoadingArtifact(false);
               setCurrentCode(firstFile);
               setCurrentTitle(resolvedTitle);
               setCurrentLang(detectedLang);
@@ -179,7 +200,12 @@ export const PlaygroundPage: React.FC = () => {
     }
 
     // 1. Check URL hash (#m=...)
-    if (location.hash && location.hash.length > 1 && !location.hash.startsWith("#memfs:")) {
+    if (
+      location.hash &&
+      location.hash.length > 1 &&
+      !location.hash.startsWith("#memfs:") &&
+      !location.hash.startsWith("#m=artifact-")
+    ) {
       const p = decompressMorselPayload(location.hash) as
         | (MorselDecodedPayload & {
             isMultiFile?: boolean;
@@ -197,6 +223,9 @@ export const PlaygroundPage: React.FC = () => {
         }
         if (p.code) {
           const detectedLang = p.lang || langParam || inferDialectFromFilename(p.title || titleParam) || "modelica";
+          baselineCodeRef.current = p.code;
+          setIsDirty(false);
+          setIsLoadingArtifact(false);
           setPayload({ ...p, lang: detectedLang });
           setCurrentCode(p.code);
           setCurrentLang(detectedLang);
@@ -212,6 +241,9 @@ export const PlaygroundPage: React.FC = () => {
     if (sourceParam) {
       const title = titleParam || "Custom Model";
       const detectedLang = langParam || inferDialectFromFilename(title) || "modelica";
+      baselineCodeRef.current = sourceParam;
+      setIsDirty(false);
+      setIsLoadingArtifact(false);
       setCurrentCode(sourceParam);
       setCurrentTitle(title);
       setCurrentLang(detectedLang);
@@ -247,6 +279,9 @@ export const PlaygroundPage: React.FC = () => {
       if (navState.artifactId && !fromArtifactParam) {
         setResolvedFromArtifact(String(navState.artifactId));
       }
+      baselineCodeRef.current = navState.code;
+      setIsDirty(false);
+      setIsLoadingArtifact(false);
       setCurrentCode(navState.code);
       setCurrentTitle(title);
       setCurrentLang(detectedLang);
@@ -266,16 +301,22 @@ export const PlaygroundPage: React.FC = () => {
       return;
     }
 
-    // 4. Check ?fromArtifact=<id> (or #memfs:artifact-<id>)
-    const effectiveArtifactId = fromArtifactParam || memfsArtifactId;
+    // 4. Check ?fromArtifact=<id> (or #memfs:artifact-<id> or #m=artifact-<id>)
+    const effectiveArtifactId = fromArtifactParam || memfsArtifactId || hashArtifactId;
     if (effectiveArtifactId) {
       setResolvedFromArtifact(effectiveArtifactId);
+      setIsLoadingArtifact(true);
       (async () => {
         try {
           const res = await getArtifactView(effectiveArtifactId);
           if (cancelled) return;
           const art = res?.artifactView || res;
-          if (!art) return;
+          if (!art) {
+            toast.error("Failed to load artifact into Playground");
+            setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
+            setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
+            return;
+          }
 
           if (hasIde && isMultiFileArtifact(art)) {
             navigate(buildIdeRedirectUrl(effectiveArtifactId), { replace: true });
@@ -318,6 +359,8 @@ export const PlaygroundPage: React.FC = () => {
           setCurrentTitle(resolvedTitle);
           setCurrentLang(detectedLang);
           if (code) {
+            baselineCodeRef.current = code;
+            setIsDirty(false);
             setCurrentCode(code);
             setPayload({
               v: 1,
@@ -334,6 +377,10 @@ export const PlaygroundPage: React.FC = () => {
             });
             window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
           } else {
+            const fallbackCode = getLanguageInfo(detectedLang)?.defaultCode || HERO_EXAMPLES[0]!.code;
+            baselineCodeRef.current = fallbackCode;
+            setIsDirty(false);
+            setCurrentCode(fallbackCode);
             setPayload((prev) => ({
               ...(prev || { v: 1 }),
               lang: detectedLang,
@@ -342,12 +389,23 @@ export const PlaygroundPage: React.FC = () => {
           }
         } catch (err) {
           console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", effectiveArtifactId, err);
+          if (!cancelled) {
+            toast.error("Failed to load artifact into Playground");
+            setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
+            setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
+          }
+        } finally {
+          if (!cancelled) {
+            setIsLoadingArtifact(false);
+          }
         }
       })();
       return () => {
         cancelled = true;
       };
     }
+
+    setIsLoadingArtifact(false);
 
     // 5. Check ?template=<id> or ?model=<name> or #memfs:<templateId>
     const effectiveModelOrTemplate = templateParam || memfsTemplateId || modelParam;
@@ -360,6 +418,8 @@ export const PlaygroundPage: React.FC = () => {
           ex.title.toLowerCase().includes(effectiveModelOrTemplate.toLowerCase()),
       );
       if (match) {
+        baselineCodeRef.current = match.code;
+        setIsDirty(false);
         setCurrentCode(match.code);
         setCurrentTitle(match.title);
         setCurrentLang(match.lang);
@@ -381,6 +441,8 @@ export const PlaygroundPage: React.FC = () => {
         const safeIdent = rawIdent.replace(/[^A-Za-z0-9_]/g, "_") || "UntitledModel";
         const detectedLang = langParam || "modelica";
         const code = `model ${safeIdent}\n  // ${effectiveModelOrTemplate}\nend ${safeIdent};\n`;
+        baselineCodeRef.current = code;
+        setIsDirty(false);
         setCurrentCode(code);
         setCurrentTitle(safeIdent);
         setCurrentLang(detectedLang);
@@ -410,6 +472,8 @@ export const PlaygroundPage: React.FC = () => {
       const nextCode = matchingExample?.code || langInfo?.defaultCode;
       const nextTitle = titleParam || matchingExample?.title || langOpt?.label || langInfo?.name;
       if (nextCode) {
+        baselineCodeRef.current = nextCode;
+        setIsDirty(false);
         setCurrentCode(nextCode);
         if (nextTitle) setCurrentTitle(nextTitle);
         setPayload({
@@ -443,6 +507,7 @@ export const PlaygroundPage: React.FC = () => {
     replyToPostId,
     hasIde,
     navigate,
+    toast,
   ]);
 
   useEffect(() => {
@@ -451,7 +516,9 @@ export const PlaygroundPage: React.FC = () => {
     return () => window.removeEventListener("modelscript:open-share-modal", handleOpenShare);
   }, []);
 
-  const handleSelectExample = (ex: HeroExample) => {
+  const applySelectedExample = (ex: HeroExample) => {
+    baselineCodeRef.current = ex.code;
+    setIsDirty(false);
     setCurrentCode(ex.code);
     setCurrentTitle(ex.title);
     setCurrentLang(ex.lang);
@@ -470,6 +537,14 @@ export const PlaygroundPage: React.FC = () => {
     window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
   };
 
+  const handleSelectExample = (ex: HeroExample) => {
+    if (isDirty && ex.code !== currentCode) {
+      setPendingExample(ex);
+      return;
+    }
+    applySelectedExample(ex);
+  };
+
   const handleSelectLang = (nextLang: string) => {
     setCurrentLang(nextLang);
     const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
@@ -478,6 +553,8 @@ export const PlaygroundPage: React.FC = () => {
     const nextCode = nextStarter?.code || langInfo?.defaultCode || currentCode;
     const nextTitle = nextStarter?.title || langOpt?.label || langInfo?.label || langInfo?.name || currentTitle;
 
+    baselineCodeRef.current = nextCode;
+    setIsDirty(false);
     if (nextCode !== currentCode) setCurrentCode(nextCode);
     if (nextTitle !== currentTitle) setCurrentTitle(nextTitle);
 
@@ -608,6 +685,33 @@ export const PlaygroundPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleTitleChange = (nextTitle: string) => {
+    setCurrentTitle(nextTitle);
+    setPayload((prev) => ({
+      ...(prev || { v: 1 }),
+      lang: currentLang,
+      code: currentCode,
+      title: nextTitle,
+    }));
+    const hash = compressMorselPayload({
+      v: 1,
+      lang: currentLang,
+      code: currentCode,
+      title: nextTitle,
+      ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
+    });
+    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+  };
+
+  const handleCodeChange = (nextCode: string) => {
+    if (nextCode !== currentCode && nextCode !== baselineCodeRef.current) {
+      setIsDirty(true);
+    } else if (nextCode === baselineCodeRef.current) {
+      setIsDirty(false);
+    }
+    setCurrentCode(nextCode);
+  };
+
   const publishLabel = editPostId
     ? "Save Post Edit"
     : replyToPostId
@@ -622,7 +726,9 @@ export const PlaygroundPage: React.FC = () => {
         fromArtifactParam={resolvedFromArtifact}
         currentTitle={currentTitle}
         currentLang={currentLang}
+        isDirty={isDirty}
         publishLabel={publishLabel}
+        onTitleChange={handleTitleChange}
         onSelectExample={handleSelectExample}
         onSelectLang={handleSelectLang}
         onOpenInVsCode={handleOpenInVsCode}
@@ -633,21 +739,96 @@ export const PlaygroundPage: React.FC = () => {
       />
 
       <EditorArea>
-        <MorselEditor
-          dataUrl={null}
-          initialCode={currentCode}
-          embed={false}
-          initialDialect={currentLang}
-          initialView={payload?.view}
-          initialAnchor={payload?.anchor}
-          onCodeChange={(code: string) => {
-            setCurrentCode(code);
-          }}
-          onDialectChange={(dialect: string) => {
-            setCurrentLang(dialect);
-          }}
-        />
+        {isLoadingArtifact ? (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 14,
+              backgroundColor: "var(--color-canvas-default)",
+              color: "var(--color-fg-muted)",
+              zIndex: 50,
+            }}
+          >
+            <Spinner size="large" />
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading artifact into Playground…</div>
+          </div>
+        ) : (
+          <MorselEditor
+            dataUrl={null}
+            initialCode={currentCode}
+            embed={false}
+            initialDialect={currentLang}
+            initialView={payload?.view}
+            initialAnchor={payload?.anchor}
+            onCodeChange={handleCodeChange}
+            onDialectChange={(dialect: string) => {
+              setCurrentLang(dialect);
+            }}
+          />
+        )}
       </EditorArea>
+
+      {pendingExample && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="playground-dirty-modal-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.55)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+          onClick={() => setPendingExample(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              margin: "0 16px",
+              padding: 20,
+              borderRadius: 12,
+              backgroundColor: "var(--color-canvas-overlay, var(--color-canvas-default))",
+              border: "1px solid var(--color-border-default)",
+              boxShadow: "0 16px 48px rgba(0, 0, 0, 0.4)",
+              color: "var(--color-fg-default)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="playground-dirty-modal-title" style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 600 }}>
+              Unsaved Changes
+            </h3>
+            <p style={{ margin: "0 0 20px 0", fontSize: 13, color: "var(--color-fg-muted)", lineHeight: 1.5 }}>
+              {`Discard unsaved changes and load '${pendingExample.title}'?`}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <Button size="small" variant="default" onClick={() => setPendingExample(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="danger"
+                onClick={() => {
+                  const nextEx = pendingExample;
+                  setPendingExample(null);
+                  applySelectedExample(nextEx);
+                }}
+              >
+                Discard & Load
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PlaygroundShareModal
         isOpen={isShareModalOpen}
@@ -655,6 +836,7 @@ export const PlaygroundPage: React.FC = () => {
         copyStatus={copyStatus}
         shareUrl={getShareUrl()}
         embedCode={getEmbedCode()}
+        getEmbedCode={getEmbedCode}
         markdownBadge={getMarkdownBadge()}
         onCopy={handleCopy}
       />

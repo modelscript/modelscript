@@ -17,7 +17,14 @@ import {
 import { Text } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
-import { getUserBillingSummary, topUpCredits, type UserBillingSummary } from "../../../api";
+import {
+  createCheckoutSession,
+  createPaymentIntent,
+  getInvoiceDownloadUrl,
+  getUserBillingSummary,
+  topUpCredits,
+  type UserBillingSummary,
+} from "../../../api";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useFeatureFlags } from "../../../FeatureFlagContext";
@@ -211,13 +218,19 @@ const TxBadge = styled.span<{ $type: string }>`
   padding: 3px 8px;
   border-radius: 12px;
   background: ${(props) =>
-    props.$type === "initial_grant"
+    props.$type === "initial_grant" ||
+    props.$type === "escrow_refund" ||
+    props.$type === "escrow_release" ||
+    props.$type === "refund"
       ? "rgba(35, 134, 54, 0.2)"
       : props.$type === "topup" || props.$type === "top_up"
         ? "rgba(6, 182, 212, 0.15)"
         : "rgba(218, 54, 51, 0.2)"};
   color: ${(props) =>
-    props.$type === "initial_grant"
+    props.$type === "initial_grant" ||
+    props.$type === "escrow_refund" ||
+    props.$type === "escrow_release" ||
+    props.$type === "refund"
       ? "var(--ms-success)"
       : props.$type === "topup" || props.$type === "top_up"
         ? "#22d3ee"
@@ -315,7 +328,16 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
     setError(null);
     setTopUpSuccess(null);
     try {
-      const updatedWallet = await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card");
+      let paymentIntentId: string | undefined;
+      if (isLiveActive) {
+        try {
+          const pi = await createPaymentIntent(amount);
+          paymentIntentId = pi.id;
+        } catch {
+          // Fallback if payment-intent endpoint is not needed in sandbox
+        }
+      }
+      const updatedWallet = await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card", paymentIntentId);
       setBillingSummary((prev) =>
         prev
           ? {
@@ -434,7 +456,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               <SyncIcon size={13} />
               {isStripeFeatureEnabled ? "Disable Sandbox Mode" : "Enable Developer Sandbox"}
             </SecondaryButton>
-            <ActionLinkButton href="https://modelscript.org/pricing" target="_blank" rel="noopener noreferrer">
+            <ActionLinkButton href="/pricing" target="_blank" rel="noopener noreferrer">
               <span>View Plans &amp; Pricing</span>
               <LinkExternalIcon size={12} />
             </ActionLinkButton>
@@ -554,6 +576,24 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                 <TopUpPillButton disabled={isTopUpLoading} onClick={() => handleTopUp(500)}>
                   <ZapIcon size={14} /> +500 cr
                 </TopUpPillButton>
+                <TopUpPillButton
+                  disabled={isTopUpLoading}
+                  onClick={async () => {
+                    try {
+                      setIsTopUpLoading(true);
+                      const session = await createCheckoutSession(200);
+                      if (session.checkoutUrl) {
+                        window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
+                      }
+                    } catch {
+                      setError("Could not start Stripe Checkout session.");
+                    } finally {
+                      setIsTopUpLoading(false);
+                    }
+                  }}
+                >
+                  <CreditCardIcon size={14} /> Stripe Tax Checkout
+                </TopUpPillButton>
               </Box>
             </Box>
           </Box>
@@ -632,32 +672,32 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   <td>4 Cores</td>
                   <td>16 GB</td>
                   <td>None</td>
-                  <td>1.00 cr / hr</td>
-                  <td>0.05 cr (3 min)</td>
+                  <td>10.00 cr / hr</td>
+                  <td>0.50 cr (3 min)</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: "600" }}>High Memory</td>
                   <td>16 Cores</td>
-                  <td>128 GB</td>
+                  <td>256 GB</td>
                   <td>None</td>
-                  <td>4.50 cr / hr</td>
-                  <td>0.22 cr (3 min)</td>
+                  <td>35.00 cr / hr</td>
+                  <td>1.75 cr (3 min)</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: "600" }}>GPU A100</td>
-                  <td>16 Cores</td>
-                  <td>80 GB</td>
+                  <td>8 Cores</td>
+                  <td>64 GB</td>
                   <td>1x NVIDIA A100</td>
-                  <td>12.00 cr / hr</td>
-                  <td>0.60 cr (3 min)</td>
+                  <td>80.00 cr / hr</td>
+                  <td>4.00 cr (3 min)</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: "600" }}>MPI Supercluster</td>
                   <td>64 Cores</td>
-                  <td>256 GB</td>
+                  <td>128 GB</td>
                   <td>InfiniBand</td>
-                  <td>18.00 cr / hr</td>
-                  <td>0.90 cr (3 min)</td>
+                  <td>150.00 cr / hr</td>
+                  <td>7.50 cr (3 min)</td>
                 </tr>
               </tbody>
             </LedgerTable>
@@ -690,12 +730,13 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   <th>Job ID</th>
                   <th>Amount</th>
                   <th>Balance After</th>
+                  <th>Receipt</th>
                 </tr>
               </thead>
               <tbody>
                 {!billingSummary || billingSummary.recent_transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
+                    <td colSpan={7} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
                       No cloud billing transactions recorded. Local simulations run entirely within your local/browser
                       environment without credit consumption.
                     </td>
@@ -705,7 +746,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                     <tr key={tx.id}>
                       <td style={{ color: "var(--color-text-muted)" }}>{new Date(tx.created_at).toLocaleString()}</td>
                       <td>
-                        <TxBadge $type={tx.transaction_type}>{tx.transaction_type.replace("_", " ")}</TxBadge>
+                        <TxBadge $type={tx.transaction_type}>{tx.transaction_type.replace(/_/g, " ")}</TxBadge>
                       </td>
                       <td>{tx.description}</td>
                       <td style={{ fontFamily: "monospace" }}>{tx.job_id || "—"}</td>
@@ -718,6 +759,16 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                         {tx.amount >= 0 ? `+${tx.amount.toFixed(2)}` : tx.amount.toFixed(2)} cr
                       </td>
                       <td style={{ fontWeight: "600" }}>{tx.balance_after.toFixed(2)} cr</td>
+                      <td>
+                        <a
+                          href={getInvoiceDownloadUrl(tx.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontSize: "12px", fontWeight: 600 }}
+                        >
+                          Invoice <LinkExternalIcon size={11} />
+                        </a>
+                      </td>
                     </tr>
                   ))
                 )}

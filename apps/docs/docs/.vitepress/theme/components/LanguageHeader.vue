@@ -107,7 +107,7 @@ const maturity = computed(() => {
           <span>Source</span>
         </a>
         <a
-          href="https://modelscript.org/playground"
+          :href="`/playground?lang=${lang.slug}`"
           target="_blank"
           rel="noopener noreferrer"
           class="lang-action-btn lang-action-primary"

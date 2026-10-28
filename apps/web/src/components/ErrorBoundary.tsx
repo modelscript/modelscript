@@ -122,10 +122,11 @@ export class ErrorBoundary extends Component<Props, State> {
               An error occurred while rendering this section. You can try refreshing or returning to the explore feed.
             </Text>
 
-            <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-              <Button leadingVisual={SyncIcon} onClick={this.handleReload} variant="primary">
-                Refresh Page
+            <div style={{ display: "flex", gap: "12px", marginTop: "8px", flexWrap: "wrap", justifyContent: "center" }}>
+              <Button leadingVisual={SyncIcon} onClick={this.handleReset} variant="primary">
+                Try Again
               </Button>
+              <Button onClick={this.handleReload}>Refresh Page</Button>
               <Button
                 leadingVisual={HomeIcon}
                 onClick={() => {

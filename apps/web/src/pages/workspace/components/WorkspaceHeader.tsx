@@ -23,9 +23,10 @@ export interface WorkspaceHeaderProps {
   project: string;
   basePath: string;
   currentTab: string | undefined;
+  repo?: { visibility?: string | undefined } | null | undefined;
 }
 
-export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({ namespace, project, basePath, currentTab }) => {
+export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({ namespace, project, basePath, currentTab, repo }) => {
   const { showToast } = useToast();
   const repoKey = `${namespace}/${project}`;
   const [watching, setWatching] = useState(false);
@@ -92,7 +93,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({ namespace, pro
               </PrimerLink>
             </Heading>
             <Label variant="secondary" style={{ marginLeft: "8px" }}>
-              Public
+              {repo?.visibility === "private" ? "Private" : "Public"}
             </Label>
           </Box>
           <Box display="flex" gap={2}>

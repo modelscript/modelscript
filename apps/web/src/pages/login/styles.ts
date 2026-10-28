@@ -107,6 +107,10 @@ export const Button = styled.button`
   box-shadow: 0 4px 14px rgba(6, 182, 212, 0.35);
   margin-top: 6px;
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 
   &:hover {
     opacity: 0.95;
@@ -208,6 +212,11 @@ export const ErrorBanner = styled.div`
   border-radius: var(--radius-md, 8px);
   font-size: 13px;
   line-height: 1.4;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 `;
 
 export const FooterText = styled.p`
@@ -227,3 +236,125 @@ export const FooterText = styled.p`
     }
   }
 `;
+
+export const FieldGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+`;
+
+export const FieldLabel = styled.label`
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+`;
+
+export const PasswordInputWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+
+  input {
+    padding-right: 42px;
+  }
+`;
+
+export const PasswordToggleButton = styled.button`
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+
+  &:hover {
+    color: var(--color-text-primary);
+    background: var(--surface-row-hover, rgba(255, 255, 255, 0.06));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-cyan, #06b6d4);
+    outline-offset: 1px;
+  }
+`;
+
+export const StrengthMeterContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  margin-top: 2px;
+`;
+
+export const StrengthBars = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 100%;
+`;
+
+export const StrengthSegment = styled.div<{ $active: boolean; $color: string }>`
+  height: 4px;
+  border-radius: 9999px;
+  background: ${(props) => (props.$active ? props.$color : "var(--color-border, rgba(255, 255, 255, 0.12))")};
+  transition: background-color 0.2s ease;
+`;
+
+export const StrengthLabel = styled.div<{ $color: string }>`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: ${(props) => props.$color};
+  line-height: 1.2;
+`;
+
+export interface PasswordStrength {
+  score: 0 | 1 | 2 | 3 | 4;
+  label: "" | "Weak" | "Fair" | "Good" | "Strong";
+  color: string;
+}
+
+export function evaluatePasswordStrength(password: string): PasswordStrength {
+  if (!password) {
+    return { score: 0, label: "", color: "var(--color-border)" };
+  }
+  if (password.length < 8) {
+    return { score: 1, label: "Weak", color: "var(--status-unstable-fg, #f85149)" };
+  }
+  let points = 1;
+  if (password.length >= 12) points++;
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) points++;
+  if (/\d/.test(password)) points++;
+  if (/[^A-Za-z0-9]/.test(password)) points++;
+
+  if (points <= 2) {
+    return { score: 2, label: "Fair", color: "#f59e0b" };
+  }
+  if (points === 3) {
+    return { score: 3, label: "Good", color: "var(--color-accent-cyan, #06b6d4)" };
+  }
+  return { score: 4, label: "Strong", color: "#22c55e" };
+}

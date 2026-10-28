@@ -3,6 +3,7 @@
 import { Dialog } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense } from "react";
+import { createMorselShortLink } from "../../../api";
 import AddLibraryModal from "../AddLibraryModal";
 import { CloudDispatchModal } from "../CloudDispatchModal";
 import { detectLanguageFromFilename, getLanguageExtension } from "../constants";
@@ -153,6 +154,27 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             },
             {
               buttonType: "normal",
+              content: "Copy Intranet Embed",
+              onClick: async () => {
+                const code = editor?.getValue() ?? content ?? "";
+                const title = documentModels[selectedModelIndex]?.name || selectedTreeClassName || "ModelScriptModel";
+                const origin = `${window.location.protocol}//${window.location.host}`;
+                try {
+                  const shortLink = await createMorselShortLink({ code, dialect, title, view: "diagram" });
+                  const snippet = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel morsel="${shortLink.id}" height="480px"></modelscript-morsel>`;
+                  await navigator.clipboard.writeText(snippet);
+                  toast.success("Copied <modelscript-morsel> intranet embed snippet!");
+                } catch {
+                  const fallbackSrc = buildShareUrl().replace("/playground", "/embed/playground");
+                  const snippet = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel src="${fallbackSrc}" height="480px"></modelscript-morsel>`;
+                  await navigator.clipboard.writeText(snippet);
+                  toast.success("Copied <modelscript-morsel> embed snippet!");
+                }
+                setShareDialogOpen(false);
+              },
+            },
+            {
+              buttonType: "normal",
               content: translations.copyToClipboard,
               onClick: async () => {
                 await navigator.clipboard.writeText(buildShareUrl());
@@ -237,13 +259,13 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             gap: 12,
           }}
         >
-          <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">
+          <div>
             <img
               src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
               alt="ModelScript"
               style={{ marginBottom: 8 }}
             />
-          </a>
+          </div>
           <div
             style={{
               width: 300,

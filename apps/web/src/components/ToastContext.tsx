@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, CheckCircleFillIcon, InfoIcon, XCircleFillIcon, XIcon } from "@primer/octicons-react";
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import styled, { css, keyframes } from "styled-components";
+
+const MAX_VISIBLE_TOASTS = 4;
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
@@ -23,6 +25,12 @@ export interface ToastOptions {
 interface ToastItem extends ToastOptions {
   id: string;
   type: ToastType;
+}
+
+interface ToastTimerEntry {
+  timerId: ReturnType<typeof setTimeout> | null;
+  remaining: number;
+  startedAt: number;
 }
 
 interface ToastContextValue {
@@ -60,7 +68,7 @@ const ToastViewport = styled.div`
   pointer-events: none;
 
   @media (max-width: 500px) {
-    bottom: 74px; /* Above mobile bottom bar */
+    bottom: calc(136px + env(safe-area-inset-bottom, 0px)); /* Above mobile bottom bar and floating pill */
     right: 16px;
     left: 16px;
     width: auto;
@@ -197,9 +205,55 @@ const CloseButton = styled.button`
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const timersRef = useRef<Map<string, ToastTimerEntry>>(new Map());
 
-  const dismiss = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const clearToastTimer = useCallback((id: string) => {
+    const entry = timersRef.current.get(id);
+    if (entry?.timerId) {
+      clearTimeout(entry.timerId);
+    }
+    timersRef.current.delete(id);
+  }, []);
+
+  const dismiss = useCallback(
+    (id: string) => {
+      clearToastTimer(id);
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    },
+    [clearToastTimer],
+  );
+
+  const pauseTimer = useCallback((id: string) => {
+    const entry = timersRef.current.get(id);
+    if (!entry || entry.timerId === null) return;
+    clearTimeout(entry.timerId);
+    const elapsed = Date.now() - entry.startedAt;
+    entry.remaining = Math.max(500, entry.remaining - elapsed);
+    entry.timerId = null;
+  }, []);
+
+  const resumeTimer = useCallback(
+    (id: string) => {
+      const entry = timersRef.current.get(id);
+      if (!entry || entry.timerId !== null) return;
+      entry.startedAt = Date.now();
+      entry.timerId = setTimeout(() => {
+        dismiss(id);
+      }, entry.remaining);
+    },
+    [dismiss],
+  );
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const entry of timers.values()) {
+        if (entry.timerId) {
+          clearTimeout(entry.timerId);
+        }
+      }
+      timers.clear();
+    };
   }, []);
 
   const toast = useCallback(
@@ -217,18 +271,36 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               action: options.action,
             };
 
-      setToasts((prev) => [...prev, item]);
+      clearToastTimer(id);
+
+      setToasts((prev) => {
+        const filtered = prev.filter((t) => t.id !== id);
+        const next = [...filtered, item];
+        if (next.length > MAX_VISIBLE_TOASTS) {
+          const evicted = next.slice(0, next.length - MAX_VISIBLE_TOASTS);
+          for (const oldToast of evicted) {
+            clearToastTimer(oldToast.id);
+          }
+          return next.slice(-MAX_VISIBLE_TOASTS);
+        }
+        return next;
+      });
 
       const duration = item.duration ?? 4000;
       if (duration > 0) {
-        setTimeout(() => {
+        const timerId = setTimeout(() => {
           dismiss(id);
         }, duration);
+        timersRef.current.set(id, {
+          timerId,
+          remaining: duration,
+          startedAt: Date.now(),
+        });
       }
 
       return id;
     },
-    [dismiss],
+    [clearToastTimer, dismiss],
   );
 
   const success = useCallback((message: string, title?: string) => toast({ type: "success", message, title }), [toast]);
@@ -250,12 +322,20 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [toast, success, error, info, warning, dismiss],
   );
 
+  const visibleToasts = toasts.slice(-MAX_VISIBLE_TOASTS);
+
   return (
     <ToastContext.Provider value={value}>
       {children}
       <ToastViewport aria-live="polite" aria-atomic="true">
-        {toasts.map((t) => (
-          <ToastCard key={t.id} $type={t.type} role="status">
+        {visibleToasts.map((t) => (
+          <ToastCard
+            key={t.id}
+            $type={t.type}
+            role="status"
+            onMouseEnter={() => pauseTimer(t.id)}
+            onMouseLeave={() => resumeTimer(t.id)}
+          >
             <IconWrap $type={t.type}>
               {t.type === "success" && <CheckCircleFillIcon size={18} />}
               {t.type === "error" && <XCircleFillIcon size={18} />}

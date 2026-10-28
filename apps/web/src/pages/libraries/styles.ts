@@ -15,7 +15,6 @@ export const ResultCount = styled.span`
 export const CardList = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
   padding: 16px 0;
 `;
 

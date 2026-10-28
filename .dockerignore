@@ -46,6 +46,7 @@ build
 !apps/api/dist
 !apps/cli/dist
 !apps/web/dist
+!apps/docs/docs/.vitepress/dist
 !apps/ide/dist
 !apps/ide/vscode-web
 !apps/ide/github-fs/dist

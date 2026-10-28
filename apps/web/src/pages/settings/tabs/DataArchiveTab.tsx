@@ -134,7 +134,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
   return (
     <>
       <Header>
-        <CircleIconButton onClick={onBack} style={{ marginRight: "8px" }}>
+        <CircleIconButton className="subtab-back" onClick={onBack} style={{ marginRight: "8px" }}>
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         Download Your Data Archive
@@ -293,7 +293,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             }}
           >
             <Box style={{ marginTop: "4px", color: "var(--color-accent-cyan)" }}>
-              <SyncIcon size={24} style={{ animation: "rotate 1.5s linear infinite" }} />
+              <SyncIcon size={24} style={{ animation: "spin 1.5s linear infinite" }} />
             </Box>
             <Box style={{ flex: 1 }}>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>

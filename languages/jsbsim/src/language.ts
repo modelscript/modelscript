@@ -16,10 +16,10 @@ interface JsbsimActionContext {
  */
 export const jsbsimLanguage = language({
   name: "jsbsim",
-  fileExtensions: [".xml"],
+  fileExtensions: [".jsbsim", ".xml"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".xml"],
+    fileExtensions: [".jsbsim", ".xml"],
     icons: {
       light: "./assets/jsbsim/icon-light.png",
       dark: "./assets/jsbsim/icon-dark.png",

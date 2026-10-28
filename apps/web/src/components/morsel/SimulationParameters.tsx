@@ -105,27 +105,33 @@ function NumericParameterRow({
         />
       )}
       {isSweeping && sweepState ? (
-        <div style={{ display: "flex", gap: 4, width: 120 }}>
+        <div style={{ display: "flex", gap: 4, width: 168 }}>
           <TextInput
             size="small"
-            title="Start"
+            title="Sweep Start"
+            aria-label={`${info.name} Sweep Start`}
+            placeholder="Start"
             value={String(sweepState.start)}
             onChange={(e) => onSweepChange?.({ ...sweepState, start: parseFloat(e.target.value) || 0 })}
-            style={{ width: "33%", padding: "0 2px", fontSize: 11 }}
+            style={{ width: "33.3%", padding: "0 4px", fontSize: 11 }}
           />
           <TextInput
             size="small"
-            title="End"
+            title="Sweep End"
+            aria-label={`${info.name} Sweep End`}
+            placeholder="End"
             value={String(sweepState.end)}
             onChange={(e) => onSweepChange?.({ ...sweepState, end: parseFloat(e.target.value) || 0 })}
-            style={{ width: "33%", padding: "0 2px", fontSize: 11 }}
+            style={{ width: "33.3%", padding: "0 4px", fontSize: 11 }}
           />
           <TextInput
             size="small"
-            title="Steps"
+            title="Sweep Steps"
+            aria-label={`${info.name} Sweep Steps`}
+            placeholder="Steps"
             value={String(sweepState.steps)}
             onChange={(e) => onSweepChange?.({ ...sweepState, steps: parseInt(e.target.value) || 2 })}
-            style={{ width: "33%", padding: "0 2px", fontSize: 11 }}
+            style={{ width: "33.3%", padding: "0 4px", fontSize: 11 }}
           />
         </div>
       ) : (
@@ -190,7 +196,7 @@ function BooleanParameterRow({
   return (
     <div style={ROW_STYLE}>
       <ResetButton visible={isOverridden} name={info.name} onReset={onReset} />
-      <span style={labelStyle(isOverridden)} title={info.name}>
+      <span id={`sim-param-label-${info.name}`} style={labelStyle(isOverridden)} title={info.name}>
         {info.name}
       </span>
       <ToggleSwitch
@@ -198,7 +204,7 @@ function BooleanParameterRow({
         onChange={handleToggle}
         size="small"
         aria-label={info.name}
-        aria-labelledby=""
+        aria-labelledby={`sim-param-label-${info.name}`}
       />
     </div>
   );

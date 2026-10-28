@@ -65,7 +65,18 @@ export const PackageManageModals: React.FC<PackageManageModalsProps> = ({
   actionLoading,
   actionError,
 }) => {
+  const [unpublishConfirmInput, setUnpublishConfirmInput] = React.useState("");
+
+  React.useEffect(() => {
+    if (manageModal !== "unpublish") {
+      setUnpublishConfirmInput("");
+    }
+  }, [manageModal]);
+
   if (!manageModal) return null;
+
+  const trimmedConfirm = unpublishConfirmInput.trim();
+  const isUnpublishConfirmed = trimmedConfirm === version || trimmedConfirm === `${name}@${version}`;
 
   return (
     <>
@@ -297,11 +308,26 @@ export const PackageManageModals: React.FC<PackageManageModalsProps> = ({
               </strong>
               ? Unlike yanking, unpublishing removes the archive and indexed classes from the registry.
             </Text>
+            <Box>
+              <Text style={{ fontSize: 13, fontWeight: 600, display: "block", marginBottom: 6 }}>
+                Type{" "}
+                <code>
+                  {name}@{version}
+                </code>{" "}
+                (or <code>{version}</code>) to confirm
+              </Text>
+              <TextInput
+                block
+                placeholder={`${name}@${version}`}
+                value={unpublishConfirmInput}
+                onChange={(e) => setUnpublishConfirmInput(e.target.value)}
+              />
+            </Box>
             {actionError && <Flash variant="danger">{actionError}</Flash>}
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
               <Button onClick={() => setManageModal(null)}>Cancel</Button>
-              <Button variant="danger" onClick={onUnpublish} disabled={actionLoading}>
-                {actionLoading ? <Spinner size="small" /> : `Unpublish v${version}`}
+              <Button variant="danger" onClick={onUnpublish} disabled={actionLoading || !isUnpublishConfirmed}>
+                {actionLoading ? <Spinner size="small" /> : "Permanently Unpublish"}
               </Button>
             </Box>
           </Box>

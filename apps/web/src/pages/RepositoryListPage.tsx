@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertIcon, PlusIcon, SearchIcon, ShareIcon, SyncIcon } from "@primer/octicons-react";
-import { Heading, Spinner, Text } from "@primer/react";
+import { AlertIcon, PlusIcon, SearchIcon, ShareIcon, SyncIcon, XCircleFillIcon } from "@primer/octicons-react";
+import { Flash, Heading, Spinner, Text, TextInput } from "@primer/react";
 import React, { useContext, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
@@ -65,10 +65,11 @@ const RepositoryListPage: React.FC = () => {
   usePageTitle("Repositories");
   const { token } = useAuth();
   const { openCompose } = useContext(ComposeContext);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [repos, setRepos] = useState<RepositoryDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addRepoError, setAddRepoError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "my">(token ? "my" : "all");
   const [repoInput, setRepoInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
@@ -82,6 +83,24 @@ const RepositoryListPage: React.FC = () => {
     }
   });
   const query = searchParams.get("q") || "";
+  const [searchInput, setSearchInput] = useState(query);
+
+  useEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchInput.trim() !== query) {
+        if (searchInput.trim()) {
+          setSearchParams({ q: searchInput.trim() });
+        } else {
+          setSearchParams({});
+        }
+      }
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchInput, query, setSearchParams]);
 
   useEffect(() => {
     const fetchRepos = async () => {
@@ -102,7 +121,9 @@ const RepositoryListPage: React.FC = () => {
           const lowerQuery = query.toLowerCase();
           fetchedRepos = fetchedRepos.filter(
             (r: RepositoryDTO) =>
-              r.project.toLowerCase().includes(lowerQuery) || r.namespace.toLowerCase().includes(lowerQuery),
+              r.project.toLowerCase().includes(lowerQuery) ||
+              r.namespace.toLowerCase().includes(lowerQuery) ||
+              Boolean(r.description && r.description.toLowerCase().includes(lowerQuery)),
           );
         }
 
@@ -115,7 +136,7 @@ const RepositoryListPage: React.FC = () => {
       }
     };
 
-    const timer = setTimeout(fetchRepos, 300);
+    const timer = setTimeout(fetchRepos, query ? 300 : 0);
     return () => clearTimeout(timer);
   }, [query, token, activeTab, refreshKey]);
 
@@ -138,12 +159,12 @@ const RepositoryListPage: React.FC = () => {
       repo_full_name = `${parts[0]}/${parts[1]}`.replace(/\.git$/, "");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Invalid repository URL";
-      setError(msg);
+      setAddRepoError(msg);
       return;
     }
 
     setIsAdding(true);
-    setError(null);
+    setAddRepoError(null);
     try {
       await createRepo({
         provider,
@@ -157,11 +178,11 @@ const RepositoryListPage: React.FC = () => {
     } catch (e: unknown) {
       if (e && typeof e === "object" && "response" in e) {
         const axErr = e as { response?: { data?: { error?: string | undefined } | undefined } | undefined };
-        setError(axErr.response?.data?.error || "Failed to add repository");
+        setAddRepoError(axErr.response?.data?.error || "Failed to add repository");
       } else if (e instanceof Error) {
-        setError(e.message);
+        setAddRepoError(e.message);
       } else {
-        setError("Failed to add repository");
+        setAddRepoError("Failed to add repository");
       }
     } finally {
       setIsAdding(false);
@@ -187,7 +208,10 @@ const RepositoryListPage: React.FC = () => {
             type="text"
             placeholder="Enter a GitHub or GitLab repository URL"
             value={repoInput}
-            onChange={(e) => setRepoInput(e.target.value)}
+            onChange={(e) => {
+              setRepoInput(e.target.value);
+              if (addRepoError) setAddRepoError(null);
+            }}
             disabled={isAdding}
             required
           />
@@ -204,8 +228,21 @@ const RepositoryListPage: React.FC = () => {
       )}
 
       <Box p={4}>
+        {addRepoError && (
+          <Box mb={3}>
+            <Flash variant="danger">{addRepoError}</Flash>
+          </Box>
+        )}
+
         {/* Search header */}
-        <Box display="flex" alignItems="center" justifyContent="space-between" style={{ marginBottom: "24px" }}>
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          gap={3}
+          style={{ marginBottom: "24px" }}
+        >
           <Box display="flex" alignItems="baseline" gap="8px">
             <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 800, fontSize: 24, margin: 0 }}>
               Repositories
@@ -215,6 +252,28 @@ const RepositoryListPage: React.FC = () => {
                 {repos.length} repositor{repos.length !== 1 ? "ies" : "y"}
               </ResultCount>
             )}
+          </Box>
+
+          <Box style={{ maxWidth: "380px", width: "100%", flex: "1 1 260px" }}>
+            <TextInput
+              leadingVisual={SearchIcon}
+              placeholder="Filter repositories by name or owner..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              trailingAction={
+                searchInput ? (
+                  <TextInput.Action
+                    icon={XCircleFillIcon}
+                    aria-label="Clear search"
+                    onClick={() => {
+                      setSearchInput("");
+                      setSearchParams({});
+                    }}
+                  />
+                ) : undefined
+              }
+              sx={{ width: "100%" }}
+            />
           </Box>
         </Box>
 
@@ -307,7 +366,7 @@ const RepositoryListPage: React.FC = () => {
                       </Link>
                     </Heading>
                     <Text color="var(--color-text-muted)" style={{ fontSize: "14px", display: "block" }}>
-                      @{r.provider}.com/{r.namespace}/{r.project}
+                      {r.provider}.com/{r.namespace}/{r.project}
                     </Text>
                     <Text
                       as="p"
@@ -363,8 +422,10 @@ const RepositoryListPage: React.FC = () => {
                       <button
                         type="button"
                         style={{
-                          backgroundColor: isFollowing ? "transparent" : "#f1f5f9",
-                          color: isFollowing ? "var(--color-text-primary)" : "#0f172a",
+                          backgroundColor: isFollowing
+                            ? "var(--color-btn-secondary-bg, transparent)"
+                            : "var(--ms-brand, var(--color-accent-emphasis))",
+                          color: isFollowing ? "var(--color-text-primary)" : "#ffffff",
                           border: isFollowing ? "1px solid var(--color-border)" : "1px solid transparent",
                           borderRadius: "9999px",
                           padding: "6px 16px",

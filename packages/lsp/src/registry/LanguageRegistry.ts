@@ -395,14 +395,33 @@ export class LanguageRegistry {
     if (qIdx !== -1) cleanUri = cleanUri.slice(0, qIdx);
     const hashIdx = cleanUri.indexOf("#");
     if (hashIdx !== -1) cleanUri = cleanUri.slice(0, hashIdx);
+    const lowerUri = cleanUri.toLowerCase();
+
+    // Check compound extensions first (e.g., .swmm.inp, .epanet.inp, .jsbsim.xml, .plcopen.xml)
+    if (lowerUri.endsWith(".swmm.inp")) return this.getPluginById("swmm");
+    if (lowerUri.endsWith(".epanet.inp")) return this.getPluginById("epanet");
+    if (lowerUri.endsWith(".sima.inp")) return this.getPluginById("sima");
+    if (lowerUri.endsWith(".relap5.inp")) return this.getPluginById("relap5");
+    if (lowerUri.endsWith(".aspen.inp")) return this.getPluginById("aspen");
+    if (lowerUri.endsWith(".jsbsim.xml")) return this.getPluginById("jsbsim");
+    if (lowerUri.endsWith(".plcopen.xml")) return this.getPluginById("plcopen");
+    if (lowerUri.endsWith(".sbml.xml")) return this.getPluginById("sbml");
+
     const dotIdx = cleanUri.lastIndexOf(".");
     if (dotIdx === -1) return undefined;
     const ext = cleanUri.slice(dotIdx).toLowerCase();
 
-    if (text && (ext === ".inp" || ext === ".xml")) {
+    if (!text && (ext === ".inp" || ext === ".xml" || ext === ".net")) {
+      const openDoc = (globalThis as any).documents?.get?.(uri);
+      if (openDoc && typeof openDoc.getText === "function") {
+        text = openDoc.getText();
+      }
+    }
+
+    if (text && (ext === ".inp" || ext === ".xml" || ext === ".net")) {
       const header = text.slice(0, 2048);
-      if (ext === ".inp") {
-        if (/^\s*\[(?:SUBCATCHMENTS|RAINGAGES|INFILTRATION)\]/im.test(header)) {
+      if (ext === ".inp" || ext === ".net") {
+        if (/^\s*\[(?:SUBCATCHMENTS|RAINGAGES|INFILTRATION|CONDUITS|OUTFALLS)\]/im.test(header)) {
           return this.getPluginById("swmm") ?? this.extMap.get(ext);
         }
         if (/^\s*\[(?:JUNCTIONS|PIPES|RESERVOIRS|TANKS)\]/im.test(header)) {
@@ -418,6 +437,7 @@ export class LanguageRegistry {
         if (/<OpenSCENARIO\b/i.test(header)) return this.getPluginById("openscenario") ?? this.extMap.get(ext);
         if (/<sbml\b/i.test(header)) return this.getPluginById("sbml") ?? this.extMap.get(ext);
         if (/<fdm_config\b/i.test(header)) return this.getPluginById("jsbsim") ?? this.extMap.get(ext);
+        if (/<project\b[^>]*plcopen/i.test(header)) return this.getPluginById("plcopen") ?? this.extMap.get(ext);
       }
     }
 

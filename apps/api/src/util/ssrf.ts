@@ -63,8 +63,78 @@ export function isPrivateIp(ip: string): boolean {
 }
 
 /**
+ * Checks whether a hostname is explicitly allowlisted for airgapped intranet deployments
+ * via `ALLOWED_INTRANET_HOSTS` (comma-separated exact hostnames or domain suffixes like `.corp,.internal`).
+ */
+export function isAllowedIntranetHost(hostname: string): boolean {
+  const raw = process.env["ALLOWED_INTRANET_HOSTS"];
+  if (!raw) return false;
+  const clean = (hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname)
+    .trim()
+    .toLowerCase();
+  const entries = raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  for (const entry of entries) {
+    if (entry === clean) return true;
+    if (entry.startsWith("*.") && clean.endsWith(entry.slice(1))) return true;
+    if (entry.startsWith(".") && clean.endsWith(entry)) return true;
+  }
+  return false;
+}
+
+/**
+ * Checks whether an IP address is explicitly allowlisted for airgapped intranet deployments
+ * via `ALLOWED_INTRANET_CIDRS` (comma-separated IPs or CIDR blocks like `10.10.0.0/16,192.168.50.10`).
+ */
+export function isAllowedIntranetIp(ip: string): boolean {
+  const raw = process.env["ALLOWED_INTRANET_CIDRS"];
+  if (!raw || !ip) return false;
+  const normalizedIp = ip
+    .replace(/^::ffff:/i, "")
+    .trim()
+    .toLowerCase();
+  const family = net.isIPv6(normalizedIp) ? "ipv6" : net.isIPv4(normalizedIp) ? "ipv4" : null;
+  if (!family) return false;
+
+  const blockList = new net.BlockList();
+  const entries = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const entry of entries) {
+    if (entry.includes("/")) {
+      const [subnetIp, prefixStr] = entry.split("/");
+      const cleanSubnet = (subnetIp || "").replace(/^::ffff:/i, "").trim();
+      const prefix = Number(prefixStr);
+      const subFamily = net.isIPv6(cleanSubnet) ? "ipv6" : net.isIPv4(cleanSubnet) ? "ipv4" : null;
+      if (subFamily && Number.isInteger(prefix) && prefix >= 0 && prefix <= (subFamily === "ipv6" ? 128 : 32)) {
+        try {
+          blockList.addSubnet(cleanSubnet, prefix, subFamily);
+        } catch {
+          // Ignore malformed CIDR
+        }
+      }
+    } else {
+      const cleanAddr = entry.replace(/^::ffff:/i, "").trim();
+      const addrFamily = net.isIPv6(cleanAddr) ? "ipv6" : net.isIPv4(cleanAddr) ? "ipv4" : null;
+      if (addrFamily) {
+        try {
+          blockList.addAddress(cleanAddr, addrFamily);
+        } catch {
+          // Ignore malformed IP
+        }
+      }
+    }
+  }
+  return blockList.check(normalizedIp, family);
+}
+
+/**
  * Resolves a hostname via DNS and asserts that none of the resolved IP addresses
- * point to loopback, private, carrier-grade NAT, or cloud metadata ranges.
+ * point to loopback, private, carrier-grade NAT, or cloud metadata ranges
+ * (unless explicitly allowlisted via ALLOWED_INTRANET_HOSTS or ALLOWED_INTRANET_CIDRS).
  * Protects against DNS rebinding (TOCTOU) attacks.
  */
 export async function resolveAndValidatePublicHost(
@@ -72,10 +142,11 @@ export async function resolveAndValidatePublicHost(
   resolver?: (host: string) => Promise<{ address: string; family: number }[]>,
 ): Promise<string[]> {
   const cleanHost = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  const hostAllowlisted = isAllowedIntranetHost(cleanHost);
 
   // If already a literal IP address, validate directly without network lookup
   if (net.isIP(cleanHost)) {
-    if (isPrivateIp(cleanHost)) {
+    if (isPrivateIp(cleanHost) && !hostAllowlisted && !isAllowedIntranetIp(cleanHost)) {
       throw new Error(`SSRF Blocked: ${hostname} is a private IP address (${cleanHost})`);
     }
     return [cleanHost];
@@ -97,7 +168,7 @@ export async function resolveAndValidatePublicHost(
   }
 
   for (const entry of addresses) {
-    if (isPrivateIp(entry.address)) {
+    if (isPrivateIp(entry.address) && !hostAllowlisted && !isAllowedIntranetIp(entry.address)) {
       throw new Error(`SSRF Blocked: ${hostname} resolves to private IP ${entry.address}`);
     }
   }
@@ -107,7 +178,8 @@ export async function resolveAndValidatePublicHost(
 
 /**
  * Validates and asserts that a URL string is safe for server-side outbound requests (synchronous string checks).
- * Checks for valid HTTP/HTTPS protocol and rejects local, private, and metadata network targets.
+ * Checks for valid HTTP/HTTPS protocol and rejects local, private, and metadata network targets
+ * (unless explicitly allowlisted via ALLOWED_INTRANET_HOSTS or ALLOWED_INTRANET_CIDRS).
  * Returns the parsed and validated URL object.
  */
 export function assertSafePublicUrl(rawUrl: string): URL {
@@ -125,6 +197,10 @@ export function assertSafePublicUrl(rawUrl: string): URL {
   const rawHostname = parsed.hostname.toLowerCase();
   // Strip IPv6 brackets if present for IP checking
   const hostname = rawHostname.startsWith("[") && rawHostname.endsWith("]") ? rawHostname.slice(1, -1) : rawHostname;
+
+  if (isAllowedIntranetHost(hostname) || (net.isIP(hostname) && isAllowedIntranetIp(hostname))) {
+    return parsed;
+  }
 
   // Reject local and internal hostnames
   if (

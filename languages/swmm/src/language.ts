@@ -12,10 +12,10 @@ import { routeNetworkFlow } from "./solver/hydraulic-solver.js";
  */
 export const swmmLanguage = language({
   name: "swmm",
-  fileExtensions: [".inp"],
+  fileExtensions: [".swmm", ".inp"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".inp"],
+    fileExtensions: [".swmm", ".inp"],
     icons: {
       light: "./assets/swmm/icon-light.png",
       dark: "./assets/swmm/icon-dark.png",

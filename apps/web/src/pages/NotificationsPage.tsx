@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner } from "@primer/react";
+import { BellIcon } from "@primer/octicons-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getNotifications, markNotificationsRead } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import EmptyState from "../components/EmptyState";
 import { usePageTitle } from "../util/title";
 import type { NotificationCategory, NotificationItem } from "./notifications";
 import {
@@ -52,6 +53,9 @@ const NotificationsPage: React.FC = () => {
 
   const markSingleRead = useCallback(
     (id: string | number) => {
+      if (token) {
+        markNotificationsRead().catch(() => {});
+      }
       setNotifications((prev) => {
         let decremented = false;
         const next = prev.map((n) => {
@@ -68,7 +72,7 @@ const NotificationsPage: React.FC = () => {
         return next;
       });
     },
-    [setUnreadCount],
+    [token, setUnreadCount],
   );
 
   const markAllRead = () => {
@@ -162,13 +166,33 @@ const NotificationsPage: React.FC = () => {
       />
 
       {loading ? (
-        <Box p={4} display="flex" justifyContent="center">
-          <Spinner size="large" />
+        <Box aria-busy="true" aria-label="Loading notifications">
+          {[0, 1, 2, 3].map((i) => (
+            <Box
+              key={i}
+              display="flex"
+              gap="14px"
+              p="16px 20px"
+              style={{ borderBottom: "1px solid var(--color-border-default)" }}
+            >
+              <div className="skeleton" style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0 }} />
+              <Box flex={1} display="flex" flexDirection="column" gap="8px">
+                <div className="skeleton" style={{ width: `${55 - i * 6}%`, height: 14, borderRadius: 4 }} />
+                <div className="skeleton" style={{ width: `${85 - i * 8}%`, height: 13, borderRadius: 4 }} />
+              </Box>
+            </Box>
+          ))}
         </Box>
       ) : filteredNotifications.length === 0 ? (
-        <Box p={6} textAlign="center" color="var(--color-fg-muted)">
-          {unreadOnly ? "No unread notifications in this category." : "You have no notifications in this category."}
-        </Box>
+        <EmptyState
+          icon={<BellIcon size={24} />}
+          title={unreadOnly ? "No unread notifications" : "No notifications yet"}
+          body={
+            unreadOnly
+              ? "You're all caught up on unread notifications in this category."
+              : "When simulations complete, packages publish, or engineers mention your work, notifications will appear here."
+          }
+        />
       ) : (
         <Box>
           {filteredNotifications.map((notif) => {

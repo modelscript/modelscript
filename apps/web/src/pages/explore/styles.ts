@@ -18,14 +18,15 @@ export const SearchHeader = styled.div`
 `;
 
 export const MobileSearchWrapper = styled.div`
-  display: none;
+  display: block;
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
   background: var(--surface-hud);
-
-  @media (max-width: 1000px) {
-    display: block;
-  }
+  position: sticky;
+  top: var(--dev-header-height, 0px);
+  z-index: 10;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 `;
 
 export const SearchInputWrapper = styled.div`

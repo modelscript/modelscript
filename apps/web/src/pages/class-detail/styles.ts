@@ -19,9 +19,37 @@ export const PageWrap = styled.div`
     background-color 0.3s ease,
     color 0.3s ease;
   flex: 1;
+
+  @media (max-width: 960px) {
+    flex-direction: column;
+  }
 `;
 
-export const TreeSidebar = styled.div`
+export const MobileTreeToggle = styled.button`
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 20px;
+  background: var(--surface-overlay);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--surface-row-hover);
+  }
+
+  @media (max-width: 960px) {
+    display: flex;
+  }
+`;
+
+export const TreeSidebar = styled.div<{ $mobileOpen?: boolean | undefined }>`
   width: 280px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
@@ -31,6 +59,18 @@ export const TreeSidebar = styled.div`
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+
+  @media (max-width: 960px) {
+    width: 100%;
+    position: relative;
+    top: 0;
+    height: auto;
+    max-height: ${(props) => (props.$mobileOpen ? "420px" : "0px")};
+    overflow: hidden;
+    border-right: none;
+    border-bottom: ${(props) => (props.$mobileOpen ? "1px solid var(--color-border)" : "none")};
+    transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
 `;
 
 export const TreeScrollArea = styled.div`
@@ -77,6 +117,11 @@ export const ContentGrid = styled.div`
   @media (max-width: 960px) {
     grid-template-columns: 1fr;
   }
+
+  @media (max-width: 768px) {
+    padding: 20px 20px 40px;
+    gap: 24px;
+  }
 `;
 
 export const HeaderBar = styled.div`
@@ -86,6 +131,10 @@ export const HeaderBar = styled.div`
   padding: 28px 40px 0;
   box-sizing: border-box;
   border-bottom: 1px solid var(--color-border);
+
+  @media (max-width: 768px) {
+    padding: 20px 20px 0;
+  }
 `;
 
 export const TabBar = styled.div`

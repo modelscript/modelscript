@@ -164,12 +164,21 @@ const SettingsPage: React.FC = () => {
 
   const hasBots = useFeatureFlag("bot_accounts");
 
+  const isSubTab =
+    activeTab === "accountInfo" ||
+    activeTab === "changePassword" ||
+    activeTab === "connectedAccounts" ||
+    activeTab === "dataArchive" ||
+    activeTab === "deleteAccount";
+
   React.useEffect(() => {
     if (effectiveTab && effectiveTab !== activeTab) {
       setActiveTab(effectiveTab);
       setMobileShowMenu(false);
+    } else if (isSubTab) {
+      setMobileShowMenu(false);
     }
-  }, [effectiveTab, activeTab]);
+  }, [effectiveTab, activeTab, isSubTab]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
@@ -191,6 +200,7 @@ const SettingsPage: React.FC = () => {
 
   const needsMobileBackBar =
     activeTab === "notifications" ||
+    activeTab === "notificationFilters" ||
     activeTab === "display" ||
     activeTab === "contentPreferences" ||
     activeTab === "other" ||
@@ -358,7 +368,7 @@ const SettingsPage: React.FC = () => {
           <DisplayAndPreferencesTab subView={activeTab} onNavigate={handleTabChange} />
         )}
         {(activeTab === "privacy" || activeTab === "deleteAccount") && (
-          <PrivacyTab subView={activeTab} onNavigate={handleTabChange} />
+          <PrivacyTab subView={activeTab} onNavigate={handleTabChange} onBack={handleMobileOrAccountBack} />
         )}
         {activeTab === "dataArchive" && <DataArchiveTab onBack={() => handleTabChange("privacy")} />}
         {activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}

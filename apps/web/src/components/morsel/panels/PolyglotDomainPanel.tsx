@@ -1474,8 +1474,8 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({ dialec
     return analyzeGeneralModel(d, code, lines);
   }, [dialect, code]);
 
-  const borderCol = isDark ? "#30363d" : "#d0d7de";
-  const cardBg = isDark ? "#161b22" : "#f6f8fa";
+  const borderCol = "var(--color-border-default)";
+  const cardBg = "var(--color-bg-card)";
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#656d76";
 
@@ -1489,9 +1489,9 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({ dialec
         width: "100%",
         height: "100%",
         overflowY: "auto",
-        padding: "72px 20px 28px 20px",
+        padding: "16px 20px 28px 20px",
         gap: 18,
-        backgroundColor: isDark ? "#0d1117" : "#ffffff",
+        backgroundColor: "var(--color-bg-primary)",
         color: textPrimary,
         fontSize: 13,
       }}
@@ -1585,7 +1585,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({ dialec
                   padding: "6px 10px",
                   borderRadius: 6,
                   border: `1px solid ${borderCol}`,
-                  backgroundColor: isDark ? "#0d1117" : "#ffffff",
+                  backgroundColor: "var(--color-bg-primary)",
                   color: textPrimary,
                   cursor: "pointer",
                   fontSize: 12,
@@ -1690,7 +1690,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({ dialec
                         style={{
                           borderBottom: rIdx < filteredRows.length - 1 ? `1px solid ${borderCol}` : "none",
                           cursor: typeof row["line"] === "number" ? "pointer" : "default",
-                          backgroundColor: isDark ? "#0d1117" : "#ffffff",
+                          backgroundColor: "var(--color-bg-primary)",
                         }}
                       >
                         {section.columns.map((col) => {

@@ -159,6 +159,45 @@ const styleProps = new Set([
   "sx",
 ]);
 
+const PRIMER_TOKEN_MAP: Record<string, string> = {
+  "canvas.subtle": "var(--color-canvas-subtle)",
+  "canvas.default": "var(--color-canvas-default)",
+  "canvas.inset": "var(--color-canvas-inset)",
+  "canvas.overlay": "var(--color-canvas-overlay)",
+  "border.default": "var(--color-border-default)",
+  "border.muted": "var(--color-border-muted)",
+  "border.subtle": "var(--color-border-subtle)",
+  "fg.default": "var(--color-fg-default)",
+  "fg.muted": "var(--color-fg-muted)",
+  "fg.subtle": "var(--color-fg-subtle)",
+  "fg.onEmphasis": "var(--color-fg-on-emphasis)",
+  "accent.fg": "var(--color-accent-fg)",
+  "accent.emphasis": "var(--color-accent-emphasis)",
+  "accent.muted": "var(--color-accent-muted)",
+  "accent.subtle": "var(--color-accent-subtle)",
+  "danger.fg": "var(--color-danger-fg)",
+  "danger.emphasis": "var(--color-danger-emphasis)",
+  "danger.muted": "var(--color-danger-muted)",
+  "danger.subtle": "var(--color-danger-subtle)",
+  "success.fg": "var(--color-success-fg)",
+  "success.emphasis": "var(--color-success-emphasis)",
+  "success.muted": "var(--color-success-muted)",
+  "success.subtle": "var(--color-success-subtle)",
+  "attention.fg": "var(--color-attention-fg)",
+  "attention.emphasis": "var(--color-attention-emphasis)",
+  "attention.muted": "var(--color-attention-muted)",
+  "attention.subtle": "var(--color-attention-subtle)",
+  "neutral.muted": "var(--color-neutral-muted)",
+  "neutral.subtle": "var(--color-neutral-subtle)",
+};
+
+function resolveToken<T>(val: T): T | string {
+  if (typeof val === "string" && val in PRIMER_TOKEN_MAP) {
+    return PRIMER_TOKEN_MAP[val]!;
+  }
+  return val;
+}
+
 function formatSpace(val: string | number | undefined): string | undefined {
   if (val === undefined) return undefined;
   return typeof val === "number" ? `${val * 4}px` : val;
@@ -174,7 +213,7 @@ function normalizeSx(sx: any): any {
     }
     switch (key) {
       case "bg":
-        result.backgroundColor = val;
+        result.backgroundColor = resolveToken(val);
         break;
       case "p":
         result.padding = formatSpace(val as string | number);
@@ -223,7 +262,7 @@ function normalizeSx(sx: any): any {
         result.marginRight = formatSpace(val as string | number);
         break;
       default:
-        result[key] = val;
+        result[key] = resolveToken(val);
         break;
     }
   }
@@ -261,13 +300,13 @@ const Box = styled.div.withConfig({
   width: ${(props) => (typeof props.width === "number" ? `${props.width}px` : props.width)};
   height: ${(props) => (typeof props.height === "number" ? `${props.height}px` : props.height)};
   min-height: ${(props) => (typeof props.minHeight === "number" ? `${props.minHeight}px` : props.minHeight)};
-  background-color: ${(props) => props.bg || props.backgroundColor};
-  background: ${(props) => props.background};
-  color: ${(props) => props.color};
+  background-color: ${(props) => resolveToken(props.bg || props.backgroundColor)};
+  background: ${(props) => resolveToken(props.background)};
+  color: ${(props) => resolveToken(props.color)};
   border: ${(props) => props.border};
   border-width: ${(props) => (typeof props.borderWidth === "number" ? `${props.borderWidth}px` : props.borderWidth)};
   border-style: ${(props) => props.borderStyle};
-  border-color: ${(props) => props.borderColor};
+  border-color: ${(props) => resolveToken(props.borderColor)};
   border-top: ${(props) => props.borderTop};
   border-bottom: ${(props) => props.borderBottom};
   border-left: ${(props) => props.borderLeft};

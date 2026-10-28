@@ -6,6 +6,7 @@ import { requireAdmin } from "../middleware/auth-middleware.js";
 import { allMigrations } from "../migrations/index.js";
 import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import { FederationWorker } from "../services/federation-worker.js";
+import { locationService } from "../services/location.js";
 
 // Enforce admin privileges
 const adminAuth = (req: Request, res: Response, next: express.NextFunction) => {
@@ -452,6 +453,193 @@ export function adminRouter(
       res.json({ success: true, key, isEnabled });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update feature flag" });
+    }
+  });
+
+  // ── Unified First-Party Page View Analytics (Web App & Docs) ──
+
+  /**
+   * POST /api/v1/analytics/pageview
+   * Public intake for privacy-preserving first-party page view beacons from apps/web and apps/docs.
+   * Resolves country/region in memory and immediately scrubs raw IP addresses.
+   */
+  router.post(
+    "/analytics/pageview",
+    express.text({ type: ["application/json", "text/plain"], limit: "8kb" }),
+    (req: Request, res: Response) => {
+      try {
+        const ua = req.headers["user-agent"] as string | undefined;
+        if (locationService.isBotUserAgent(ua)) {
+          res.status(202).json({ success: true, counted: false, ignored: "bot" });
+          return;
+        }
+
+        let body: Record<string, unknown> = {};
+        if (typeof req.body === "string" && req.body.trim()) {
+          try {
+            body = JSON.parse(req.body) as Record<string, unknown>;
+          } catch {
+            body = { path: req.body.trim() };
+          }
+        } else if (req.body && typeof req.body === "object") {
+          body = req.body as Record<string, unknown>;
+        }
+
+        const rawPath = typeof body["path"] === "string" && body["path"].trim() ? body["path"].trim() : "/";
+        const cleanPath = rawPath.split("?")[0]?.split("#")[0] || "/";
+        const docsPrefixRe =
+          /^\/(docs|guide|architecture|algorithms|cli|languages|reference|industries|pricing)(\/|$)/i;
+        const surface: "web" | "docs" =
+          body["surface"] === "docs" || (body["surface"] !== "web" && docsPrefixRe.test(cleanPath)) ? "docs" : "web";
+
+        const isUniqueVisitor = locationService.checkAndMarkUniqueHit(req, `page:${surface}:${cleanPath}`);
+        const { countryCode, regionCode } = locationService.resolveRequestGeo(req);
+
+        database.recordPageView({
+          surface,
+          path: cleanPath,
+          isUniqueVisitor,
+          countryCode,
+          regionCode,
+        });
+
+        res.status(202).json({
+          success: true,
+          counted: true,
+          surface,
+          path: cleanPath,
+          isUnique: isUniqueVisitor,
+          isUniqueVisitor,
+        });
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : "Failed to record page view" });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/admin/analytics
+   * Retrieves aggregated first-party page view analytics, top pages, and scrubbed geographic heatmaps
+   */
+  router.get("/admin/analytics", adminAuth, (req: Request, res: Response) => {
+    try {
+      const days = Math.min(365, Math.max(1, parseInt(req.query["days"] as string, 10) || 30));
+      const rawSurface = req.query["surface"] as string | undefined;
+      const surface = rawSurface === "web" || rawSurface === "docs" ? rawSurface : undefined;
+
+      const summary = database.getPageAnalyticsSummary(days, surface);
+      const geoipConfigured = locationService.isReady();
+      res.json({
+        ...summary,
+        days,
+        surface: surface || "all",
+        geoipConfigured,
+        geolocation: {
+          dbLoaded: geoipConfigured,
+          fallbackActive: true,
+        },
+        totals: {
+          totalViews: summary.totalViews,
+          uniqueViews: summary.uniqueVisitors,
+          webViews: summary.webViews,
+          docsViews: summary.docsViews,
+          totalPostViews: summary.postViewsTotal,
+          totalPackageDownloads: summary.packageDownloadsTotal,
+        },
+        dailySeries: summary.daily.map((d) => ({
+          day: d.date,
+          views: d.views,
+          uniqueViews: d.uniqueVisitors,
+        })),
+        topPages: summary.topPages.map((p) => ({
+          ...p,
+          uniqueViews: p.uniqueVisitors,
+        })),
+        countryBreakdown: summary.locationStats.map((c) => ({
+          countryCode: c.country,
+          views: c.views,
+        })),
+        regionBreakdown: summary.regionStats.map((r) => ({
+          countryCode: r.country,
+          region: r.region,
+          views: r.views,
+        })),
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch analytics summary" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/analytics/prune
+   * Prunes aggregated page view records older than `retainDays`
+   */
+  router.post("/admin/analytics/prune", adminAuth, express.json(), (req: Request, res: Response) => {
+    try {
+      const rawRetain = req.body?.retainDays ?? req.query["retainDays"];
+      const retainDays = rawRetain !== undefined ? Math.max(0, parseInt(String(rawRetain), 10) || 0) : 90;
+
+      const result = database.prunePageAnalytics(retainDays);
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "analytics_pruned",
+        resourceType: "page_analytics",
+        resourceId: `${retainDays}d`,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { retainDays, ...result },
+      });
+
+      res.json({
+        success: true,
+        retainDays,
+        ...result,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to prune analytics" });
+    }
+  });
+
+  // ── Hot SQLite WAL Snapshot Backups (Appliance Disaster Recovery) ──
+
+  /**
+   * POST /api/v1/admin/backup
+   * Performs an online consistent SQLite WAL snapshot backup via VACUUM INTO
+   */
+  router.post("/admin/backup", adminAuth, express.json(), (req: Request, res: Response) => {
+    try {
+      const label = typeof req.body?.label === "string" ? req.body.label : undefined;
+      const backup = database.createHotBackup(label);
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "database_hot_backup_created",
+        resourceType: "database",
+        resourceId: backup.fileName,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: backup,
+      });
+
+      res.status(201).json({
+        success: true,
+        backup,
+      });
+    } catch (err: unknown) {
+      console.error("[AdminRouter] POST /admin/backup error:", err);
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create hot database backup" });
+    }
+  });
+
+  /**
+   * GET /api/v1/admin/backups
+   * Lists available online SQLite backups stored in the appliance data volume
+   */
+  router.get("/admin/backups", adminAuth, (_req: Request, res: Response) => {
+    try {
+      const backups = database.listBackups();
+      res.json({ backups, count: backups.length });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list database backups" });
     }
   });
 

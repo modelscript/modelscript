@@ -66,7 +66,7 @@ export const TabText = styled.div<{ $active?: boolean | undefined }>`
 
 export const SortMenu = styled.div`
   position: absolute;
-  top: 30px;
+  top: calc(100% - 4px);
   left: 50%;
   transform: translateX(-50%);
   width: 160px;
@@ -158,20 +158,20 @@ export const FilterChipButton = styled.button<{ $active?: boolean | undefined }>
   background: ${(props) =>
     props.$active
       ? "linear-gradient(135deg, rgba(6, 182, 212, 0.22) 0%, rgba(139, 92, 246, 0.3) 100%)"
-      : "rgba(255, 255, 255, 0.04)"};
+      : "var(--surface-row-hover)"};
   border: 1px solid
     ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))")};
-  color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-secondary)")};
+  color: ${(props) => (props.$active ? "var(--color-text-primary)" : "var(--color-text-secondary)")};
   box-shadow: ${(props) => (props.$active ? "0 0 12px rgba(6, 182, 212, 0.35)" : "none")};
 
   &:hover {
     background: ${(props) =>
       props.$active
         ? "linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(139, 92, 246, 0.4) 100%)"
-        : "rgba(255, 255, 255, 0.08)"};
+        : "var(--surface-row-hover)"};
     border-color: ${(props) =>
       props.$active ? "var(--color-accent-cyan)" : "var(--color-border-default, rgba(255, 255, 255, 0.2))"};
-    color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-primary)")};
+    color: var(--color-text-primary);
     transform: translateY(-1px);
   }
 
@@ -198,11 +198,11 @@ export const HashtagPill = styled.button<{ $active?: boolean | undefined }>`
   transition: all 0.15s ease;
   flex-shrink: 0;
 
-  background: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.25)" : "rgba(255, 255, 255, 0.03)")};
+  background: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.25)" : "var(--surface-row-hover)")};
   border: 1px solid
     ${(props) =>
       props.$active ? "var(--color-accent-purple)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.07))"};
-  color: ${(props) => (props.$active ? "#ffffff" : "var(--color-text-muted)")};
+  color: ${(props) => (props.$active ? "var(--color-text-primary)" : "var(--color-text-muted)")};
   box-shadow: ${(props) => (props.$active ? "0 0 10px rgba(139, 92, 246, 0.35)" : "none")};
   font-weight: ${(props) => (props.$active ? "600" : "400")};
 
@@ -215,7 +215,7 @@ export const HashtagPill = styled.button<{ $active?: boolean | undefined }>`
   .post-count {
     font-size: 10px;
     opacity: 0.75;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-row-hover);
     padding: 1px 4px;
     border-radius: 4px;
     margin-left: 2px;
@@ -249,7 +249,7 @@ export const ActiveFilterBanner = styled.div`
     border: 1px solid rgba(6, 182, 212, 0.35);
     padding: 2px 8px;
     border-radius: 12px;
-    color: #ffffff;
+    color: var(--color-text-primary);
     font-size: 11.5px;
 
     button {
@@ -259,10 +259,10 @@ export const ActiveFilterBanner = styled.div`
       margin-left: 4px;
       display: inline-flex;
       align-items: center;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--color-text-secondary);
       cursor: pointer;
       &:hover {
-        color: #ffffff;
+        color: var(--color-accent-cyan);
       }
     }
   }
@@ -314,7 +314,7 @@ export const EmptyStateContainer = styled.div`
   justify-content: center;
   text-align: center;
   padding: 56px 24px;
-  max-width: 440px;
+  max-width: 560px;
   margin: 0 auto;
 `;
 

@@ -197,3 +197,74 @@ export const patchAdminFeatureFlag = async (
   const { data } = await api.patch(`/admin/flags/${key}`, { isEnabled, allowedRoles, rolloutPercentage });
   return data;
 };
+
+export interface AdminAnalyticsSummary {
+  days: number;
+  surface: "all" | "web" | "docs";
+  totals: {
+    totalViews: number;
+    uniqueViews: number;
+    webViews: number;
+    docsViews: number;
+    totalPostViews: number;
+    totalPackageDownloads: number;
+  };
+  dailySeries: {
+    day: string;
+    views: number;
+    uniqueViews: number;
+  }[];
+  topPages: {
+    path: string;
+    surface: string;
+    views: number;
+    uniqueViews: number;
+  }[];
+  countryBreakdown: {
+    countryCode: string;
+    views: number;
+  }[];
+  regionBreakdown: {
+    countryCode: string;
+    region: string;
+    views: number;
+  }[];
+  geoipConfigured?: boolean | undefined;
+}
+
+export const getAdminAnalytics = async (
+  days = 30,
+  surface: "all" | "web" | "docs" = "all",
+): Promise<AdminAnalyticsSummary> => {
+  const { data } = await api.get("/admin/analytics", { params: { days, surface } });
+  return data;
+};
+
+export const pruneAdminAnalytics = async (
+  retainDays = 90,
+): Promise<{
+  success: boolean;
+  retainDays: number;
+  deletedDailyRows: number;
+  deletedLocationRows: number;
+}> => {
+  const { data } = await api.post("/admin/analytics/prune", { retainDays });
+  return data;
+};
+
+export const recordPageViewBeacon = (path: string, surface: "web" | "docs" = "web"): void => {
+  const cleanPath = (path || "/").split(/[?#]/)[0] || "/";
+  const payload = JSON.stringify({ path: cleanPath, surface });
+
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      const blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon("/api/v1/analytics/pageview", blob);
+      return;
+    }
+  } catch {
+    // Fall back to api.post below
+  }
+
+  api.post("/analytics/pageview", { path: cleanPath, surface }).catch(() => {});
+};

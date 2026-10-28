@@ -841,6 +841,23 @@ getErrorString();
       return;
     }
 
+    const userId = existing.userId ?? (database ? resolveRequestUserId(req, database) : null);
+    let estimatedCost = 0;
+    if (database && userId) {
+      const quota = checkComputeQuota(userId, existing.profile, database);
+      if (!quota.allowed) {
+        res.status(402).json({
+          error: "Payment Required: Insufficient Compute Credits",
+          message: quota.reason,
+          balance: quota.userBalance,
+          required: quota.estimatedCost,
+          profile: quota.profileId,
+        });
+        return;
+      }
+      estimatedCost = quota.estimatedCost;
+    }
+
     const newJobId = `cloud-${existing.domain}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const retryPayload: CloudDispatchPayload = existing.payload ?? {
       domain: (existing.domain as CloudDispatchPayload["domain"]) || "modelica",
@@ -857,8 +874,47 @@ getErrorString();
       startTime: Date.now(),
       logs: [`[Cloud] Retried from job ${existing.jobId}`],
       subscribers: [],
-      userId: existing.userId,
+      userId,
     };
+
+    let dbJobId: number | null = null;
+    if (database) {
+      try {
+        dbJobId = database.createJob(
+          `Cloud [${existing.domain.toUpperCase()}]: ${existing.name} (Retry)`,
+          "RUNNING",
+          "ADHOC",
+          existing.domain === "modelica" ? "omc" : existing.domain,
+          null,
+          { jobId: newJobId, previousJobId: existing.jobId, profile: existing.profile, domain: existing.domain },
+          userId,
+        );
+        retried.dbJobId = dbJobId;
+      } catch {
+        // Optional tracking
+      }
+    }
+
+    if (database && userId && dbJobId && estimatedCost > 0) {
+      const holdRes = database.holdUserCredits(
+        userId,
+        estimatedCost,
+        dbJobId,
+        `HPC Escrow Hold (Retry): Cloud [${existing.domain.toUpperCase()}] ${existing.name}`,
+        { jobId: newJobId, previousJobId: existing.jobId, profile: existing.profile, domain: existing.domain },
+      );
+      if (!holdRes.success) {
+        database.updateJobStatus(dbJobId, "FAILED");
+        res.status(402).json({
+          error: "Payment Required: Escrow Hold Failed",
+          message: holdRes.reason,
+          balance: holdRes.newBalance,
+          required: estimatedCost,
+        });
+        return;
+      }
+    }
+
     activeJobs.set(newJobId, retried);
 
     if (existing.payload) {

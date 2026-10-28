@@ -252,49 +252,47 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
               </Box>
             )}
 
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 12,
-                background: "var(--color-canvas-subtle)",
-                borderRadius: 8,
-                overflow: "hidden",
-              }}
-            >
-              <thead>
-                <tr style={{ background: "rgba(110, 118, 129, 0.15)", textAlign: "left" }}>
-                  <th style={{ padding: "8px 12px" }}>Timestamp</th>
-                  <th style={{ padding: "8px 12px" }}>Action</th>
-                  <th style={{ padding: "8px 12px" }}>Actor</th>
-                  <th style={{ padding: "8px 12px" }}>Standard</th>
-                  <th style={{ padding: "8px 12px" }}>SHA256 Checksum</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((log) => (
-                  <tr key={log.id} style={{ borderTop: "1px solid var(--color-border-subtle)" }}>
-                    <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
-                      {new Date(log.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      })}
-                    </td>
-                    <td style={{ padding: "8px 12px" }}>
-                      <Label variant="secondary">{log.action}</Label>
-                    </td>
-                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{log.actor}</td>
-                    <td style={{ padding: "8px 12px" }}>
-                      <Label variant="accent">{log.safety_standard || "ISO-26262"}</Label>
-                    </td>
-                    <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11 }}>
-                      {log.checksum.slice(0, 16)}...
-                    </td>
+            <div style={{ overflowX: "auto", width: "100%" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: 12,
+                  background: "var(--color-canvas-subtle)",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                }}
+              >
+                <thead>
+                  <tr style={{ background: "rgba(110, 118, 129, 0.15)", textAlign: "left" }}>
+                    <th style={{ padding: "8px 12px" }}>Timestamp</th>
+                    <th style={{ padding: "8px 12px" }}>Action</th>
+                    <th style={{ padding: "8px 12px" }}>Actor</th>
+                    <th style={{ padding: "8px 12px" }}>Standard</th>
+                    <th style={{ padding: "8px 12px" }}>SHA256 Checksum</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {auditLogs.map((log) => (
+                    <tr key={log.id} style={{ borderTop: "1px solid var(--color-border-subtle)" }}>
+                      <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <Label variant="secondary">{log.action}</Label>
+                      </td>
+                      <td style={{ padding: "8px 12px", fontWeight: 600 }}>{log.actor}</td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <Label variant="accent">{log.safety_standard || "ISO-26262"}</Label>
+                      </td>
+                      <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 11 }}>
+                        {log.checksum.slice(0, 16)}...
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Box>
         )}
       </Box>

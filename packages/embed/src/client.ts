@@ -31,6 +31,10 @@ export interface EmbedOptions {
   /** Whether artifact is multi-file (routes to IDE instead of Playground) */
   isMultiFile?: boolean;
   artifactId?: string | number;
+  /** Server-side stored morsel short ID for large models */
+  morselId?: string;
+  /** Signed embed token for private intranet artifacts */
+  embedToken?: string;
   /** Wheel / scroll zoom interception policy */
   zoomMode?: ZoomInterceptionMode;
 }
@@ -46,6 +50,9 @@ export class ModelScriptEmbed {
   private options: EmbedOptions;
   private listeners: Map<string, Set<EmbedEventHandler<unknown>>> = new Map();
   private messageHandler: (e: MessageEvent) => void;
+  private isReady = false;
+  private pendingMessages: HostToEmbedMessage[] = [];
+  private targetOrigin: string;
 
   constructor(options: EmbedOptions) {
     this.options = options;
@@ -67,11 +74,28 @@ export class ModelScriptEmbed {
       ...(options.dependencies ? { dependencies: options.dependencies } : {}),
       ...(options.isMultiFile !== undefined ? { isMultiFile: options.isMultiFile } : {}),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
+      ...(options.morselId ? { morselId: options.morselId } : {}),
+      ...(options.embedToken ? { embedToken: options.embedToken } : {}),
     };
 
-    const token = compressEmbedPayload(payload);
-    const origin = options.embedOrigin ?? window.location.origin;
-    const iframeSrc = `${origin}/embed/playground#m=${token}`;
+    const rawOrigin = options.embedOrigin ?? (typeof window !== "undefined" ? window.location.origin : "");
+    const origin = rawOrigin.replace(/\/+$/, "");
+    try {
+      this.targetOrigin = origin ? new URL(origin).origin : "*";
+    } catch {
+      this.targetOrigin = "*";
+    }
+
+    const queryParams = new URLSearchParams();
+    if (options.morselId) queryParams.set("morsel", options.morselId);
+    if (options.artifactId) queryParams.set("fromArtifact", String(options.artifactId));
+    if (options.embedToken) queryParams.set("embed_token", options.embedToken);
+    if (options.theme) queryParams.set("theme", options.theme);
+    const qs = queryParams.toString();
+
+    const token = options.morselId && !options.code ? "" : compressEmbedPayload(payload);
+    const hashPart = token ? `#m=${token}` : "";
+    const iframeSrc = `${origin}/embed/playground${qs ? `?${qs}` : ""}${hashPart}`;
 
     this.iframe = document.createElement("iframe");
     this.iframe.src = iframeSrc;
@@ -82,38 +106,75 @@ export class ModelScriptEmbed {
 
     this.messageHandler = (ev: MessageEvent) => {
       if (!ev.data || typeof ev.data !== "object") return;
+      if (this.iframe.contentWindow && ev.source && ev.source !== this.iframe.contentWindow) {
+        return;
+      }
+      if (this.targetOrigin !== "*" && ev.origin && ev.origin !== "null" && ev.origin !== this.targetOrigin) {
+        return;
+      }
       const msg = ev.data as EmbedToHostMessage;
+      if (!msg.type) return;
+      if (msg.type === "EMBED_READY") {
+        this.isReady = true;
+        this.flushPendingMessages();
+      }
       this.emit(msg.type, msg);
     };
 
-    window.addEventListener("message", this.messageHandler);
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("message", this.messageHandler);
+    }
     this.containerEl.appendChild(this.iframe);
   }
 
+  private flushPendingMessages(): void {
+    if (!this.iframe.contentWindow || this.pendingMessages.length === 0) return;
+    const queue = this.pendingMessages.splice(0, this.pendingMessages.length);
+    for (const msg of queue) {
+      this.iframe.contentWindow.postMessage(msg, this.targetOrigin);
+    }
+  }
+
   public postMessage(msg: HostToEmbedMessage): void {
+    if (!this.isReady) {
+      this.pendingMessages.push(msg);
+    }
     if (this.iframe.contentWindow) {
-      this.iframe.contentWindow.postMessage(msg, "*");
+      this.iframe.contentWindow.postMessage(msg, this.targetOrigin);
     }
   }
 
   public setCode(code: string): void {
+    this.options.code = code;
     this.postMessage({ type: "SET_CODE", code });
   }
 
   public setView(view: EmbedViewMode): void {
+    this.options.view = view;
     this.postMessage({ type: "SET_VIEW", view });
   }
 
   public setAnchor(anchor: ModelElementAnchor): void {
+    this.options.anchor = anchor;
     this.postMessage({ type: "SET_ANCHOR", anchor });
   }
 
   public setZoomMode(zoomMode: ZoomInterceptionMode): void {
+    this.options.zoomMode = zoomMode;
     this.postMessage({ type: "SET_ZOOM_MODE", zoomMode });
   }
 
   public setTheme(theme: "dark" | "light"): void {
+    this.options.theme = theme;
     this.postMessage({ type: "SET_THEME", theme });
+  }
+
+  public setParameters(params: Record<string, number>): void {
+    this.postMessage({ type: "SET_PARAMETERS", params });
+  }
+
+  public requestExportSvg(): void {
+    this.postMessage({ type: "REQUEST_EXPORT_SVG" });
   }
 
   public triggerSimulate(options?: { stopTime?: number; stepSize?: number }): void {

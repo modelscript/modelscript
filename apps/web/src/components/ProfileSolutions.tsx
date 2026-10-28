@@ -133,7 +133,7 @@ export default function ProfileSolutions({ username, isOwnProfile }: { username:
         {isOwnProfile && (
           <Box mt={3}>
             <a
-              href="https://modelscript.org/docs/solutions/publishing"
+              href="/guide/getting-started"
               target="_blank"
               rel="noopener noreferrer"
               style={{

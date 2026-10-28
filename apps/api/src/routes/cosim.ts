@@ -16,12 +16,17 @@ import type {
 import { FmuJsParticipant, FmuStorage, Orchestrator, SessionManager } from "@modelscript/exchange/cosim";
 import { applySspParameters, importSsp, wireSspCouplings } from "@modelscript/exchange/ssp";
 import express from "express";
+import type { LibraryDatabase } from "../database.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
+import { calculateCostCredits, getComputeProfile } from "../services/hpc/compute-profiles.js";
+import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 
 const sessionManager = new SessionManager();
 const fmuStorage = new FmuStorage();
 
 /** Track running orchestrators by session ID for pause/stop. */
 const orchestrators = new Map<string, Orchestrator>();
+const cosimBillingContext = new Map<string, { userId: number; dbJobId: number; startTimeMs: number }>();
 
 export function listCosimSessionsForHistorian(): {
   id: string;
@@ -301,14 +306,57 @@ export function cosimRouter(
   // ── Orchestrator Control ──
 
   // POST /api/v1/cosim/sessions/:id/start — Start co-simulation
-  router.post("/sessions/:id/start", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
+  router.post("/sessions/:id/start", optionalAuth, (req, res) => {
+    const session = sessionManager.getSession(String(req.params["id"] ?? ""));
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
     if (session.state !== "created") {
       return res.status(400).json({ error: `Cannot start session in state '${session.state}'` });
+    }
+
+    const database = req.app?.locals?.["database"] as LibraryDatabase | undefined;
+    const reqUserId = (req as express.Request & { user?: { id?: number | undefined } | undefined }).user?.id;
+    let dbJobId: number | undefined;
+    const startTimeMs = Date.now();
+
+    if (database && reqUserId) {
+      const quota = checkComputeQuota(reqUserId, "standard", database, 0.05);
+      if (!quota.allowed) {
+        return res.status(402).json({
+          error: "Payment Required",
+          message: quota.reason,
+          balance: quota.userBalance,
+          required: quota.estimatedCost,
+        });
+      }
+      dbJobId = database.createJob(
+        `Co-Simulation ${session.sessionId}`,
+        "RUNNING",
+        "COSIM",
+        "api",
+        null,
+        { sessionId: session.sessionId, participants: session.participants.size },
+        reqUserId,
+      );
+      const holdRes = database.holdUserCredits(
+        reqUserId,
+        quota.estimatedCost,
+        dbJobId,
+        `Escrow hold for Co-Simulation ${session.sessionId}`,
+        { sessionId: session.sessionId, profile: "standard" },
+      );
+      if (!holdRes.success) {
+        database.updateJobStatus(dbJobId, "FAILED");
+        return res.status(402).json({
+          error: "Payment Required",
+          message: holdRes.reason,
+          balance: holdRes.newBalance,
+          required: quota.estimatedCost,
+        });
+      }
+      cosimBillingContext.set(session.sessionId, { userId: reqUserId, dbJobId, startTimeMs });
     }
 
     if (historianRecorder) {
@@ -323,6 +371,25 @@ export function cosimRouter(
       onComplete: () => {
         console.log(`[cosim] Session ${session.sessionId} completed`);
         orchestrators.delete(session.sessionId);
+        const billingCtx = cosimBillingContext.get(session.sessionId);
+        if (database && billingCtx) {
+          cosimBillingContext.delete(session.sessionId);
+          const durationSec = Math.max(1, Math.round((Date.now() - billingCtx.startTimeMs) / 1000));
+          const costCredits = calculateCostCredits(durationSec, getComputeProfile("standard"));
+          database.updateJobStatus(billingCtx.dbJobId, "SUCCESS");
+          database.updateJobAccounting(billingCtx.dbJobId, {
+            computeProfile: "standard",
+            cpuSeconds: durationSec * 2,
+            costCredits,
+          });
+          database.settleUserEscrow(
+            billingCtx.userId,
+            billingCtx.dbJobId,
+            costCredits,
+            `Co-Simulation ${session.sessionId} completed`,
+            { sessionId: session.sessionId, durationSec },
+          );
+        }
         if (historianRecorder) {
           void historianRecorder.stopRecording().catch(() => {});
         }
@@ -330,6 +397,12 @@ export function cosimRouter(
       onError: (err: Error) => {
         console.error(`[cosim] Session ${session.sessionId} error:`, err.message);
         orchestrators.delete(session.sessionId);
+        const billingCtx = cosimBillingContext.get(session.sessionId);
+        if (database && billingCtx) {
+          cosimBillingContext.delete(session.sessionId);
+          database.updateJobStatus(billingCtx.dbJobId, "FAILED");
+          database.releaseUserEscrow(billingCtx.userId, billingCtx.dbJobId, err.message || "Co-simulation failed");
+        }
         if (historianRecorder) {
           void historianRecorder.stopRecording().catch(() => {});
         }
@@ -391,6 +464,13 @@ export function cosimRouter(
     }
     orchestrator.abort();
     orchestrators.delete(sessionId);
+    const database = req.app?.locals?.["database"] as LibraryDatabase | undefined;
+    const billingCtx = cosimBillingContext.get(sessionId);
+    if (database && billingCtx) {
+      cosimBillingContext.delete(sessionId);
+      database.updateJobStatus(billingCtx.dbJobId, "CANCELLED");
+      database.releaseUserEscrow(billingCtx.userId, billingCtx.dbJobId, "Co-simulation stopped by user");
+    }
     if (historianRecorder) {
       void historianRecorder.stopRecording().catch(() => {});
     }

@@ -11,6 +11,7 @@ const props = withDefaults(
     title?: string;
     isMultiFile?: boolean;
     artifactId?: string;
+    token?: string;
   }>(),
   {
     dialect: "modelica",
@@ -20,30 +21,13 @@ const props = withDefaults(
   },
 );
 
-const encodedPayload = computed(() => {
-  // Safe minimal client-side encode for docs preview
-  try {
-    const jsonStr = JSON.stringify({
-      v: 1,
-      lang: props.dialect,
-      code: props.code.trim(),
-      view: props.view,
-      anchor: props.anchor ? { elementId: props.anchor } : undefined,
-      isMultiFile: props.isMultiFile,
-      artifactId: props.artifactId,
-    });
-    // Fallback URL-safe btoa encoding
-    return btoa(unescape(encodeURI(jsonStr)))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-  } catch {
-    return "";
-  }
-});
-
 const iframeSrc = computed(() => {
-  return `/embed/playground#m=${encodedPayload.value}`;
+  if (props.token) {
+    return `/embed/playground#m=${props.token}`;
+  }
+  const dialectKey = encodeURIComponent(props.dialect || "modelica");
+  const encodedCode = encodeURIComponent(props.code.trim());
+  return `/embed/playground#${dialectKey}=${encodedCode}`;
 });
 </script>
 

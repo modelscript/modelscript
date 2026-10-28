@@ -5,6 +5,7 @@
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
+import { renderLandingPageHtml } from "./landing-page.js";
 
 const __dirname = import.meta.dirname;
 const APP_ROOT = existsSync(resolve(__dirname, "package.json")) ? __dirname : resolve(__dirname, "..");
@@ -112,7 +113,6 @@ function escapeJSON(value: unknown): string {
 }
 
 function renderStaticWorkbench(): string {
-  // For static deployment, use relative paths and location-based dynamic host
   const config = {
     folderUri: {
       scheme: "github",
@@ -132,7 +132,6 @@ function renderStaticWorkbench(): string {
       extensionEnabledApiProposals: {
         "vscode.mermaid-markdown-features": ["chatParticipantPrivate", "chatOutputRenderer"],
       },
-      // Use Open VSX registry to avoid CORS errors with Microsoft's CDN
       extensionGallery: {
         serviceUrl: "https://open-vsx.org/vscode/gallery",
         itemUrl: "https://open-vsx.org/vscode/item",
@@ -141,7 +140,7 @@ function renderStaticWorkbench(): string {
       },
     },
     configurationDefaults: {
-      "editor.codeLens": false,
+      "editor.codeLens": true,
       "editor.semanticHighlighting.enabled": true,
       "security.workspace.trust.enabled": false,
       "security.workspace.trust.startupPrompt": "never",
@@ -153,6 +152,14 @@ function renderStaticWorkbench(): string {
         "*.inp": "fea",
         "*.inpt": "fea",
         "*.bdf": "fea",
+        "*.swmm": "swmm",
+        "*.epanet": "epanet",
+        "*.jsbsim": "jsbsim",
+        "*.sima": "sima",
+        "*.plcopen": "plcopen",
+        "*.st": "plcopen",
+        "*.sbml": "sbml",
+        "*.r5": "relap5",
       },
     },
   };
@@ -184,7 +191,6 @@ function renderStaticWorkbench(): string {
     }
   });
 
-  // Inject a script that dynamically patches the config based on URL parameters
   const patchScript = `<script>
 (function() {
   var originalWarn = console.warn;
@@ -211,13 +217,22 @@ function renderStaticWorkbench(): string {
     { scheme: scheme, authority: host, path: '/static/extensions/github-fs' },
   ];
   config.configurationDefaults = config.configurationDefaults || {};
+  config.configurationDefaults["editor.codeLens"] = true;
   config.configurationDefaults["files.associations"] = {
     "*.cfg": "cfd",
     "*.cfgt": "cfd",
     "*.su2": "cfd",
     "*.inp": "fea",
     "*.inpt": "fea",
-    "*.bdf": "fea"
+    "*.bdf": "fea",
+    "*.swmm": "swmm",
+    "*.epanet": "epanet",
+    "*.jsbsim": "jsbsim",
+    "*.sima": "sima",
+    "*.plcopen": "plcopen",
+    "*.st": "plcopen",
+    "*.sbml": "sbml",
+    "*.r5": "relap5"
   };
   if (hash.startsWith('memfs')) {
     var template = hash.split(':')[1] || 'empty';
@@ -240,14 +255,12 @@ function renderStaticWorkbench(): string {
     config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
   }
   
-  // Same-origin extension host (no wildcard DNS required)
   var endpoint = location.protocol + '//' + location.host + '/vscode-static';
   config.productConfiguration = config.productConfiguration || {};
   config.productConfiguration.webEndpointUrlTemplate = endpoint;
   
   el.setAttribute('data-settings', JSON.stringify(config));
 
-  // Notify parent window when embedded in ModelScript Hub shell
   if (window.parent && window.parent !== window) {
     try {
       window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, window.location.origin);
@@ -285,593 +298,9 @@ const workbenchDir = join(OUT_DIR, "vscode", "workbench");
 mkdirSync(workbenchDir, { recursive: true });
 writeFileSync(join(workbenchDir, "index.html"), renderStaticWorkbench());
 
-// 5. Generate landing page
-console.log("  Generating landing page...");
-
-const landingHtml = `<!DOCTYPE html>
-<html><head><title>ModelScript IDE</title>
-<link rel="icon" href="/favicon.ico">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: radial-gradient(circle at 50% 0%, #161b22 0%, #0d1117 75%); color: #c9d1d9; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 0; }
-  .container { text-align: center; width: 100%; max-width: 820px; padding: 0 20px; }
-  h1 { font-size: 2.6rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.5rem; background: linear-gradient(135deg, #58a6ff, #bc8cff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  p.subtitle { margin-bottom: 2rem; color: #8b949e; font-size: 15px; }
-  .divider { display: flex; align-items: center; gap: 16px; margin: 2rem 0 1.25rem 0; color: #8b949e; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #30363d; }
-  input { width: 100%; padding: 14px 20px; border-radius: 10px; border: 1px solid #30363d; background: #161b22; color: #c9d1d9; font-size: 15px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
-  input:focus { border-color: #58a6ff; box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2); }
-  
-  /* Primary Workspaces */
-  .workspaces-container {
-    margin: 1.25rem 0;
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .workspace-tile {
-    display: block;
-    background: linear-gradient(135deg, rgba(37, 99, 235, 0.1) 0%, rgba(124, 58, 237, 0.06) 100%);
-    border: 1px solid rgba(56, 189, 248, 0.4);
-    border-radius: 14px;
-    padding: 20px 22px;
-    text-decoration: none;
-    color: #c9d1d9;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(56, 189, 248, 0.1);
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .workspace-tile:hover {
-    transform: translateY(-2px);
-    border-color: rgba(56, 189, 248, 0.85);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(56, 189, 248, 0.25);
-  }
-  .workspace-tile.drone-tile {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 182, 212, 0.1) 100%);
-    border-color: rgba(16, 185, 129, 0.45);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(16, 185, 129, 0.12);
-  }
-  .workspace-tile.drone-tile:hover {
-    border-color: rgba(16, 185, 129, 0.9);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(16, 185, 129, 0.28);
-  }
-  .workspace-tile.pscad-tile {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(59, 130, 246, 0.1) 100%);
-    border-color: rgba(245, 158, 11, 0.45);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(245, 158, 11, 0.12);
-  }
-  .workspace-tile.pscad-tile:hover {
-    border-color: rgba(245, 158, 11, 0.9);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(245, 158, 11, 0.28);
-  }
-  .workspace-tile.bouncing-ball-tile {
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(168, 85, 247, 0.1) 100%);
-    border-color: rgba(236, 72, 153, 0.4);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(236, 72, 153, 0.1);
-  }
-  .workspace-tile.bouncing-ball-tile:hover {
-    border-color: rgba(236, 72, 153, 0.85);
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), 0 0 28px rgba(236, 72, 153, 0.25);
-  }
-  .workspace-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 14px;
-  }
-  .workspace-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(56, 189, 248, 0.15);
-    color: #38bdf8;
-    border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 9999px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    padding: 3px 10px;
-  }
-  .workspace-badge.drone-badge {
-    background: rgba(16, 185, 129, 0.15);
-    color: #10b981;
-    border-color: rgba(16, 185, 129, 0.35);
-  }
-  .badge-dot.drone-dot {
-    background-color: #10b981;
-    box-shadow: 0 0 8px #10b981;
-  }
-  .workspace-badge.pscad-badge {
-    background: rgba(245, 158, 11, 0.15);
-    color: #fbbf24;
-    border-color: rgba(245, 158, 11, 0.35);
-  }
-  .badge-dot.pscad-dot {
-    background-color: #fbbf24;
-    box-shadow: 0 0 8px #fbbf24;
-  }
-  .workspace-badge.ball-badge {
-    background: rgba(236, 72, 153, 0.15);
-    color: #f43f5e;
-    border-color: rgba(236, 72, 153, 0.35);
-  }
-  .badge-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: #38bdf8;
-    box-shadow: 0 0 8px #38bdf8;
-  }
-  .badge-dot.ball-dot {
-    background-color: #f43f5e;
-    box-shadow: 0 0 8px #f43f5e;
-  }
-  .workspace-tag {
-    font-size: 11px;
-    color: #8b949e;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  }
-  .workspace-body {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    margin-bottom: 14px;
-  }
-  .workspace-icon {
-    width: 58px;
-    height: 58px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(56, 189, 248, 0.1);
-    border: 1px solid rgba(56, 189, 248, 0.25);
-    border-radius: 12px;
-    color: #38bdf8;
-  }
-  .workspace-icon.drone-icon {
-    background: rgba(16, 185, 129, 0.1);
-    border-color: rgba(16, 185, 129, 0.25);
-    color: #10b981;
-  }
-  .workspace-icon.pscad-icon {
-    background: rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.25);
-    color: #fbbf24;
-  }
-  .workspace-icon.ball-icon {
-    background: rgba(236, 72, 153, 0.1);
-    border-color: rgba(236, 72, 153, 0.25);
-    color: #f43f5e;
-  }
-  .workspace-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: #f0f6fc;
-    margin-bottom: 4px;
-  }
-  .workspace-desc {
-    font-size: 13px;
-    color: #8b949e;
-    line-height: 1.45;
-  }
-  .workspace-footer {
-    display: flex;
-    justify-content: flex-end;
-  }
-  .workspace-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: linear-gradient(135deg, #2563eb, #7c3aed);
-    color: white;
-    font-weight: 600;
-    font-size: 12px;
-    padding: 7px 16px;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
-    transition: opacity 0.2s;
-  }
-  .workspace-btn.drone-btn {
-    background: linear-gradient(135deg, #059669, #0284c7);
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.35);
-  }
-  .workspace-btn.pscad-btn {
-    background: linear-gradient(135deg, #d97706, #2563eb);
-    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
-  }
-  .workspace-btn.ball-btn {
-    background: linear-gradient(135deg, #e11d48, #9333ea);
-    box-shadow: 0 2px 8px rgba(225, 29, 72, 0.35);
-  }
-  .workspace-tile:hover .workspace-btn {
-    opacity: 0.95;
-  }
-
-  /* Deprecation Section */
-  .deprecation-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    background: rgba(234, 88, 12, 0.1);
-    border: 1px solid rgba(234, 88, 12, 0.3);
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin: 1.25rem 0;
-    color: #fb923c;
-    text-align: left;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  .deprecation-banner-text {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .deprecation-banner-text span {
-    color: #cbd5e1;
-    font-size: 12px;
-  }
-  .deprecated-accordion {
-    margin-top: 1rem;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    background: #161b22;
-    overflow: hidden;
-    text-align: left;
-  }
-  .deprecated-summary {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 18px;
-    cursor: pointer;
-    user-select: none;
-    color: #8b949e;
-    font-size: 14px;
-    font-weight: 500;
-    transition: background-color 0.2s, color 0.2s;
-  }
-  .deprecated-summary:hover {
-    background-color: #21262d;
-    color: #c9d1d9;
-  }
-  .summary-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .badge-deprecated {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 9999px;
-    background: rgba(234, 88, 12, 0.15);
-    color: #fb923c;
-    border: 1px solid rgba(234, 88, 12, 0.3);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .deprecated-content {
-    padding: 0 16px 20px 16px;
-    border-top: 1px solid #21262d;
-  }
-  .sub-divider {
-    font-size: 12px;
-    color: #8b949e;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 600;
-    margin: 18px 0 10px 0;
-  }
-  .templates { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 0.5rem; }
-  .tpl-card { position: relative; background: #0d1117; border: 1px solid #30363d; border-radius: 12px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 12px; transition: background-color 0.2s, transform 0.2s, opacity 0.2s; text-decoration: none; color: #c9d1d9; opacity: 0.75; }
-  .tpl-card:hover { background: #21262d; transform: translateY(-3px); opacity: 1; border-color: #58a6ff; }
-  .tpl-icon { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: #161b22; border-radius: 8px; color: #8b949e; }
-  .tpl-name { font-size: 14px; font-weight: 500; text-align: center; }
-  .tpl-desc { font-size: 12px; color: #8b949e; text-align: center; line-height: 1.4; margin-top: -4px; }
-  .badge-card-dep {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    font-size: 9px;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(234, 88, 12, 0.2);
-    color: #fb923c;
-    border: 1px solid rgba(234, 88, 12, 0.35);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-</style>
-</head><body>
-<div class="container">
-  <h1>ModelScript IDE</h1>
-  <p class="subtitle">A browser-based Modelica development &amp; polyglot simulation environment</p>
-  
-  <div class="divider">Workspaces</div>
-  <div class="workspaces-container">
-    <a href="/vscode/workbench/#memfs:empty" class="workspace-tile">
-      <div class="workspace-header">
-        <span class="workspace-badge"><span class="badge-dot"></span> Blank Project</span>
-        <span class="workspace-tag">Modelica &bull; SysML v2 &bull; Polyglot</span>
-      </div>
-      <div class="workspace-body">
-        <div class="workspace-icon">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
-            <path d="M11.75 4.5a.75.75 0 0 1 .75.75V11h5.75a.75.75 0 0 1 0 1.5H12.5v5.75a.75.75 0 0 1-1.5 0V12.5H5.25a.75.75 0 0 1 0-1.5H11V5.25a.75.75 0 0 1 .75-.75Z"></path>
-          </svg>
-        </div>
-        <div class="workspace-text">
-          <div class="workspace-title">Blank Project Workspace</div>
-          <div class="workspace-desc">Clean, empty workspace with native Modelica 3.x, SysML v2, STEP CAD, and continuous simulation solvers out of the box. Zero clutter, instant WebAssembly compilation.</div>
-        </div>
-      </div>
-      <div class="workspace-footer">
-        <span class="workspace-btn">Launch Blank Workspace &rarr;</span>
-      </div>
-    </a>
-
-    <a href="/vscode/workbench/#memfs:drone-reachability" class="workspace-tile drone-tile">
-      <div class="workspace-header">
-        <span class="workspace-badge drone-badge"><span class="badge-dot drone-dot"></span> Polyglot Reachability</span>
-        <span class="workspace-tag">OpenSCAD &bull; FEA/CFD &bull; SysML v2 &bull; WASM Zonotopes</span>
-      </div>
-      <div class="workspace-body">
-        <div class="workspace-icon drone-icon">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 9v6M9 12h6"></path>
-            <circle cx="12" cy="12" r="2.5"></circle>
-            <line x1="5" y1="5" x2="10" y2="10"></line>
-            <line x1="19" y1="5" x2="14" y2="10"></line>
-            <line x1="5" y1="19" x2="10" y2="14"></line>
-            <line x1="19" y1="19" x2="14" y2="14"></line>
-            <circle cx="4" cy="4" r="2"></circle>
-            <circle cx="20" cy="4" r="2"></circle>
-            <circle cx="4" cy="20" r="2"></circle>
-            <circle cx="20" cy="20" r="2"></circle>
-          </svg>
-        </div>
-        <div class="workspace-text">
-          <div class="workspace-title">Polyglot Drone Reachability Workspace</div>
-          <div class="workspace-desc">End-to-end multi-physics verification linking OpenSCAD 3D airframe, FEA stress &amp; CFD drag polar slicing, SysML v2 safety contracts, and Modelica DAE with Nelson-Oppen theory coordination and WebAssembly zonotope reachability.</div>
-        </div>
-      </div>
-      <div class="workspace-footer">
-        <span class="workspace-btn drone-btn">Launch Drone Reachability &rarr;</span>
-      </div>
-    </a>
-
-    <a href="/vscode/workbench/#memfs:pscad-microgrid" class="workspace-tile pscad-tile">
-      <div class="workspace-header">
-        <span class="workspace-badge pscad-badge"><span class="badge-dot pscad-dot"></span> Power Grid &amp; EMT</span>
-        <span class="workspace-tag">PSCAD &bull; IEEE 2800-2022 &bull; COMTRADE &bull; Modelica</span>
-      </div>
-      <div class="workspace-body">
-        <div class="workspace-icon pscad-icon">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-          </svg>
-        </div>
-        <div class="workspace-text">
-          <div class="workspace-title">PSCAD Microgrid &amp; IBR Workspace</div>
-          <div class="workspace-desc">230 kV transmission microgrid with Inverter-Based Resource (IBR) solar interconnection, Dommel companion EMT simulation, automated IEEE 2800-2022 grid-code auditing, COMTRADE waveforms, and Modelica/SSP co-simulation.</div>
-        </div>
-      </div>
-      <div class="workspace-footer">
-        <span class="workspace-btn pscad-btn">Launch PSCAD Microgrid &rarr;</span>
-      </div>
-    </a>
-
-    <a href="/vscode/workbench/#memfs:bouncing-ball" class="workspace-tile bouncing-ball-tile">
-      <div class="workspace-header">
-        <span class="workspace-badge ball-badge"><span class="badge-dot ball-dot"></span> Dynamic Simulation</span>
-        <span class="workspace-tag">Continuous &amp; Discrete Events &bull; WASM Solvers</span>
-      </div>
-      <div class="workspace-body">
-        <div class="workspace-icon ball-icon">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M 2 20 Q 7 -10 12 20 Q 16 4 20 16"></path>
-            <circle cx="20" cy="16" r="3.5" fill="#f43f5e" stroke="none"></circle>
-          </svg>
-        </div>
-        <div class="workspace-text">
-          <div class="workspace-title">Bouncing Ball Workspace</div>
-          <div class="workspace-desc">Classic hybrid physical system modeling gravity, restitution coefficient, zero-crossing state events, and real-time ODE integration.</div>
-        </div>
-      </div>
-      <div class="workspace-footer">
-        <span class="workspace-btn ball-btn">Launch Bouncing Ball &rarr;</span>
-      </div>
-    </a>
-  </div>
-
-  <div class="divider">Open Remote Repository</div>
-  <form onsubmit="event.preventDefault(); go();">
-    <input id="url" type="text" placeholder="Enter a GitHub repository, e.g. owner/repo" autofocus />
-  </form>
-  
-  <div class="divider">Example Workspaces (Deprecated)</div>
-  <div class="deprecation-banner">
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-      <line x1="12" y1="9" x2="12" y2="13"></line>
-      <line x1="12" y1="17" x2="12.01" y2="17"></line>
-    </svg>
-    <div class="deprecation-banner-text">
-      <strong>Example workspaces are currently deprecated.</strong>
-      <span>Pre-configured scenario templates are deprecated and scheduled for refresh. Please use the Blank Project workspace above for all new projects.</span>
-    </div>
-  </div>
-
-  <details class="deprecated-accordion">
-    <summary class="deprecated-summary">
-      <div class="summary-left">
-        <span>View Deprecated Example Workspaces (Legacy)</span>
-      </div>
-      <span class="badge-deprecated">Deprecated</span>
-    </summary>
-    <div class="deprecated-content">
-      <div class="sub-divider">Featured Polyglot Scenarios (Deprecated)</div>
-      <div class="templates">
-    <a href="/vscode/workbench/#memfs:injection-molding-cosim" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <span class="tpl-name">Injection Molding Co-Simulation</span>
-      <span class="tpl-desc">Orchestrate 1D Modelica with 3D OpenFOAM WASM.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:drone-chassis" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path><circle cx="12" cy="12" r="2" fill="currentColor"></circle></svg></div>
-      <span class="tpl-name">Drone Chassis Thread</span>
-      <span class="tpl-desc">Complete digital thread example integrating SysML, CAD, FEA, CFD, and Modelica.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:surrogate" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <span class="tpl-name">AI Surrogate ROMs</span>
-      <span class="tpl-desc">Train AI neural networks from physics models and export as edge-ready WebAssembly.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:cfd-verification" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M14.5 5.5L16 4M9.5 5.5L8 4" stroke-width="2" stroke-linecap="round"/></svg></div>
-      <span class="tpl-name">CFD-FMU Verification</span>
-      <span class="tpl-desc">Verify thermal requirements using an embedded reduced-order CFD FMU.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:calibration" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg></div>
-      <span class="tpl-name">Parameter Calibration</span>
-      <span class="tpl-desc">Calibrate spring-damper parameters against measurement data.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:optimica-polyglot" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-      <span class="tpl-name">SysML2 Optimization</span>
-      <span class="tpl-desc">Solve optimal control problems constrained by SysML2 requirements.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:uncertainty" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18 C6 18 8 6 12 6 C16 6 18 18 21 18" stroke-opacity="0.3" stroke-width="8" stroke-linecap="round"/><path d="M3 18 C6 18 8 10 12 10 C16 10 18 18 21 18" stroke-opacity="0.5" stroke-width="4" stroke-linecap="round"/><path d="M3 18 C6 16 8 12 12 12 C16 12 18 16 21 18" stroke-width="2"/></svg></div>
-      <span class="tpl-name">Monte Carlo Analysis</span>
-      <span class="tpl-desc">Run stochastic simulations to estimate system uncertainty.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:assembly-to-multibody" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div>
-      <span class="tpl-name">STEP to Multi-Body</span>
-      <span class="tpl-desc">Auto-generate simulation-ready Modelica assemblies directly from 3D STEP CAD geometry.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:modelica-procedural-cad" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path><circle cx="12" cy="12" r="2" fill="currentColor"></circle></svg></div>
-      <span class="tpl-name">Modelica Procedural CAD</span>
-      <span class="tpl-desc">Construct 3D CAD geometries procedurally using the Modelica shape language extension.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:cosim" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></div>
-      <span class="tpl-name">Co-Simulation Master</span>
-      <span class="tpl-desc">Browser-local multi-FMU coupled co-simulation with controller and plant models.</span>
-    </a>
-    <a href="/vscode/workbench/#memfs:uns-mqtt" class="tpl-card">
-      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
-      <span class="tpl-name">UNS / MQTT Digital Twin</span>
-      <span class="tpl-desc">Stream real-time simulation telemetry to an external web HMI via Unified Namespace.</span>
-    </a>
-  </div>
-
-      <div class="sub-divider">Semantic Web &amp; OWL2 Ontologies (Deprecated)</div>
-      <div class="templates">
-        <a href="/vscode/workbench/#memfs:owl2-contradiction" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
-          <span class="tpl-name">Contradiction Detection</span>
-          <span class="tpl-desc">Catch cross-domain inconsistencies between Modelica models and OWL2 disjoint axioms.</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:owl2-fmea" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
-          <span class="tpl-name">FMEA Fault Propagation</span>
-          <span class="tpl-desc">Trace failure propagation paths through connection topology using transitive OWL2 properties.</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:owl2-manufacturing" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></div>
-          <span class="tpl-name">Supply Chain Validation</span>
-          <span class="tpl-desc">Verify system manufacturability against supplier and material process ontologies.</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:owl2-subsumption" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
-          <span class="tpl-name">Component Subsumption</span>
-          <span class="tpl-desc">Automated component selection satisfying SysML requirements via subsumption reasoning.</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:owl2-units" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></div>
-          <span class="tpl-name">Semantic Unit Verification</span>
-          <span class="tpl-desc">Verify SI unit compatibility across ports to catch dimensional errors before simulation.</span>
-        </a>
-      </div>
-
-      <div class="sub-divider">Basic Example Workspaces (Deprecated)</div>
-      <div class="templates">
-        <a href="/vscode/workbench/#memfs:sysml2" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="8" rx="1.5"/><rect x="2" y="14" width="9" height="8" rx="1.5"/><rect x="13" y="14" width="9" height="8" rx="1.5"/><line x1="7" y1="10" x2="7" y2="14"/><line x1="17" y1="10" x2="17" y2="14"/></svg></div>
-          <span class="tpl-name">SysML2 Vehicle</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:rlc" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h3l2-4 4 8 4-8 4 8 2-4h2"></path></svg></div>
-          <span class="tpl-name">RLC Circuit</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:script" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"></path></svg></div>
-          <span class="tpl-name">Script</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:notebook" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" stroke="none"><path d="M0 3.75A.75.75 0 0 1 .75 3h7.497c1.566 0 2.945.8 3.751 2.014A4.495 4.495 0 0 1 15.75 3h7.5a.75.75 0 0 1 .75.75v15.063a.752.752 0 0 1-.755.75l-7.682-.052a3 3 0 0 0-2.142.878l-.89.891a.75.75 0 0 1-1.061 0l-.902-.901a2.996 2.996 0 0 0-2.121-.879H.75a.75.75 0 0 1-.75-.75Zm12.75 15.232a4.503 4.503 0 0 1 2.823-.971l6.927.047V4.5h-6.75a3 3 0 0 0-3 3ZM11.247 7.497a3 3 0 0 0-3-2.997H1.5V18h6.947c1.018 0 2.006.346 2.803.98Z"></path></svg></div>
-          <span class="tpl-name">Notebook</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:mbse-verification" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4M5 12a7 7 0 1114 0 7 7 0 01-14 0z"/></svg></div>
-          <span class="tpl-name">MBSE Verification</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:fmi2" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg></div>
-          <span class="tpl-name">FMI 2.0 Template</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:fmi3" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></div>
-          <span class="tpl-name">FMI 3.0 Template</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:simulation-verification" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4M5 12a7 7 0 1114 0 7 7 0 01-14 0z"/></svg></div>
-          <span class="tpl-name">Simulation Verification</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:multi-fidelity-binding" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-          <span class="tpl-name">Multi-Fidelity Binding</span>
-        </a>
-        <a href="/vscode/workbench/#memfs:hardware-ci" class="tpl-card">
-          <span class="badge-card-dep">Deprecated</span>
-          <div class="tpl-icon"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-          <span class="tpl-name">Hardware CI</span>
-        </a>
-      </div>
-    </div>
-  </details>
-</div>
-<script>
-  function go() {
-    var url = document.getElementById('url').value.trim();
-    url = url.replace(/^https?:\\/\\//, '').replace(/^github\\.com\\//, '');
-    window.location.href = '/vscode/workbench/#' + url;
-  }
-</script>
-</body></html>`;
+// 5. Generate 2-level tile landing page
+console.log("  Generating 2-level tile landing page...");
+const landingHtml = renderLandingPageHtml();
 
 writeFileSync(join(OUT_DIR, "index.html"), landingHtml);
 

@@ -3,17 +3,29 @@
 import styled from "styled-components";
 
 export const Header = styled.div`
-  padding: 16px;
-  font-size: 20px;
-  font-weight: 800;
+  padding: 0 16px;
+  min-height: 53px;
+  font-size: var(--text-xl, 20px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text-heading);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   position: sticky;
-  top: 0;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
+  top: var(--dev-header-height, 0px);
+  background: var(--surface-hud);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--color-border);
   z-index: 10;
+  margin-bottom: 12px;
+
+  & > button:first-child:not(.subtab-back) {
+    @media (min-width: 901px) {
+      display: none;
+    }
+  }
 `;
 
 export const DetailItem = styled.div<{ $clickable?: boolean | undefined }>`

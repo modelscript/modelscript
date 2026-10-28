@@ -3,6 +3,7 @@
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { recordPageViewBeacon } from "./api/admin";
 import { AuthProvider, useAuth } from "./AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
@@ -239,6 +240,21 @@ function IdeFallbackNavigate() {
   return <Navigate to={`/playground${qs ? `?${qs}` : ""}${location.hash}`} replace />;
 }
 
+function PageViewTracker() {
+  const location = useLocation();
+  const lastPathRef = React.useRef<string>("");
+
+  React.useEffect(() => {
+    const pathname = location.pathname || "/";
+    // Skip root redirect path `/` since it immediately replaces with `/home` or `/explore`
+    if (pathname === "/" || pathname === lastPathRef.current) return;
+    lastPathRef.current = pathname;
+    recordPageViewBeacon(pathname, "web");
+  }, [location.pathname]);
+
+  return null;
+}
+
 /**
  * Core ModelScript Hub React router and layout shell.
  */
@@ -266,6 +282,7 @@ function App() {
         <div id="portal-root" />
         <ToastProvider>
           <BrowserRouter>
+            <PageViewTracker />
             <GlobalModals />
             <RealtimeNotificationListener />
             <ErrorBoundary>

@@ -70,7 +70,7 @@ export const PendingTransfersBanner: React.FC<PendingTransfersBannerProps> = ({
                 p={2}
                 style={{
                   borderRadius: 8,
-                  background: "rgba(6, 8, 15, 0.55)",
+                  background: "var(--color-bg-card)",
                   border: "1px solid var(--color-border)",
                 }}
               >

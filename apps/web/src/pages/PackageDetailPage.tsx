@@ -47,7 +47,7 @@ const PageWrap = styled.div`
     color 0.3s ease;
   flex: 1;
 
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
     flex-direction: column;
   }
 `;
@@ -59,19 +59,25 @@ const MainContentWrap = styled.div`
   flex-direction: column;
 `;
 
-const ContentGrid = styled.div`
+const ContentGrid = styled.div<{ $treeCollapsed?: boolean | undefined }>`
   max-width: none;
   margin: 0 auto;
   padding: 0 40px 60px;
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 40px;
   width: 100%;
   box-sizing: border-box;
   animation: ${fadeIn} 0.4s ease;
 
-  @media (max-width: 900px) {
-    grid-template-columns: 1fr;
+  @media (max-width: 1200px) {
+    grid-template-columns: ${(props) => (props.$treeCollapsed ? "minmax(0, 1fr) 280px" : "minmax(0, 1fr)")};
+    gap: 28px;
+    padding: 0 24px 48px;
+  }
+
+  @media (max-width: 960px) {
+    grid-template-columns: minmax(0, 1fr);
     padding: 0 16px 40px;
     gap: 24px;
   }
@@ -88,6 +94,11 @@ const TabBar = styled.div`
   margin-right: auto;
   padding: 0 40px;
   box-sizing: border-box;
+  overflow-x: auto;
+
+  @media (max-width: 960px) {
+    padding: 0 16px;
+  }
 `;
 
 const Tab = styled.button<{ $active: boolean }>`
@@ -100,6 +111,8 @@ const Tab = styled.button<{ $active: boolean }>`
   border: none;
   background: none;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   border-bottom: 2px solid ${({ $active }) => ($active ? "var(--color-accent-emphasis)" : "transparent")};
   margin-bottom: -2px;
   color: ${({ $active }) => ($active ? "var(--color-accent-emphasis)" : "var(--color-text-muted)")};
@@ -306,11 +319,17 @@ const PackageDetailPage: React.FC = () => {
         />
 
         {/* ── Tab Bar ── */}
-        <TabBar>
+        <TabBar role="tablist">
           {TABS.map((tab) => {
             const depCount = Object.keys(pkg.dependencies || {}).length;
             return (
-              <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
+              <Tab
+                key={tab.id}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                $active={activeTab === tab.id}
+                onClick={() => setTab(tab.id)}
+              >
                 {React.isValidElement(tab.icon)
                   ? tab.icon
                   : typeof tab.icon === "function" ||
@@ -339,7 +358,7 @@ const PackageDetailPage: React.FC = () => {
         </TabBar>
 
         {/* ── Body ── */}
-        <ContentGrid>
+        <ContentGrid $treeCollapsed={treeCollapsed}>
           {/* ── Main column ── */}
           <div>
             {activeTab === "readme" && (

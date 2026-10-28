@@ -14,6 +14,8 @@ export interface QueueTabProps {
   setSearchQuery: (query: string) => void;
   statusFilter: string;
   setStatusFilter: (status: string) => void;
+  domainFilter?: string | undefined;
+  setDomainFilter?: ((domain: string) => void) | undefined;
   filteredJobs: UnifiedJobItem[];
   onInspectJob: (id: string | number) => void;
   onBrowseTemplates: () => void;
@@ -25,6 +27,8 @@ export const QueueTab: React.FC<QueueTabProps> = ({
   setSearchQuery,
   statusFilter,
   setStatusFilter,
+  domainFilter = "ALL",
+  setDomainFilter,
   filteredJobs,
   onInspectJob,
   onBrowseTemplates,
@@ -84,31 +88,58 @@ export const QueueTab: React.FC<QueueTabProps> = ({
           )}
         </div>
 
-        {/* Status Filters */}
-        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-          <span style={{ fontSize: "12px", color: "var(--color-text-muted)", marginRight: "4px" }}>
-            <FilterIcon size={12} /> Status:
-          </span>
-          {(["ALL", "RUNNING", "QUEUED", "SUCCESS", "FAILED"] as const).map((st) => (
-            <FilterChip
-              key={st}
-              $isSelected={statusFilter === st}
-              $activeColor={
-                st === "RUNNING"
-                  ? "var(--color-accent-cyan, #06b6d4)"
-                  : st === "QUEUED"
-                    ? "#f59e0b"
-                    : st === "SUCCESS"
-                      ? "#10b981"
-                      : st === "FAILED"
-                        ? "#ef4444"
-                        : "var(--color-accent-purple, #6f42c1)"
-              }
-              onClick={() => setStatusFilter(st)}
-            >
-              <span>{st === "ALL" ? "All Status" : st}</span>
-            </FilterChip>
-          ))}
+        <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
+          {/* Domain Filters */}
+          {setDomainFilter && (
+            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+              <span style={{ fontSize: "12px", color: "var(--color-text-muted)", marginRight: "4px" }}>Domain:</span>
+              {(["ALL", "MODELICA", "CFD", "FEA"] as const).map((dom) => (
+                <FilterChip
+                  key={dom}
+                  $isSelected={domainFilter === dom}
+                  $activeColor={
+                    dom === "MODELICA"
+                      ? "#eab308"
+                      : dom === "CFD"
+                        ? "var(--color-accent-cyan, #06b6d4)"
+                        : dom === "FEA"
+                          ? "#f43f5e"
+                          : "var(--color-accent-purple, #6f42c1)"
+                  }
+                  onClick={() => setDomainFilter(dom)}
+                >
+                  <span>{dom === "ALL" ? "All Domains" : dom}</span>
+                </FilterChip>
+              ))}
+            </Box>
+          )}
+
+          {/* Status Filters */}
+          <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)", marginRight: "4px" }}>
+              <FilterIcon size={12} /> Status:
+            </span>
+            {(["ALL", "RUNNING", "QUEUED", "SUCCESS", "FAILED"] as const).map((st) => (
+              <FilterChip
+                key={st}
+                $isSelected={statusFilter === st}
+                $activeColor={
+                  st === "RUNNING"
+                    ? "var(--color-accent-cyan, #06b6d4)"
+                    : st === "QUEUED"
+                      ? "#f59e0b"
+                      : st === "SUCCESS"
+                        ? "#10b981"
+                        : st === "FAILED"
+                          ? "#ef4444"
+                          : "var(--color-accent-purple, #6f42c1)"
+                }
+                onClick={() => setStatusFilter(st)}
+              >
+                <span>{st === "ALL" ? "All Status" : st}</span>
+              </FilterChip>
+            ))}
+          </Box>
         </Box>
       </Box>
 
@@ -139,8 +170,8 @@ export const QueueTab: React.FC<QueueTabProps> = ({
             fontSize="13px"
             style={{ maxWidth: 360, margin: "6px auto 16px", display: "block", color: "var(--color-text-muted)" }}
           >
-            {searchQuery || statusFilter !== "ALL"
-              ? "Try adjusting your search query or status filter."
+            {searchQuery || statusFilter !== "ALL" || domainFilter !== "ALL"
+              ? "Try adjusting your search query, domain, or status filter."
               : "You haven't launched any simulations yet. Pick a ready-to-run template or submit a custom job."}
           </Text>
           <button

@@ -18,11 +18,12 @@ interface ParameterSliderRibbonProps {
   onSimulate?: (() => void) | undefined;
   isSimulating?: boolean | undefined;
   dark?: boolean | undefined;
+  hasFloatingDock?: boolean | undefined;
 }
 
-const RibbonContainer = styled.div<{ $dark: boolean; $expanded: boolean }>`
+const RibbonContainer = styled.div<{ $dark: boolean; $expanded: boolean; $hasFloatingDock: boolean }>`
   position: absolute;
-  bottom: 12px;
+  bottom: ${(props) => (props.$hasFloatingDock ? "68px" : "16px")};
   left: 12px;
   max-width: calc(100% - 190px);
   z-index: 90;
@@ -36,6 +37,10 @@ const RibbonContainer = styled.div<{ $dark: boolean; $expanded: boolean }>`
   box-shadow: 0 8px 32px rgba(0, 0, 0, ${(props) => (props.$dark ? "0.4" : "0.15")});
   overflow: hidden;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @media (max-width: 768px) {
+    bottom: 16px;
+  }
 `;
 
 const RibbonHeader = styled.div<{ $dark: boolean }>`
@@ -157,6 +162,7 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
   onSimulate,
   isSimulating = false,
   dark = true,
+  hasFloatingDock = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -169,8 +175,11 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
 
   if (parameters.length === 0) return null;
 
+  const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
+  const effectiveHasFloatingDock = Boolean(hasFloatingDock && !isPlaygroundRoute);
+
   return (
-    <RibbonContainer $dark={dark} $expanded={isExpanded}>
+    <RibbonContainer $dark={dark} $expanded={isExpanded} $hasFloatingDock={effectiveHasFloatingDock}>
       <RibbonHeader $dark={dark} onClick={() => setIsExpanded(!isExpanded)}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span>🎛️ Parameters</span>

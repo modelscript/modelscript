@@ -16,10 +16,10 @@ import { solveHydraulics } from "./solver/todini-ggm.js";
 
 export const epanetLanguage = language({
   name: "epanet",
-  fileExtensions: [".inp"],
+  fileExtensions: [".epanet", ".inp", ".net"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".inp"],
+    fileExtensions: [".epanet", ".inp", ".net"],
   },
   rules: {
     Root: () => "epanet",

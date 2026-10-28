@@ -7,7 +7,16 @@ import { createApiToken, getApiTokens, revokeApiToken, type ApiTokenDto } from "
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
-import { DetailSubtitle, DetailTitle, FormInput, FormLabel, Header, SaveButton } from "../settingsStyles";
+import {
+  DangerButton,
+  DetailSubtitle,
+  DetailTitle,
+  FormInput,
+  FormLabel,
+  Header,
+  SaveButton,
+  SecondaryButton,
+} from "../settingsStyles";
 
 export interface TokensTabProps {
   onBack: () => void;
@@ -16,6 +25,7 @@ export interface TokensTabProps {
 export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const toast = useToast();
   const [apiTokens, setApiTokens] = useState<ApiTokenDto[]>([]);
+  const [confirmingRevokeTokenId, setConfirmingRevokeTokenId] = useState<number | null>(null);
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
   const [tokenName, setTokenName] = useState("");
   const [tokenScopes, setTokenScopes] = useState<string[]>(["packages:publish"]);
@@ -178,26 +188,37 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                     </Box>
                   </Box>
 
-                  <CircleIconButton
-                    title="Revoke Token"
-                    onClick={async () => {
-                      if (
-                        confirm(
-                          `Are you sure you want to revoke '${tok.name}'? Any CI/CD pipeline using this token will stop working immediately.`,
-                        )
-                      ) {
-                        try {
-                          await revokeApiToken(tok.id);
-                          setApiTokens((prev) => prev.filter((t) => t.id !== tok.id));
-                          toast.success("Token revoked successfully.");
-                        } catch (err: any) {
-                          toast.error(err.response?.data?.error || "Failed to revoke token.");
-                        }
-                      }
-                    }}
-                  >
-                    <TrashIcon size={16} color="var(--color-danger-fg)" />
-                  </CircleIconButton>
+                  {confirmingRevokeTokenId === tok.id ? (
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <SecondaryButton
+                        type="button"
+                        style={{ padding: "6px 12px", fontSize: "13px" }}
+                        onClick={() => setConfirmingRevokeTokenId(null)}
+                      >
+                        Cancel
+                      </SecondaryButton>
+                      <DangerButton
+                        type="button"
+                        style={{ padding: "6px 14px", fontSize: "13px" }}
+                        onClick={async () => {
+                          setConfirmingRevokeTokenId(null);
+                          try {
+                            await revokeApiToken(tok.id);
+                            setApiTokens((prev) => prev.filter((t) => t.id !== tok.id));
+                            toast.success("Token revoked successfully.");
+                          } catch (err: any) {
+                            toast.error(err.response?.data?.error || "Failed to revoke token.");
+                          }
+                        }}
+                      >
+                        Confirm Revoke?
+                      </DangerButton>
+                    </Box>
+                  ) : (
+                    <CircleIconButton title="Revoke Token" onClick={() => setConfirmingRevokeTokenId(tok.id)}>
+                      <TrashIcon size={16} color="var(--color-danger-fg)" />
+                    </CircleIconButton>
+                  )}
                 </Box>
               ))}
             </Box>
@@ -327,15 +348,16 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                 ].map((s) => {
                   const checked = tokenScopes.includes(s.scope);
                   return (
-                    <Box
+                    <label
                       key={s.scope}
-                      p={2}
                       style={{
+                        padding: "8px",
                         border: "1px solid var(--color-border-subtle)",
                         borderRadius: "6px",
                         display: "flex",
                         alignItems: "flex-start",
                         gap: "8px",
+                        cursor: "pointer",
                         background: checked ? "var(--color-accent-subtle, rgba(139,92,246,0.05))" : "transparent",
                       }}
                     >
@@ -357,7 +379,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                         </Text>
                         <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{s.desc}</span>
                       </Box>
-                    </Box>
+                    </label>
                   );
                 })}
               </Box>

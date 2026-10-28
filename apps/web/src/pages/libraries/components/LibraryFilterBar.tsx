@@ -100,6 +100,7 @@ export const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
               key={d.id}
               $active={domainFilter === d.id}
               $color={d.color}
+              aria-pressed={domainFilter === d.id}
               onClick={() => onDomainFilterChange(d.id)}
             >
               <IconComp size={13} />

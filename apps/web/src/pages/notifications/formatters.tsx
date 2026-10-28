@@ -10,7 +10,7 @@ import {
   ReplyIcon,
   RocketIcon,
   ShieldIcon,
-  StarIcon,
+  SyncIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
@@ -77,7 +77,7 @@ export const getIconForType = (type: string) => {
     case "reply":
       return <ReplyIcon color="var(--color-fg-muted)" size={22} />;
     case "repost":
-      return <StarIcon color="var(--color-attention-fg)" size={22} />;
+      return <SyncIcon color="#00ba7c" size={22} />;
     case "mention":
       return <MentionIcon color="var(--color-done-fg)" size={22} />;
     case "simulation":

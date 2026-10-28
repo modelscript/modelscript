@@ -1,7 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /** Supported language dialects across ModelScript polyglot ecosystem */
-export type EmbedDialect = "modelica" | "sysml2" | "step" | "scad" | "pscad" | "olga" | "csv" | "owl2";
+export type EmbedDialect =
+  | "modelica"
+  | "sysml2"
+  | "step"
+  | "scad"
+  | "pscad"
+  | "olga"
+  | "csv"
+  | "owl2"
+  | "gensys"
+  | "simpack"
+  | "spice"
+  | "fmu"
+  | "ssp"
+  | "cfd"
+  | "fea"
+  | "simulink"
+  | "urdf"
+  | "plcopen"
+  | "opendss"
+  | "mermaid"
+  | (string & {});
 
 /** Visual artifact presentation mode */
 export type EmbedViewMode = "diagram" | "cad" | "plot" | "code" | "split-columns" | "split-rows";
@@ -48,6 +69,8 @@ export interface UniversalEmbedPayload {
   /** Indicates if this payload is part of a multi-file package */
   isMultiFile?: boolean | undefined;
   artifactId?: string | number | undefined;
+  morselId?: string | undefined;
+  embedToken?: string | undefined;
 }
 
 /** Messages sent from Host -> Embed Iframe */

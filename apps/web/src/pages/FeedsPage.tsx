@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlusIcon, RssIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
-import { Button, Dialog, Text } from "@primer/react";
+import { Button, Dialog, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
@@ -123,18 +123,24 @@ const FeedsPage: React.FC = () => {
   const { token } = useAuth();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [urlInput, setUrlInput] = useState("");
+  const [initialLoading, setInitialLoading] = useState(Boolean(token));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unsubscribingFeed, setUnsubscribingFeed] = useState<any | null>(null);
   const [isUnsubscribing, setIsUnsubscribing] = useState(false);
 
   const fetchFeeds = async () => {
-    if (!token) return;
+    if (!token) {
+      setInitialLoading(false);
+      return;
+    }
     try {
       const data = await getFeeds();
       setFeeds(data.feeds || []);
     } catch (err) {
       console.error(err);
+    } finally {
+      setInitialLoading(false);
     }
   };
 
@@ -214,7 +220,11 @@ const FeedsPage: React.FC = () => {
         )}
       </Box>
 
-      {feeds.length === 0 ? (
+      {initialLoading ? (
+        <Box p={5} display="flex" justifyContent="center">
+          <Spinner size="large" />
+        </Box>
+      ) : feeds.length === 0 ? (
         <Box p={5} display="flex" justifyContent="center">
           <Text color="var(--color-fg-muted)">You are not subscribed to any feeds.</Text>
         </Box>

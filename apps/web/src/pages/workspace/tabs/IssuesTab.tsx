@@ -19,6 +19,7 @@ export interface IssuesTabProps {
 export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => {
   const [issues, setIssues] = useState<GitlabIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newIssueTitle, setNewIssueTitle] = useState("");
   const [newIssueBody, setNewIssueBody] = useState("");
@@ -27,21 +28,20 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
   const [selectedIssue, setSelectedIssue] = useState<GitlabIssue | null>(null);
 
   const loadIssues = async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const data = await getGitlabIssues(projectId, provider);
       setIssues(data);
-    } catch {
-      // ignore
+    } catch (err: unknown) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load issues.");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      await loadIssues();
-      setLoading(false);
-    }
-    load();
+    loadIssues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, provider]);
 
@@ -78,53 +78,64 @@ export const IssuesTab: React.FC<IssuesTabProps> = ({ projectId, provider }) => 
         </Button>
       </Box>
 
-      <StyledBox>
-        <Box
-          bg="var(--color-canvas-subtle)"
-          p={3}
-          style={{ borderBottom: "1px solid var(--color-border-default)" }}
-          display="flex"
-          alignItems="center"
-          gap={2}
-        >
-          <IssueOpenedIcon />
-          <Text style={{ fontWeight: "bold" }}>{issues.length} Open</Text>
-        </Box>
+      {loadError ? (
+        <Flash variant="danger" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 3 }}>
+          <span>{loadError}</span>
+          <Button size="small" onClick={loadIssues}>
+            Retry
+          </Button>
+        </Flash>
+      ) : (
+        <StyledBox>
+          <Box
+            bg="var(--color-canvas-subtle)"
+            p={3}
+            style={{ borderBottom: "1px solid var(--color-border-default)" }}
+            display="flex"
+            alignItems="center"
+            gap={2}
+          >
+            <IssueOpenedIcon />
+            <Text style={{ fontWeight: "bold" }}>{issues.length} Open</Text>
+          </Box>
 
-        {loading ? (
-          <Box p={4} display="flex" justifyContent="center">
-            <Spinner />
-          </Box>
-        ) : issues.length === 0 ? (
-          <Box display="flex" flexDirection="column" alignItems="center" p={8} textAlign="center">
-            <IssueOpenedIcon size={32} fill="var(--color-fg-muted)" />
-            <Heading as="h3" style={{ fontSize: "20px", marginTop: "16px", marginBottom: "8px" }}>
-              Welcome to issues!
-            </Heading>
-            <Text color="var(--color-fg-muted)">Issues are used to track todos, bugs, feature requests, and more.</Text>
-          </Box>
-        ) : (
-          <Box display="flex" flexDirection="column">
-            {issues.map((issue) => (
-              <CommitRow key={issue.id} style={{ cursor: "pointer" }} onClick={() => setSelectedIssue(issue)}>
-                <Box display="flex" gap={3}>
-                  <div style={{ marginTop: "4px" }}>
-                    <IssueOpenedIcon fill="var(--color-success-fg)" />
-                  </div>
-                  <Box display="flex" flexDirection="column">
-                    <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}>
-                      {issue.title}
-                    </Text>
-                    <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
-                      #{issue.iid} opened {getRelativeTime(issue.created_at)} by {issue.author.username}
-                    </Text>
+          {loading ? (
+            <Box p={4} display="flex" justifyContent="center">
+              <Spinner />
+            </Box>
+          ) : issues.length === 0 ? (
+            <Box display="flex" flexDirection="column" alignItems="center" p={8} textAlign="center">
+              <IssueOpenedIcon size={32} fill="var(--color-fg-muted)" />
+              <Heading as="h3" style={{ fontSize: "20px", marginTop: "16px", marginBottom: "8px" }}>
+                Welcome to issues!
+              </Heading>
+              <Text color="var(--color-fg-muted)">
+                Issues are used to track todos, bugs, feature requests, and more.
+              </Text>
+            </Box>
+          ) : (
+            <Box display="flex" flexDirection="column">
+              {issues.map((issue) => (
+                <CommitRow key={issue.id} style={{ cursor: "pointer" }} onClick={() => setSelectedIssue(issue)}>
+                  <Box display="flex" gap={3}>
+                    <div style={{ marginTop: "4px" }}>
+                      <IssueOpenedIcon fill="var(--color-success-fg)" />
+                    </div>
+                    <Box display="flex" flexDirection="column">
+                      <Text style={{ fontWeight: "bold", color: "var(--color-fg-default)", fontSize: "16px" }}>
+                        {issue.title}
+                      </Text>
+                      <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
+                        #{issue.iid} opened {getRelativeTime(issue.created_at)} by {issue.author.username}
+                      </Text>
+                    </Box>
                   </Box>
-                </Box>
-              </CommitRow>
-            ))}
-          </Box>
-        )}
-      </StyledBox>
+                </CommitRow>
+              ))}
+            </Box>
+          )}
+        </StyledBox>
+      )}
 
       {selectedIssue && (
         <Dialog onClose={() => setSelectedIssue(null)} title={`#${selectedIssue.iid} ${selectedIssue.title}`}>

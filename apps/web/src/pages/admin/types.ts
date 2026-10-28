@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type {
+  AdminAnalyticsSummary,
   AdminAuditLog,
   AdminDbStatus,
   AdminDmcaNotice,
@@ -10,6 +11,7 @@ import type {
 } from "../../api";
 
 export type {
+  AdminAnalyticsSummary,
   AdminAuditLog,
   AdminDbStatus,
   AdminDmcaNotice,
@@ -18,4 +20,4 @@ export type {
   AdminModerationReport,
 };
 
-export type AdminTab = "moderation" | "federation" | "dmca" | "audit" | "database" | "flags";
+export type AdminTab = "moderation" | "federation" | "dmca" | "audit" | "database" | "flags" | "analytics";

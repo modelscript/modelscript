@@ -23,8 +23,17 @@ services:
       - ENTERPRISE_APPLIANCE=true
       - AIRGAP_ENFORCED=true
       - TRUST_PROXY=true
+      - DATA_DIR=/app/apps/api/data
+      - DB_PATH=/app/apps/api/data/modelscript.db
+      - STORAGE_DIR=/app/apps/api/data/libraries
+      - GEOIP_DB_PATH=/app/apps/api/data/GeoLite2-City.mmdb
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
       - JWT_SECRET=${JWT_SECRET:-enterprise-hardened-jwt-secret-replace-with-vault-secret}
+      - ADMIN_INIT_USERNAME=${ADMIN_INIT_USERNAME:-admin}
+      - ADMIN_INIT_PASSWORD=${ADMIN_INIT_PASSWORD:-}
+      - EMBED_FRAME_ANCESTORS=${EMBED_FRAME_ANCESTORS:-*}
+      - ALLOWED_INTRANET_HOSTS=${ALLOWED_INTRANET_HOSTS:-.corp,.internal,.intranet,.lan}
+      - ALLOWED_INTRANET_CIDRS=${ALLOWED_INTRANET_CIDRS:-}
 
       # Enterprise IAM: Reverse Proxy / SAML 2.0 Header Authentication
       # Compatible with F5 BIG-IP APM, Keycloak Gatekeeper, OAuth2-Proxy, Envoy, NGINX

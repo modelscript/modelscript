@@ -30,6 +30,7 @@ import type {
   DiagramGetPaletteParams,
   DiagramPalette,
   EntityPropertySchema,
+  PlacementItem,
   PropertyFieldConfig,
   PropertyGroupConfig,
   PropertyTabConfig,
@@ -1050,6 +1051,182 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       diagramData = buildDiagramFromDSL(rawData, config, syntaxNames, params.diagramType, docText);
     }
 
+    if ((!diagramData || !Array.isArray(diagramData.nodes) || diagramData.nodes.length === 0) && docText) {
+      const plugin = globalLanguageRegistry.getPluginForUri(params.uri, docText);
+      const nodes: any[] = [];
+      const edges: any[] = [];
+
+      if (plugin?.customHandlers?.symbols) {
+        try {
+          const syms = plugin.customHandlers.symbols(docText) ?? [];
+          let idx = 0;
+          const visitSym = (sym: any, parentId?: string) => {
+            if (!sym || !sym.name) return;
+            const nodeId = parentId ? `${parentId}.${sym.name}` : sym.name;
+            if (!nodes.some((n) => n.id === nodeId)) {
+              const col = idx % 3;
+              const row = Math.floor(idx / 3);
+              idx++;
+              nodes.push({
+                id: nodeId,
+                name: sym.name,
+                label: sym.detail ? `${sym.name}\n(${sym.detail})` : sym.name,
+                kind: String(sym.kind ?? "component"),
+                x: 80 + col * 240,
+                y: 80 + row * 130,
+                width: 180,
+                height: 70,
+                rotation: 0,
+                autoLayout: true,
+                ports: [
+                  { id: "in", name: "in", direction: "in", x: 0, y: 35 },
+                  { id: "out", name: "out", direction: "out", x: 180, y: 35 },
+                ],
+                properties: {
+                  className: sym.detail || plugin.name || "Component",
+                  name: sym.name,
+                  description: sym.detail || "",
+                },
+              });
+            }
+            if (parentId) {
+              edges.push({
+                id: `edge_${parentId}_${nodeId}`,
+                source: parentId,
+                target: nodeId,
+                sourcePort: "out",
+                targetPort: "in",
+              });
+            }
+            if (Array.isArray(sym.children)) {
+              for (const child of sym.children) {
+                visitSym(child, nodeId);
+              }
+            }
+          };
+          for (const s of syms) {
+            visitSym(s);
+          }
+          if (edges.length === 0 && nodes.length > 1) {
+            for (let i = 0; i < nodes.length - 1; i++) {
+              edges.push({
+                id: `edge_${i}_${i + 1}`,
+                source: nodes[i]!.id,
+                target: nodes[i + 1]!.id,
+                sourcePort: "out",
+                targetPort: "in",
+              });
+            }
+          }
+        } catch {
+          // fall through to structural line synthesis
+        }
+      }
+
+      if (nodes.length === 0) {
+        const lines = docText.split(/\r?\n/);
+        const seenIds = new Set<string>();
+        const pushNode = (rawName: string, kind: string, detail = "") => {
+          const cleanName = rawName.trim().replace(/^["'<]+|["'>;,{]+$/g, "");
+          if (!cleanName || seenIds.has(cleanName)) return;
+          seenIds.add(cleanName);
+          const idx = nodes.length;
+          const col = idx % 3;
+          const row = Math.floor(idx / 3);
+          nodes.push({
+            id: cleanName,
+            name: cleanName,
+            label: detail ? `${cleanName}\n(${detail})` : cleanName,
+            kind,
+            x: 80 + col * 240,
+            y: 80 + row * 130,
+            width: 180,
+            height: 70,
+            rotation: 0,
+            autoLayout: true,
+            ports: [
+              { id: "in", name: "in", direction: "in", x: 0, y: 35 },
+              { id: "out", name: "out", direction: "out", x: 180, y: 35 },
+            ],
+            properties: {
+              className: kind,
+              name: cleanName,
+              description: detail,
+            },
+          });
+        };
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("//") || line.startsWith("/*") || line.startsWith("!")) continue;
+          // Section headers: [SECTION] or *CARD
+          const secMatch = /^\[([A-Za-z0-9_ -]+)\]$/.exec(line) ?? /^\*([A-Za-z0-9_ ]+)/.exec(line);
+          if (secMatch) {
+            pushNode(secMatch[1]!.trim(), "Section");
+            continue;
+          }
+          // STEP entity: #10 = ADVANCED_BREP_SHAPE_REPRESENTATION('name', ...)
+          const stepMatch = /^(#\d+)\s*=\s*([A-Z0-9_]+)\s*\((?:'([^']*)')?/.exec(line);
+          if (stepMatch && nodes.length < 16) {
+            pushNode(stepMatch[3] || stepMatch[1]!, stepMatch[2]!, stepMatch[1]!);
+            continue;
+          }
+          // C / Fortran / SCAD / ModelScript declarations
+          const declMatch =
+            /^(?:subroutine|function|program|module|model|study|part|block|class|struct|void|double|int|real)\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(
+              line,
+            ) ?? /^([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*\{/.exec(line);
+          if (declMatch) {
+            pushNode(declMatch[1]!, "Block");
+            continue;
+          }
+          // XML element with id/name
+          const xmlMatch = /<([A-Za-z0-9_:-]+)[^>]*\b(?:id|name|SHORT-NAME)\s*=\s*["']([^"']+)["']/i.exec(line);
+          if (xmlMatch && nodes.length < 16) {
+            pushNode(xmlMatch[2]!, xmlMatch[1]!);
+            continue;
+          }
+          // Key = Value directive (CFD / CCSDS / SIMA)
+          const kvMatch = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*([^\r\n;#%]+)/.exec(line);
+          if (kvMatch && nodes.length < 12) {
+            pushNode(kvMatch[1]!, "Parameter", kvMatch[2]!.trim().slice(0, 24));
+            continue;
+          }
+        }
+
+        // CSV header fallback
+        if (nodes.length === 0 && lines.length > 0) {
+          const firstLine = lines.find((l) => l.trim().length > 0 && !l.trim().startsWith("#")) ?? "";
+          if (firstLine.includes(",")) {
+            for (const colName of firstLine.split(",").slice(0, 10)) {
+              pushNode(colName.trim(), "Channel");
+            }
+          }
+        }
+
+        if (nodes.length === 0) {
+          pushNode(plugin?.name || "RootModel", "Model");
+        }
+
+        for (let i = 0; i < nodes.length - 1; i++) {
+          edges.push({
+            id: `edge_${i}_${i + 1}`,
+            source: nodes[i]!.id,
+            target: nodes[i + 1]!.id,
+            sourcePort: "out",
+            targetPort: "in",
+          });
+        }
+      }
+
+      diagramData = {
+        nodes,
+        edges,
+        coordinateSystem: null,
+        diagramBackground: null,
+      };
+    }
+
     if (!diagramData) return null;
 
     if (params.sidecarContent) {
@@ -1132,11 +1309,58 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         };
       }
     }
+
+    // 3. Universal source-text parameter extraction fallback
+    const docText = this.deps.getDocumentText(params.uri);
+    const parameters: ComponentPropertyData["parameters"] = [];
+    const values: Record<string, any> = { name: params.componentName };
+    const fields: PropertyFieldConfig[] = [];
+    if (docText) {
+      const lines = docText.split(/\r?\n/);
+      const targetName = params.componentName.split(".").pop() ?? params.componentName;
+      let startLine = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i]!.includes(targetName)) {
+          startLine = i;
+          break;
+        }
+      }
+      const windowEnd = Math.min(lines.length, startLine + 12);
+      const seenKeys = new Set<string>();
+      for (let i = startLine; i < windowEnd; i++) {
+        const line = lines[i]!;
+        const kvRegex = /\b([A-Za-z_][A-Za-z0-9_.-]*)\s*(?:=|:)\s*["']?([^"',;)}\s>\r\n]+)["']?/g;
+        let m: RegExpExecArray | null;
+        while ((m = kvRegex.exec(line)) !== null) {
+          const k = m[1]!;
+          const v = m[2]!;
+          if (seenKeys.has(k)) continue;
+          seenKeys.add(k);
+          parameters.push({ name: k, value: v, description: `Parameter '${k}'` });
+          values[k] = v;
+          fields.push({
+            key: k,
+            label: k,
+            kind: !isNaN(Number(v)) ? "number" : "string",
+            defaultValue: !isNaN(Number(v)) ? Number(v) : v,
+          });
+        }
+      }
+    }
+
     return {
-      className: "Component",
+      className: params.className || "Component",
       name: params.componentName,
       description: "",
-      parameters: [],
+      parameters,
+      schema:
+        fields.length > 0
+          ? {
+              title: params.componentName,
+              tabs: [{ id: "general", label: "General", groups: [{ id: "params", label: "Parameters", fields }] }],
+            }
+          : undefined,
+      values,
     };
   }
 
@@ -1194,8 +1418,21 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     for (const action of params.actions) {
       switch (action.type) {
         case "move": {
+          const moveItems: PlacementItem[] = Array.isArray(action.items)
+            ? action.items
+            : (action as any).nodeId && (action as any).position
+              ? [
+                  {
+                    name: String((action as any).nodeId),
+                    x: (action as any).position.x,
+                    y: (action as any).position.y,
+                    width: (action as any).width ?? (action as any).size?.width ?? 0,
+                    height: (action as any).height ?? (action as any).size?.height ?? 0,
+                  },
+                ]
+              : [];
           if (config?.placement?.persistence === "inline" && docText !== undefined) {
-            for (const item of action.items) {
+            for (const item of moveItems) {
               const name = item.name;
               const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const nameRegex = new RegExp(`\\b${escName}\\b`);
@@ -1241,7 +1478,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               }
             }
           } else {
-            itemsToSave.push(...action.items);
+            itemsToSave.push(...moveItems);
           }
           break;
         }
@@ -1549,7 +1786,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             }
 
             const escParam = paramName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const paramRegex = new RegExp(`\\b(${escParam}\\s*=\\s*)([^,;\\)\\}\\n]+)`);
+            const paramRegex = new RegExp(`\\b(${escParam}\\s*(?:=|:)\\s*["']?)([^"',;\\)\\}\\s>\\n]+)`);
             let matched = false;
 
             if (action.name) {
@@ -3522,6 +3759,9 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         },
 
         async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+          if (backends.generic) {
+            return await backends.generic.applyEdits(params);
+          }
           return { seq: params.seq, edits: [], renderHint: "none" };
         },
 
@@ -3568,112 +3808,244 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       return null;
     };
 
-    const formatKinematicDiagramData = (rawDiagram: any): DiagramData => {
-      const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
-      const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+    const formatKinematicDiagramData = async (rawDiagram: any, targetUri: string): Promise<DiagramData> => {
+      const cells = Array.isArray(rawDiagram?.cells) ? rawDiagram.cells : [];
+      const nodes = Array.isArray(rawDiagram?.nodes) ? rawDiagram.nodes : cells.filter((c: any) => c.shape !== "edge");
+      const edges = Array.isArray(rawDiagram?.edges) ? rawDiagram.edges : cells.filter((c: any) => c.shape === "edge");
+
+      // Merge any persisted sidecar layout positions so drag/move edits persist
+      try {
+        const storage = (backends.generic as any)?.getLayoutStorage?.(targetUri);
+        const layout = storage ? await storage.loadLayout(targetUri) : null;
+        if (layout?.elements) {
+          for (const node of nodes) {
+            const nodeName = (node as any).name || node.label || node.id;
+            const el = layout.elements[node.id] || (nodeName && layout.elements[nodeName]);
+            if (el) {
+              node.x = el.x;
+              node.y = el.y;
+              if (node.position) {
+                node.position.x = el.x;
+                node.position.y = el.y;
+              }
+              if (el.width) node.width = el.width;
+              if (el.height) node.height = el.height;
+            }
+          }
+        }
+      } catch {
+        // ignore layout storage errors
+      }
+
       return {
         nodes,
         edges,
         coordinateSystem: null,
         diagramBackground: null,
-        cells: rawDiagram.cells,
+        cells: cells.length > 0 ? cells : [...nodes, ...edges],
+        metadata: rawDiagram?.metadata,
       } as any;
     };
 
-    if (uri.endsWith(".spck") || uri.endsWith(".sim")) {
+    const createDomainBuilderBackend = (
+      buildFn: (text: string, params: DiagramGetDataParams) => Promise<any>,
+    ): DiagramBackend => ({
+      async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+        try {
+          const text = await readKinematicSource(params.uri);
+          if (!text) return null;
+          const rawDiagram = await buildFn(text, params);
+          if (rawDiagram) {
+            const formatted = await formatKinematicDiagramData(rawDiagram, params.uri);
+            if (formatted.nodes && formatted.nodes.length > 0) {
+              return formatted;
+            }
+          }
+        } catch {
+          // fall back to generic backend
+        }
+        return backends.generic ? await backends.generic.getData(params) : null;
+      },
+      async getComponentProperties(params: DiagramGetComponentPropertiesParams): Promise<ComponentPropertyData | null> {
+        return backends.generic ? await backends.generic.getComponentProperties(params) : null;
+      },
+      async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+        if (backends.generic) {
+          return await backends.generic.applyEdits(params);
+        }
+        return { seq: params.seq, edits: [], renderHint: "none" };
+      },
+    });
+
+    if (uri.endsWith(".spck") || uri.endsWith(".sim") || uri.endsWith(".mbs") || plugin?.id === "simpack") {
       if (backends.simpack) return backends.simpack;
-      return {
-        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
-          try {
-            const text = await readKinematicSource(params.uri);
-            if (!text) return null;
-            const { parseSpckXml, parseSimDeck, buildSimpackDiagram } = await import("@modelscript/simpack");
-            const model = params.uri.endsWith(".sim") ? parseSimDeck(text) : parseSpckXml(text);
-            const rawDiagram = buildSimpackDiagram(model);
-            return formatKinematicDiagramData(rawDiagram);
-          } catch {
-            return null;
-          }
-        },
-        async getComponentProperties(): Promise<ComponentPropertyData | null> {
-          return null;
-        },
-        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-          return { seq: params.seq, edits: [], renderHint: "none" };
-        },
-      };
+      return createDomainBuilderBackend(async (text) => {
+        const { parseSpckXml, parseSimDeck, buildSimpackDiagram } = await import("@modelscript/simpack");
+        const isXml = text.trimStart().startsWith("<");
+        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
+        return buildSimpackDiagram(model);
+      });
     }
 
-    if (uri.endsWith(".calc") || uri.endsWith(".trax")) {
+    if (uri.endsWith(".calc") || uri.endsWith(".trax") || uri.endsWith(".run") || plugin?.id === "gensys") {
       if (backends.gensys) return backends.gensys;
-      return {
-        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
-          try {
-            const text = await readKinematicSource(params.uri);
-            if (!text) return null;
-            const { parseGensysDeck, buildGensysDiagram } = await import("@modelscript/gensys");
-            const model = parseGensysDeck(text);
-            const rawDiagram = buildGensysDiagram(model);
-            return formatKinematicDiagramData(rawDiagram);
-          } catch {
-            return null;
-          }
-        },
-        async getComponentProperties(): Promise<ComponentPropertyData | null> {
-          return null;
-        },
-        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-          return { seq: params.seq, edits: [], renderHint: "none" };
-        },
-      };
+      return createDomainBuilderBackend(async (text) => {
+        const { parseGensysDeck, buildGensysDiagram } = await import("@modelscript/gensys");
+        const model = parseGensysDeck(text);
+        return buildGensysDiagram(model);
+      });
     }
 
-    if (uri.endsWith(".adm") || uri.endsWith(".cmd") || uri.endsWith(".mnf")) {
+    if (
+      uri.endsWith(".adm") ||
+      uri.endsWith(".cmd") ||
+      uri.endsWith(".mnf") ||
+      uri.endsWith(".acf") ||
+      plugin?.id === "adams"
+    ) {
       if (backends.adams) return backends.adams;
-      return {
-        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
-          try {
-            const text = await readKinematicSource(params.uri);
-            if (!text) return null;
-            const { parseAdams, buildAdamsDiagram } = await import("@modelscript/adams");
-            const model = parseAdams(text);
-            const rawDiagram = buildAdamsDiagram(model);
-            return formatKinematicDiagramData(rawDiagram);
-          } catch {
-            return null;
-          }
-        },
-        async getComponentProperties(): Promise<ComponentPropertyData | null> {
-          return null;
-        },
-        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-          return { seq: params.seq, edits: [], renderHint: "none" };
-        },
-      };
+      return createDomainBuilderBackend(async (text) => {
+        const { parseAdams, buildAdamsDiagram } = await import("@modelscript/adams");
+        const model = parseAdams(text);
+        return buildAdamsDiagram(model);
+      });
     }
 
-    if (uri.endsWith(".urdf") || uri.endsWith(".xacro")) {
+    if (uri.endsWith(".urdf") || uri.endsWith(".xacro") || uri.endsWith(".sdf") || plugin?.id === "urdf") {
       if (backends.urdf) return backends.urdf;
-      return {
-        async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
-          try {
-            const text = await readKinematicSource(params.uri);
-            if (!text) return null;
-            const { parseUrdf, buildUrdfDiagram } = await import("@modelscript/urdf");
-            const model = parseUrdf(text);
-            const rawDiagram = buildUrdfDiagram(model);
-            return formatKinematicDiagramData(rawDiagram);
-          } catch {
-            return null;
-          }
-        },
-        async getComponentProperties(): Promise<ComponentPropertyData | null> {
-          return null;
-        },
-        async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-          return { seq: params.seq, edits: [], renderHint: "none" };
-        },
-      };
+      return createDomainBuilderBackend(async (text) => {
+        const { parseUrdf, buildUrdfDiagram } = await import("@modelscript/urdf");
+        const model = parseUrdf(text);
+        return buildUrdfDiagram(model);
+      });
+    }
+
+    if (plugin?.id === "aspen" || uri.endsWith(".bkp") || uri.endsWith(".in") || uri.endsWith(".aspen.inp")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseAspen } = await import("@modelscript/aspen");
+        const { buildAspenDiagram } = await import("@modelscript/diagram/aspen-diagram-builder");
+        return buildAspenDiagram(parseAspen(text) as any);
+      });
+    }
+
+    if (plugin?.id === "swmm" || uri.endsWith(".swmm") || uri.endsWith(".swmm.inp")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseSwmm } = await import("@modelscript/swmm");
+        const { buildSwmmDiagram } = await import("@modelscript/diagram/swmm-diagram-builder");
+        return buildSwmmDiagram(parseSwmm(text) as any);
+      });
+    }
+
+    if (plugin?.id === "eclipse" || uri.endsWith(".data") || uri.endsWith(".inc")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseEclipse } = await import("@modelscript/eclipse");
+        const { buildEclipseDiagram } = await import("@modelscript/diagram/eclipse-diagram-builder");
+        return buildEclipseDiagram(parseEclipse(text) as any);
+      });
+    }
+
+    if (plugin?.id === "jsbsim" || uri.endsWith(".jsbsim") || uri.endsWith(".jsbsim.xml")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseJsbsim } = await import("@modelscript/jsbsim");
+        const { buildJsbsimDiagram } = await import("@modelscript/diagram/jsbsim-diagram-builder");
+        const doc = parseJsbsim(text) as any;
+        return buildJsbsimDiagram(doc.fdm ?? doc);
+      });
+    }
+
+    if (plugin?.id === "lps" || uri.endsWith(".lps") || uri.endsWith(".tgx") || uri.endsWith(".tlx")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseLps } = await import("@modelscript/lps");
+        const { buildLpsDiagram } = await import("@modelscript/diagram/lps-diagram-builder");
+        return buildLpsDiagram(parseLps(text) as any);
+      });
+    }
+
+    if (plugin?.id === "olga" || uri.endsWith(".opi") || uri.endsWith(".olga") || uri.endsWith(".genkey")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseOpi } = await import("@modelscript/olga");
+        const { buildOlgaDiagram } = await import("@modelscript/diagram/olga-diagram-builder");
+        return buildOlgaDiagram(parseOpi(text) as any);
+      });
+    }
+
+    if (plugin?.id === "opendss" || uri.endsWith(".dss")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseOpenDss } = await import("@modelscript/opendss");
+        const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
+        return buildOpenDssDiagram(parseOpenDss(text) as any);
+      });
+    }
+
+    if (plugin?.id === "openscenario" || uri.endsWith(".xosc")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseOpenScenario } = await import("@modelscript/openscenario");
+        const { buildOpenScenarioDiagram } = await import("@modelscript/diagram/openscenario-diagram-builder");
+        const doc = parseOpenScenario(text) as any;
+        return buildOpenScenarioDiagram(doc);
+      });
+    }
+
+    if (plugin?.id === "psse" || uri.endsWith(".raw") || uri.endsWith(".dyr")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseRaw } = await import("@modelscript/psse");
+        const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
+        return buildPsseDiagram(parseRaw(text) as any);
+      });
+    }
+
+    if (plugin?.id === "relap5" || uri.endsWith(".r5") || uri.endsWith(".i") || uri.endsWith(".relap5.inp")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseRelap5 } = await import("@modelscript/relap5");
+        const { buildRelap5Diagram } = await import("@modelscript/diagram/relap5-diagram-builder");
+        return buildRelap5Diagram(parseRelap5(text) as any);
+      });
+    }
+
+    if (plugin?.id === "sbml" || uri.endsWith(".sbml") || uri.endsWith(".sbml.xml")) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseSbml } = await import("@modelscript/sbml");
+        const { buildSbmlDiagram } = await import("@modelscript/diagram/sbml-diagram-builder");
+        const doc = parseSbml(text) as any;
+        return buildSbmlDiagram(doc.model ?? doc);
+      });
+    }
+
+    if (plugin?.id === "touchstone" || /\.(s\d+p|ts)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseTouchstone } = await import("@modelscript/touchstone");
+        const { buildTouchstoneDiagram } = await import("@modelscript/diagram/touchstone-diagram-builder");
+        const doc = parseTouchstone(text) as any;
+        return buildTouchstoneDiagram({ portCount: doc.numPorts ?? doc.portCount ?? 2, ...doc });
+      });
+    }
+
+    if (plugin?.id === "easy5" || /\.(ezmf|ez5|ezm|ezd|eas)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseEasy5, buildEasy5DiagramData } = await import("@modelscript/easy5");
+        return buildEasy5DiagramData(parseEasy5(text));
+      });
+    }
+
+    if (plugin?.id === "rocets" || /\.(roc|deck)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseRocetsDeck, buildRocetsDiagramData } = await import("@modelscript/rocets");
+        return buildRocetsDiagramData(parseRocetsDeck(text));
+      });
+    }
+
+    if (plugin?.id === "gtsuite" || /\.(gtm|gtd|gtx|gt)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text, params) => {
+        const { parseGtmModel, buildGtSuiteDiagramData } = await import("@modelscript/gtsuite");
+        return buildGtSuiteDiagramData(parseGtmModel(text, params.uri));
+      });
+    }
+
+    if (plugin?.id === "ssp" || /\.(ssd|ssp|ssv)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseSsd, buildSspDiagramData } = (await import("@modelscript/ssp")) as any;
+        return typeof buildSspDiagramData === "function" ? buildSspDiagramData(parseSsd(text)) : null;
+      });
     }
 
     return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);

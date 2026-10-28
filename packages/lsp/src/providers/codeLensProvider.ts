@@ -4,6 +4,7 @@ import { computeMeshVolumeAndArea, computeProjectedFrontalArea, ManifoldWorker }
 import { ScadEvaluator } from "@modelscript/scad";
 import { CodeLens, Range } from "vscode-languageserver";
 import type { LspContext } from "../lsp-context.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 export function registerCodeLensProvider(context: LspContext) {
   context.connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
@@ -90,6 +91,14 @@ export function registerCodeLensProvider(context: LspContext) {
                   },
                 });
               }
+              lenses.push({
+                range,
+                command: {
+                  title: "⊞ Open Interactive Diagram",
+                  command: "modelscript.openDiagram",
+                  arguments: [uri],
+                },
+              });
             }
 
             // Formal proof badge for this model/class/function on this exact declaration line
@@ -449,6 +458,14 @@ export function registerCodeLensProvider(context: LspContext) {
                 },
               });
             }
+            lenses.push({
+              range,
+              command: {
+                title: "⊞ Open Interactive Diagram",
+                command: "modelscript.openDiagram",
+                arguments: [uri],
+              },
+            });
           }
 
           // Requirement Def: FlightCeilingRequirement or standard
@@ -606,6 +623,14 @@ export function registerCodeLensProvider(context: LspContext) {
               arguments: [uri],
             },
           });
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "⊞ Open Interactive Diagram",
+              command: "modelscript.openDiagram",
+              arguments: [uri],
+            },
+          });
         }
         if (showFileConversions) {
           lenses.push({
@@ -659,10 +684,13 @@ export function registerCodeLensProvider(context: LspContext) {
       return lenses;
     }
 
+    const currentDoc = context.documents.get(uri);
+    const currentText = currentDoc?.getText() ?? "";
+    const detectedPlugin = globalLanguageRegistry.getPluginForUri(uri, currentText);
+
     // 4. FEA files (.inp, .inpt, .bdf, .fea)
-    if (/\.(inp|inpt|bdf|fea)($|\?|#)/i.test(uri)) {
-      const document = context.documents.get(uri);
-      const text = document?.getText();
+    if (/\.(inp|inpt|bdf|fea)($|\?|#)/i.test(uri) && (!detectedPlugin || detectedPlugin.id === "fea")) {
+      const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
         const isDroneFea = uri.includes("drone_chassis") || text.includes("Drone Chassis") || text.includes("ECHASSIS");
@@ -733,15 +761,22 @@ export function registerCodeLensProvider(context: LspContext) {
               arguments: [uri],
             },
           });
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "⊞ Open Interactive Diagram",
+              command: "modelscript.openDiagram",
+              arguments: [uri],
+            },
+          });
         }
       }
       return lenses;
     }
 
     // 5. CFD files (.cfg, .cfgt, .su2, .cfd)
-    if (/\.(cfg|cfgt|su2|cfd)($|\?|#)/i.test(uri)) {
-      const document = context.documents.get(uri);
-      const text = document?.getText();
+    if (/\.(cfg|cfgt|su2|cfd|foam)($|\?|#)/i.test(uri) && (!detectedPlugin || detectedPlugin.id === "cfd")) {
+      const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
         const isDroneCfd = uri.includes("drone_aero") || text.includes("rotor_stream");
@@ -780,6 +815,14 @@ export function registerCodeLensProvider(context: LspContext) {
             },
           });
         }
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "⊞ Open Interactive Diagram",
+            command: "modelscript.openDiagram",
+            arguments: [uri],
+          },
+        });
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
@@ -803,8 +846,7 @@ export function registerCodeLensProvider(context: LspContext) {
     // 6. STEP CAD files (.step, .stp)
     if (/\.(step|stp|p21)($|\?|#)/i.test(uri)) {
       const headerRange = Range.create(0, 0, 0, 0);
-      const document = context.documents.get(uri);
-      const text = document?.getText() ?? "";
+      const text = currentText;
       const isDroneStep = uri.includes("drone") || text.includes("ModelScript B-Rep Solid");
       if (showCadMetrics) {
         const entityCount = (text.match(/#\d+\s*=/g) || []).length;
@@ -816,6 +858,14 @@ export function registerCodeLensProvider(context: LspContext) {
           command: {
             title: stepTitle,
             command: "modelscript.openStepViewer",
+            arguments: [uri],
+          },
+        });
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "⊞ Open Interactive Diagram",
+            command: "modelscript.openDiagram",
             arguments: [uri],
           },
         });
@@ -841,33 +891,32 @@ export function registerCodeLensProvider(context: LspContext) {
       return lenses;
     }
 
-    // 7. OLGA files (.opi, .olga)
-    if (/\.(opi|olga)($|\?|#)/i.test(uri)) {
-      const document = context.documents.get(uri);
-      const text = document?.getText();
+    // 7. OLGA files (.opi, .olga, .genkey)
+    if (/\.(opi|olga|genkey)($|\?|#)/i.test(uri) || detectedPlugin?.id === "olga") {
+      const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
         lenses.push({
           range: headerRange,
           command: {
             title: "▶ Simulate Multiphase Flow (Drift-Flux DAE)",
-            command: "modelscript.olga.simulate",
+            command: "modelscript.olga.simulate_drift_flux",
             arguments: [uri],
           },
         });
         lenses.push({
           range: headerRange,
           command: {
-            title: "📊 Open Flow Assurance Dashboard",
-            command: "modelscript.openOlgaEditor",
+            title: "✓ Verify Flow Assurance (WAT, Hydrates, Slugging)",
+            command: "modelscript.olga.verify_flow_assurance",
             arguments: [uri],
           },
         });
         lenses.push({
           range: headerRange,
           command: {
-            title: "🌊 View 3D Seabed Bathymetry & Pipeline Profile",
-            command: "modelscript.olga.viewBathymetry",
+            title: "⊞ Open Interactive Diagram",
+            command: "modelscript.openDiagram",
             arguments: [uri],
           },
         });
@@ -886,7 +935,7 @@ export function registerCodeLensProvider(context: LspContext) {
               range,
               command: {
                 title: `🌊 Flowpath '${name}' | Verify Multiphase Limits (WAT, Hydrates, Slug Surge)`,
-                command: "modelscript.olga.verifyFlowAssurance",
+                command: "modelscript.olga.verify_flow_assurance",
                 arguments: [uri, name],
               },
             });
@@ -924,7 +973,7 @@ export function registerCodeLensProvider(context: LspContext) {
               range,
               command: {
                 title: `📏 Pipe '${name}' [${len} ${diam}] | Inspect Pressure & Holdup Profile`,
-                command: "modelscript.olga.inspectPipeProfile",
+                command: "modelscript.olga.inspect_olga_elevation_profile",
                 arguments: [uri, name],
               },
             });
@@ -932,6 +981,109 @@ export function registerCodeLensProvider(context: LspContext) {
         }
       }
       return lenses;
+    }
+
+    // 8. Universal Language Plugin CodeLens Provider (covers all remaining languages in the registry)
+    if (detectedPlugin) {
+      let targetLine = 0;
+      if (currentText) {
+        const lines = currentText.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          const t = lines[i]!.trim();
+          if (
+            t &&
+            !t.startsWith("//") &&
+            !t.startsWith("#") &&
+            !t.startsWith(";") &&
+            !t.startsWith("!") &&
+            !t.startsWith("/*") &&
+            !t.startsWith("<?xml")
+          ) {
+            targetLine = i;
+            break;
+          }
+        }
+      }
+      const headerRange = Range.create(targetLine, 0, targetLine, 0);
+
+      lenses.push({
+        range: headerRange,
+        command: {
+          title: `⊞ Open Interactive ${detectedPlugin.name} Diagram`,
+          command: "modelscript.openDiagram",
+          arguments: [uri],
+        },
+      });
+
+      const actions: Array<{ id: string; title: string; category?: string }> =
+        (detectedPlugin.languageDef as any)?.actions ?? [];
+      if (actions.length > 0) {
+        for (const action of actions) {
+          const cat = action.category ?? "query";
+          if (cat === "simulate" && !showSimulate) continue;
+          if ((cat === "verify" || cat === "query") && !showVerification) continue;
+          if ((cat === "transform" || cat === "export") && !showFileConversions) continue;
+          const prefix = cat === "simulate" ? "▶ " : cat === "verify" || cat === "query" ? "✓ " : "⇄ ";
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: `${prefix}${action.title}`,
+              command: `modelscript.${detectedPlugin.id}.${action.id}`,
+              arguments: [uri],
+            },
+          });
+        }
+      } else if (detectedPlugin.actionHandlers) {
+        for (const actionId of Object.keys(detectedPlugin.actionHandlers)) {
+          const isSim = actionId.includes("simulate") || actionId.includes("solve") || actionId.includes("run");
+          const isExport = actionId.includes("export") || actionId.includes("project") || actionId.includes("_to_");
+          const prefix = isSim ? "▶ " : isExport ? "⇄ " : "✓ ";
+          const humanTitle = actionId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: `${prefix}${humanTitle}`,
+              command: `modelscript.${detectedPlugin.id}.${actionId}`,
+              arguments: [uri],
+            },
+          });
+        }
+      } else if (detectedPlugin.id === "owl2") {
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "✓ Verify Ontology Consistency (Description Logic Tableau)",
+            command: "modelscript.openContractExplorer",
+            arguments: [uri],
+          },
+        });
+      } else if (detectedPlugin.id === "csv") {
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "📊 Plot CSV Telemetry Series",
+            command: "modelscript.openSimulationView",
+            arguments: [uri],
+          },
+        });
+      } else if (detectedPlugin.id === "modelscript") {
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "▶ Simulate ModelScript Study",
+            command: "modelscript.action.simulate",
+            arguments: [uri],
+          },
+        });
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "✓ Verify Formal Contracts",
+            command: "modelscript.openContractExplorer",
+            arguments: [uri],
+          },
+        });
+      }
     }
 
     return lenses;

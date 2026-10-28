@@ -16,6 +16,8 @@ import { migration0013 } from "./0013_social_llm_bots.js";
 import { migration0014 } from "./0014_bot_byok.js";
 import { migration0015 } from "./0015_repo_bot_reviews.js";
 import { migration0016 } from "./0016_solutions.js";
+import { migration0017 } from "./0017_commercial_hardening.js";
+import { migration0018 } from "./0018_unified_page_analytics.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -38,4 +40,6 @@ export const allMigrations: Migration[] = [
   migration0014,
   migration0015,
   migration0016,
+  migration0017,
+  migration0018,
 ];

@@ -251,6 +251,10 @@ export class ValidationService {
   public activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Debounce timer for cross-file revalidation when exported symbol names change. */
   public revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Debounce timer for SysML v2 verification triggers. */
+  public verificationTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Active AbortController for SysML v2 requirement verification execution. */
+  public activeVerification: AbortController | null = null;
   /** Project library dependencies declared in workspace configuration. */
   public declaredDependencies: Array<{ name: string; version: string }> = [];
   /** Set of `<name>@<version>` identifiers for dependencies that have finished loading. */
@@ -335,15 +339,16 @@ export class ValidationService {
    * (leading-edge immediate fire followed by a 500ms trailing-edge cooldown).
    */
   public sendProjectTreeChanged(): void {
-    if (globalThis.projectTreeChangedTimer) {
-      globalThis.projectTreeChangedPending = true;
+    const g = globalThis as any;
+    if (g.projectTreeChangedTimer) {
+      g.projectTreeChangedPending = true;
       return;
     }
     this.connection.sendNotification("modelscript/projectTreeChanged");
-    globalThis.projectTreeChangedTimer = setTimeout(() => {
-      globalThis.projectTreeChangedTimer = null;
-      if (globalThis.projectTreeChangedPending) {
-        globalThis.projectTreeChangedPending = false;
+    g.projectTreeChangedTimer = setTimeout(() => {
+      g.projectTreeChangedTimer = null;
+      if (g.projectTreeChangedPending) {
+        g.projectTreeChangedPending = false;
         this.connection.sendNotification("modelscript/projectTreeChanged");
       }
     }, 500);
@@ -655,11 +660,73 @@ export class ValidationService {
       return;
     }
 
+    const normalizePluginDiagnostics = (rawDiags: any[], sourceId: string): Diagnostic[] => {
+      if (!Array.isArray(rawDiags)) return [];
+      return rawDiags.map((d: any) => {
+        let range = d.range;
+        if (!range) {
+          if (typeof d.startOffset === "number" && typeof d.endOffset === "number") {
+            range = {
+              start: textDocument.positionAt(d.startOffset),
+              end: textDocument.positionAt(Math.max(d.startOffset + 1, d.endOffset)),
+            };
+          } else {
+            const line = Math.max(0, (d.line ?? 1) - 1);
+            const col = Math.max(0, (d.column ?? d.col ?? 1) - 1);
+            const endLine = Math.max(line, (d.endLine ?? d.line ?? 1) - 1);
+            const endCol =
+              endLine === line
+                ? Math.max(col + 1, (d.endColumn ?? d.endCol ?? col + 10) - 1)
+                : Math.max(0, (d.endColumn ?? d.endCol ?? 1) - 1);
+            range = {
+              start: { line, character: col },
+              end: { line: endLine, character: endCol },
+            };
+          }
+        }
+        let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+        if (d.severity === 1 || d.severity === "error" || d.severity === DiagnosticSeverity.Error) {
+          severity = DiagnosticSeverity.Error;
+        } else if (d.severity === 3 || d.severity === "info" || d.severity === "information") {
+          severity = DiagnosticSeverity.Information;
+        } else if (d.severity === 4 || d.severity === "hint") {
+          severity = DiagnosticSeverity.Hint;
+        }
+        return {
+          severity,
+          range,
+          code: d.code ?? d.id,
+          message: d.message ?? "Diagnostic warning",
+          source: d.source ?? sourceId,
+        };
+      });
+    };
+
     // 1. Check custom validation handler (e.g. for specialized formats)
     if (plugin?.customHandlers?.validate) {
       try {
         const res = await plugin.customHandlers.validate(textDocument);
-        if (res !== undefined) return;
+        if (res !== undefined) {
+          const diags = normalizePluginDiagnostics(res, plugin.id);
+          this.documentManager.documentTrees.set(uri, {
+            text,
+            tree: { rootNode: { text } } as any,
+            classCache: new Map(),
+          });
+          if (plugin.workspaceIndex) {
+            try {
+              if (typeof (plugin.workspaceIndex as any).indexFile === "function") {
+                (plugin.workspaceIndex as any).indexFile(uri, text);
+              } else if (typeof (plugin.workspaceIndex as any).addFile === "function") {
+                (plugin.workspaceIndex as any).addFile(uri, text);
+              }
+            } catch {}
+          }
+          this.lastSemanticDiagnostics.set(uri, diags);
+          this.connection.sendDiagnostics({ uri, diagnostics: diags });
+          this.sendProjectTreeChanged();
+          return;
+        }
       } catch (e: any) {
         this.connection.console.error(`[validate] Custom validation handler failed for ${uri}: ${e.message}`);
         return;
@@ -681,14 +748,14 @@ export class ValidationService {
 
     // Handle CFD configuration files (.cfg, .cfgt, .su2, .cfd, .foam)
     const isCfd = textDocument.languageId === "cfd" || /\.(cfg|cfgt|su2|cfd|foam)($|\?|#)/i.test(uri);
-    if (isCfd) {
+    if (isCfd && (!plugin || plugin.id === "cfd")) {
       await this.validateCfdDocument(textDocument, plugin);
       return;
     }
 
     // Handle FEA input deck files (.inp, .inpt, .bdf, .fea)
     const isFea = textDocument.languageId === "fea" || /\.(inp|inpt|bdf|fea)($|\?|#)/i.test(uri);
-    if (isFea) {
+    if (isFea && (!plugin || plugin.id === "fea")) {
       await this.validateFeaDocument(textDocument, plugin);
       return;
     }
@@ -770,6 +837,39 @@ export class ValidationService {
 
     const isModelica = langId === "modelica" || /\.(mo|mos|msim)($|\?|#)/i.test(uri);
     if (!parser && (!this.parserService.sharedContext || !isModelica)) {
+      if (plugin?.actionHandlers) {
+        const lintKey = Object.keys(plugin.actionHandlers).find((k) => k.startsWith("lint_"));
+        if (lintKey && typeof plugin.actionHandlers[lintKey] === "function") {
+          try {
+            const rawDiags = await plugin.actionHandlers[lintKey](
+              { documentText: text, uri },
+              { documentText: text, uri },
+            );
+            const diags = normalizePluginDiagnostics(rawDiags, plugin.id);
+            this.documentManager.documentTrees.set(uri, {
+              text,
+              tree: { rootNode: { text } } as any,
+              classCache: new Map(),
+            });
+            const wsIdx = plugin.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(plugin.id);
+            if (wsIdx) {
+              try {
+                if (typeof (wsIdx as any).indexFile === "function") {
+                  (wsIdx as any).indexFile(uri, text);
+                } else if (typeof (wsIdx as any).addFile === "function") {
+                  (wsIdx as any).addFile(uri, text);
+                }
+              } catch {}
+            }
+            this.lastSemanticDiagnostics.set(uri, diags);
+            this.connection.sendDiagnostics({ uri, diagnostics: diags });
+            this.sendProjectTreeChanged();
+            return;
+          } catch (e: any) {
+            this.connection.console.error(`[validate] Action lint handler ${lintKey} failed for ${uri}: ${e.message}`);
+          }
+        }
+      }
       this.fallbackRegexValidation(textDocument);
       return;
     }
@@ -3581,9 +3681,9 @@ export class ValidationService {
           }
         }
         if (hasVerifyCases) {
-          if (verificationTimer) clearTimeout(verificationTimer);
+          if (this.verificationTimer) clearTimeout(this.verificationTimer);
           const verifyUri = effectiveUri;
-          verificationTimer = setTimeout(() => {
+          this.verificationTimer = setTimeout(() => {
             this.connection.console.log(`[auto-verify] Triggering verification for ${verifyUri}`);
             this.runVerificationForUri(verifyUri).catch(() => {});
           }, 1000);
@@ -3703,9 +3803,9 @@ export class ValidationService {
       const textDocument = this.documentManager.documents.get(uri);
       if (!textDocument) throw new Error("Document not found");
 
-      if (activeVerification) activeVerification.abort();
-      activeVerification = new AbortController();
-      const signal = activeVerification.signal;
+      if (this.activeVerification) this.activeVerification.abort();
+      this.activeVerification = new AbortController();
+      const signal = this.activeVerification.signal;
 
       const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const fileNodes = Array.from(db.symbols.values()).filter(
@@ -3870,7 +3970,7 @@ export class ValidationService {
 
         const context = this.parserService.sharedContext;
         if (!context) return { ok: false, error: "Context not initialized" };
-        const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
+        const flattenFn = (globalThis as any).flattenArenaFromInstance;
         if (typeof flattenFn !== "function") return { ok: false, error: "Flattener not available" };
         const arena = flattenFn(targetModel, context);
 

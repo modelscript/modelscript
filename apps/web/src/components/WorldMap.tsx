@@ -420,14 +420,39 @@ const countryNames: Record<string, string> = {
   CO: "Colombia",
 };
 
+const regionDisplayNames =
+  typeof Intl !== "undefined" && typeof Intl.DisplayNames !== "undefined"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+
+function resolveCountryDisplayName(code: string): string {
+  const upper = code.toUpperCase().trim();
+  if (countryNames[upper]) return countryNames[upper];
+  if (/^[A-Z]{2}$/.test(upper) && regionDisplayNames) {
+    try {
+      const resolved = regionDisplayNames.of(upper);
+      if (resolved) return resolved;
+    } catch {
+      // Fallback to raw code
+    }
+  }
+  return upper;
+}
+
 const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalViews }) => {
   const [tooltipContent, setTooltipContent] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, flipX: false, flipY: false });
 
-  const totalCalculatedViews = useMemo(() => {
-    if (typeof totalViews === "number" && totalViews > 0) return totalViews;
+  const resolvedViews = useMemo(() => {
     return data.reduce((acc, curr) => acc + (curr.views || 0), 0);
-  }, [totalViews, data]);
+  }, [data]);
+
+  const totalCalculatedViews = useMemo(() => {
+    if (typeof totalViews === "number" && totalViews > 0) return Math.max(totalViews, resolvedViews);
+    return resolvedViews;
+  }, [totalViews, resolvedViews]);
+
+  const unresolvedViews = Math.max(0, totalCalculatedViews - resolvedViews);
 
   // Dynamic blue heat map scale
   const colorScale = useMemo(() => {
@@ -483,7 +508,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
     return [...data]
       .filter((d) => d.views > 0)
       .sort((a, b) => b.views - a.views)
-      .slice(0, 5);
+      .slice(0, 6);
   }, [data]);
 
   return (
@@ -495,7 +520,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
             ({data.length} {data.length === 1 ? "country" : "countries"})
           </span>
         </HeaderTitle>
-        <PrivacyBadge title="Privacy-Preserving Analytics">
+        <PrivacyBadge title="Privacy-Preserving Analytics — Zero Raw IP Storage">
           <span>🛡️</span>
           <span>Scrubbed Geo-Metrics</span>
         </PrivacyBadge>
@@ -562,12 +587,12 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
         </Geographies>
       </ComposableMap>
 
-      {topCountries.length > 0 && (
+      {(topCountries.length > 0 || unresolvedViews > 0) && (
         <BreakdownContainer>
           <BreakdownTitle>Top Viewer Locations</BreakdownTitle>
           {topCountries.map((c) => {
             const code = c.country.toUpperCase();
-            const name = countryNames[code] || code;
+            const name = resolveCountryDisplayName(code);
             const pct =
               totalCalculatedViews > 0 ? Math.min(100, Math.round((c.views / totalCalculatedViews) * 100)) : 0;
             const regions = regionsByCountry.get(code) || [];
@@ -598,6 +623,28 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
               </LocationRow>
             );
           })}
+          {unresolvedViews > 0 && (
+            <LocationRow style={{ opacity: 0.75, marginTop: topCountries.length > 0 ? "6px" : "0" }}>
+              <LocationName>
+                <span style={{ color: "var(--color-fg-muted)" }}>Unresolved / Private Network</span>
+              </LocationName>
+              <LocationBarWrapper>
+                <ProgressBar
+                  $percent={
+                    totalCalculatedViews > 0
+                      ? Math.min(100, Math.round((unresolvedViews / totalCalculatedViews) * 100))
+                      : 0
+                  }
+                />
+                <LocationViews>
+                  {unresolvedViews}{" "}
+                  <span style={{ fontSize: "11px", color: "var(--color-fg-muted)", fontWeight: "normal" }}>
+                    ({totalCalculatedViews > 0 ? Math.round((unresolvedViews / totalCalculatedViews) * 100) : 0}%)
+                  </span>
+                </LocationViews>
+              </LocationBarWrapper>
+            </LocationRow>
+          )}
         </BreakdownContainer>
       )}
 

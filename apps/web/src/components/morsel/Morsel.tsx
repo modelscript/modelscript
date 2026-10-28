@@ -53,8 +53,12 @@ export interface MorselEditorProps {
     | undefined;
   showParameterRibbon?: boolean | undefined;
   hideFloatingDock?: boolean | undefined;
+  simulateTriggerCount?: number | undefined;
+  externalParams?: Record<string, string | number | boolean> | undefined;
   onCodeChange?: ((code: string) => void) | undefined;
   onDialectChange?: ((dialect: string) => void) | undefined;
+  onAnchorClick?: ((anchor: { elementId: string; kind: "component" }) => void) | undefined;
+  onSimulationStatus?: ((status: string, data?: unknown) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
 }
 
@@ -86,12 +90,14 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
 
   const initialIsCad =
-    props.initialView === "cad-only" || (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
-  const initialIsPlot = props.initialView === "plot-only";
+    props.initialView === "cad-only" ||
+    props.initialView === "cad" ||
+    (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
+  const initialIsPlot = props.initialView === "plot-only" || props.initialView === "plot";
   const initialViewMode =
-    props.initialView === "code-only"
+    props.initialView === "code-only" || props.initialView === "code"
       ? View.CODE
-      : props.initialView === "diagram-only" || initialIsCad || initialIsPlot
+      : props.initialView === "diagram-only" || props.initialView === "diagram" || initialIsCad || initialIsPlot
         ? View.DIAGRAM
         : props.initialView === "split-rows"
           ? View.SPLIT_ROWS
@@ -119,10 +125,42 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("Loading…");
   const [isDiagramLoading, setIsDiagramLoading] = useState(false);
-  const [treeVisible, setTreeVisible] = useState(true);
+  const [treeVisible, setTreeVisible] = useState(!props.embed);
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [contextVersion, setContextVersion] = useState(0);
+
+  useEffect(() => {
+    if (!props.initialView) return;
+    if (props.initialView === "code-only" || props.initialView === "code") {
+      setView(View.CODE);
+      setShowCadView(false);
+      setShowResultsView(false);
+    } else if (props.initialView === "diagram-only" || props.initialView === "diagram") {
+      setView(View.DIAGRAM);
+      setShowCadView(false);
+      setShowResultsView(false);
+    } else if (props.initialView === "cad-only" || props.initialView === "cad") {
+      setView(View.DIAGRAM);
+      setShowCadView(true);
+      setShowResultsView(false);
+    } else if (props.initialView === "plot-only" || props.initialView === "plot") {
+      setView(View.DIAGRAM);
+      setShowCadView(false);
+      setShowResultsView(true);
+    } else if (props.initialView === "split-rows") {
+      setView(View.SPLIT_ROWS);
+    } else if (props.initialView === "split-columns") {
+      setView(View.SPLIT_COLUMNS);
+    }
+  }, [props.initialView]);
+
+  useEffect(() => {
+    if (props.initialAnchor?.elementId) {
+      setPendingSelection(props.initialAnchor.elementId);
+      setSelectedComponent(props.initialAnchor.elementId);
+    }
+  }, [props.initialAnchor?.elementId]);
 
   useEffect(() => {
     if (props.initialCode !== undefined) {
@@ -148,6 +186,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         return;
       }
       setSelectedComponent(name);
+      props.onAnchorClick?.({ elementId: name, kind: "component" });
 
       if (cachedProps !== undefined) {
         setSelectedComponentProperties(cachedProps);
@@ -173,7 +212,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           setIsPropertiesLoading(false);
         });
     },
-    [diagramData, documentUri, selectedTreeClassName],
+    [diagramData, documentUri, selectedTreeClassName, props.onAnchorClick],
   );
 
   const {
@@ -226,6 +265,30 @@ export default function MorselEditor(props: MorselEditorProps) {
     setView,
     viewDiagramEnum: View.DIAGRAM,
   });
+
+  useEffect(() => {
+    if (props.simulateTriggerCount && props.simulateTriggerCount > 0) {
+      void handleSimulate();
+    }
+  }, [props.simulateTriggerCount, handleSimulate]);
+
+  useEffect(() => {
+    if (!props.externalParams) return;
+    for (const [k, v] of Object.entries(props.externalParams)) {
+      if (typeof v === "number" || typeof v === "string") {
+        const num = typeof v === "number" ? v : parseFloat(v);
+        if (!isNaN(num)) {
+          handleParameterChange(k, num);
+        }
+      }
+    }
+  }, [props.externalParams, handleParameterChange]);
+
+  useEffect(() => {
+    if (simulationStatus && props.onSimulationStatus) {
+      props.onSimulationStatus(simulationStatus, localSimulationData);
+    }
+  }, [simulationStatus, localSimulationData, props.onSimulationStatus]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
@@ -575,10 +638,14 @@ export default function MorselEditor(props: MorselEditorProps) {
         setView(View.DIAGRAM);
       }
     } else {
-      setTreeVisible(true);
-      setView((prev) => (prev === View.CODE ? View.SPLIT_COLUMNS : prev));
+      if (!props.embed) {
+        setTreeVisible(true);
+      }
+      if (props.initialView !== "code" && props.initialView !== "code-only") {
+        setView((prev) => (prev === View.CODE ? View.SPLIT_COLUMNS : prev));
+      }
     }
-  }, [isNarrow, mobileTab]);
+  }, [isNarrow, mobileTab, props.embed, props.initialView]);
 
   useEffect(() => {
     if (content) {
@@ -760,9 +827,14 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
+  const handleAutoLayout = useCallback(() => {
+    diagramEditorRef.current?.layout();
+    const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
+    toast.info(`Auto-layout applied (${isMac ? "⌘Z" : "Ctrl+Z"} to undo)`);
+  }, [toast]);
+
   return (
     <>
-      <title>{"Morsel"}</title>
       <div
         className="d-flex flex-column"
         style={{
@@ -912,6 +984,13 @@ export default function MorselEditor(props: MorselEditorProps) {
               sweepResults={sweepResults}
               simulationStatus={simulationStatus}
               handleVariablesLoaded={handleVariablesLoaded}
+              treeVisible={treeVisible}
+              setTreeVisible={setTreeVisible}
+              setView={setView}
+              onAutoLayout={handleAutoLayout}
+              onSimulate={handleSimulate}
+              onOpenCloudModal={() => setIsCloudModalOpen(true)}
+              onFlatten={handleFlatten}
             />
 
             {/* Split Resizer */}
@@ -1063,11 +1142,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
             }}
-            onAutoLayout={() => {
-              if (confirm(translations.autoLayoutConfirm)) {
-                diagramEditorRef.current?.layout();
-              }
-            }}
+            onAutoLayout={handleAutoLayout}
             view={view}
             setView={setView}
             isNarrow={isNarrow}
@@ -1158,6 +1233,12 @@ export default function MorselEditor(props: MorselEditorProps) {
             onSimulate={handleSimulate}
             isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
             dark={colorMode === "dark"}
+            hasFloatingDock={
+              !props.embed &&
+              !props.hideFloatingDock &&
+              !isNarrow &&
+              !(typeof window !== "undefined" && window.location.pathname.startsWith("/playground"))
+            }
           />
         )}
       </div>

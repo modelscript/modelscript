@@ -11,7 +11,7 @@ import {
   ShieldCheckIcon,
   TrashIcon,
 } from "@primer/octicons-react";
-import { Text } from "@primer/react";
+import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import {
@@ -178,6 +178,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
   const [isCreating, setIsCreating] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgSlug, setNewOrgSlug] = useState("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [newOrgDesc, setNewOrgDesc] = useState("");
 
   // Member invite form state
@@ -185,6 +186,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
   const [inviteRole, setInviteRole] = useState<OrgRole>("contributor");
 
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmingRemoveUserId, setConfirmingRemoveUserId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +239,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
       setIsCreating(false);
       setNewOrgName("");
       setNewOrgSlug("");
+      setSlugManuallyEdited(false);
       setNewOrgDesc("");
       setFeedback({ type: "success", text: `Successfully created organization '${created.name}'.` });
     } catch (err: unknown) {
@@ -269,7 +272,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
 
   const handleRemoveMember = async (userId: number, username: string) => {
     if (!selectedOrg) return;
-    if (!window.confirm(`Are you sure you want to remove ${username} from ${selectedOrg.name}?`)) return;
+    setConfirmingRemoveUserId(null);
     try {
       await removeOrganizationMember(selectedOrg.slug, userId);
       setMembers((prev) => prev.filter((m) => (m.userId || m.user_id) !== userId));
@@ -378,13 +381,15 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                     placeholder="e.g. Acme Propulsion Systems"
                     value={newOrgName}
                     onChange={(e) => {
-                      setNewOrgName(e.target.value);
-                      if (!newOrgSlug) {
+                      const val = e.target.value;
+                      setNewOrgName(val);
+                      if (!slugManuallyEdited) {
                         setNewOrgSlug(
-                          e.target.value
+                          val
                             .toLowerCase()
                             .replace(/[^a-z0-9]/g, "-")
                             .replace(/-+/g, "-")
+                            .replace(/^-|-$/g, "")
                             .slice(0, 30),
                         );
                       }
@@ -400,7 +405,11 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                     style={{ width: "100%" }}
                     placeholder="e.g. acme-propulsion"
                     value={newOrgSlug}
-                    onChange={(e) => setNewOrgSlug(e.target.value.toLowerCase())}
+                    onChange={(e) => {
+                      const val = e.target.value.toLowerCase();
+                      setNewOrgSlug(val);
+                      setSlugManuallyEdited(val.length > 0);
+                    }}
                     required
                   />
                 </Box>
@@ -426,6 +435,12 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
               </Box>
             </form>
           </OrgCard>
+        )}
+
+        {isLoading && !selectedOrg && (
+          <Box display="flex" justifyContent="center" alignItems="center" py={6}>
+            <Spinner size="medium" />
+          </Box>
         )}
 
         {/* Selected Org Management Content */}
@@ -567,22 +582,50 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                               {member.created_at ? new Date(member.created_at).toLocaleDateString() : "Active"}
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              {member.role !== "owner" && (
-                                <button
-                                  onClick={() => handleRemoveMember(mId, member.username)}
-                                  title="Remove member"
-                                  style={{
-                                    background: "transparent",
-                                    border: "none",
-                                    color: "var(--color-danger-fg, #f87171)",
-                                    cursor: "pointer",
-                                    padding: "4px",
-                                    borderRadius: "4px",
-                                  }}
-                                >
-                                  <TrashIcon size={14} />
-                                </button>
-                              )}
+                              {member.role !== "owner" &&
+                                (confirmingRemoveUserId === mId ? (
+                                  <Box display="inline-flex" alignItems="center" gap={2}>
+                                    <SecondaryButton
+                                      type="button"
+                                      style={{ padding: "4px 10px", fontSize: "12px" }}
+                                      onClick={() => setConfirmingRemoveUserId(null)}
+                                    >
+                                      Cancel
+                                    </SecondaryButton>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveMember(mId, member.username)}
+                                      style={{
+                                        background: "var(--color-danger-fg, #cf222e)",
+                                        color: "#ffffff",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        padding: "4px 10px",
+                                        fontSize: "12px",
+                                        fontWeight: 600,
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      Confirm Remove?
+                                    </button>
+                                  </Box>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmingRemoveUserId(mId)}
+                                    title="Remove member"
+                                    style={{
+                                      background: "transparent",
+                                      border: "none",
+                                      color: "var(--color-danger-fg, #f87171)",
+                                      cursor: "pointer",
+                                      padding: "4px",
+                                      borderRadius: "4px",
+                                    }}
+                                  >
+                                    <TrashIcon size={14} />
+                                  </button>
+                                ))}
                             </td>
                           </tr>
                         );

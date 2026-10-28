@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookIcon, CpuIcon, DashIcon, PackageIcon, PlusIcon, WorkflowIcon } from "@primer/octicons-react";
+import {
+  ArrowRightIcon,
+  BookIcon,
+  CpuIcon,
+  DashIcon,
+  PackageIcon,
+  PlugIcon,
+  PlusIcon,
+  SlidersIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
 import { Label, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useMemo, useState } from "react";
@@ -14,6 +24,7 @@ import InvertedSvg from "../../../components/InvertedSvg";
 import {
   DiagramWrap,
   DocCard,
+  GlassCard,
   JavadocSection,
   JavadocTable,
   JavadocTableWrap,
@@ -21,7 +32,6 @@ import {
   TypeLink,
 } from "../styles";
 import type { ClassDetail, JobStatus } from "../types";
-import { ClassParametersSection } from "./ClassParametersSection";
 
 export interface ClassOverviewTabProps {
   cls: ClassDetail;
@@ -37,7 +47,8 @@ export interface ClassOverviewTabProps {
   setRetryCount: React.Dispatch<React.SetStateAction<number>>;
   jobStatus: JobStatus | null;
   categorized: CategorizedClassComponents;
-  renderTypeCell: (typeName: string) => React.ReactNode;
+  renderTypeCell?: ((typeName: string) => React.ReactNode) | undefined;
+  onViewParameters?: (() => void) | undefined;
 }
 
 export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
@@ -54,7 +65,7 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
   setRetryCount,
   jobStatus,
   categorized,
-  renderTypeCell,
+  onViewParameters,
 }) => {
   const [diagramZoom, setDiagramZoom] = useState(1);
   const childClasses = useMemo(() => {
@@ -77,6 +88,9 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
       cls.classKind === "record" ||
       cls.classKind === "function" ||
       categorized.submodels.length === 0);
+
+  const totalMembersCount =
+    categorized.parameters.length + categorized.connectors.length + categorized.submodels.length;
 
   return (
     <>
@@ -107,87 +121,100 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
 
       {/* Schematic / Block Definition Diagram */}
       {!diagramError && !cls.cadResourceUrl && !isModelicaNoDiagram && (
-        <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
+        <div>
           <SectionTitle as="h3">Diagram</SectionTitle>
           <div style={{ position: "relative" }}>
             <DiagramWrap style={{ overflow: "hidden", position: "relative" }}>
-              <div
-                style={{
-                  position: "absolute",
-                  top: 12,
-                  right: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  zIndex: 2,
-                  background: "var(--color-bg-card, rgba(15, 23, 42, 0.75))",
-                  backdropFilter: "blur(8px)",
-                  padding: "3px 6px",
-                  borderRadius: 6,
-                  border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setDiagramZoom((z) => Math.max(Number((z - 0.25).toFixed(2)), 0.5))}
-                  title="Zoom Out"
+              {!diagramLoaded && !diagramError && (
+                <div className="skeleton" style={{ width: "100%", height: "280px", borderRadius: "8px" }} />
+              )}
+              {diagramLoaded && (
+                <div
                   style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--color-text-muted)",
-                    cursor: "pointer",
-                    padding: "2px 6px",
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
                     display: "flex",
                     alignItems: "center",
-                    borderRadius: 4,
+                    gap: 4,
+                    zIndex: 2,
+                    background: "var(--color-bg-card, rgba(15, 23, 42, 0.75))",
+                    backdropFilter: "blur(8px)",
+                    padding: "3px 6px",
+                    borderRadius: 6,
+                    border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))",
                   }}
                 >
-                  <DashIcon size={13} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDiagramZoom(1)}
-                  title="Reset Zoom"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: diagramZoom !== 1 ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)",
-                    cursor: "pointer",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "2px 4px",
-                    fontFamily: "var(--font-mono, monospace)",
-                  }}
-                >
-                  {Math.round(diagramZoom * 100)}%
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDiagramZoom((z) => Math.min(Number((z + 0.25).toFixed(2)), 3))}
-                  title="Zoom In"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--color-text-muted)",
-                    cursor: "pointer",
-                    padding: "2px 6px",
-                    display: "flex",
-                    alignItems: "center",
-                    borderRadius: 4,
-                  }}
-                >
-                  <PlusIcon size={13} />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setDiagramZoom((z) => Math.max(Number((z - 0.25).toFixed(2)), 0.5))}
+                    title="Zoom Out"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--color-text-muted)",
+                      cursor: "pointer",
+                      padding: "2px 6px",
+                      display: "flex",
+                      alignItems: "center",
+                      borderRadius: 4,
+                    }}
+                  >
+                    <DashIcon size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiagramZoom(1)}
+                    title="Reset Zoom"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: diagramZoom !== 1 ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "2px 4px",
+                      fontFamily: "var(--font-mono, monospace)",
+                    }}
+                  >
+                    {Math.round(diagramZoom * 100)}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiagramZoom((z) => Math.min(Number((z + 0.25).toFixed(2)), 3))}
+                    title="Zoom In"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--color-text-muted)",
+                      cursor: "pointer",
+                      padding: "2px 6px",
+                      display: "flex",
+                      alignItems: "center",
+                      borderRadius: 4,
+                    }}
+                  >
+                    <PlusIcon size={13} />
+                  </button>
+                </div>
+              )}
               <div
-                style={{
-                  transform: `scale(${diagramZoom})`,
-                  transformOrigin: "center center",
-                  transition: "transform 0.15s ease",
-                  width: "100%",
-                  display: "flex",
-                  justifyContent: "center",
-                }}
+                style={
+                  diagramLoaded
+                    ? {
+                        transform: `scale(${diagramZoom})`,
+                        transformOrigin: "center center",
+                        transition: "transform 0.15s ease",
+                        width: "100%",
+                        display: "flex",
+                        justifyContent: "center",
+                      }
+                    : {
+                        position: "absolute",
+                        opacity: 0,
+                        pointerEvents: "none",
+                      }
+                }
               >
                 <InvertedSvg
                   src={`${getDiagramUrl(libraryName, version, className)}?t=${retryCount}`}
@@ -286,15 +313,58 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
         </JavadocSection>
       )}
 
-      {/* Javadoc Summary Tables on Overview */}
-      <ClassParametersSection
-        parameters={categorized.parameters}
-        connectors={categorized.connectors}
-        submodels={categorized.submodels}
-        renderTypeCell={renderTypeCell}
-        libraryName={libraryName}
-        version={version}
-      />
+      {/* Compact summary link to Parameters & Ports tab */}
+      {totalMembersCount > 0 && onViewParameters && (
+        <GlassCard
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+            padding: "14px 20px",
+          }}
+        >
+          <Box display="flex" alignItems="center" gap="12px" flexWrap="wrap">
+            {categorized.parameters.length > 0 && (
+              <Label variant="secondary" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <SlidersIcon size={12} /> {categorized.parameters.length}{" "}
+                {categorized.parameters.length === 1 ? "parameter" : "parameters"}
+              </Label>
+            )}
+            {categorized.connectors.length > 0 && (
+              <Label variant="secondary" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <PlugIcon size={12} /> {categorized.connectors.length}{" "}
+                {categorized.connectors.length === 1 ? "port" : "ports"}
+              </Label>
+            )}
+            {categorized.submodels.length > 0 && (
+              <Label variant="secondary" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <PackageIcon size={12} /> {categorized.submodels.length}{" "}
+                {categorized.submodels.length === 1 ? "submodel" : "submodels"}
+              </Label>
+            )}
+          </Box>
+          <button
+            type="button"
+            onClick={onViewParameters}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--color-accent-cyan, #06b6d4)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: 0,
+            }}
+          >
+            View all parameters, ports &amp; submodels <ArrowRightIcon size={14} />
+          </button>
+        </GlassCard>
+      )}
     </>
   );
 };

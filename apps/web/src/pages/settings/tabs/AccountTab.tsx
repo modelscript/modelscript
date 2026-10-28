@@ -208,6 +208,11 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
               placeholder="Password"
               value={passwordConfirm}
               onChange={(e) => setPasswordConfirm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && passwordConfirm && !loading) {
+                  handlePasswordConfirm();
+                }
+              }}
             />
             <Box display="flex" justifyContent="flex-end" mt={2}>
               <SaveButton onClick={handlePasswordConfirm} disabled={loading || !passwordConfirm}>

@@ -65,6 +65,7 @@ const LibraryListPage: React.FC = () => {
 
     const load = async () => {
       try {
+        setError(null);
         const libs = await fetchLibraries();
 
         // If any library is processing, poll again after 2 seconds
@@ -83,13 +84,13 @@ const LibraryListPage: React.FC = () => {
     };
 
     setLoading(true);
-    const initialDelay = setTimeout(load, 300);
+    const timer = setTimeout(load, query ? 300 : 0);
 
     return () => {
-      clearTimeout(initialDelay);
+      clearTimeout(timer);
       clearTimeout(timeoutId);
     };
-  }, [fetchLibraries]);
+  }, [fetchLibraries, query]);
 
   const fetchPendingTransfers = useCallback(async () => {
     if (!user) {
@@ -248,6 +249,21 @@ const LibraryListPage: React.FC = () => {
             <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
               The server may be unavailable. Please try again later.
             </Text>
+            <Button
+              leadingVisual={SyncIcon}
+              onClick={() => {
+                setLoading(true);
+                setError(null);
+                fetchLibraries()
+                  .catch((err) => {
+                    setError("Failed to load libraries");
+                    console.error(err);
+                  })
+                  .finally(() => setLoading(false));
+              }}
+            >
+              Retry
+            </Button>
           </Box>
         ) : activeTab === "my" && !user ? (
           <Box

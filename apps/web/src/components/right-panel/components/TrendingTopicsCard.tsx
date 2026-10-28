@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { KebabHorizontalIcon } from "@primer/octicons-react";
+import { EyeClosedIcon, KebabHorizontalIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -86,6 +86,11 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                   <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
                     {topic.display_name}
                   </Text>
+                  {topic.post_count ? (
+                    <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                      {`${topic.post_count} posts`}
+                    </div>
+                  ) : null}
                 </Box>
                 <Box position="relative">
                   <KebabButton
@@ -156,8 +161,15 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
-                            <span style={{ fontSize: "16px", color: "var(--color-text-muted)", lineHeight: 1 }}>
-                              ☹️
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                color: "var(--color-text-muted)",
+                                lineHeight: 1,
+                              }}
+                            >
+                              <EyeClosedIcon size={14} />
                             </span>
                             {label}
                           </button>
@@ -170,25 +182,18 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
             );
           })
         ) : trending.length === 0 && visibleFallbacks.length > 0 ? (
-          <Box display="flex" flexDirection="column" gap={1} py={1}>
+          <Box display="flex" flexDirection="column">
             {visibleFallbacks.map((topic, i) => (
-              <Box
-                key={i}
-                onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}
-                style={{
-                  cursor: "pointer",
-                  padding: "6px 8px",
-                  borderRadius: "6px",
-                  transition: "background-color 0.2s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                <div style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{topic.category}</div>
-                <Text style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-primary)" }}>
-                  {topic.tag}
-                </Text>
-              </Box>
+              <TrendingItem key={i} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
+                <Box flex={1}>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
+                    {topic.category}
+                  </div>
+                  <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
+                    {topic.tag}
+                  </Text>
+                </Box>
+              </TrendingItem>
             ))}
           </Box>
         ) : (

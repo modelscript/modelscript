@@ -49,17 +49,28 @@ export type {
   UserRow,
 };
 
-const DEFAULT_DB_DIR = (() => {
+function resolveDefaultDbDir(): string {
+  const envDir =
+    process.env["DB_DIR"] ||
+    process.env["DATA_DIR"] ||
+    (process.env["DB_PATH"] ? path.dirname(process.env["DB_PATH"]) : undefined);
+  if (envDir) {
+    return envDir;
+  }
   try {
     const repoRootData = path.resolve(import.meta.dirname, "../../../data");
     if (fs.existsSync(path.join(repoRootData, "modelscript.db"))) {
       return repoRootData;
     }
+    const applianceData = "/app/apps/api/data";
+    if (fs.existsSync(applianceData)) {
+      return applianceData;
+    }
   } catch {
     // fallback
   }
   return "data";
-})();
+}
 
 export interface ClassRow {
   id: number;
@@ -310,13 +321,14 @@ export class LibraryDatabase {
   readonly #runner: SqliteMigrationRunner;
 
   constructor(dbDir?: string) {
-    const dir = dbDir ?? DEFAULT_DB_DIR;
-    const dbPath = path.join(dir, "modelscript.db");
+    const dir = dbDir ?? resolveDefaultDbDir();
+    const dbPath = dir.endsWith(".db") ? dir : path.join(dir, "modelscript.db");
+    const parentDir = dir.endsWith(".db") ? path.dirname(dir) : dir;
     this.#dbPath = dbPath;
 
     // Ensure directory exists
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
     }
 
     this.#db = new Database(dbPath);
@@ -419,8 +431,8 @@ export class LibraryDatabase {
         password_hash TEXT,
         display_name  TEXT,
         bio           TEXT,
-        avatar_url    TEXT DEFAULT 'https://ui-avatars.com/api/?name=User&background=random&color=fff',
-        banner_url    TEXT DEFAULT 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80',
+        avatar_url    TEXT DEFAULT '/default-avatar.svg',
+        banner_url    TEXT DEFAULT '',
         location      TEXT,
         website       TEXT,
         notification_settings TEXT DEFAULT '{}',
@@ -643,6 +655,27 @@ export class LibraryDatabase {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_post_location_stats ON post_location_stats(post_id, country_code, COALESCE(region_code, ''));
 
+      CREATE TABLE IF NOT EXISTS page_views_daily (
+        view_date       TEXT NOT NULL,
+        surface         TEXT NOT NULL DEFAULT 'web',
+        path            TEXT NOT NULL,
+        views_count     INTEGER NOT NULL DEFAULT 0,
+        unique_visitors INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (view_date, surface, path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_views_daily_date ON page_views_daily(view_date, surface);
+      CREATE INDEX IF NOT EXISTS idx_page_views_daily_path ON page_views_daily(path);
+
+      CREATE TABLE IF NOT EXISTS page_location_stats_daily (
+        view_date    TEXT NOT NULL,
+        surface      TEXT NOT NULL DEFAULT 'web',
+        country_code TEXT NOT NULL,
+        region_code  TEXT NOT NULL DEFAULT '',
+        views_count  INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (view_date, surface, country_code, region_code)
+      );
+      CREATE INDEX IF NOT EXISTS idx_page_loc_daily_date ON page_location_stats_daily(view_date, surface);
+
       -- ── npm registry tables ──────────────────────────────────────
 
       CREATE TABLE IF NOT EXISTS packages (
@@ -812,6 +845,25 @@ export class LibraryDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_credit_escrow_user ON credit_escrow_holds(user_id, status);
       CREATE INDEX IF NOT EXISTS idx_credit_escrow_job ON credit_escrow_holds(job_id);
+
+      CREATE TABLE IF NOT EXISTS stripe_processed_events (
+        event_id          TEXT PRIMARY KEY,
+        payment_intent_id TEXT UNIQUE,
+        user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        amount_credits    REAL NOT NULL DEFAULT 0,
+        processed_at      TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_stripe_processed_pi ON stripe_processed_events(payment_intent_id);
+
+      CREATE TABLE IF NOT EXISTS morsel_snippets (
+        id           TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        dialect      TEXT NOT NULL DEFAULT 'modelica',
+        title        TEXT,
+        creator_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at   TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_morsel_snippets_created ON morsel_snippets(created_at);
 
       CREATE TABLE IF NOT EXISTS job_steps (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1222,6 +1274,13 @@ export class LibraryDatabase {
         UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
       `);
     } catch {}
+
+    try {
+      this.#db.exec(`ALTER TABLE organizations ADD COLUMN credit_balance REAL NOT NULL DEFAULT 0.0`);
+    } catch {}
+    try {
+      this.#db.exec(`ALTER TABLE organizations ADD COLUMN total_spent REAL NOT NULL DEFAULT 0.0`);
+    } catch {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -1287,7 +1346,7 @@ export class LibraryDatabase {
         "remote",
         profileData?.name || username,
         profileData?.summary || "",
-        profileData?.icon?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUsername)}`,
+        profileData?.icon?.url || "",
         keys.privateKey,
         keys.publicKey,
         edKeys.privateKey,
@@ -1363,8 +1422,8 @@ export class LibraryDatabase {
     status?: string | undefined;
     token_version?: number | undefined;
   } {
-    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
-    const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
+    const avatarUrl = "";
+    const bannerUrl = "";
 
     const edKeys = this.#generateEd25519Keys();
     const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
@@ -1482,9 +1541,23 @@ export class LibraryDatabase {
       return { success: false, previousBalance: 0 };
     }
 
-    const previousBalance = user.credit_balance || 0;
+    const previousBalance = Math.round((user.credit_balance || 0) * 100) / 100;
 
-    this.#db.prepare(`UPDATE users SET credit_balance = 0.0, status = 'suspended_dispute' WHERE id = ?`).run(userId);
+    this.#db
+      .prepare(
+        `UPDATE users SET credit_balance = 0.0, status = 'suspended_dispute', token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`,
+      )
+      .run(userId);
+
+    try {
+      this.#db
+        .prepare(
+          `UPDATE credit_escrow_holds SET status = 'frozen_dispute', settled_at = datetime('now') WHERE user_id = ? AND status = 'held'`,
+        )
+        .run(userId);
+    } catch {
+      // ignore
+    }
 
     try {
       this.#db
@@ -1493,6 +1566,18 @@ export class LibraryDatabase {
            VALUES (?, NULL, ?, 0.0, 'dispute_freeze', ?)`,
         )
         .run(userId, -previousBalance, `Dispute/Chargeback quarantine: ${reason}`);
+    } catch {
+      // ignore
+    }
+
+    try {
+      this.logAudit({
+        actorId: userId,
+        action: "user_dispute_frozen",
+        resourceType: "user",
+        resourceId: String(userId),
+        details: { reason, previousBalance },
+      });
     } catch {
       // ignore
     }
@@ -2508,7 +2593,10 @@ export class LibraryDatabase {
   incrementPostView(postId: number, countryCode?: string, regionCode?: string) {
     this.#db.prepare(`UPDATE posts SET view_count = view_count + 1 WHERE id = ?`).run(postId);
 
-    if (countryCode) {
+    const normCountry = countryCode ? countryCode.trim().toUpperCase() : "";
+    if (/^[A-Z]{2}$/.test(normCountry)) {
+      const normRegion =
+        regionCode && /^[A-Za-z0-9]{1,6}$/.test(regionCode.trim()) ? regionCode.trim().toUpperCase() : null;
       this.#db
         .prepare(
           `
@@ -2517,7 +2605,7 @@ export class LibraryDatabase {
         ON CONFLICT(post_id, country_code, COALESCE(region_code, '')) DO UPDATE SET view_count = post_location_stats.view_count + 1
       `,
         )
-        .run(postId, countryCode, regionCode || null);
+        .run(postId, normCountry, normRegion);
     }
   }
 
@@ -2547,6 +2635,213 @@ export class LibraryDatabase {
     `,
       )
       .all(postId) as { country: string; region: string; views: number }[];
+  }
+
+  recordPageView(params: {
+    surface: "web" | "docs";
+    path: string;
+    isUniqueVisitor?: boolean | undefined;
+    countryCode?: string | undefined;
+    regionCode?: string | undefined;
+    date?: string | undefined;
+  }): void {
+    const viewDate =
+      params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : new Date().toISOString().slice(0, 10);
+    const surface: "web" | "docs" = params.surface === "docs" ? "docs" : "web";
+    let cleanPath =
+      String(params.path || "/")
+        .split("?")[0]
+        ?.split("#")[0]
+        ?.trim() || "/";
+    if (!cleanPath.startsWith("/")) {
+      cleanPath = "/" + cleanPath;
+    }
+    if (cleanPath.length > 1 && cleanPath.endsWith("/")) {
+      cleanPath = cleanPath.replace(/\/+$/, "");
+    }
+    if (cleanPath.length > 256) {
+      cleanPath = cleanPath.slice(0, 256);
+    }
+
+    const uniqueInc = params.isUniqueVisitor ? 1 : 0;
+
+    this.#db
+      .prepare(
+        `
+        INSERT INTO page_views_daily (view_date, surface, path, views_count, unique_visitors)
+        VALUES (?, ?, ?, 1, ?)
+        ON CONFLICT(view_date, surface, path) DO UPDATE SET
+          views_count = page_views_daily.views_count + 1,
+          unique_visitors = page_views_daily.unique_visitors + excluded.unique_visitors
+      `,
+      )
+      .run(viewDate, surface, cleanPath, uniqueInc);
+
+    const normCountry = params.countryCode ? params.countryCode.trim().toUpperCase() : "";
+    if (/^[A-Z]{2}$/.test(normCountry)) {
+      const normRegion =
+        params.regionCode && /^[A-Za-z0-9]{1,6}$/.test(params.regionCode.trim())
+          ? params.regionCode.trim().toUpperCase()
+          : "";
+      this.#db
+        .prepare(
+          `
+          INSERT INTO page_location_stats_daily (view_date, surface, country_code, region_code, views_count)
+          VALUES (?, ?, ?, ?, 1)
+          ON CONFLICT(view_date, surface, country_code, region_code) DO UPDATE SET
+            views_count = page_location_stats_daily.views_count + 1
+        `,
+        )
+        .run(viewDate, surface, normCountry, normRegion);
+    }
+  }
+
+  getPageAnalyticsSummary(
+    days = 30,
+    surface?: "web" | "docs",
+  ): {
+    totalViews: number;
+    uniqueVisitors: number;
+    webViews: number;
+    docsViews: number;
+    postViewsTotal: number;
+    packageDownloadsTotal: number;
+    daily: { date: string; views: number; uniqueVisitors: number; webViews: number; docsViews: number }[];
+    topPages: { surface: "web" | "docs"; path: string; views: number; uniqueVisitors: number }[];
+    locationStats: { country: string; views: number }[];
+    regionStats: { country: string; region: string; views: number }[];
+  } {
+    const safeDays = Math.min(365, Math.max(1, Math.floor(days)));
+    const cutoff = new Date(Date.now() - (safeDays - 1) * 86_400_000).toISOString().slice(0, 10);
+    const hasSurface = surface === "web" || surface === "docs";
+
+    const totalsRow = this.#db
+      .prepare(
+        `
+        SELECT
+          COALESCE(SUM(views_count), 0) AS totalViews,
+          COALESCE(SUM(unique_visitors), 0) AS uniqueVisitors,
+          COALESCE(SUM(CASE WHEN surface = 'web' THEN views_count ELSE 0 END), 0) AS webViews,
+          COALESCE(SUM(CASE WHEN surface = 'docs' THEN views_count ELSE 0 END), 0) AS docsViews
+        FROM page_views_daily
+        WHERE view_date >= ? ${hasSurface ? "AND surface = ?" : ""}
+      `,
+      )
+      .get(...(hasSurface ? [cutoff, surface] : [cutoff])) as {
+      totalViews: number;
+      uniqueVisitors: number;
+      webViews: number;
+      docsViews: number;
+    };
+
+    const dailyRows = this.#db
+      .prepare(
+        `
+        SELECT
+          view_date AS date,
+          SUM(views_count) AS views,
+          SUM(unique_visitors) AS uniqueVisitors,
+          SUM(CASE WHEN surface = 'web' THEN views_count ELSE 0 END) AS webViews,
+          SUM(CASE WHEN surface = 'docs' THEN views_count ELSE 0 END) AS docsViews
+        FROM page_views_daily
+        WHERE view_date >= ? ${hasSurface ? "AND surface = ?" : ""}
+        GROUP BY view_date
+        ORDER BY view_date ASC
+      `,
+      )
+      .all(...(hasSurface ? [cutoff, surface] : [cutoff])) as {
+      date: string;
+      views: number;
+      uniqueVisitors: number;
+      webViews: number;
+      docsViews: number;
+    }[];
+
+    const topPages = this.#db
+      .prepare(
+        `
+        SELECT
+          surface,
+          path,
+          SUM(views_count) AS views,
+          SUM(unique_visitors) AS uniqueVisitors
+        FROM page_views_daily
+        WHERE view_date >= ? ${hasSurface ? "AND surface = ?" : ""}
+        GROUP BY surface, path
+        ORDER BY views DESC, uniqueVisitors DESC
+        LIMIT 25
+      `,
+      )
+      .all(...(hasSurface ? [cutoff, surface] : [cutoff])) as {
+      surface: "web" | "docs";
+      path: string;
+      views: number;
+      uniqueVisitors: number;
+    }[];
+
+    const locationStats = this.#db
+      .prepare(
+        `
+        SELECT country_code AS country, SUM(views_count) AS views
+        FROM page_location_stats_daily
+        WHERE view_date >= ? ${hasSurface ? "AND surface = ?" : ""}
+        GROUP BY country_code
+        ORDER BY views DESC
+      `,
+      )
+      .all(...(hasSurface ? [cutoff, surface] : [cutoff])) as { country: string; views: number }[];
+
+    const regionStats = this.#db
+      .prepare(
+        `
+        SELECT country_code AS country, region_code AS region, SUM(views_count) AS views
+        FROM page_location_stats_daily
+        WHERE view_date >= ? AND region_code != '' ${hasSurface ? "AND surface = ?" : ""}
+        GROUP BY country_code, region_code
+        ORDER BY views DESC
+      `,
+      )
+      .all(...(hasSurface ? [cutoff, surface] : [cutoff])) as { country: string; region: string; views: number }[];
+
+    const postViewsRow = this.#db.prepare(`SELECT COALESCE(SUM(view_count), 0) AS total FROM posts`).get() as {
+      total: number;
+    };
+    const pkgDlRow = this.#db
+      .prepare(
+        `SELECT COALESCE(SUM(downloads_count), 0) AS total FROM package_downloads_daily WHERE download_date >= ?`,
+      )
+      .get(cutoff) as { total: number };
+
+    return {
+      totalViews: totalsRow.totalViews || 0,
+      uniqueVisitors: totalsRow.uniqueVisitors || 0,
+      webViews: totalsRow.webViews || 0,
+      docsViews: totalsRow.docsViews || 0,
+      postViewsTotal: postViewsRow?.total || 0,
+      packageDownloadsTotal: pkgDlRow?.total || 0,
+      daily: dailyRows,
+      topPages,
+      locationStats,
+      regionStats,
+    };
+  }
+
+  prunePageAnalytics(retainDays: number): {
+    deletedDailyRows: number;
+    deletedLocationRows: number;
+    cutoffDate: string;
+  } {
+    const safeDays = Math.max(0, Math.floor(retainDays));
+    const cutoffDate =
+      safeDays === 0 ? "9999-12-31" : new Date(Date.now() - safeDays * 86_400_000).toISOString().slice(0, 10);
+
+    const r1 = this.#db.prepare(`DELETE FROM page_views_daily WHERE view_date < ?`).run(cutoffDate);
+    const r2 = this.#db.prepare(`DELETE FROM page_location_stats_daily WHERE view_date < ?`).run(cutoffDate);
+    return {
+      deletedDailyRows: r1.changes,
+      deletedLocationRows: r2.changes,
+      cutoffDate,
+    };
   }
 
   private hydratePost(
@@ -5526,6 +5821,10 @@ export class LibraryDatabase {
     return row?.role ?? null;
   }
 
+  getOrgMemberRole(orgId: number, userId: number): OrgRole | null {
+    return this.getOrganizationMemberRole(orgId, userId);
+  }
+
   addOrganizationMember(orgId: number, userId: number, role: OrgRole): void {
     this.#db
       .prepare(
@@ -6173,7 +6472,8 @@ export class LibraryDatabase {
         };
       }
 
-      const newBalance = Math.max(0, currentBalance - amount);
+      const roundedAmount = Math.round(amount * 100) / 100;
+      const newBalance = Math.round(Math.max(0, currentBalance - roundedAmount) * 100) / 100;
 
       this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
 
@@ -6182,7 +6482,7 @@ export class LibraryDatabase {
           `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
            VALUES (?, ?, ?, ?, 'job_charge', ?, ?)`,
         )
-        .run(userId, jobId, -amount, newBalance, description, JSON.stringify(metadata ?? {}));
+        .run(userId, jobId, -roundedAmount, newBalance, description, JSON.stringify(metadata ?? {}));
 
       const txId = txResult.lastInsertRowid as number;
 
@@ -6203,7 +6503,7 @@ export class LibraryDatabase {
         id: txId,
         user_id: userId,
         job_id: jobId,
-        amount: -amount,
+        amount: -roundedAmount,
         balance_after: newBalance,
         transaction_type: "job_charge",
         type: "job_charge",
@@ -6234,7 +6534,8 @@ export class LibraryDatabase {
       }
 
       const currentBalance = user.credit_balance ?? 0;
-      const newBalance = currentBalance + amount;
+      const roundedAmount = Math.round(amount * 100) / 100;
+      const newBalance = Math.round((currentBalance + roundedAmount) * 100) / 100;
 
       this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
 
@@ -6243,12 +6544,85 @@ export class LibraryDatabase {
           `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
            VALUES (?, NULL, ?, ?, ?, ?, ?)`,
         )
-        .run(userId, amount, newBalance, type, description, JSON.stringify(metadata ?? {}));
+        .run(userId, roundedAmount, newBalance, type, description, JSON.stringify(metadata ?? {}));
 
       return newBalance;
     });
 
     return grantTx();
+  }
+
+  hasProcessedStripeEvent(eventId?: string | null, paymentIntentId?: string | null): boolean {
+    if (eventId) {
+      const row = this.#db.prepare(`SELECT event_id FROM stripe_processed_events WHERE event_id = ?`).get(eventId);
+      if (row) return true;
+    }
+    if (paymentIntentId) {
+      const row = this.#db
+        .prepare(`SELECT event_id FROM stripe_processed_events WHERE payment_intent_id = ?`)
+        .get(paymentIntentId);
+      if (row) return true;
+    }
+    return false;
+  }
+
+  recordProcessedStripeEvent(
+    eventId: string,
+    paymentIntentId: string | null,
+    userId: number | null,
+    amountCredits: number,
+  ): boolean {
+    try {
+      this.#db
+        .prepare(
+          `INSERT INTO stripe_processed_events (event_id, payment_intent_id, user_id, amount_credits)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(eventId, paymentIntentId, userId, Math.round(amountCredits * 100) / 100);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  saveMorselSnippet(
+    payloadJson: string,
+    dialect: string = "modelica",
+    title?: string | null,
+    creatorId?: number | null,
+  ): string {
+    const id = crypto.createHash("sha256").update(payloadJson).digest("hex").slice(0, 16);
+    this.#db
+      .prepare(
+        `INSERT OR IGNORE INTO morsel_snippets (id, payload_json, dialect, title, creator_id)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(id, payloadJson, dialect || "modelica", title ?? null, creatorId ?? null);
+    return id;
+  }
+
+  getMorselSnippet(id: string):
+    | {
+        id: string;
+        payload_json: string;
+        dialect: string;
+        title: string | null;
+        creator_id: number | null;
+        created_at: string;
+      }
+    | undefined {
+    return this.#db
+      .prepare(`SELECT id, payload_json, dialect, title, creator_id, created_at FROM morsel_snippets WHERE id = ?`)
+      .get(id) as
+      | {
+          id: string;
+          payload_json: string;
+          dialect: string;
+          title: string | null;
+          creator_id: number | null;
+          created_at: string;
+        }
+      | undefined;
   }
 
   holdUserCredits(
@@ -6521,6 +6895,210 @@ export class LibraryDatabase {
       | { count?: number | undefined }
       | undefined;
     return row?.count ?? 0;
+  }
+
+  getCreditTransactionById(txId: number): CreditTransactionRow | undefined {
+    return this.#db
+      .prepare(
+        `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
+         FROM credit_transactions
+         WHERE id = ?`,
+      )
+      .get(txId) as CreditTransactionRow | undefined;
+  }
+
+  getOrgBalance(orgId: number): number {
+    const row = this.#db.prepare(`SELECT credit_balance FROM organizations WHERE id = ?`).get(orgId) as
+      | { credit_balance?: number | undefined }
+      | undefined;
+    return row?.credit_balance ?? 0;
+  }
+
+  grantOrgCredits(
+    orgId: number,
+    amount: number,
+    actorUserId: number | null = null,
+    description: string = "Organization Shared Wallet Top-Up",
+    metadata?: Record<string, unknown>,
+  ): number {
+    const grantTx = this.#db.transaction(() => {
+      const org = this.#db
+        .prepare(`SELECT id, credit_balance, created_by FROM organizations WHERE id = ?`)
+        .get(orgId) as { id: number; credit_balance?: number | undefined; created_by?: number | undefined } | undefined;
+      if (!org) {
+        throw new Error(`Organization with ID ${orgId} not found`);
+      }
+
+      const currentBalance = org.credit_balance ?? 0;
+      const roundedAmount = Math.round(amount * 100) / 100;
+      const newBalance = Math.round((currentBalance + roundedAmount) * 100) / 100;
+
+      this.#db.prepare(`UPDATE organizations SET credit_balance = ? WHERE id = ?`).run(newBalance, orgId);
+
+      const effectiveUserId = actorUserId ?? org.created_by ?? 1;
+      this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+           VALUES (?, NULL, ?, ?, 'org_top_up', ?, ?)`,
+        )
+        .run(effectiveUserId, roundedAmount, newBalance, description, JSON.stringify({ orgId, ...(metadata ?? {}) }));
+
+      return newBalance;
+    });
+    return grantTx();
+  }
+
+  deductOrgCredits(
+    orgId: number,
+    amount: number,
+    actorUserId: number | null = null,
+    jobId: number | null = null,
+    description: string = "Organization Compute Charge",
+    metadata?: Record<string, unknown>,
+  ): { success: boolean; newBalance: number; amount: number } {
+    if (amount <= 0) {
+      return { success: true, newBalance: this.getOrgBalance(orgId), amount: 0 };
+    }
+    const deductTx = this.#db.transaction(() => {
+      const org = this.#db
+        .prepare(`SELECT id, credit_balance, total_spent, created_by FROM organizations WHERE id = ?`)
+        .get(orgId) as
+        | {
+            id: number;
+            credit_balance?: number | undefined;
+            total_spent?: number | undefined;
+            created_by?: number | undefined;
+          }
+        | undefined;
+      if (!org) {
+        throw new Error(`Organization with ID ${orgId} not found`);
+      }
+      const currentBalance = org.credit_balance ?? 0;
+      const roundedAmount = Math.round(amount * 100) / 100;
+      if (currentBalance < roundedAmount) {
+        return { success: false, newBalance: currentBalance, amount: -roundedAmount };
+      }
+      const newBalance = Math.round(Math.max(0, currentBalance - roundedAmount) * 100) / 100;
+      const newTotalSpent = Math.round(((org.total_spent ?? 0) + roundedAmount) * 100) / 100;
+
+      this.#db
+        .prepare(`UPDATE organizations SET credit_balance = ?, total_spent = ? WHERE id = ?`)
+        .run(newBalance, newTotalSpent, orgId);
+
+      const effectiveUserId = actorUserId ?? org.created_by ?? 1;
+      this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
+           VALUES (?, ?, ?, ?, 'org_job_charge', ?, ?)`,
+        )
+        .run(
+          effectiveUserId,
+          jobId,
+          -roundedAmount,
+          newBalance,
+          description,
+          JSON.stringify({ orgId, ...(metadata ?? {}) }),
+        );
+
+      return { success: true, newBalance, amount: -roundedAmount };
+    });
+    return deductTx();
+  }
+
+  getOrgWalletSummary(orgId: number): {
+    orgId: number;
+    name: string;
+    slug: string;
+    balance: number;
+    totalSpent: number;
+    transactions: CreditTransactionRow[];
+  } | null {
+    const org = this.#db
+      .prepare(`SELECT id, name, slug, credit_balance, total_spent FROM organizations WHERE id = ?`)
+      .get(orgId) as
+      | {
+          id: number;
+          name: string;
+          slug: string;
+          credit_balance?: number | undefined;
+          total_spent?: number | undefined;
+        }
+      | undefined;
+    if (!org) return null;
+
+    const orgTag = `%"orgId":${orgId}%`;
+    const transactions = this.#db
+      .prepare(
+        `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
+         FROM credit_transactions
+         WHERE metadata LIKE ?
+         ORDER BY id DESC
+         LIMIT 50`,
+      )
+      .all(orgTag) as CreditTransactionRow[];
+
+    return {
+      orgId: org.id,
+      name: org.name,
+      slug: org.slug,
+      balance: org.credit_balance ?? 0,
+      totalSpent: org.total_spent ?? 0,
+      transactions,
+    };
+  }
+
+  createHotBackup(customLabel?: string): {
+    fileName: string;
+    backupPath: string;
+    sizeBytes: number;
+    createdAt: string;
+  } {
+    const backupDir = path.join(this.dbDir, "backups");
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+    const safeLabel = customLabel ? `-${customLabel.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)}` : "";
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `modelscript-backup-${timestamp}${safeLabel}.db`;
+    const backupPath = path.join(backupDir, fileName);
+
+    // Checkpoint WAL and perform online consistent snapshot using VACUUM INTO
+    const escapedPath = backupPath.replace(/'/g, "''");
+    this.#db.exec(`VACUUM INTO '${escapedPath}'`);
+
+    const stats = fs.statSync(backupPath);
+    return {
+      fileName,
+      backupPath,
+      sizeBytes: stats.size,
+      createdAt: stats.mtime.toISOString(),
+    };
+  }
+
+  listBackups(): {
+    fileName: string;
+    backupPath: string;
+    sizeBytes: number;
+    createdAt: string;
+  }[] {
+    const backupDir = path.join(this.dbDir, "backups");
+    if (!fs.existsSync(backupDir)) {
+      return [];
+    }
+    return fs
+      .readdirSync(backupDir)
+      .filter((name) => name.endsWith(".db"))
+      .map((fileName) => {
+        const backupPath = path.join(backupDir, fileName);
+        const stats = fs.statSync(backupPath);
+        return {
+          fileName,
+          backupPath,
+          sizeBytes: stats.size,
+          createdAt: stats.mtime.toISOString(),
+        };
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   getUserBillingSummary(userId: number): UserBillingSummary {

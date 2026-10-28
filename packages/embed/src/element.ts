@@ -40,10 +40,13 @@ export class ModelScriptViewerElement extends BaseElement {
   connectedCallback(): void {
     const dialect = (this.getAttribute("dialect") as EmbedDialect) || "modelica";
     const view = (this.getAttribute("view") as EmbedViewMode) || "diagram";
-    const code = this.getAttribute("code") || this.textContent || "";
+    const code = this.getAttribute("code") || this.textContent?.trim() || "";
     const anchorId = this.getAttribute("anchor");
     const isMultiFile = this.hasAttribute("multi-file");
     const artifactId = this.getAttribute("artifact-id") || undefined;
+    const morselId = this.getAttribute("morsel-id") || undefined;
+    const embedToken = this.getAttribute("embed-token") || undefined;
+    const theme = (this.getAttribute("theme") as "dark" | "light") || undefined;
     const origin = this.getAttribute("origin") || undefined;
 
     const zoomMode = (this.getAttribute("zoom-mode") as ZoomInterceptionMode) || undefined;
@@ -61,6 +64,9 @@ export class ModelScriptViewerElement extends BaseElement {
       ...(anchorId ? { anchor: { elementId: anchorId } } : {}),
       ...(zoomMode ? { zoomMode } : {}),
       ...(artifactId ? { artifactId } : {}),
+      ...(morselId ? { morselId } : {}),
+      ...(embedToken ? { embedToken } : {}),
+      ...(theme ? { theme } : {}),
       ...(origin ? { embedOrigin: origin } : {}),
     });
   }
@@ -73,7 +79,7 @@ export class ModelScriptViewerElement extends BaseElement {
   }
 
   static get observedAttributes(): string[] {
-    return ["code", "view", "anchor", "zoom-mode"];
+    return ["code", "view", "anchor", "zoom-mode", "theme"];
   }
 
   attributeChangedCallback(name: string, _oldValue: string, newValue: string): void {
@@ -86,11 +92,23 @@ export class ModelScriptViewerElement extends BaseElement {
       this.embedClient.setAnchor({ elementId: newValue });
     } else if (name === "zoom-mode") {
       this.embedClient.setZoomMode(newValue as ZoomInterceptionMode);
+    } else if (name === "theme" && (newValue === "dark" || newValue === "light")) {
+      this.embedClient.setTheme(newValue);
     }
   }
 }
 
-// Automatically define custom element if in browser environment
-if (typeof customElements !== "undefined" && !customElements.get("modelscript-viewer")) {
-  customElements.define("modelscript-viewer", ModelScriptViewerElement);
+/**
+ * Alias Web Component `<modelscript-morsel>` for intranet wiki & documentation embeds.
+ */
+export class ModelScriptMorselElement extends ModelScriptViewerElement {}
+
+// Automatically define custom elements if in browser environment
+if (typeof customElements !== "undefined") {
+  if (!customElements.get("modelscript-viewer")) {
+    customElements.define("modelscript-viewer", ModelScriptViewerElement);
+  }
+  if (!customElements.get("modelscript-morsel")) {
+    customElements.define("modelscript-morsel", ModelScriptMorselElement);
+  }
 }

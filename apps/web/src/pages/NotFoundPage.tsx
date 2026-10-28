@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, HomeIcon } from "@primer/octicons-react";
+import { ArrowLeftIcon, CodeIcon, HomeIcon, TelescopeIcon } from "@primer/octicons-react";
 import { Button, Heading, Text } from "@primer/react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -50,12 +50,18 @@ export default function NotFoundPage() {
         <Text sx={{ color: "fg.muted", fontSize: 15, maxWidth: 400 }}>
           The page or resource you are looking for doesn't exist, has been removed, or is temporarily unavailable.
         </Text>
-        <Box display="flex" gap={3} mt={3}>
+        <Box display="flex" gap={3} mt={3} flexWrap="wrap" justifyContent="center">
           <Button leadingVisual={ArrowLeftIcon} onClick={() => navigate(-1)}>
             Go Back
           </Button>
           <Button variant="primary" leadingVisual={HomeIcon} onClick={() => navigate("/")}>
-            Explore Feed
+            Return Home
+          </Button>
+          <Button leadingVisual={TelescopeIcon} onClick={() => navigate("/explore")}>
+            Explore
+          </Button>
+          <Button leadingVisual={CodeIcon} onClick={() => navigate("/playground")}>
+            Playground
           </Button>
         </Box>
       </NotFoundCard>

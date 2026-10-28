@@ -18,22 +18,25 @@ import InvertedSvg from "./InvertedSvg";
 
 /* ─── styled components ─── */
 
-const TreeItem = styled(Link)<{ $depth: number; $active?: boolean }>`
+const TreeItem = styled(Link)<{ $depth: number; $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px 5px ${(p) => 8 + p.$depth * 16}px;
+  padding: 5px 8px;
   font-size: 13px;
+  font-family: var(--ms-font-sans, system-ui, -apple-system, sans-serif);
   color: ${(p) => (p.$active ? "var(--color-text-heading)" : "var(--color-text-primary)")};
   background: ${(p) => (p.$active ? "var(--color-glass-bg-active, rgba(255, 255, 255, 0.08))" : "transparent")};
-  font-weight: ${(p) => (p.$active ? 600 : 400)};
+  font-weight: ${(p) => (p.$active ? 600 : 500)};
   text-decoration: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
+  min-height: 28px;
+  box-sizing: border-box;
   &:hover {
-    background: var(--color-glass-bg-hover);
-    color: var(--color-text-heading);
+    background: var(--color-glass-bg-hover, rgba(255, 255, 255, 0.05));
+    color: var(--color-accent-cyan, #06b6d4);
   }
 `;
 
@@ -50,9 +53,10 @@ const TreeToggle = styled.button`
   }
 `;
 
-const getKindBadgeStyle = (kind: string) => {
-  if (kind === "package") return null; // Packages are implicit in tree navigation
-  switch (kind) {
+export function getKindBadgeStyle(kind: string): { bg: string; color: string } | null {
+  const k = kind.toLowerCase();
+  if (k === "package" || k === "class") return null; // Packages are implicit in tree navigation
+  switch (k) {
     case "model":
       return { bg: "rgba(6, 182, 212, 0.15)", color: "var(--color-accent-cyan, #06b6d4)" };
     case "block":
@@ -60,13 +64,15 @@ const getKindBadgeStyle = (kind: string) => {
     case "connector":
       return { bg: "rgba(234, 179, 8, 0.15)", color: "#eab308" };
     case "record":
+    case "type":
       return { bg: "rgba(16, 185, 129, 0.15)", color: "#10b981" };
     case "function":
-      return { bg: "rgba(168, 85, 247, 0.15)", color: "#a855f7" };
+    case "algorithm":
+      return { bg: "rgba(168, 85, 247, 0.15)", color: "#c084fc" };
     default:
-      return { bg: "var(--color-glass-bg-hover)", color: "var(--color-text-muted)" };
+      return { bg: "var(--color-border-glass, rgba(255, 255, 255, 0.08))", color: "var(--color-text-muted)" };
   }
-};
+}
 
 /* ─── tree node component ─── */
 
@@ -159,19 +165,27 @@ export const ClassTreeNode: React.FC<{
           </span>
         )}
       </TreeItem>
-      {expanded &&
-        hasChildren &&
-        node.children.map((child) => (
-          <ClassTreeNode
-            key={child.fullName}
-            node={child}
-            depth={depth + 1}
-            libraryName={libraryName}
-            version={version}
-            activeClassName={activeClassName}
-            isFiltered={isFiltered}
-          />
-        ))}
+      {expanded && hasChildren && (
+        <div
+          style={{
+            borderLeft: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.07))",
+            marginLeft: 14,
+            paddingLeft: 4,
+          }}
+        >
+          {node.children.map((child) => (
+            <ClassTreeNode
+              key={child.fullName}
+              node={child}
+              depth={depth + 1}
+              libraryName={libraryName}
+              version={version}
+              activeClassName={activeClassName}
+              isFiltered={isFiltered}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 };

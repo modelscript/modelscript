@@ -3,7 +3,6 @@
 import {
   AlertIcon,
   CheckIcon,
-  ChevronRightIcon,
   DiffAddedIcon,
   DiffModifiedIcon,
   DiffRemovedIcon,
@@ -13,8 +12,10 @@ import {
 } from "@primer/octicons-react";
 import { Button, Flash, Label, Spinner } from "@primer/react";
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { comparePackageVersions, type VersionComparisonResult } from "../api";
+import { encodePackagePath } from "../util/url";
 import { CadDiffViewer } from "./artifacts/CadDiffViewer";
 
 interface PolyglotVersionDiffViewProps {
@@ -227,7 +228,18 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
               </option>
             ))}
           </select>
-          <ChevronRightIcon size={16} />
+          <Button
+            size="small"
+            variant="invisible"
+            title="Swap Base and Head versions"
+            onClick={() => {
+              setBaseVersion(headVersion);
+              setHeadVersion(baseVersion);
+            }}
+            style={{ padding: "2px 8px", fontSize: 12 }}
+          >
+            Swap Versions (⇄)
+          </Button>
           <span>Head version:</span>
           <select value={headVersion} onChange={(e) => setHeadVersion(e.target.value)}>
             {allVersions.map((v) => (
@@ -331,7 +343,12 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
                 <DiffItemRow key={cls.name}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <DiffModifiedIcon size={16} style={{ color: "var(--color-attention-fg, #bf8700)" }} />
-                    <strong style={{ fontSize: 14 }}>{cls.name}</strong>
+                    <Link
+                      to={`/packages/${packageName}/${headVersion}/classes/${encodeURIComponent(cls.name)}`}
+                      style={{ fontSize: 14, fontWeight: 600, color: "var(--color-accent-fg)", textDecoration: "none" }}
+                    >
+                      {cls.name}
+                    </Link>
                     <Label variant="accent">{cls.kind}</Label>
                   </div>
                   <ParamChangeTable>
@@ -365,7 +382,12 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
                 <DiffItemRow key={cls.name}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <DiffAddedIcon size={16} style={{ color: "var(--color-success-fg, #2da44e)" }} />
-                    <strong style={{ fontSize: 14 }}>{cls.name}</strong>
+                    <Link
+                      to={`/packages/${packageName}/${headVersion}/classes/${encodeURIComponent(cls.name)}`}
+                      style={{ fontSize: 14, fontWeight: 600, color: "var(--color-accent-fg)", textDecoration: "none" }}
+                    >
+                      {cls.name}
+                    </Link>
                     <Label variant="success">Added</Label>
                     <Label variant="accent">{cls.kind}</Label>
                     {cls.description && (
@@ -440,8 +462,8 @@ export const PolyglotVersionDiffView: React.FC<PolyglotVersionDiffViewProps> = (
               {activeCadDiffFile === cad.file && (
                 <div style={{ marginTop: 12 }}>
                   <CadDiffViewer
-                    baseMeshUrl={`/api/v1/libraries/${encodeURIComponent(packageName)}/${encodeURIComponent(baseVersion)}/cad-mesh/${cad.file}`}
-                    headMeshUrl={`/api/v1/libraries/${encodeURIComponent(packageName)}/${encodeURIComponent(headVersion)}/cad-mesh/${cad.file}`}
+                    baseMeshUrl={`/api/v1/libraries/${encodePackagePath(packageName)}/${encodeURIComponent(baseVersion)}/cad-mesh/${cad.file}`}
+                    headMeshUrl={`/api/v1/libraries/${encodePackagePath(packageName)}/${encodeURIComponent(headVersion)}/cad-mesh/${cad.file}`}
                     fileName={cad.file}
                     baseVersion={baseVersion}
                     headVersion={headVersion}

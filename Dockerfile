@@ -87,7 +87,7 @@ COPY languages/sysml2/package.json languages/sysml2/
 COPY languages/touchstone/package.json languages/touchstone/
 COPY languages/urdf/package.json languages/urdf/
 COPY languages/verilog-a/package.json languages/verilog-a/
-RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild better-sqlite3
 
 # ==============================================================================
 # API
@@ -108,8 +108,9 @@ COPY apps/api apps/api
 FROM build-api-${PREBUILT} AS build-api
 
 FROM node:24-alpine AS api
+RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
-RUN mkdir -p /app/apps/api/data /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
+RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
   && chown -R node:node /app
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
@@ -118,29 +119,35 @@ COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
 USER node
 EXPOSE 3000
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    DATA_DIR=/app/apps/api/data \
+    DB_PATH=/app/apps/api/data/modelscript.db \
+    STORAGE_DIR=/app/apps/api/data/libraries
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
 CMD ["node", "apps/api/dist/main.js"]
 
 # ==============================================================================
-# Web
+# Web & Unified Documentation Portal
 # ==============================================================================
 FROM deps AS build-web-false
 COPY scripts scripts
 COPY packages packages
 COPY languages languages
+COPY apps/docs apps/docs
 COPY apps/web apps/web
-RUN npx nx build @modelscript/web
+RUN npx nx run-many -t build --projects=@modelscript/web,@modelscript/docs
 
 
 FROM deps AS build-web-true
 COPY apps/web/dist apps/web/dist
+COPY apps/docs/docs/.vitepress/dist apps/docs/docs/.vitepress/dist
 
 FROM build-web-${PREBUILT} AS build-web
 
 FROM nginx:alpine AS web
 COPY --from=build-web /app/apps/web/dist /usr/share/nginx/html
+COPY --from=build-web /app/apps/docs/docs/.vitepress/dist /usr/share/nginx/docs
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
@@ -224,10 +231,11 @@ ENTRYPOINT ["node", "apps/cli/dist/main.js"]
 # Hardened Enterprise Intranet Appliance (Single Container for Regulated Utilities)
 # ==============================================================================
 FROM node:24-alpine AS appliance
+RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 
 # Create unprivileged application user & directories
-RUN mkdir -p /app/apps/api/data /app/apps/api/uploads /app/apps/api/public/thumbnails \
+RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails \
   && chown -R node:node /app
 
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
@@ -238,8 +246,9 @@ COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
 
-# Copy pre-compiled Web SPA assets and IDE workbench
+# Copy pre-compiled Web SPA assets, Unified Docs SSG, and IDE workbench
 COPY --from=build-web --chown=node:node /app/apps/web/dist apps/web/dist
+COPY --from=build-web --chown=node:node /app/apps/docs/docs/.vitepress/dist apps/docs/docs/.vitepress/dist
 COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
 
@@ -250,7 +259,11 @@ ENV NODE_ENV=production \
     PORT=8080 \
     ENTERPRISE_APPLIANCE=true \
     AIRGAP_ENFORCED=true \
+    DATA_DIR=/app/apps/api/data \
+    DB_PATH=/app/apps/api/data/modelscript.db \
+    STORAGE_DIR=/app/apps/api/data/libraries \
     STATIC_WEB_DIR=/app/apps/web/dist \
+    STATIC_DOCS_DIR=/app/apps/docs/docs/.vitepress/dist \
     STATIC_IDE_DIR=/app/apps/ide/dist \
     NODE_OPTIONS="--max-old-space-size=4096"
 

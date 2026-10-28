@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  ArrowLeftIcon,
-  BroadcastIcon,
-  ChevronRightIcon,
-  FilterIcon,
-  MailIcon,
-  UnmuteIcon,
-} from "@primer/octicons-react";
+import { AlertIcon, BroadcastIcon, MailIcon, UnmuteIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import {
@@ -17,29 +10,23 @@ import {
   type NotificationPreferences,
 } from "../../../api";
 import Box from "../../../components/Box";
-import {
-  DetailIcon,
-  DetailItem,
-  DetailSubtitle,
-  DetailText,
-  DetailTitle,
-  FormLabel,
-  Header,
-  SaveButton,
-} from "../settingsStyles";
+import { useToast } from "../../../components/ToastContext";
+import { DetailSubtitle, DetailTitle, FormLabel, Header, SaveButton } from "../settingsStyles";
 
 export interface NotificationFiltersTabProps {
   subView: "notifications" | "notificationFilters";
   onNavigate: (tab: any) => void;
 }
 
-export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ subView, onNavigate }) => {
+export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ subView }) => {
+  const toast = useToast();
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
   const [notificationSuccess, setNotificationSuccess] = useState<string | null>(null);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (subView === "notificationFilters") {
+    if (subView === "notifications" || subView === "notificationFilters") {
       getNotificationSettings()
         .then((data) => {
           if (data) {
@@ -59,43 +46,9 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
     }
   }, [subView]);
 
-  if (subView === "notifications") {
-    return (
-      <>
-        <Header>Notifications</Header>
-        <Box px={3} pb={3}>
-          <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
-            Select the kinds of notifications you get about your activities, interests, and recommendations.
-          </DetailSubtitle>
-        </Box>
-        <DetailItem $clickable onClick={() => onNavigate("notificationFilters")}>
-          <DetailIcon>
-            <FilterIcon size={20} />
-          </DetailIcon>
-          <DetailText>
-            <DetailTitle>Filters</DetailTitle>
-            <DetailSubtitle>Choose the notifications you'd like to see — and those you don't.</DetailSubtitle>
-          </DetailText>
-          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-        </DetailItem>
-      </>
-    );
-  }
-
   return (
     <>
-      <Header>
-        <Box
-          display="flex"
-          alignItems="center"
-          gap={3}
-          sx={{ cursor: "pointer" }}
-          onClick={() => onNavigate("notifications")}
-        >
-          <ArrowLeftIcon size={20} />
-          <span>Notification Preferences</span>
-        </Box>
-      </Header>
+      <Header>Notification Preferences</Header>
       <Box p={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "24px" }}>
           Configure delivery channels, email digest frequency, and granular event filters for engineering models, social
@@ -105,6 +58,24 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
         {notificationSuccess && (
           <Box mb={3} p={3} bg="var(--color-success-subtle)" color="var(--color-success-fg)" borderRadius="6px">
             <Text fontSize="14px">{notificationSuccess}</Text>
+          </Box>
+        )}
+
+        {notificationError && (
+          <Box
+            mb={3}
+            p={3}
+            style={{
+              background: "var(--color-danger-subtle)",
+              color: "var(--color-danger-fg)",
+              borderRadius: "6px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <AlertIcon size={16} />
+            <Text fontSize="14px">{notificationError}</Text>
           </Box>
         )}
 
@@ -384,11 +355,15 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
             onClick={async () => {
               setIsSavingNotifications(true);
               setNotificationSuccess(null);
+              setNotificationError(null);
               try {
                 await updateNotificationSettings(notificationPrefs);
                 setNotificationSuccess("Notification preferences saved successfully!");
-              } catch {
-                // Handled
+                toast.success("Notification preferences saved successfully.");
+              } catch (err: any) {
+                const msg = err?.response?.data?.error || err?.message || "Failed to save notification preferences.";
+                setNotificationError(msg);
+                toast.error(msg, "Save Failed");
               } finally {
                 setIsSavingNotifications(false);
               }

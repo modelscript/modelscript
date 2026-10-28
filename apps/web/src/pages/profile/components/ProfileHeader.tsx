@@ -68,6 +68,13 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 }) => {
   const parsed = parseFederatedHandle(profile.username);
   const { showToast } = useToast();
+  const [confirmingBlock, setConfirmingBlock] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!showBlockMenu) {
+      setConfirmingBlock(false);
+    }
+  }, [showBlockMenu]);
 
   return (
     <>
@@ -154,7 +161,10 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                     <>
                       <div
                         style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
-                        onClick={() => setShowBlockMenu(false)}
+                        onClick={() => {
+                          setConfirmingBlock(false);
+                          setShowBlockMenu(false);
+                        }}
                       />
                       <Box
                         position="absolute"
@@ -247,11 +257,18 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                           <MuteIcon size={20} /> {isMuted ? "Unmute" : "Mute"} @{profile.username}
                         </button>
                         <button
-                          onClick={onBlock}
+                          onClick={() => {
+                            if (!confirmingBlock) {
+                              setConfirmingBlock(true);
+                              return;
+                            }
+                            setConfirmingBlock(false);
+                            onBlock();
+                          }}
                           style={{
                             width: "100%",
                             padding: "12px 16px",
-                            background: "none",
+                            background: confirmingBlock ? "var(--color-danger-emphasis, #da3633)" : "none",
                             border: "none",
                             textAlign: "left",
                             cursor: "pointer",
@@ -259,12 +276,21 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             display: "flex",
                             alignItems: "center",
                             gap: "12px",
-                            color: "var(--color-fg-default)",
+                            color: confirmingBlock ? "#ffffff" : "var(--color-danger-fg)",
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                          onMouseEnter={(e) => {
+                            if (!confirmingBlock) {
+                              e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!confirmingBlock) {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }
+                          }}
                         >
-                          <NoEntryIcon size={20} /> Block @{profile.username}
+                          <NoEntryIcon size={20} />{" "}
+                          {confirmingBlock ? `Confirm block @${profile.username}?` : `Block @${profile.username}`}
                         </button>
                         <button
                           onClick={() => {

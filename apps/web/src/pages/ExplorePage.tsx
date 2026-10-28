@@ -97,12 +97,23 @@ const ExplorePage: React.FC = () => {
     fetchExplore();
   }, []);
 
+  const [backendMatchedIds, setBackendMatchedIds] = useState<Set<string>>(new Set());
+
   useEffect(() => {
-    if (!query || topic) return;
+    if (!query || topic) {
+      setBackendMatchedIds(new Set());
+      return;
+    }
     let active = true;
     searchPosts(query, 40)
       .then((res) => {
-        if (!active || !Array.isArray(res.posts) || res.posts.length === 0) return;
+        if (!active || !Array.isArray(res?.posts)) return;
+        const matched = new Set<string>();
+        for (const p of res.posts as PostData[]) {
+          if (p && p.id !== undefined) matched.add(String(p.id));
+        }
+        setBackendMatchedIds(matched);
+        if (res.posts.length === 0) return;
         setPosts((prev) => {
           const byId = new Map<string, PostData>();
           for (const p of res.posts as PostData[]) {
@@ -224,8 +235,28 @@ const ExplorePage: React.FC = () => {
   };
 
   // Filter computations
+  const matchesQuery = (p: PostData) => {
+    if (!query) return true;
+    if (p.id !== undefined && backendMatchedIds.has(String(p.id))) return true;
+    const q = query.toLowerCase();
+    return (
+      String(p.content || "")
+        .toLowerCase()
+        .includes(q) ||
+      String(p.username || "")
+        .toLowerCase()
+        .includes(q) ||
+      String((p as any).display_name || "")
+        .toLowerCase()
+        .includes(q) ||
+      String((p as any).title || "")
+        .toLowerCase()
+        .includes(q)
+    );
+  };
+
   const topPosts = posts
-    .filter((p) => p.content && (p.content as string).toLowerCase().includes(query.toLowerCase()))
+    .filter(matchesQuery)
     .sort(
       (a, b) =>
         ((b.like_count as number) || 0) +
@@ -234,13 +265,10 @@ const ExplorePage: React.FC = () => {
     );
 
   const latestPosts = posts
-    .filter((p) => p.content && (p.content as string).toLowerCase().includes(query.toLowerCase()))
+    .filter(matchesQuery)
     .sort((a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime());
 
-  const artifactPosts = posts.filter(
-    (p) =>
-      p.artifact_view_id !== null && p.content && (p.content as string).toLowerCase().includes(query.toLowerCase()),
-  );
+  const artifactPosts = posts.filter((p) => p.artifact_view_id !== null && matchesQuery(p));
 
   if (topic) {
     return (
@@ -292,6 +320,9 @@ const ExplorePage: React.FC = () => {
       trending={trending}
       scrollTemplates={scrollTemplates}
       templatesScrollRef={templatesScrollRef}
+      localQuery={localQuery}
+      setLocalQuery={setLocalQuery}
+      handleSearchSubmit={handleSearchSubmit}
     />
   );
 };

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronLeftIcon, ChevronRightIcon, CodeIcon, RocketIcon, TagIcon } from "@primer/octicons-react";
+import { ChevronLeftIcon, ChevronRightIcon, CodeIcon, RocketIcon, SearchIcon, TagIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -8,7 +8,7 @@ import Box from "../../components/Box";
 import Post from "../../components/Post";
 import type { PostData, TopicData } from "./constants";
 import { CURATED_ENGINEERING_DOMAINS, STARTER_TEMPLATES } from "./constants";
-import { MobileSearchWrapper } from "./styles";
+import { MobileSearchWrapper, SearchInputWrapper } from "./styles";
 
 export interface ExploreLandingViewProps {
   loading: boolean;
@@ -16,6 +16,9 @@ export interface ExploreLandingViewProps {
   trending: TopicData[];
   scrollTemplates: (direction: "left" | "right") => void;
   templatesScrollRef: React.RefObject<HTMLDivElement | null>;
+  localQuery?: string;
+  setLocalQuery?: (value: string) => void;
+  handleSearchSubmit?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
@@ -24,39 +27,59 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
   trending,
   scrollTemplates,
   templatesScrollRef,
+  localQuery = "",
+  setLocalQuery,
+  handleSearchSubmit,
 }) => {
   return (
     <Box>
       <MobileSearchWrapper>
-        <div
-          onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            padding: "8px 14px",
-            borderRadius: "9999px",
-            background: "var(--color-search-bg, rgba(255, 255, 255, 0.04))",
-            border: "1px solid var(--color-search-border, var(--color-border-glass))",
-            color: "var(--color-text-muted)",
-            fontSize: "13px",
-            cursor: "pointer",
-          }}
-        >
-          <span style={{ color: "var(--color-accent-purple)", fontSize: "14px" }}>⚡</span>
-          <span style={{ flex: 1 }}>Ask AI Copilot or search...</span>
-          <kbd
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <SearchInputWrapper>
+            <SearchIcon size={16} />
+            <input
+              type="text"
+              value={localQuery}
+              onChange={(e) => setLocalQuery?.(e.target.value)}
+              onKeyDown={handleSearchSubmit}
+              placeholder="Search posts, models, packages, or #topics..."
+              aria-label="Search Explore"
+            />
+          </SearchInputWrapper>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
+            title="Ask AI Copilot or open command palette (⌘K)"
             style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              border: "1px solid var(--color-border-glass)",
-              borderRadius: "4px",
-              padding: "2px 6px",
-              fontSize: "11px",
-              fontFamily: "var(--font-mono)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "8px 12px",
+              borderRadius: "9999px",
+              background: "var(--color-search-bg, rgba(255, 255, 255, 0.04))",
+              border: "1px solid var(--color-search-border, var(--color-border-glass))",
+              color: "var(--color-text-muted)",
+              fontSize: "12px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
-            ⌘ K
-          </kbd>
+            <span style={{ color: "var(--color-accent-purple)", fontSize: "13px" }}>⚡</span>
+            <span>AI Copilot</span>
+            <kbd
+              style={{
+                background: "rgba(255, 255, 255, 0.08)",
+                border: "1px solid var(--color-border-glass)",
+                borderRadius: "4px",
+                padding: "1px 5px",
+                fontSize: "10px",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
+              ⌘K
+            </kbd>
+          </button>
         </div>
       </MobileSearchWrapper>
 

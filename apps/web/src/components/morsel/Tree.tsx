@@ -153,6 +153,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   const displayName = showQualifiedName ? (node.compositeName ?? node.name) : (node.localizedName ?? node.name);
   const compositeName = node.compositeName ?? node.name;
   const isSelected = selectedClassName != null && compositeName === selectedClassName;
+  const hasChildren = Boolean(node.hasChildren && !showQualifiedName);
 
   const toggleExpand = React.useCallback(() => {
     setExpanded((prev) => {
@@ -181,6 +182,10 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
   return (
     <>
       <li
+        role="treeitem"
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-selected={isSelected}
+        tabIndex={0}
         style={{
           listStyle: "none",
           display: "flex",
@@ -206,14 +211,47 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         onClick={(e) => {
           e.stopPropagation();
           onHighlight?.(compositeName);
-          if (node.hasChildren && !showQualifiedName) {
+          const isCoarsePointer = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+          if (hasChildren) {
             toggleExpand();
+            if (isCoarsePointer && node.classKind && node.classKind !== "package") {
+              onSelect(compositeName, node.classKind);
+            }
+          } else {
+            onSelect(compositeName, node.classKind ?? "class");
           }
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
           onHighlight?.(compositeName);
           onSelect(compositeName, node.classKind ?? "class");
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            onHighlight?.(compositeName);
+            if (hasChildren) {
+              toggleExpand();
+              if (e.key === "Enter" && node.classKind && node.classKind !== "package") {
+                onSelect(compositeName, node.classKind);
+              }
+            } else {
+              onSelect(compositeName, node.classKind ?? "class");
+            }
+          } else if (e.key === "ArrowRight") {
+            if (hasChildren && !expanded) {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleExpand();
+            }
+          } else if (e.key === "ArrowLeft") {
+            if (hasChildren && expanded) {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleExpand();
+            }
+          }
         }}
         draggable
         onDragStart={(e) => {

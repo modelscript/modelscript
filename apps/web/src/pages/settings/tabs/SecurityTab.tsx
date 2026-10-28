@@ -8,7 +8,7 @@ import TwoFactorModal from "../../../components/auth/TwoFactorModal";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
 import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../../../util/keystore";
-import { DetailSubtitle, FormLabel, Header, SaveButton } from "../settingsStyles";
+import { DetailSubtitle, FormInput, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
 export interface SecurityTabProps {
   onBack?: () => void;
@@ -23,9 +23,12 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
 
   const [sessionRevokeSuccess, setSessionRevokeSuccess] = useState(false);
   const [sessionRevoking, setSessionRevoking] = useState(false);
+  const [confirmingSessionRevoke, setConfirmingSessionRevoke] = useState(false);
 
   const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
   const [localKeyIds, setLocalKeyIds] = useState<Set<string>>(new Set());
+  const [newDeviceName, setNewDeviceName] = useState("Browser WebCrypto Key");
+  const [confirmingKeyId, setConfirmingKeyId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,11 +49,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   }, []);
 
   const handleRevokeAllSessions = async () => {
-    if (
-      !confirm("Are you sure you want to sign out of all other sessions? Other devices will be immediately logged out.")
-    ) {
-      return;
-    }
+    setConfirmingSessionRevoke(false);
     setSessionRevoking(true);
     try {
       const res = await revokeAllSessions();
@@ -68,6 +67,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   };
 
   const handleGenerateKey = async () => {
+    const deviceName = newDeviceName.trim() || "Browser WebCrypto Key";
     setLoading(true);
     setError(null);
     try {
@@ -87,8 +87,6 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       const base64 = btoa(String.fromCharCode(...new Uint8Array(spki)));
       const pem = `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----\n`;
 
-      const deviceName = prompt("Enter a name for this device (e.g. Work Laptop):");
-      if (!deviceName) return;
       const keyIdString = `key-${Date.now()}`;
 
       await addPublicKey(keyIdString, pem, deviceName);
@@ -99,6 +97,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       setLocalKeyIds(new Set(currentLocalIds));
 
       setPublicKeys(await getPublicKeys());
+      setNewDeviceName("Browser WebCrypto Key");
+      toast.success(`Registered key for "${deviceName}".`, "Device Key Created");
     } catch (e) {
       console.error(e);
       setError("Failed to generate key");
@@ -108,13 +108,13 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   };
 
   const handleRevokeKey = async (k: PublicKeyInfo) => {
-    if (confirm("Revoke this key? It will be permanently removed from your authorized devices.")) {
-      await revokePublicKey(k.id);
-      await deletePrivateKey(k.key_id_string);
-      const currentLocalIds = await getAllPrivateKeyIds();
-      setLocalKeyIds(new Set(currentLocalIds));
-      setPublicKeys(await getPublicKeys());
-    }
+    setConfirmingKeyId(null);
+    await revokePublicKey(k.id);
+    await deletePrivateKey(k.key_id_string);
+    const currentLocalIds = await getAllPrivateKeyIds();
+    setLocalKeyIds(new Set(currentLocalIds));
+    setPublicKeys(await getPublicKeys());
+    toast.success(`Revoked key "${k.device_name || k.key_id_string}".`);
   };
 
   return (
@@ -206,13 +206,32 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
               )}
             </Box>
 
-            <SaveButton
-              style={{ whiteSpace: "nowrap", backgroundColor: "var(--color-danger-emphasis, #cf222e)" }}
-              disabled={sessionRevoking}
-              onClick={handleRevokeAllSessions}
-            >
-              {sessionRevoking ? "Revoking…" : "Revoke All Other Sessions"}
-            </SaveButton>
+            {confirmingSessionRevoke ? (
+              <Box display="flex" alignItems="center" gap={2}>
+                <SecondaryButton
+                  type="button"
+                  style={{ padding: "8px 14px", fontSize: "13px" }}
+                  onClick={() => setConfirmingSessionRevoke(false)}
+                >
+                  Cancel
+                </SecondaryButton>
+                <SaveButton
+                  style={{ whiteSpace: "nowrap", backgroundColor: "var(--color-danger-emphasis, #cf222e)" }}
+                  disabled={sessionRevoking}
+                  onClick={handleRevokeAllSessions}
+                >
+                  {sessionRevoking ? "Revoking…" : "Confirm Revoke?"}
+                </SaveButton>
+              </Box>
+            ) : (
+              <SaveButton
+                style={{ whiteSpace: "nowrap", backgroundColor: "var(--color-danger-emphasis, #cf222e)" }}
+                disabled={sessionRevoking}
+                onClick={() => setConfirmingSessionRevoke(true)}
+              >
+                {sessionRevoking ? "Revoking…" : "Revoke All Other Sessions"}
+              </SaveButton>
+            )}
           </Box>
         </Box>
 
@@ -226,9 +245,24 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
 
         {error && <p style={{ color: "var(--color-error)", marginBottom: "16px" }}>{error}</p>}
 
-        <SaveButton onClick={handleGenerateKey} disabled={loading}>
-          {loading ? "Generating..." : "Generate New Device Key"}
-        </SaveButton>
+        <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+          <FormInput
+            placeholder="Enter a name for this device (e.g. Work Laptop)"
+            value={newDeviceName}
+            onChange={(e) => setNewDeviceName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleGenerateKey();
+              }
+            }}
+            style={{ margin: 0, maxWidth: "340px", padding: "8px 12px", fontSize: "14px", borderRadius: "8px" }}
+            aria-label="Device name"
+          />
+          <SaveButton onClick={handleGenerateKey} disabled={loading} style={{ alignSelf: "center" }}>
+            {loading ? "Generating..." : "Generate New Device Key"}
+          </SaveButton>
+        </Box>
 
         <Box mt={4}>
           {publicKeys.map((k) => (
@@ -255,12 +289,30 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
                   </DetailSubtitle>
                 )}
               </Box>
-              <SaveButton
-                style={{ backgroundColor: "var(--color-danger-emphasis)" }}
-                onClick={() => handleRevokeKey(k)}
-              >
-                Revoke
-              </SaveButton>
+              {confirmingKeyId === k.id ? (
+                <Box display="flex" alignItems="center" gap={2}>
+                  <SecondaryButton
+                    type="button"
+                    style={{ padding: "6px 12px", fontSize: "13px" }}
+                    onClick={() => setConfirmingKeyId(null)}
+                  >
+                    Cancel
+                  </SecondaryButton>
+                  <SaveButton
+                    style={{ backgroundColor: "var(--color-danger-emphasis)" }}
+                    onClick={() => handleRevokeKey(k)}
+                  >
+                    Confirm Revoke?
+                  </SaveButton>
+                </Box>
+              ) : (
+                <SaveButton
+                  style={{ backgroundColor: "var(--color-danger-emphasis)" }}
+                  onClick={() => setConfirmingKeyId(k.id)}
+                >
+                  Revoke
+                </SaveButton>
+              )}
             </Box>
           ))}
         </Box>

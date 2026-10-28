@@ -453,13 +453,6 @@ jobs:
         run: npm run build:pdf --workspace=@modelscript/docs
       - name: Build Unified Site & Docs
         run: npx nx build @modelscript/docs
-      - name: Deploy Site (modelscript.org)
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.MODELSCRIPT_SITE_DEPLOY_PAT }}
-          external_repository: modelscript/modelscript.github.io
-          publish_dir: ./apps/docs/docs/.vitepress/dist
-          cname: modelscript.org
 
   docker_build:
     needs: [build, test, lint, modelica_testsuite]

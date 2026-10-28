@@ -291,7 +291,7 @@ export default defineConfig({
       { component: "LanguagesMegaMenu" },
       { component: "DocsMegaMenu" },
       ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
-      { text: "Playground", link: "https://modelscript.org/playground" },
+      { text: "Playground", link: "/playground", target: "_self" },
     ],
     sidebar: (() => {
       const docsSidebar: DefaultTheme.SidebarItem[] = [

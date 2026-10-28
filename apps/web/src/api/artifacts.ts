@@ -39,8 +39,28 @@ export const createArtifactView = async (artifactData: Record<string, any>): Pro
   return data;
 };
 
-export const getArtifactView = async (id: string | number): Promise<any> => {
-  const { data } = await api.get(`/social/artifact-views/${encodeURIComponent(String(id))}`);
+export const getArtifactView = async (id: string | number, embedToken?: string | null): Promise<any> => {
+  const { data } = await api.get(`/social/artifact-views/${encodeURIComponent(String(id))}`, {
+    params: embedToken ? { embed_token: embedToken } : undefined,
+  });
+  return data;
+};
+
+export const createMorselShortLink = async (payload: {
+  code: string;
+  dialect?: string;
+  title?: string;
+  view?: string;
+}): Promise<{ id: string; embedUrl: string; dialect: string; title: string | null; view: string }> => {
+  const { data } = await api.post("/morsels", payload);
+  return data;
+};
+
+export const createArtifactEmbedToken = async (
+  artifactId: string | number,
+  options?: { allowedOrigins?: string[]; ttlSeconds?: number },
+): Promise<{ artifactId: string; embedToken: string; expiresAt: string; embedUrl: string }> => {
+  const { data } = await api.post(`/artifacts/${encodeURIComponent(String(artifactId))}/embed-token`, options ?? {});
   return data;
 };
 

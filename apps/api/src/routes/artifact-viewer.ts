@@ -22,6 +22,7 @@ import { Router as createRouter } from "express";
 import { getArtifactRegistry } from "../artifacts/index.js";
 import type { LibraryDatabase } from "../database.js";
 import { convertStepToJson } from "../util/cad-converter.js";
+import { verifySignedEmbedToken } from "./oembed.js";
 
 /** Safely extract a string from an Express v5 param. */
 function param(req: Request, name: string): string {
@@ -163,6 +164,17 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
       if (!packageName || !version || isNaN(artifactId)) {
         res.status(400).json({ error: "Package name, version, and artifact ID required" });
         return;
+      }
+
+      const embedToken =
+        (typeof req.query["embed_token"] === "string" ? req.query["embed_token"] : undefined) ||
+        (typeof req.headers["x-embed-token"] === "string" ? req.headers["x-embed-token"] : undefined);
+      if (embedToken) {
+        const verification = verifySignedEmbedToken(embedToken, String(artifactId), req.headers.origin);
+        if (!verification.valid) {
+          res.status(403).json({ error: verification.reason || "Invalid embed token" });
+          return;
+        }
       }
 
       const pkg = database.getPackage(packageName);

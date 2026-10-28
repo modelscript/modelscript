@@ -42,7 +42,7 @@ function ParameterRow({
 
   useEffect(() => {
     if (isBoolean) return; // Boolean toggle calls onParameterChange immediately via onClick
-    if (localValue === value) return;
+    if (localValue === value || localValue === "-") return;
 
     const timeoutId = setTimeout(() => {
       if (onParameterChange) {
@@ -70,6 +70,7 @@ function ParameterRow({
     >
       <div className="d-flex flex-row flex-justify-between flex-items-center" onClick={(e) => e.stopPropagation()}>
         <div
+          id={`param-label-${parameter.name}`}
           className="f6 color-fg-muted"
           style={{
             marginRight: 8,
@@ -101,7 +102,7 @@ function ParameterRow({
         ) : (
           <TextInput
             size="small"
-            value={localValue === "-" ? "" : localValue}
+            value={localValue}
             onChange={(e) => {
               e.stopPropagation();
               setLocalValue(e.target.value);
@@ -116,7 +117,7 @@ function ParameterRow({
             }}
             onKeyUp={(e) => e.stopPropagation()}
             onBlur={() => {
-              if (localValue !== value && onParameterChange) {
+              if (localValue !== value && localValue !== "-" && onParameterChange) {
                 onParameterChange(parameter.name, localValue);
               }
             }}
@@ -165,7 +166,7 @@ function SchemaFieldRow({
 
   useEffect(() => {
     if (field.kind === "boolean") return;
-    if (localVal === String(currentValue ?? field.defaultValue ?? "")) return;
+    if (localVal === "-" || localVal === String(currentValue ?? field.defaultValue ?? "")) return;
 
     const timeout = setTimeout(() => {
       onParameterChange?.(field.key, localVal);
@@ -280,9 +281,10 @@ function SchemaFieldRow({
         ) : (
           <TextInput
             size="small"
-            type={field.kind === "number" ? "number" : "text"}
+            type="text"
+            inputMode={field.kind === "number" ? "decimal" : undefined}
             disabled={!isEnabled}
-            value={localVal === "-" ? "" : localVal}
+            value={localVal}
             onChange={(e) => setLocalVal(e.target.value)}
             trailingVisual={
               unitStr

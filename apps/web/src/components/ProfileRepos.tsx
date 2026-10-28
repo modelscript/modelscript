@@ -39,20 +39,28 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
     setLinking(true);
     setLinkError(null);
 
-    // Parse GitLab URL like https://gitlab.com/modelscript/msl
-    let provider = "gitlab";
-    let fullName = repoUrl;
+    // Parse GitHub/GitLab URL or owner/repo shorthand
+    let provider = "github";
+    let fullName = repoUrl.trim();
 
-    try {
-      const parsed = new URL(fullName.startsWith("http") ? fullName : "https://" + fullName);
-      const host = parsed.hostname.toLowerCase();
-      if (host === "github.com" || host.endsWith(".github.com")) provider = "github";
-      fullName = parsed.pathname
-        .replace(/^\//, "")
-        .replace(/\/$/, "")
-        .replace(/\.git$/, "");
-    } catch {
-      // if not a URL, assume it's just namespace/project
+    if (
+      fullName.startsWith("http://") ||
+      fullName.startsWith("https://") ||
+      fullName.startsWith("github.com/") ||
+      fullName.startsWith("gitlab.com/")
+    ) {
+      try {
+        const parsed = new URL(fullName.startsWith("http") ? fullName : "https://" + fullName);
+        const host = parsed.hostname.toLowerCase();
+        if (host === "gitlab.com" || host.endsWith(".gitlab.com")) provider = "gitlab";
+        else if (host === "github.com" || host.endsWith(".github.com")) provider = "github";
+        fullName = parsed.pathname
+          .replace(/^\//, "")
+          .replace(/\/$/, "")
+          .replace(/\.git$/, "");
+      } catch {
+        // if not a URL, assume it's just namespace/project
+      }
     }
 
     try {

@@ -4,6 +4,7 @@ import {
   CodeIcon,
   DownloadIcon,
   FileIcon,
+  PencilIcon,
   PulseIcon,
   RepoForkedIcon,
   SearchIcon,
@@ -11,8 +12,8 @@ import {
   TerminalIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button } from "@primer/react";
-import React from "react";
+import { ActionList, ActionMenu, Button, IconButton } from "@primer/react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { useTheme } from "../../../theme";
@@ -24,7 +25,9 @@ export interface PlaygroundNavbarProps {
   fromArtifactParam: string | null;
   currentTitle: string;
   currentLang?: string;
+  isDirty?: boolean;
   publishLabel?: string;
+  onTitleChange?: (newTitle: string) => void;
   onSelectExample: (ex: HeroExample) => void;
   onSelectLang?: (lang: string) => void;
   onOpenInVsCode?: () => void;
@@ -38,7 +41,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   fromArtifactParam,
   currentTitle,
   currentLang = "modelica",
+  isDirty = false,
   publishLabel,
+  onTitleChange,
   onSelectExample,
   onSelectLang,
   onOpenInVsCode,
@@ -49,6 +54,24 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 }) => {
   const { user } = useAuth();
   const { theme } = useTheme();
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(currentTitle);
+
+  useEffect(() => {
+    setDraftTitle(currentTitle);
+  }, [currentTitle]);
+
+  const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
+
+  const commitTitleChange = () => {
+    setIsEditingTitle(false);
+    const trimmed = draftTitle.trim();
+    if (trimmed && trimmed !== currentTitle) {
+      onTitleChange?.(trimmed);
+    } else {
+      setDraftTitle(currentTitle);
+    }
+  };
 
   const currentLangOption = PLAYGROUND_LANGUAGES.find((l) => l.id === currentLang) || {
     id: currentLang,
@@ -76,7 +99,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 
         {fromArtifactParam && (
           <Link
-            to={`/render-artifact/${fromArtifactParam}`}
+            to={`/playground?fromArtifact=${fromArtifactParam}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -97,38 +120,100 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* Preset Example Picker */}
-        <ActionMenu>
-          <ActionMenu.Button size="small">
-            <span
-              style={{
-                display: "inline-block",
-                maxWidth: 180,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                verticalAlign: "bottom",
+        {/* Preset Example Picker & Inline Title Rename */}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+          {isEditingTitle ? (
+            <input
+              type="text"
+              value={draftTitle}
+              aria-label="Model title"
+              autoFocus
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onBlur={commitTitleChange}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitTitleChange();
+                } else if (e.key === "Escape") {
+                  setDraftTitle(currentTitle);
+                  setIsEditingTitle(false);
+                }
               }}
-            >
-              {currentTitle}
-            </span>
-          </ActionMenu.Button>
-          <ActionMenu.Overlay width="large">
-            <ActionList>
-              <ActionList.Group title="Curated Starter Models">
-                {HERO_EXAMPLES.map((ex) => (
-                  <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
-                    <ActionList.LeadingVisual>
-                      <FileIcon />
-                    </ActionList.LeadingVisual>
-                    {ex.title}
-                    <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
-                  </ActionList.Item>
-                ))}
-              </ActionList.Group>
-            </ActionList>
-          </ActionMenu.Overlay>
-        </ActionMenu>
+              style={{
+                width: 170,
+                height: 28,
+                padding: "2px 8px",
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 6,
+                border: "1px solid var(--color-accent-fg, #0969da)",
+                background: "var(--color-canvas-default)",
+                color: "var(--color-fg-default)",
+                outline: "none",
+              }}
+            />
+          ) : (
+            <ActionMenu>
+              <ActionMenu.Button size="small">
+                <span
+                  style={{
+                    display: "inline-block",
+                    maxWidth: 180,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    verticalAlign: "bottom",
+                  }}
+                >
+                  {currentTitle}
+                </span>
+                {isDirty && (
+                  <span
+                    title="Unsaved changes"
+                    aria-label="Unsaved changes"
+                    style={{
+                      display: "inline-block",
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      backgroundColor: "#f59e0b",
+                      marginLeft: 6,
+                      verticalAlign: "middle",
+                    }}
+                  />
+                )}
+              </ActionMenu.Button>
+              <ActionMenu.Overlay width="large">
+                <ActionList>
+                  <ActionList.Group title="Curated Starter Models">
+                    {HERO_EXAMPLES.map((ex) => (
+                      <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
+                        <ActionList.LeadingVisual>
+                          <FileIcon />
+                        </ActionList.LeadingVisual>
+                        {ex.title}
+                        <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
+                      </ActionList.Item>
+                    ))}
+                  </ActionList.Group>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
+          )}
+          {onTitleChange && !isEditingTitle && (
+            <IconButton
+              aria-label="Rename model"
+              title="Rename model"
+              icon={PencilIcon}
+              size="small"
+              variant="invisible"
+              className="nav-hide-sm"
+              onClick={() => {
+                setDraftTitle(currentTitle);
+                setIsEditingTitle(true);
+              }}
+            />
+          )}
+        </div>
 
         {/* Language / Dialect Selector */}
         {onSelectLang && (
@@ -163,10 +248,12 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           variant="invisible"
           leadingVisual={SearchIcon}
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
-          title="Search models, packages & commands (Cmd+K)"
+          title={`Search models, packages & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
           className="nav-hide-sm"
         >
-          <span style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>⌘K</span>
+          <span style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
+            {isMac ? "⌘K" : "Ctrl+K"}
+          </span>
         </Button>
 
         {/* Promote to Multi-File VS Code Workbench */}

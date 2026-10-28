@@ -11,7 +11,7 @@ import {
   ScreenNormalIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Spinner, Text } from "@primer/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
 import { getSolution, type Solution, type SolutionRelease } from "../api";
@@ -48,11 +48,16 @@ export default function SolutionPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+
+  const viewportRef = useRef<HTMLElement>(null);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
 
   usePageTitle(solution ? `${solution.name} — @${username}` : "Engineering Solution");
 
   useEffect(() => {
     if (!username || !slug) return;
+    setIframeLoaded(false);
     const fetch = async () => {
       setLoading(true);
       try {
@@ -76,9 +81,30 @@ export default function SolutionPage() {
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    if (!showDownloadMenu) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setShowDownloadMenu(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowDownloadMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showDownloadMenu]);
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement
+      const target = viewportRef.current || document.documentElement;
+      target
         .requestFullscreen()
         .then(() => setIsFullscreen(true))
         .catch(() => {});
@@ -226,7 +252,7 @@ export default function SolutionPage() {
 
           {/* Desktop Binary Download Dropdown */}
           {(release?.tauri_windows_url || release?.tauri_linux_url || release?.tauri_darwin_url) && (
-            <div style={{ position: "relative" }}>
+            <div ref={downloadMenuRef} style={{ position: "relative" }}>
               <Button
                 size="small"
                 onClick={() => setShowDownloadMenu(!showDownloadMenu)}
@@ -339,11 +365,31 @@ export default function SolutionPage() {
       </SolutionHeader>
 
       {/* Main Sandbox Iframe Viewport */}
-      <ViewportContainer>
+      <ViewportContainer ref={viewportRef}>
+        {!iframeLoaded && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#090d16",
+              zIndex: 10,
+            }}
+          >
+            <Spinner size="large" />
+            <Text color="var(--color-fg-muted)" style={{ display: "block", marginTop: "12px", fontSize: "14px" }}>
+              Loading application viewport...
+            </Text>
+          </div>
+        )}
         <iframe
           src={release?.bundle_url || `/embed/solution/${solution.id}`}
           title={solution.name}
           sandbox="allow-scripts allow-downloads allow-forms allow-same-origin"
+          onLoad={() => setIframeLoaded(true)}
           style={{
             width: "100%",
             height: "100%",

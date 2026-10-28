@@ -516,8 +516,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       return [...defaultActionItems, ...defaultNavItems];
     }
 
-    // Filtered static navigation items
+    // Filtered static navigation and action items
     const matchingNav = defaultNavItems.filter(
+      (item) =>
+        item.title.toLowerCase().includes(query.toLowerCase()) ||
+        (item.subtitle && item.subtitle.toLowerCase().includes(query.toLowerCase())),
+    );
+
+    const actionItems = defaultActionItems.filter(
       (item) =>
         item.title.toLowerCase().includes(query.toLowerCase()) ||
         (item.subtitle && item.subtitle.toLowerCase().includes(query.toLowerCase())),
@@ -603,7 +609,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       },
     ];
 
-    return [...aiItems, ...matchingNav, ...userItems, ...packageItems, ...repoItems];
+    return [...matchingNav, ...actionItems, ...userItems, ...packageItems, ...repoItems, ...aiItems];
   }, [query, completions, navigate, onClose, onOpenCompose, isAdmin, user, hasIde, hasCae]);
 
   // Keyboard navigation
@@ -654,7 +660,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
   return (
     <Overlay onClick={onClose}>
-      <PaletteCard onClick={(e) => e.stopPropagation()}>
+      <PaletteCard role="dialog" aria-modal="true" aria-label="Command Palette" onClick={(e) => e.stopPropagation()}>
         <InputHeader>
           <SearchIcon size={18} fill="var(--color-fg-muted)" />
           <input

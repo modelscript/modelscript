@@ -374,7 +374,7 @@ const ProfileFooterContainer = styled.div`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: var(--surface-row-hover);
   }
 `;
 
@@ -385,14 +385,43 @@ const GuestFooter = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
 
   @media (max-width: 1280px) {
+    padding: 10px 4px 4px 4px;
+    align-items: center;
+    gap: 6px;
+
+    .guest-theme-label {
+      display: none;
+    }
+
+    .guest-auth-actions {
+      flex-direction: column;
+      width: 100%;
+      gap: 6px;
+    }
+
+    .guest-auth-actions a {
+      padding: 6px 4px;
+      font-size: 11px;
+      text-align: center;
+      justify-content: center;
+    }
+  }
+
+  @media (max-width: 899px) {
     display: none;
   }
 `;
 
 const GuestThemeToggle = styled.button`
   align-self: flex-start;
+
+  @media (max-width: 1280px) {
+    align-self: center;
+  }
 `;
 
 interface SidebarProps {
@@ -455,49 +484,52 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     systemLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
   }
 
-  const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string | undefined }) => (
-    <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
-      <NavPill $active={location.pathname.startsWith(link.to)}>
-        <div
-          style={{
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 28,
-            height: 28,
-          }}
-        >
-          <link.icon size={24} />
-          {link.to === "/notifications" && unreadCount > 0 && (
-            <div
-              style={{
-                position: "absolute",
-                top: -4,
-                right: -6,
-                backgroundColor: "var(--color-accent-cyan)",
-                color: "white",
-                borderRadius: "50%",
-                minWidth: "20px",
-                height: "20px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "11px",
-                fontWeight: "bold",
-                padding: "0 4px",
-                boxShadow: "0 0 0 2px var(--color-bg-primary)",
-              }}
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </div>
-          )}
-        </div>
-        <Text className="nav-label">{link.label}</Text>
-        {link.shortcut && <ShortcutBadge className="shortcut-badge">{link.shortcut}</ShortcutBadge>}
-      </NavPill>
-    </NavItem>
-  );
+  const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string | undefined }) => {
+    const isActive = location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
+    return (
+      <NavItem key={link.to} to={link.to} title={link.label} aria-label={link.label} $active={isActive}>
+        <NavPill $active={isActive}>
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+            }}
+          >
+            <link.icon size={24} />
+            {link.to === "/notifications" && unreadCount > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -6,
+                  backgroundColor: "var(--color-accent-cyan)",
+                  color: "white",
+                  borderRadius: "50%",
+                  minWidth: "20px",
+                  height: "20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                  padding: "0 4px",
+                  boxShadow: "0 0 0 2px var(--color-bg-primary)",
+                }}
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </div>
+            )}
+          </div>
+          <Text className="nav-label">{link.label}</Text>
+          {link.shortcut && <ShortcutBadge className="shortcut-badge">{link.shortcut}</ShortcutBadge>}
+        </NavPill>
+      </NavItem>
+    );
+  };
 
   return (
     <SidebarContainer>
@@ -616,10 +648,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
       {!user && (
         <GuestFooter>
-          <GuestThemeToggle type="button" className="ms-btn ms-btn-quiet ms-btn-sm" onClick={toggleTheme}>
-            <ThemeIcon size={14} /> {themeLabel}
+          <GuestThemeToggle
+            type="button"
+            className="ms-btn ms-btn-quiet ms-btn-sm"
+            onClick={toggleTheme}
+            title={themeLabel}
+            aria-label={themeLabel}
+          >
+            <ThemeIcon size={14} /> <span className="guest-theme-label">{themeLabel}</span>
           </GuestThemeToggle>
-          <Box display="flex" gap={2}>
+          <Box display="flex" gap={2} className="guest-auth-actions">
             <Link to="/login" className="ms-btn ms-btn-secondary" style={{ flex: 1 }}>
               Log in
             </Link>

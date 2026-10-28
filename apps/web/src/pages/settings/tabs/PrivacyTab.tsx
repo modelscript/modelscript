@@ -29,9 +29,10 @@ import {
 export interface PrivacyTabProps {
   subView: "privacy" | "deleteAccount";
   onNavigate: (tab: any) => void;
+  onBack?: (() => void) | undefined;
 }
 
-export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate }) => {
+export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate, onBack }) => {
   const { user, logout } = useAuth();
   const toast = useToast();
 
@@ -68,7 +69,11 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate }) =
     return (
       <>
         <Header>
-          <CircleIconButton onClick={() => onNavigate("privacy")} style={{ marginRight: "8px" }}>
+          <CircleIconButton
+            className="subtab-back"
+            onClick={() => onNavigate("privacy")}
+            style={{ marginRight: "8px" }}
+          >
             <ArrowLeftIcon size={20} />
           </CircleIconButton>
           Deactivate or Delete Account
@@ -216,7 +221,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate }) =
   return (
     <>
       <Header>
-        <CircleIconButton onClick={() => onNavigate("account")} style={{ marginRight: "8px" }}>
+        <CircleIconButton onClick={() => (onBack ? onBack() : onNavigate("account"))} style={{ marginRight: "8px" }}>
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         Privacy &amp; Data Protection

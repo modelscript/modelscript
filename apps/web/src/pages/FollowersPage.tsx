@@ -89,7 +89,7 @@ const TabButton = styled(Link)<{ $active?: boolean | undefined }>`
   }
 `;
 
-interface FollowUser {
+export interface FollowUser {
   id: string | number;
   username: string;
   display_name?: string | undefined;
@@ -98,11 +98,99 @@ interface FollowUser {
   is_following?: boolean | undefined;
 }
 
+export interface FollowListPageLayoutProps {
+  username: string | undefined;
+  activeTab: "followers" | "following";
+  users: FollowUser[];
+  loading: boolean;
+  emptyMessage: string;
+}
+
+export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
+  username,
+  activeTab,
+  users,
+  loading,
+  emptyMessage,
+}) => {
+  const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+
+  return (
+    <Box>
+      <PageHeader back={() => navigate(`/${username}`)} title={`@${username}`} divider={false} />
+
+      <TabBar>
+        <TabButton to={`/${username}/followers`} $active={activeTab === "followers"}>
+          Followers
+        </TabButton>
+        <TabButton to={`/${username}/following`} $active={activeTab === "following"}>
+          Following
+        </TabButton>
+      </TabBar>
+      {loading ? (
+        <Box p={4} display="flex" justifyContent="center">
+          <Spinner />
+        </Box>
+      ) : users.length === 0 ? (
+        <Box p={6} textAlign="center">
+          <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px" }}>{emptyMessage}</Text>
+        </Box>
+      ) : (
+        <Box display="flex" flexDirection="column">
+          {users.map((u) => {
+            const parsed = parseFederatedHandle(u.username);
+            return (
+              <UserRow key={u.id}>
+                <Link
+                  to={`/${u.username}`}
+                  style={{
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "flex",
+                    gap: "12px",
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
+                  <Box display="flex" flexDirection="column" flex={1} style={{ minWidth: 0 }}>
+                    <Box display="flex" flexDirection="column">
+                      <Text style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
+                        {u.display_name || u.username}
+                      </Text>
+                      <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                        <Text className="handle-text">@{parsed.localUsername}</Text>
+                        {parsed.isFederated && parsed.remoteDomain && (
+                          <FederatedDomainPill domain={parsed.remoteDomain} />
+                        )}
+                      </Box>
+                    </Box>
+                    {u.bio && (
+                      <Text style={{ fontSize: "15px", marginTop: "4px", color: "var(--color-fg-default)" }}>
+                        {u.bio}
+                      </Text>
+                    )}
+                  </Box>
+                </Link>
+                {currentUser?.username !== u.username && (
+                  <Box ml={3} flexShrink={0}>
+                    <FollowButton username={u.username} initialIsFollowing={Boolean(u.is_following)} />
+                  </Box>
+                )}
+              </UserRow>
+            );
+          })}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 const FollowersPage: React.FC = () => {
   const { username } = useParams();
   usePageTitle(username ? `@${username}'s Followers` : "Followers");
-  const navigate = useNavigate();
-  const { token, user: currentUser } = useAuth();
+  const { token } = useAuth();
   const [users, setUsers] = useState<FollowUser[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -123,71 +211,13 @@ const FollowersPage: React.FC = () => {
   }, [username, token]);
 
   return (
-    <Box>
-      <PageHeader back={() => navigate(`/${username}`)} title={`@${username}`} divider={false} />
-
-      <TabBar>
-        <TabButton to={`/${username}/followers`} $active={true}>
-          Followers
-        </TabButton>
-        <TabButton to={`/${username}/following`} $active={false}>
-          Following
-        </TabButton>
-      </TabBar>
-      {loading ? (
-        <Box p={4} display="flex" justifyContent="center">
-          <Spinner />
-        </Box>
-      ) : users.length === 0 ? (
-        <Box p={6} textAlign="center">
-          <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px" }}>
-            @{username} doesn't have any followers yet.
-          </Text>
-        </Box>
-      ) : (
-        <Box display="flex" flexDirection="column">
-          {users.map((u) => (
-            <Link to={`/${u.username}`} key={u.id} style={{ textDecoration: "none", color: "inherit" }}>
-              <UserRow>
-                <Box display="flex" gap={3} flex={1}>
-                  <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
-                  <Box display="flex" flexDirection="column" flex={1}>
-                    <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                      <Box display="flex" flexDirection="column">
-                        <Text style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
-                          {u.display_name || u.username}
-                        </Text>
-                        {(() => {
-                          const parsed = parseFederatedHandle(u.username);
-                          return (
-                            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                              <Text className="handle-text">@{parsed.localUsername}</Text>
-                              {parsed.isFederated && parsed.remoteDomain && (
-                                <FederatedDomainPill domain={parsed.remoteDomain} />
-                              )}
-                            </Box>
-                          );
-                        })()}
-                      </Box>
-                      {currentUser?.username !== u.username && (
-                        <Box onClick={(e) => e.preventDefault()}>
-                          <FollowButton username={u.username} initialIsFollowing={Boolean(u.is_following)} />
-                        </Box>
-                      )}
-                    </Box>
-                    {u.bio && (
-                      <Text style={{ fontSize: "15px", marginTop: "4px", color: "var(--color-fg-default)" }}>
-                        {u.bio}
-                      </Text>
-                    )}
-                  </Box>
-                </Box>
-              </UserRow>
-            </Link>
-          ))}
-        </Box>
-      )}
-    </Box>
+    <FollowListPageLayout
+      username={username}
+      activeTab="followers"
+      users={users}
+      loading={loading}
+      emptyMessage={`@${username} doesn't have any followers yet.`}
+    />
   );
 };
 

@@ -3,6 +3,7 @@
 import {
   DatabaseIcon,
   GlobeIcon,
+  GraphIcon,
   HistoryIcon,
   LawIcon,
   ReportIcon,
@@ -27,10 +28,25 @@ export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, o
         <span>Instance Admin</span>
       </Header>
 
-      <Box display="flex" flexDirection="column" py={2}>
+      <Box
+        display="flex"
+        flexDirection="column"
+        py={2}
+        sx={{
+          "@media (max-width: 900px)": {
+            flexDirection: "row",
+            overflowX: "auto",
+            padding: "0 8px",
+          },
+        }}
+      >
         <TabButton $active={activeTab === "moderation"} onClick={() => onSelectTab("moderation")}>
           <ReportIcon size={16} />
           <span>Moderation Queue</span>
+        </TabButton>
+        <TabButton $active={activeTab === "analytics"} onClick={() => onSelectTab("analytics")}>
+          <GraphIcon size={16} />
+          <span>Analytics &amp; Traffic</span>
         </TabButton>
         <TabButton $active={activeTab === "federation"} onClick={() => onSelectTab("federation")}>
           <GlobeIcon size={16} />

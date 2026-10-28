@@ -24,6 +24,7 @@ interface DynamicActionDescriptor {
 }
 
 type ActionCommandArgs =
+  | string
   | vscode.Uri
   | ({
       uri?: string | undefined;
@@ -50,7 +51,7 @@ interface EmtSimulationResultPayload {
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
 }
 
-interface EmtActionExecuteResponse extends EmtSimulationResultPayload {
+export interface EmtActionExecuteResponse extends EmtSimulationResultPayload {
   simulationResult?: EmtSimulationResultPayload | undefined;
   settings?: { timeStepUs?: number | undefined; durationSec?: number | undefined } | undefined;
   project?: string | undefined;
@@ -60,6 +61,172 @@ interface EmtActionExecuteResponse extends EmtSimulationResultPayload {
         clauses?: unknown[] | undefined;
       }
     | undefined;
+}
+
+interface TrajectoryResult {
+  t: number[];
+  states: string[];
+  y: number[][];
+}
+
+interface ActionExecutionResult {
+  simulationResult?: {
+    comtrade?: { cfg: string; dat: string } | undefined;
+    pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+    [key: string]: unknown;
+  };
+  trajectory?: unknown;
+  comtrade?: { cfg: string; dat: string } | undefined;
+  pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+  project?: string;
+  complianceReport?: {
+    overallCompliance?: boolean;
+    clauses?: unknown[];
+  };
+  variableCount?: number;
+  equationCount?: number;
+  compliant?: boolean;
+  passed?: boolean;
+  [key: string]: unknown;
+}
+
+interface RawSimulationData {
+  simulationResult?: unknown;
+  trajectory?: unknown;
+  t?: unknown;
+  states?: unknown;
+  y?: unknown;
+  time?: unknown;
+  timePoints?: unknown;
+  times?: unknown;
+  steps?: unknown;
+  busPhaseVoltages?: unknown;
+  busVoltages?: unknown;
+  branchPhaseCurrents?: unknown;
+  branchCurrents?: unknown;
+  history?: unknown;
+  dtMs?: unknown;
+  [key: string]: unknown;
+}
+
+function normalizeToTrajectory(raw: unknown): TrajectoryResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const rawObj = raw as RawSimulationData;
+  const rawSub = rawObj.simulationResult ?? rawObj.trajectory ?? raw;
+  if (!rawSub || typeof rawSub !== "object") return null;
+  const obj = rawSub as RawSimulationData;
+
+  // 1. Direct Arena DAE format: { t: number[], states: string[], y: number[][] }
+  if (Array.isArray(obj.t) && Array.isArray(obj.states) && Array.isArray(obj.y) && obj.t.length > 0) {
+    return { t: obj.t as number[], states: obj.states as string[], y: obj.y as number[][] };
+  }
+
+  // 2. Time vector extraction
+  const rawTime = obj.time ?? obj.t ?? obj.timePoints ?? obj.times ?? obj.steps;
+  const timeArr: number[] = Array.isArray(rawTime)
+    ? rawTime.map(Number)
+    : rawTime instanceof Float64Array || ArrayBuffer.isView(rawTime)
+      ? Array.from(rawTime as unknown as ArrayLike<number>)
+      : [];
+
+  const stateNames: string[] = [];
+  const yRows: number[][] = [];
+
+  const addSeriesMap = (prefix: string, mapOrObj: unknown) => {
+    if (!mapOrObj || typeof mapOrObj !== "object") return;
+    const entries: [string, unknown][] =
+      mapOrObj instanceof Map ? Array.from(mapOrObj.entries()) : Object.entries(mapOrObj);
+    for (const [k, val] of entries) {
+      if (Array.isArray(val) || val instanceof Float64Array || ArrayBuffer.isView(val)) {
+        const arr = Array.from(val as ArrayLike<number>).map(Number);
+        if (arr.length > 0 && !arr.some(isNaN)) {
+          stateNames.push(prefix ? `${prefix}_${k}` : k);
+          yRows.push(arr);
+        }
+      } else if (val && typeof val === "object") {
+        for (const [subK, subVal] of Object.entries(val as Record<string, unknown>)) {
+          if (Array.isArray(subVal) || subVal instanceof Float64Array || ArrayBuffer.isView(subVal)) {
+            const arr = Array.from(subVal as ArrayLike<number>).map(Number);
+            if (arr.length > 0) {
+              stateNames.push(`${prefix ? `${prefix}_` : ""}${k}_${subK}`);
+              yRows.push(arr);
+            }
+          }
+        }
+      }
+    }
+  };
+
+  if (obj.busPhaseVoltages) addSeriesMap("v", obj.busPhaseVoltages);
+  else if (obj.busVoltages) addSeriesMap("v", obj.busVoltages);
+  if (obj.branchPhaseCurrents) addSeriesMap("i", obj.branchPhaseCurrents);
+  else if (obj.branchCurrents) addSeriesMap("i", obj.branchCurrents);
+
+  for (const field of [
+    "variables",
+    "series",
+    "signals",
+    "species",
+    "traces",
+    "channels",
+    "nodes",
+    "pressures",
+    "temperatures",
+    "flows",
+    "holdups",
+    "history",
+    "results",
+  ]) {
+    if (obj[field] && !Array.isArray(obj[field])) {
+      addSeriesMap("", obj[field]);
+    }
+  }
+
+  // PLCopen / step history array of records: { history: Record<string, number>[] }
+  if (
+    yRows.length === 0 &&
+    Array.isArray(obj.history) &&
+    obj.history.length > 0 &&
+    typeof obj.history[0] === "object"
+  ) {
+    const historyRows = obj.history as Record<string, unknown>[];
+    const firstRow = historyRows[0] ?? {};
+    const keys = Object.keys(firstRow).filter((k) => k !== "time" && k !== "cycle");
+    const dtMs = typeof obj.dtMs === "number" ? obj.dtMs : 10;
+    const tHist = historyRows.map((row, idx) => Number(row["time"] ?? idx * dtMs * 0.001));
+    for (const k of keys) {
+      stateNames.push(k);
+      yRows.push(historyRows.map((row) => Number(row[k] ?? 0)));
+    }
+    if (timeArr.length === 0) timeArr.push(...tHist);
+  }
+
+  // Top-level numeric arrays alongside time
+  if (yRows.length === 0 && timeArr.length > 0) {
+    for (const [k, val] of Object.entries(obj)) {
+      if (k === "time" || k === "t" || k === "timePoints" || k === "times" || k === "steps") continue;
+      if (Array.isArray(val) && val.length === timeArr.length && typeof val[0] === "number") {
+        stateNames.push(k);
+        yRows.push(val as number[]);
+      }
+    }
+  }
+
+  if (timeArr.length > 0 && yRows.length > 0) {
+    const nSteps = timeArr.length;
+    const nVars = yRows.length;
+    const yMatrix: number[][] = new Array(nSteps);
+    for (let ti = 0; ti < nSteps; ti++) {
+      const row = new Array(nVars);
+      for (let vi = 0; vi < nVars; vi++) {
+        row[vi] = yRows[vi]![ti] ?? 0;
+      }
+      yMatrix[ti] = row;
+    }
+    return { t: timeArr, states: stateNames, y: yMatrix };
+  }
+
+  return null;
 }
 
 export async function registerDynamicActions(
@@ -77,7 +244,9 @@ export async function registerDynamicActions(
         const cmdId = `modelscript.action.${action.id}`;
         const handler = async (args?: ActionCommandArgs) => {
           const targetDoc = vscode.window.activeTextEditor?.document;
-          let targetUri = (args instanceof vscode.Uri ? args.toString() : args?.uri) ?? targetDoc?.uri.toString();
+          let targetUri =
+            (typeof args === "string" ? args : args instanceof vscode.Uri ? args.toString() : args?.uri) ??
+            targetDoc?.uri.toString();
           if (!targetUri) {
             const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
             if (tab?.input instanceof vscode.TabInputCustom) {
@@ -87,7 +256,7 @@ export async function registerDynamicActions(
           const inputs: { documentText?: string | undefined; name?: string | undefined } & Record<string, unknown> =
             typeof args === "object" && args && !(args instanceof vscode.Uri) ? { ...args } : {};
           if (!inputs.documentText) {
-            if (targetDoc) {
+            if (targetDoc && (!targetUri || targetDoc.uri.toString() === targetUri)) {
               inputs.documentText = targetDoc.getText();
             } else if (targetUri) {
               const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === targetUri);
@@ -164,146 +333,93 @@ export async function registerDynamicActions(
             return await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", args);
           }
 
-          if (action.id === "simulate_hybrid_emt" || action.category === "simulate") {
-            try {
-              return await vscode.window.withProgress(
+          return await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: action.title ? `Running ${action.title}...` : `Executing ${action.id}...`,
+              cancellable: false,
+            },
+            async () => {
+              const res = await client.sendRequest<ActionExecutionResult | string | unknown[]>(
+                "modelscript/executeAction",
                 {
-                  location: vscode.ProgressLocation.Notification,
-                  title: action.title ? `Running ${action.title}...` : "Running EMT simulation...",
-                  cancellable: false,
-                },
-                async () => {
-                  const res = await client.sendRequest<EmtActionExecuteResponse>("modelscript/executeAction", {
-                    actionId: action.id,
-                    uri: targetUri,
-                    languageId: action.languageId ?? targetDoc?.languageId ?? "pscad",
-                    inputs,
-                  });
-                  const simRes = res?.simulationResult ?? res;
-                  if (simRes) {
-                    const timeArr: number[] = Array.isArray(simRes.time)
-                      ? simRes.time
-                      : simRes.time instanceof Float64Array || ArrayBuffer.isView(simRes.time)
-                        ? Array.from(simRes.time as unknown as ArrayLike<number>)
-                        : simRes.t
-                          ? Array.isArray(simRes.t)
-                            ? simRes.t
-                            : Array.from(simRes.t as unknown as ArrayLike<number>)
-                          : [];
-                    if (timeArr.length > 0) {
-                      const stateNames: string[] = [];
-                      const yRows: number[][] = [];
-
-                      if (simRes.busPhaseVoltages) {
-                        const mapEntries: [string, PhaseMapValue][] =
-                          simRes.busPhaseVoltages instanceof Map
-                            ? Array.from(simRes.busPhaseVoltages.entries())
-                            : Object.entries(simRes.busPhaseVoltages);
-                        for (const [bus, phases] of mapEntries) {
-                          for (const ph of ["a", "b", "c"] as const) {
-                            if (phases?.[ph]) {
-                              stateNames.push(`v_${bus}_${ph}`);
-                              yRows.push(Array.from(phases[ph]));
-                            }
-                          }
-                        }
-                      } else if (simRes.busVoltages) {
-                        const mapEntries: [string, Iterable<number> | ArrayLike<number>][] =
-                          simRes.busVoltages instanceof Map
-                            ? Array.from(simRes.busVoltages.entries())
-                            : Object.entries(simRes.busVoltages);
-                        for (const [bus, arr] of mapEntries) {
-                          stateNames.push(`v_${bus}`);
-                          yRows.push(Array.from(arr));
-                        }
-                      }
-
-                      if (simRes.branchPhaseCurrents) {
-                        const mapEntries: [string, PhaseMapValue][] =
-                          simRes.branchPhaseCurrents instanceof Map
-                            ? Array.from(simRes.branchPhaseCurrents.entries())
-                            : Object.entries(simRes.branchPhaseCurrents);
-                        for (const [branch, phases] of mapEntries) {
-                          for (const ph of ["a", "b", "c"] as const) {
-                            if (phases?.[ph]) {
-                              stateNames.push(`i_${branch}_${ph}`);
-                              yRows.push(Array.from(phases[ph]));
-                            }
-                          }
-                        }
-                      } else if (simRes.branchCurrents) {
-                        const mapEntries: [string, Iterable<number> | ArrayLike<number>][] =
-                          simRes.branchCurrents instanceof Map
-                            ? Array.from(simRes.branchCurrents.entries())
-                            : Object.entries(simRes.branchCurrents);
-                        for (const [branch, arr] of mapEntries) {
-                          stateNames.push(`i_${branch}`);
-                          yRows.push(Array.from(arr));
-                        }
-                      }
-
-                      if (yRows.length > 0) {
-                        const nSteps = timeArr.length;
-                        const nVars = yRows.length;
-                        const yMatrix: number[][] = new Array(nSteps);
-                        for (let ti = 0; ti < nSteps; ti++) {
-                          const row = new Array(nVars);
-                          for (let vi = 0; vi < nVars; vi++) {
-                            row[vi] = yRows[vi]![ti] ?? 0;
-                          }
-                          yMatrix[ti] = row;
-                        }
-
-                        const dt =
-                          timeArr.length > 1 ? timeArr[1]! - timeArr[0]! : (res?.settings?.timeStepUs ?? 50) * 1e-6;
-                        const tStop = timeArr[timeArr.length - 1] ?? res?.settings?.durationSec ?? 0.25;
-
-                        SimulationPanel.createOrShowWithData(
-                          context.extensionUri,
-                          {
-                            t: timeArr,
-                            states: stateNames,
-                            y: yMatrix,
-                            parameters: [],
-                            experiment: {
-                              startTime: timeArr[0] ?? 0,
-                              stopTime: tStop,
-                              interval: dt,
-                              tolerance: 1e-4,
-                              solver: "Dommel Companion (EMT)",
-                            },
-                            comtrade: res?.comtrade ?? simRes?.comtrade,
-                            pscadOut: res?.pscadOut ?? simRes?.pscadOut,
-                            projectName: res?.project ?? "pscad_model",
-                          },
-                          targetUri || "",
-                          client,
-                        );
-                        return res;
-                      }
-                    }
-                  }
-                  if (res?.complianceReport) {
-                    vscode.window.showInformationMessage(
-                      `IEEE 2800 Verification: ${res.complianceReport.overallCompliance ? "PASS" : "NON-COMPLIANT"} (${res.complianceReport.clauses?.length ?? 0} clauses evaluated).`,
-                    );
-                  }
-                  return res;
+                  actionId: action.id,
+                  uri: targetUri,
+                  languageId: action.languageId ?? targetDoc?.languageId,
+                  inputs,
                 },
               );
-            } catch (simErr: unknown) {
-              const errMsg = simErr instanceof Error ? simErr.message : String(simErr);
-              vscode.window.showErrorMessage(`Simulation failed: ${errMsg}`);
-              throw simErr;
-            }
-          }
 
-          return await client.sendRequest("modelscript/executeAction", {
-            actionId: action.id,
-            uri: targetUri,
-            languageId: action.languageId ?? targetDoc?.languageId,
-            inputs,
-          });
+              const traj = normalizeToTrajectory(res);
+              if (traj) {
+                const resObj = (
+                  typeof res === "object" && !Array.isArray(res) ? res : null
+                ) as ActionExecutionResult | null;
+                const dt = traj.t.length > 1 ? traj.t[1]! - traj.t[0]! : 0.01;
+                const tStop = traj.t[traj.t.length - 1] ?? 1.0;
+                SimulationPanel.createOrShowWithData(
+                  context.extensionUri,
+                  {
+                    t: traj.t,
+                    states: traj.states,
+                    y: traj.y,
+                    parameters: [],
+                    experiment: {
+                      startTime: traj.t[0] ?? 0,
+                      stopTime: tStop,
+                      interval: dt,
+                      tolerance: 1e-4,
+                      solver: action.title ?? action.id,
+                    },
+                    comtrade: resObj?.comtrade ?? resObj?.simulationResult?.comtrade,
+                    pscadOut: resObj?.pscadOut ?? resObj?.simulationResult?.pscadOut,
+                    projectName:
+                      resObj?.project ?? (inputs.name as string | undefined) ?? action.languageId ?? "simulation",
+                  },
+                  targetUri || "",
+                  client,
+                );
+                return res;
+              }
+
+              if (typeof res === "string" && res.trim().length > 0 && !res.trimStart().startsWith("<svg")) {
+                const langHint = action.id.includes("modelica")
+                  ? "modelica"
+                  : action.id.includes("sysml")
+                    ? "sysml2"
+                    : action.id.includes("ssp")
+                      ? "xml"
+                      : action.id.includes("spice")
+                        ? "spice"
+                        : "plaintext";
+                const doc = await vscode.workspace.openTextDocument({ content: res, language: langHint });
+                await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+                return res;
+              }
+
+              const resObj = typeof res === "object" && !Array.isArray(res) ? (res as ActionExecutionResult) : null;
+              if (resObj?.complianceReport) {
+                vscode.window.showInformationMessage(
+                  `IEEE 2800 Verification: ${resObj.complianceReport.overallCompliance ? "PASS" : "NON-COMPLIANT"} (${resObj.complianceReport.clauses?.length ?? 0} clauses evaluated).`,
+                );
+              } else if (Array.isArray(res)) {
+                vscode.window.showInformationMessage(
+                  `${action.title ?? action.id}: ${res.length === 0 ? "✓ 0 issues found (Verified Clean)" : `${res.length} diagnostic(s) reported`}.`,
+                );
+              } else if (resObj) {
+                if (typeof resObj.variableCount === "number" && typeof resObj.equationCount === "number") {
+                  vscode.window.showInformationMessage(
+                    `${action.title ?? action.id}: Lowered to DAE (${resObj.variableCount} variables, ${resObj.equationCount} equations).`,
+                  );
+                } else if (typeof resObj.compliant === "boolean" || typeof resObj.passed === "boolean") {
+                  const ok = resObj.compliant ?? resObj.passed;
+                  vscode.window.showInformationMessage(`${action.title ?? action.id}: ${ok ? "✓ PASS" : "✗ FAIL"}`);
+                }
+              }
+
+              return res;
+            },
+          );
         };
 
         if (!STATIC_ACTION_COMMANDS.has(cmdId)) {

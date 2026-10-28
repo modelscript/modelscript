@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlusIcon, SearchIcon, ServerIcon, XIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ChevronRightIcon, PlusIcon, SearchIcon, ServerIcon, XIcon } from "@primer/octicons-react";
 import { Button, IconButton, Spinner, TextInput } from "@primer/react";
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import ComponentList from "../ComponentList";
 import {
   SimulationExperimentSettings,
@@ -100,6 +100,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   isSimulating,
 }) => {
   const isDraggingTree = useRef(false);
+  const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
 
   if (!treeVisible) return null;
 
@@ -202,7 +203,6 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
             <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
               <TreeWidget
                 uri={documentUri}
-                key={debouncedFilter ? "filtered" : "unfiltered"}
                 onSelect={onTreeSelect}
                 onHighlight={onTreeHighlight}
                 width="100%"
@@ -250,14 +250,33 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         )}
         {showResultsView && (
           <>
-            <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Simulation Settings</div>
+            <button
+              type="button"
+              onClick={() => setIsSettingsExpanded((prev) => !prev)}
+              aria-expanded={isSettingsExpanded}
+              className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+              style={{
+                width: "100%",
+                borderLeft: "none",
+                borderRight: "none",
+                cursor: "pointer",
+                textAlign: "left",
+                color: "inherit",
+                fontSize: "inherit",
+              }}
+            >
+              <span>Simulation Settings</span>
+              {isSettingsExpanded ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
+            </button>
             <div style={{ padding: "0" }}>
-              <SimulationExperimentSettings
-                experiment={cachedSimulator?.dae?.experiment}
-                overrides={experimentOverrides}
-                onChange={onExperimentOverrideChange}
-                onReset={onExperimentOverrideReset}
-              />
+              {isSettingsExpanded && (
+                <SimulationExperimentSettings
+                  experiment={cachedSimulator?.dae?.experiment}
+                  overrides={experimentOverrides}
+                  onChange={onExperimentOverrideChange}
+                  onReset={onExperimentOverrideReset}
+                />
+              )}
               <div className="p-3" style={{ display: "flex", gap: 8 }}>
                 <Button variant="primary" block onClick={onSimulate} disabled={isSimulating}>
                   Simulate

@@ -3,7 +3,7 @@
 import { Heading, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getPost, getPostParents, getPostReplies, recordPostView } from "../api";
+import { getPost, getPostParents, getPostReplies } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
@@ -166,11 +166,10 @@ const PostDetailPage: React.FC = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, [notebookHeadings]);
 
-  const viewTrackedRef = useRef<Set<string>>(new Set());
   const mainPostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!loading && post) {
+    if (!loading && post && parents.length > 0 && mainPostRef.current) {
       setTimeout(() => {
         if (mainPostRef.current) {
           const y = mainPostRef.current.getBoundingClientRect().top + window.scrollY - 53;
@@ -178,17 +177,12 @@ const PostDetailPage: React.FC = () => {
         }
       }, 50);
     }
-  }, [loading, post]);
+  }, [loading, post, parents.length]);
 
   useEffect(() => {
     async function fetchPost() {
       if (!id) return;
       try {
-        if (!viewTrackedRef.current.has(id)) {
-          viewTrackedRef.current.add(id);
-          recordPostView(id);
-        }
-
         const [postData, repliesData, parentsData] = await Promise.all([
           getPost(id),
           getPostReplies(id),

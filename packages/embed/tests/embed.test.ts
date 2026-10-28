@@ -156,6 +156,21 @@ async function runTests() {
   assert.strictEqual(pool.getActiveCount(), 2);
   assert.strictEqual(pool.isActive("viewer-3"), false);
 
+  // 7. Test expanded polyglot dialects & morselId / embedToken payload fields
+  const gensysPayload: UniversalEmbedPayload = {
+    v: 1,
+    lang: "gensys",
+    code: "## GENSYS Vehicle Model",
+    view: "diagram",
+    morselId: "morsel-abc123def456",
+    embedToken: "signed.token.123",
+  };
+  const gensysToken = compressEmbedPayload(gensysPayload);
+  const decompressedGensys = decompressEmbedPayload(gensysToken);
+  assert.strictEqual(decompressedGensys?.lang, "gensys");
+  assert.strictEqual(decompressedGensys?.morselId, "morsel-abc123def456");
+  assert.strictEqual(decompressedGensys?.embedToken, "signed.token.123");
+
   console.log("✓ All @modelscript/embed unit tests passed successfully!");
 }
 

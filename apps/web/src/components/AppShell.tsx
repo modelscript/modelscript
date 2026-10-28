@@ -4,6 +4,8 @@ import Box from "./Box";
 
 import {
   BellIcon,
+  BookmarkIcon,
+  CodeIcon,
   GearIcon,
   HomeIcon,
   MoonIcon,
@@ -12,7 +14,9 @@ import {
   PlayIcon,
   PlusIcon,
   RepoIcon,
+  RssIcon,
   SearchIcon,
+  ShieldLockIcon,
   SunIcon,
   ThreeBarsIcon,
   XIcon,
@@ -129,6 +133,7 @@ const BottomBarContainer = styled.div`
   align-items: center;
   z-index: 999;
   padding: 0 8px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
 
   @media (max-width: 500px) {
@@ -322,7 +327,7 @@ const AppShell: React.FC = () => {
   const [isDevFlagsModalOpen, setIsDevFlagsModalOpen] = React.useState(false);
   const { overrides } = useFeatureFlags();
   const activeOverrideCount = Object.keys(overrides).length;
-  const { user, isLoading: loading, login, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
+  const { user, isAdmin, isLoading: loading, login, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
   const [clusterStatus, setClusterStatus] = React.useState<ClusterStatus | null>(null);
   const [isTopUpModalOpen, setIsTopUpModalOpen] = React.useState(false);
   const [isTopUpLoading, setIsTopUpLoading] = React.useState(false);
@@ -333,6 +338,7 @@ const AppShell: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const [isMoreOpen, setIsMoreOpen] = React.useState(false);
   const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
+  const hasIde = useFeatureFlag("heavy_vscode_ide");
 
   React.useEffect(() => {
     setIsMoreOpen(false);
@@ -754,6 +760,17 @@ const AppShell: React.FC = () => {
             {isMoreOpen && (
               <MoreSheetBackdrop onClick={() => setIsMoreOpen(false)}>
                 <MoreSheet role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
+                  {user && (
+                    <>
+                      <Link to="/bookmarks">
+                        <BookmarkIcon size={20} /> Bookmarks
+                      </Link>
+                      <Link to="/feeds">
+                        <RssIcon size={20} /> Feeds
+                      </Link>
+                      <hr />
+                    </>
+                  )}
                   <Link to="/playground">
                     <PlayIcon size={20} /> Playground
                   </Link>
@@ -763,12 +780,22 @@ const AppShell: React.FC = () => {
                   <Link to="/repos">
                     <RepoIcon size={20} /> Repositories
                   </Link>
+                  {hasIde && (
+                    <Link to="/ide">
+                      <CodeIcon size={20} /> IDE
+                    </Link>
+                  )}
                   {hasCaeJobs && (
                     <Link to="/jobs">
                       <GearIcon size={20} /> Jobs
                     </Link>
                   )}
                   <hr />
+                  {user && isAdmin && (
+                    <Link to="/admin">
+                      <ShieldLockIcon size={20} /> Admin
+                    </Link>
+                  )}
                   {user && (
                     <Link to="/settings">
                       <GearIcon size={20} /> Settings

@@ -6,6 +6,12 @@ export const TabBar = styled.div`
   display: flex;
   border-bottom: 1px solid var(--color-border-default);
   margin-top: 24px;
+  position: sticky;
+  top: calc(var(--dev-header-height, 0px) + 53px);
+  background: var(--surface-hud);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 9;
 `;
 
 export const Tab = styled.button<{ $active?: boolean | undefined }>`

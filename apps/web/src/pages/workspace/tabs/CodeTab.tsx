@@ -10,13 +10,12 @@ import {
   GitBranchIcon,
   PlayIcon,
   SearchIcon,
-  TagIcon,
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Heading, Link as PrimerLink, Spinner, Text, TextInput } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import type { GitlabCommit, GitlabProject, GitlabTreeNode } from "../../../api";
 import { getGitlabCommits, getGitlabFileRaw, getGitlabTree } from "../../../api";
 import Box from "../../../components/Box";
@@ -35,8 +34,19 @@ export interface CodeTabProps {
 }
 
 export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) => {
-  const [currentPath, setCurrentPath] = useState("");
-  const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPath = searchParams.get("path") || "";
+  const currentFile = searchParams.get("file") || null;
+
+  const setPathAndFile = (nextPath: string, nextFile: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (nextPath) next.set("path", nextPath);
+    else next.delete("path");
+    if (nextFile) next.set("file", nextFile);
+    else next.delete("file");
+    setSearchParams(next);
+  };
+
   const [tree, setTree] = useState<GitlabTreeNode[]>([]);
   const [commits, setCommits] = useState<GitlabCommit[]>([]);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -48,6 +58,7 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
   const hasCae = useFeatureFlag("cae_cloud_solver");
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const defaultBranch = repo.default_branch || "main";
   const cloneUrl = `${typeof window !== "undefined" ? window.location.origin : "https://modelscript.org"}/git/${repo.path_with_namespace || repo.name}.git`;
 
   useEffect(() => {
@@ -56,7 +67,6 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
         setLoading(true);
         setError("");
 
-        const defaultBranch = repo.default_branch || "main";
         const commitsData = await getGitlabCommits(projectId, defaultBranch, provider).catch(() => []);
         setCommits(commitsData);
 
@@ -85,19 +95,18 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
       }
     }
     load();
-  }, [projectId, currentPath, currentFile, provider, repo.default_branch]);
+  }, [projectId, currentPath, currentFile, provider, defaultBranch]);
 
   const navigateUp = () => {
     if (currentFile) {
       const parts = currentFile.split("/");
       parts.pop();
-      setCurrentFile(null);
-      setCurrentPath(parts.join("/"));
+      setPathAndFile(parts.join("/"), null);
       return;
     }
     const parts = currentPath.split("/");
     parts.pop();
-    setCurrentPath(parts.join("/"));
+    setPathAndFile(parts.join("/"), null);
   };
 
   if (loading && !fileContent && tree.length === 0) {
@@ -158,9 +167,9 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
 git init
 git add README.md
 git commit -m "first commit"
-git branch -M main
+git branch -M ${defaultBranch}
 git remote add origin ${cloneUrl}
-git push -u origin main`}
+git push -u origin ${defaultBranch}`}
                 </pre>
               </Box>
 
@@ -183,8 +192,8 @@ git push -u origin main`}
               >
                 <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", lineHeight: "1.5" }}>
                   {`git remote add origin ${cloneUrl}
-git branch -M main
-git push -u origin main`}
+git branch -M ${defaultBranch}
+git push -u origin ${defaultBranch}`}
                 </pre>
               </Box>
             </Box>
@@ -199,7 +208,7 @@ git push -u origin main`}
         color="var(--color-danger-fg)"
         bg="var(--color-danger-subtle)"
         borderRadius={2}
-        style={{ border: "1px solid var(--color-danger-muted)" }}
+        style={{ border: "1px solid var(--color-border-muted)" }}
       >
         <Heading as="h4" style={{ fontSize: "16px", margin: "0 0 8px 0" }}>
           Failed to load repository data
@@ -224,53 +233,21 @@ git push -u origin main`}
                 variant="default"
                 style={{ padding: "3px 12px", height: "32px" }}
               >
-                main
+                {defaultBranch}
               </ActionMenu.Button>
               <ActionMenu.Overlay>
                 <ActionList>
-                  <ActionList.Item>main</ActionList.Item>
+                  <ActionList.Item>{defaultBranch}</ActionList.Item>
                 </ActionList>
               </ActionMenu.Overlay>
             </ActionMenu>
-
-            {pathParts.length === 0 && (
-              <Box display="flex" alignItems="center" gap={3} ml={3}>
-                <PrimerLink
-                  href="#"
-                  muted
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "14px",
-                    "&:hover": { color: "var(--color-accent-fg)" },
-                  }}
-                >
-                  <GitBranchIcon /> <strong style={{ color: "var(--color-fg-default)" }}>8</strong> Branches
-                </PrimerLink>
-                <PrimerLink
-                  href="#"
-                  muted
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontSize: "14px",
-                    "&:hover": { color: "var(--color-accent-fg)" },
-                  }}
-                >
-                  <TagIcon /> <strong style={{ color: "var(--color-fg-default)" }}>18</strong> Tags
-                </PrimerLink>
-              </Box>
-            )}
 
             {pathParts.length > 0 && (
               <Box display="flex" alignItems="center" gap={2} ml={2}>
                 <PrimerLink
                   as="button"
                   onClick={() => {
-                    setCurrentPath("");
-                    setCurrentFile(null);
+                    setPathAndFile("", null);
                   }}
                   style={{
                     fontWeight: "bold",
@@ -290,8 +267,7 @@ git push -u origin main`}
                       onClick={() => {
                         const newPath = pathParts.slice(0, index + 1).join("/");
                         if (index === pathParts.length - 1 && currentFile) return;
-                        setCurrentFile(null);
-                        setCurrentPath(newPath);
+                        setPathAndFile(newPath, null);
                       }}
                       style={{
                         fontWeight: index === pathParts.length - 1 ? "bold" : "normal",
@@ -489,9 +465,9 @@ git push -u origin main`}
                   key={node.id}
                   onClick={() => {
                     if (node.type === "tree") {
-                      setCurrentPath(node.path);
+                      setPathAndFile(node.path, null);
                     } else {
-                      setCurrentFile(node.path);
+                      setPathAndFile(currentPath, node.path);
                     }
                   }}
                   sx={{ py: "8px", px: 3 }}
@@ -512,13 +488,7 @@ git push -u origin main`}
                       color="var(--color-fg-muted)"
                       style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: "13px" }}
                     >
-                      <PrimerLink
-                        href="#"
-                        muted
-                        sx={{ "&:hover": { color: "var(--color-accent-fg)", textDecoration: "underline" } }}
-                      >
-                        {latestCommit.title}
-                      </PrimerLink>
+                      <span>{latestCommit.title}</span>
                     </Box>
                   )}
                   <Box color="var(--color-fg-muted)" textAlign="right" width="120px" style={{ fontSize: "13px" }}>

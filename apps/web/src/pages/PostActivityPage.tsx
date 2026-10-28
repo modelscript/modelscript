@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -8,6 +7,7 @@ import styled from "styled-components";
 import { getPostQuotes, getPostReposts } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import PageHeader from "../components/PageHeader";
 import Post from "../components/Post";
 import type { PostItem } from "../types/api";
 import { usePageTitle } from "../util/title";
@@ -16,11 +16,11 @@ const TabBar = styled.div`
   display: flex;
   border-bottom: 1px solid var(--color-border);
   position: sticky;
-  top: 0;
+  top: calc(var(--dev-header-height, 0px) + 53px);
   background: var(--surface-hud, rgba(6, 8, 15, 0.85));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  z-index: 10;
+  z-index: 9;
 `;
 
 const Tab = styled.button<{ $active?: boolean | undefined }>`
@@ -28,6 +28,7 @@ const Tab = styled.button<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   padding: 16px;
   background: none;
   border: none;
@@ -40,7 +41,7 @@ const Tab = styled.button<{ $active?: boolean | undefined }>`
   position: relative;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: var(--surface-row-hover);
   }
 
   &::after {
@@ -56,23 +57,8 @@ const Tab = styled.button<{ $active?: boolean | undefined }>`
   }
 `;
 
-const IconButton = styled.button`
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 50%;
-  color: var(--color-text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  &:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-  }
-`;
-
 const PostActivityPage: React.FC = () => {
-  const { username, id } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
   const { token } = useAuth();
 
@@ -104,32 +90,19 @@ const PostActivityPage: React.FC = () => {
 
   return (
     <Box display="flex" flexDirection="column" minHeight="100vh">
-      <Box
-        display="flex"
-        alignItems="center"
-        p={3}
-        borderBottom="1px solid var(--color-border-default)"
-        position="sticky"
-        top={0}
-        bg="var(--color-canvas-default)"
-        zIndex={10}
-      >
-        <IconButton onClick={() => navigate(`/${username}/status/${id}`)}>
-          <ArrowLeftIcon size={20} />
-        </IconButton>
-        <Box ml={3}>
-          <Text fontWeight="bold" fontSize="18px">
-            Post activity
-          </Text>
-        </Box>
-      </Box>
+      <PageHeader
+        back={() => navigate(-1)}
+        title="Post Activity"
+        subtitle="Quotes and reposts across the network"
+        divider={false}
+      />
 
       <TabBar>
         <Tab $active={activeTab === "quotes"} onClick={() => setActiveTab("quotes")}>
-          Quotes
+          Quotes ({quotes.length})
         </Tab>
         <Tab $active={activeTab === "reposts"} onClick={() => setActiveTab("reposts")}>
-          Reposts
+          Reposts ({reposts.length})
         </Tab>
       </TabBar>
 

@@ -86,7 +86,15 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
               allowDataOverflow={isLogScale ? true : undefined}
               stroke="var(--color-fg-muted, #8b949e)"
               tick={{ fill: "var(--color-fg-muted, #8b949e)", fontSize: 11 }}
-              tickFormatter={(val) => (isNormalized ? `${val}%` : Number(val).toFixed(2))}
+              tickFormatter={(val) => {
+                if (isNormalized) return `${val}%`;
+                const num = Number(val);
+                if (!Number.isFinite(num)) return String(val);
+                if (num === 0) return "0";
+                const abs = Math.abs(num);
+                if (abs < 0.01 || abs >= 10000) return num.toExponential(1);
+                return num.toFixed(2);
+              }}
               label={
                 isNormalized
                   ? {

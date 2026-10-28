@@ -33,7 +33,7 @@ import { instancesRouter } from "./routes/instances.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
-import { oembedRouter } from "./routes/oembed.js";
+import { oembedRouter, renderStandaloneEmbedBundle } from "./routes/oembed.js";
 import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
@@ -108,8 +108,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const featureFlagService = new FeatureFlagService(database);
   app.locals["featureFlagService"] = featureFlagService;
 
+  const isStartupAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
+
   const federationWorker = new FederationWorker(database);
-  if (featureFlagService.isEnabled("activitypub_federation")) {
+  if (!isStartupAirgap && featureFlagService.isEnabled("activitypub_federation")) {
     federationWorker.start();
   }
   app.locals["federationWorker"] = federationWorker;
@@ -130,8 +132,26 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     process.env["ADMIN_INIT_PASSWORD"] ||
     process.env["NODE_ENV"] === "production"
   ) {
-    void seedInitialAdmin(database).catch((err) => {
-      console.error("[AdminSeed] Failed to bootstrap admin:", err);
+    void seedInitialAdmin(database)
+      .then((res) => {
+        if (res.created) {
+          console.log(`[AdminSeed] Bootstrapped initial admin account '${res.username}'.`);
+          if (res.generatedPassword) {
+            console.warn(
+              `[AdminSeed] NOTICE: Initial admin password was auto-generated because ADMIN_INIT_PASSWORD was not set: ${res.generatedPassword}`,
+            );
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("[AdminSeed] Failed to bootstrap admin:", err);
+      });
+  }
+
+  // Pre-seed bundled standard libraries (MSL, SysML v2 KerML) in airgapped production appliances
+  if (isStartupAirgap && process.env["NODE_ENV"] === "production" && process.env["SEED_STDLIB_ON_BOOT"] !== "false") {
+    void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
+      console.error("[AirgapSeed] Failed to pre-seed bundled standard libraries:", err);
     });
   }
 
@@ -395,17 +415,19 @@ graph TD
     );
     app.locals["decayWorkerInterval"] = decayWorkerInterval;
 
-    const runRssWorker = () => {
-      import("./util/rss-worker.js")
-        .then(({ processRssFeeds }) => {
-          void processRssFeeds(database);
-        })
-        .catch(console.error);
-    };
+    if (!isStartupAirgap) {
+      const runRssWorker = () => {
+        import("./util/rss-worker.js")
+          .then(({ processRssFeeds }) => {
+            void processRssFeeds(database);
+          })
+          .catch(console.error);
+      };
 
-    runRssWorker();
-    const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
-    app.locals["rssWorkerInterval"] = rssWorkerInterval;
+      runRssWorker();
+      const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
+      app.locals["rssWorkerInterval"] = rssWorkerInterval;
+    }
 
     // Automated GDPR / Security Log Retention Worker (Daily purge of expired logs > 30 days)
     const runLogPurgeWorker = () => {
@@ -502,7 +524,16 @@ graph TD
   );
   app.use((req, res, next) => {
     const requestOrigin = req.headers.origin;
+    const isEmbedRoute =
+      req.path.startsWith("/embed") ||
+      req.path.startsWith("/render-artifact") ||
+      req.path.startsWith("/morsel") ||
+      req.path.startsWith("/api/v1/oembed") ||
+      req.path.startsWith("/api/v1/morsels") ||
+      req.path === "/static/embed.js" ||
+      req.path === "/api/v1/embed.js";
     const isPublicFederationPath =
+      isEmbedRoute ||
       req.path.startsWith("/.well-known/") ||
       req.path.startsWith("/nodeinfo/") ||
       req.path.startsWith("/actor") ||
@@ -520,21 +551,29 @@ graph TD
       res.header("Access-Control-Allow-Origin", "*");
     }
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key");
     res.header("X-Content-Type-Options", "nosniff");
-    res.header("X-Frame-Options", "SAMEORIGIN");
+    const embedFrameAncestors = process.env["EMBED_FRAME_ANCESTORS"] || "*";
+    if (!isEmbedRoute) {
+      res.header("X-Frame-Options", "SAMEORIGIN");
+    }
     res.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
     res.header("Referrer-Policy", "strict-origin-when-cross-origin");
     res.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
     const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
+    const frameAncestorsDirective = isEmbedRoute
+      ? `frame-ancestors ${embedFrameAncestors};`
+      : "frame-ancestors 'self';";
     if (isAirgap) {
       res.header(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self';",
+        `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; ${frameAncestorsDirective}`,
       );
       res.header("X-Airgap-Enforced", "true");
       res.header("X-CEII-Compliance", "FERC-18-CFR-388.113");
+    } else if (isEmbedRoute) {
+      res.header("Content-Security-Policy", frameAncestorsDirective);
     }
 
     if (req.method === "OPTIONS") {
@@ -637,8 +676,17 @@ graph TD
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));
 
-  // Universal oEmbed provider route (/api/v1/oembed)
+  // Universal oEmbed provider route (/api/v1/oembed) & standalone intranet SDK bundle (/static/embed.js)
   app.use("/api/v1", oembedRouter(database));
+  app.get("/static/embed.js", (req, res) => {
+    const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
+    const hostHeader = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
+    const origin = `${String(protocol).split(",")[0]!.trim()}://${String(hostHeader).split(",")[0]!.trim()}`;
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.send(renderStandaloneEmbedBundle(origin));
+  });
 
   // Digital Thread Hypergraph Explorer routes
   app.use(
@@ -732,9 +780,10 @@ graph TD
   // ── Compliance & Trust Readiness Probe ──
   app.get("/api/v1/compliance/readiness", (_req: express.Request, res: express.Response) => {
     const isProd = process.env["NODE_ENV"] === "production";
+    const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
     const envJwt = process.env["JWT_SECRET"];
     const jwtOk = Boolean(envJwt && envJwt !== "modelscript-dev-secret");
-    const turnstileOk = Boolean(process.env["TURNSTILE_SECRET_KEY"]);
+    const turnstileOk = Boolean(process.env["TURNSTILE_SECRET_KEY"]) || isAirgap;
     const hasAdmin = database.hasAdminUser();
     const geoIpLoaded = locationService.isReady();
 
@@ -808,16 +857,73 @@ graph TD
   app.use("/api/v1/npm", npmAuthRouter(database));
   app.use("/api/v1/npm", npmRegistryRouter(database, libraryStorage));
 
-  // ── Enterprise Intranet Appliance Static Web & IDE Serving ──
+  // ── Enterprise Intranet Appliance & Unified Static Web, Docs & IDE Serving ──
   const staticWebDir =
     process.env["STATIC_WEB_DIR"] ||
     (process.env["ENTERPRISE_APPLIANCE"] === "true" ? path.resolve(API_ROOT, "../web/dist") : undefined);
   const staticIdeDir =
     process.env["STATIC_IDE_DIR"] ||
     (process.env["ENTERPRISE_APPLIANCE"] === "true" ? path.resolve(API_ROOT, "../ide/dist") : undefined);
+  const staticDocsDir =
+    process.env["STATIC_DOCS_DIR"] ||
+    (process.env["ENTERPRISE_APPLIANCE"] === "true"
+      ? path.resolve(API_ROOT, "../docs/docs/.vitepress/dist")
+      : undefined);
 
   if (staticIdeDir && fs.existsSync(staticIdeDir)) {
     app.use("/ide", express.static(staticIdeDir));
+  }
+
+  if (staticDocsDir && fs.existsSync(staticDocsDir)) {
+    const resolvedDocsRoot = path.resolve(staticDocsDir);
+    app.use("/docs", express.static(resolvedDocsRoot, { extensions: ["html"] }));
+
+    const docsPrefixes = [
+      "/guide",
+      "/architecture",
+      "/algorithms",
+      "/cli",
+      "/languages",
+      "/reference",
+      "/industries",
+      "/pricing",
+      "/llms.txt",
+      "/llms-full.txt",
+      "/sitemap.xml",
+      "/hashmap.json",
+      "/modelscript-reference-manual.pdf",
+    ];
+
+    app.use((req, res, next) => {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        next();
+        return;
+      }
+      const matchesDocRoute = docsPrefixes.some((p) => req.path === p || req.path.startsWith(p + "/"));
+      const isDocAsset = req.path.startsWith("/assets/") || req.path.startsWith("/vp-icons/");
+      if (!matchesDocRoute && !isDocAsset) {
+        next();
+        return;
+      }
+
+      const relReq = req.path.replace(/^\/+/, "");
+      const candidates = [
+        path.resolve(resolvedDocsRoot, relReq),
+        path.resolve(resolvedDocsRoot, `${relReq}.html`),
+        path.resolve(resolvedDocsRoot, relReq, "index.html"),
+      ];
+      for (const candidate of candidates) {
+        if (
+          (candidate === resolvedDocsRoot || candidate.startsWith(resolvedDocsRoot + path.sep)) &&
+          fs.existsSync(candidate) &&
+          fs.statSync(candidate).isFile()
+        ) {
+          res.sendFile(candidate);
+          return;
+        }
+      }
+      next();
+    });
   }
 
   if (staticWebDir && fs.existsSync(staticWebDir)) {
@@ -842,6 +948,7 @@ graph TD
         req.path.startsWith("/actor") ||
         req.path.startsWith("/users/") ||
         req.path.startsWith("/ide") ||
+        req.path.startsWith("/docs") ||
         req.path.startsWith("/-/") ||
         req.path.includes("/-/") ||
         req.path.startsWith("/@")

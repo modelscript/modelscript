@@ -28,7 +28,7 @@ export interface ClassRightSidebarProps {
   allClasses: ClassSummary[];
   retryCount: number;
   twinInfo: DigitalThreadTwinInfo | null;
-  onSelectMember: (targetUrl: string | null) => void;
+  onSelectMember: (targetUrl: string | null, memberName?: string) => void;
   onNavigate: (path: string) => void;
 }
 
@@ -301,7 +301,7 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
                     style={{ color: "var(--color-text-primary)", cursor: "pointer" }}
                     onClick={(e) => {
                       e.preventDefault();
-                      onSelectMember(targetUrl);
+                      onSelectMember(targetUrl, comp.component_name);
                     }}
                   >
                     <NavList.LeadingVisual>

@@ -7,6 +7,10 @@ export const AdminContainer = styled.div`
   width: 100%;
   height: 100%;
   min-height: calc(100vh - var(--dev-header-height, 0px));
+
+  @media (max-width: 900px) {
+    flex-direction: column;
+  }
 `;
 
 export const MenuColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
@@ -16,14 +20,16 @@ export const MenuColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
   flex-direction: column;
 
   @media (max-width: 900px) {
-    flex: 1;
+    flex: 0 0 auto;
     display: ${(props) => (props.$hideOnMobile ? "none" : "flex")};
     border-right: none;
+    border-bottom: 1px solid var(--color-border-default);
   }
 `;
 
 export const DetailColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -80,6 +86,13 @@ export const TabButton = styled.button<{ $active?: boolean | undefined }>`
   span {
     font-size: 14px;
     font-weight: ${(props) => (props.$active ? "600" : "500")};
+  }
+
+  @media (max-width: 900px) {
+    padding: 10px 14px;
+    border-right: none;
+    border-bottom: ${(props) => (props.$active ? "3px solid var(--color-accent-purple)" : "3px solid transparent")};
+    white-space: nowrap;
   }
 `;
 
@@ -262,6 +275,14 @@ export const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  thead,
+  tbody {
+    width: 100%;
+  }
 
   th {
     text-align: left;

@@ -51,6 +51,7 @@ export function simulateRouter(
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
+      let estimatedCost = 0;
       if (database && userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
         if (!quota.allowed) {
@@ -62,6 +63,7 @@ export function simulateRouter(
             profile: quota.profileId,
           });
         }
+        estimatedCost = quota.estimatedCost;
       }
 
       const allLibraries = dependencies.slice();
@@ -101,6 +103,45 @@ export function simulateRouter(
 
       const safeModelJobPart = String(modelName).replace(/[^a-zA-Z0-9_.-]/g, "_");
       const jobId = `simulate-${libraryName || "adhoc"}-${libraryVersion || "0.0"}-${safeModelJobPart}-${Date.now()}`;
+
+      let dbJobId: number | null = null;
+      if (database) {
+        try {
+          dbJobId = database.createJob(
+            `Simulation: ${modelName}`,
+            "RUNNING",
+            "ADHOC",
+            req.body.engine === "omc" ? "omc" : "modelscript",
+            null,
+            {
+              jobId,
+              profile: profile.id,
+            },
+            userId,
+          );
+          if (userId && dbJobId && estimatedCost > 0) {
+            const holdRes = database.holdUserCredits(
+              userId,
+              estimatedCost,
+              dbJobId,
+              `HPC Escrow Hold: Simulation ${modelName}`,
+              { jobId, profile: profile.id },
+            );
+            if (!holdRes.success) {
+              database.updateJobStatus(dbJobId, "FAILED");
+              return res.status(402).json({
+                error: "Payment Required:Insufficient Compute Credits",
+                message: holdRes.reason,
+                balance: holdRes.newBalance,
+                required: estimatedCost,
+                profile: profile.id,
+              });
+            }
+          }
+        } catch {
+          // DB tracking is optional
+        }
+      }
 
       jobQueue.enqueue(jobId, async () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelscript-simulate-"));
@@ -164,27 +205,6 @@ getErrorString();
           }
 
           const isNative = prep !== null;
-          const engineName = isNative ? "modelscript" : "omc";
-
-          let dbJobId: number | null = null;
-          if (database) {
-            try {
-              dbJobId = database.createJob(
-                `Simulation: ${modelName}`,
-                "RUNNING",
-                "ADHOC",
-                engineName,
-                null,
-                {
-                  jobId,
-                  profile: profile.id,
-                },
-                userId,
-              );
-            } catch {
-              // DB tracking is optional
-            }
-          }
 
           let hpcSpec: HpcJobSpec;
           if (isNative && prep) {
@@ -198,6 +218,7 @@ getErrorString();
                 OMP_NUM_THREADS: String(profile.cpus),
               },
               profileId: profile.id,
+              ...(userId ? { userId } : {}),
               resources: {
                 cpusPerTask: profile.cpus,
                 memoryMb: profile.memoryMb,
@@ -217,6 +238,7 @@ getErrorString();
                 OMP_NUM_THREADS: String(profile.cpus),
               },
               profileId: profile.id,
+              ...(userId ? { userId } : {}),
               resources: {
                 cpusPerTask: profile.cpus,
                 memoryMb: profile.memoryMb,
@@ -265,12 +287,27 @@ getErrorString();
           }
 
           if (database && dbJobId) {
-            database.completeJobWithBilling(dbJobId, usage, userId, `Simulation: ${modelName}`, {
-              profile: profile.id,
-              ...usage,
-            });
+            database.updateJobStatus(dbJobId, "SUCCESS");
+            database.updateJobAccounting(dbJobId, usage);
+            if (userId) {
+              database.settleUserEscrow(userId, dbJobId, usage.costCredits ?? 0, `Simulation: ${modelName}`, {
+                profile: profile.id,
+                ...usage,
+              });
+              database.createNotification(userId, userId, "simulation_completed");
+            }
           }
         } catch (err) {
+          if (database && dbJobId) {
+            database.updateJobStatus(dbJobId, "FAILED");
+            if (userId) {
+              database.releaseUserEscrow(
+                userId,
+                dbJobId,
+                err instanceof Error ? err.message : "Simulation execution failed",
+              );
+            }
+          }
           console.error("Simulation Job %s failed:", jobId, err);
           throw err;
         } finally {

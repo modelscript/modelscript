@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PinIcon } from "@primer/octicons-react";
+import { BookIcon, CodeIcon, NoteIcon, PackageIcon, PinIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../util/editor-routing";
@@ -248,8 +248,8 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 justifyContent: "space-between",
               }}
             >
-              <span>
-                📓 Expand inline ({notebookData.cells.length} sections
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                <NoteIcon size={13} /> Expand inline ({notebookData.cells.length} sections
                 {notebookData.artifactIds.length > 0
                   ? ` · ${notebookData.artifactIds.length} ${notebookData.artifactIds.length === 1 ? "artifact" : "artifacts"}`
                   : ""}
@@ -275,9 +275,12 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 fontWeight: 700,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
               }}
             >
-              📖 Read Tutorial View →
+              <BookIcon size={13} /> Read Tutorial View →
             </button>
           </Box>
         )}
@@ -324,8 +327,17 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-heading)" }}>
-                💻 Companion Code & Interactive Sandbox
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "var(--color-text-heading)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <CodeIcon size={14} /> Companion Code & Interactive Sandbox
               </span>
               <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
                 {notebookData.companionRepo
@@ -357,9 +369,12 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                     fontSize: "11.5px",
                     fontWeight: 600,
                     cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
                   }}
                 >
-                  📦 {notebookData.companionRepo}
+                  <PackageIcon size={13} /> {notebookData.companionRepo}
                 </button>
               )}
               <button

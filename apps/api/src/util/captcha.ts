@@ -8,6 +8,16 @@ export async function verifyCaptchaToken(
   clientIp?: string,
   secretKey: string = process.env["TURNSTILE_SECRET_KEY"] || "",
 ): Promise<{ success: boolean; error?: string | undefined }> {
+  const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
+
+  // In airgapped / enterprise appliance deployments, external Cloudflare Turnstile is unreachable
+  if (isAirgap) {
+    if (token === "invalid-captcha" || (token && token.startsWith("fail"))) {
+      return { success: false, error: "Invalid captcha challenge token" };
+    }
+    return { success: true };
+  }
+
   // Fail-closed guardrail in production mode: reject if secret key is missing
   if (process.env["NODE_ENV"] === "production") {
     if (!secretKey) {

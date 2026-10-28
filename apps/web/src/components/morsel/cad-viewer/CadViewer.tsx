@@ -9,16 +9,7 @@
  */
 
 import type { DynamicBindingConfig } from "@modelscript/cad";
-import {
-  ContactShadows,
-  Environment,
-  GizmoHelper,
-  GizmoViewport,
-  Grid,
-  Html,
-  OrbitControls,
-  useGLTF,
-} from "@react-three/drei";
+import { ContactShadows, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -390,13 +381,12 @@ function SceneContents({
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={dark ? 0.3 : 0.5} />
-      <directionalLight position={[5, 10, 7]} intensity={dark ? 0.8 : 1.0} castShadow />
-      <directionalLight position={[-3, 5, -5]} intensity={0.3} />
-
-      {/* Environment map for realistic reflections */}
-      <Environment preset={dark ? "night" : "studio"} />
+      {/* Lighting (Self-contained studio rig; no external HDR network dependency) */}
+      <ambientLight intensity={dark ? 0.45 : 0.65} />
+      <hemisphereLight args={[dark ? "#93c5fd" : "#ffffff", dark ? "#1e293b" : "#cbd5e1", dark ? 0.55 : 0.7]} />
+      <directionalLight position={[5, 10, 7]} intensity={dark ? 0.9 : 1.1} castShadow />
+      <directionalLight position={[-3, 5, -5]} intensity={0.4} />
+      <directionalLight position={[0, -6, 4]} intensity={0.25} />
 
       {/* Ground */}
       <Grid
