@@ -316,10 +316,12 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               ...prev,
               wallet: {
                 ...prev.wallet,
-                balance:
-                  typeof (updatedWallet as any).newBalance === "number"
-                    ? (updatedWallet as any).newBalance
-                    : ((updatedWallet as any).balance ?? prev.wallet.balance + amount),
+                balance: (() => {
+                  const uw = updatedWallet as { newBalance?: number; balance?: number } | null | undefined;
+                  return typeof uw?.newBalance === "number"
+                    ? uw.newBalance
+                    : (uw?.balance ?? prev.wallet.balance + amount);
+                })(),
               },
             }
           : null,

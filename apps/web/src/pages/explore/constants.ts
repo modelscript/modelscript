@@ -19,6 +19,7 @@ export interface PostData {
 }
 
 export interface TopicData {
+  id?: string | undefined;
   name: string;
   tag?: string | undefined;
   concept?: string | undefined;

@@ -537,7 +537,7 @@ export function applyTextString(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance | ModelicaComponentInstance,
 ): void {
-  let str = graphicItem.string ?? (graphicItem as any).textString ?? "";
+  let str = graphicItem.string ?? graphicItem.textString ?? "";
   if (str.includes("%")) {
     str = str.replace(/%name/g, classInstance?.name ?? "");
     str = str.replace(/%comment/g, classInstance?.["description"] ?? "");

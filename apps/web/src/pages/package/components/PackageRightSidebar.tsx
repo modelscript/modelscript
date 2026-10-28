@@ -55,7 +55,7 @@ export interface PackageRightSidebarProps {
   availableDomains: {
     id: string;
     label: string;
-    icon: React.ReactNode | React.ComponentType<any>;
+    icon: React.ReactNode | React.ComponentType<{ size?: number }>;
     count: number;
     color: string;
   }[];
@@ -415,7 +415,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                     {React.isValidElement(d.icon)
                       ? d.icon
                       : d.icon
-                        ? React.createElement(d.icon as any, { size: 12 })
+                        ? React.createElement(d.icon as React.ComponentType<{ size?: number }>, { size: 12 })
                         : null}
                   </span>
                   <span>{d.label}</span>

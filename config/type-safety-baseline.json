@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 598,
+      "explicitAny": 585,
       "tsComments": 0
     },
     "languages/adams": {
@@ -206,6 +206,10 @@
       "tsComments": 0
     },
     "packages/cad": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/design-tokens": {
       "explicitAny": 0,
       "tsComments": 0
     },

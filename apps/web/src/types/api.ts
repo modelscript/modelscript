@@ -41,6 +41,9 @@ export interface PostItem {
   liked?: boolean | undefined;
   reposted?: boolean | undefined;
   bookmarked?: boolean | undefined;
+  title?: string | undefined;
+  artifact_view_id?: number | string | null | undefined;
+  metadata?: { notebook?: unknown; [key: string]: unknown } | undefined;
 }
 
 export interface ArtifactViewDTO {

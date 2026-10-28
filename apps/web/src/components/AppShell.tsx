@@ -438,7 +438,7 @@ const AppShell: React.FC = () => {
     };
   }, []);
 
-  const LegacyDialog = Dialog as any;
+  const LegacyDialog = Dialog as React.ElementType;
 
   return (
     <ComposeContext.Provider value={{ openCompose: handleOpenComposeContext }}>
@@ -840,8 +840,9 @@ const AppShell: React.FC = () => {
                       setTimeout(() => {
                         window.location.reload();
                       }, 100);
-                    } catch (e: any) {
-                      setResetError(e.response?.data?.error || "Failed to reset database");
+                    } catch (e: unknown) {
+                      const errResponse = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+                      setResetError(errResponse || "Failed to reset database");
                       setIsResettingDb(false);
                     }
                   }}
@@ -923,13 +924,19 @@ const AppShell: React.FC = () => {
                       try {
                         const res = await topUpCredits(amt);
                         await refreshWallet();
+                        const resObj = res as { newBalance?: number; balance?: number } | null | undefined;
                         const newBal =
-                          typeof (res as any).newBalance === "number"
-                            ? (res as any).newBalance
-                            : ((res as any).balance ?? creditBalance + amt);
+                          typeof resObj?.newBalance === "number"
+                            ? resObj.newBalance
+                            : (resObj?.balance ?? creditBalance + amt);
                         setTopUpSuccess(`Added +${amt} credits! New balance: ${newBal.toFixed(2)} cr`);
-                      } catch (err: any) {
-                        setTopUpError(err.response?.data?.error || err.message || String(err));
+                      } catch (err: unknown) {
+                        const errorMsg =
+                          (err as { response?: { data?: { error?: string } }; message?: string })?.response?.data
+                            ?.error ||
+                          (err as Error)?.message ||
+                          String(err);
+                        setTopUpError(errorMsg);
                       } finally {
                         setIsTopUpLoading(false);
                       }

@@ -147,6 +147,7 @@ export interface IText extends IFilledShape, IGraphicItem {
   horizontalAlignment?: TextAlignment | undefined;
   style?: TextStyle[] | undefined;
   string?: string | undefined;
+  textString?: string | undefined;
   textStyle?: TextStyle[] | undefined;
 }
 

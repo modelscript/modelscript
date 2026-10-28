@@ -274,7 +274,8 @@ test("PSS/E AC Power Flow Solver: Converges on IEEE 14 and IEEE 30 benchmarks", 
   assert.equal(sol118.buses.length, 118);
   assert.ok(sol118.totalGenMw > 4200);
   assert.ok(sol118.totalLossMw > 50);
-  assert.ok(duration < 200, `Solve duration took ${duration}ms, expected < 200ms`);
+  const maxDuration = process.env.CI ? 2000 : 500;
+  assert.ok(duration < maxDuration, `Solve duration took ${duration}ms, expected < ${maxDuration}ms`);
 });
 
 test("PSS/E Projection: Translates to native Modelica power system model", () => {

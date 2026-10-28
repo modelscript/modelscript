@@ -101,7 +101,7 @@ function GlobalModals() {
 
   React.useEffect(() => {
     let pendingG = false;
-    let pendingGTimer: any = null;
+    let pendingGTimer: ReturnType<typeof setTimeout> | null = null;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
@@ -206,7 +206,9 @@ function GlobalModals() {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
-        onOpenCompose={(detail?: any) => window.dispatchEvent(new CustomEvent("modelscript:open-compose", { detail }))}
+        onOpenCompose={(detail?: unknown) =>
+          window.dispatchEvent(new CustomEvent("modelscript:open-compose", { detail }))
+        }
       />
       <KeyboardShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
     </>

@@ -26,7 +26,7 @@ const PostDetailPage: React.FC = () => {
   const notebookData = useMemo(
     () =>
       post && isNotebook
-        ? parseNotebookFromContent(post.content, (post as any).artifact_view_id, (post as any).metadata?.notebook)
+        ? parseNotebookFromContent(post.content, post.artifact_view_id, post.metadata?.notebook)
         : null,
     [post, isNotebook],
   );
@@ -49,7 +49,7 @@ const PostDetailPage: React.FC = () => {
   );
   useOembedDiscovery(
     typeof window !== "undefined" ? window.location.href : undefined,
-    notebookData?.title || (post as any)?.title || (post?.content ? post.content.slice(0, 60) : undefined),
+    notebookData?.title || post?.title || (post?.content ? post.content.slice(0, 60) : undefined),
   );
   const [parents, setParents] = useState<PostItem[]>([]);
   const [replies, setReplies] = useState<PostItem[]>([]);
@@ -67,7 +67,7 @@ const PostDetailPage: React.FC = () => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const endpoint = `${protocol}//${window.location.host}/api/v1/collab/stream`;
     let ws: WebSocket | null = null;
-    let reconnectTimeout: any = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     let isDisposed = false;
 
     function connect() {

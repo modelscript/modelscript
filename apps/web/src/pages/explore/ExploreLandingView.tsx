@@ -470,8 +470,8 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
               >
                 {trending.map((t, index) => (
                   <Link
-                    key={(t as any).id || t.name}
-                    to={`/explore?topic=${encodeURIComponent((t as any).concept || t.name)}`}
+                    key={t.id || t.name}
+                    to={`/explore?topic=${encodeURIComponent(t.concept || t.name)}`}
                     style={{ textDecoration: "none" }}
                   >
                     <Box
@@ -492,7 +492,7 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                         {index + 1} · Trending
                       </div>
                       <div style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-text-primary)" }}>
-                        {(t as any).display_name || t.name}
+                        {t.display_name || t.name}
                       </div>
                     </Box>
                   </Link>

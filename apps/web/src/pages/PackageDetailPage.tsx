@@ -314,7 +314,7 @@ const PackageDetailPage: React.FC = () => {
                   ? tab.icon
                   : typeof tab.icon === "function" ||
                       (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
-                    ? React.createElement(tab.icon as any, { size: 16 })
+                    ? React.createElement(tab.icon as React.ComponentType<{ size?: number }>, { size: 16 })
                     : tab.icon}
                 <span>{tab.label}</span>
                 {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (

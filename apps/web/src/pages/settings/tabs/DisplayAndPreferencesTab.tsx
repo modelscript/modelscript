@@ -9,12 +9,12 @@ import { DetailIcon, DetailItem, DetailSubtitle, DetailText, DetailTitle, FormLa
 
 export interface DisplayAndPreferencesTabProps {
   subView: "display" | "contentPreferences" | "other";
-  onNavigate?: (tab: any) => void;
+  onNavigate?: (tab: string) => void;
 }
 
 export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> = ({ subView }) => {
   const { theme, toggleTheme } = useTheme();
-  const [topics, setTopics] = useState<any[]>([]);
+  const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
 
   useEffect(() => {
     if (subView === "contentPreferences") {

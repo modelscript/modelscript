@@ -117,7 +117,10 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
   // Source State
   const [sourceDomain, setSourceDomain] = useState<DomainType>("modelica");
   const [sourceName, setSourceName] = useState(
-    (rootClass as any)?.class_name || (rootClass as any)?.name || packageName || "",
+    (rootClass as { class_name?: string; name?: string } | null | undefined)?.class_name ||
+      (rootClass as { class_name?: string; name?: string } | null | undefined)?.name ||
+      packageName ||
+      "",
   );
   const [sourceVariable, setSourceVariable] = useState("");
   const [sourceUnit, setSourceUnit] = useState("N.m");
@@ -158,7 +161,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
 
   // Candidate source options from classes
   const classOptions = useMemo(() => {
-    return classes.map((c) => c.class_name || (c as any).name);
+    return classes.map((c) => c.class_name || (c as { name?: string }).name);
   }, [classes]);
 
   // Candidate CAD artifacts from viewers
