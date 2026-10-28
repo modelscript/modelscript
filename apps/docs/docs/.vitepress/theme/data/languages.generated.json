@@ -219,7 +219,8 @@
       "inspect",
       "to-modelica",
       "to-dae",
-      "solve"
+      "solve",
+      "simulate"
     ],
     "capabilities": {
       "parse": true,
@@ -249,7 +250,8 @@
       "inspect",
       "to-modelica",
       "to-dae",
-      "solve"
+      "solve",
+      "simulate"
     ],
     "capabilities": {
       "parse": true,
@@ -414,8 +416,10 @@
     "cliCommand": "msx ccsds",
     "actions": [
       "inspect",
+      "summary",
       "lint",
       "propagate",
+      "simulate",
       "to-modelica",
       "to-sysml",
       "to-dae"
@@ -637,8 +641,11 @@
     "tier": "stable",
     "cliCommand": "msx gensys",
     "actions": [
+      "inspect",
+      "summary",
       "lint",
       "to-modelica",
+      "to-dae",
       "verify",
       "simulate",
       "to-fmu",
@@ -668,9 +675,12 @@
     "tier": "beta",
     "cliCommand": "msx simpack",
     "actions": [
+      "inspect",
+      "summary",
       "lint",
       "mobility",
       "to-modelica",
+      "to-dae",
       "simulate",
       "to-fmu",
       "report"
@@ -699,13 +709,19 @@
     "tier": "stable",
     "cliCommand": "msx pscad",
     "actions": [
+      "inspect",
+      "summary",
       "lint",
       "diagram",
       "diff",
       "sim",
+      "simulate",
       "verify-ieee2800",
+      "verify",
       "export-modelica",
+      "to-modelica",
       "export-ssp",
+      "to-ssp",
       "psout"
     ],
     "capabilities": {
@@ -836,6 +852,7 @@
     "cliCommand": "msx lps",
     "actions": [
       "inspect",
+      "summary",
       "to-dae",
       "to-modelica",
       "lint",
@@ -843,6 +860,7 @@
       "linepack",
       "simulate",
       "sysml",
+      "to-sysml",
       "verify"
     ],
     "capabilities": {
@@ -851,7 +869,8 @@
       "dae": true,
       "simulate": true,
       "projections": [
-        "Modelica"
+        "Modelica",
+        "SysML v2"
       ]
     },
     "ruleCount": 12
@@ -1087,6 +1106,8 @@
     "tier": "beta",
     "cliCommand": "msx urdf",
     "actions": [
+      "inspect",
+      "summary",
       "lint",
       "rnea",
       "to-modelica",
@@ -1150,10 +1171,13 @@
     "tier": "beta",
     "cliCommand": "msx adams",
     "actions": [
+      "inspect",
+      "summary",
       "lint",
       "mobility",
       "to-modelica",
       "to-simpack",
+      "to-dae",
       "simulate"
     ],
     "capabilities": {

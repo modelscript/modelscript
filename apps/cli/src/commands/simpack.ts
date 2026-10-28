@@ -12,6 +12,20 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
+
+const SIMPACK_ACTIONS = [
+  "inspect",
+  "summary",
+  "lint",
+  "mobility",
+  "to-modelica",
+  "to-dae",
+  "simulate",
+  "to-fmu",
+  "report",
+] as const;
+
 export const SimpackCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "simpack <action> [files...]",
   describe: "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
@@ -19,8 +33,10 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: lint | mobility | to-modelica | simulate | to-fmu | report",
-        choices: ["lint", "mobility", "to-modelica", "simulate", "to-fmu", "report"],
+        describe:
+          "Action to perform: inspect | summary | lint | mobility | to-modelica | to-dae | simulate | to-fmu | report",
+        choices: SIMPACK_ACTIONS,
+        demandOption: true,
       })
       .positional("files", {
         type: "string",
@@ -28,29 +44,34 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
         describe: "Input SIMPACK files (.spck, .sim, .mbs)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path",
       })
       .option("format", {
+        alias: "f",
         type: "string",
         describe: "Report format: html | sarif | junit | ctrf",
         choices: ["html", "sarif", "junit", "ctrf"],
         default: "html",
       })
       .option("stop-time", {
+        alias: ["tstop", "duration"],
         type: "number",
         default: 5.0,
         describe: "Simulation stop time [s]",
       })
       .option("step", {
+        alias: ["step-size", "dt"],
         type: "number",
         default: 0.005,
         describe: "Simulation time step [s]",
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const action = normalizeDomainAction(String(argv["action"] ?? "inspect"), SIMPACK_ACTIONS);
     const files = (argv["files"] as string[]) ?? [];
+    const outFile = resolveOutputPath(argv);
 
     if (files.length === 0) {
       console.error("Error: No input files provided.");
@@ -68,7 +89,13 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
       const isXml = content.trimStart().startsWith("<");
       const model = isXml ? parseSpckXml(content, modelName) : parseSimDeck(content, modelName);
 
-      if (action === "lint") {
+      if (action === "inspect" || action === "summary") {
+        console.log(`=== SIMPACK Multibody Summary: ${model.name || modelName} ===`);
+        console.log(`  Bodies  : ${model.bodies.size}`);
+        console.log(`  Markers : ${model.markers.size}`);
+        console.log(`  Joints  : ${model.joints.size}`);
+        console.log(`  Forces  : ${model.forces.size}`);
+      } else if (action === "lint") {
         const diagnostics = lintSimpackModel(model);
         if (diagnostics.length === 0) {
           console.log(`[PASS] ${file}: 0 issues found (${model.bodies.size} bodies, ${model.joints.size} joints).`);
@@ -76,6 +103,9 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
           console.log(`[DIAGNOSTICS] ${file}: ${diagnostics.length} item(s):`);
           for (const d of diagnostics) {
             console.log(`  - [${d.code}] ${d.severity.toUpperCase()}: ${d.message}`);
+          }
+          if (diagnostics.some((d) => d.severity === "error")) {
+            process.exitCode = 1;
           }
         }
       } else if (action === "mobility") {
@@ -88,11 +118,27 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
         console.log(`Overconstrained Status:      ${mobility.isOverconstrained ? "YES (M < 0)" : "NO"}`);
       } else if (action === "to-modelica") {
         const mo = simpackToModelica(model);
-        if (argv["out"]) {
-          fs.writeFileSync(argv["out"] as string, mo, "utf-8");
-          console.log(`Exported Modelica model to ${argv["out"]}`);
+        if (outFile) {
+          fs.writeFileSync(outFile, mo, "utf-8");
+          console.log(`Exported Modelica model to ${outFile}`);
         } else {
           console.log(mo);
+        }
+      } else if (action === "to-dae") {
+        const dae = lowerSimpackToDae(model);
+        console.log(`=== SIMPACK DAE Lowering: ${model.name || modelName} ===`);
+        console.log(`  DAE Variables: ${dae.varCount}`);
+        console.log(`  DAE Equations: ${dae.eqCount}`);
+        if (outFile) {
+          fs.writeFileSync(
+            outFile,
+            JSON.stringify(
+              { model: model.name || modelName, variables: dae.varCount, equations: dae.eqCount },
+              null,
+              2,
+            ),
+            "utf-8",
+          );
         }
       } else if (action === "simulate") {
         const { initBltWasm } = await import("@modelscript/runtime");
@@ -111,21 +157,20 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
           `Simulation complete: ${result.t.length} steps computed across states [${result.states.slice(0, 6).join(", ")}${result.states.length > 6 ? ", ..." : ""}].`,
         );
 
-        if (argv["out"]) {
-          const outPath = argv["out"] as string;
+        if (outFile) {
           const header = ["time", ...result.states].join(",");
           const lines = [header];
           for (let i = 0; i < result.t.length; i++) {
             const row = [result.t[i], ...result.y[i]!].join(",");
             lines.push(row);
           }
-          fs.writeFileSync(outPath, lines.join("\n"), "utf-8");
-          console.log(`Wrote trajectory data to ${outPath}`);
+          fs.writeFileSync(outFile, lines.join("\n"), "utf-8");
+          console.log(`Wrote trajectory data to ${outFile}`);
         }
       } else if (action === "to-fmu") {
         const { exportSimpackFmu } = await import("@modelscript/exchange");
         const fmuResult = exportSimpackFmu(model);
-        const outPath = (argv["out"] as string) ?? `${modelName}.fmu`;
+        const outPath = outFile ?? `${modelName}.fmu`;
         fs.writeFileSync(outPath, fmuResult.archive);
         console.log(
           `Exported FMI 2.0 Co-Simulation FMU (${fmuResult.archive.byteLength} bytes, ${fmuResult.variableCount} vars) to ${outPath}`,
@@ -139,12 +184,21 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
           exportHomologationCtrf,
         } = await import("@modelscript/gensys");
 
+        // Derive total mass from SIMPACK bodies if present, falling back to 160 kN nominal axle load
+        let totalMassKg = 0;
+        for (const b of model.bodies.values()) {
+          if (typeof b.mass === "number" && b.mass > 0) {
+            totalMassKg += b.mass;
+          }
+        }
+        const derivedAxleLoadKn = totalMassKg > 0 ? Math.max(40.0, (totalMassKg * 9.80665) / 1000.0 / 4.0) : 160.0;
+
         const report = createHomologationReport({
           modelName,
           vehicleType: "SIMPACK Mechanism",
           maxNadalYOverQ: 0.65,
           maxLateralForceYKn: 35.0,
-          nominalAxleLoadQ0Kn: 160.0,
+          nominalAxleLoadQ0Kn: derivedAxleLoadKn,
         });
 
         const format = ((argv["format"] as string) ?? "html").toLowerCase();
@@ -155,9 +209,9 @@ export const SimpackCommand: CommandModule<Record<string, unknown>, Record<strin
         else if (format === "ctrf") outputText = exportHomologationCtrf(report);
         else outputText = exportHomologationHtml(report);
 
-        if (argv["out"]) {
-          fs.writeFileSync(argv["out"] as string, outputText, "utf-8");
-          console.log(`Generated ${format.toUpperCase()} report at ${argv["out"]}`);
+        if (outFile) {
+          fs.writeFileSync(outFile, outputText, "utf-8");
+          console.log(`Generated ${format.toUpperCase()} report at ${outFile}`);
         } else {
           console.log(outputText);
         }

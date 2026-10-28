@@ -33,7 +33,7 @@ export const SbmlCommand: CommandModule<Record<string, unknown>, Record<string, 
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (e.g. for Modelica export)",
         type: "string",
       })

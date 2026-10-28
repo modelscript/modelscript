@@ -18,7 +18,7 @@ function getSubdirNames(relDir) {
 const dynamicScopes = [...getSubdirNames("packages"), ...getSubdirNames("languages"), ...getSubdirNames("apps")];
 
 const allScopes = Array.from(
-  new Set(["compiler", "ide-client", "ci", "deps", "repo", "release", "docker", ...dynamicScopes]),
+  new Set(["compiler", "ide-client", "ci", "deps", "repo", "release", "docker", "ee", ...dynamicScopes]),
 ).sort();
 
 export default {

@@ -59,8 +59,8 @@
     "step-multibody-mapper.ts"
   ],
   "scripts": {
-    "build": "node build.js && tsc",
-    "build:parser": "node build.js --force",
+    "build": "node ../../scripts/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build-language-parser.js --force",
     "clean": "rimraf dist src-gen *.wasm",
     "lint": "eslint src tests language.ts step-multibody-mapper.ts --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",

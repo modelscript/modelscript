@@ -83,7 +83,7 @@ export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
     };
   }
 
-  // 3. Pre-load Modelica / SysML equations if model files are provided
+  // 3. Pre-load Modelica DAE / SysML equations if model files are provided
   const modelEquations = new Map<string, string>();
   for (const modelPath of [args.modelica, args.sysml]) {
     if (modelPath && fs.existsSync(modelPath)) {
@@ -97,6 +97,31 @@ export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
           modelEquations.set(lhs, rhs);
         }
       }
+    }
+  }
+
+  let modelicaContext: Awaited<
+    ReturnType<(typeof import("@modelscript/modelica/context"))["Context"]["createBatch"]>
+  > | null = null;
+  let modelicaClassName: string | null = null;
+  if (args.modelica && fs.existsSync(args.modelica)) {
+    try {
+      const { resolveBuiltInWasmPath } = await import("../util/language-registry.js");
+      const wasmPath = resolveBuiltInWasmPath("modelica");
+      if (wasmPath && fs.existsSync(wasmPath)) {
+        const { createWasmParser } = await import("@modelscript/modelica/parser");
+        const { Context } = await import("@modelscript/modelica/context");
+        const { NodeFileSystem } = await import("../util/filesystem.js");
+        const { inferPrimaryModelName } = await import("../util/cli-options.js");
+        const { parser } = await createWasmParser(wasmPath);
+        Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
+        modelicaContext = Context.createBatch(new NodeFileSystem());
+        await modelicaContext.addLibrary(args.modelica);
+        const src = fs.readFileSync(args.modelica, "utf-8");
+        modelicaClassName = inferPrimaryModelName(args.modelica, src);
+      }
+    } catch {
+      modelicaContext = null;
     }
   }
 
@@ -120,6 +145,32 @@ export async function runMultidomainFalsification(args: FalsifyArgs): Promise<{
     for (const [k, v] of Object.entries(params)) {
       if (!(k in signals)) {
         signals[k] = times.map(() => v);
+      }
+    }
+
+    // If a compilable Modelica model was provided, run real DAE simulation with parameter overrides
+    if (modelicaContext && modelicaClassName) {
+      try {
+        const arena = modelicaContext.flattenArena(modelicaClassName);
+        if (arena) {
+          for (let i = 0; i < arena.varCount; i++) {
+            const vName = arena.getVarName(i);
+            if (vName in params) {
+              arena.setVarStartValue(i, params[vName]!);
+            }
+          }
+          const { simulateArenaAsync } = await import("@modelscript/simulate");
+          const simRes = await simulateArenaAsync(arena, { startTime: 0, stopTime: 5, step: 1 });
+          if (simRes.t.length > 0) {
+            for (let sIdx = 0; sIdx < simRes.states.length; sIdx++) {
+              const sName = simRes.states[sIdx]!;
+              signals[sName] = simRes.y.map((row) => row[sIdx] ?? 0);
+            }
+            return { times: simRes.t, signals };
+          }
+        }
+      } catch {
+        // Fall through to analytic equation evaluation
       }
     }
 

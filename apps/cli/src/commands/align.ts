@@ -76,7 +76,7 @@ export const Align: CommandModule<{}, AlignArgs> = {
       process.exit(1);
     }
 
-    const extractElements = (filePath: string): AlignmentElement[] => {
+    const extractElements = async (filePath: string): Promise<AlignmentElement[]> => {
       const content = fs.readFileSync(filePath, "utf-8");
       const ext = path.extname(filePath).toLowerCase();
 
@@ -100,7 +100,45 @@ export const Align: CommandModule<{}, AlignArgs> = {
       }
 
       if (ext === ".mo") {
-        // Modelica: extract component declarations and models
+        try {
+          const { resolveBuiltInWasmPath } = await import("../util/language-registry.js");
+          const wasmPath = resolveBuiltInWasmPath("modelica");
+          if (wasmPath && fs.existsSync(wasmPath)) {
+            const { createWasmParser } = await import("@modelscript/modelica/parser");
+            const { createModelicaWorkspaceIndex } = await import("@modelscript/modelica/factory");
+            const { parser } = await createWasmParser(wasmPath);
+            const mIdx = createModelicaWorkspaceIndex();
+            const ast = parser.parse(content)?.rootNode;
+            if (ast) {
+              mIdx.register(`file://${filePath}`, () => ast as never, content);
+              const unified = mIdx.toUnifiedAsync ? await mIdx.toUnifiedAsync() : mIdx.toUnified();
+              const cstElements: AlignmentElement[] = [];
+              let idCounter = 1;
+              for (const sym of unified.symbols.values()) {
+                if (sym.ruleName === "class_definition") {
+                  cstElements.push({
+                    id: 0,
+                    name: sym.name,
+                    domain: ThreadDomain.Modelica,
+                    type: "ModelicaModel",
+                  });
+                } else if (sym.ruleName === "component_declaration") {
+                  cstElements.push({
+                    id: idCounter++,
+                    name: sym.name,
+                    domain: ThreadDomain.Modelica,
+                    type: "ModelicaComponent",
+                  });
+                }
+              }
+              if (cstElements.length > 0) return cstElements;
+            }
+          }
+        } catch {
+          // Fall back to lexical scan if WASM parser unavailable
+        }
+
+        // Modelica fallback: extract component declarations and models
         const elements: AlignmentElement[] = [];
         const compRegex = /(?:Modelica\.[\w.]+|[\w.]+)\s+([a-zA-Z_]\w*)\s*(?:\([^)]*\))?\s*(?:=.*?)?;/g;
         let m: RegExpExecArray | null;
@@ -119,7 +157,6 @@ export const Align: CommandModule<{}, AlignArgs> = {
             });
           }
         }
-        // Also extract model name
         const modelMatch = content.match(/model\s+([a-zA-Z_]\w*)/i);
         if (modelMatch && modelMatch[1]) {
           elements.push({
@@ -133,7 +170,38 @@ export const Align: CommandModule<{}, AlignArgs> = {
       }
 
       if (ext === ".sysml" || ext === ".sys2") {
-        // SysML v2: extract part defs / part usages
+        try {
+          const { resolveBuiltInWasmPath } = await import("../util/language-registry.js");
+          const wasmPath = resolveBuiltInWasmPath("sysml2");
+          if (wasmPath && fs.existsSync(wasmPath)) {
+            const { createWasmParser } = await import("@modelscript/sysml2/parser");
+            const { createSysML2WorkspaceIndex } = await import("@modelscript/sysml2/factory");
+            const { parser } = await createWasmParser(wasmPath);
+            const sIdx = createSysML2WorkspaceIndex();
+            const ast = parser.parse(content)?.rootNode;
+            if (ast) {
+              sIdx.register(`file://${filePath}`, () => ast as never, content);
+              const unified = sIdx.toUnifiedAsync ? await sIdx.toUnifiedAsync() : sIdx.toUnified();
+              const cstElements: AlignmentElement[] = [];
+              let idCounter = 1;
+              for (const sym of unified.symbols.values()) {
+                if (sym.name) {
+                  cstElements.push({
+                    id: idCounter++,
+                    name: sym.name,
+                    domain: ThreadDomain.SysML2,
+                    type: "SysMLPart",
+                  });
+                }
+              }
+              if (cstElements.length > 0) return cstElements;
+            }
+          }
+        } catch {
+          // Fall back to lexical scan
+        }
+
+        // SysML v2 fallback: extract part defs / part usages
         const elements: AlignmentElement[] = [];
         const partRegex = /(?:part|action|port|attribute)\s+(?:def\s+)?([a-zA-Z_]\w*)/g;
         let m: RegExpExecArray | null;
@@ -170,8 +238,8 @@ export const Align: CommandModule<{}, AlignArgs> = {
       return [];
     };
 
-    const sourceElements = extractElements(srcPath);
-    const targetElements = extractElements(tgtPath);
+    const sourceElements = await extractElements(srcPath);
+    const targetElements = await extractElements(tgtPath);
 
     const engine = new BrownfieldAlignmentEngine();
     const candidates = engine.alignModels(sourceElements, targetElements, {

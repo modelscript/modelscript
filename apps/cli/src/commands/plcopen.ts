@@ -29,6 +29,7 @@ export const PlcopenCommand: CommandModule<Record<string, unknown>, Record<strin
         describe: "Input PLCopen model files (.xml, .plcopen, .st)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path",
       })

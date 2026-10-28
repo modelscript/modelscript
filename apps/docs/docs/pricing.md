@@ -5,10 +5,10 @@ description: Flexible licensing options for open-source physical modeling, propr
 
 # Pricing & Commercial Licensing
 
-ModelScript is an open-source computable digital thread for engineering, licensed under the **AGPL-3.0-or-later**. We provide commercial exemptions and enterprise deployment appliances for teams that cannot use copyleft software in their products or that operate under strict regulatory firewalls.
+ModelScript is an **open-core** computable digital thread for engineering. The core compilers, WebAssembly DAE arena, numerical solvers, and IDE tooling (`packages/`, `languages/`, `apps/`) are licensed under the **AGPL-3.0-or-later**, while enterprise governance, air-gapped compliance, Slurm HPC orchestration, operational digital twins, HIL codegen, and PLM connectors (`ee/`) are licensed under the **ModelScript Enterprise License (`LicenseRef-ModelScript-Enterprise`)**. We also provide Commercial OEM dual-license exemptions for teams embedding ModelScript into proprietary software.
 
 ::: tip DEVELOPMENT DRAFT
-**Internal Development Preview**: The commercial tiers, dual-licensing models, and appliance packages below represent our proposed commercial offerings. Community Edition is always free and open source.
+**Internal Development Preview**: The commercial tiers, dual-licensing models, and appliance packages below represent our proposed commercial offerings. The AGPL-3.0 Community Edition core is always free and open source.
 :::
 
 ---
@@ -19,18 +19,18 @@ ModelScript is an open-source computable digital thread for engineering, license
 
 <div style="border: 1px solid var(--vp-c-divider); border-radius: 12px; padding: 28px; background: var(--vp-c-bg-soft); display: flex; flex-direction: column; justify-content: space-between;">
 <div>
-<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Community</div>
+<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Community (Open Core)</div>
 <div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$0 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ forever</span></div>
 <p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Ideal for individual engineers, researchers, and open-source projects using ModelScript.</p>
 <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8; color: var(--vp-c-text-1);">
-  <li>✓ Complete AGPL-3.0 open-source code</li>
+  <li>✓ AGPL-3.0 open-core compiler &amp; solvers</li>
   <li>✓ In-browser WebAssembly DAE simulation</li>
-  <li>✓ All 44 engineering language parsers</li>
+  <li>✓ Core engineering language parsers</li>
   <li>✓ Local CLI toolchain (<code>msx</code>)</li>
   <li>✓ Nelson-Oppen multi-solver verification</li>
-  <li>✓ Model Context Protocol (MCP) server</li>
+  <li>✓ Local stdio Model Context Protocol (MCP)</li>
   <li>✓ Public package registry access</li>
-  <li>✓ Community GitHub Discussions & Issues</li>
+  <li>✓ Community GitHub Discussions &amp; Issues</li>
 </ul>
 </div>
 <div style="margin-top: 24px;">
@@ -39,7 +39,7 @@ ModelScript is an open-source computable digital thread for engineering, license
 </div>
 
 <div style="border: 2px solid var(--vp-c-brand-1); border-radius: 12px; padding: 28px; background: var(--vp-c-bg-soft); display: flex; flex-direction: column; justify-content: space-between; position: relative;">
-<div style="position: absolute; top: -12px; right: 20px; background: var(--vp-c-brand-1); color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 10px; border-radius: 10px;">Recommended for Startups</div>
+<div style="position: absolute; top: -12px; right: 20px; background: var(--vp-c-brand-1); color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 10px; border-radius: 10px;">Recommended for Vendors</div>
 <div>
 <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Commercial SDK</div>
 <div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$12,000 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ year</span></div>
@@ -48,10 +48,10 @@ ModelScript is an open-source computable digital thread for engineering, license
   <li>✓ <strong>AGPL-3.0 Copyleft Exemption</strong></li>
   <li>✓ Embed into proprietary SaaS and desktop apps</li>
   <li>✓ Royalty-free redistribution</li>
+  <li>✓ Hosted MCP SSE &amp; OMG SysML v2 REST APIs</li>
   <li>✓ Private Slack channel with core compiler team</li>
   <li>✓ 48-hour response time SLA on blocker issues</li>
-  <li>✓ Backported security & solver stability patches</li>
-  <li>✓ Priority feature & dialect requests</li>
+  <li>✓ Backported security &amp; solver stability patches</li>
   <li>✓ Annual commercial license renewal</li>
 </ul>
 </div>
@@ -62,18 +62,18 @@ ModelScript is an open-source computable digital thread for engineering, license
 
 <div style="border: 1px solid var(--vp-c-divider); border-radius: 12px; padding: 28px; background: var(--vp-c-bg-soft); display: flex; flex-direction: column; justify-content: space-between;">
 <div>
-<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Enterprise Appliance</div>
+<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Enterprise Appliance (ee/)</div>
 <div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$18,000 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ year</span></div>
-<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Air-gapped on-premise deployment for electric utilities, aerospace, and defense with strict regulatory firewalls.</p>
+<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Air-gapped on-premise deployment for electric utilities, aerospace, automotive, and defense with strict regulatory firewalls.</p>
 <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8; color: var(--vp-c-text-1);">
-  <li>✓ <strong>100% Air-Gapped Container Image</strong></li>
-  <li>✓ NERC CIP-002 through CIP-014 compliance tags</li>
-  <li>✓ FERC Critical Energy Infrastructure (CEII) storage</li>
-  <li>✓ Reverse-proxy SAML 2.0 / OIDC enterprise SSO</li>
-  <li>✓ On-premise Slurm HPC cluster scheduler</li>
-  <li>✓ Local TimescaleDB simulation telemetry historian</li>
-  <li>✓ Dedicated technical account manager</li>
-  <li>✓ Annual compliance audit attestations</li>
+  <li>✓ <strong>100% Air-Gapped Container Image (<code>ee/deploy/</code>)</strong></li>
+  <li>✓ Offline Ed25519 license key (<code>MSX_LICENSE_KEY</code>)</li>
+  <li>✓ NERC CIP, FERC CEII, ITAR/EAR &amp; FDA 21 CFR Part 11 DHF</li>
+  <li>✓ SAML 2.0 / OIDC SSO &amp; Multi-Org RBAC</li>
+  <li>✓ On-premise Slurm HPC &amp; Distributed CAE Sweeps</li>
+  <li>✓ Operational Digital Twins &amp; TimescaleDB Historian</li>
+  <li>✓ Real-Time HIL (dSPACE/Speedgoat/AUTOSAR/PLCopen)</li>
+  <li>✓ Enterprise PLM/CAE Bridges (OSLC, ReqIF, DDP, Simulink)</li>
 </ul>
 </div>
 <div style="margin-top: 24px;">
@@ -87,28 +87,33 @@ ModelScript is an open-source computable digital thread for engineering, license
 
 ## Detailed Capability Comparison
 
-| Feature                              | Community (AGPL-3.0)  |       Commercial SDK       |         Enterprise Appliance          |
-| :----------------------------------- | :-------------------: | :------------------------: | :-----------------------------------: |
-| **License Type**                     |   AGPL-3.0-or-later   | Proprietary Commercial OEM |        Enterprise Site License        |
-| **Copyleft Exemption (Section 13)**  |           —           |        **Included**        |             **Included**              |
-| **Embed in Closed-Source SaaS**      | Requires AGPL release |       **Permitted**        |             **Permitted**             |
-| **Air-Gapped Deployment**            |     Manual setup      |        Manual setup        | **Turnkey Containers (Docker / K8s)** |
-| **Regulatory Compliance Mapping**    |           —           |             —              |       **NERC CIP & FERC CEII**        |
-| **44 Polyglot Engineering Formats**  |          Yes          |            Yes             |                  Yes                  |
-| **WASM GLR Parser & Arena DAE**      |          Yes          |            Yes             |                  Yes                  |
-| **Nelson-Oppen Multi-Solver**        |          Yes          |            Yes             |                  Yes                  |
-| **Enterprise SSO (SAML 2.0 / OIDC)** |       Basic JWT       |      Scoped API Keys       |     **Reverse Proxy & SAML 2.0**      |
-| **Slurm HPC & GPU Acceleration**     |     Local config      |     Priority Dispatch      |  **Dedicated On-Premise Partition**   |
-| **Support Channel**                  |  Public Discussions   |   Private Slack Channel    |     Private Slack & Dedicated TAM     |
-| **Support SLA**                      |      Best-effort      |    48-Hour Business SLA    |     24-Hour Mission-Critical SLA      |
+| Feature                                   | Community (`MSX_EDITION=ce`) |       Commercial SDK       |   Enterprise Appliance (`MSX_EDITION=ee`)   |
+| :---------------------------------------- | :--------------------------: | :------------------------: | :-----------------------------------------: |
+| **License Type**                          |     `AGPL-3.0-or-later`      | Proprietary Commercial OEM |     `LicenseRef-ModelScript-Enterprise`     |
+| **Copyleft Exemption (Section 13)**       |              —               |        **Included**        |                **Included**                 |
+| **Embed in Closed-Source SaaS**           |    Requires AGPL release     |       **Permitted**        |                **Permitted**                |
+| **WASM GLR Parser & Arena DAE**           |             Yes              |            Yes             |                     Yes                     |
+| **Nelson-Oppen Multi-Solver**             |             Yes              |            Yes             |                     Yes                     |
+| **Air-Gapped Deployment (`ee/deploy/`)**  |              —               |             —              |    **Turnkey Containers (Docker / K8s)**    |
+| **Regulatory & DHF Attestations**         |              —               |             —              | **NERC CIP, FERC CEII, ITAR & FDA Part 11** |
+| **Enterprise SSO & Multi-Org RBAC**       |          Basic JWT           |      Scoped API Keys       |       **SAML 2.0 / OIDC & Org RBAC**        |
+| **Slurm HPC & Distributed 3D CAE Sweeps** |              —               |     Priority Dispatch      |     **Dedicated On-Premise Partition**      |
+| **Operational Digital Twins & Historian** |              —               |          Optional          |      **Included (MHE + TimescaleDB)**       |
+| **Digital Thread Governance & Approvals** |              —               |          Optional          |    **Included (Proposals + Audit Log)**     |
+| **Real-Time HIL, AUTOSAR & PLC Codegen**  |         Baseline FMI         |        **Included**        |   **dSPACE, Speedgoat, AUTOSAR, PLCopen**   |
+| **Enterprise PLM & Legacy CAE Bridges**   |              —               |        **Included**        | **OSLC, ReqIF, DDP, AASX, Simulink, OLGA**  |
+| **Support SLA**                           |         Best-effort          |    48-Hour Business SLA    |        24-Hour Mission-Critical SLA         |
 
 ---
 
 ## Frequently Asked Questions
 
-### Why is ModelScript licensed under the AGPL-3.0?
+### How is ModelScript licensed?
 
-The GNU Affero General Public License (AGPL-3.0) ensures that improvements to the core compiler, equation arenas, and language parsers remain open and accessible to the engineering community. Section 13 requires that if you run a modified version of ModelScript on a server and provide access over a network, you must make the corresponding source code available.
+ModelScript uses an **open-core and dual-license** structure:
+
+- **Open Core (`AGPL-3.0-or-later`)**: The core language parsers, WebAssembly DAE arena, numerical solvers, LSP, and IDE under `packages/`, `languages/`, and `apps/` are open source under the GNU Affero General Public License v3.0.
+- **Enterprise Edition (`LicenseRef-ModelScript-Enterprise`)**: Enterprise governance, air-gapped security headers, FDA/NERC compliance attestations, corporate OIDC/SAML SSO, Slurm HPC offload, operational digital twins, HIL codegen, and PLM connectors reside in the `ee/` directory and require a valid `MSX_LICENSE_KEY`.
 
 ### When do I need the Commercial SDK license?
 
@@ -124,7 +129,7 @@ You require a Commercial SDK license if:
 
 ### How does the Enterprise Appliance work in zero-internet networks?
 
-The Enterprise Appliance is distributed as a self-contained container bundle (`ghcr.io/modelscript/appliance`) accompanied by Docker Compose and Kubernetes manifests (`deploy/appliance/`). It operates completely disconnected from the public internet, storing all user credentials, models, and simulation trajectories in an encrypted local volume.
+The Enterprise Appliance is distributed as a self-contained container bundle (`ghcr.io/modelscript/appliance`) accompanied by Docker Compose and Kubernetes manifests (`ee/deploy/`). It operates completely disconnected from the public internet, storing all user credentials, models, and simulation trajectories in an encrypted local volume.
 
 ### Can we evaluate the Commercial SDK or Appliance before purchasing?
 

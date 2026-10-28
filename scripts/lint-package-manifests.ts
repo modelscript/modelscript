@@ -4,45 +4,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
+import { getWorkspacePackages, REPO_ROOT } from "./lib/workspaces.js";
+import { syncVersions } from "./sync-versions.js";
 
-interface Violation {
+const __filename = fileURLToPath(import.meta.url);
+
+export interface ManifestViolation {
   file: string;
   rule: string;
   message: string;
 }
 
-function getWorkspacePackages(): string[] {
-  const rootPkgPath = path.join(REPO_ROOT, "package.json");
-  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8"));
-  const workspaces: string[] = rootPkg.workspaces || [];
-  const packagePaths: string[] = [];
-
-  for (const pattern of workspaces) {
-    if (pattern.endsWith("/*")) {
-      const parentDir = path.join(REPO_ROOT, pattern.slice(0, -2));
-      if (!fs.existsSync(parentDir)) continue;
-      const entries = fs.readdirSync(parentDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const candidate = path.join(parentDir, entry.name, "package.json");
-          if (fs.existsSync(candidate)) {
-            packagePaths.push(candidate);
-          }
-        }
-      }
-    } else {
-      const candidate = path.join(REPO_ROOT, pattern, "package.json");
-      if (fs.existsSync(candidate)) {
-        packagePaths.push(candidate);
-      }
-    }
-  }
-
-  return packagePaths;
-}
+type Violation = ManifestViolation;
 
 const STABLE_LANGUAGES = new Set([
   "modelscript",
@@ -83,9 +56,12 @@ const CORE_FOUNDATIONAL_LANGUAGES = new Set(["ssp", "csv"]);
 
 export function getExpectedMetadata(relDir: string): {
   tier: "stable" | "beta" | "preview";
-  category: "core" | "language" | "app" | "example";
+  category: "core" | "language" | "app" | "example" | "ee";
 } {
   const norm = relDir.replace(/\\/g, "/");
+  if (norm === "ee" || norm.startsWith("ee/")) {
+    return { tier: "stable", category: "ee" };
+  }
   if (norm.startsWith("apps/")) {
     return { tier: "stable", category: "app" };
   }
@@ -146,6 +122,7 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
   const relPath = path.relative(REPO_ROOT, pkgJsonPath).replace(/\\/g, "/");
   const pkgDir = path.dirname(pkgJsonPath);
   const relDir = path.posix.dirname(relPath);
+  const isEnterprisePkg = relDir === "ee" || relDir.startsWith("ee/");
 
   let pkg: Record<string, unknown>;
   try {
@@ -202,9 +179,37 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
     }
   }
 
-  // 2. Non-private publishable package requirements
+  // 1b. Validate "test" script uses universal test-runner.js
+  if (scripts["test"]) {
+    const testCmd = scripts["test"].trim();
+    const delegatedCmd = testCmd === "npm run test:unit" ? (scripts["test:unit"] ?? "") : testCmd;
+    if (!delegatedCmd.includes("scripts/test-runner.js")) {
+      violations.push({
+        file: relPath,
+        rule: "standard-test-runner",
+        message: `Workspace "test" script must invoke "scripts/test-runner.js" for unified CTRF reporting, coverage, and Nx flag handling (found: "${testCmd}").`,
+      });
+    }
+  }
+
+  // 2. Non-private publishable package requirements & Enterprise Edition guardrails
   const isPrivate = pkg["private"] === true;
-  if (!isPrivate) {
+  if (isEnterprisePkg) {
+    if (!isPrivate) {
+      violations.push({
+        file: relPath,
+        rule: "ee-must-be-private",
+        message: `Enterprise Edition package under ee/ must specify "private": true.`,
+      });
+    }
+    if (pkg["license"] !== "LicenseRef-ModelScript-Enterprise") {
+      violations.push({
+        file: relPath,
+        rule: "ee-required-license",
+        message: `Enterprise Edition package must specify "license": "LicenseRef-ModelScript-Enterprise" (found: ${JSON.stringify(pkg["license"])}).`,
+      });
+    }
+  } else if (!isPrivate) {
     if (pkg["license"] !== "AGPL-3.0-or-later") {
       violations.push({
         file: relPath,
@@ -234,7 +239,7 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
   // 2b. Validate "modelscript" maturity metadata & test-suite thresholds
   const meta = pkg["modelscript"] as { tier?: string; category?: string } | undefined;
   const validTiers = new Set(["stable", "beta", "preview"]);
-  const validCategories = new Set(["core", "language", "app", "example"]);
+  const validCategories = new Set(["core", "language", "app", "example", "ee"]);
   if (
     !meta ||
     typeof meta !== "object" ||
@@ -244,7 +249,7 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
     violations.push({
       file: relPath,
       rule: "required-maturity-metadata",
-      message: `Package must declare "modelscript": { "tier": "stable" | "beta" | "preview", "category": "core" | "language" | "app" | "example" }. Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
+      message: `Package must declare "modelscript": { "tier": "stable" | "beta" | "preview", "category": "core" | "language" | "app" | "example" | "ee" }. Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
     });
   } else if (relDir.startsWith("languages/")) {
     const slug = path.posix.basename(relDir);
@@ -421,17 +426,129 @@ function checkCrossWorkspaceRules(packagePaths: string[]): Violation[] {
     }
   }
 
+  // 7. Ensure shared devDependencies in workspaces match root package.json#devDependencies
+  const rootPkgPath = path.join(REPO_ROOT, "package.json");
+  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8")) as {
+    devDependencies?: Record<string, string>;
+  };
+  const rootDevDeps = rootPkg.devDependencies || {};
+  for (const { relPath, pkg } of parsedManifests) {
+    const devDeps = (pkg["devDependencies"] as Record<string, string> | undefined) || {};
+    for (const [depName, depVer] of Object.entries(devDeps)) {
+      const expectedVer = rootDevDeps[depName];
+      if (expectedVer && depVer !== expectedVer) {
+        violations.push({
+          file: relPath,
+          rule: "dev-dependency-version-sync",
+          message: `devDependency "${depName}" has version "${depVer}" but root package.json specifies "${expectedVer}". Run "npx tsx scripts/lint-package-manifests.ts --sync".`,
+        });
+      }
+    }
+  }
+
+  // 8. Ensure every packages/* and languages/* SDK workspace has a path entry in root tsconfig.json
+  const rootTsconfigPath = path.join(REPO_ROOT, "tsconfig.json");
+  if (fs.existsSync(rootTsconfigPath)) {
+    const rootTsconfig = JSON.parse(fs.readFileSync(rootTsconfigPath, "utf-8")) as {
+      compilerOptions?: { paths?: Record<string, string[]> };
+    };
+    const tsPaths = rootTsconfig.compilerOptions?.paths || {};
+    for (const { relPath, pkg } of parsedManifests) {
+      const relDir = path.posix.dirname(relPath);
+      if (!/^(packages|languages)\/[^/]+$/.test(relDir)) continue;
+      const pkgName = pkg["name"];
+      if (typeof pkgName !== "string" || !pkgName.startsWith("@modelscript/")) continue;
+      if (!tsPaths[pkgName] || !tsPaths[`${pkgName}/*`]) {
+        violations.push({
+          file: "tsconfig.json",
+          rule: "tsconfig-workspace-paths",
+          message: `Workspace "${pkgName}" (${relDir}) is missing "${pkgName}" or "${pkgName}/*" in root tsconfig.json#compilerOptions.paths.`,
+        });
+      }
+    }
+  }
+
   return violations;
 }
 
-async function run(): Promise<void> {
-  const packagePaths = getWorkspacePackages();
+export function syncSharedDevDependencies(packagePaths: string[] = getWorkspacePackages()): number {
+  const rootPkgPath = path.join(REPO_ROOT, "package.json");
+  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8")) as {
+    devDependencies?: Record<string, string>;
+  };
+  const rootDevDeps = rootPkg.devDependencies || {};
+  let updatedCount = 0;
 
-  if (process.argv.includes("--sync-tiers")) {
-    const updated = syncMaturityMetadata(packagePaths);
-    console.log(`✓ Synchronized "modelscript" maturity metadata across ${updated} workspace manifest(s).`);
+  for (const pkgPath of packagePaths) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const devDeps = pkg["devDependencies"] as Record<string, string> | undefined;
+    if (!devDeps) continue;
+    let changed = false;
+    for (const [depName, depVer] of Object.entries(devDeps)) {
+      const expectedVer = rootDevDeps[depName];
+      if (expectedVer && depVer !== expectedVer) {
+        devDeps[depName] = expectedVer;
+        changed = true;
+      }
+    }
+    if (changed) {
+      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+      updatedCount++;
+    }
   }
 
+  return updatedCount;
+}
+
+export function generateDockerfileManifestCopies(packagePaths: string[] = getWorkspacePackages()): string {
+  const relPaths = packagePaths
+    .map((p) => path.relative(REPO_ROOT, p).replace(/\\/g, "/"))
+    .sort((a, b) => a.localeCompare(b));
+
+  const appsAndEe = relPaths.filter((p) => p.startsWith("apps/") || p.startsWith("ee/"));
+  const packages = relPaths.filter((p) => p.startsWith("packages/"));
+  const languages = relPaths.filter((p) => p.startsWith("languages/"));
+
+  const toCopyLines = (items: string[]) =>
+    items.map((relPath) => `COPY ${relPath} ${path.posix.dirname(relPath)}/`).join("\n");
+
+  return [
+    "# Apps & Enterprise Edition manifests",
+    toCopyLines(appsAndEe),
+    "",
+    "# Packages manifests",
+    toCopyLines(packages),
+    "",
+    "# Languages manifests",
+    toCopyLines(languages),
+  ].join("\n");
+}
+
+export function syncDockerfileManifests(packagePaths: string[] = getWorkspacePackages()): boolean {
+  const dockerfilePath = path.join(REPO_ROOT, "Dockerfile");
+  if (!fs.existsSync(dockerfilePath)) return false;
+
+  const content = fs.readFileSync(dockerfilePath, "utf-8");
+  const startMarker = "# Apps & Enterprise Edition manifests";
+  const endMarker = "RUN --mount=type=cache,target=/root/.npm";
+  const startIdx = content.indexOf(startMarker);
+  const endIdx = content.indexOf(endMarker);
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return false;
+
+  const generatedBlock = generateDockerfileManifestCopies(packagePaths) + "\n";
+  const nextContent = content.slice(0, startIdx) + generatedBlock + content.slice(endIdx);
+  if (nextContent !== content) {
+    fs.writeFileSync(dockerfilePath, nextContent, "utf-8");
+    return true;
+  }
+  return false;
+}
+
+export function checkAllManifests(packagePaths: string[] = getWorkspacePackages()): {
+  packageCount: number;
+  version: string;
+  violations: Violation[];
+} {
   const allViolations: Violation[] = [];
 
   for (const pkgPath of packagePaths) {
@@ -441,7 +558,6 @@ async function run(): Promise<void> {
 
   allViolations.push(...checkCrossWorkspaceRules(packagePaths));
 
-  const { syncVersions } = await import("./sync-versions.js");
   const versionResult = syncVersions({ checkOnly: true });
   for (const mismatch of versionResult.mismatches) {
     allViolations.push({
@@ -450,6 +566,38 @@ async function run(): Promise<void> {
       message: `Version mismatch (${mismatch}); expected canonical version ${versionResult.version}. Run "npm run sync:versions".`,
     });
   }
+
+  return {
+    packageCount: packagePaths.length,
+    version: versionResult.version,
+    violations: allViolations,
+  };
+}
+
+function run(): void {
+  const packagePaths = getWorkspacePackages();
+  const syncAll = process.argv.includes("--sync");
+
+  if (syncAll || process.argv.includes("--sync-tiers")) {
+    const updated = syncMaturityMetadata(packagePaths);
+    console.log(`✓ Synchronized "modelscript" maturity metadata across ${updated} workspace manifest(s).`);
+  }
+
+  if (syncAll || process.argv.includes("--sync-dev-deps")) {
+    const updatedDeps = syncSharedDevDependencies(packagePaths);
+    if (updatedDeps > 0) {
+      console.log(`✓ Synchronized shared devDependencies across ${updatedDeps} workspace manifest(s).`);
+    }
+  }
+
+  if (syncAll || process.argv.includes("--sync-dockerfile")) {
+    const updatedDockerfile = syncDockerfileManifests(packagePaths);
+    if (updatedDockerfile) {
+      console.log(`✓ Synchronized workspace manifest COPY lines in Dockerfile.`);
+    }
+  }
+
+  const { packageCount, version, violations: allViolations } = checkAllManifests(packagePaths);
 
   if (allViolations.length > 0) {
     console.error(`\nFound ${allViolations.length} package manifest / README violation(s):\n`);
@@ -461,13 +609,10 @@ async function run(): Promise<void> {
   }
 
   console.log(
-    `✓ All ${packagePaths.length} workspace package manifests, READMEs, Dockerfile layer copies, and version pins (${versionResult.version}) conform to repository standards.`,
+    `✓ All ${packageCount} workspace package manifests, READMEs, Dockerfile layer copies, and version pins (${version}) conform to repository standards.`,
   );
 }
 
-if (process.argv[1] === __filename) {
-  run().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename)) {
+  run();
 }

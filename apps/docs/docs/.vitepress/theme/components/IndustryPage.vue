@@ -167,8 +167,8 @@ const related = computed(() => {
 
         <div class="ms-cta">
           <div>
-            <h2>Free, open source, and runs anywhere</h2>
-            <p>Browser, CLI, VS Code, or your CI pipeline. AGPL-3.0, with no license server.</p>
+            <h2>Open-core toolchain that runs anywhere</h2>
+            <p>Browser, CLI, VS Code, CI pipelines, or air-gapped Enterprise Appliances (AGPL-3.0 Core &amp; Commercial Editions).</p>
           </div>
           <div class="ms-cta-actions">
             <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/installation">Install ModelScript</a>

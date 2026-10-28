@@ -34,6 +34,7 @@ export const AutosarCommand: CommandModule<Record<string, unknown>, Record<strin
         describe: "Input AUTOSAR ARXML files (.arxml)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path for generated code or export",
       })

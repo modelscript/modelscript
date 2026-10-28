@@ -26,7 +26,11 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 585,
+      "explicitAny": 629,
+      "tsComments": 0
+    },
+    "ee": {
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/adams": {
@@ -242,7 +246,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1952,
+      "explicitAny": 1998,
       "tsComments": 0
     },
     "packages/mcp": {

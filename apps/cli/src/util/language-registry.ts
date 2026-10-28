@@ -88,7 +88,7 @@ export function saveUserCatalog(catalog: UserRegistryCatalog): void {
 export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "modelscript", name: "ModelScript", extensions: [".modelscript", ".msx"], isBuiltIn: true },
   { id: "modelica", name: "Modelica", extensions: [".mo", ".mos", ".msim"], isBuiltIn: true },
-  { id: "sysml2", name: "SysML v2", extensions: [".sysml", ".kerml", ".sysml2"], isBuiltIn: true },
+  { id: "sysml2", name: "SysML v2", extensions: [".sysml", ".kerml", ".sysml2", ".sysmlx", ".sys2"], isBuiltIn: true },
   { id: "scad", name: "OpenSCAD", extensions: [".scad"], isBuiltIn: true },
   { id: "step", name: "STEP", extensions: [".step", ".stp", ".p21"], isBuiltIn: true },
   { id: "owl2", name: "OWL2", extensions: [".owl", ".owl2", ".ttl", ".ofn", ".rdf"], isBuiltIn: true },
@@ -97,7 +97,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "cfd", name: "CFD", extensions: [".cfg", ".cfgt", ".su2", ".cfd", ".foam"], isBuiltIn: true },
   { id: "fea", name: "FEA", extensions: [".inp", ".inpt", ".bdf", ".fea", ".dat"], isBuiltIn: true },
   { id: "pscad", name: "PSCAD", extensions: [".pscx", ".pslx", ".pswx", ".psmx"], isBuiltIn: true },
-  { id: "olga", name: "OLGA", extensions: [".opi", ".olga", ".genkey"], isBuiltIn: true },
+  { id: "olga", name: "OLGA", extensions: [".opi", ".olga", ".genkey", ".key", ".tpl", ".ppl"], isBuiltIn: true },
   {
     id: "lps",
     name: "PipelineStudio",
@@ -107,35 +107,45 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "fortran", name: "Fortran", extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"], isBuiltIn: true },
   { id: "c", name: "C", extensions: [".c", ".h"], isBuiltIn: true },
   { id: "easy5", name: "EASY5", extensions: [".ez5", ".ezm", ".ezd", ".eas", ".ezmf", ".ezan"], isBuiltIn: true },
-  { id: "rocets", name: "ROCETS", extensions: [".roc", ".deck"], isBuiltIn: true },
-  { id: "sima", name: "SIMA", extensions: [".sima", ".stask", ".sys", ".hyd"], isBuiltIn: true },
+  { id: "rocets", name: "ROCETS", extensions: [".roc", ".deck", ".rct", ".rocets.inp"], isBuiltIn: true },
+  { id: "sima", name: "SIMA", extensions: [".sima", ".stask", ".sys", ".hyd", ".sima.inp"], isBuiltIn: true },
   { id: "gtsuite", name: "GT-SUITE", extensions: [".gtm", ".gtd", ".gtx", ".gt", ".gts"], isBuiltIn: true },
   { id: "adams", name: "ADAMS", extensions: [".adm", ".acf", ".cmd"], isBuiltIn: true },
-  { id: "aspen", name: "Aspen Plus", extensions: [".bkp", ".apw"], isBuiltIn: true },
+  { id: "aspen", name: "Aspen Plus", extensions: [".bkp", ".apw", ".in", ".aspen.inp"], isBuiltIn: true },
   { id: "autosar", name: "AUTOSAR", extensions: [".arxml"], isBuiltIn: true },
-  { id: "ccsds", name: "CCSDS", extensions: [".oem", ".opm", ".omm", ".tdm"], isBuiltIn: true },
-  { id: "eclipse", name: "ECLIPSE", extensions: [".data", ".ecl"], isBuiltIn: true },
+  { id: "ccsds", name: "CCSDS", extensions: [".oem", ".opm", ".omm", ".tdm", ".xtce"], isBuiltIn: true },
+  { id: "eclipse", name: "ECLIPSE", extensions: [".data", ".ecl", ".inc"], isBuiltIn: true },
   { id: "energyplus", name: "EnergyPlus", extensions: [".idf", ".epJSON"], isBuiltIn: true },
-  { id: "epanet", name: "EPANET", extensions: [".epanet"], isBuiltIn: true },
-  { id: "gensys", name: "GENSYS", extensions: [".gensys", ".gpf", ".tsimf"], isBuiltIn: true },
+  { id: "epanet", name: "EPANET", extensions: [".epanet", ".epanet.inp"], isBuiltIn: true },
+  {
+    id: "gensys",
+    name: "GENSYS",
+    extensions: [".gensys", ".gpf", ".tsimf", ".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
+    isBuiltIn: true,
+  },
   { id: "ibis", name: "IBIS", extensions: [".ibs", ".ebd", ".pkg"], isBuiltIn: true },
-  { id: "jsbsim", name: "JSBSim", extensions: [".jsbsim", ".xml"], isBuiltIn: true },
-  { id: "opendrive", name: "OpenDRIVE", extensions: [".xodr"], isBuiltIn: true },
+  { id: "jsbsim", name: "JSBSim", extensions: [".jsbsim", ".xml", ".jsbsim.xml"], isBuiltIn: true },
+  { id: "opendrive", name: "OpenDRIVE", extensions: [".xodr", ".opendrive.xml"], isBuiltIn: true },
   { id: "opendss", name: "OpenDSS", extensions: [".dss"], isBuiltIn: true },
-  { id: "openscenario", name: "OpenSCENARIO", extensions: [".xosc"], isBuiltIn: true },
-  { id: "plcopen", name: "PLCopen IEC 61131-3", extensions: [".plcopen", ".st", ".iec"], isBuiltIn: true },
+  { id: "openscenario", name: "OpenSCENARIO", extensions: [".xosc", ".osc", ".openscenario.xml"], isBuiltIn: true },
+  {
+    id: "plcopen",
+    name: "PLCopen IEC 61131-3",
+    extensions: [".plcopen", ".st", ".iec", ".plcopen.xml"],
+    isBuiltIn: true,
+  },
   { id: "psse", name: "PSS/E", extensions: [".raw", ".dyr", ".seq"], isBuiltIn: true },
-  { id: "relap5", name: "RELAP5", extensions: [".i", ".relap"], isBuiltIn: true },
-  { id: "reqif", name: "ReqIF", extensions: [".reqif", ".reqifz"], isBuiltIn: true },
-  { id: "sbml", name: "SBML", extensions: [".sbml"], isBuiltIn: true },
-  { id: "simpack", name: "SIMPACK", extensions: [".spck", ".sim"], isBuiltIn: true },
+  { id: "relap5", name: "RELAP5", extensions: [".i", ".relap", ".r5", ".relap5.inp"], isBuiltIn: true },
+  { id: "reqif", name: "ReqIF", extensions: [".reqif", ".reqifz", ".reqif.xml"], isBuiltIn: true },
+  { id: "sbml", name: "SBML", extensions: [".sbml", ".sbml.xml"], isBuiltIn: true },
+  { id: "simpack", name: "SIMPACK", extensions: [".spck", ".sim", ".mbs"], isBuiltIn: true },
   { id: "simulink", name: "Simulink", extensions: [".mdl", ".slx"], isBuiltIn: true },
   { id: "spice", name: "SPICE", extensions: [".cir", ".sp", ".lib", ".net"], isBuiltIn: true },
-  { id: "swmm", name: "SWMM", extensions: [".swmm"], isBuiltIn: true },
+  { id: "swmm", name: "SWMM", extensions: [".swmm", ".swmm.inp"], isBuiltIn: true },
   {
     id: "touchstone",
     name: "Touchstone",
-    extensions: [".s1p", ".s2p", ".s3p", ".s4p", ".snp", ".ts"],
+    extensions: [".s1p", ".s2p", ".s3p", ".s4p", ".snp", ".ts2"],
     isBuiltIn: true,
   },
   { id: "urdf", name: "URDF / SDF", extensions: [".urdf", ".sdf", ".xacro"], isBuiltIn: true },
@@ -362,16 +372,107 @@ export async function registerLanguageFromDirectory(dir: string): Promise<Langua
 // Language Resolver & Operations Service
 // ---------------------------------------------------------------------------
 
+/**
+ * Disambiguates shared engineering file extensions (`.inp`, `.xml`, `.dat`, `.net`, `.cfg`)
+ * using compound extension suffixes or lightweight file header inspection.
+ */
+export function sniffLanguageByContent(fileOrExt: string, textContent?: string): string | undefined {
+  const lower = fileOrExt.toLowerCase();
+
+  // 1. Compound extension suffixes
+  if (lower.endsWith(".swmm.inp")) return "swmm";
+  if (lower.endsWith(".epanet.inp")) return "epanet";
+  if (lower.endsWith(".sima.inp")) return "sima";
+  if (lower.endsWith(".relap5.inp")) return "relap5";
+  if (lower.endsWith(".aspen.inp")) return "aspen";
+  if (lower.endsWith(".rocets.inp")) return "rocets";
+  if (lower.endsWith(".jsbsim.xml")) return "jsbsim";
+  if (lower.endsWith(".plcopen.xml")) return "plcopen";
+  if (lower.endsWith(".sbml.xml")) return "sbml";
+  if (lower.endsWith(".opendrive.xml")) return "opendrive";
+  if (lower.endsWith(".openscenario.xml")) return "openscenario";
+  if (lower.endsWith(".reqif.xml")) return "reqif";
+
+  const ext = path.extname(lower);
+  if (![".inp", ".xml", ".dat", ".net", ".cfg"].includes(ext)) {
+    return undefined;
+  }
+
+  let header = textContent ? textContent.slice(0, 2048) : undefined;
+  if (!header && !fileOrExt.startsWith(".")) {
+    try {
+      if (fs.existsSync(fileOrExt) && fs.statSync(fileOrExt).isFile()) {
+        const fd = fs.openSync(fileOrExt, "r");
+        try {
+          const buf = Buffer.alloc(2048);
+          const bytesRead = fs.readSync(fd, buf, 0, 2048, 0);
+          header = buf.toString("utf-8", 0, bytesRead);
+        } finally {
+          fs.closeSync(fd);
+        }
+      }
+    } catch {
+      // ignore I/O errors during sniffing
+    }
+  }
+
+  if (!header) return undefined;
+
+  if (ext === ".inp" || ext === ".net") {
+    if (/^\s*\[(?:SUBCATCHMENTS|RAINGAGES|INFILTRATION|CONDUITS|OUTFALLS)\]/im.test(header)) {
+      return "swmm";
+    }
+    if (/^\s*\[(?:JUNCTIONS|PIPES|RESERVOIRS|TANKS|DEMANDS)\]/im.test(header)) {
+      return "epanet";
+    }
+    if (/^\s*\*(?:HEADING|NODE|ELEMENT|MATERIAL|STEP|SOLID SECTION)/im.test(header)) {
+      return "fea";
+    }
+    if (/\b(?:SIMO|RIFLEX|STASK|SIMA|ENVIRON|BODY)\b/i.test(header)) {
+      return "sima";
+    }
+    if (/\b(?:FLOWSHEET|PROPERTIES|COMPONENTS|STREAM|BLOCK)\b/i.test(header)) {
+      return "aspen";
+    }
+    if (/^\s*=\s*\S+|\b(?:HYDRO|HTSTR|TMDPVOL|SNGLJUN|MFLOWJ)\b/im.test(header)) {
+      return "relap5";
+    }
+  } else if (ext === ".xml") {
+    if (/<REQ-IF\b/i.test(header)) return "reqif";
+    if (/<AUTOSAR\b/i.test(header)) return "autosar";
+    if (/<OpenDRIVE\b/i.test(header)) return "opendrive";
+    if (/<OpenSCENARIO\b/i.test(header)) return "openscenario";
+    if (/<sbml\b/i.test(header)) return "sbml";
+    if (/<fdm_config\b/i.test(header)) return "jsbsim";
+    if (/<project\b[^>]*plcopen/i.test(header)) return "plcopen";
+  } else if (ext === ".dat") {
+    if (/\b(?:SOL\s+\d+|BEGIN\s+BULK|CEND)\b/i.test(header)) {
+      return "fea";
+    }
+    if (/\b(?:RUNSPEC|DIMENS|PROPS|SOLUTION|SCHEDULE|WELSPECS)\b/i.test(header)) {
+      return "eclipse";
+    }
+  }
+
+  return undefined;
+}
+
 export const LanguageResolver = {
   /**
-   * Resolves a language either by explicit override name or by file extension.
+   * Resolves a language either by explicit override name or by file extension (with content disambiguation).
    */
-  async resolve(fileOrExt?: string, languageOverride?: string, cwd: string = process.cwd()): Promise<ResolvedLanguage> {
+  async resolve(
+    fileOrExt?: string,
+    languageOverride?: string,
+    cwd: string = process.cwd(),
+    textContent?: string,
+  ): Promise<ResolvedLanguage> {
     const catalog = loadUserCatalog();
 
-    // 1. Language Override (e.g. -l modelica, --language sysml2)
+    // 1. Language Override (e.g. -l modelica, --language sysml2, --lang sysml)
     if (languageOverride) {
-      const norm = languageOverride.toLowerCase().trim();
+      const rawNorm = languageOverride.toLowerCase().trim();
+      const norm = rawNorm === "sysml" ? "sysml2" : rawNorm;
 
       // Check user-registered
       const userLang = catalog.languages[norm];
@@ -396,8 +497,17 @@ export const LanguageResolver = {
       throw new Error(`Language '${languageOverride}' not found. Available languages: ${available}`);
     }
 
-    // 2. Resolve by File Extension
+    // 2. Resolve by File Extension (and content sniffing for shared extensions)
     if (fileOrExt) {
+      const sniffedId = sniffLanguageByContent(fileOrExt, textContent);
+      if (sniffedId) {
+        const sniffedBuiltIn = BUILT_IN_LANGUAGES.find((l) => l.id === sniffedId);
+        if (sniffedBuiltIn) {
+          const wasm = resolveBuiltInWasmPath(sniffedBuiltIn.id);
+          return createResolvedLanguage({ ...sniffedBuiltIn, wasmPath: wasm });
+        }
+      }
+
       let ext = fileOrExt;
       if (fileOrExt.includes(".") && !fileOrExt.startsWith(".")) {
         ext = path.extname(fileOrExt);
@@ -411,6 +521,15 @@ export const LanguageResolver = {
       for (const lang of Object.values(catalog.languages)) {
         if (lang.extensions.some((e) => e.toLowerCase() === normExt)) {
           return createResolvedLanguage(lang);
+        }
+      }
+
+      // Dynamic Touchstone N-port extension match (.s1p .. .s99p)
+      if (/^\.s\d+p$/i.test(normExt)) {
+        const tsBuiltIn = BUILT_IN_LANGUAGES.find((l) => l.id === "touchstone");
+        if (tsBuiltIn) {
+          const wasm = resolveBuiltInWasmPath(tsBuiltIn.id);
+          return createResolvedLanguage({ ...tsBuiltIn, wasmPath: wasm });
         }
       }
 

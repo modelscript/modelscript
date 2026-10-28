@@ -45,7 +45,7 @@ export const SimaCommand: CommandModule<Record<string, unknown>, Record<string, 
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for code generation or exported manifests)",
         type: "string",
       })

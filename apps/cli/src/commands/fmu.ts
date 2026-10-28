@@ -748,12 +748,6 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           archiveOptions.nativeBinaries.push({ platform: plat3, ext, binary: binData });
         }
 
-        console.log("FMI VERSION: ", archiveOptions.fmiVersion);
-        console.log(
-          "NATIVE BINARIES: ",
-          archiveOptions.nativeBinaries.map((b) => b.platform),
-        );
-
         // Re-build archive to include native binaries properly
         profiler.start("codegen");
         result = buildFmuArchive(arena, archiveOptions, stateVars);

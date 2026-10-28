@@ -21,6 +21,7 @@ export const EpanetCommand: CommandModule<Record<string, unknown>, Record<string
         describe: "Input EPANET network files (.inp)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path for generated Modelica code",
       })

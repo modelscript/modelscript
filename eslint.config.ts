@@ -21,23 +21,40 @@ const licenseHeaderPlugin = {
         schema: [],
         messages: {
           missingHeader: "File must begin with '// SPDX-License-Identifier: AGPL-3.0-or-later'.",
+          missingEeHeader:
+            "Enterprise Edition file under ee/ must begin with '// SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise'.",
         },
       },
       create(context: {
+        filename?: string;
+        getFilename?(): string;
         sourceCode: { getText(): string };
         report(descriptor: { loc: { line: number; column: number }; messageId: string }): void;
       }) {
         return {
           Program() {
+            const rawFilename =
+              (typeof context.filename === "string" && context.filename) ||
+              (typeof context.getFilename === "function" ? context.getFilename() : "");
+            const normFilename = rawFilename.replace(/\\/g, "/");
+            const rootDir = import.meta.dirname.replace(/\\/g, "/");
+            const relPath = normFilename.startsWith(rootDir + "/")
+              ? normFilename.slice(rootDir.length + 1)
+              : normFilename;
+            const isEnterpriseFile = relPath === "ee" || relPath.startsWith("ee/");
+            const expectedHeader = isEnterpriseFile
+              ? "SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise"
+              : "SPDX-License-Identifier: AGPL-3.0-or-later";
+
             const text = context.sourceCode.getText();
             const lines = text.split(/\r?\n/);
             const firstLine = lines[0] ?? "";
             const hasShebang = firstLine.startsWith("#!");
             const targetLine = hasShebang ? (lines[1] ?? "") : firstLine;
-            if (!targetLine.includes("SPDX-License-Identifier: AGPL-3.0-or-later")) {
+            if (!targetLine.includes(expectedHeader)) {
               context.report({
                 loc: { line: hasShebang ? 2 : 1, column: 0 },
-                messageId: "missingHeader",
+                messageId: isEnterpriseFile ? "missingEeHeader" : "missingHeader",
               });
             }
           },
@@ -155,6 +172,7 @@ export default defineConfig([
     files: [
       "eslint.config.ts",
       "scripts/**/*.{ts,js,cjs,mjs}",
+      "ee/src/**/*.{ts,tsx}",
       "apps/api/src/**/*.{ts,tsx}",
       "apps/cli/src/**/*.{ts,tsx}",
       "apps/ide/src/**/*.{ts,tsx}",
@@ -219,6 +237,7 @@ export default defineConfig([
   },
   {
     files: [
+      "ee/src/**/*.{ts,tsx}",
       "apps/ide/src/**/*.{ts,tsx}",
       "apps/ide/github-fs/src/**/*.{ts,tsx}",
       "apps/desktop/src/**/*.{ts,tsx}",
@@ -245,6 +264,22 @@ export default defineConfig([
     ],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "error",
+    },
+  },
+  {
+    files: ["packages/**/*.{ts,tsx}", "languages/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@modelscript/ee", "@modelscript/ee/*", "**/ee/**"],
+              message: "AGPL-3.0 core packages and languages must never import from Enterprise Edition (ee/).",
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -309,12 +344,14 @@ export default defineConfig([
     files: [
       "eslint.config.ts",
       "scripts/**/*.{ts,js,cjs,mjs}",
+      "ee/**/scripts/**/*.{ts,js,cjs,mjs}",
       "apps/**/scripts/**/*.{ts,js,cjs,mjs}",
       "packages/**/scripts/**/*.{ts,js,cjs,mjs}",
       "languages/**/scripts/**/*.{ts,js,cjs,mjs}",
       "packages/**/build*.{js,cjs,mjs}",
       "languages/**/build*.{js,cjs,mjs}",
       "packages/exchange/validation/**/*.{ts,js,cjs,mjs}",
+      "ee/**/tests/**/*.{ts,js,cjs,mjs}",
       "apps/**/tests/**/*.{ts,js,cjs,mjs}",
       "packages/**/tests/**/*.{ts,js,cjs,mjs}",
       "languages/**/tests/**/*.{ts,js,cjs,mjs}",
@@ -346,12 +383,14 @@ export default defineConfig([
   },
   {
     files: [
+      "ee/**/scripts/**/*.{ts,js,cjs,mjs}",
       "apps/**/scripts/**/*.{ts,js,cjs,mjs}",
       "packages/**/scripts/**/*.{ts,js,cjs,mjs}",
       "languages/**/scripts/**/*.{ts,js,cjs,mjs}",
       "packages/**/build*.{js,cjs,mjs}",
       "languages/**/build*.{js,cjs,mjs}",
       "packages/exchange/validation/**/*.{ts,js,cjs,mjs}",
+      "ee/**/tests/**/*.{ts,js,cjs,mjs}",
       "apps/**/tests/**/*.{ts,js,cjs,mjs}",
       "packages/**/tests/**/*.{ts,js,cjs,mjs}",
       "languages/**/tests/**/*.{ts,js,cjs,mjs}",

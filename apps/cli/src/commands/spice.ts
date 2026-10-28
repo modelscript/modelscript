@@ -28,8 +28,9 @@ interface SpiceToEcadArgs {
   out?: string | undefined;
 }
 
-const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
+export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
   command: "simulate <file>",
+  aliases: ["solve <file>", "sim <file>", "solve", "sim"],
   describe: "Simulate SPICE netlist with DC operating point (.OP), transient (.TRAN), or AC frequency response (.AC)",
   builder: (yargs) =>
     yargs
@@ -205,8 +206,9 @@ const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
   },
 };
 
-const SpiceLintCommand: CommandModule<{}, SpiceLintArgs> = {
+export const SpiceLintCommand: CommandModule<{}, SpiceLintArgs> = {
   command: "lint <file>",
+  aliases: ["check <file>", "validate <file>", "check", "validate"],
   describe: "Perform pre-flight structural and electrical rule checks on SPICE netlist",
   builder: (yargs) =>
     yargs
@@ -272,7 +274,7 @@ const SpiceLintCommand: CommandModule<{}, SpiceLintArgs> = {
   },
 };
 
-const SpiceToModelicaCommand: CommandModule<{}, SpiceToModelicaArgs> = {
+export const SpiceToModelicaCommand: CommandModule<{}, SpiceToModelicaArgs> = {
   command: "to-modelica <file>",
   describe: "Translate SPICE netlist to idiomatic Modelica 3.x electrical components and connections",
   builder: (yargs) =>
@@ -283,7 +285,7 @@ const SpiceToModelicaCommand: CommandModule<{}, SpiceToModelicaArgs> = {
         type: "string",
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output .mo file path",
         type: "string",
       }) as unknown as Argv<SpiceToModelicaArgs>,
@@ -423,7 +425,7 @@ interface SpiceInspectArgs {
   out?: string | undefined;
 }
 
-const SpiceInspectCommand: CommandModule<{}, SpiceInspectArgs> = {
+export const SpiceInspectCommand: CommandModule<{}, SpiceInspectArgs> = {
   command: "inspect <file>",
   aliases: ["summary <file>", "summary"],
   describe: "Inspect circuit topology, component breakdown by kind, nodes, models, subcircuits, and directives",
@@ -441,7 +443,7 @@ const SpiceInspectCommand: CommandModule<{}, SpiceInspectArgs> = {
         default: "pretty",
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Write summary to output JSON file",
         type: "string",
       }) as unknown as Argv<SpiceInspectArgs>,
@@ -511,7 +513,7 @@ interface SpiceToDaeArgs {
   out?: string | undefined;
 }
 
-const SpiceToDaeCommand: CommandModule<{}, SpiceToDaeArgs> = {
+export const SpiceToDaeCommand: CommandModule<{}, SpiceToDaeArgs> = {
   command: "to-dae <file>",
   describe: "Lower SPICE netlist directly into zero-GC linear-memory DAE arena",
   builder: (yargs) =>
@@ -528,7 +530,7 @@ const SpiceToDaeCommand: CommandModule<{}, SpiceToDaeArgs> = {
         default: "pretty",
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output JSON file for DAE metadata",
         type: "string",
       }) as unknown as Argv<SpiceToDaeArgs>,
@@ -577,8 +579,9 @@ interface SpiceDiagramArgs {
   out?: string | undefined;
 }
 
-const SpiceDiagramCommand: CommandModule<{}, SpiceDiagramArgs> = {
+export const SpiceDiagramCommand: CommandModule<{}, SpiceDiagramArgs> = {
   command: "diagram <file>",
+  aliases: ["render <file>", "render"],
   describe: "Render SPICE circuit schematic diagram to standalone vector SVG or JSON graph",
   builder: (yargs) =>
     yargs

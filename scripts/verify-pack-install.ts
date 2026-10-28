@@ -5,43 +5,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { getWorkspacePackages, REPO_ROOT } from "./lib/workspaces.js";
+
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
 
 export interface PackViolation {
   package: string;
   rule: string;
   message: string;
-}
-
-function getWorkspacePackages(): string[] {
-  const rootPkgPath = path.join(REPO_ROOT, "package.json");
-  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8"));
-  const workspaces: string[] = rootPkg.workspaces || [];
-  const packagePaths: string[] = [];
-
-  for (const pattern of workspaces) {
-    if (pattern.endsWith("/*")) {
-      const parentDir = path.join(REPO_ROOT, pattern.slice(0, -2));
-      if (!fs.existsSync(parentDir)) continue;
-      for (const entry of fs.readdirSync(parentDir, { withFileTypes: true })) {
-        if (entry.isDirectory()) {
-          const candidate = path.join(parentDir, entry.name, "package.json");
-          if (fs.existsSync(candidate)) {
-            packagePaths.push(candidate);
-          }
-        }
-      }
-    } else {
-      const candidate = path.join(REPO_ROOT, pattern, "package.json");
-      if (fs.existsSync(candidate)) {
-        packagePaths.push(candidate);
-      }
-    }
-  }
-
-  return packagePaths.sort();
 }
 
 export function isIncludedByFilesWhitelist(relTarget: string, filesList: string[]): boolean {

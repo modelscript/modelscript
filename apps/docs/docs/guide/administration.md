@@ -1,6 +1,10 @@
 # Platform Administration & Enterprise Hub Guide
 
-The **ModelScript Enterprise Hub** (`@modelscript/api` and `@modelscript/web`) provides a self-hostable or cloud-managed control plane for polyglot package management, Git Smart HTTP hosting, OMG SysML v2 / Semantic Web APIs, Slurm HPC simulation offload, operational digital twins, and cryptographically verifiable regulatory compliance.
+The **ModelScript Enterprise Hub** (`@modelscript/api`, `@modelscript/web`, and `@modelscript/ee`) provides a self-hostable or cloud-managed control plane for polyglot package management, Git Smart HTTP hosting, OMG SysML v2 / Semantic Web APIs, Slurm HPC simulation offload, operational digital twins, and cryptographically verifiable regulatory compliance.
+
+> [!IMPORTANT]
+> **Community (`MSX_EDITION=ce`) vs. Enterprise Edition (`MSX_EDITION=ee`)**:
+> The core package registry, Git server, GraphQL/SPARQL endpoints, and local simulation runtime are licensed under **AGPL-3.0-or-later**. Enterprise subsystems located in `ee/` (`@modelscript/ee`) — including Corporate SAML/OIDC SSO & Org RBAC (`saml_oidc_sso`), Air-Gap NERC CIP / FERC CEII & ITAR/EAR Compliance (`airgap_compliance`), FDA 21 CFR Part 11 DHF Attestations (`dhf_attestation`), Slurm HPC & Compute Billing (`slurm_hpc`), Operational Digital Twins & Historian (`digital_twins`), Digital Thread Governance (`digital_thread_governance`), OMG SysML v2 REST (`sysml2_omg_api`), Hosted MCP SSE Gateway (`mcp_sse_gateway`), Real-Time HIL Codegen (`hil_codegen`), and Enterprise PLM/CAE Connectors (`plm_connectors`) — are licensed under `LicenseRef-ModelScript-Enterprise` and verified offline via an Ed25519-signed `MSX_LICENSE_KEY`.
 
 ---
 
@@ -142,3 +146,191 @@ Enterprise teams can connect cloud AI agents and internal copilot orchestrators 
 
 - **`GET /api/v1/mcp/sse`**: Authenticates via Bearer token (`JWT` or `ms_bot_*`) and opens a server-sent events transport session.
 - **`POST /api/v1/mcp/messages`**: Dispatches any of the [31 MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.
+
+---
+
+## 9. Deployment & Self-Hosting Runbook
+
+ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Edition (`ee`)** container images to GitHub Container Registry (`ghcr.io/modelscript/*`). Choose the deployment scenario below that matches your environment.
+
+| Container Image                 |                   Edition                    |      `/app/ee` Included?      | Default Environment                                                                               | Target Scenario                                          |
+| :------------------------------ | :------------------------------------------: | :---------------------------: | :------------------------------------------------------------------------------------------------ | :------------------------------------------------------- |
+| `ghcr.io/modelscript/api-ce`    |         **CE** (`AGPL-3.0-or-later`)         | **No** _(physically omitted)_ | `MSX_EDITION=ce`                                                                                  | Self-Hosted Community Edition                            |
+| `ghcr.io/modelscript/cli-ce`    |         **CE** (`AGPL-3.0-or-later`)         | **No** _(physically omitted)_ | `MSX_EDITION=ce`                                                                                  | Open-core CI/CD runner                                   |
+| `ghcr.io/modelscript/api`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Corporate EE Cluster & `modelscript.org` Cloud           |
+| `ghcr.io/modelscript/cli`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner           |
+| `ghcr.io/modelscript/appliance` | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`, `ENTERPRISE_APPLIANCE=true`, `AIRGAP_ENFORCED=true` | Single-container Air-Gapped Intranet Appliance (`:8080`) |
+| `ghcr.io/modelscript/web`       |                    Shared                    |              N/A              | Nginx SPA (`/`) + VitePress Docs (`/docs`)                                                        | Web UI & Unified Documentation Portal                    |
+| `ghcr.io/modelscript/ide`       |                    Shared                    |              N/A              | `PORT=3003` + local WebLLM weights                                                                | Browser WebAssembly & WebGPU IDE Workbench               |
+
+---
+
+### Scenario A: Self-Hosted Community Edition (`MSX_EDITION=ce`)
+
+For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
+
+- Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
+- Includes the full 44-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, and Web IDE.
+- Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
+
+```bash
+# Option 1: Run the physically isolated Community Edition API container directly
+docker run -d \
+  --name modelscript-api-ce \
+  -p 3000:3000 \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -v modelscript-data:/app/apps/api/data \
+  ghcr.io/modelscript/api-ce:latest
+
+# Option 2: Run the full multi-container stack (Caddy + API + Web + IDE) in Community Edition mode
+export MSX_EDITION=ce
+export JWT_SECRET="$(openssl rand -hex 32)"
+export PUBLIC_DOMAIN=localhost
+docker compose --profile standalone up -d
+```
+
+---
+
+### Scenario B: Corporate Self-Hosted Enterprise Edition (`MSX_EDITION=ee`)
+
+For regulated utilities, defense primes, medical device manufacturers, and enterprise engineering organizations holding a signed `msx_lic_<payloadBase64Url>.<ed25519SigBase64Url>` license key.
+
+#### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for SCIF / NERC CIP / ITAR)
+
+Bundles the API server, `@modelscript/ee`, Web SPA, Unified Documentation Portal (`/docs`), and Web IDE into a single hardened container on port `8080` with zero outbound network dependencies:
+
+```bash
+# 1. On an internet-connected bastion, pull and export the appliance image for offline transfer
+docker pull ghcr.io/modelscript/appliance:latest
+docker save ghcr.io/modelscript/appliance:latest | gzip > modelscript-appliance.tar.gz
+
+# 2. Inside the air-gapped enclave, load and start the appliance with your offline license token
+docker load < modelscript-appliance.tar.gz
+
+docker run -d \
+  --name modelscript-appliance \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -e MSX_EDITION=ee \
+  -e MSX_LICENSE_ENFORCE=true \
+  -e MSX_LICENSE_KEY="msx_lic_<PAYLOAD>.<SIGNATURE>" \
+  -e JWT_SECRET="$(openssl rand -hex 32)" \
+  -v modelscript-data:/app/apps/api/data \
+  -v modelscript-uploads:/app/apps/api/uploads \
+  ghcr.io/modelscript/appliance:latest
+```
+
+Or via Docker Compose using [`ee/deploy/docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/ee/deploy/docker-compose.yml) or the root `appliance` profile:
+
+```bash
+export MSX_LICENSE_KEY="msx_lic_<PAYLOAD>.<SIGNATURE>"
+export JWT_SECRET="$(openssl rand -hex 32)"
+docker compose --profile appliance up -d
+```
+
+#### B.2 Corporate Multi-Container Stack (with Caddy TLS, MQTT Unified Namespace & TimescaleDB Historian)
+
+For corporate intranet clusters running live Operational Digital Twins, distributed FMI/MQTT co-simulation, and TimescaleDB telemetry historians:
+
+```bash
+cp .env.production.example .env.enterprise
+# Edit .env.enterprise:
+#   PUBLIC_DOMAIN=modelscript.corp.internal
+#   PUBLIC_URL=https://modelscript.corp.internal
+#   MSX_EDITION=ee
+#   MSX_LICENSE_ENFORCE=true
+#   MSX_LICENSE_KEY=msx_lic_<PAYLOAD>.<SIGNATURE>
+#   JWT_SECRET=<64-hex-secret>
+
+docker compose --env-file .env.enterprise --profile federated up -d
+```
+
+#### B.3 Kubernetes StatefulSet Deployment
+
+Apply the hardened Kubernetes manifest at [`ee/deploy/kubernetes-appliance.yaml`](https://github.com/modelscript/modelscript/blob/main/ee/deploy/kubernetes-appliance.yaml) (pre-configured with `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `seccompProfile: RuntimeDefault`, and a strict zero-egress `NetworkPolicy`):
+
+```bash
+kubectl create namespace modelscript-system
+kubectl -n modelscript-system create secret generic modelscript-ee-license \
+  --from-literal=MSX_LICENSE_KEY="msx_lic_<PAYLOAD>.<SIGNATURE>" \
+  --from-literal=JWT_SECRET="$(openssl rand -hex 32)"
+kubectl apply -f ee/deploy/kubernetes-appliance.yaml
+```
+
+#### B.4 Verifying Enterprise License & Compliance Readiness
+
+```bash
+# Verify Ed25519 license status and enabled feature entitlements
+curl -s http://localhost:8080/api/v1/ee/license/status | jq .
+
+# Verify NERC CIP / FERC CEII air-gap compliance posture
+curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
+```
+
+---
+
+### Scenario C: Official `modelscript.org` Cloud Production Deployment
+
+`modelscript.org` runs the full multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile federated`), serving the Web SPA (`/`), Unified VitePress Documentation & PDF Manual (`/docs`, `/guide/*`, `/languages/*`, `/pricing`), WebGPU IDE (`/ide`, `/vscode`), and Enterprise API (`/api/*`) behind Caddy automatic TLS.
+
+#### C.1 Initial Server Provisioning (`/opt/modelscript`)
+
+```bash
+sudo mkdir -p /opt/modelscript/config
+cd /opt/modelscript
+
+# Copy docker-compose.yml, docker-compose.prod.yml, config/Caddyfile, config/mosquitto.conf, config/init-timescaledb.sql
+cp .env.production.example .env.production
+chmod 600 .env.production
+
+# Edit .env.production to set production secrets:
+#   PUBLIC_DOMAIN=modelscript.org
+#   PUBLIC_URL=https://modelscript.org
+#   MSX_EDITION=ee
+#   MSX_LICENSE_ENFORCE=true
+#   MSX_LICENSE_KEY=<pre-minted modelscript-cloud-prod Ed25519 token>
+#   JWT_SECRET=<production-64-char-hex-secret>
+#   STRIPE_SECRET_KEY=sk_live_...
+#   STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Pull prebuilt GHCR images and launch the production stack
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile federated pull
+
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile federated up -d --remove-orphans
+```
+
+#### C.2 Automated CI/CD Rollouts (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)
+
+Every push to `main` and every tagged release in GitHub Actions builds and pushes all 7 Docker images (`api`, `api-ce`, `web`, `ide`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` and triggers the `deploy_modelscript_org` rollout job. Configure either SSH or Webhook secrets in GitHub repository settings:
+
+| GitHub Secret                          | Description                                                                                  |
+| :------------------------------------- | :------------------------------------------------------------------------------------------- |
+| `PROD_SSH_HOST`                        | Hostname or IP of the `modelscript.org` production server                                    |
+| `PROD_SSH_USER`                        | Deployment SSH user (with `docker` group permissions)                                        |
+| `PROD_SSH_KEY`                         | Ed25519 private SSH key for `PROD_SSH_USER`                                                  |
+| `PROD_DEPLOY_PATH`                     | Directory on the production host (defaults to `/opt/modelscript`)                            |
+| `PROD_DEPLOY_WEBHOOK_URL` _(optional)_ | Webhook URL if triggering rollouts via an external orchestrator (Portainer / Coolify / Argo) |
+| `PROD_DEPLOY_TOKEN` _(optional)_       | Bearer token for `PROD_DEPLOY_WEBHOOK_URL`                                                   |
+
+#### C.3 Issuing & Verifying Customer License Keys (Maintainer Runbook)
+
+The offline Ed25519 license keypair generator and token signer lives in `ee/src/cli/license-cli.ts`:
+
+```bash
+# 1. Generate a new Ed25519 keypair (stored in .keys/, which is gitignored)
+npm run ee:keygen -- --out-dir=.keys
+
+# 2. Mint a signed offline customer license token
+npm run ee:sign-license -- \
+  --private-key=.keys/msx-license-private.pem \
+  --org="Acme Aerospace Corp" \
+  --tier=appliance \
+  --seats=100 \
+  --days=365 \
+  --out=.keys/acme-aerospace.license.json
+
+# 3. Verify any license token offline against the embedded production public key
+npm run ee:verify-license -- msx_lic_<PAYLOAD>.<SIGNATURE>
+```

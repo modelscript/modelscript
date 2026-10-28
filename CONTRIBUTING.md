@@ -143,10 +143,11 @@ npm run test:msl:icon -- --package=Modelica.Electrical.Analog.Basic
 
 ### Package Manifest & Hygiene Standards
 
-Every workspace package under `apps/`, `packages/`, and `languages/` is verified in CI by [`scripts/lint-package-manifests.ts`](./scripts/lint-package-manifests.ts):
+Every workspace package under `apps/`, `packages/`, `languages/`, and `ee/` is verified in CI by [`scripts/lint-package-manifests.ts`](./scripts/lint-package-manifests.ts) and [`scripts/normalize-headers.ts`](./scripts/normalize-headers.ts):
 
-- **SPDX License Header:** All `.ts` / `.tsx` source files must begin with `// SPDX-License-Identifier: AGPL-3.0-or-later`.
-- **Manifest Metadata:** Publishable packages must declare `"license": "AGPL-3.0-or-later"`, a non-empty `"files"` whitelist, `"exports"` (or `"bin"` / `"main"`), and a `"modelscript"` maturity descriptor (`"tier": "stable" | "beta" | "preview"`).
+- **SPDX License Header:** Open-core source files (`apps/`, `packages/`, `languages/`, `scripts/`) must begin with `// SPDX-License-Identifier: AGPL-3.0-or-later`. Enterprise Edition files (`ee/**`) must begin with `// SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise`.
+- **One-Way Open-Core Boundary:** Open-core libraries (`packages/*`, `languages/*`) must never import from `@modelscript/ee` or `ee/*` (enforced via ESLint `no-restricted-imports`).
+- **Manifest Metadata:** Publishable open-core packages must declare `"license": "AGPL-3.0-or-later"`, a non-empty `"files"` whitelist, `"exports"` (or `"bin"` / `"main"`), and a `"modelscript"` maturity descriptor (`"tier": "stable" | "beta" | "preview"`). The private `@modelscript/ee` workspace declares `"license": "LicenseRef-ModelScript-Enterprise"` and `"private": true`.
 - **No Private Dependencies:** Publishable packages must never depend on `"private": true` workspace packages in `"dependencies"`.
 - **Dockerfile & README Parity:** Every workspace `package.json` must have a matching `COPY` entry in the root [`Dockerfile`](./Dockerfile), a non-empty workspace `README.md` with the standard 2-line UTF-8 header, and a link in the root [`README.md`](./README.md).
 - **Type-Safety Ratchet:** Explicit `any` and `@ts-expect-error` counts in `src/` are governed by `npm run lint:types-ratchet` ([`config/type-safety-baseline.json`](./config/type-safety-baseline.json)) and must never increase.
@@ -164,7 +165,7 @@ docs: update CLI usage examples
 refactor: simplify DAE printer ordering
 ```
 
-Before opening a pull request, run the local pre-flight checks:
+Before opening a pull request, sign off your commits (`git commit -s`) in accordance with the [Contributor License Agreement (`CLA.md`)](./CLA.md) and run the local pre-flight checks:
 
 ```bash
 npm run lint:all
@@ -181,13 +182,14 @@ Releases are triggered manually via GitHub Actions ([`.github/workflows/release.
 
 ### Required Repository Secrets
 
-| Secret                               | Source                                                    | Purpose                                                  |
-| :----------------------------------- | :-------------------------------------------------------- | :------------------------------------------------------- |
-| `NPM_TOKEN`                          | [npmjs.com](https://www.npmjs.com/settings/~/tokens)      | Publish `@modelscript/*` packages with provenance        |
-| `VSCE_PAT`                           | [Azure DevOps](https://dev.azure.com/)                    | Publish VS Code extension to Visual Studio Marketplace   |
-| `OVSX_PAT`                           | [open-vsx.org](https://open-vsx.org/user-settings/tokens) | Publish VS Code extension to Open VSX                    |
-| `DEPLOY_PAT`                         | GitHub Personal Access Token                              | Push version commits, tags, and GitHub Pages deployments |
-| `GPG_PRIVATE_KEY` & `GPG_PASSPHRASE` | Maintainer GPG key                                        | Sign release commits and git tags                        |
+| Secret                               | Source                                                    | Purpose                                                |
+| :----------------------------------- | :-------------------------------------------------------- | :----------------------------------------------------- |
+| `NPM_TOKEN`                          | [npmjs.com](https://www.npmjs.com/settings/~/tokens)      | Publish `@modelscript/*` packages with provenance      |
+| `VSCE_PAT`                           | [Azure DevOps](https://dev.azure.com/)                    | Publish VS Code extension to Visual Studio Marketplace |
+| `OVSX_PAT`                           | [open-vsx.org](https://open-vsx.org/user-settings/tokens) | Publish VS Code extension to Open VSX                  |
+| `DEPLOY_PAT`                         | GitHub Personal Access Token                              | Push version commits and signed release tags to `main` |
+| `PROD_SSH_HOST` / `PROD_SSH_KEY`     | Production Host SSH Credentials                           | Roll out Docker Compose stack to `modelscript.org`     |
+| `GPG_PRIVATE_KEY` & `GPG_PASSPHRASE` | Maintainer GPG key                                        | Sign release commits and git tags                      |
 
 ### Triggering a Release
 

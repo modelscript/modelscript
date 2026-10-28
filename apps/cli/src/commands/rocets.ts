@@ -45,7 +45,7 @@ export const RocetsCommand: CommandModule<Record<string, unknown>, Record<string
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for code generation or SVG diagram)",
         type: "string",
       })
@@ -68,13 +68,18 @@ export const RocetsCommand: CommandModule<Record<string, unknown>, Record<string
         type: "string",
         choices: ["terminal", "json"],
         default: "terminal",
+      })
+      .option("json", {
+        description: "Emit JSON output",
+        type: "boolean",
+        default: false,
       });
   },
   handler: async (argv) => {
     const action = argv["action"] as string;
     const files = (argv["files"] as string[]) ?? [];
     const outPath = argv["out"] as string | undefined;
-    const format = argv["format"] as "terminal" | "json";
+    const format = argv["json"] ? "json" : (argv["format"] as "terminal" | "json");
     const targetPc = argv["target-pc"] as number | undefined;
     const targetMr = argv["mr"] as number | undefined;
     const tEnd = (argv["t-end"] as number) ?? 2.0;

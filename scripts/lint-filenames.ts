@@ -1,43 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import * as childProcess from "node:child_process";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
+import { getTrackedFiles, REPO_ROOT, shouldExcludeRepoPath } from "./lib/workspaces.js";
 
-const EXCLUDED_PATTERNS = [
-  /^languages\/modelica\/testsuite\//,
-  /\/src-gen\//,
-  /\/as-gen\//,
-  /\/dist\//,
-  /\/build\//,
-  /\/node_modules\//,
-  /\/vendor\//,
-  /\.d\.ts$/,
-  /\/scratch/,
-  /^\.agents\//,
-  /^\.gemini\//,
-  /\.react-router\//,
-];
+const __filename = fileURLToPath(import.meta.url);
 
 // Known backward-compatibility shims
 const ALLOWED_SHIMS = new Set<string>();
 
-interface Violation {
+export interface FilenameViolation {
   file: string;
   rule: string;
   message: string;
 }
 
-function shouldExclude(relPath: string): boolean {
-  for (const pattern of EXCLUDED_PATTERNS) {
-    if (pattern.test(relPath)) return true;
-  }
-  return false;
-}
+type Violation = FilenameViolation;
 
 function isPascalCase(str: string): boolean {
   return /^[A-Z][a-zA-Z0-9]*$/.test(str);
@@ -49,7 +28,7 @@ function isKebabCase(str: string): boolean {
 
 export function checkFile(rawRelPath: string): Violation[] {
   const relPath = rawRelPath.replace(/\\/g, "/");
-  if (shouldExclude(relPath)) return [];
+  if (shouldExcludeRepoPath(relPath)) return [];
   if (ALLOWED_SHIMS.has(relPath)) return [];
 
   const violations: Violation[] = [];
@@ -110,10 +89,7 @@ export function checkFile(rawRelPath: string): Violation[] {
 }
 
 export function run(fileList?: string[]): { checked: number; violations: Violation[] } {
-  let files = fileList;
-  if (!files || files.length === 0) {
-    files = childProcess.execSync("git ls-files", { cwd: REPO_ROOT, encoding: "utf-8" }).split(/\r?\n/).filter(Boolean);
-  }
+  const files = fileList && fileList.length > 0 ? fileList : getTrackedFiles();
 
   const allViolations: Violation[] = [];
   let checked = 0;

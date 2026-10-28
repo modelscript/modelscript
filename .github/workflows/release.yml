@@ -132,7 +132,7 @@ jobs:
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Sync VS Code Extension Version
-        run: node scripts/sync-extension-version.cjs
+        run: npm run sync:versions
       - name: Package VS Code Extension
         run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
         working-directory: dist/extension
@@ -155,39 +155,13 @@ jobs:
         run: npx --yes ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
         working-directory: dist/extension
 
-      # --- Deploy Apps (IDE) ---
-      - name: Cache WebLLM Model
-        id: cache-model
-        uses: actions/cache@v4
-        with:
-          path: apps/ide/models
-          key: ${{ runner.os }}-qwen3-0.6b-q4f16_1-mlc-v2
-      - name: Download WebLLM Model
-        if: steps.cache-model.outputs.cache-hit != 'true'
-        run: bash apps/ide/scripts/download-model.sh
-      - name: Build IDE Static
-        run: npm run build-static --workspace=@modelscript/ide
-      - name: Copy model to IDE static output
-        run: |
-          mkdir -p apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main
-          cp apps/ide/models/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm apps/ide/dist/static/api/models/
-          cp apps/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.json apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
-          cp apps/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.bin apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/
-          cp apps/ide/models/Qwen3-0.6B-q4f16_1-MLC/*.txt apps/ide/dist/static/api/models/Qwen3-0.6B-q4f16_1-MLC/resolve/main/ 2>/dev/null || true
-      - name: Deploy IDE
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.MODELSCRIPT_IDE_DEPLOY_PAT }}
-          external_repository: modelscript-ide/modelscript-ide.github.io
-          publish_dir: ./apps/ide/dist/static
-
       # --- Build Unified Site & Docs (bundled into web/appliance Docker images) ---
       - name: Build PDF Manual
         run: npm run build:pdf --workspace=@modelscript/docs
       - name: Build Docs
-        run: npx nx build @modelscript/docs
+        run: npx nx build @modelscript/docs --skip-nx-cache
 
-      # --- Publish Docker images to GHCR ---
+      # --- Publish EE & CE Docker images to GHCR ---
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -195,11 +169,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Docker images
+      - name: Build and push EE & CE Docker images
         uses: docker/bake-action@v6
         with:
           source: .
           files: docker-compose.yml
+          targets: api,api-ce,web,ide,cli,cli-ce,appliance
           push: true
           set: |
             *.cache-from=type=gha
@@ -207,11 +182,44 @@ jobs:
             *.args.PREBUILT=true
             api.tags=ghcr.io/modelscript/api:latest
             api.tags=ghcr.io/modelscript/api:${{ steps.version.outputs.version }}
+            api-ce.tags=ghcr.io/modelscript/api-ce:latest
+            api-ce.tags=ghcr.io/modelscript/api-ce:${{ steps.version.outputs.version }}
             web.tags=ghcr.io/modelscript/web:latest
             web.tags=ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
             ide.tags=ghcr.io/modelscript/ide:latest
             ide.tags=ghcr.io/modelscript/ide:${{ steps.version.outputs.version }}
             cli.tags=ghcr.io/modelscript/cli:latest
             cli.tags=ghcr.io/modelscript/cli:${{ steps.version.outputs.version }}
+            cli-ce.tags=ghcr.io/modelscript/cli-ce:latest
+            cli-ce.tags=ghcr.io/modelscript/cli-ce:${{ steps.version.outputs.version }}
             appliance.tags=ghcr.io/modelscript/appliance:latest
             appliance.tags=ghcr.io/modelscript/appliance:${{ steps.version.outputs.version }}
+
+      # --- Roll Out Tagged Release to modelscript.org via Docker ---
+      - name: Trigger modelscript.org Docker Compose Rollout via Webhook
+        if: env.PROD_DEPLOY_WEBHOOK_URL != ''
+        env:
+          PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK_URL }}
+          PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
+        run: |
+          curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL" \
+            -H "Authorization: Bearer $PROD_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"${{ steps.version.outputs.version }}\",\"edition\":\"ee\"}"
+      - name: Roll Out Docker Stack to modelscript.org via SSH
+        if: env.PROD_SSH_HOST != ''
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+          scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${PROD_DEPLOY_PATH:-/opt/modelscript}/"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cd ${PROD_DEPLOY_PATH:-/opt/modelscript} && \
+            IMAGE_TAG=${{ steps.version.outputs.version }} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
+            IMAGE_TAG=${{ steps.version.outputs.version }} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --remove-orphans && \
+            docker image prune -f"

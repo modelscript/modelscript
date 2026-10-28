@@ -2,6 +2,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import type { LibraryDatabase } from "../database.js";
+import { getLoadedEnterpriseModule, isEnterpriseEditionActive } from "../ee-loader.js";
 import { locationService } from "../services/location.js";
 
 /**
@@ -174,7 +175,18 @@ export function extractRequestRegion(req: Request): string | undefined {
  * and registration originating from export-controlled / sanctioned jurisdictions.
  */
 export function enforceExportCompliance(databaseGetter?: () => LibraryDatabase | undefined) {
+  const eeMod = getLoadedEnterpriseModule();
+  const eeHandler =
+    typeof eeMod?.createExportComplianceMiddleware === "function"
+      ? eeMod.createExportComplianceMiddleware(databaseGetter, locationService)
+      : null;
+
   return (req: Request, res: Response, next: NextFunction): void => {
+    if (isEnterpriseEditionActive() && eeHandler) {
+      eeHandler(req, res, next);
+      return;
+    }
+
     // In test environment, allow explicit bypass unless testing export compliance checks
     if (process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-ofac"] === "true") {
       next();

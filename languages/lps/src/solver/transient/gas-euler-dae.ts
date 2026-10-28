@@ -18,13 +18,22 @@ export class GasEulerDaeSolver {
    */
   static simulate(
     model: LpsModel,
-    options?: { durationSeconds?: number | undefined; timeStep?: number | undefined } | undefined,
+    options?:
+      | {
+          durationSeconds?: number | undefined;
+          timeStep?: number | undefined;
+          initialP?: Map<string, number> | undefined;
+          initialW?: Map<string, number> | undefined;
+          startTime?: number | undefined;
+        }
+      | undefined,
   ): LpsTransientTrajectory {
-    // 1. Initial condition from steady-state
+    // 1. Initial condition from steady-state or checkpoint override
     const steady = SteadyNetworkSolver.solve(model);
 
     const duration = options?.durationSeconds ?? model.simulationControls.endTime ?? 3600;
     const dt = options?.timeStep ?? model.simulationControls.timeStep ?? 10;
+    const t0 = options?.startTime ?? 0;
     const numSteps = Math.max(1, Math.floor(duration / dt));
 
     const times: number[] = [];
@@ -45,10 +54,10 @@ export class GasEulerDaeSolver {
     const currentW = new Map<string, number>();
 
     for (const node of model.nodes) {
-      currentP.set(node.name, steady.nodeStates[node.name]?.pressure ?? 50e5);
+      currentP.set(node.name, options?.initialP?.get(node.name) ?? steady.nodeStates[node.name]?.pressure ?? 50e5);
     }
     for (const pipe of model.pipes) {
-      currentW.set(pipe.name, steady.pipeStates[pipe.name]?.massFlow ?? 30.0);
+      currentW.set(pipe.name, options?.initialW?.get(pipe.name) ?? steady.pipeStates[pipe.name]?.massFlow ?? 30.0);
     }
 
     const comp = model.gasComposition ?? {
@@ -69,7 +78,7 @@ export class GasEulerDaeSolver {
 
     // Staggered grid integration loop
     for (let step = 0; step <= numSteps; step++) {
-      const t = step * dt;
+      const t = t0 + step * dt;
       times.push(t);
 
       let stepTotalLinePackKg = 0;

@@ -17,14 +17,15 @@ ENV NODE_OPTIONS="--max-old-space-size=8192"
 WORKDIR /app
 COPY package.json package-lock.json ./
 
-# Apps manifests
+# Apps & Enterprise Edition manifests
 COPY apps/api/package.json apps/api/
 COPY apps/cli/package.json apps/cli/
 COPY apps/desktop/package.json apps/desktop/
 COPY apps/docs/package.json apps/docs/
-COPY apps/ide/package.json apps/ide/
 COPY apps/ide/github-fs/package.json apps/ide/github-fs/
+COPY apps/ide/package.json apps/ide/
 COPY apps/web/package.json apps/web/
+COPY ee/package.json ee/
 
 # Packages manifests
 COPY packages/cad/package.json packages/cad/
@@ -90,24 +91,27 @@ COPY languages/verilog-a/package.json languages/verilog-a/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild better-sqlite3
 
 # ==============================================================================
-# API
+# API (Enterprise Edition & Community Edition targets)
 # ==============================================================================
 FROM deps AS build-api-false
 COPY scripts scripts
 COPY packages packages
 COPY languages languages
+COPY ee ee
 COPY apps/api apps/api
-RUN npx nx build @modelscript/api
+RUN npx nx run-many -t build --projects=@modelscript/ee,@modelscript/api
 
 
 FROM deps AS build-api-true
 COPY packages packages
 COPY languages languages
+COPY ee ee
 COPY apps/api apps/api
 
 FROM build-api-${PREBUILT} AS build-api
 
-FROM node:24-alpine AS api
+# ---- Community Edition API (physically excludes proprietary /app/ee) ----
+FROM node:24-alpine AS api-ce
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
@@ -117,9 +121,11 @@ COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
+RUN rm -rf /app/ee /app/node_modules/@modelscript/ee
 USER node
 EXPOSE 3000
 ENV NODE_ENV=production \
+    MSX_EDITION=ce \
     DATA_DIR=/app/apps/api/data \
     DB_PATH=/app/apps/api/data/modelscript.db \
     STORAGE_DIR=/app/apps/api/data/libraries
@@ -127,8 +133,34 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
 CMD ["node", "apps/api/dist/main.js"]
 
+# ---- Enterprise Edition API (bundles /app/ee with Ed25519 license enforcement) ----
+FROM node:24-alpine AS api
+RUN apk add --no-cache bash git gcc musl-dev
+WORKDIR /app
+RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
+  && chown -R node:node /app
+COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build-api --chown=node:node /app/packages packages
+COPY --from=build-api --chown=node:node /app/languages languages
+COPY --from=build-api --chown=node:node /app/ee ee
+COPY --from=build-api --chown=node:node /app/apps/api apps/api
+USER node
+EXPOSE 3000
+ENV NODE_ENV=production \
+    MSX_EDITION=ee \
+    MSX_LICENSE_ENFORCE=true \
+    DATA_DIR=/app/apps/api/data \
+    DB_PATH=/app/apps/api/data/modelscript.db \
+    STORAGE_DIR=/app/apps/api/data/libraries
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
+CMD ["node", "apps/api/dist/main.js"]
+
+FROM api AS api-ee
+
 # ==============================================================================
-# Web & Unified Documentation Portal
+# Web & Unified Documentation Portal (modelscript.org)
 # ==============================================================================
 FROM deps AS build-web-false
 COPY scripts scripts
@@ -199,33 +231,53 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
 CMD ["node", "apps/ide/dist/server.js"]
 
 # ==============================================================================
-# CLI / GitLab CI Runner
+# CLI / GitLab CI Runner (Enterprise Edition & Community Edition targets)
 # ==============================================================================
 FROM deps AS build-cli-false
 COPY scripts scripts
 COPY packages packages
 COPY languages languages
+COPY ee ee
 COPY apps/cli apps/cli
-RUN npx nx build @modelscript/cli
+RUN npx nx run-many -t build --projects=@modelscript/ee,@modelscript/cli
 
 
 FROM deps AS build-cli-true
 COPY packages packages
 COPY languages languages
+COPY ee ee
 COPY apps/cli apps/cli
 
 FROM build-cli-${PREBUILT} AS build-cli
 
-FROM node:24-alpine AS cli
+# ---- Community Edition CLI (physically excludes proprietary /app/ee) ----
+FROM node:24-alpine AS cli-ce
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build-cli /app/packages packages
 COPY --from=build-cli /app/languages languages
 COPY --from=build-cli /app/apps/cli apps/cli
-ENV NODE_ENV=production
-# The container will run as an executable CLI
+RUN rm -rf /app/ee /app/node_modules/@modelscript/ee
+ENV NODE_ENV=production \
+    MSX_EDITION=ce
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
+
+# ---- Enterprise Edition CLI (bundles /app/ee with Ed25519 license enforcement) ----
+FROM node:24-alpine AS cli
+WORKDIR /app
+COPY --from=deps /app/package.json /app/package-lock.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build-cli /app/packages packages
+COPY --from=build-cli /app/languages languages
+COPY --from=build-cli /app/ee ee
+COPY --from=build-cli /app/apps/cli apps/cli
+ENV NODE_ENV=production \
+    MSX_EDITION=ee \
+    MSX_LICENSE_ENFORCE=true
+ENTRYPOINT ["node", "apps/cli/dist/main.js"]
+
+FROM cli AS cli-ee
 
 # ==============================================================================
 # Hardened Enterprise Intranet Appliance (Single Container for Regulated Utilities)
@@ -241,9 +293,10 @@ RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/pu
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 
-# Copy built API backend
+# Copy built API backend & Enterprise Edition (ee/)
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
+COPY --from=build-api --chown=node:node /app/ee ee
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
 
 # Copy pre-compiled Web SPA assets, Unified Docs SSG, and IDE workbench
@@ -257,6 +310,8 @@ EXPOSE 8080
 
 ENV NODE_ENV=production \
     PORT=8080 \
+    MSX_EDITION=ee \
+    MSX_LICENSE_ENFORCE=true \
     ENTERPRISE_APPLIANCE=true \
     AIRGAP_ENFORCED=true \
     DATA_DIR=/app/apps/api/data \
@@ -273,4 +328,5 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1
 
 ENTRYPOINT ["node", "apps/api/dist/main.js"]
+
 

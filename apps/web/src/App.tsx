@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "./AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
+import EnterpriseUpgradeModal from "./components/EnterpriseUpgradeModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
@@ -212,6 +213,7 @@ function GlobalModals() {
         }
       />
       <KeyboardShortcutsModal isOpen={isShortcutsModalOpen} onClose={() => setIsShortcutsModalOpen(false)} />
+      <EnterpriseUpgradeModal />
     </>
   );
 }

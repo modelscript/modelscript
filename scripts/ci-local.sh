@@ -125,12 +125,8 @@ run_task() {
 # 1. Lint Step
 if [ "$MODE_LINT" = true ]; then
   echo ""
-  log_info "Verifying package-lock.json sync, project graph cycles, file headers, filename conventions, and package manifests..."
-  npm run lint:lockfile
-  npm run lint:cycles
-  npm run lint:headers
-  npm run lint:filenames
-  npm run lint:manifests
+  log_info "Running repository hygiene doctor (lockfile, cycles, headers, filenames, manifests, types-ratchet)..."
+  npm run lint:repo
   npm run lint:scripts
   npm run check --workspace=@modelscript/docs
   npx tsc --noEmit
@@ -157,8 +153,6 @@ if [ "$MODE_TEST" = true ]; then
 
   if [ -f "scripts/consolidate-test-reports.ts" ]; then
     npx tsx scripts/consolidate-test-reports.ts --output-json=ctrf/ctrf-consolidated.json --output-html=ctrf/test-report-unified.html || true
-  elif [ -f "scripts/summarize-ctrf.cjs" ]; then
-    node scripts/summarize-ctrf.cjs || true
   fi
 
   log_info "Consolidating test code coverage..."

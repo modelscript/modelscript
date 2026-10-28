@@ -20,7 +20,7 @@
     "build": "tsc",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "npx tsx tests/worker-runner.test.ts && npx tsx tests/c-wasm-compiler.test.ts",
+    "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -29,11 +29,11 @@
     "@modelscript/runtime": "*"
   },
   "devDependencies": {
-    "@types/node": "^22.13.10",
+    "@types/node": "^25.3.2",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {

@@ -708,13 +708,17 @@ const ThreadCommand: CommandModule<{}, ThreadArgs> = {
 
     const node = parseSourceToPolyglotNode(resolved);
     const wsData = buildPolyglotIndex([resolved], path.dirname(resolved));
-    const sysmlNodeId = wsData.symbolsByDomain.get(LanguageDomainId.SysML2)?.[0]?.id ?? 201;
-    const modelicaNodeId = wsData.symbolsByDomain.get(LanguageDomainId.Modelica)?.[0]?.id ?? 301;
+    const sysmlNodeId =
+      wsData.symbolsByDomain.get(LanguageDomainId.SysML2)?.[0]?.id ?? makePolyglotSymbolId(LanguageDomainId.SysML2, 1);
+    const modelicaNodeId =
+      wsData.symbolsByDomain.get(LanguageDomainId.Modelica)?.[0]?.id ??
+      makePolyglotSymbolId(LanguageDomainId.Modelica, 1);
     const cadNodeId =
       wsData.symbolsByDomain.get(LanguageDomainId.STEP_CAD)?.[0]?.id ??
       wsData.symbolsByDomain.get(LanguageDomainId.SCAD)?.[0]?.id ??
-      401;
-    const reqNodeId = 501;
+      makePolyglotSymbolId(LanguageDomainId.STEP_CAD, 1);
+    const reqNodeId =
+      wsData.symbolsByDomain.get(LanguageDomainId.OWL2)?.[0]?.id ?? makePolyglotSymbolId(LanguageDomainId.OWL2, 1);
 
     const hg = new DigitalThreadHypergraph();
     const threadId = 1001;
@@ -797,6 +801,7 @@ export function buildPolyglotIndex(
     ".owl2",
     ".ofn",
     ".csv",
+    ".reqif",
   ]);
 
   function collect(targetPath: string) {
@@ -898,14 +903,15 @@ export function buildPolyglotIndex(
       });
 
       const compRegex =
-        /(?:(?:parameter|part)\s+)?([A-Za-z_][A-Za-z0-9_.:]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z_][A-Za-z0-9_.:]*))?(?:\s*=\s*([^;]+))?(?:\s*annotation\(([^;]+)\))?;/g;
+        /(?:(?:parameter|part)\s+)?([A-Za-z_][A-Za-z0-9_.:]*)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s*:\s*([A-Za-z_][A-Za-z0-9_.:]*))?(?:\s*=\s*([^;]+))?(?:\s*annotation\(([^;]+)\))?;/g;
       let m: RegExpExecArray | null;
       while ((m = compRegex.exec(content)) !== null) {
         const typeSpec1 = m[1] ?? "";
         const name1 = m[2] ?? "";
-        const typeSpec2 = m[3];
-        const valStr = m[4]?.trim();
-        const annot = m[5] || "";
+        const modStr = m[3] ?? "";
+        const typeSpec2 = m[4];
+        const valStr = m[5]?.trim();
+        const annot = m[6] || "";
 
         let compName = name1;
         let typeSpec = typeSpec1;
@@ -931,9 +937,9 @@ export function buildPolyglotIndex(
         const cadUriMatch = annot.match(/CAD\([^)]*?uri\s*=\s*"([^"]+)"/i);
 
         let unit: string | undefined = undefined;
-        if (annot.includes('unit="')) {
-          const uMatch = annot.match(/unit\s*=\s*"([^"]+)"/);
-          if (uMatch) unit = uMatch[1];
+        const explicitUnitMatch = modStr.match(/\bunit\s*=\s*"([^"]+)"/) || annot.match(/\bunit\s*=\s*"([^"]+)"/);
+        if (explicitUnitMatch) {
+          unit = explicitUnitMatch[1];
         } else if (typeSpec.includes("AngularVelocity") || compName === "speed") {
           unit = "rad/s";
         } else if (typeSpec.includes("Torque") || compName === "torque") {
@@ -1028,7 +1034,7 @@ export function buildPolyglotIndex(
         });
 
         const attrRegex =
-          /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z_][A-Za-z0-9_]*))?(?:\s*=\s*([^;]+))?;/g;
+          /\battribute\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z_][A-Za-z0-9_:]*))?(?:\s*=\s*([^;]+))?;/g;
         let aMatch: RegExpExecArray | null;
         while ((aMatch = attrRegex.exec(content)) !== null) {
           const attrName = aMatch[1] ?? "";
@@ -1039,9 +1045,12 @@ export function buildPolyglotIndex(
           const entityNum = cadBindingMatch?.[2] ? parseInt(cadBindingMatch[2], 10) : undefined;
 
           let unit: string | undefined = undefined;
-          if (attrName === "rpm" || attrName.includes("speed")) {
+          const unitBracketMatch = attrVal?.match(/\[([A-Za-z0-9_/*^.-]+)\]/);
+          if (unitBracketMatch) {
+            unit = unitBracketMatch[1];
+          } else if (attrType.includes("AngularVelocity") || attrName === "rpm" || attrName.includes("speed")) {
             unit = "rad/s";
-          } else if (attrName.includes("torque")) {
+          } else if (attrType.includes("Torque") || attrName.includes("torque")) {
             unit = "N*m";
           }
 

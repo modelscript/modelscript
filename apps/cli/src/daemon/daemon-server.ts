@@ -123,29 +123,14 @@ const server = net.createServer((socket) => {
           let exitCode = 0;
           try {
             const cmd = argv[0];
-            const cmdArgs = argv.slice(1);
-            interface ParseableYargs {
-              parse: () => Promise<unknown> | unknown;
-            }
-            type CommandHandler = (args: never) => Promise<void> | void;
             if (cmd === "compile" || cmd === "flatten") {
-              const builder = typeof Compile.builder === "function" ? Compile.builder(yargs(cmdArgs)) : yargs(cmdArgs);
-              const parsed = await (builder as unknown as ParseableYargs).parse();
-              await (Compile.handler as unknown as CommandHandler)(parsed as never);
+              await yargs(argv).command(Compile).exitProcess(false).parse();
             } else if (cmd === "instantiate") {
-              const builder =
-                typeof Instantiate.builder === "function" ? Instantiate.builder(yargs(cmdArgs)) : yargs(cmdArgs);
-              const parsed = await (builder as unknown as ParseableYargs).parse();
-              await (Instantiate.handler as unknown as CommandHandler)(parsed as never);
+              await yargs(argv).command(Instantiate).exitProcess(false).parse();
             } else if (cmd === "simulate") {
-              const builder =
-                typeof Simulate.builder === "function" ? Simulate.builder(yargs(cmdArgs)) : yargs(cmdArgs);
-              const parsed = await (builder as unknown as ParseableYargs).parse();
-              await (Simulate.handler as unknown as CommandHandler)(parsed as never);
+              await yargs(argv).command(Simulate).exitProcess(false).parse();
             } else if (cmd === "lint") {
-              const builder = typeof Lint.builder === "function" ? Lint.builder(yargs(cmdArgs)) : yargs(cmdArgs);
-              const parsed = await (builder as unknown as ParseableYargs).parse();
-              await (Lint.handler as unknown as CommandHandler)(parsed as never);
+              await yargs(argv).command(Lint).exitProcess(false).parse();
             } else {
               // Fallback: command not directly supported in daemon runner
               socket.write(JSON.stringify({ type: "fallback" }) + "\n");

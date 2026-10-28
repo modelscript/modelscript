@@ -1,0 +1,54 @@
+{
+  "name": "@modelscript/ee",
+  "version": "0.0.18",
+  "private": true,
+  "description": "ModelScript Enterprise Edition (Air-Gapped Compliance, Offline Ed25519 Licensing & Enterprise Control Plane)",
+  "keywords": [
+    "modelscript",
+    "enterprise",
+    "appliance"
+  ],
+  "homepage": "https://modelscript.org/pricing",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "ee"
+  },
+  "license": "LicenseRef-ModelScript-Enterprise",
+  "author": "Mohamad Omar Nachawati <omar@modelscript.org>",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.3.2",
+    "@types/supertest": "^7.2.0",
+    "rimraf": "^6.1.0",
+    "supertest": "^7.2.2",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "ee"
+  }
+}

@@ -1,0 +1,157 @@
+# SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise
+# ModelScript Hardened Enterprise Intranet Appliance
+# Enterprise Kubernetes / Red Hat OpenShift / VMware Tanzu Deployment
+# Regulatory: FERC CEII (18 CFR § 388.113), NERC CIP-002 through CIP-014
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: modelscript-system
+  labels:
+    security.nerc.com/ceii-tier: "high"
+    pod-security.kubernetes.io/enforce: "restricted"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: modelscript-appliance-config
+  namespace: modelscript-system
+data:
+  NODE_ENV: "production"
+  PORT: "8080"
+  MSX_EDITION: "ee"
+  MSX_LICENSE_ENFORCE: "true"
+  ENTERPRISE_APPLIANCE: "true"
+  AIRGAP_ENFORCED: "true"
+  TRUST_PROXY: "true"
+  PUBLIC_URL: "https://modelscript.internal.utility.com"
+  ENTERPRISE_HEADER_AUTH: "true"
+  TRUSTED_PROXY_IPS: "*"
+  ENTERPRISE_ADMIN_GROUPS: "AD-Transmission-Planning-Admins,Engineering-Admins,Admins"
+  NODE_OPTIONS: "--max-old-space-size=4096"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: modelscript-ceii-vault-pvc
+  namespace: modelscript-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: modelscript-appliance
+  namespace: modelscript-system
+  labels:
+    app.kubernetes.io/name: modelscript-appliance
+    app.kubernetes.io/part-of: modelscript-enterprise
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: modelscript-appliance
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: modelscript-appliance
+    spec:
+      # Hardened Security Context (NERC CIP-007 Hardening)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: appliance
+          image: ghcr.io/modelscript/appliance:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: modelscript-appliance-config
+          env:
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: modelscript-enterprise-secrets
+                  key: jwt-secret
+                  optional: true
+            - name: MSX_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: modelscript-enterprise-secrets
+                  key: license-key
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "4000m"
+              memory: "6Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: ceii-vault
+              mountPath: /app/apps/api/data
+            - name: ceii-uploads
+              mountPath: /app/apps/api/uploads
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/compliance/airgap
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+
+      volumes:
+        - name: ceii-vault
+          persistentVolumeClaim:
+            claimName: modelscript-ceii-vault-pvc
+        - name: ceii-uploads
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: modelscript-appliance-service
+  namespace: modelscript-system
+  labels:
+    app.kubernetes.io/name: modelscript-appliance
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: modelscript-appliance

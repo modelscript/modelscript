@@ -16,6 +16,20 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
+
+const GENSYS_ACTIONS = [
+  "inspect",
+  "summary",
+  "lint",
+  "to-modelica",
+  "to-dae",
+  "verify",
+  "simulate",
+  "to-fmu",
+  "report",
+] as const;
+
 export const GensysCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "gensys <action> [files...]",
   describe: "Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)",
@@ -23,8 +37,10 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: lint | to-modelica | verify | simulate | to-fmu | report",
-        choices: ["lint", "to-modelica", "verify", "simulate", "to-fmu", "report"],
+        describe:
+          "Action to perform: inspect | summary | lint | to-modelica | to-dae | verify | simulate | to-fmu | report",
+        choices: GENSYS_ACTIONS,
+        demandOption: true,
       })
       .positional("files", {
         type: "string",
@@ -32,21 +48,25 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
         describe: "Input GENSYS files (.calc, .sub, .run)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path",
       })
       .option("format", {
+        alias: "f",
         type: "string",
         describe: "Report format: html | sarif | junit | ctrf",
         choices: ["html", "sarif", "junit", "ctrf"],
         default: "html",
       })
       .option("stop-time", {
+        alias: ["tstop", "duration"],
         type: "number",
         default: 5.0,
         describe: "Simulation stop time [s]",
       })
       .option("step", {
+        alias: ["step-size", "dt"],
         type: "number",
         default: 0.005,
         describe: "Simulation time step [s]",
@@ -84,14 +104,28 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const action = normalizeDomainAction(String(argv["action"] ?? "inspect"), GENSYS_ACTIONS);
     const files = (argv["files"] as string[]) ?? [];
+    const outFile = resolveOutputPath(argv);
 
     if (action === "verify") {
+      let axleLoad = (argv["axle-load"] as number) ?? 160.0;
+      if (files[0] && fs.existsSync(files[0]) && argv["axle-load"] === undefined) {
+        const content = fs.readFileSync(files[0], "utf-8");
+        const parsed = parseGensysDeck(content, path.basename(files[0], path.extname(files[0])));
+        let totalMass = 0;
+        for (const b of parsed.bodies.values()) {
+          if (b.mass > 0) totalMass += b.mass;
+        }
+        if (totalMass > 0) {
+          axleLoad = Math.max(40.0, (totalMass * 9.80665) / 1000.0 / 4.0);
+        }
+      }
+
       const res = evaluateEn14363({
-        lateralForceY: argv["y-force"] as number,
-        verticalForceQ: argv["q-force"] as number,
-        nominalAxleLoadQ0: argv["axle-load"] as number,
+        lateralForceY: (argv["y-force"] as number) ?? 25.0,
+        verticalForceQ: (argv["q-force"] as number) ?? 80.0,
+        nominalAxleLoadQ0: axleLoad,
       });
 
       console.log(`--- EN 14363 Railway Vehicle Assessment ---`);
@@ -99,13 +133,18 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
         `Derailment Quotient (Y/Q): ${res.yOverQ.toFixed(4)} [Limit <= 0.80] -> ${res.derailmentRiskPassed ? "PASS" : "FAIL"}`,
       );
       console.log(
-        `Prud'homme Lateral Shift:  ${(argv["y-force"] as number).toFixed(2)} kN [Limit <= ${res.prudhommeLimit.toFixed(2)} kN] -> ${res.prudhommeLimitPassed ? "PASS" : "FAIL"}`,
+        `Prud'homme Lateral Shift:  ${((argv["y-force"] as number) ?? 25.0).toFixed(2)} kN [Limit <= ${res.prudhommeLimit.toFixed(2)} kN] -> ${res.prudhommeLimitPassed ? "PASS" : "FAIL"}`,
       );
       return;
     }
 
     if (action === "report") {
-      const modelName = files[0] ? path.basename(files[0], path.extname(files[0])) : "RailwayVehicle";
+      let modelName = files[0] ? path.basename(files[0], path.extname(files[0])) : "RailwayVehicle";
+      if (files[0] && fs.existsSync(files[0])) {
+        const content = fs.readFileSync(files[0], "utf-8");
+        const parsed = parseGensysDeck(content, modelName);
+        if (parsed.name) modelName = parsed.name;
+      }
       const yForce = (argv["y-force"] as number) ?? 25.0;
       const qForce = (argv["q-force"] as number) ?? 80.0;
       const axleLoad = (argv["axle-load"] as number) ?? 160.0;
@@ -129,10 +168,9 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
       else if (format === "ctrf") outputText = exportHomologationCtrf(report);
       else outputText = exportHomologationHtml(report);
 
-      if (argv["out"]) {
-        const outPath = argv["out"] as string;
-        fs.writeFileSync(outPath, outputText, "utf-8");
-        console.log(`Generated ${format.toUpperCase()} homologation report at ${outPath}`);
+      if (outFile) {
+        fs.writeFileSync(outFile, outputText, "utf-8");
+        console.log(`Generated ${format.toUpperCase()} homologation report at ${outFile}`);
       } else {
         console.log(outputText);
       }
@@ -154,7 +192,11 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
       const modelName = path.basename(file, path.extname(file));
       const model = parseGensysDeck(content, modelName);
 
-      if (action === "lint") {
+      if (action === "inspect" || action === "summary") {
+        console.log(`=== GENSYS Railway Vehicle Summary: ${model.name || modelName} ===`);
+        console.log(`  Mass Bodies : ${model.bodies.size}`);
+        console.log(`  Couplings   : ${model.couplings.size}`);
+      } else if (action === "lint") {
         const diagnostics = lintGensysModel(model);
         if (diagnostics.length === 0) {
           console.log(
@@ -165,14 +207,33 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
           for (const d of diagnostics) {
             console.log(`  - [${d.code}] ${d.severity.toUpperCase()}: ${d.message}`);
           }
+          if (diagnostics.some((d) => d.severity === "error")) {
+            process.exitCode = 1;
+          }
         }
       } else if (action === "to-modelica") {
         const mo = gensysToModelica(model);
-        if (argv["out"]) {
-          fs.writeFileSync(argv["out"] as string, mo, "utf-8");
-          console.log(`Exported Modelica model to ${argv["out"]}`);
+        if (outFile) {
+          fs.writeFileSync(outFile, mo, "utf-8");
+          console.log(`Exported Modelica model to ${outFile}`);
         } else {
           console.log(mo);
+        }
+      } else if (action === "to-dae") {
+        const dae = lowerGensysToDae(model);
+        console.log(`=== GENSYS DAE Lowering: ${model.name || modelName} ===`);
+        console.log(`  DAE Variables: ${dae.varCount}`);
+        console.log(`  DAE Equations: ${dae.eqCount}`);
+        if (outFile) {
+          fs.writeFileSync(
+            outFile,
+            JSON.stringify(
+              { model: model.name || modelName, variables: dae.varCount, equations: dae.eqCount },
+              null,
+              2,
+            ),
+            "utf-8",
+          );
         }
       } else if (action === "simulate") {
         const { initBltWasm } = await import("@modelscript/runtime");
@@ -191,21 +252,20 @@ export const GensysCommand: CommandModule<Record<string, unknown>, Record<string
           `Simulation complete: ${result.t.length} steps computed across states [${result.states.slice(0, 6).join(", ")}${result.states.length > 6 ? ", ..." : ""}].`,
         );
 
-        if (argv["out"]) {
-          const outPath = argv["out"] as string;
+        if (outFile) {
           const header = ["time", ...result.states].join(",");
           const lines = [header];
           for (let i = 0; i < result.t.length; i++) {
             const row = [result.t[i], ...result.y[i]!].join(",");
             lines.push(row);
           }
-          fs.writeFileSync(outPath, lines.join("\n"), "utf-8");
-          console.log(`Wrote trajectory data to ${outPath}`);
+          fs.writeFileSync(outFile, lines.join("\n"), "utf-8");
+          console.log(`Wrote trajectory data to ${outFile}`);
         }
       } else if (action === "to-fmu") {
         const { exportGensysFmu } = await import("@modelscript/exchange");
         const fmuResult = exportGensysFmu(model);
-        const outPath = (argv["out"] as string) ?? `${modelName}.fmu`;
+        const outPath = outFile ?? `${modelName}.fmu`;
         fs.writeFileSync(outPath, fmuResult.archive);
         console.log(
           `Exported FMI 2.0 Co-Simulation FMU (${fmuResult.archive.byteLength} bytes, ${fmuResult.variableCount} vars) to ${outPath}`,

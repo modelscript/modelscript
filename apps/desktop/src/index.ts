@@ -271,6 +271,11 @@ export async function loadDesktopBlackboxModel(
   executionMode: "native" | "emulated";
   runner: UniversalBinaryRunner | NativeFmuRunner;
 }> {
+  if (typeof process !== "undefined" && (process.env["MSX_EDITION"] ?? "ee").toLowerCase() === "ce") {
+    throw new Error(
+      "Black-box compiled binary FMU/DLL/SO execution requires ModelScript Enterprise Edition (MSX_EDITION=ee).",
+    );
+  }
   let buffer: Uint8Array;
   let filename = filenameHint || "BlackboxModel";
 
@@ -436,6 +441,16 @@ export async function getDesktopSystemInfo(): Promise<DesktopSystemInfo> {
  * Verifies strict air-gapped environment controls (NERC CIP-005 & CIP-007 / FERC CEII).
  */
 export function checkAirgapCompliance(): AirgapReport {
+  if (typeof process !== "undefined" && (process.env["MSX_EDITION"] ?? "ee").toLowerCase() === "ce") {
+    return {
+      compliant: false,
+      outboundTrafficBlocked: false,
+      localStorageOnly: true,
+      details: [
+        "NERC CIP-005 / CIP-007 & FERC CEII air-gap compliance attestation requires ModelScript Enterprise Edition (MSX_EDITION=ee).",
+      ],
+    };
+  }
   return {
     compliant: true,
     outboundTrafficBlocked: true,

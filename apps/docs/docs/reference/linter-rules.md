@@ -61,11 +61,11 @@ The **CLI** column below shows which command reports each language's rules.
 | [ECLIPSE](#eclipse)                       | `@modelscript/eclipse`      |    10 | `msx eclipse lint`      |
 | [RELAP5-3D](#relap5)                      | `@modelscript/relap5`       |    10 | `msx relap5 lint`       |
 | [SIMA / SIMO / RIFLEX](#sima)             | `@modelscript/sima`         |    15 | `msx lint`              |
-| [SPICE](#spice)                           | `@modelscript/spice`        |    10 | `msx spice lint`        |
+| [SPICE](#spice)                           | `@modelscript/spice`        |    10 | `msx lint`              |
 | [Verilog-A / AMS](#verilog-a)             | `@modelscript/verilog-a`    |    10 | `msx verilog-a lint`    |
 | [IBIS](#ibis)                             | `@modelscript/ibis`         |     9 | `msx ibis lint`         |
 | [Touchstone](#touchstone)                 | `@modelscript/touchstone`   |    10 | `msx touchstone lint`   |
-| [URDF / Xacro](#urdf)                     | `@modelscript/urdf`         |     8 | `msx urdf lint`         |
+| [URDF / Xacro](#urdf)                     | `@modelscript/urdf`         |     8 | `msx lint`              |
 | [PLCopen / IEC 61131-3](#plcopen)         | `@modelscript/plcopen`      |    10 | `msx plcopen lint`      |
 | [MSC Adams](#adams)                       | `@modelscript/adams`        |     9 | `msx adams lint`        |
 | [EnergyPlus](#energyplus)                 | `@modelscript/energyplus`   |     8 | `msx energyplus lint`   |

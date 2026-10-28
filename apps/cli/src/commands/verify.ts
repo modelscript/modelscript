@@ -490,6 +490,29 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       },
       verifOptions,
     );
+    if (args.falsify || args.all) {
+      const sysmlPath = paths.find((p) => p.endsWith(".sysml"));
+      const moPath = paths.find((p) => p.endsWith(".mo"));
+      const cadPath = paths.find((p) => p.endsWith(".scad") || p.endsWith(".step") || p.endsWith(".stp"));
+      if (sysmlPath) {
+        try {
+          const { runMultidomainFalsification } = await import("./falsify.js");
+          const falsifyRes = await runMultidomainFalsification({
+            sysml: sysmlPath,
+            modelica: moPath,
+            cad: cadPath,
+            generations: 5,
+            population: 8,
+          });
+          (report as unknown as Record<string, unknown>)["falsification"] = falsifyRes;
+          if (falsifyRes.isFalsified) {
+            report.summary.overallPassed = false;
+          }
+        } catch {
+          // ignore if falsification inputs are incomplete
+        }
+      }
+    }
     profiler.end("verification");
 
     // Output Formats

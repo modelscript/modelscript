@@ -13,6 +13,12 @@ const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
+import {
+  createOptionalEnterpriseHeadersMiddleware,
+  isEnterpriseEditionActive,
+  mountEditionRoutes,
+  type EnterprisePlugin,
+} from "./ee-loader.js";
 import { JobQueue } from "./jobs.js";
 import { optionalAuth, setAuthDatabase } from "./middleware/auth-middleware.js";
 import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
@@ -82,6 +88,8 @@ export interface AppOptions {
   dbPool?: Pool | null | undefined;
   /** Optional TimescaleDB historian recorder for co-simulation sessions. */
   historianRecorder?: HistorianRecorder | null | undefined;
+  /** Optional Enterprise Edition plugin override. */
+  enterprisePlugin?: EnterprisePlugin | undefined;
 }
 
 /**
@@ -561,18 +569,10 @@ graph TD
     res.header("Referrer-Policy", "strict-origin-when-cross-origin");
     res.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
 
-    const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
     const frameAncestorsDirective = isEmbedRoute
       ? `frame-ancestors ${embedFrameAncestors};`
       : "frame-ancestors 'self';";
-    if (isAirgap) {
-      res.header(
-        "Content-Security-Policy",
-        `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; ${frameAncestorsDirective}`,
-      );
-      res.header("X-Airgap-Enforced", "true");
-      res.header("X-CEII-Compliance", "FERC-18-CFR-388.113");
-    } else if (isEmbedRoute) {
+    if (isEmbedRoute) {
       res.header("Content-Security-Policy", frameAncestorsDirective);
     }
 
@@ -583,25 +583,8 @@ graph TD
     next();
   });
 
-  // Enterprise Air-Gap Compliance Probe (FERC CEII / NERC CIP)
-  app.get("/api/v1/compliance/airgap", (_req: express.Request, res: express.Response) => {
-    const isAppliance = process.env["ENTERPRISE_APPLIANCE"] === "true";
-    const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || isAppliance;
-    const externalTelemetry = !isAirgap && process.env["TELEMETRY_ENABLED"] === "true";
-    const externalAssets = !isAirgap && Boolean(process.env["EXTERNAL_CDN_URL"]);
-    const federationActive = !isAirgap && featureFlagService.isEnabled("activitypub_federation");
-    res.json({
-      status: isAirgap ? "enforced" : "configurable",
-      ceiiCompliant: !externalTelemetry,
-      nercCipCompliant: !externalTelemetry && !externalAssets,
-      outboundTrafficBlocked: isAirgap,
-      telemetryDisabled: !externalTelemetry,
-      localAssetsOnly: !externalAssets,
-      federationOutboundActive: federationActive,
-      applianceMode: isAppliance,
-      timestamp: new Date().toISOString(),
-    });
-  });
+  // Enterprise Edition (ee/) Air-Gap Security Headers
+  app.use(createOptionalEnterpriseHeadersMiddleware());
 
   // Feature flags endpoint (evaluated for requesting user)
   app.get("/api/v1/flags", optionalAuth, (req, res) => {
@@ -611,17 +594,76 @@ graph TD
     res.json(featureFlagService.getAllFlagsForUser(reqWithUser.user));
   });
 
-  // Auth routes
+  // Auth & Community routes
   app.use("/api/v1/auth", authRouter(database));
   app.use("/api/v1/users", usersRouter(database, federationWorker));
   app.use("/api/v1/solutions", solutionsRouter(database));
-  app.use("/api/v1/organizations", organizationsRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker));
+
+  // FMU storage & open-standard FMU registry routes
+  const fmuStorage = new FmuStorage();
+
+  // ── Enterprise Edition (ee/) Subsystems (Batches A–I) ──
+  const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
+  mountEditionRoutes(
+    {
+      app,
+      isFeatureFlagEnabled: (flagKey) => featureFlagService.isEnabled(flagKey),
+      hasAdminUser: () => database.hasAdminUser(),
+      isDatabaseOpen: () => Boolean(database && database.isOpen()),
+      isGeoIpReady: () => locationService.isReady(),
+      getMailerDriver: () => defaultMailer.getDriver(),
+      sanctionedCountriesCount: SANCTIONED_COUNTRIES.size,
+      sanctionedRegionsCount: SANCTIONED_REGIONS.size,
+      auth: {
+        organizationsRouter: organizationsRouter(database),
+        optionalAuthMiddleware: optionalAuth,
+      },
+      hpcBilling: {
+        optionalAuthMiddleware: optionalAuth,
+        caeFeatureGuard: requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
+        billingFeatureGuard: requireFeatureFlag(() => featureFlagService, "billing_stripe_live"),
+        caeRouter: caeRouter(jobQueue, database),
+        cloudRouter: cloudRouter(libraryStorage, jobQueue, database),
+        billingRouter: billingRouter(database),
+      },
+      twins: {
+        optionalAuthMiddleware: optionalAuth,
+        cosimFeatureGuard: requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
+        twinsFeatureGuard: requireFeatureFlag(() => featureFlagService, "digital_twins"),
+        historianRouter: historianRouter(dbPool, mqttClient),
+        instancesRouter: instancesRouter(database, dbPool),
+        twinsRouter: twinsRouter(database),
+        cosimRouter: cosimRouter(mqttClient, fmuStorage, historianRecorder),
+        mqttParticipantsRouter: mqttParticipantsRouter(mqttClient),
+      },
+      interop: {
+        optionalAuthMiddleware: optionalAuth,
+        mcpFeatureGuard: requireFeatureFlag(() => featureFlagService, "mcp_gateway_sse"),
+        sysml2FeatureGuard: requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
+        mcpRouter: mcpRouter(database),
+        sysml2OmgRouter: omgRouter,
+      },
+      thread: {
+        optionalAuthMiddleware: optionalAuth,
+        threadFeatureGuard: requireFeatureFlag(() => featureFlagService, "digital_thread_explorer"),
+        threadRouter: threadRouter(undefined, database),
+      },
+      adminDevops: {
+        optionalAuthMiddleware: optionalAuth,
+        adminRouter: adminRouter(database, federationWorker, featureFlagService),
+        webhooksRouter: webhooksRouter(database, jobQueue, libraryStorage),
+        gitRouter: gitRouter(),
+        sparqlFeatureGuard: requireFeatureFlag(() => featureFlagService, "sparql_rdf_endpoints"),
+        sparqlRouter: sparqlRouter(database),
+      },
+    },
+    opts.enterprisePlugin,
+  );
+
   app.use("/api/v1/repos", reposRouter(database));
-  app.use("/api/v1/webhooks", webhooksRouter(database, jobQueue, libraryStorage));
   app.use("/api/v1/search", searchRouter(database));
   app.use("/api/v1/storage", storageRouter());
-  app.use("/api/v1", adminRouter(database, federationWorker, featureFlagService));
   app.use("/", federationRouter(database, federationWorker));
 
   // Mount the library routers
@@ -629,47 +671,8 @@ graph TD
   app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
-  const sparqlGuard = [optionalAuth, requireFeatureFlag(() => featureFlagService, "sparql_rdf_endpoints")];
-  const sparqlHandler = sparqlRouter(database);
-  app.use("/api/v1/libraries/sparql", ...sparqlGuard, sparqlHandler);
-  app.use(
-    ["/api/v1/libraries/:name/:version/sparql", "/api/v1/libraries/:scope/:name/:version/sparql"],
-    ...sparqlGuard,
-  );
-  app.use("/api/v1/libraries", sparqlHandler);
   app.use("/api/v1", optionalAuth, simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
-
-  // Gated HPC / CAE Compute routes
-  app.use(
-    "/api/v1/cae",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
-  );
-  app.use("/api/v1", caeRouter(jobQueue, database));
-
-  app.use(
-    "/api/v1/cloud",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
-  );
-  app.use("/api/v1", cloudRouter(libraryStorage, jobQueue, database));
-
-  // Gated Billing route
-  app.use(
-    "/api/v1/billing",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "billing_stripe_live"),
-  );
-  app.use("/api/v1", billingRouter(database));
-
-  // Gated MCP SSE gateway
-  app.use(
-    "/api/v1/mcp",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "mcp_gateway_sse"),
-  );
-  app.use("/api/v1", mcpRouter(database));
 
   app.use("/api/v1/jobs", scriptsRouter(database));
 
@@ -688,49 +691,7 @@ graph TD
     res.send(renderStandaloneEmbedBundle(origin));
   });
 
-  // Digital Thread Hypergraph Explorer routes
-  app.use(
-    "/api/v1/threads",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "digital_thread_explorer"),
-    threadRouter(undefined, database),
-  );
-
-  // Co-simulation routes (with MQTT client and shared FMU storage injection)
-  const fmuStorage = new FmuStorage();
-  app.use(
-    "/api/v1/cosim",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
-    cosimRouter(mqttClient, fmuStorage, historianRecorder),
-  );
-  app.use(
-    "/api/v1/mqtt/participants",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
-    mqttParticipantsRouter(mqttClient),
-  );
-  app.use(
-    "/api/v1/historian",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
-    historianRouter(dbPool, mqttClient),
-  );
-  app.use(
-    "/api/v1/instances",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "digital_twins"),
-    instancesRouter(database, dbPool),
-  );
-  app.use(
-    "/api/v1/twins",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "digital_twins"),
-    twinsRouter(database),
-  );
   app.use("/api/v1/fmus", optionalAuth, fmuRouter(fmuStorage));
-  app.use("/api/v1/git", optionalAuth, gitRouter());
-  app.use("/api/v1/gitlab", optionalAuth, gitRouter()); // Keep for backwards compatibility
   app.use("/git", gitServerRouter(database));
   app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
@@ -764,94 +725,30 @@ graph TD
   const legalHandler = (_req: express.Request, res: express.Response) => {
     res.json({
       name: "ModelScript Cloud",
+      edition: isEnterpriseEditionActive() ? "ee" : "ce",
       license: "AGPL-3.0-or-later",
+      enterpriseLicense: "LicenseRef-ModelScript-Enterprise",
       termsOfService: "https://modelscript.org/terms",
       privacyPolicy: "https://modelscript.org/privacy",
       exportPolicy: "https://modelscript.org/export-compliance",
       securityPolicy: "https://modelscript.org/.well-known/security.txt",
       sourceCode: "https://github.com/modelscript/modelscript",
       agplNotice:
-        "In compliance with GNU AGPLv3 Section 13, users interacting with this instance over a network may obtain the complete Corresponding Source code at the sourceCode URL above.",
+        "In compliance with GNU AGPLv3 Section 13, users interacting with the open-core components of this instance over a network may obtain the Corresponding Source code at the sourceCode URL above. Enterprise Edition subsystems under ee/ are governed by LicenseRef-ModelScript-Enterprise.",
     });
   };
   app.get("/legal", legalHandler);
   app.get("/api/v1/compliance/policy", legalHandler);
 
-  // ── Compliance & Trust Readiness Probe ──
-  app.get("/api/v1/compliance/readiness", (_req: express.Request, res: express.Response) => {
-    const isProd = process.env["NODE_ENV"] === "production";
-    const isAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
-    const envJwt = process.env["JWT_SECRET"];
-    const jwtOk = Boolean(envJwt && envJwt !== "modelscript-dev-secret");
-    const turnstileOk = Boolean(process.env["TURNSTILE_SECRET_KEY"]) || isAirgap;
-    const hasAdmin = database.hasAdminUser();
-    const geoIpLoaded = locationService.isReady();
-
-    const isDegraded = isProd && (!jwtOk || !turnstileOk || !hasAdmin);
-
-    res.status(isDegraded ? 503 : 200).json({
-      timestamp: new Date().toISOString(),
-      status: isDegraded ? "degraded" : "ready",
-      environment: process.env["NODE_ENV"] || "development",
-      checks: {
-        exportControls: {
-          status: "enforced",
-          sanctionedCountriesCount: SANCTIONED_COUNTRIES.size,
-          sanctionedRegionsCount: SANCTIONED_REGIONS.size,
-          policy: "Overcompliance (24 countries + 5 occupied Ukrainian regions)",
-        },
-        secrets: {
-          jwtSecretConfigured: Boolean(envJwt),
-          jwtSecretIsSecure: jwtOk,
-          turnstileConfigured: turnstileOk,
-        },
-        services: {
-          geolocation: {
-            dbLoaded: geoIpLoaded,
-            fallbackPrefixesActive: true,
-          },
-          mailer: {
-            driver: defaultMailer.getDriver(),
-          },
-          database: {
-            connected: Boolean(database && database.isOpen()),
-            hasAdminUser: hasAdmin,
-          },
-        },
-        regulations: {
-          ofacEarItar: "active",
-          gdprArticle17Erasure: "active",
-          gdprArticle20Portability: "active",
-          rfc9116SecurityTxt: "active",
-          agplv3Section13: "active",
-        },
-      },
-    });
-  });
-
   // Health check
   app.get("/health", (_req, res) => {
     res.json({
       status: "ok",
+      edition: isEnterpriseEditionActive() ? "ee" : "ce",
       mqtt: mqttClient ? "connected" : "unavailable",
       historian: dbPool ? "connected" : "unavailable",
     });
   });
-
-  // ── OMG Systems Modeling REST API (SysML v2 - ptc/2024-02-03) ──
-  const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
-  app.use(
-    "/api/v1/sysml2",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
-    omgRouter,
-  );
-  app.use(
-    "/projects",
-    optionalAuth,
-    requireFeatureFlag(() => featureFlagService, "sysml2_omg_api"),
-  );
-  app.use("/", optionalAuth, omgRouter); // Root drop-in alias for external SysML v2 clients (e.g., py-sysml2)
 
   // ── npm-compatible registry (mounted at /api/v1/npm) ──
   app.use("/api/v1/npm", npmAuthRouter(database));

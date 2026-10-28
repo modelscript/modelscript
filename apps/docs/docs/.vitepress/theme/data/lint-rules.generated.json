@@ -4368,7 +4368,7 @@
     "sources": [
       "languages/spice/src/lints/rules.ts"
     ],
-    "cli": "msx spice lint",
+    "cli": "msx lint",
     "rules": [
       {
         "code": "M7101",
@@ -4646,7 +4646,7 @@
     "sources": [
       "languages/urdf/src/errors.ts"
     ],
-    "cli": "msx urdf lint",
+    "cli": "msx lint",
     "rules": [
       {
         "code": "M7501",

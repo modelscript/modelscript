@@ -16,6 +16,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
+
+const CFD_ACTIONS = ["lint", "summary", "inspect", "to-modelica", "to-dae", "solve", "simulate"] as const;
+
 export const CfdCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "cfd <action> [files...]",
   describe: "Inspect, lint, solve, and project CFD aerodynamic models (.cfg, .foam, .su2)",
@@ -24,7 +28,7 @@ export const CfdCommand: CommandModule<Record<string, unknown>, Record<string, u
       .positional("action", {
         description: "Action to perform (lint, summary, inspect, to-modelica, to-dae, solve)",
         type: "string",
-        choices: ["lint", "summary", "inspect", "to-modelica", "to-dae", "solve"],
+        choices: CFD_ACTIONS,
         demandOption: true,
       })
       .positional("files", {
@@ -33,15 +37,16 @@ export const CfdCommand: CommandModule<Record<string, unknown>, Record<string, u
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for code generation or DAE metadata)",
         type: "string",
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const rawAction = String(argv["action"] ?? "inspect");
+    const action = rawAction === "simulate" ? "solve" : normalizeDomainAction(rawAction, CFD_ACTIONS);
     const files = (argv["files"] as string[]) || [];
-    const outPath = argv["out"] as string | undefined;
+    const outPath = resolveOutputPath(argv);
 
     if (files.length === 0) {
       console.error("Error: No CFD configuration file(s) specified.");
@@ -144,11 +149,17 @@ export const CfdCommand: CommandModule<Record<string, unknown>, Record<string, u
         }
 
         case "solve": {
+          const dae = cfdToDae(model);
           const mach = model.machNumber ?? 0.8;
           const aoaDeg = model.aoa ?? 2.0;
           const aoaRad = (aoaDeg * Math.PI) / 180.0;
-          const cl = 2 * Math.PI * aoaRad;
-          const cd = 0.02 + 0.05 * cl * cl;
+          // Prandtl-Glauert compressibility correction for subsonic Mach < 0.95
+          const beta = mach < 0.95 ? Math.sqrt(Math.max(0.09, 1 - mach * mach)) : 1.0;
+          const cl = (2 * Math.PI * aoaRad) / beta;
+          // Include skin-friction contribution from Reynolds number if specified
+          const re = model.reynoldsNumber && model.reynoldsNumber > 0 ? model.reynoldsNumber : 6.5e6;
+          const cf = 0.074 / Math.pow(re, 0.2);
+          const cd = Math.max(0.005, 2 * cf + 0.05 * cl * cl);
           const qInf = 0.5 * (model.density ?? 1.225) * Math.pow(mach * 340.29, 2);
           const refArea = parseFloat(model.directives.get("REF_AREA") ?? "1.0") || 1.0;
           const lift = qInf * refArea * cl;
@@ -159,6 +170,7 @@ export const CfdCommand: CommandModule<Record<string, unknown>, Record<string, u
           console.log(`=======================================================`);
           console.log(` Mach Number             : ${mach}`);
           console.log(` Angle of Attack         : ${aoaDeg}°`);
+          console.log(` FVM Streamtube DAE      : ${dae.varCount} vars / ${dae.eqCount} eqs`);
           console.log(` Dynamic Pressure (q)    : ${qInf.toFixed(1)} Pa`);
           console.log(` Lift Coefficient (C_L)  : ${cl.toFixed(4)}`);
           console.log(` Drag Coefficient (C_D)  : ${cd.toFixed(4)}`);

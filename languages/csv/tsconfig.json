@@ -4,13 +4,6 @@
     "rootDir": ".",
     "outDir": "./dist"
   },
-  "include": [
-    "language.ts",
-    "indexer_config.ts",
-    "query_hooks.ts",
-    "ref_config.ts",
-    "src-gen/**/*.ts",
-    "src/csv-parser.ts"
-  ],
+  "include": ["language.ts", "src/**/*.ts", "src-gen/**/*.ts"],
   "exclude": ["node_modules", "dist", "build", "tests"]
 }

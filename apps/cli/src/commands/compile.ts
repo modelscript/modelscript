@@ -4,20 +4,30 @@ import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import { printArenaDAE, type SymbolEntry, type UnifiedWorkspace, type WorkspaceIndex } from "@modelscript/runtime";
 import { snapshotMemory } from "@modelscript/simulate";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Argv, CommandModule } from "yargs";
+import { inferPrimaryModelName, resolveLanguageOption, resolveOutputPath } from "../util/cli-options.js";
+import { dispatchDomainAction } from "../util/domain-dispatcher.js";
 import { NodeFileSystem } from "../util/filesystem.js";
+import { LanguageResolver } from "../util/language-registry.js";
 import { Profiler } from "../util/timing.js";
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
-interface CompileArgs {
+export interface CompileArgs {
   name: string;
-  paths: string[];
+  paths?: string[] | undefined;
+  output?: string | undefined;
+  out?: string | undefined;
+  to?: "dae" | "modelica" | "sysml2" | "sysml" | "ssp" | "fmu" | undefined;
+  model?: string | undefined;
+  language?: string | undefined;
+  lang?: string | undefined;
   timing?: boolean | undefined;
   "memory-profile"?: boolean | undefined;
   memoryProfile?: boolean | undefined;
@@ -25,19 +35,42 @@ interface CompileArgs {
 }
 
 export const Compile: CommandModule<{}, CompileArgs> = {
-  command: ["compile <name> <paths...>", "flatten <name> <paths...>"],
-  describe: "Flatten a Modelica model to a flat DAE representation",
+  command: ["compile <name> [paths..]", "flatten <name> [paths..]", "convert <name> [paths..]"],
+  describe:
+    "Flatten or lower a Modelica, SysML v2, or domain engineering model to DAE, Modelica, SysML v2, SSP, or FMU",
   builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
-        description: "name of class to flatten",
+        description: "name of class to flatten, or path to a source file",
         type: "string",
       })
       .positional("paths", {
         array: true,
-        demandOption: true,
+        demandOption: false,
         description: "paths of libraries and modules to load",
+        type: "string",
+      })
+      .option("output", {
+        alias: ["o", "out"],
+        description: "output file path for compiled representation",
+        type: "string",
+      })
+      .option("to", {
+        alias: "t",
+        choices: ["dae", "modelica", "sysml2", "sysml", "ssp", "fmu"],
+        default: "dae",
+        description: "target output representation (dae, modelica, sysml2, ssp, fmu)",
+        type: "string",
+      })
+      .option("model", {
+        alias: "m",
+        description: "explicit class/system name when first positional argument is a file",
+        type: "string",
+      })
+      .option("language", {
+        alias: ["l", "lang"],
+        description: "explicit language ID override",
         type: "string",
       })
       .option("modelica-path", {
@@ -66,13 +99,59 @@ export const Compile: CommandModule<{}, CompileArgs> = {
   }) as CommandModule<{}, CompileArgs>["builder"],
   handler: async (args) => {
     const profiler = new Profiler();
+    const outputPath = resolveOutputPath(args as unknown as Record<string, unknown>);
+    const langOverride = resolveLanguageOption(args as unknown as Record<string, unknown>);
+    const target = (args.to ?? "dae").toLowerCase();
 
-    const hasSysML = args.paths.some((p) => p.endsWith(".sysml"));
+    let paths = args.paths ? [...args.paths] : [];
+
+    // Support single-file and polyglot invocation: `msx compile model.mo` or `msx compile filter.cir --to modelica`
+    if (paths.length === 0 && fs.existsSync(path.resolve(args.name))) {
+      try {
+        const resolved = await LanguageResolver.resolve(args.name, langOverride);
+        const langId = resolved.manifest.id;
+        if ((langId === "modelica" || langId === "modelscript") && target === "dae") {
+          const filePath = args.name;
+          const sourceText = fs.readFileSync(path.resolve(filePath), "utf-8");
+          args.name = args.model ?? inferPrimaryModelName(filePath, sourceText);
+          paths = [filePath];
+          args.paths = paths;
+        } else {
+          const actionMap: Record<string, string> = {
+            dae: "to-dae",
+            modelica: "to-modelica",
+            sysml2: "to-sysml2",
+            sysml: "to-sysml2",
+            ssp: "to-ssp",
+            fmu: "to-fmu",
+          };
+          await dispatchDomainAction({
+            language: langId,
+            action: actionMap[target] ?? "to-dae",
+            files: [args.name],
+            output: outputPath,
+            out: outputPath,
+            extraArgs: args as unknown as Record<string, unknown>,
+          });
+          return;
+        }
+      } catch {
+        // Fall through to standard Modelica flattening
+      }
+    }
+
+    if (paths.length === 0) {
+      console.error("Error: Please provide at least one source file path.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const hasSysML = paths.some((p) => p.endsWith(".sysml"));
 
     const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
 
-    const needsStdlib = args.name.startsWith("ModelScript.") || args.paths.some((p) => p.includes("modelscript-"));
+    const needsStdlib = args.name.startsWith("ModelScript.") || paths.some((p) => p.includes("modelscript-"));
     const context = Context.createBatch(new NodeFileSystem(), { loadStdlib: needsStdlib });
 
     if (args["modelica-path"]) {
@@ -87,7 +166,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
 
     // Build mapping from absolute resolved paths to user-provided paths
     const pathMap = new Map<string, string>();
-    for (const p of args.paths) {
+    for (const p of paths) {
       pathMap.set(path.resolve(p), p);
     }
 
@@ -108,7 +187,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     type RegisterAstReturn = ReturnType<NonNullable<Parameters<WorkspaceIndex["register"]>[1]>>;
 
     profiler.start("parsing");
-    for (const p of args.paths) {
+    for (const p of paths) {
       if (p.endsWith(".sysml")) {
         const { createWasmParser: createSysmlParser } = await import("@modelscript/dsl");
         let wasmPath: string;
@@ -226,9 +305,13 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       return;
     }
 
-    // Print flattened output
+    // Print or write flattened output
     const text = printArenaDAE(arena);
-    process.stdout.write(text);
+    if (outputPath) {
+      fs.writeFileSync(path.resolve(outputPath), text, "utf-8");
+    } else {
+      process.stdout.write(text);
+    }
 
     if (args.memoryProfile) {
       console.error(JSON.stringify({ memory: memProfiles }, null, 2));

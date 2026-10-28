@@ -4,41 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getWorkspacePackages, REPO_ROOT } from "./lib/workspaces.js";
+
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
 
 function getTargetWorkspaceJsonPaths(): string[] {
-  const rootPkgPath = path.join(REPO_ROOT, "package.json");
-  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8"));
-  const workspaces: string[] = rootPkg.workspaces || [];
-  const packagePaths: string[] = [];
-
-  for (const pattern of workspaces) {
-    if (pattern.startsWith("packages/examples") || pattern === "apps/ide/github-fs") {
-      continue;
-    }
-    if (pattern.endsWith("/*")) {
-      const parentDir = path.join(REPO_ROOT, pattern.slice(0, -2));
-      if (!fs.existsSync(parentDir)) continue;
-      const entries = fs.readdirSync(parentDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const candidate = path.join(parentDir, entry.name, "package.json");
-          if (fs.existsSync(candidate)) {
-            packagePaths.push(candidate);
-          }
-        }
-      }
-    } else {
-      const candidate = path.join(REPO_ROOT, pattern, "package.json");
-      if (fs.existsSync(candidate)) {
-        packagePaths.push(candidate);
-      }
-    }
-  }
-
-  return packagePaths.sort();
+  return getWorkspacePackages({ excludeExamples: true, excludeIdeGithubFs: true });
 }
 
 export function syncVersions(options?: { checkOnly?: boolean; explicitVersion?: string }): {

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
+import { detectCyclesInAdjacencyMap } from "./check-nx-cycles.js";
+import { getWorkspaceDirs, getWorkspacePackages, shouldExcludeRepoPath } from "./lib/workspaces.ts";
 import { checkFile } from "./lint-filenames.ts";
-import { getExpectedMetadata } from "./lint-package-manifests.ts";
+import { generateDockerfileManifestCopies, getExpectedMetadata } from "./lint-package-manifests.ts";
 import { analyzeFileContent } from "./lint-type-safety-ratchet.ts";
+import { runRepoDoctor, runRepoDoctorAsync } from "./repo-doctor.ts";
 import { CORE_PACK_TARGETS, ESM_IMPORT_TARGETS, isIncludedByFilesWhitelist } from "./verify-pack-install.ts";
 
 // 1. Type-safety ratchet AST/regex analyzer
@@ -92,6 +95,50 @@ import { CORE_PACK_TARGETS, ESM_IMPORT_TARGETS, isIncludedByFilesWhitelist } fro
     assert.ok(ESM_IMPORT_TARGETS.includes(sdkPkg), `Expected ESM_IMPORT_TARGETS to include ${sdkPkg}`);
   }
   assert.ok(CORE_PACK_TARGETS.includes("apps/cli"), "Expected CORE_PACK_TARGETS to include apps/cli");
+}
+
+// 5. Shared workspace discovery & exclusion helpers
+{
+  const allPackages = getWorkspacePackages();
+  const noExamplePackages = getWorkspacePackages({ excludeExamples: true, excludeIdeGithubFs: true });
+  assert.ok(allPackages.length > noExamplePackages.length);
+  const dirs = getWorkspaceDirs();
+  assert.ok(dirs.includes("packages/runtime"));
+  assert.ok(dirs.includes("languages/modelica"));
+  assert.ok(dirs.includes("ee"));
+  assert.strictEqual(shouldExcludeRepoPath("languages/modelica/src-gen/bindings.js"), true);
+  assert.strictEqual(shouldExcludeRepoPath("packages/runtime/src/index.ts"), false);
+
+  const dockerCopies = generateDockerfileManifestCopies(allPackages);
+  assert.ok(dockerCopies.includes("COPY packages/runtime/package.json packages/runtime/"));
+  assert.ok(dockerCopies.includes("COPY languages/modelica/package.json languages/modelica/"));
+}
+
+// 6. Directed graph cycle detector & fast in-process repo-doctor
+{
+  const acyclic = new Map([
+    ["a", ["b", "c"]],
+    ["b", ["c"]],
+    ["c", []],
+  ]);
+  assert.deepStrictEqual(detectCyclesInAdjacencyMap(acyclic), []);
+
+  const cyclic = new Map([
+    ["a", ["b"]],
+    ["b", ["c"]],
+    ["c", ["a"]],
+  ]);
+  const detected = detectCyclesInAdjacencyMap(cyclic);
+  assert.strictEqual(detected.length, 1);
+  assert.deepStrictEqual(detected[0], ["a", "b", "c", "a"]);
+
+  const doctorRes = runRepoDoctor({ skipLockfile: true, skipCycles: true });
+  assert.strictEqual(doctorRes.passed, true);
+  assert.strictEqual(doctorRes.results.length, 4);
+
+  const asyncDoctorRes = await runRepoDoctorAsync({ skipLockfile: true, skipCycles: true });
+  assert.strictEqual(asyncDoctorRes.passed, true);
+  assert.strictEqual(asyncDoctorRes.results.length, 4);
 }
 
 console.log("All repo-hygiene unit tests passed!");

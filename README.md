@@ -213,6 +213,12 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 | [`@modelscript/desktop`](./apps/desktop/) | Native cross-platform Desktop Studio (Tauri v2) with direct FFI `NativeFmuRunner` and NERC CIP / FERC CEII air-gap controls  |
 | [`@modelscript/docs`](./apps/docs/)       | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                      |
 
+### Enterprise Edition (`ee/`)
+
+| Package                    | Responsibility                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/ee`](./ee/) | Commercial Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — offline Ed25519 license verifier (`MSX_LICENSE_KEY`), air-gapped NERC CIP / FERC CEII & ITAR/EAR compliance, FDA 21 CFR Part 11 DHF attestations, SAML/OIDC SSO & Org RBAC, Slurm HPC & Stripe billing, Operational Digital Twins, Digital Thread Governance, HIL codegen, and PLM/CAE connectors |
+
 ---
 
 ## Interoperability, Reporting & Export Formats
@@ -392,4 +398,8 @@ npm run docker:up
 
 ## License
 
-ModelScript is licensed under the **AGPL-3.0-or-later**. See [COPYING](./COPYING) for more details.
+ModelScript follows an **Open-Core and Dual-License** model:
+
+- **Community Edition (Open Core)**: All packages under `packages/`, `languages/`, and `apps/` are licensed under the **GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`)**. See [`COPYING`](./COPYING) for the full license text.
+- **Enterprise Edition ([`ee/`](./ee/))**: All files inside `ee/` (`@modelscript/ee`) and the pre-hardened Enterprise Intranet Appliance (`ee/deploy/`) are proprietary and licensed under the **ModelScript Enterprise License (`LicenseRef-ModelScript-Enterprise`)**. See [`ee/LICENSE`](./ee/LICENSE) for terms.
+- **Commercial OEM Dual-License**: Organizations embedding ModelScript compilers, solvers, or UI components into proprietary closed-source products or SaaS platforms without AGPL-3.0 Section 13 copyleft obligations may purchase a Commercial SDK License. Contact `licensing@modelscript.org` for details.

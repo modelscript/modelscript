@@ -1,6 +1,6 @@
 # Introduction
 
-Welcome to **ModelScript**, the open-source **computable digital thread** platform and polyglot engineering compiler designed for multi-domain physical modeling, formal verification, and AI-assisted systems engineering.
+Welcome to **ModelScript**, the open-core **computable digital thread** platform and polyglot engineering compiler designed for multi-domain physical modeling, formal verification, and AI-assisted systems engineering.
 
 ---
 

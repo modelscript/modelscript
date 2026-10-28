@@ -17,7 +17,10 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { Argv, CommandModule } from "yargs";
+import { inferPrimaryModelName, resolveLanguageOption, resolveOutputPath } from "../util/cli-options.js";
+import { dispatchDomainAction } from "../util/domain-dispatcher.js";
 import { NodeFileSystem } from "../util/filesystem.js";
+import { LanguageResolver } from "../util/language-registry.js";
 import { Profiler } from "../util/timing.js";
 import { parseStartValueArgs } from "./fmu.js";
 import { generateSimulationC } from "./sim-c-codegen.js";
@@ -28,12 +31,18 @@ const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 
 /** CLI arguments and flags for the `msx simulate` command. */
 export interface SimulateArgs {
-  /** Fully-qualified name of the Modelica/SysML class to simulate, or path to a `.fmu` archive. */
+  /** Fully-qualified name of the Modelica/SysML class to simulate, or path to a model/archive file. */
   name: string;
   /** Additional library or module file paths to load. */
   paths?: string[] | undefined;
   /** Optional output file path for writing simulation results. */
   output?: string | undefined;
+  out?: string | undefined;
+  /** Optional explicit class/system name when the first positional argument is a source file. */
+  model?: string | undefined;
+  /** Optional explicit language ID override. */
+  language?: string | undefined;
+  lang?: string | undefined;
   "start-time"?: number | undefined;
   /** Experiment start time override in seconds. */
   startTime?: number | undefined;
@@ -113,18 +122,18 @@ export interface SimulateArgs {
 }
 
 /**
- * `msx simulate <name> [paths..]` CLI command module supporting Modelica, SysML v2, and FMU
- * simulation across JS, linear-memory Arena, Emscripten WASM, native C, JIT, and Cloud HPC backends.
+ * `msx simulate <name> [paths..]` CLI command module supporting Modelica, SysML v2, FMU, and
+ * polyglot domain simulation across JS, linear-memory Arena, Emscripten WASM, native C, JIT, and Cloud HPC backends.
  */
 export const Simulate: CommandModule<{}, SimulateArgs> = {
-  command: "simulate <name> [paths..]",
-  describe: "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
+  command: ["simulate <name> [paths..]", "sim <name> [paths..]"],
+  describe: "Simulate a Modelica model, SysML v2 system, FMU archive, or domain engineering deck",
 
   builder: ((yargs: Argv) => {
     return yargs
       .positional("name", {
         demandOption: true,
-        description: "name of class to simulate, or path to a .fmu archive",
+        description: "name of class to simulate, or path to a model/deck/.fmu file",
         type: "string",
       })
       .positional("paths", {
@@ -134,8 +143,18 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "string",
       })
       .option("output", {
-        alias: "o",
+        alias: ["o", "out"],
         description: "output file path for simulation results",
+        type: "string",
+      })
+      .option("model", {
+        alias: "m",
+        description: "explicit class/system name when first positional argument is a file",
+        type: "string",
+      })
+      .option("language", {
+        alias: ["l", "lang"],
+        description: "explicit language ID override",
         type: "string",
       })
       .option("start-time", {
@@ -156,6 +175,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "number",
       })
       .option("format", {
+        alias: "f",
         description: "output format",
         type: "string",
         choices: ["csv", "json", "none"],
@@ -274,6 +294,11 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       });
   }) as CommandModule<{}, SimulateArgs>["builder"],
   handler: async (args) => {
+    const resolvedOut = resolveOutputPath(args as unknown as Record<string, unknown>);
+    if (resolvedOut) {
+      args.output = resolvedOut;
+    }
+
     const fmuCandidate = args.name.endsWith(".fmu") ? args.name : args.paths?.find((p) => p.endsWith(".fmu"));
     if (fmuCandidate) {
       try {
@@ -310,7 +335,38 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       await simulateCloud(args);
       return;
     }
-    const paths = args.paths ?? [];
+
+    let paths = args.paths ? [...args.paths] : [];
+    const langOverride = resolveLanguageOption(args as unknown as Record<string, unknown>);
+
+    // Support single-file and polyglot invocation: `msx simulate model.mo` or `msx simulate circuit.cir`
+    if (paths.length === 0 && fs.existsSync(path.resolve(args.name))) {
+      try {
+        const resolved = await LanguageResolver.resolve(args.name, langOverride);
+        const langId = resolved.manifest.id;
+        if (langId === "modelica" || langId === "sysml2" || langId === "modelscript") {
+          const filePath = args.name;
+          const sourceText = fs.readFileSync(path.resolve(filePath), "utf-8");
+          args.name = args.model ?? inferPrimaryModelName(filePath, sourceText);
+          paths = [filePath];
+          args.paths = paths;
+        } else {
+          await dispatchDomainAction({
+            language: langId,
+            action: "simulate",
+            files: [args.name],
+            output: args.output,
+            out: args.output,
+            format: args.format,
+            extraArgs: args as unknown as Record<string, unknown>,
+          });
+          return;
+        }
+      } catch {
+        // Fall through to standard validation
+      }
+    }
+
     if (paths.length === 0) {
       console.error("Error: Please provide at least one Modelica/SysML file or a .fmu archive.");
       process.exitCode = 1;
@@ -487,7 +543,19 @@ async function simulateJs(
     opts.atol = Number(args.tolerance);
     opts.rtol = Number(args.tolerance);
   }
+  if (args.jacobian) {
+    (opts as Record<string, unknown>)["jacobian"] = args.jacobian;
+  }
+  const simWallStart = performance.now();
   const result = await simulateArenaAsync(arena, opts);
+  if (args.realtime && args.realtime > 0) {
+    const targetWallMs = ((stopTime - startTime) / args.realtime) * 1000;
+    const elapsedMs = performance.now() - simWallStart;
+    const remainingMs = Math.min(2000, Math.max(0, targetWallMs - elapsedMs));
+    if (remainingMs > 0) {
+      await new Promise((r) => setTimeout(r, remainingMs));
+    }
+  }
 
   profiler.end("simulation");
 
@@ -496,7 +564,7 @@ async function simulateJs(
     memProfiles["simulation"] = { before: lastSnap, after: snap };
   }
 
-  outputResults(result.t, result.y, result.states, args.format);
+  outputResults(result.t, result.y, result.states, args.format, args.output);
 }
 
 // ── Arena Engine ──
@@ -515,49 +583,7 @@ async function simulateArenaEngine(
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
 ): Promise<void> {
-  profiler.start("simulation");
-
-  const outputStringIds: number[] = [];
-  for (let i = 0; i < arena.varCount; i++) {
-    const name = arena.getVarName(i);
-    if (!name.startsWith("$") && !name.startsWith("der(")) {
-      outputStringIds.push(arena.getVarNameId(i));
-    }
-  }
-
-  const solver = args.solver as
-    | "euler"
-    | "rk4"
-    | "dopri5"
-    | "tsit5"
-    | "trbdf2"
-    | "rodas4p"
-    | "bdf"
-    | "auto"
-    | "cvode"
-    | "webgpu";
-  const opts: NonNullable<Parameters<typeof simulateArenaAsync>[1]> = {
-    startTime,
-    stopTime,
-    step,
-    solver,
-    outputStringIds,
-    steadyStateOnly: Boolean(args["steady-state"] || args.steadyState),
-  };
-  if (args.tolerance) {
-    opts.atol = Number(args.tolerance);
-    opts.rtol = Number(args.tolerance);
-  }
-  const result = await simulateArenaAsync(arena, opts);
-
-  profiler.end("simulation");
-
-  if (args.memoryProfile && lastSnap) {
-    const snap = snapshotMemory(true);
-    memProfiles["simulation"] = { before: lastSnap, after: snap };
-  }
-
-  outputResults(result.t, result.y, result.states, args.format);
+  return simulateJs(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
 }
 
 // ── WASM Engine ──
@@ -676,7 +702,9 @@ async function simulateWasm(
       const times = rows.map((r) => r[0] ?? 0);
       const y = rows.map((r) => r.slice(1));
       const varNames = header.slice(1);
-      outputResults(times, y, varNames, "json");
+      outputResults(times, y, varNames, "json", args.output);
+    } else if (args.output) {
+      fs.writeFileSync(path.resolve(args.output), output, "utf-8");
     } else {
       process.stdout.write(output);
     }
@@ -738,7 +766,7 @@ async function simulateJit(
     memProfiles["simulation"] = { before: lastSnap, after: snap };
   }
 
-  outputResults(res.t, res.y, res.states, args.format);
+  outputResults(res.t, res.y, res.states, args.format, args.output);
 }
 
 // ── C Engine ──
@@ -785,9 +813,9 @@ async function simulateC(
 
     const cc = process.env["CC"] ?? "gcc";
     const optFlag = process.env["CFLAGS"] ? process.env["CFLAGS"] : "-O3 -fno-math-errno";
-    const cvodeFlags = isCvode
-      ? "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial"
-      : "";
+    const defaultCvodeFlags =
+      "-I/usr/include/omc/sundials -L/usr/lib/x86_64-linux-gnu/omc -Wl,-rpath=/usr/lib/x86_64-linux-gnu/omc -lsundials_cvode -lsundials_nvecserial";
+    const cvodeFlags = isCvode ? (process.env["SUNDIALS_FLAGS"] ?? defaultCvodeFlags) : "";
     const ccCmd = [cc, optFlag, "-w", cFile, cvodeFlags, "-o", binFile, "-lm"].filter(Boolean).join(" ");
 
     try {
@@ -851,7 +879,14 @@ async function simulateC(
         }
         return row;
       });
-      process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+      const jsonStr = JSON.stringify(rows, null, 2) + "\n";
+      if (args.output) {
+        fs.writeFileSync(path.resolve(args.output), jsonStr, "utf-8");
+      } else {
+        process.stdout.write(jsonStr);
+      }
+    } else if (args.output) {
+      fs.writeFileSync(path.resolve(args.output), output, "utf-8");
     } else {
       // Already CSV — write directly
       process.stdout.write(output);
@@ -864,11 +899,12 @@ async function simulateC(
 // ── Output helpers ──
 
 /**
- * Formats and writes time-series simulation trajectories (`t`, `y`, `varNames`) to `process.stdout`
- * as CSV or JSON.
+ * Formats and writes time-series simulation trajectories (`t`, `y`, `varNames`) to `outputPath`
+ * (when specified) or `process.stdout` as CSV or JSON.
  */
-function outputResults(t: number[], y: number[][], varNames: string[], format: string): void {
+function outputResults(t: number[], y: number[][], varNames: string[], format: string, outputPath?: string): void {
   if (format === "none") return;
+  let formatted: string;
   if (format === "json") {
     const rows = t.map((time: number, i: number) => {
       const row: Record<string, number> = { time };
@@ -877,13 +913,19 @@ function outputResults(t: number[], y: number[][], varNames: string[], format: s
       });
       return row;
     });
-    process.stdout.write(JSON.stringify(rows, null, 2) + "\n");
+    formatted = JSON.stringify(rows, null, 2) + "\n";
   } else {
-    const header = ["time", ...varNames].join(",");
-    process.stdout.write(header + "\n");
+    const lines: string[] = [["time", ...varNames].join(",")];
     for (let i = 0; i < t.length; i++) {
       const values = [t[i], ...varNames.map((_: string, vIndex: number) => y[i]?.[vIndex] ?? 0)];
-      process.stdout.write(values.join(",") + "\n");
+      lines.push(values.join(","));
     }
+    formatted = lines.join("\n") + "\n";
+  }
+
+  if (outputPath) {
+    fs.writeFileSync(path.resolve(outputPath), formatted, "utf-8");
+  } else {
+    process.stdout.write(formatted);
   }
 }

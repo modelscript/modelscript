@@ -4,9 +4,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { getWorkspaceDirs, REPO_ROOT } from "./lib/workspaces.js";
+
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
 const BASELINE_PATH = path.join(REPO_ROOT, "config", "type-safety-baseline.json");
 
 export interface PackageTypeSafetyStats {
@@ -40,35 +40,6 @@ function shouldIgnoreFile(relPath: string): boolean {
     if (norm.includes(seg)) return true;
   }
   return false;
-}
-
-function getWorkspaceDirs(): string[] {
-  const rootPkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8"));
-  const workspaces: string[] = rootPkg.workspaces || [];
-  const dirs: string[] = [];
-
-  for (const pattern of workspaces) {
-    if (pattern.endsWith("/*")) {
-      const parentRel = pattern.slice(0, -2);
-      const parentDir = path.join(REPO_ROOT, parentRel);
-      if (!fs.existsSync(parentDir)) continue;
-      for (const entry of fs.readdirSync(parentDir, { withFileTypes: true })) {
-        if (entry.isDirectory()) {
-          const candidate = path.join(parentDir, entry.name, "package.json");
-          if (fs.existsSync(candidate)) {
-            dirs.push(`${parentRel}/${entry.name}`);
-          }
-        }
-      }
-    } else {
-      const candidate = path.join(REPO_ROOT, pattern, "package.json");
-      if (fs.existsSync(candidate)) {
-        dirs.push(pattern.replace(/\\/g, "/"));
-      }
-    }
-  }
-
-  return dirs.sort();
 }
 
 function collectSourceFiles(dir: string): string[] {
@@ -176,24 +147,13 @@ export function computeMonorepoTypeSafety(): Record<string, PackageTypeSafetySta
   return result;
 }
 
-function run(): void {
-  const updateMode = process.argv.includes("--update");
+export function checkTypeSafetyRatchet(): {
+  totalWorkspaces: number;
+  zeroAnyCount: number;
+  regressions: string[];
+  improvements: string[];
+} {
   const current = computeMonorepoTypeSafety();
-
-  if (updateMode || !fs.existsSync(BASELINE_PATH)) {
-    fs.mkdirSync(path.dirname(BASELINE_PATH), { recursive: true });
-    const payload: TypeSafetyBaseline = {
-      description:
-        "Per-package type-safety ratchet ceilings for explicit 'any' and '@ts-expect-error'/'@ts-ignore' in src/. Counts may decrease but must never increase.",
-      packages: current,
-    };
-    fs.writeFileSync(BASELINE_PATH, JSON.stringify(payload, null, 2) + "\n", "utf-8");
-    console.log(
-      `✓ Updated type-safety ratchet baseline at config/type-safety-baseline.json (${Object.keys(current).length} workspaces).`,
-    );
-    return;
-  }
-
   const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf-8")) as TypeSafetyBaseline;
   const regressions: string[] = [];
   const improvements: string[] = [];
@@ -226,6 +186,35 @@ function run(): void {
     }
   }
 
+  const zeroAnyCount = Object.values(current).filter((s) => s.explicitAny === 0).length;
+  return {
+    totalWorkspaces: Object.keys(current).length,
+    zeroAnyCount,
+    regressions,
+    improvements,
+  };
+}
+
+function run(): void {
+  const updateMode = process.argv.includes("--update");
+
+  if (updateMode || !fs.existsSync(BASELINE_PATH)) {
+    const current = computeMonorepoTypeSafety();
+    fs.mkdirSync(path.dirname(BASELINE_PATH), { recursive: true });
+    const payload: TypeSafetyBaseline = {
+      description:
+        "Per-package type-safety ratchet ceilings for explicit 'any' and '@ts-expect-error'/'@ts-ignore' in src/. Counts may decrease but must never increase.",
+      packages: current,
+    };
+    fs.writeFileSync(BASELINE_PATH, JSON.stringify(payload, null, 2) + "\n", "utf-8");
+    console.log(
+      `✓ Updated type-safety ratchet baseline at config/type-safety-baseline.json (${Object.keys(current).length} workspaces).`,
+    );
+    return;
+  }
+
+  const { totalWorkspaces, zeroAnyCount, regressions, improvements } = checkTypeSafetyRatchet();
+
   if (regressions.length > 0) {
     console.error(`\n❌ Found ${regressions.length} type-safety ratchet regression(s):\n`);
     for (const r of regressions) {
@@ -235,9 +224,8 @@ function run(): void {
     process.exit(1);
   }
 
-  const zeroAnyCount = Object.values(current).filter((s) => s.explicitAny === 0).length;
   console.log(
-    `✓ All ${Object.keys(current).length} workspaces passed type-safety ratchet verification (${zeroAnyCount} workspaces at 0 explicit 'any').`,
+    `✓ All ${totalWorkspaces} workspaces passed type-safety ratchet verification (${zeroAnyCount} workspaces at 0 explicit 'any').`,
   );
   if (improvements.length > 0) {
     console.log(

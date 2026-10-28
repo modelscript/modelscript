@@ -817,7 +817,7 @@ export const stepLanguage = language({
         const filename = params.uri.split("/").pop() || "Assembly";
         const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
 
-        const { mapStepToMultiBody } = await import("../step-multibody-mapper.js");
+        const { mapStepToMultiBody } = await import("./step-multibody-mapper.js");
         const { generateMultiBodyModelica } = await import("@modelscript/modelica");
 
         const multiBodyDescriptor = mapStepToMultiBody(baseName, model);

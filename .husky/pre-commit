@@ -1,32 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
-# 0. Check Lockfile Consistency & Staging
-npm run lint:lockfile
+# 1. Run unified repository hygiene doctor (lockfile, cycles, headers, filenames, manifests, types-ratchet)
+npm run lint:repo
 
-# 1. Check Project Graph Cycles
-npm run lint:cycles
-
-# 2. Check License Headers
-npm run lint:headers
-
-# 3. Check Filename Conventions
-npm run lint:filenames
-
-# 4. Check Workspace Package Manifests
-npm run lint:manifests
-
-# 5. Check Root TypeScript Config
+# 2. Check Root TypeScript Config
 npx tsc --noEmit
 
-# 6. Lint Root Scripts
+# 3. Lint Root Scripts
 npm run lint:scripts
 
-# 7. Run Lint & Prettier on staged files
+# 4. Run Lint & Prettier on staged files
 NODE_OPTIONS="--max-old-space-size=8192" npx lint-staged
 
-# 8. Run Lint & Typecheck on affected packages
+# 5. Run Lint & Typecheck on affected packages
 npx nx affected -t lint,typecheck --uncommitted --parallel=4
 
-# 9. Verify Dist & Exports Integrity on built packages
+# 6. Verify Dist & Exports Integrity on built packages
 npm run verify:dist

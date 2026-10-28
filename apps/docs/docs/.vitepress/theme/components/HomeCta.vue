@@ -4,8 +4,8 @@ import type { IconName } from "../data/icons";
 import MsIcon from "./MsIcon.vue";
 
 const pillars: { icon: IconName; title: string; body: string }[] = [
-  { icon: "code", title: "Open source", body: "AGPL-3.0. Read, audit, and extend every line." },
-  { icon: "cpu", title: "No license server", body: "Run on laptops, clusters, CI, and air-gapped networks." },
+  { icon: "code", title: "Open-core architecture", body: "AGPL-3.0 core compiler & solvers, with OEM & Enterprise editions." },
+  { icon: "cpu", title: "Offline & air-gapped ready", body: "Run locally in WASM/CLI or deploy offline Ed25519-licensed appliances." },
   { icon: "layers", title: "Standards first", body: "FMI, SSP, SysML v2, STEP, and ReqIF interchange." },
 ];
 </script>
@@ -26,7 +26,7 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
       <div class="ms-cta">
         <div>
           <h2>Start building your digital thread today</h2>
-          <p>Free and open source. Try it in the browser in seconds, or install the CLI.</p>
+          <p>Free AGPL-3.0 Community Edition. Try it in the browser in seconds, install the CLI, or explore Enterprise plans.</p>
         </div>
         <div class="ms-cta-actions">
           <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">

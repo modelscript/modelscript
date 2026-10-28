@@ -49,6 +49,7 @@ export const SimulinkCommand: CommandModule<Record<string, unknown>, Record<stri
         describe: "Conflict reconciliation strategy",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path for generated code or export",
       });

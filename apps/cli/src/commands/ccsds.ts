@@ -13,6 +13,19 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputFormat, resolveOutputPath } from "../util/cli-options.js";
+
+const CCSDS_ACTIONS = [
+  "inspect",
+  "summary",
+  "lint",
+  "propagate",
+  "simulate",
+  "to-modelica",
+  "to-sysml",
+  "to-dae",
+] as const;
+
 export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "ccsds <action> [files...]",
   describe:
@@ -21,8 +34,8 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: inspect | lint | propagate | to-modelica | to-sysml | to-dae",
-        choices: ["inspect", "lint", "propagate", "to-modelica", "to-sysml", "to-dae"],
+        describe: "Action to perform: inspect | summary | lint | propagate | to-modelica | to-sysml | to-dae",
+        choices: CCSDS_ACTIONS,
       })
       .positional("files", {
         type: "string",
@@ -30,24 +43,46 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
         describe: "Input CCSDS / XTCE files (.oem, .opm, .omm, .xtce)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path for generated Modelica or SysML v2 code",
       })
+      .option("format", {
+        alias: "f",
+        type: "string",
+        choices: ["terminal", "json"],
+        default: "terminal",
+        describe: "Output format: 'terminal' or 'json'",
+      })
+      .option("json", {
+        type: "boolean",
+        default: false,
+        describe: "Output results in JSON format",
+      })
       .option("duration", {
+        alias: ["stop-time", "tstop"],
         type: "number",
         default: 5400,
         describe: "Propagation duration in seconds (~90 min default)",
       })
       .option("step", {
+        alias: ["step-size", "dt"],
         type: "number",
         default: 30,
         describe: "Propagation time step in seconds",
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const rawAction = String(argv["action"] ?? "inspect");
+    const action =
+      rawAction === "summary"
+        ? "inspect"
+        : rawAction === "simulate"
+          ? "propagate"
+          : normalizeDomainAction(rawAction, CCSDS_ACTIONS);
     const files = (argv["files"] as string[]) ?? [];
-    const outFile = argv["out"] as string | undefined;
+    const outFile = resolveOutputPath(argv);
+    const format = resolveOutputFormat(argv);
 
     if (files.length === 0) {
       console.error("Error: No input files provided.");
@@ -66,6 +101,12 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
 
       switch (action) {
         case "inspect": {
+          if (format === "json") {
+            const jsonStr = JSON.stringify(doc, null, 2);
+            if (outFile) fs.writeFileSync(path.resolve(process.cwd(), outFile), jsonStr, "utf-8");
+            else console.log(jsonStr);
+            break;
+          }
           if (doc.format === "XTCE") {
             console.log(`\n=== OMG XTCE Space System: ${doc.name} ===`);
             console.log(`Telemetry Parameters: ${doc.parameters.length}`);
@@ -124,7 +165,9 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
 
         case "lint": {
           const diags = lintCcsds(doc);
-          if (diags.length === 0) {
+          if (format === "json") {
+            console.log(JSON.stringify(diags, null, 2));
+          } else if (diags.length === 0) {
             console.log(`[PASS] ${file}: 0 diagnostics reported.`);
           } else {
             console.log(`Found ${diags.length} diagnostic(s) in ${file}:`);
@@ -133,10 +176,21 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
               console.log(`  [${d.code}] [${d.severity.toUpperCase()}] ${loc} - ${d.message}`);
             }
           }
+          if (diags.some((d) => d.severity === "error")) {
+            process.exitCode = 1;
+          }
           break;
         }
 
         case "propagate": {
+          if (doc.format === "XTCE") {
+            console.error(
+              `Error: Cannot propagate orbit from XTCE telemetry specification '${file}'. Provide a CCSDS OPM, OMM, or OEM orbit file.`,
+            );
+            process.exitCode = 1;
+            break;
+          }
+
           let initPos: [number, number, number] = [7000, 0, 0];
           let initVel: [number, number, number] = [0, 7.546, 0];
 
@@ -167,6 +221,13 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
             "spacecraft" in doc ? doc.spacecraft : undefined,
             { durationSeconds: dur, stepSeconds: dt, includeJ2: true },
           );
+
+          if (format === "json") {
+            const jsonStr = JSON.stringify(traj, null, 2);
+            if (outFile) fs.writeFileSync(path.resolve(process.cwd(), outFile), jsonStr, "utf-8");
+            else console.log(jsonStr);
+            break;
+          }
 
           console.log(`\n=== Cowell Orbit Propagation (${traj.length} steps, ${dur}s duration) ===`);
           const t0 = traj[0]!;
@@ -207,6 +268,13 @@ export const CcsdsCommand: CommandModule<Record<string, unknown>, Record<string,
           console.log(`Lowered CCSDS spacecraft orbit into linear DAE arena:`);
           console.log(`  Variables: ${arena.getVarCount()}`);
           console.log(`  Equations: ${arena.getEqCount()}`);
+          if (outFile) {
+            fs.writeFileSync(
+              path.resolve(process.cwd(), outFile),
+              JSON.stringify({ varCount: arena.getVarCount(), eqCount: arena.getEqCount() }, null, 2),
+              "utf-8",
+            );
+          }
           break;
         }
 

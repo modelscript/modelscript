@@ -59,7 +59,7 @@ export const GtSuiteCommand: CommandModule<Record<string, unknown>, Record<strin
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for code generation, trajectories, or SVG diagrams)",
         type: "string",
       })

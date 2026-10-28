@@ -4,45 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
+import { getWorkspacePackages, REPO_ROOT } from "./lib/workspaces.js";
 
-interface Violation {
+const __filename = fileURLToPath(import.meta.url);
+
+export interface DistViolation {
   package: string;
   rule: string;
   message: string;
 }
 
-function getWorkspacePackages(): string[] {
-  const rootPkgPath = path.join(REPO_ROOT, "package.json");
-  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8"));
-  const workspaces: string[] = rootPkg.workspaces || [];
-  const packagePaths: string[] = [];
-
-  for (const pattern of workspaces) {
-    if (pattern.endsWith("/*")) {
-      const parentDir = path.join(REPO_ROOT, pattern.slice(0, -2));
-      if (!fs.existsSync(parentDir)) continue;
-      const entries = fs.readdirSync(parentDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const candidate = path.join(parentDir, entry.name, "package.json");
-          if (fs.existsSync(candidate)) {
-            packagePaths.push(candidate);
-          }
-        }
-      }
-    } else {
-      const candidate = path.join(REPO_ROOT, pattern, "package.json");
-      if (fs.existsSync(candidate)) {
-        packagePaths.push(candidate);
-      }
-    }
-  }
-
-  return packagePaths;
-}
+type Violation = DistViolation;
 
 export function checkDistIntegrity(pkgJsonPath: string, options?: { isExplicitProject?: boolean }): Violation[] {
   const violations: Violation[] = [];

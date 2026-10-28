@@ -65,7 +65,7 @@ interface SysMLExportArgs {
   "include-stdlib"?: boolean | undefined;
 }
 
-const SysMLExportCommand: CommandModule<{}, SysMLExportArgs> = {
+export const SysMLExportCommand: CommandModule<{}, SysMLExportArgs> = {
   command: "export <file>",
   describe: "Export SysML v2 models to OMG standard interchange (.sysmlx), SSP containers, or FMI 3.0 FMUs",
   builder: (yargs) => {
@@ -221,8 +221,8 @@ interface SysMLCheckArgs {
   strict?: boolean | undefined;
 }
 
-const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
-  command: ["check <files..>", "lint <files..>"],
+export const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
+  command: ["check <files..>", "lint <files..>", "validate <files..>"],
   describe: "Run frontend static type checking and compiler diagnostics linter on SysML v2 models",
   builder: (yargs) => {
     return yargs
@@ -233,6 +233,7 @@ const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
         type: "string",
       })
       .option("format", {
+        alias: "f",
         description: "Output format",
         choices: ["terminal", "json"],
         default: "terminal",
@@ -390,8 +391,9 @@ interface SysMLInfoArgs {
   format: "table" | "json";
 }
 
-const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
+export const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
   command: "info <file>",
+  aliases: ["inspect <file>", "summary <file>", "inspect", "summary"],
   describe: "Inspect model architecture, symbol counts, and structural metrics of a SysML v2 file",
   builder: (yargs) => {
     return yargs
@@ -401,6 +403,7 @@ const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
         type: "string",
       })
       .option("format", {
+        alias: "f",
         description: "Output display format",
         choices: ["table", "json"],
         default: "table",

@@ -27,6 +27,7 @@ export const VerilogACommand: CommandModule<Record<string, unknown>, Record<stri
         describe: "Input Verilog-A model files (.va, .vams)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path",
       });

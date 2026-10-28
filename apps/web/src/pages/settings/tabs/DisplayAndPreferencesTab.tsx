@@ -245,7 +245,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                 style={{ borderTop: "1px solid var(--color-border-subtle)" }}
               >
                 <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Software License</span>
-                <span style={{ fontSize: "13px", fontWeight: "600" }}>GNU AGPL-3.0 (Copyleft)</span>
+                <span style={{ fontSize: "13px", fontWeight: "600" }}>Open-Core: AGPL-3.0 / Enterprise (ee/)</span>
               </Box>
             </Box>
           </Box>

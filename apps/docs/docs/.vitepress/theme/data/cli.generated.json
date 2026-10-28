@@ -11,12 +11,15 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: lint | mobility | to-modelica | to-simpack | simulate",
+        "description": "Action to perform: inspect | summary | lint | mobility | to-modelica | to-simpack | to-dae | simulate",
         "choices": [
+          "inspect",
+          "summary",
           "lint",
           "mobility",
           "to-modelica",
           "to-simpack",
+          "to-dae",
           "simulate"
         ]
       },
@@ -31,20 +34,29 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path"
       },
       {
         "name": "stop-time",
-        "aliases": [],
+        "aliases": [
+          "tstop",
+          "duration"
+        ],
         "type": "number",
         "description": "Simulation stop time [s]",
         "default": 5
       },
       {
         "name": "step",
-        "aliases": [],
+        "aliases": [
+          "step-size",
+          "dt"
+        ],
         "type": "number",
         "description": "Simulation time step [s]",
         "default": 0.005
@@ -229,7 +241,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -278,7 +291,10 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path for generated code or export"
       },
@@ -371,7 +387,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -397,11 +414,13 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: inspect | lint | propagate | to-modelica | to-sysml | to-dae",
+        "description": "Action to perform: inspect | summary | lint | propagate | to-modelica | to-sysml | to-dae",
         "choices": [
           "inspect",
+          "summary",
           "lint",
           "propagate",
+          "simulate",
           "to-modelica",
           "to-sysml",
           "to-dae"
@@ -418,20 +437,49 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path for generated Modelica or SysML v2 code"
       },
       {
-        "name": "duration",
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: 'terminal' or 'json'",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "json",
         "aliases": [],
+        "type": "boolean",
+        "description": "Output results in JSON format",
+        "default": false
+      },
+      {
+        "name": "duration",
+        "aliases": [
+          "stop-time",
+          "tstop"
+        ],
         "type": "number",
         "description": "Propagation duration in seconds (~90 min default)",
         "default": 5400
       },
       {
         "name": "step",
-        "aliases": [],
+        "aliases": [
+          "step-size",
+          "dt"
+        ],
         "type": "number",
         "description": "Propagation time step in seconds",
         "default": 30
@@ -458,7 +506,8 @@
           "inspect",
           "to-modelica",
           "to-dae",
-          "solve"
+          "solve",
+          "simulate"
         ]
       },
       {
@@ -473,7 +522,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for code generation or DAE metadata)"
@@ -559,17 +609,21 @@
   {
     "name": "compile",
     "specs": [
-      "compile <name> <paths...>",
-      "flatten <name> <paths...>"
+      "compile <name> [paths..]",
+      "flatten <name> [paths..]",
+      "convert <name> [paths..]"
     ],
-    "aliases": [],
-    "describe": "Flatten a Modelica model to a flat DAE representation",
+    "aliases": [
+      "flatten",
+      "convert"
+    ],
+    "describe": "Flatten or lower a Modelica, SysML v2, or domain engineering model to DAE, Modelica, SysML v2, SSP, or FMU",
     "positionals": [
       {
         "name": "name",
         "aliases": [],
         "type": "string",
-        "description": "name of class to flatten"
+        "description": "name of class to flatten, or path to a source file"
       },
       {
         "name": "paths",
@@ -580,6 +634,49 @@
       }
     ],
     "options": [
+      {
+        "name": "output",
+        "aliases": [
+          "o",
+          "out"
+        ],
+        "type": "string",
+        "description": "output file path for compiled representation"
+      },
+      {
+        "name": "to",
+        "aliases": [
+          "t"
+        ],
+        "type": "string",
+        "description": "target output representation (dae, modelica, sysml2, ssp, fmu)",
+        "choices": [
+          "dae",
+          "modelica",
+          "sysml2",
+          "sysml",
+          "ssp",
+          "fmu"
+        ],
+        "default": "dae"
+      },
+      {
+        "name": "model",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "explicit class/system name when first positional argument is a file"
+      },
+      {
+        "name": "language",
+        "aliases": [
+          "l",
+          "lang"
+        ],
+        "type": "string",
+        "description": "explicit language ID override"
+      },
       {
         "name": "modelica-path",
         "aliases": [
@@ -1124,8 +1221,8 @@
           "d"
         ],
         "type": "string",
-        "description": "Target medical device name",
-        "default": "Automated Closed-Loop Insulin Delivery System (Class C)"
+        "description": "Target medical device or safety-critical system name",
+        "default": "Safety-Critical Cyber-Physical System (Class C)"
       },
       {
         "name": "author",
@@ -1209,6 +1306,75 @@
     "subcommands": []
   },
   {
+    "name": "domain",
+    "specs": [
+      "domain <lang> <action> [files..]",
+      "tool <lang> <action> [files..]"
+    ],
+    "aliases": [
+      "tool"
+    ],
+    "describe": "Invoke domain-specific engineering actions and solvers for any registered language",
+    "positionals": [
+      {
+        "name": "lang",
+        "aliases": [],
+        "type": "string",
+        "description": "Target engineering language ID (e.g. spice, cfd, fea, urdf, olga, easy5, sysml2)"
+      },
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Lifecycle or specialty action (inspect, lint, to-dae, to-modelica, to-sysml2, to-ssp, to-fmu, simulate, diagram, ...)"
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input model/deck file(s)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format (terminal, json, pretty, table, text, csv, svg)",
+        "choices": [
+          "terminal",
+          "json",
+          "pretty",
+          "table",
+          "text",
+          "csv",
+          "svg"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit output as machine-readable JSON (shorthand for --format=json)",
+        "default": false
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o",
+          "out"
+        ],
+        "type": "string",
+        "description": "Output file path"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "easy5",
     "specs": [
       "easy5 <action> [files..]"
@@ -1265,7 +1431,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for code generation or SVG diagram)"
@@ -1317,6 +1484,13 @@
           "json"
         ],
         "default": "terminal"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit JSON output",
+        "default": false
       }
     ],
     "subcommands": []
@@ -1355,7 +1529,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -1484,7 +1659,10 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path for generated Modelica code"
       },
@@ -1710,7 +1888,8 @@
           "inspect",
           "to-modelica",
           "to-dae",
-          "solve"
+          "solve",
+          "simulate"
         ]
       },
       {
@@ -1725,7 +1904,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for code generation or DAE metadata)"
@@ -2145,10 +2325,13 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: lint | to-modelica | verify | simulate | to-fmu | report",
+        "description": "Action to perform: inspect | summary | lint | to-modelica | to-dae | verify | simulate | to-fmu | report",
         "choices": [
+          "inspect",
+          "summary",
           "lint",
           "to-modelica",
+          "to-dae",
           "verify",
           "simulate",
           "to-fmu",
@@ -2166,13 +2349,18 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path"
       },
       {
         "name": "format",
-        "aliases": [],
+        "aliases": [
+          "f"
+        ],
         "type": "string",
         "description": "Report format: html | sarif | junit | ctrf",
         "choices": [
@@ -2185,14 +2373,20 @@
       },
       {
         "name": "stop-time",
-        "aliases": [],
+        "aliases": [
+          "tstop",
+          "duration"
+        ],
         "type": "number",
         "description": "Simulation stop time [s]",
         "default": 5
       },
       {
         "name": "step",
-        "aliases": [],
+        "aliases": [
+          "step-size",
+          "dt"
+        ],
         "type": "number",
         "description": "Simulation time step [s]",
         "default": 0.005
@@ -2346,7 +2540,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for code generation, trajectories, or SVG diagrams)"
@@ -2588,7 +2783,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -2671,11 +2867,80 @@
     "subcommands": []
   },
   {
+    "name": "inspect",
+    "specs": [
+      "inspect <files..>",
+      "info <files..>",
+      "summary <files..>"
+    ],
+    "aliases": [
+      "info",
+      "summary"
+    ],
+    "describe": "Inspect and summarize engineering models across any of the 44 supported languages",
+    "positionals": [
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "One or more model, netlist, CAD, or simulation deck files to inspect",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "language",
+        "aliases": [
+          "l",
+          "lang"
+        ],
+        "type": "string",
+        "description": "Explicitly override language ID"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format (terminal, json, pretty, table, text)",
+        "choices": [
+          "terminal",
+          "json",
+          "pretty",
+          "table",
+          "text"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit output as machine-readable JSON (shorthand for --format=json)",
+        "default": false
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o",
+          "out"
+        ],
+        "type": "string",
+        "description": "Write summary report to output file"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "install",
     "specs": [
       "install [package]"
     ],
-    "aliases": [],
+    "aliases": [
+      "i",
+      "add"
+    ],
     "describe": "Install a package from the ModelScript Registry into the local workspace",
     "positionals": [
       {
@@ -2774,7 +3039,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -2841,9 +3107,14 @@
   {
     "name": "lint",
     "specs": [
-      "lint <path> [paths...]"
+      "lint <path> [paths...]",
+      "check <path> [paths...]",
+      "validate <path> [paths...]"
     ],
-    "aliases": [],
+    "aliases": [
+      "check",
+      "validate"
+    ],
     "describe": "Lint polyglot libraries using QueryEngine and DSL parsers",
     "positionals": [
       {
@@ -2864,7 +3135,8 @@
       {
         "name": "language",
         "aliases": [
-          "l"
+          "l",
+          "lang"
         ],
         "type": "string",
         "description": "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran, easy5, rocets, lps, sima, gtsuite)"
@@ -2992,9 +3264,10 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (lint, solve, linepack, simulate, sysml, verify)",
+        "description": "Action to perform (inspect, to-dae, to-modelica, lint, solve, linepack, simulate, sysml, verify)",
         "choices": [
           "inspect",
+          "summary",
           "to-dae",
           "to-modelica",
           "lint",
@@ -3002,6 +3275,7 @@
           "linepack",
           "simulate",
           "sysml",
+          "to-sysml",
           "verify"
         ]
       },
@@ -3017,21 +3291,48 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
-        "description": "Output file path (e.g. for SysML export)"
+        "description": "Output file path (e.g. for SysML or Modelica export)"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Output format: terminal or json",
+        "choices": [
+          "terminal",
+          "json"
+        ],
+        "default": "terminal"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output results in JSON format",
+        "default": false
       },
       {
         "name": "duration",
-        "aliases": [],
+        "aliases": [
+          "stop-time",
+          "tstop"
+        ],
         "type": "number",
         "description": "Simulation duration in seconds for transient run",
         "default": 3600
       },
       {
         "name": "step",
-        "aliases": [],
+        "aliases": [
+          "step-size",
+          "dt"
+        ],
         "type": "number",
         "description": "Transient simulation timestep in seconds",
         "default": 10
@@ -3328,7 +3629,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for trajectory CSV, SVG diagram, or .fmu archive)"
@@ -3336,16 +3638,33 @@
       {
         "name": "duration",
         "aliases": [
-          "t"
+          "d",
+          "stop-time",
+          "tstop"
         ],
         "type": "number",
         "description": "Simulation duration in seconds [s]"
       },
       {
         "name": "dt",
-        "aliases": [],
+        "aliases": [
+          "step",
+          "step-size"
+        ],
         "type": "number",
         "description": "Simulation time step in seconds [s]"
+      },
+      {
+        "name": "diameter",
+        "aliases": [],
+        "type": "number",
+        "description": "Pipeline internal diameter in meters [m] for bathymetry survey"
+      },
+      {
+        "name": "cell-length",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum control volume cell length in meters [m] for bathymetry survey"
       },
       {
         "name": "restart",
@@ -3624,7 +3943,10 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path for generated track or SVG diagram"
       },
@@ -3683,7 +4005,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -3725,7 +4048,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -4061,7 +4385,10 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path"
       },
@@ -4336,9 +4663,7 @@
       },
       {
         "name": "head",
-        "aliases": [
-          "h"
-        ],
+        "aliases": [],
         "type": "string",
         "description": "Head Git reference (branch, commit hash, or omit for working tree)"
       },
@@ -4403,15 +4728,21 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (lint, diagram, diff, sim, verify-ieee2800, export-modelica, export-ssp, psout)",
+        "description": "Action to perform (inspect, summary, lint, diagram, diff, sim/simulate, verify-ieee2800/verify, export-modelica/to-modelica, export-ssp/to-ssp, psout)",
         "choices": [
+          "inspect",
+          "summary",
           "lint",
           "diagram",
           "diff",
           "sim",
+          "simulate",
           "verify-ieee2800",
+          "verify",
           "export-modelica",
+          "to-modelica",
           "export-ssp",
+          "to-ssp",
           "psout"
         ]
       },
@@ -4427,21 +4758,28 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)"
       },
       {
         "name": "tstop",
-        "aliases": [],
+        "aliases": [
+          "stop-time",
+          "duration"
+        ],
         "type": "number",
         "description": "Simulation duration in seconds",
         "default": 1
       },
       {
         "name": "step",
-        "aliases": [],
+        "aliases": [
+          "step-size",
+          "dt"
+        ],
         "type": "string",
         "description": "Simulation fixed time step (e.g. '20us' or 20e-6)",
         "default": "20us"
@@ -4501,7 +4839,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for SVG diagram)"
@@ -4620,7 +4959,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -4639,7 +4979,7 @@
   {
     "name": "render",
     "specs": [
-      "render <name> <paths...>"
+      "render <name> [paths..]"
     ],
     "aliases": [],
     "describe": "Render Modelica class diagram or icon to SVG",
@@ -4715,7 +5055,12 @@
         "specs": [
           "import <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "inspect <file>",
+          "summary <file>",
+          "inspect",
+          "summary"
+        ],
         "describe": "Import and inspect OMG ReqIF 1.2 requirements document with hierarchy and traceability relations",
         "positionals": [
           {
@@ -4792,7 +5137,12 @@
         "specs": [
           "lint <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "check <file>",
+          "validate <file>",
+          "check",
+          "validate"
+        ],
         "describe": "Lint OMG ReqIF document for missing attributes, dangling relations, and unbounded contracts",
         "positionals": [
           {
@@ -4877,7 +5227,10 @@
         "specs": [
           "to-sysml <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "to-sysml2 <file>",
+          "to-sysml2"
+        ],
         "describe": "Translate ReqIF requirements and satisfaction relations into SysML v2 definitions",
         "positionals": [
           {
@@ -4890,7 +5243,10 @@
         "options": [
           {
             "name": "out",
-            "aliases": [],
+            "aliases": [
+              "o",
+              "output"
+            ],
             "type": "string",
             "description": "Output .sysml file path"
           }
@@ -4915,7 +5271,10 @@
         "options": [
           {
             "name": "out",
-            "aliases": [],
+            "aliases": [
+              "o",
+              "output"
+            ],
             "type": "string",
             "description": "Output .mo file path"
           }
@@ -4961,7 +5320,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for code generation or SVG diagram)"
@@ -4997,6 +5357,13 @@
           "json"
         ],
         "default": "terminal"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit JSON output",
+        "default": false
       }
     ],
     "subcommands": []
@@ -5074,7 +5441,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -5127,7 +5495,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (for code generation or exported manifests)"
@@ -5154,11 +5523,14 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: lint | mobility | to-modelica | simulate | to-fmu | report",
+        "description": "Action to perform: inspect | summary | lint | mobility | to-modelica | to-dae | simulate | to-fmu | report",
         "choices": [
+          "inspect",
+          "summary",
           "lint",
           "mobility",
           "to-modelica",
+          "to-dae",
           "simulate",
           "to-fmu",
           "report"
@@ -5175,13 +5547,18 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path"
       },
       {
         "name": "format",
-        "aliases": [],
+        "aliases": [
+          "f"
+        ],
         "type": "string",
         "description": "Report format: html | sarif | junit | ctrf",
         "choices": [
@@ -5194,14 +5571,20 @@
       },
       {
         "name": "stop-time",
-        "aliases": [],
+        "aliases": [
+          "tstop",
+          "duration"
+        ],
         "type": "number",
         "description": "Simulation stop time [s]",
         "default": 5
       },
       {
         "name": "step",
-        "aliases": [],
+        "aliases": [
+          "step-size",
+          "dt"
+        ],
         "type": "number",
         "description": "Simulation time step [s]",
         "default": 0.005
@@ -5212,16 +5595,19 @@
   {
     "name": "simulate",
     "specs": [
-      "simulate <name> [paths..]"
+      "simulate <name> [paths..]",
+      "sim <name> [paths..]"
     ],
-    "aliases": [],
-    "describe": "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
+    "aliases": [
+      "sim"
+    ],
+    "describe": "Simulate a Modelica model, SysML v2 system, FMU archive, or domain engineering deck",
     "positionals": [
       {
         "name": "name",
         "aliases": [],
         "type": "string",
-        "description": "name of class to simulate, or path to a .fmu archive"
+        "description": "name of class to simulate, or path to a model/deck/.fmu file"
       },
       {
         "name": "paths",
@@ -5235,10 +5621,28 @@
       {
         "name": "output",
         "aliases": [
-          "o"
+          "o",
+          "out"
         ],
         "type": "string",
         "description": "output file path for simulation results"
+      },
+      {
+        "name": "model",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "explicit class/system name when first positional argument is a file"
+      },
+      {
+        "name": "language",
+        "aliases": [
+          "l",
+          "lang"
+        ],
+        "type": "string",
+        "description": "explicit language ID override"
       },
       {
         "name": "start-time",
@@ -5269,7 +5673,9 @@
       },
       {
         "name": "format",
-        "aliases": [],
+        "aliases": [
+          "f"
+        ],
         "type": "string",
         "description": "output format",
         "choices": [
@@ -5516,7 +5922,10 @@
       },
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path for generated code or export"
       }
@@ -5538,7 +5947,12 @@
         "specs": [
           "simulate <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "solve <file>",
+          "sim <file>",
+          "solve",
+          "sim"
+        ],
         "describe": "Simulate SPICE netlist with DC operating point (.OP), transient (.TRAN), or AC frequency response (.AC)",
         "positionals": [
           {
@@ -5603,7 +6017,12 @@
         "specs": [
           "lint <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "check <file>",
+          "validate <file>",
+          "check",
+          "validate"
+        ],
         "describe": "Perform pre-flight structural and electrical rule checks on SPICE netlist",
         "positionals": [
           {
@@ -5663,7 +6082,8 @@
           {
             "name": "out",
             "aliases": [
-              "o"
+              "o",
+              "output"
             ],
             "type": "string",
             "description": "Write summary to output JSON file"
@@ -5690,7 +6110,8 @@
           {
             "name": "out",
             "aliases": [
-              "o"
+              "o",
+              "output"
             ],
             "type": "string",
             "description": "Output .mo file path"
@@ -5756,7 +6177,8 @@
           {
             "name": "out",
             "aliases": [
-              "o"
+              "o",
+              "output"
             ],
             "type": "string",
             "description": "Output JSON file for DAE metadata"
@@ -5769,7 +6191,10 @@
         "specs": [
           "diagram <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "render <file>",
+          "render"
+        ],
         "describe": "Render SPICE circuit schematic diagram to standalone vector SVG or JSON graph",
         "positionals": [
           {
@@ -6037,7 +6462,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -6148,7 +6574,8 @@
         "name": "check",
         "specs": [
           "check <files..>",
-          "lint <files..>"
+          "lint <files..>",
+          "validate <files..>"
         ],
         "aliases": [],
         "describe": "Run frontend static type checking and compiler diagnostics linter on SysML v2 models",
@@ -6164,7 +6591,9 @@
         "options": [
           {
             "name": "format",
-            "aliases": [],
+            "aliases": [
+              "f"
+            ],
             "description": "Output format",
             "choices": [
               "terminal",
@@ -6187,7 +6616,12 @@
         "specs": [
           "info <file>"
         ],
-        "aliases": [],
+        "aliases": [
+          "inspect <file>",
+          "summary <file>",
+          "inspect",
+          "summary"
+        ],
         "describe": "Inspect model architecture, symbol counts, and structural metrics of a SysML v2 file",
         "positionals": [
           {
@@ -6200,7 +6634,9 @@
         "options": [
           {
             "name": "format",
-            "aliases": [],
+            "aliases": [
+              "f"
+            ],
             "description": "Output display format",
             "choices": [
               "table",
@@ -6541,7 +6977,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (e.g. for Modelica export)"
@@ -6645,8 +7082,10 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
+        "description": "Action to perform: inspect | summary | lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
         "choices": [
+          "inspect",
+          "summary",
           "lint",
           "rnea",
           "to-modelica",
@@ -6666,7 +7105,10 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path"
       },
@@ -6976,7 +7418,10 @@
     "options": [
       {
         "name": "out",
-        "aliases": [],
+        "aliases": [
+          "o",
+          "output"
+        ],
         "type": "string",
         "description": "Output file path"
       }

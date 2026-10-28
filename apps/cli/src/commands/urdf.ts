@@ -13,6 +13,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
+
+const URDF_ACTIONS = ["inspect", "summary", "lint", "rnea", "to-modelica", "to-simpack", "to-adams", "to-dae"] as const;
+
 export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "urdf <action> [files...]",
   describe: "Inspect, validate, solve kinematics, and project ROS URDF & SDFormat robot models (.urdf, .sdf, .xacro)",
@@ -20,8 +24,9 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
     return yargs
       .positional("action", {
         type: "string",
-        describe: "Action to perform: lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
-        choices: ["lint", "rnea", "to-modelica", "to-simpack", "to-adams", "to-dae"],
+        describe: "Action to perform: inspect | summary | lint | rnea | to-modelica | to-simpack | to-adams | to-dae",
+        choices: URDF_ACTIONS,
+        demandOption: true,
       })
       .positional("files", {
         type: "string",
@@ -29,6 +34,7 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
         describe: "Input robot description files (.urdf, .sdf, .xacro)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path",
       })
@@ -39,8 +45,9 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const action = normalizeDomainAction(String(argv["action"] ?? "inspect"), URDF_ACTIONS);
     const files = (argv["files"] as string[]) ?? [];
+    const out = resolveOutputPath(argv);
 
     if (files.length === 0) {
       console.error("Error: No input files provided.");
@@ -58,6 +65,19 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
       const robot = parseUrdf(content);
 
       switch (action) {
+        case "inspect":
+        case "summary": {
+          let totalMass = 0;
+          for (const link of robot.links.values()) {
+            if (link.inertial?.mass) totalMass += link.inertial.mass;
+          }
+          console.log(`=== URDF Robot Summary: ${robot.name} ===`);
+          console.log(`  Links      : ${robot.links.size}`);
+          console.log(`  Joints     : ${robot.joints.size}`);
+          console.log(`  Total Mass : ${totalMass.toFixed(3)} kg`);
+          break;
+        }
+
         case "lint": {
           const diagnostics = lintUrdfRobot(robot);
           if (diagnostics.length === 0) {
@@ -67,6 +87,9 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
             for (const d of diagnostics) {
               const loc = `${d.range.startLine}:${d.range.startColumn}`;
               console.log(`  [${loc}] [${d.code}] ${d.severity.toUpperCase()}: ${d.message}`);
+            }
+            if (diagnostics.some((d) => d.severity === "error")) {
+              process.exitCode = 1;
             }
           }
           break;
@@ -92,7 +115,6 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
 
         case "to-modelica": {
           const mo = urdfToModelica(robot);
-          const out = argv["out"] as string | undefined;
           if (out) {
             const outPath = path.resolve(process.cwd(), out);
             fs.writeFileSync(outPath, mo, "utf-8");
@@ -106,7 +128,6 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
         case "to-simpack": {
           const simpack = urdfToSimpack(robot);
           const json = JSON.stringify(simpack, null, 2);
-          const out = argv["out"] as string | undefined;
           if (out) {
             const outPath = path.resolve(process.cwd(), out);
             fs.writeFileSync(outPath, json, "utf-8");
@@ -119,7 +140,6 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
 
         case "to-adams": {
           const adams = urdfToAdams(robot);
-          const out = argv["out"] as string | undefined;
           if (out) {
             const outPath = path.resolve(process.cwd(), out);
             const { serializeAdams } = await import("@modelscript/adams");
@@ -139,6 +159,13 @@ export const UrdfCommand: CommandModule<Record<string, unknown>, Record<string, 
           console.log(`[URDF -> DAE] Model: '${robot.name}' lowered to linear WebAssembly memory arena:`);
           console.log(`  Variables: ${dae.varCount}`);
           console.log(`  Equations: ${dae.eqCount}`);
+          if (out) {
+            fs.writeFileSync(
+              path.resolve(process.cwd(), out),
+              JSON.stringify({ model: robot.name, variables: dae.varCount, equations: dae.eqCount }, null, 2),
+              "utf-8",
+            );
+          }
           break;
         }
       }

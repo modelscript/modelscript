@@ -4,6 +4,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
+import { checkPrivateVisibilityEntitlement } from "../ee-loader.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
 
@@ -92,6 +93,20 @@ export function reposRouter(database: LibraryDatabase): Router {
       social_preview_url?: string | undefined;
       description?: string | undefined;
     };
+
+    if (visibility === "private" || visibility === "internal") {
+      const entitlement = checkPrivateVisibilityEntitlement();
+      if (!entitlement.allowed) {
+        res.status(entitlement.statusCode).json({
+          edition: entitlement.statusCode === 501 ? "ce" : "ee",
+          licenseSpdx: entitlement.statusCode === 501 ? "AGPL-3.0-or-later" : "LicenseRef-ModelScript-Enterprise",
+          code: entitlement.code,
+          requiredFeature: "saml_oidc_sso",
+          error: entitlement.reason,
+        });
+        return;
+      }
+    }
 
     try {
       const updated = database.updateLinkedRepo(userId, rawId, {

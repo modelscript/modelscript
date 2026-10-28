@@ -71,10 +71,15 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - MSX_EDITION=${MSX_EDITION:-ce}
+      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
       - JWT_SECRET=${JWT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - EMAIL_FROM=${EMAIL_FROM:-}
@@ -135,12 +140,55 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  api-ce:
+    image: ghcr.io/modelscript/api-ce:latest
+    profiles: ["ce"]
+    build:
+      context: .
+      target: api-ce
+    ports:
+      - "3000:3000"
+    volumes:
+      - api-data:/app/apps/api/data
+      - api-uploads:/app/apps/api/uploads
+      - api-thumbnails:/app/apps/api/public/thumbnails
+      - api-packages:/app/apps/api/storage
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MSX_EDITION=ce
+      - TRUST_PROXY=true
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
+      - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
+      - JWT_SECRET=${JWT_SECRET}
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
   cli:
     image: ghcr.io/modelscript/cli:latest
     profiles: ["cli"]
     build:
       context: .
       target: cli
+    environment:
+      - MSX_EDITION=${MSX_EDITION:-ee}
+      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
+
+  cli-ce:
+    image: ghcr.io/modelscript/cli-ce:latest
+    profiles: ["ce-cli"]
+    build:
+      context: .
+      target: cli-ce
+    environment:
+      - MSX_EDITION=ce
 
   appliance:
     image: ghcr.io/modelscript/appliance:latest
@@ -156,6 +204,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=8080
+      - MSX_EDITION=${MSX_EDITION:-ee}
+      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:?Set MSX_LICENSE_KEY to your signed Enterprise Appliance license token}
       - ENTERPRISE_APPLIANCE=true
       - AIRGAP_ENFORCED=true
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}

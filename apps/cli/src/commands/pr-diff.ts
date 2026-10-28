@@ -62,7 +62,6 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         default: "HEAD~1",
       })
       .option("head", {
-        alias: "h",
         description: "Head Git reference (branch, commit hash, or omit for working tree)",
         type: "string",
       })
@@ -249,6 +248,11 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
       padding: 40,
       iterations: 25,
     });
+    const breakingOnly = Boolean(args.breakingOnly ?? args["breaking-only"]);
+    if (breakingOnly) {
+      diffData.nodes = diffData.nodes.filter((n) => n.isBreaking || n.diffStatus === "deleted");
+      diffData.edges = diffData.edges.filter((e) => e.isBreaking || e.diffStatus === "deleted");
+    }
 
     const title = `Visual PR Diff: ${fileName}`;
     const displayHead = headRef || "working tree";

@@ -69,7 +69,7 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
         default: "target-wins",
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for code generation or SVG diagram)",
         type: "string",
       })
@@ -104,13 +104,18 @@ export const Easy5Command: CommandModule<Record<string, unknown>, Record<string,
         type: "string",
         choices: ["terminal", "json"],
         default: "terminal",
+      })
+      .option("json", {
+        description: "Emit JSON output",
+        type: "boolean",
+        default: false,
       });
   },
   handler: async (argv) => {
     const action = argv["action"] as string;
     const files = (argv["files"] as string[]) ?? [];
     const outPath = argv["out"] as string | undefined;
-    const format = argv["format"] as "terminal" | "json";
+    const format = argv["json"] ? "json" : (argv["format"] as "terminal" | "json");
     const minFreq = (argv["min-freq"] as number) ?? 0.01;
     const maxFreq = (argv["max-freq"] as number) ?? 1000.0;
     const numPoints = (argv["num-points"] as number) ?? 60;

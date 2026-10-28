@@ -9,8 +9,10 @@ import { parseSourceToPolyglotNode } from "../src/commands/polyglot.js";
 
 describe("Polyglot CLI Command Suite (`msx polyglot`)", () => {
   const scratchDir = path.resolve(import.meta.dirname, "scratch_polyglot");
-  const cliPath = path.resolve(import.meta.dirname, "../src/main.ts");
-  const tsxBin = path.resolve(import.meta.dirname, "../../../node_modules/.bin/tsx");
+  const distCliPath = path.resolve(import.meta.dirname, "../dist/main.js");
+  const hasDist = fs.existsSync(distCliPath);
+  const cliPath = hasDist ? distCliPath : path.resolve(import.meta.dirname, "../src/main.ts");
+  const tsxBin = hasDist ? process.execPath : path.resolve(import.meta.dirname, "../../../node_modules/.bin/tsx");
 
   // Setup scratch fixtures
   if (!fs.existsSync(scratchDir)) {

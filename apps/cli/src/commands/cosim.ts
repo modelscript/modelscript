@@ -371,14 +371,62 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
         try {
           const fsMod = await import("node:fs");
           if (fsMod.existsSync(args.archive)) {
-            const raw = fsMod.readFileSync(args.archive, "utf-8");
-            for (const p of paramRanges) {
-              const m =
-                raw.match(new RegExp(`\\b${p.name}\\b[^=\\n]*=\\s*([+-]?\\d+(?:\\.\\d+)?)`)) ||
-                raw.match(new RegExp(`name="${p.name}"[^>]*value="([+-]?\\d+(?:\\.\\d+)?)"`));
-              if (m?.[1] !== undefined) {
-                const val = parseFloat(m[1]);
-                if (!Number.isNaN(val)) archiveTargets.set(p.name, val);
+            if (args.archive.endsWith(".fmu")) {
+              const { extractFileFromZip, parseModelDescription, simulateFmuArchive } =
+                await import("@modelscript/exchange/fmu");
+              const startValues: Record<string, number | boolean | string> = {};
+              for (let i = 0; i < dim; i++) {
+                startValues[paramRanges[i]!.name] = x[i]!;
+              }
+              try {
+                const simRes = await simulateFmuArchive(args.archive, {
+                  stopTime: 1.0,
+                  stepSize: 0.05,
+                  startValues,
+                });
+                const objIdx = simRes.varNames.indexOf(args.objective);
+                if (objIdx >= 0 && simRes.values.length > 0) {
+                  const lastRow = simRes.values[simRes.values.length - 1] ?? [];
+                  const lastVal = Number(lastRow[objIdx]);
+                  if (Number.isFinite(lastVal)) {
+                    return Math.abs(lastVal);
+                  }
+                }
+              } catch {
+                // Fall back to modelDescription start values if FMU lacks native/WASM binary for current host
+              }
+              const zipBuf = fsMod.readFileSync(args.archive);
+              const xml = extractFileFromZip(zipBuf, "modelDescription.xml");
+              if (xml) {
+                const desc = parseModelDescription(xml);
+                for (const v of desc.variables) {
+                  if (v.start !== undefined) {
+                    const num = Number(v.start);
+                    if (Number.isFinite(num)) archiveTargets.set(v.name, num);
+                  }
+                }
+              }
+            } else if (args.archive.endsWith(".ssp")) {
+              const { extractFileFromZip } = await import("@modelscript/exchange/fmu");
+              const zipBuf = fsMod.readFileSync(args.archive);
+              const ssdXml = extractFileFromZip(zipBuf, "SystemStructure.ssd") ?? zipBuf.toString("utf-8");
+              for (const p of paramRanges) {
+                const m = ssdXml.match(new RegExp(`name="${p.name}"[^>]*value="([+-]?\\d+(?:\\.\\d+)?)"`));
+                if (m?.[1] !== undefined) {
+                  const val = parseFloat(m[1]);
+                  if (!Number.isNaN(val)) archiveTargets.set(p.name, val);
+                }
+              }
+            } else {
+              const raw = fsMod.readFileSync(args.archive, "utf-8");
+              for (const p of paramRanges) {
+                const m =
+                  raw.match(new RegExp(`\\b${p.name}\\b[^=\\n]*=\\s*([+-]?\\d+(?:\\.\\d+)?)`)) ||
+                  raw.match(new RegExp(`name="${p.name}"[^>]*value="([+-]?\\d+(?:\\.\\d+)?)"`));
+                if (m?.[1] !== undefined) {
+                  const val = parseFloat(m[1]);
+                  if (!Number.isNaN(val)) archiveTargets.set(p.name, val);
+                }
               }
             }
           }

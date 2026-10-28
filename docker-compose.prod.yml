@@ -1,0 +1,58 @@
+# ==============================================================================
+# Production Docker Compose Overlay for modelscript.org (ModelScript Cloud EE)
+#
+# Usage on the modelscript.org production host:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     --env-file .env.production --profile federated pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     --env-file .env.production --profile federated up -d --remove-orphans
+# ==============================================================================
+
+services:
+  caddy:
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-modelscript.org}
+    restart: always
+
+  mqtt:
+    restart: always
+
+  timescaledb:
+    restart: always
+
+  api:
+    image: ghcr.io/modelscript/api:${IMAGE_TAG:-latest}
+    pull_policy: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MSX_EDITION=ee
+      - MSX_LICENSE_ENFORCE=true
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:?MSX_LICENSE_KEY is required for modelscript.org Enterprise Cloud}
+      - TRUST_PROXY=true
+      - PUBLIC_URL=${PUBLIC_URL:-https://modelscript.org}
+      - FEDERATION_MODE=${FEDERATION_MODE:-federated}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required in production}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@modelscript.org}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
+      - TIMESCALE_URL=${TIMESCALE_URL:-postgres://modelscript:modelscript@timescaledb:5432/modelscript_historian}
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=2048}
+    restart: always
+
+  web:
+    image: ghcr.io/modelscript/web:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: always
+
+  ide:
+    image: ghcr.io/modelscript/ide:${IMAGE_TAG:-latest}
+    pull_policy: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=1024}
+    restart: always

@@ -106,12 +106,15 @@ async function runBenchmark() {
     // Parse & index SysML
     console.log("    Parsing SysML...");
     const sysmlTree0 = sysmlParser.parse(sysmlSrc0);
+    if (!sysmlTree0) {
+      throw new Error("Failed to parse SysML source");
+    }
     console.log("    Indexing SysML...");
     const sysmlIndex0 = createSysML2WorkspaceIndex();
     sysmlIndex0.register(sysmlUri, () => sysmlTree0.rootNode);
     const sysmlUnified0 = await sysmlIndex0.toUnifiedAsync();
     console.log("    Creating SysML engine...");
-    createSysML2QueryEngine(sysmlUnified0, () => sysmlTree0.rootNode);
+    createSysML2QueryEngine(sysmlUnified0, sysmlTree0 as unknown as Parameters<typeof createSysML2QueryEngine>[1]);
 
     // Parse & flatten Modelica
     console.log("    Loading Modelica...");
@@ -123,7 +126,7 @@ async function runBenchmark() {
 
     // Cross-Domain verification check
     const coldDuration = performance.now() - t0;
-    resultsTable["1. Cold Start Polyglot Verification"].push(coldDuration);
+    resultsTable["1. Cold Start Polyglot Verification"]!.push(coldDuration);
     console.log(`    Step 1 completed in ${coldDuration.toFixed(2)} ms`);
 
     // ── 2. SysML Requirement Threshold Edit (65.0 -> 70.0) ──
@@ -132,7 +135,7 @@ async function runBenchmark() {
     const t1 = performance.now();
     sysmlParser.parse(sysmlSrc1);
     const reqEditDuration = performance.now() - t1;
-    resultsTable["2. SysML Requirement Threshold Edit"].push(reqEditDuration);
+    resultsTable["2. SysML Requirement Threshold Edit"]!.push(reqEditDuration);
     console.log(`    Step 2 completed in ${reqEditDuration.toFixed(2)} ms`);
 
     // ── 3. SysML Architecture Parameter Edit (T_ambient 25.0 -> 30.0) ──
@@ -145,7 +148,7 @@ async function runBenchmark() {
     ctx0.load(modelicaSrc2, modelicaUri);
     ctx0.flattenArena(`BatteryPack_${n}`, undefined, modelicaUri);
     const archEditDuration = performance.now() - t2;
-    resultsTable["3. SysML Architecture Parameter Edit"].push(archEditDuration);
+    resultsTable["3. SysML Architecture Parameter Edit"]!.push(archEditDuration);
     console.log(`    Step 3 completed in ${archEditDuration.toFixed(2)} ms`);
 
     // ── 4. Modelica Parameter Mutation (R 0.1 -> 0.15) ──
@@ -155,7 +158,7 @@ async function runBenchmark() {
     ctx0.load(modelicaSrc3, modelicaUri);
     ctx0.flattenArena(`BatteryPack_${n}`, undefined, modelicaUri);
     const physEditDuration = performance.now() - t3;
-    resultsTable["4. Modelica Parameter Mutation"].push(physEditDuration);
+    resultsTable["4. Modelica Parameter Mutation"]!.push(physEditDuration);
     console.log(`    Step 4 completed in ${physEditDuration.toFixed(2)} ms`);
 
     // ── 5. Structural Over-Constraint Injection ──
@@ -164,7 +167,7 @@ async function runBenchmark() {
     const t4 = performance.now();
     sysmlParser.parse(sysmlSrc4);
     const overconstraintDuration = performance.now() - t4;
-    resultsTable["5. Structural Over-Constraint Injection"].push(overconstraintDuration);
+    resultsTable["5. Structural Over-Constraint Injection"]!.push(overconstraintDuration);
     console.log(`    Step 5 completed in ${overconstraintDuration.toFixed(2)} ms`);
   }
 

@@ -441,13 +441,13 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               </Text>
               <PlanBadge $variant={isLiveActive ? "pro" : "community"}>
                 <ShieldCheckIcon size={12} />
-                {isLiveActive ? "Active · Cloud HPC" : "Active · AGPL-3.0"}
+                {isLiveActive ? "Active · Cloud HPC" : "Active · AGPL-3.0 Core"}
               </PlanBadge>
             </Box>
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
               {isLiveActive
                 ? "High-performance Slurm cluster job dispatch, batched SUNDIALS sweeps, and A100 GPU surrogate training active."
-                : "Unlimited zero-latency local WebAssembly ODE/DAE execution, compiler passes, and all 44 engineering formats included free and open source."}
+                : "Local WebAssembly ODE/DAE execution, compiler passes, and core engineering formats included under the AGPL-3.0 open-core license."}
             </Text>
           </Box>
 

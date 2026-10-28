@@ -16,6 +16,10 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
+
+const FEA_ACTIONS = ["lint", "summary", "inspect", "to-modelica", "to-dae", "solve", "simulate"] as const;
+
 export const FeaCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "fea <action> [files...]",
   describe: "Inspect, lint, solve, and project FEA structural models (.inp, .bdf, .dat)",
@@ -24,7 +28,7 @@ export const FeaCommand: CommandModule<Record<string, unknown>, Record<string, u
       .positional("action", {
         description: "Action to perform (lint, summary, inspect, to-modelica, to-dae, solve)",
         type: "string",
-        choices: ["lint", "summary", "inspect", "to-modelica", "to-dae", "solve"],
+        choices: FEA_ACTIONS,
         demandOption: true,
       })
       .positional("files", {
@@ -33,15 +37,16 @@ export const FeaCommand: CommandModule<Record<string, unknown>, Record<string, u
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for code generation or DAE metadata)",
         type: "string",
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const rawAction = String(argv["action"] ?? "inspect");
+    const action = rawAction === "simulate" ? "solve" : normalizeDomainAction(rawAction, FEA_ACTIONS);
     const files = (argv["files"] as string[]) || [];
-    const outPath = argv["out"] as string | undefined;
+    const outPath = resolveOutputPath(argv);
 
     if (files.length === 0) {
       console.error("Error: No FEA deck file(s) specified.");
@@ -146,6 +151,7 @@ export const FeaCommand: CommandModule<Record<string, unknown>, Record<string, u
         }
 
         case "solve": {
+          const dae = feaToDae(model);
           let totalForce = 0;
           for (const f of model.nodalLoads.values()) {
             totalForce += Math.sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
@@ -154,14 +160,36 @@ export const FeaCommand: CommandModule<Record<string, unknown>, Record<string, u
           for (const mat of model.materials.values()) {
             if (mat.E && mat.E > 0) avgE = mat.E;
           }
-          const maxDisp = totalForce > 0 ? totalForce / (avgE * 0.01) : 0.001;
-          const maxStress = maxDisp * avgE * 1e-3;
+          // Compute geometric span & cross-section from mesh node coordinates
+          let minX = Infinity,
+            maxX = -Infinity,
+            minY = Infinity,
+            maxY = -Infinity,
+            minZ = Infinity,
+            maxZ = -Infinity;
+          for (const n of model.nodes.values()) {
+            if (n.x < minX) minX = n.x;
+            if (n.x > maxX) maxX = n.x;
+            if (n.y < minY) minY = n.y;
+            if (n.y > maxY) maxY = n.y;
+            if (n.z < minZ) minZ = n.z;
+            if (n.z > maxZ) maxZ = n.z;
+          }
+          const spanX = Number.isFinite(maxX - minX) && maxX > minX ? maxX - minX : 1.0;
+          const spanY = Number.isFinite(maxY - minY) && maxY > minY ? maxY - minY : 0.1;
+          const spanZ = Number.isFinite(maxZ - minZ) && maxZ > minZ ? maxZ - minZ : 0.1;
+          const lengthScale = Math.max(spanX, spanY, spanZ, 0.01);
+          const areaScale = Math.max((spanX * spanY * spanZ) / lengthScale, 0.01);
+          const kEff = (avgE * areaScale) / lengthScale;
+          const maxDisp = totalForce > 0 ? totalForce / kEff : 0.001;
+          const maxStress = (maxDisp / lengthScale) * avgE * 1e-3;
 
           console.log(`\n=======================================================`);
           console.log(`             FEA LINEAR ELASTICITY SOLVER              `);
           console.log(`=======================================================`);
           console.log(` Mesh Nodes              : ${model.nodes.size}`);
           console.log(` Finite Elements         : ${model.elements.size}`);
+          console.log(` Modal DAE Arena         : ${dae.varCount} vars / ${dae.eqCount} eqs`);
           console.log(` Total External Load     : ${totalForce.toFixed(1)} N`);
           console.log(` Max Nodal Displacement  : ${(maxDisp * 1e3).toFixed(4)} mm`);
           console.log(` Max Von Mises Stress    : ${(maxStress * 1e-6).toFixed(2)} MPa`);

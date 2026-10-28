@@ -150,6 +150,50 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
       return;
     }
 
+    if (action === "download") {
+      try {
+        const statusRes = await fetch(`${apiUrl}/api/v1/users/me/export/status`, { headers });
+        if (!statusRes.ok) {
+          const body = (await statusRes.json().catch(() => ({}))) as { error?: string | undefined };
+          console.error(c.red(`Failed to query archive status: ${body.error || statusRes.statusText}`));
+          process.exit(1);
+        }
+        const statusData = (await statusRes.json()) as { job?: ArchiveJobStatus | undefined };
+        if (!statusData.job || statusData.job.status !== "completed") {
+          console.error(
+            c.red(
+              `No completed archive job available to download (current status: ${statusData.job?.status ?? "none"}).`,
+            ),
+          );
+          process.exit(1);
+        }
+        const downloadUrl = `${apiUrl}/api/v1/users/me/export/download?jobId=${encodeURIComponent(statusData.job.id)}`;
+        const downloadRes = await fetch(downloadUrl, { headers });
+        if (!downloadRes.ok) {
+          console.error(c.red(`Failed to download archive: ${downloadRes.statusText}`));
+          process.exit(1);
+        }
+        const buffer = Buffer.from(await downloadRes.arrayBuffer());
+        const targetPath =
+          args.output ||
+          path.resolve(
+            process.cwd(),
+            args.outputDir || "./data/archives",
+            `modelscript-archive-${statusData.job.id}.${statusData.job.format || format}`,
+          );
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.writeFileSync(targetPath, buffer);
+        console.log(
+          `  ${c.green("✔")} Stored archive to: ${c.bold(targetPath)} ${c.dim(`(${formatBytes(buffer.length)})`)}\n`,
+        );
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(c.red(`Archive download error: ${message}`));
+        process.exit(1);
+      }
+      return;
+    }
+
     // Default action: "request" / "export"
     console.log("");
     console.log(c.bold("┌────────────────────────────────────────────────────────────────────────┐"));
@@ -162,10 +206,13 @@ export const Archive: CommandModule<Record<string, unknown>, ArchiveArgs> = {
     );
 
     try {
+      const requestPayload: Record<string, unknown> = { format };
+      if (args.concurrency !== undefined) requestPayload["concurrency"] = args.concurrency;
+      if (args.users && args.users.length > 0) requestPayload["users"] = args.users;
       const enqueueRes = await fetch(`${apiUrl}/api/v1/users/me/export`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ format }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!enqueueRes.ok && enqueueRes.status !== 202) {

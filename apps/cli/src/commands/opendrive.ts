@@ -28,6 +28,7 @@ export const OpenDriveCommand: CommandModule<Record<string, unknown>, Record<str
         describe: "Input OpenDRIVE roadway files (.xodr, .xml)",
       })
       .option("out", {
+        alias: ["o", "output"],
         type: "string",
         describe: "Output file path for generated track or SVG diagram",
       })

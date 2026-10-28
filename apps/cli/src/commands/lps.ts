@@ -31,15 +31,31 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputFormat, resolveOutputPath } from "../util/cli-options.js";
+
+const LPS_ACTIONS = [
+  "inspect",
+  "summary",
+  "to-dae",
+  "to-modelica",
+  "lint",
+  "solve",
+  "linepack",
+  "simulate",
+  "sysml",
+  "to-sysml",
+  "verify",
+] as const;
+
 export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "lps <action> [files..]",
   describe: "Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, solve, linepack, simulate, sysml, verify)",
+        description: "Action to perform (inspect, to-dae, to-modelica, lint, solve, linepack, simulate, sysml, verify)",
         type: "string",
-        choices: ["inspect", "to-dae", "to-modelica", "lint", "solve", "linepack", "simulate", "sysml", "verify"],
+        choices: LPS_ACTIONS,
         demandOption: true,
       })
       .positional("files", {
@@ -48,16 +64,30 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
         array: true,
       })
       .option("out", {
-        alias: "o",
-        description: "Output file path (e.g. for SysML export)",
+        alias: ["o", "output"],
+        description: "Output file path (e.g. for SysML or Modelica export)",
         type: "string",
       })
+      .option("format", {
+        alias: "f",
+        description: "Output format: terminal or json",
+        choices: ["terminal", "json"],
+        default: "terminal",
+        type: "string",
+      })
+      .option("json", {
+        description: "Output results in JSON format",
+        type: "boolean",
+        default: false,
+      })
       .option("duration", {
+        alias: ["stop-time", "tstop"],
         description: "Simulation duration in seconds for transient run",
         type: "number",
         default: 3600,
       })
       .option("step", {
+        alias: ["step-size", "dt"],
         description: "Transient simulation timestep in seconds",
         type: "number",
         default: 10,
@@ -87,8 +117,16 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
       });
   },
   handler: async (argv) => {
-    const action = argv["action"] as string;
+    const rawAction = String(argv["action"] ?? "inspect");
+    const action =
+      rawAction === "summary"
+        ? "inspect"
+        : rawAction === "to-sysml"
+          ? "sysml"
+          : normalizeDomainAction(rawAction, LPS_ACTIONS);
     const files = (argv["files"] as string[]) ?? [];
+    const outFile = resolveOutputPath(argv);
+    const format = resolveOutputFormat(argv);
 
     if (files.length === 0) {
       console.error("Error: No input files specified.");
@@ -110,6 +148,20 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
       }
 
       if (action === "inspect") {
+        if (format === "json") {
+          const summary = {
+            file: path.basename(filePath),
+            title: model.title || model.id,
+            type: model.type,
+            nodes: model.nodes.length,
+            pipes: model.pipes.length,
+            compressors: model.compressors.length,
+          };
+          const jsonStr = JSON.stringify(summary, null, 2);
+          if (outFile) fs.writeFileSync(path.resolve(outFile), jsonStr, "utf-8");
+          else console.log(jsonStr);
+          continue;
+        }
         console.log(`[PipelineStudio Network] File: ${path.basename(filePath)}`);
         console.log(`  Title: ${model.title || model.id}`);
         console.log(`  Simulation Type: ${model.type}`);
@@ -139,15 +191,15 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
         console.log(`✔ DAE arena lowered successfully:`);
         console.log(`  Variables : ${dae.varCount}`);
         console.log(`  Equations : ${dae.eqCount}`);
-        if (argv["out"]) {
-          const outPath = path.resolve(argv["out"] as string);
+        if (outFile) {
+          const outPath = path.resolve(outFile);
           fs.writeFileSync(outPath, JSON.stringify({ varCount: dae.varCount, eqCount: dae.eqCount }, null, 2), "utf-8");
           console.log(`✔ DAE metadata written to ${outPath}`);
         }
       } else if (action === "to-modelica") {
         const mo = lpsToModelica(model);
-        if (argv["out"]) {
-          const outPath = path.resolve(argv["out"] as string);
+        if (outFile) {
+          const outPath = path.resolve(outFile);
           fs.writeFileSync(outPath, mo, "utf-8");
           console.log(`✔ Modelica projection written to ${outPath}`);
         } else {
@@ -155,7 +207,9 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
         }
       } else if (action === "lint") {
         const diagnostics = lintLpsModel(model);
-        if (diagnostics.length === 0) {
+        if (format === "json") {
+          console.log(JSON.stringify(diagnostics, null, 2));
+        } else if (diagnostics.length === 0) {
           console.log(`[LPS] ${filePath}: Clean! No diagnostics found.`);
         } else {
           console.log(`[LPS] ${filePath}: ${diagnostics.length} diagnostic(s) found:`);
@@ -163,12 +217,18 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
             const prefix = d.severity === "error" ? "ERROR" : d.severity === "warning" ? "WARN" : "INFO";
             console.log(`  [${prefix}] ${d.code} (${d.rule}): ${d.message}`);
           }
-          if (diagnostics.some((d) => d.severity === "error")) {
-            process.exitCode = 1;
-          }
+        }
+        if (diagnostics.some((d) => d.severity === "error")) {
+          process.exitCode = 1;
         }
       } else if (action === "solve") {
         const steady = SteadyNetworkSolver.solve(model);
+        if (format === "json") {
+          const jsonStr = JSON.stringify(steady, null, 2);
+          if (outFile) fs.writeFileSync(path.resolve(outFile), jsonStr, "utf-8");
+          else console.log(jsonStr);
+          continue;
+        }
         console.log(`=== PipelineStudio Steady-State Hydraulics: ${model.title} ===`);
         console.log(`EOS: ${model.simulationControls.equationOfState ?? "AGA8"}`);
         console.log(`Nodes (${model.nodes.length}):`);
@@ -234,13 +294,15 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
           `Peak Drafting Buffer:   ${analysis.exhaustionTimeHours >= 999 ? "Sustained" : analysis.exhaustionTimeHours.toFixed(1) + " hours"}`,
         );
       } else if (action === "simulate") {
-        const duration = argv["duration"] as number;
-        const dt = argv["step"] as number;
+        const duration = (argv["duration"] as number) ?? 3600;
+        const dt = (argv["step"] as number) ?? 10;
         const restartFile = argv["restart"] as string | undefined;
 
+        let restored: ReturnType<typeof CheckpointEngine.applySnapshot> | undefined;
         if (restartFile && fs.existsSync(restartFile)) {
           const checkpointContent = fs.readFileSync(restartFile, "utf-8");
           const checkpoint = CheckpointEngine.deserialize(checkpointContent);
+          restored = CheckpointEngine.applySnapshot(model, checkpoint);
           console.log(
             `[LPS] Resuming simulation from snapshot '${restartFile}' (t = ${checkpoint.simulationTime}s)...`,
           );
@@ -249,7 +311,17 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
         console.log(
           `Simulating 1D transient gas dynamics for ${duration}s (dt = ${dt}s, EOS = ${model.simulationControls.equationOfState})...`,
         );
-        const trajectory = GasEulerDaeSolver.simulate(model, { durationSeconds: duration, timeStep: dt });
+        const trajectory = GasEulerDaeSolver.simulate(model, {
+          durationSeconds: duration,
+          timeStep: dt,
+          ...(restored
+            ? {
+                initialP: restored.initialP,
+                initialW: restored.initialW,
+                startTime: restored.simulationStartTime,
+              }
+            : {}),
+        });
         console.log(`Simulation completed: ${trajectory.times.length} time steps.`);
         console.log(
           `Final total line pack: ${(trajectory.linePackHistory[trajectory.linePackHistory.length - 1]! / 1000).toFixed(1)} tonnes.`,
@@ -258,16 +330,42 @@ export const LpsCommand: CommandModule<Record<string, unknown>, Record<string, u
         const savePath = argv["save-checkpoint"] as string | undefined;
         if (savePath) {
           const steady = SteadyNetworkSolver.solve(model);
-          const snap = CheckpointEngine.createSnapshot(model, duration, steady.nodeStates, steady.pipeStates);
+          const finalNodeStates = { ...steady.nodeStates };
+          for (const [nodeName, pSeries] of Object.entries(trajectory.nodePressures)) {
+            const finalP = pSeries[pSeries.length - 1];
+            if (finalP !== undefined && finalNodeStates[nodeName]) {
+              finalNodeStates[nodeName] = { ...finalNodeStates[nodeName]!, pressure: finalP };
+            }
+          }
+          const finalPipeStates = { ...steady.pipeStates };
+          for (const [pipeName, wSeries] of Object.entries(trajectory.pipeFlows)) {
+            const finalW = wSeries[wSeries.length - 1];
+            const pipeDef = model.pipes.find((p) => p.name === pipeName);
+            if (finalW !== undefined && finalPipeStates[pipeName]) {
+              const pIn =
+                (pipeDef ? finalNodeStates[pipeDef.fromNode]?.pressure : undefined) ??
+                finalPipeStates[pipeName]!.inletPressure;
+              const pOut =
+                (pipeDef ? finalNodeStates[pipeDef.toNode]?.pressure : undefined) ??
+                finalPipeStates[pipeName]!.outletPressure;
+              finalPipeStates[pipeName] = {
+                ...finalPipeStates[pipeName]!,
+                massFlow: finalW,
+                inletPressure: pIn,
+                outletPressure: pOut,
+              };
+            }
+          }
+          const finalTime = trajectory.times[trajectory.times.length - 1] ?? duration;
+          const snap = CheckpointEngine.createSnapshot(model, finalTime, finalNodeStates, finalPipeStates);
           fs.writeFileSync(savePath, CheckpointEngine.serialize(snap), "utf-8");
           console.log(`[LPS] Checkpoint snapshot saved to: ${savePath}`);
         }
       } else if (action === "sysml") {
         const sysmlText = lpsToSysml2(model);
-        const outPath = argv["out"] as string | undefined;
-        if (outPath) {
-          fs.writeFileSync(outPath, sysmlText, "utf-8");
-          console.log(`Exported SysML v2 model to: ${outPath}`);
+        if (outFile) {
+          fs.writeFileSync(path.resolve(outFile), sysmlText, "utf-8");
+          console.log(`Exported SysML v2 model to: ${outFile}`);
         } else {
           console.log(sysmlText);
         }

@@ -39,7 +39,7 @@ export const OpenScenarioCommand: CommandModule<Record<string, unknown>, Record<
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (e.g. for Modelica export)",
         type: "string",
       })

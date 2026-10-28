@@ -1,0 +1,43 @@
+ModelScript Enterprise Edition (EE) License
+SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise
+
+Copyright (c) 2026 Mohamad Omar Nachawati / ModelScript. All rights reserved.
+
+The source code, configuration manifests, and documentation located within the
+"ee/" directory of this repository (collectively, the "Enterprise Edition
+Software") are proprietary and confidential to ModelScript.
+
+Unlike the core ModelScript compiler, language parsers, and Community Edition
+packages located outside the "ee/" directory (which are licensed under the GNU
+Affero General Public License v3.0 or later, see ../COPYING), the Enterprise
+Edition Software is NOT licensed under the AGPL-3.0 or any other open-source
+license.
+
+1. PERMITTED EVALUATION AND DEVELOPMENT USE
+   You may view, compile, and execute the Enterprise Edition Software solely
+   for internal local development, automated continuous integration testing of
+   the ModelScript repository, or under a time-limited written 30-Day
+   Evaluation Agreement with ModelScript.
+
+2. PRODUCTION AND COMMERCIAL USE REQUIRES A VALID ENTERPRISE LICENSE
+   Any production deployment, internal corporate hosting of Enterprise Edition
+   features (including air-gapped NERC CIP / FERC CEII compliance appliances,
+   SAML 2.0 / OIDC SSO group governance, Slurm HPC cluster orchestration,
+   operational digital twin historians, or cryptographic regulatory
+   attestations), or commercial redistribution requires an active paid
+   ModelScript Enterprise Appliance Subscription or Commercial SDK License
+   accompanied by a cryptographically signed license key (MSX_LICENSE_KEY).
+
+3. RESTRICTIONS
+   Without a valid written commercial license agreement from ModelScript, you
+   may not:
+   (a) remove, bypass, or modify any cryptographic license verification
+       mechanism (ee/src/license/) or SPDX license headers in the Enterprise
+       Edition Software;
+   (b) distribute, sublicense, or offer the Enterprise Edition Software as a
+       hosted or managed service to third parties; or
+   (c) relicense any file within the "ee/" directory under the AGPL-3.0 or any
+       other open-source license.
+
+For commercial licensing inquiries, contact: omar@modelscript.org
+https://modelscript.org/pricing

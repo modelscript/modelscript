@@ -16,8 +16,9 @@ export interface MemorySnapshot {
  * Run Node with `--expose-gc` to enable forced garbage collection.
  */
 export function snapshotMemory(forceGC = false): MemorySnapshot {
-  if (forceGC && global.gc) {
-    global.gc();
+  const g = globalThis as { gc?: (() => void) | undefined };
+  if (forceGC && typeof g.gc === "function") {
+    g.gc();
   }
 
   const mem = process.memoryUsage();

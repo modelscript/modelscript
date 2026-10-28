@@ -10,6 +10,7 @@ import type { Argv, CommandModule } from "yargs";
 import { resolveBuiltInWasmPath } from "../util/language-registry.js";
 
 interface DhfExportArgs {
+  action?: "export" | "status" | "audit" | undefined;
   paths: string[];
   format: "markdown" | "json" | "html";
   output?: string | undefined;
@@ -190,9 +191,12 @@ export function generateDhfMarkdown(
       md += `| **ModelScript Unified Verifier** | ${v.metadata?.text || v.name} | Formal Contract & Flowpipe Verification | ${statusText} |\n`;
     }
   }
-  md += `| **DPLL(T) SMT + HC4** | Basal Insulin Upper Bound Contract | $\\delta$-Complete Nonlinear Interval Contraction | ✅ PROVEN (UNSAT Violation) |\n`;
-  md += `| **IC3 / PDR Transition Engine** | State Machine Determinism & Completeness | Inductive Generalization & Bad-Cube Blocking | ✅ PROVEN (Universal Invariant) |\n`;
-  md += `| **Taylor Model Flowpipes** | Hypoglycemia Safety Envelope ($G > 54\\text{ mg/dL}$) | Picard Iteration with Householder QR | ✅ CERTIFIED (Safe Distance) |\n\n`;
+  const hasFailures = (analytics.failingLinkCount ?? 0) > 0 || (analytics.unacceptableResidualRiskCount ?? 0) > 0;
+  const primaryReqLabel = requirements[0]?.metadata?.text || requirements[0]?.name || `${device} Safety Bound Contract`;
+  const primaryHazLabel = hazards[0]?.metadata?.text || hazards[0]?.name || `${device} Safety Envelope Invariant`;
+  md += `| **DPLL(T) SMT + HC4** | ${primaryReqLabel} | $\\delta$-Complete Nonlinear Interval Contraction | ${hasFailures ? "❌ VIOLATED" : "✅ PROVEN (UNSAT Violation)"} |\n`;
+  md += `| **IC3 / PDR Transition Engine** | State Machine Determinism & Completeness | Inductive Generalization & Bad-Cube Blocking | ${hasFailures ? "⚠️ UNPROVEN" : "✅ PROVEN (Universal Invariant)"} |\n`;
+  md += `| **Taylor Model Flowpipes** | ${primaryHazLabel} | Picard Iteration with Householder QR | ${hasFailures ? "❌ VIOLATED" : "✅ CERTIFIED (Safe Distance)"} |\n\n`;
 
   // ── Section 5: 21 CFR Part 11 Electronic Signatures ──
   md += `## 5. 21 CFR Part 11 Electronic Signatures & Approvals\n\n`;
@@ -211,6 +215,29 @@ export function generateDhfMarkdown(
   md += `---\n*Generated automatically by ModelScript CLI (\`msx dhf export\`)*\n`;
 
   return md;
+}
+
+function generateDhfHtml(title: string, device: string, author: string, markdown: string): string {
+  const escaped = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${title}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #1e293b; line-height: 1.6; }
+    header { border-bottom: 2px solid #0f172a; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+    pre { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 1rem; white-space: pre-wrap; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${title}</h1>
+    <p><strong>Device:</strong> ${device} &bull; <strong>Author:</strong> ${author}</p>
+  </header>
+  <pre>${escaped}</pre>
+</body>
+</html>`;
 }
 
 export const Dhf: CommandModule<{}, DhfExportArgs> = {
@@ -248,8 +275,8 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
       .option("device", {
         alias: "d",
         type: "string",
-        default: "Automated Closed-Loop Insulin Delivery System (Class C)",
-        description: "Target medical device name",
+        default: "Safety-Critical Cyber-Physical System (Class C)",
+        description: "Target medical device or safety-critical system name",
       })
       .option("author", {
         alias: "a",
@@ -260,6 +287,7 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
   },
 
   handler: async (args) => {
+    const action = args.action ?? "export";
     const rawPaths = args.paths && args.paths.length > 0 ? args.paths : ["."];
     const targetFiles = collectFiles(rawPaths, new Set([".sysml", ".mo"]));
 
@@ -301,21 +329,81 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
 
     const gitInfo = getGitMetadata();
 
+    const hasComplianceGaps =
+      (analytics.failingLinkCount ?? 0) > 0 ||
+      (analytics.unmitigatedHazardsCount ?? 0) > 0 ||
+      (analytics.unacceptableResidualRiskCount ?? 0) > 0 ||
+      analytics.suspectLinkCount > 0;
+
+    if (action === "status" || action === "audit") {
+      if (args.format === "json") {
+        console.log(
+          JSON.stringify(
+            {
+              action,
+              compliant: !hasComplianceGaps,
+              analytics,
+              gitInfo,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        console.log(`\n=== DHF Regulatory Compliance ${action === "audit" ? "Audit" : "Status"} ===`);
+        console.log(`  Device           : ${args.device ?? "Class C System"}`);
+        console.log(`  Commit SHA       : ${gitInfo.commitSha}`);
+        console.log(
+          `  Requirements     : ${analytics.totalRequirements} (${analytics.satisfiedPercentage}% satisfied, ${analytics.verifiedPercentage}% verified)`,
+        );
+        console.log(
+          `  Hazards          : ${analytics.totalHazards ?? hazards.length} (${analytics.unmitigatedHazardsCount ?? 0} unmitigated)`,
+        );
+        console.log(`  Suspect Links    : ${analytics.suspectLinkCount}`);
+        console.log(`  Overall Verdict  : ${hasComplianceGaps ? "❌ NON-COMPLIANT (Gaps Detected)" : "✅ COMPLIANT"}`);
+      }
+      if (action === "audit" && hasComplianceGaps) {
+        process.exitCode = 1;
+      }
+      return;
+    }
+
     const manifestItems: ProofManifestItem[] = [];
     for (const file of targetFiles) {
       if (fs.existsSync(file)) {
         const ext = path.extname(file).toLowerCase();
         const domain = ext === ".sysml" ? "sysml" : ext === ".mo" ? "modelica" : "cad";
+        const fileUri = "file://" + path.resolve(file);
+        const fileHasFailedLink = links.some(
+          (l) => (l.sourceUri === fileUri || l.targetUri === fileUri) && l.status === "failed",
+        );
+        const fileHasSuspectLink = links.some(
+          (l) => (l.sourceUri === fileUri || l.targetUri === fileUri) && l.isSuspect,
+        );
         manifestItems.push({
           domain,
-          identifier: "file://" + path.resolve(file),
+          identifier: fileUri,
           sha256: ProofManifestGenerator.hashContent(fs.readFileSync(file)),
-          verificationStatus: "CERTIFIED_SAFE",
+          verificationStatus: fileHasFailedLink ? "FALSIFIED" : fileHasSuspectLink ? "UNCHECKED" : "CERTIFIED_SAFE",
           engine: domain === "sysml" ? "contract_algebra" : domain === "modelica" ? "dpll_t" : "clearance",
         });
       }
     }
     const proofManifest = ProofManifestGenerator.generateManifest(manifestItems, gitInfo.commitSha);
+
+    const mdContent = generateDhfMarkdown(
+      args.title ?? "Design History File",
+      args.device ?? "Class C Medical Device",
+      args.author ?? "Verification Team",
+      hazards,
+      requirements,
+      components,
+      verifications,
+      links,
+      analytics,
+      gitInfo,
+      proofManifest,
+    );
 
     const outputContent =
       args.format === "json"
@@ -337,19 +425,14 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
             null,
             2,
           )
-        : generateDhfMarkdown(
-            args.title ?? "Design History File",
-            args.device ?? "Class C Medical Device",
-            args.author ?? "Verification Team",
-            hazards,
-            requirements,
-            components,
-            verifications,
-            links,
-            analytics,
-            gitInfo,
-            proofManifest,
-          );
+        : args.format === "html"
+          ? generateDhfHtml(
+              args.title ?? "Design History File",
+              args.device ?? "Class C Medical Device",
+              args.author ?? "Verification Team",
+              mdContent,
+            )
+          : mdContent;
 
     if (args.output) {
       const outPath = path.resolve(process.cwd(), args.output);

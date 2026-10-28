@@ -6,7 +6,7 @@ import { defineConfig, type DefaultTheme } from "vitepress";
 import { INDUSTRIES } from "./theme/data/industries";
 import { LANGUAGES, PLATFORM_GROUPS, type LanguageGroupId } from "./theme/data/languages";
 
-const SITE_DESCRIPTION = `Free, open-source toolchain that imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, and lets you simulate, verify, and export — in the browser, CLI, or VS Code.`;
+const SITE_DESCRIPTION = `Open-core computable digital thread that imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, and lets you simulate, verify, and export — in the browser, CLI, VS Code, or air-gapped enterprise appliances.`;
 
 /** Feature flag: Pricing page and nav are visible in dev mode or when SHOW_PRICING=true */
 const isPricingVisible =
@@ -257,7 +257,7 @@ export default defineConfig({
           priceCurrency: "USD",
         },
         description:
-          "Free, open-source computable digital thread for polyglot engineering and simulation — compiler, simulator, optimizer, language server, and multi-domain theory coordinator.",
+          "Open-core computable digital thread for polyglot engineering and simulation — compiler, simulator, optimizer, language server, multi-domain theory coordinator, and enterprise appliance.",
         url: "https://modelscript.org",
         license: "https://www.gnu.org/licenses/agpl-3.0.html",
         author: {
@@ -375,7 +375,8 @@ export default defineConfig({
       { icon: "npm", link: "https://www.npmjs.com/org/modelscript" },
     ],
     footer: {
-      message: "Released under the GNU AGPL v3 License.",
+      message:
+        "Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License.",
       copyright: "Copyright © 2026-present Mohamad Omar Nachawati and ModelScript Contributors.",
     },
   },

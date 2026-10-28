@@ -1,0 +1,55 @@
+name: Contributor License Agreement (CLA)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  cla-check:
+    name: Verify CLA & Commit Sign-Off
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR commits
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Contributor License Agreement (CLA.md)
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "Checking CLA status for PR author: ${PR_AUTHOR}"
+
+          # 1. Core maintainer / bot accounts with standing CLA on file
+          case "${PR_AUTHOR}" in
+            omarnachawati|modelscript-bot|dependabot\[bot\]|github-actions\[bot\])
+              echo "✓ Standing CLA verified for core maintainer/automation account (${PR_AUTHOR})."
+              exit 0
+              ;;
+          esac
+
+          # 2. Check if PR description contains explicit CLA signature phrase
+          if echo "${PR_BODY}" | grep -qi "I have read the CLA Document and I hereby sign the CLA"; then
+            echo "✓ Explicit CLA signature found in Pull Request description."
+            exit 0
+          fi
+
+          # 3. Check if all commits in the PR range carry a Signed-off-by trailer
+          UNSIGNED_COMMITS=$(git log "${BASE_SHA}..${HEAD_SHA}" --grep="Signed-off-by:" --invert-grep --format="%h %s" || true)
+          if [ -z "${UNSIGNED_COMMITS}" ]; then
+            echo "✓ All commits in Pull Request carry a valid Signed-off-by trailer."
+            exit 0
+          fi
+
+          echo "::error::Contributor License Agreement (CLA) signature missing for @${PR_AUTHOR}."
+          echo "Please read CLA.md and either:"
+          echo "  1. Sign off your commits with 'git commit --amend -s', OR"
+          echo "  2. Add 'I have read the CLA Document and I hereby sign the CLA' to your Pull Request description."
+          exit 1

@@ -209,42 +209,42 @@ export const MC: CommandModule<{}, McArgs> = {
       }
 
       const allResults: { t: number[]; states: string[]; y: number[][] }[] = [];
-      for (const sample of allSamples) {
-        if (!sample) continue;
-
-        // Merge overrides and convert to valueReference map
-        const paramMap = new Map<number, number>();
-        for (const [k, v] of sample) {
-          const sv = scalarVars.find((s) => s.name === k);
-          if (sv) {
-            paramMap.set(sv.valueReference, v);
-          }
-        }
-
-        try {
-          const wasmResult = await runWasmSimulation(compileResult.wasm, compileResult.jsGlue, scalarVars, {
-            startTime,
-            stopTime,
-            stepSize,
-            parameters: paramMap,
-          });
-
-          if (!wasmResult.error) {
-            // Convert to row-major format
-            const times = wasmResult.times;
-            const names = wasmResult.variableNames;
-            const y = times.map((_t: number, i: number) =>
-              names.map((_n: string, j: number) => wasmResult.trajectories[j]?.[i] ?? 0),
-            );
-
-            allResults.push({
-              t: times,
-              states: names,
-              y: y,
-            });
-          }
-        } catch {
-          continue;
+      const batchSize = Math.max(1, args.threads || 1);
+      for (let batchStart = 0; batchStart < allSamples.length; batchStart += batchSize) {
+        const batch = allSamples.slice(batchStart, batchStart + batchSize);
+        const batchOutcomes = await Promise.all(
+          batch.map(async (sample) => {
+            if (!sample) return null;
+            const paramMap = new Map<number, number>();
+            for (const [k, v] of sample) {
+              const sv = scalarVars.find((s) => s.name === k);
+              if (sv) {
+                paramMap.set(sv.valueReference, v);
+              }
+            }
+            try {
+              const wasmResult = await runWasmSimulation(compileResult.wasm!, compileResult.jsGlue!, scalarVars, {
+                startTime,
+                stopTime,
+                stepSize,
+                parameters: paramMap,
+              });
+              if (!wasmResult.error) {
+                const times = wasmResult.times;
+                const names = wasmResult.variableNames;
+                const y = times.map((_t: number, i: number) =>
+                  names.map((_n: string, j: number) => wasmResult.trajectories[j]?.[i] ?? 0),
+                );
+                return { t: times, states: names, y };
+              }
+            } catch {
+              return null;
+            }
+            return null;
+          }),
+        );
+        for (const outcome of batchOutcomes) {
+          if (outcome) allResults.push(outcome);
         }
       }
 

@@ -89,6 +89,14 @@ export async function runImportFmu(args: ImportFmuArgs): Promise<number> {
 
   const totalVars = desc.variables.length;
   console.log(`  Total FMU Variables: ${totalVars}`);
+  if (args.verbose && desc.variables.length > 0) {
+    console.log(`  Scalar Variables:`);
+    for (const v of desc.variables) {
+      console.log(
+        `    - ${v.name} (vr=${v.valueReference}, type=${v.type}, causality=${v.causality}, variability=${v.variability}${v.start !== undefined ? `, start=${v.start}` : ""})`,
+      );
+    }
+  }
 
   return 0;
 }

@@ -75,7 +75,9 @@ yarn-error.log*
 
 # Environment & secrets
 .env
+.env.production
 *.local
+.keys/
 
 # OS & editor files
 .DS_Store

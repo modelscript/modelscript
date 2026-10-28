@@ -3,8 +3,75 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import yargs, { type ArgumentsCamelCase, type Argv, type CommandBuilder, type CommandModule } from "yargs";
+
+const CURRENT_CLI_DIR = import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT_DIR = path.resolve(CURRENT_CLI_DIR, "../../..");
+
+const ENTERPRISE_CLI_COMMANDS = new Set([
+  "autosar",
+  "plcopen",
+  "oslc",
+  "reqif",
+  "ddp",
+  "simulink",
+  "gtsuite",
+  "adams",
+  "easy5",
+  "rocets",
+  "aspen",
+  "olga",
+  "relap5",
+  "eclipse",
+  "psse",
+  "dhf",
+]);
+
+async function enforceEnterpriseCliEntitlement(commandSpec: string | readonly string[]): Promise<void> {
+  const rawCmd = Array.isArray(commandSpec) ? String(commandSpec[0] ?? "") : String(commandSpec);
+  const subcommand = rawCmd.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+  if (!ENTERPRISE_CLI_COMMANDS.has(subcommand)) {
+    return;
+  }
+
+  const editionEnv = (process.env["MSX_EDITION"] || "").toLowerCase().trim();
+  if (editionEnv === "ce" || editionEnv === "community") {
+    console.error(
+      `[Enterprise Edition Required] 'msx ${subcommand}' is an Enterprise Edition feature and is disabled when MSX_EDITION=ce.`,
+    );
+    process.exit(1);
+  }
+
+  const candidates = [
+    path.join(REPO_ROOT_DIR, "ee", "dist", "index.js"),
+    path.join(REPO_ROOT_DIR, "ee", "src", "index.ts"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        const eeMod = (await import(pathToFileURL(candidate).href)) as {
+          verifyEnterpriseCliCommand?: (cmd: string) => { allowed: boolean; reason?: string };
+        };
+        if (typeof eeMod.verifyEnterpriseCliCommand === "function") {
+          const check = eeMod.verifyEnterpriseCliCommand(subcommand);
+          if (!check.allowed) {
+            console.error(`[Enterprise License Required] ${check.reason ?? "License check failed."}`);
+            process.exit(1);
+          }
+        }
+        return;
+      } catch {
+        // Continue to next candidate
+      }
+    }
+  }
+
+  console.error(
+    `[Enterprise Edition Required] 'msx ${subcommand}' requires ModelScript Enterprise Edition (@modelscript/ee), which is not included in the Community Edition distribution.`,
+  );
+  process.exit(1);
+}
 
 /**
  * Wraps a `yargs` `CommandModule` with dynamic `import()` lazy loading so that CLI startup
@@ -30,6 +97,10 @@ function lazy(
       return cmd.builder ?? y;
     }) as unknown as CommandBuilder<Record<string, unknown>, Record<string, unknown>>,
     handler: async (args: ArgumentsCamelCase<Record<string, unknown>>) => {
+      await enforceEnterpriseCliEntitlement(command);
+      if (typeof args["lang"] === "string") {
+        await enforceEnterpriseCliEntitlement(args["lang"]);
+      }
       const mod = await importFn();
       const cmd = mod[exportName] as CommandModule<Record<string, unknown>, Record<string, unknown>>;
       return cmd.handler(args);
@@ -95,18 +166,29 @@ await yargs(rawArgs)
   // Modeling & Simulation
   .command(
     lazy(
-      "simulate <name> [paths..]",
-      "Simulate a Modelica model, SysML v2 system, or FMU archive and output results",
-      () => import("./commands/simulate.js"),
-      "Simulate",
+      ["inspect <files..>", "info <files..>", "summary <files..>"],
+      "Inspect and summarize engineering models across any of the 44 supported languages",
+      () => import("./commands/inspect.js"),
+      "Inspect",
+      ["info", "summary"],
     ),
   )
   .command(
     lazy(
-      ["compile <name> <paths...>", "flatten <name> <paths...>"],
-      "Flatten a Modelica model to a flat DAE representation",
+      ["simulate <name> [paths..]", "sim <name> [paths..]"],
+      "Simulate a Modelica model, SysML v2 system, FMU archive, or domain engineering deck",
+      () => import("./commands/simulate.js"),
+      "Simulate",
+      ["sim"],
+    ),
+  )
+  .command(
+    lazy(
+      ["compile <name> [paths..]", "flatten <name> [paths..]", "convert <name> [paths..]"],
+      "Flatten or lower a Modelica, SysML v2, or domain engineering model to DAE, Modelica, SysML v2, SSP, or FMU",
       () => import("./commands/compile.js"),
       "Compile",
+      ["flatten", "convert"],
     ),
   )
   .command(
@@ -235,10 +317,11 @@ await yargs(rawArgs)
   // Verification, Linting & Translation
   .command(
     lazy(
-      "lint <path> [paths...]",
+      ["lint <path> [paths...]", "check <path> [paths...]", "validate <path> [paths...]"],
       "Lint polyglot libraries using QueryEngine and DSL parsers",
       () => import("./commands/lint.js"),
       "Lint",
+      ["check", "validate"],
     ),
   )
   .command(
@@ -283,7 +366,7 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
-      "render <name> <paths...>",
+      "render <name> [paths..]",
       "Render Modelica class diagram or icon to SVG",
       () => import("./commands/render.js"),
       "Render",
@@ -448,6 +531,7 @@ await yargs(rawArgs)
       "Install a package from the ModelScript Registry into the local workspace",
       () => import("./commands/install.js"),
       "Install",
+      ["i", "add"],
     ),
   )
   .command(
@@ -488,6 +572,15 @@ await yargs(rawArgs)
       "GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits",
       () => import("./commands/archive.js"),
       "Archive",
+    ),
+  )
+  .command(
+    lazy(
+      ["domain <lang> <action> [files..]", "tool <lang> <action> [files..]"],
+      "Invoke domain-specific engineering actions and solvers for any registered language",
+      () => import("./commands/domain.js"),
+      "Domain",
+      ["tool"],
     ),
   )
   .command(
@@ -640,14 +733,6 @@ await yargs(rawArgs)
       "Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)",
       () => import("./commands/simpack.js"),
       "SimpackCommand",
-    ),
-  )
-  .command(
-    lazy(
-      "spice <action> [files..]",
-      "Inspect, lint, solve, and project SPICE analog circuit netlists (.cir, .sp, .net, .lib)",
-      () => import("./commands/spice.js"),
-      "Spice",
     ),
   )
   .command(

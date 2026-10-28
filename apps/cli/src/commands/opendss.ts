@@ -39,7 +39,7 @@ export const OpenDssCommand: CommandModule<Record<string, unknown>, Record<strin
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (e.g. for Modelica export)",
         type: "string",
       });

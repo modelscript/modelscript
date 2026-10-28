@@ -97,20 +97,37 @@ export function computeOptimalAllocation(options = {}) {
 
 function buildWorkspaceTestProjectMap() {
   const map = new Map();
-  for (const group of ["packages", "languages", "apps"]) {
-    const groupDir = path.join(repoRoot, group);
-    if (!fs.existsSync(groupDir)) continue;
-    for (const entry of fs.readdirSync(groupDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const pkgDir = path.join(groupDir, entry.name);
-      const pkgJsonPath = path.join(pkgDir, "package.json");
-      if (!fs.existsSync(pkgJsonPath)) continue;
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
-        if (pkg.name && pkg.scripts && pkg.scripts.test) {
-          map.set(pkg.name, pkgDir);
+  const rootPkgPath = path.join(repoRoot, "package.json");
+  let patterns = ["packages/*", "languages/*", "apps/*", "ee"];
+  try {
+    const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf8"));
+    if (Array.isArray(rootPkg.workspaces)) {
+      patterns = rootPkg.workspaces;
+    }
+  } catch {}
+
+  const checkPkgDir = (pkgDir) => {
+    const pkgJsonPath = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pkgJsonPath)) return;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+      if (pkg.name && pkg.scripts && pkg.scripts.test) {
+        map.set(pkg.name, pkgDir);
+      }
+    } catch {}
+  };
+
+  for (const pattern of patterns) {
+    if (pattern.endsWith("/*")) {
+      const groupDir = path.join(repoRoot, pattern.slice(0, -2));
+      if (!fs.existsSync(groupDir)) continue;
+      for (const entry of fs.readdirSync(groupDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          checkPkgDir(path.join(groupDir, entry.name));
         }
-      } catch {}
+      }
+    } else {
+      checkPkgDir(path.join(repoRoot, pattern));
     }
   }
   return map;

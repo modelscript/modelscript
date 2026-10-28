@@ -41,7 +41,7 @@ export const TouchstoneCommand: CommandModule<Record<string, unknown>, Record<st
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (e.g. for Modelica export)",
         type: "string",
       })

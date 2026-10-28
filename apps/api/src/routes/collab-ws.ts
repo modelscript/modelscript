@@ -10,6 +10,7 @@
 
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
+import { checkCollabSessionEntitlement } from "../ee-loader.js";
 
 export interface CollabPeerState {
   peerId: string;
@@ -404,6 +405,20 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
 
   server.on("upgrade", (req, socket, head) => {
     if (req.url?.startsWith(path)) {
+      const entitlement = checkCollabSessionEntitlement();
+      if (!entitlement.allowed) {
+        const statusLine =
+          entitlement.statusCode === 501
+            ? "HTTP/1.1 501 Not Implemented"
+            : entitlement.statusCode === 402
+              ? "HTTP/1.1 402 Payment Required"
+              : "HTTP/1.1 403 Forbidden";
+        socket.write(
+          `${statusLine}\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n${entitlement.reason ?? "Enterprise Edition Required"}\r\n`,
+        );
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });

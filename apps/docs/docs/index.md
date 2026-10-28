@@ -7,7 +7,7 @@ titleTemplate: false
 hero:
   name: "ModelScript"
   text: "One open toolchain for every engineering model"
-  tagline: "Import 44 simulation and CAE formats, link them to requirements, then simulate, verify, and export, in your browser, the CLI, or VS Code. Free and open source."
+  tagline: "Import 44 simulation and CAE formats, link them to requirements, then simulate, verify, and export — in your browser, the CLI, VS Code, or air-gapped enterprise appliances."
   image:
     src: /ms-logo.png
     alt: ModelScript 3D turbine engine

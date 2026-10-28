@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * @typedef {Object} LanguageParserBuildOptions
@@ -268,4 +269,17 @@ execFileSync(ascExec, ascArgs, { stdio: "inherit", shell: isWin, cwd: __dirname 
       fs.unlinkSync(buildScriptPath);
     }
   }
+}
+
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename)) {
+  const cwd = process.cwd();
+  const langName = path.basename(cwd);
+  const camelName = langName.replace(/-([a-z0-9])/g, (_, ch) => ch.toUpperCase());
+  runLanguageParserBuild({
+    langName,
+    dir: cwd,
+    languageModule: "./src/language.js",
+    languageExportName: `${camelName}Language`,
+  });
 }

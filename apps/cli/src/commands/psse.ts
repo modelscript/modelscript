@@ -40,7 +40,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (e.g. for SVG diagram)",
         type: "string",
       })

@@ -91,17 +91,26 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (e.g. for trajectory CSV, SVG diagram, or .fmu archive)",
         type: "string",
       })
       .option("duration", {
-        alias: "t",
+        alias: ["d", "stop-time", "tstop"],
         description: "Simulation duration in seconds [s]",
         type: "number",
       })
       .option("dt", {
+        alias: ["step", "step-size"],
         description: "Simulation time step in seconds [s]",
+        type: "number",
+      })
+      .option("diameter", {
+        description: "Pipeline internal diameter in meters [m] for bathymetry survey",
+        type: "number",
+      })
+      .option("cell-length", {
+        description: "Maximum control volume cell length in meters [m] for bathymetry survey",
         type: "number",
       })
       .option("restart", {

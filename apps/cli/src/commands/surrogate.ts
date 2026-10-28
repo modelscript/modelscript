@@ -285,8 +285,13 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
       try {
         const sourceText = await fs.readFile(sourceFile, "utf-8");
         const compName = args.replaceComponent.trim();
-        const declRegex = new RegExp(`(\\b)([A-Za-z0-9_.]+)(\\s+)(${compName})(\\s*(?:\\([^;]*\\))?\\s*;)`, "g");
+        const escapedComp = compName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const declRegex = new RegExp(
+          `^(\\s*(?!//))([A-Za-z0-9_.]+)(\\s+)(${escapedComp})(\\s*(?:\\([^;]*\\))?\\s*;)`,
+          "gm",
+        );
         if (declRegex.test(sourceText)) {
+          declRegex.lastIndex = 0;
           const updatedText = sourceText.replace(declRegex, `$1${surrogateClassName}$3$4$5`);
           const targetFile = args.replaceOut ?? sourceFile.replace(/\.mo$/, "_surrogatized.mo");
           await fs.writeFile(targetFile, updatedText, "utf-8");

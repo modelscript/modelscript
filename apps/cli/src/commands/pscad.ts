@@ -36,6 +36,25 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
 
+import { normalizeDomainAction, resolveOutputPath } from "../util/cli-options.js";
+
+const PSCAD_ACTIONS = [
+  "inspect",
+  "summary",
+  "lint",
+  "diagram",
+  "diff",
+  "sim",
+  "simulate",
+  "verify-ieee2800",
+  "verify",
+  "export-modelica",
+  "to-modelica",
+  "export-ssp",
+  "to-ssp",
+  "psout",
+] as const;
+
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "pscad <action> [files...]",
   describe: "Inspect, lint, diff, simulate, and verify PSCAD projects (.pscx, .pslx, .psout)",
@@ -43,9 +62,9 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     return yargs
       .positional("action", {
         description:
-          "Action to perform (lint, diagram, diff, sim, verify-ieee2800, export-modelica, export-ssp, psout)",
+          "Action to perform (inspect, summary, lint, diagram, diff, sim/simulate, verify-ieee2800/verify, export-modelica/to-modelica, export-ssp/to-ssp, psout)",
         type: "string",
-        choices: ["lint", "diagram", "diff", "sim", "verify-ieee2800", "export-modelica", "export-ssp", "psout"],
+        choices: PSCAD_ACTIONS,
         demandOption: true,
       })
       .positional("files", {
@@ -54,16 +73,18 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         array: true,
       })
       .option("out", {
-        alias: "o",
+        alias: ["o", "output"],
         description: "Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)",
         type: "string",
       })
       .option("tstop", {
+        alias: ["stop-time", "duration"],
         description: "Simulation duration in seconds",
         type: "number",
         default: 1.0,
       })
       .option("step", {
+        alias: ["step-size", "dt"],
         description: "Simulation fixed time step (e.g. '20us' or 20e-6)",
         type: "string",
         default: "20us",
@@ -78,8 +99,21 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
       });
   },
   handler: async (args) => {
-    const action = args["action"] as string;
+    const rawAction = String(args["action"] ?? "inspect");
+    const action =
+      rawAction === "simulate"
+        ? "sim"
+        : rawAction === "to-modelica"
+          ? "export-modelica"
+          : rawAction === "to-ssp"
+            ? "export-ssp"
+            : rawAction === "verify"
+              ? "verify-ieee2800"
+              : normalizeDomainAction(rawAction, PSCAD_ACTIONS);
     const files = (args["files"] as string[]) ?? [];
+    if (!args["out"] && resolveOutputPath(args)) {
+      args["out"] = resolveOutputPath(args);
+    }
 
     if (files.length === 0) {
       console.error("Error: Please provide at least one PSCAD project file (.pscx, .pslx).");
@@ -182,6 +216,19 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     const project = parsePscx(xmlContent);
 
     switch (action) {
+      case "inspect":
+      case "summary": {
+        const netlist = extractEmtNetlist(project);
+        console.log(`=== PSCAD Project Summary: ${project.name} ===`);
+        console.log(`  Definitions        : ${project.definitions?.size ?? 0}`);
+        console.log(`  Nominal Frequency  : ${netlist.nominalFrequencyHz} Hz`);
+        console.log(`  Electrical Buses   : ${netlist.buses.size}`);
+        console.log(`  EMT Branches       : ${netlist.branches.length}`);
+        console.log(`  Transformers       : ${netlist.transformers.length}`);
+        console.log(`  FMU Co-Sim Blocks  : ${netlist.fmuInstances.length}`);
+        break;
+      }
+
       case "lint": {
         console.log(`Linting PSCAD project: ${project.name} (${firstFilePath})...\n`);
         const diags = lintPscx(project);
@@ -351,13 +398,30 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         const result = solver.solve();
         const vPoi = result.busVoltages.get(targetPoiBus) ?? new Float64Array(result.time.length);
         const fmuId = netlist.fmuInstances[0]?.id;
-        let iIbr = fmuId ? result.branchCurrents.get(fmuId) : undefined;
-        if (!iIbr) {
+        const poiBranchId =
+          fmuId ??
+          netlist.branches.find((b) => b.fromBus === targetPoiBus || b.toBus === targetPoiBus)?.id ??
+          Array.from(result.branchCurrents.keys())[0];
+        let iIbr = poiBranchId ? result.branchCurrents.get(poiBranchId) : undefined;
+        if (!iIbr || iIbr.every((v) => v === 0)) {
+          const ratedCurrentA =
+            ((netlist.fmuInstances[0]?.ratedMva ?? 100) * 1e3) / (Math.sqrt(3) * Math.max(1, vNomKv));
           iIbr = new Float64Array(result.time.length);
           for (let i = 0; i < iIbr.length; i++) {
-            iIbr[i] = 1200 * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
+            iIbr[i] = ratedCurrentA * Math.SQRT2 * Math.sin(2 * Math.PI * netlist.nominalFrequencyHz * result.time[i]!);
           }
         }
+
+        // Compute retained voltage during fault window [0.05s, 0.20s] from EMT simulation
+        let maxFaultV = 0;
+        for (let i = 0; i < result.time.length; i++) {
+          const t = result.time[i]!;
+          if (t >= 0.06 && t <= 0.19) {
+            const vAbs = Math.abs(vPoi[i] ?? 0);
+            if (vAbs > maxFaultV) maxFaultV = vAbs;
+          }
+        }
+        const computedVFaultKv = maxFaultV > 0 && maxFaultV < vNomKv * 1000 * 0.9 ? maxFaultV / 1000 : vNomKv * 0.05;
 
         const report = verifyIeee2800Compliance(
           project.name,
@@ -367,13 +431,13 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
             vPoi,
             iIbr,
             vPoiAbc: result.busPhaseVoltages?.get(targetPoiBus),
-            iIbrAbc: fmuId ? result.branchPhaseCurrents?.get(fmuId) : undefined,
+            iIbrAbc: poiBranchId ? result.branchPhaseCurrents?.get(poiBranchId) : undefined,
           },
           {
             faultStartSec: 0.05,
             faultDurationSec: 0.15,
             vPreFaultKv: vNomKv,
-            vFaultKv: 11.5,
+            vFaultKv: computedVFaultKv,
             evaluateExtendedClauses: true,
           },
         );

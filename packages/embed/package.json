@@ -32,14 +32,14 @@
     "build": "tsc",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "npx tsx tests/embed.test.ts",
+    "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "pako": "^2.1.0"
   },
   "devDependencies": {
-    "@types/node": "^22.13.10",
+    "@types/node": "^25.3.2",
     "@types/pako": "^2.0.3",
     "typescript": "^5.9.3"
   },

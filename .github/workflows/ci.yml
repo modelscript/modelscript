@@ -39,18 +39,8 @@ jobs:
             ${{ runner.os }}-nx-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
-      - name: Check Lockfile Consistency
-        run: npm run lint:lockfile
-      - name: Check Project Graph Cycles
-        run: npm run lint:cycles
-      - name: Check License Headers
-        run: npm run lint:headers
-      - name: Check Filename Conventions
-        run: npm run lint:filenames
-      - name: Check Workspace Package Manifests & Versions
-        run: npm run lint:manifests
-      - name: Check Type-Safety Ratchet
-        run: npm run lint:types-ratchet
+      - name: Run Repository Hygiene Doctor
+        run: npm run lint:repo
       - name: Check Root TypeScript Config
         run: npx tsc --noEmit
       - name: Lint Root Scripts
@@ -423,42 +413,11 @@ jobs:
           npm run verify:dist
           npm run verify:pack
 
-  deploy_site:
-    needs: [build, test, lint, modelica_testsuite]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-      - name: Cache Nx
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-docs-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-build-${{ github.sha }}
-            ${{ runner.os }}-nx-docs-
-            ${{ runner.os }}-nx-build-
-      - name: Build PDF Manual
-        run: npm run build:pdf --workspace=@modelscript/docs
-      - name: Build Unified Site & Docs
-        run: npx nx build @modelscript/docs
-
   docker_build:
     needs: [build, test, lint, modelica_testsuite]
     if: github.actor != 'nektos/act'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       packages: write
       contents: read
@@ -485,6 +444,10 @@ jobs:
             ${{ runner.os }}-nx-
       - name: Fast Rebuild from Cache
         run: npx nx run-many -t build --parallel=3
+      - name: Build PDF Reference Manual for Web & Appliance Images
+        run: npm run build:pdf --workspace=@modelscript/docs
+      - name: Rebuild Unified Site & Docs with PDF Manual
+        run: npx nx build @modelscript/docs --skip-nx-cache
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -493,13 +456,59 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Docker images
+      - name: Build and push EE & CE Docker images
         uses: docker/bake-action@v6
         with:
           source: .
           files: docker-compose.yml
+          targets: api,api-ce,web,ide,cli,cli-ce,appliance
           push: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
           set: |
             *.cache-from=type=gha
             *.cache-to=type=gha,mode=max
             *.args.PREBUILT=true
+            api.tags=ghcr.io/modelscript/api:latest
+            api-ce.tags=ghcr.io/modelscript/api-ce:latest
+            web.tags=ghcr.io/modelscript/web:latest
+            ide.tags=ghcr.io/modelscript/ide:latest
+            cli.tags=ghcr.io/modelscript/cli:latest
+            cli-ce.tags=ghcr.io/modelscript/cli-ce:latest
+            appliance.tags=ghcr.io/modelscript/appliance:latest
+
+  deploy_modelscript_org:
+    name: Deploy Docker Stack to modelscript.org
+    needs: [docker_build]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'nektos/act'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trigger modelscript.org Docker Compose Rollout via Webhook
+        if: env.PROD_DEPLOY_WEBHOOK_URL != ''
+        env:
+          PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK_URL }}
+          PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
+        run: |
+          curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL" \
+            -H "Authorization: Bearer $PROD_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"latest\",\"edition\":\"ee\"}"
+      - name: Roll Out Docker Stack to modelscript.org via SSH
+        if: env.PROD_SSH_HOST != ''
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+          scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${PROD_DEPLOY_PATH:-/opt/modelscript}/"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cd ${PROD_DEPLOY_PATH:-/opt/modelscript} && \
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --remove-orphans && \
+            docker image prune -f"

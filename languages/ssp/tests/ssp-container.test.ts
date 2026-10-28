@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createZipArchive, defaultContainerToolkit, extractContainerArchive } from "@modelscript/runtime";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { sspLanguage } from "../src/language.js";
 import { sspToModelicaBlock } from "../src/projection.js";
 import { parseSsd, parseSsv } from "../src/ssd-parser.js";
@@ -69,31 +71,31 @@ describe("@modelscript/ssp Language & Container Integration", () => {
 
   it("parses SSD and SSV XML models accurately", () => {
     const system = parseSsd(ssdXml);
-    expect(system.name).toBe("DualDriveController");
-    expect(system.version).toBe("1.0");
-    expect(system.description).toBe("Closed loop dual-drive vehicle control system");
-    expect(system.connectors?.length).toBe(5);
-    expect(system.components.length).toBe(2);
-    expect(system.connections.length).toBe(1);
+    assert.strictEqual(system.name, "DualDriveController");
+    assert.strictEqual(system.version, "1.0");
+    assert.strictEqual(system.description, "Closed loop dual-drive vehicle control system");
+    assert.strictEqual(system.connectors?.length, 5);
+    assert.strictEqual(system.components.length, 2);
+    assert.strictEqual(system.connections.length, 1);
 
     const ssvParams = parseSsv(ssvXml);
-    expect(ssvParams.length).toBe(3);
-    expect(ssvParams.find((p) => p.name === "maxTorque")?.value).toBe(350.0);
-    expect(ssvParams.find((p) => p.name === "enableRegen")?.value).toBe(true);
-    expect(ssvParams.find((p) => p.name === "gearCount")?.value).toBe(2);
+    assert.strictEqual(ssvParams.length, 3);
+    assert.strictEqual(ssvParams.find((p) => p.name === "maxTorque")?.value, 350.0);
+    assert.strictEqual(ssvParams.find((p) => p.name === "enableRegen")?.value, true);
+    assert.strictEqual(ssvParams.find((p) => p.name === "gearCount")?.value, 2);
   });
 
   it("projects SSP system to authentic Modelica block source code", () => {
     const modelicaCode = sspToModelicaBlock(ssdXml, { sspFilePath: "DualDrive.ssp" });
-    expect(modelicaCode).toContain("block DualDriveController");
-    expect(modelicaCode).toContain('input Real throttle_in(unit="percent")');
-    expect(modelicaCode).toContain('input Real steering_in(unit="rad")');
-    expect(modelicaCode).toContain('output Real torque_left_out(unit="N.m")');
-    expect(modelicaCode).toContain('output Real torque_right_out(unit="N.m")');
-    expect(modelicaCode).toContain("parameter Real gain");
-    expect(modelicaCode).toContain('__modelscript_external(type="ssp", file="DualDrive.ssp")');
-    expect(modelicaCode).toContain("Icon(coordinateSystem");
-    expect(modelicaCode).toContain("end DualDriveController;");
+    assert.ok(modelicaCode.includes("block DualDriveController"));
+    assert.ok(modelicaCode.includes('input Real throttle_in(unit="percent")'));
+    assert.ok(modelicaCode.includes('input Real steering_in(unit="rad")'));
+    assert.ok(modelicaCode.includes('output Real torque_left_out(unit="N.m")'));
+    assert.ok(modelicaCode.includes('output Real torque_right_out(unit="N.m")'));
+    assert.ok(modelicaCode.includes("parameter Real gain"));
+    assert.ok(modelicaCode.includes('__modelscript_external(type="ssp", file="DualDrive.ssp")'));
+    assert.ok(modelicaCode.includes("Icon(coordinateSystem"));
+    assert.ok(modelicaCode.includes("end DualDriveController;"));
   });
 
   it("extracts and projects in-memory .ssp container using sspLanguage definition", async () => {
@@ -103,20 +105,19 @@ describe("@modelscript/ssp Language & Container Integration", () => {
       "resources/Motor.fmu": new Uint8Array([1, 2, 3]),
     });
 
-    expect(sspLanguage.container).toBeDefined();
-    if (!sspLanguage.container) return;
+    assert.ok(sspLanguage.container);
     const result = await extractContainerArchive(sspZip, sspLanguage.container, defaultContainerToolkit);
-    expect(result).not.toBeNull();
-    expect(result?.manifest?.path).toBe("SystemStructure.ssd");
-    expect(result?.entries?.length).toBe(3);
+    assert.ok(result);
+    assert.strictEqual(result?.manifest?.path, "SystemStructure.ssd");
+    assert.strictEqual(result?.entries?.length, 3);
 
     // Verify nested container action
     const fmuEntry = result?.entries?.find((e) => e.path === "resources/Motor.fmu");
-    expect(fmuEntry?.action).toBe("extract_nested");
+    assert.strictEqual(fmuEntry?.action, "extract_nested");
 
     // Verify projection hook
     const projectedModelica = result?.project?.("modelica");
-    expect(typeof projectedModelica).toBe("string");
-    expect(projectedModelica).toContain("block DualDriveController");
+    assert.strictEqual(typeof projectedModelica, "string");
+    assert.ok(projectedModelica?.includes("block DualDriveController"));
   });
 });

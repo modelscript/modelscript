@@ -28,7 +28,7 @@ export const EnergyPlusCommand: CommandModule<Record<string, unknown>, Record<st
       })
       .option("out", {
         type: "string",
-        alias: "o",
+        alias: ["o", "output"],
         describe: "Output file path (Modelica model, JSON metadata, or synchronized EnergyPlus file)",
       })
       .option("from-modelica", {
@@ -48,6 +48,11 @@ export const EnergyPlusCommand: CommandModule<Record<string, unknown>, Record<st
         default: "terminal",
         describe: "Output format: 'terminal' or 'json'",
       })
+      .option("json", {
+        type: "boolean",
+        default: false,
+        describe: "Emit JSON output",
+      })
       .option("tamb", {
         type: "number",
         default: 10.0,
@@ -57,8 +62,8 @@ export const EnergyPlusCommand: CommandModule<Record<string, unknown>, Record<st
   handler: async (argv) => {
     const action = argv["action"] as string;
     const files = (argv["files"] as string[]) ?? [];
-    const outFile = argv["out"] as string | undefined;
-    const format = (argv["format"] as "terminal" | "json") ?? "terminal";
+    const outFile = (argv["out"] ?? argv["output"] ?? argv["o"]) as string | undefined;
+    const format = argv["json"] ? "json" : ((argv["format"] as "terminal" | "json") ?? "terminal");
 
     if (files.length === 0) {
       console.error("Error: No input files provided.");
@@ -186,12 +191,59 @@ export const EnergyPlusCommand: CommandModule<Record<string, unknown>, Record<st
             freeFloatTemp: number;
           }[] = [];
 
+          // Build lookup maps for Material conductivity/thickness and Construction layers
+          const matByName = new Map(doc.materials.map((m) => [m.name.toLowerCase(), m]));
+          const noMassByName = new Map(doc.materialsNoMass.map((m) => [m.name.toLowerCase(), m]));
+          const constByName = new Map(doc.constructions.map((c) => [c.name.toLowerCase(), c]));
+
+          const computeConstructionUValue = (constName?: string): number => {
+            if (!constName) return 1.5;
+            const c = constByName.get(constName.toLowerCase());
+            if (!c || c.layers.length === 0) return 1.5;
+            // Inside + outside convective film resistances (ASHRAE standard: R_si = 0.13, R_so = 0.04 m2*K/W)
+            let rTotal = 0.17;
+            for (const layerName of c.layers) {
+              const mat = matByName.get(layerName.toLowerCase());
+              if (mat && mat.conductivity > 0 && mat.thickness > 0) {
+                rTotal += mat.thickness / mat.conductivity;
+                continue;
+              }
+              const nm = noMassByName.get(layerName.toLowerCase());
+              if (nm && nm.thermalResistance > 0) {
+                rTotal += nm.thermalResistance;
+              }
+            }
+            return rTotal > 0 ? 1.0 / rTotal : 1.5;
+          };
+
+          const computeSurfaceArea = (surf: (typeof doc.surfaces)[number]): number => {
+            if (surf.grossArea && surf.grossArea > 0) return surf.grossArea;
+            const verts = surf.vertices;
+            if (verts && verts.length >= 3) {
+              // Newell's method for 3D polygon area
+              let nx = 0;
+              let ny = 0;
+              let nz = 0;
+              for (let i = 0; i < verts.length; i++) {
+                const cur = verts[i]!;
+                const next = verts[(i + 1) % verts.length]!;
+                nx += (cur.y - next.y) * (cur.z + next.z);
+                ny += (cur.z - next.z) * (cur.x + next.x);
+                nz += (cur.x - next.x) * (cur.y + next.y);
+              }
+              const polyArea = 0.5 * Math.hypot(nx, ny, nz);
+              if (polyArea > 0) return polyArea;
+            }
+            return 20.0;
+          };
+
           for (const zone of doc.zones) {
             let totalUA = 0.0;
             const zoneSurfs = doc.surfaces.filter((s) => s.zoneName.toLowerCase() === zone.name.toLowerCase());
             for (const surf of zoneSurfs) {
-              const area = surf.grossArea && surf.grossArea > 0 ? surf.grossArea : 20.0;
-              totalUA += area * 1.5;
+              const area = computeSurfaceArea(surf);
+              const uVal = computeConstructionUValue(surf.constructionName);
+              totalUA += area * uVal;
             }
             let totalGains = 0.0;
             for (const p of doc.people.filter((x) => x.zoneName.toLowerCase() === zone.name.toLowerCase())) {

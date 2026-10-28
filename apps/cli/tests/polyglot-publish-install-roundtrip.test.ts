@@ -6,7 +6,6 @@ import jwt from "jsonwebtoken";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
 import { createApp } from "../../api/src/app.js";
@@ -50,7 +49,7 @@ describe("Polyglot Package End-to-End: Pack, Publish, Index, Install & Parity Ve
     console.error = () => {};
     (process.stdout as any).write = () => true;
 
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "polyglot-e2e-"));
+    tmpRoot = fs.mkdtempSync(path.join(import.meta.dirname, "scratch-polyglot-e2e-"));
     const dbDir = path.join(tmpRoot, "registry-db");
     const storageDir = path.join(tmpRoot, "registry-storage");
     fs.mkdirSync(dbDir, { recursive: true });

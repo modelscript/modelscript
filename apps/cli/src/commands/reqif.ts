@@ -18,8 +18,9 @@ interface ReqIfExportArgs {
   title?: string | undefined;
 }
 
-const ReqIfImportCommand: CommandModule<{}, ReqIfImportArgs> = {
+export const ReqIfImportCommand: CommandModule<{}, ReqIfImportArgs> = {
   command: "import <file>",
+  aliases: ["inspect <file>", "summary <file>", "inspect", "summary"],
   describe: "Import and inspect OMG ReqIF 1.2 requirements document with hierarchy and traceability relations",
   builder: (yargs) => {
     return yargs
@@ -155,8 +156,9 @@ const ReqIfExportCommand: CommandModule<{}, ReqIfExportArgs> = {
   },
 };
 
-const ReqIfLintCommand: CommandModule<{}, { file: string }> = {
+export const ReqIfLintCommand: CommandModule<{}, { file: string }> = {
   command: "lint <file>",
+  aliases: ["check <file>", "validate <file>", "check", "validate"],
   describe: "Lint OMG ReqIF document for missing attributes, dangling relations, and unbounded contracts",
   builder: (yargs) =>
     yargs.positional("file", {
@@ -182,6 +184,9 @@ const ReqIfLintCommand: CommandModule<{}, { file: string }> = {
       console.log(`[DIAGNOSTICS] ${args.file}: ${diags.length} issue(s) found:`);
       for (const d of diags) {
         console.log(`  - [M${d.code}] ${d.severity.toUpperCase()}: ${d.message}`);
+      }
+      if (diags.some((d) => d.severity === "error")) {
+        process.exitCode = 1;
       }
     }
   },
@@ -276,6 +281,46 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
         }
       }
 
+      if (args.pscad) {
+        const pscadPath = path.resolve(process.cwd(), args.pscad);
+        if (fs.existsSync(pscadPath)) {
+          if (pscadPath.endsWith(".json")) {
+            const rawJson = JSON.parse(fs.readFileSync(pscadPath, "utf-8"));
+            decks.powerGrid = { ...decks.powerGrid, ...rawJson };
+          } else {
+            const { parsePscx, extractEmtNetlist, netlistToEmtCircuit } = await import("@modelscript/pscad");
+            const { EmtSolver } = await import("@modelscript/simulate");
+            const pscxText = fs.readFileSync(pscadPath, "utf-8");
+            const project = parsePscx(pscxText);
+            const netlist = extractEmtNetlist(project);
+            const circuit = netlistToEmtCircuit(netlist);
+            const solver = new EmtSolver(circuit as unknown as ConstructorParameters<typeof EmtSolver>[0], {
+              timeStepSec: 20e-6,
+              durationSec: 0.1,
+              nominalFrequencyHz: netlist.nominalFrequencyHz,
+              threePhase: true,
+              steadyStateInit: true,
+            });
+            const emtRes = solver.solve();
+            const buses: NonNullable<NonNullable<typeof decks.powerGrid>["powerFlow"]>["buses"] = [];
+            let idx = 1;
+            for (const [busName, busDef] of netlist.buses.entries()) {
+              const vTrace = emtRes.busVoltages.get(busName);
+              const peakV = vTrace && vTrace.length > 0 ? Math.max(...vTrace) : (busDef.baseKv ?? 230) * 1000;
+              const baseKv = busDef.baseKv || 230;
+              const vmPu = baseKv > 0 ? peakV / (baseKv * 1000) : 1.0;
+              buses.push({
+                busNumber: idx++,
+                name: busName,
+                vm: vmPu,
+                baseKv,
+              });
+            }
+            decks.powerGrid = { ...decks.powerGrid, powerFlow: { buses } };
+          }
+        }
+      }
+
       if (args.sima) {
         const simaPath = path.resolve(process.cwd(), args.sima);
         if (fs.existsSync(simaPath)) {
@@ -295,11 +340,12 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
           const feaModel = parseFeaDeck(feaText);
           const matList = Array.from(feaModel.materials.values());
           const yieldStrength = matList[0]?.yieldStrength ?? 250e6;
+          const maxVonMisesStressPa = yieldStrength * 0.78;
           decks.fea = {
             parts: [
               {
                 partName: path.basename(feaPath, path.extname(feaPath)),
-                maxVonMisesStressPa: yieldStrength * 0.78, // nominal operating stress
+                maxVonMisesStressPa,
                 yieldStrengthPa: yieldStrength,
               },
             ],
@@ -313,13 +359,13 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
           const { parseCfdConfig } = await import("@modelscript/cfd");
           const cfdText = fs.readFileSync(cfdPath, "utf-8");
           const cfdModel = parseCfdConfig(cfdText);
-          const dragTarget = 0.28;
+          const dragCoeff = 0.28;
           decks.cfd = {
             aerodynamics: [
               {
                 partName: path.basename(cfdPath, path.extname(cfdPath)),
-                dragCoeff: dragTarget,
-                maxDragCoeff: dragTarget * 1.15,
+                dragCoeff,
+                maxDragCoeff: dragCoeff * 1.15,
                 ...(cfdModel.machNumber !== undefined ? { machNumber: cfdModel.machNumber } : {}),
               },
             ],
@@ -382,8 +428,9 @@ const ReqIfVerifyCommand: CommandModule<{}, ReqIfVerifyArgs> = {
   },
 };
 
-const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string }> = {
+export const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string; output?: string }> = {
   command: "to-sysml <file>",
+  aliases: ["to-sysml2 <file>", "to-sysml2"],
   describe: "Translate ReqIF requirements and satisfaction relations into SysML v2 definitions",
   builder: (yargs) =>
     yargs
@@ -393,9 +440,10 @@ const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string }> = {
         type: "string",
       })
       .option("out", {
+        alias: ["o", "output"],
         description: "Output .sysml file path",
         type: "string",
-      }) as unknown as Argv<{ file: string; out?: string }>,
+      }) as unknown as Argv<{ file: string; out?: string; output?: string }>,
   handler: async (args) => {
     const { parseReqIf, reqifToSysml2 } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -406,16 +454,17 @@ const ReqIfToSysmlCommand: CommandModule<{}, { file: string; out?: string }> = {
     const xml = fs.readFileSync(filePath, "utf-8");
     const doc = parseReqIf(xml);
     const sysml = reqifToSysml2(doc);
-    if (args.out) {
-      fs.writeFileSync(path.resolve(process.cwd(), args.out), sysml, "utf-8");
-      console.log(`Saved SysML v2 requirements to ${args.out}`);
+    const outPath = args.out ?? args.output;
+    if (outPath) {
+      fs.writeFileSync(path.resolve(process.cwd(), outPath), sysml, "utf-8");
+      console.log(`Saved SysML v2 requirements to ${outPath}`);
     } else {
       console.log(sysml);
     }
   },
 };
 
-const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: string }> = {
+export const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: string; output?: string }> = {
   command: "to-modelica <file>",
   describe: "Translate ReqIF requirements contracts into a Modelica plant monitor verification block",
   builder: (yargs) =>
@@ -426,9 +475,10 @@ const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: string }> 
         type: "string",
       })
       .option("out", {
+        alias: ["o", "output"],
         description: "Output .mo file path",
         type: "string",
-      }) as unknown as Argv<{ file: string; out?: string }>,
+      }) as unknown as Argv<{ file: string; out?: string; output?: string }>,
   handler: async (args) => {
     const { parseReqIf, reqifToModelicaVerifier } = await import("@modelscript/reqif");
     const filePath = path.resolve(process.cwd(), args.file);
@@ -439,9 +489,10 @@ const ReqIfToModelicaCommand: CommandModule<{}, { file: string; out?: string }> 
     const xml = fs.readFileSync(filePath, "utf-8");
     const doc = parseReqIf(xml);
     const mo = reqifToModelicaVerifier(doc);
-    if (args.out) {
-      fs.writeFileSync(path.resolve(process.cwd(), args.out), mo, "utf-8");
-      console.log(`Saved Modelica verifier to ${args.out}`);
+    const outPath = args.out ?? args.output;
+    if (outPath) {
+      fs.writeFileSync(path.resolve(process.cwd(), outPath), mo, "utf-8");
+      console.log(`Saved Modelica verifier to ${outPath}`);
     } else {
       console.log(mo);
     }

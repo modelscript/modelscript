@@ -481,7 +481,7 @@ function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts:
  * and ontology/schema linters across all recognized ModelScript polyglot languages.
  */
 export const Lint: CommandModule<{}, LintArgs> = {
-  command: "lint <path> [paths...]",
+  command: ["lint <path> [paths...]", "check <path> [paths...]", "validate <path> [paths...]"],
   describe: "Lint polyglot libraries using QueryEngine and DSL parsers",
   builder: (yargs) => {
     return yargs
@@ -497,7 +497,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
         type: "string",
       })
       .option("language", {
-        alias: "l",
+        alias: ["l", "lang"],
         description:
           "Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran, easy5, rocets, lps, sima, gtsuite)",
         type: "string",
@@ -548,11 +548,17 @@ export const Lint: CommandModule<{}, LintArgs> = {
       const lowerFile = file.toLowerCase();
       if (lowerFile.endsWith(".mo") || lowerFile.endsWith(".mos") || lowerFile.endsWith(".msim")) {
         modelicaItems.push({ uri: `file://${file}`, text: content });
-      } else if (lowerFile.endsWith(".sysml") || lowerFile.endsWith(".kerml") || lowerFile.endsWith(".sysml2")) {
+      } else if (
+        lowerFile.endsWith(".sysml") ||
+        lowerFile.endsWith(".kerml") ||
+        lowerFile.endsWith(".sysml2") ||
+        lowerFile.endsWith(".sysmlx") ||
+        lowerFile.endsWith(".sys2")
+      ) {
         sysmlItems.push({ uri: `file://${file}`, text: content });
       } else {
         try {
-          const lang = await LanguageResolver.resolve(file);
+          const lang = await LanguageResolver.resolve(file, args.language);
           genericItems.push({
             uri: `file://${file}`,
             text: content,
@@ -1065,11 +1071,51 @@ export const Lint: CommandModule<{}, LintArgs> = {
 
         if (langId === "cfd") {
           diagnostics.push(...lintCfdText(item.text, filePath));
+          try {
+            const { parseCfdConfig, lintCfdModel } = await import("@modelscript/cfd");
+            const ext = path.extname(filePath).slice(1) || "cfg";
+            const model = parseCfdConfig(item.text, ext);
+            for (const cd of lintCfdModel(model)) {
+              const startOffset = lineColToByte(item.text, cd.line ?? 1, 1);
+              const codeStr = typeof cd.code === "number" ? `M${cd.code}` : String(cd.code);
+              diagnostics.push({
+                severity: cd.severity,
+                lintName: cd.rule ?? codeStr.toLowerCase(),
+                code: codeStr,
+                domain: "cfd",
+                message: cd.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset,
+                endOffset: startOffset + 10,
+              });
+            }
+          } catch {}
           continue;
         }
 
         if (langId === "fea") {
           diagnostics.push(...lintFeaText(item.text, filePath));
+          try {
+            const { parseFeaDeck, lintFeaModel } = await import("@modelscript/fea");
+            const ext = path.extname(filePath).slice(1) || "inp";
+            const model = parseFeaDeck(item.text, ext);
+            for (const fd of lintFeaModel(model)) {
+              const startOffset = lineColToByte(item.text, fd.line ?? 1, 1);
+              const codeStr = typeof fd.code === "number" ? `M${fd.code}` : String(fd.code);
+              diagnostics.push({
+                severity: fd.severity,
+                lintName: fd.rule ?? codeStr.toLowerCase(),
+                code: codeStr,
+                domain: "fea",
+                message: fd.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset,
+                endOffset: startOffset + 10,
+              });
+            }
+          } catch {}
           continue;
         }
 
@@ -1217,8 +1263,51 @@ export const Lint: CommandModule<{}, LintArgs> = {
           continue;
         }
 
+        if (item.langId === "spice") {
+          const { parseSpice, lintSpiceCircuit } = await import("@modelscript/spice");
+          const circuit = parseSpice(item.text);
+          for (const sd of lintSpiceCircuit(circuit)) {
+            const startOffset = lineColToByte(item.text, sd.span?.startLine ?? 1, sd.span?.startCol ?? 1);
+            const endOffset = lineColToByte(item.text, sd.span?.endLine ?? 1, sd.span?.endCol ?? 5);
+            const codeStr = typeof sd.code === "number" ? `M${sd.code}` : String(sd.code || "M9000");
+            diagnostics.push({
+              severity: sd.severity,
+              lintName: sd.rule || codeStr.toLowerCase(),
+              code: codeStr,
+              domain: "spice",
+              message: sd.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset,
+            });
+          }
+          continue;
+        }
+
+        if (item.langId === "urdf") {
+          const { parseUrdf, lintUrdfRobot } = await import("@modelscript/urdf");
+          const robot = parseUrdf(item.text);
+          for (const ud of lintUrdfRobot(robot)) {
+            const startOffset = lineColToByte(item.text, ud.range.startLine ?? 1, ud.range.startColumn ?? 1);
+            const codeStr = typeof ud.code === "number" ? `M${ud.code}` : String(ud.code || "M9000");
+            diagnostics.push({
+              severity: ud.severity,
+              lintName: codeStr.toLowerCase(),
+              code: codeStr,
+              domain: "urdf",
+              message: ud.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset,
+              endOffset: startOffset + 5,
+            });
+          }
+          continue;
+        }
+
         // Generic / user-registered DSL fallback
-        const lang = await LanguageResolver.resolve(item.uri);
+        const lang = await LanguageResolver.resolve(item.uri, args.language);
         const { parser } = await lang.loadParser();
         const tree = parser.parse(item.text);
         if (tree?.rootNode?.hasError && tree.rootNode.hasError()) {

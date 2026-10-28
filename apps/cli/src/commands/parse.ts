@@ -56,7 +56,13 @@ export const Parse: CommandModule<{}, ParseArgs> = {
     try {
       const resolved = await LanguageResolver.resolve(filePath, args.language, cwd);
       const { parser } = await resolved.loadParser();
-      const text = readFileSync(filePath, "utf-8");
+      const rawBuf = readFileSync(filePath);
+      const text =
+        args.encoding === "utf16le"
+          ? rawBuf.toString("utf16le")
+          : args.encoding === "utf16be"
+            ? new TextDecoder("utf-16be").decode(rawBuf)
+            : rawBuf.toString("utf-8");
       const tree = parser.parse(text);
       if (!tree) {
         console.error("Parse failed. No tree returned.");
