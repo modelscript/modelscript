@@ -2,10 +2,24 @@
 
 import Box from "./Box";
 
-import { BellIcon, HomeIcon, MoonIcon, PersonIcon, PlusIcon, SearchIcon, SunIcon, XIcon } from "@primer/octicons-react";
+import {
+  BellIcon,
+  GearIcon,
+  HomeIcon,
+  MoonIcon,
+  PackageIcon,
+  PersonIcon,
+  PlayIcon,
+  PlusIcon,
+  RepoIcon,
+  SearchIcon,
+  SunIcon,
+  ThreeBarsIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
@@ -14,7 +28,7 @@ import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
-import { useFeatureFlags } from "../FeatureFlagContext";
+import { useFeatureFlag, useFeatureFlags } from "../FeatureFlagContext";
 import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
 import { OfflineBanner } from "./OfflineBanner";
 
@@ -50,6 +64,10 @@ const SidebarWrapper = styled.div`
   @media (max-width: 1280px) {
     flex-basis: auto;
   }
+
+  @media (max-width: 500px) {
+    display: none;
+  }
 `;
 
 const RightPanelWrapper = styled.div`
@@ -57,6 +75,10 @@ const RightPanelWrapper = styled.div`
   display: flex;
   justify-content: flex-start;
   max-width: 350px;
+
+  @media (max-width: 1000px) {
+    display: none;
+  }
 `;
 
 const MainColumn = styled.main<{
@@ -117,7 +139,7 @@ const BottomBarContainer = styled.div`
 const BottomBarButton = styled.button<{ $active?: boolean | undefined }>`
   background: none;
   border: none;
-  color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted)")};
+  color: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-text-muted)")};
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -128,7 +150,68 @@ const BottomBarButton = styled.button<{ $active?: boolean | undefined }>`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--ms-surface-hover);
+  }
+`;
+
+const MoreSheetBackdrop = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(2, 6, 23, 0.55);
+  display: flex;
+  align-items: flex-end;
+`;
+
+const MoreSheet = styled.div`
+  width: 100%;
+  background: var(--ms-bg-elv);
+  border-top: 1px solid var(--ms-border);
+  border-radius: 16px 16px 0 0;
+  padding: 8px 8px calc(12px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--ms-shadow-pop);
+
+  a:not(.ms-btn),
+  button.more-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 10px;
+    background: none;
+    color: var(--ms-text-1);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 550;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  a:not(.ms-btn):hover,
+  button.more-row:hover {
+    background: var(--ms-surface-hover);
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--ms-divider);
+    margin: 6px 8px;
+  }
+
+  .more-auth {
+    display: flex;
+    gap: 8px;
+    padding: 6px 6px 0;
+  }
+
+  .more-auth a {
+    flex: 1;
+    justify-content: center;
+    height: var(--ms-control-lg);
+    border-radius: var(--ms-radius-pill);
   }
 `;
 
@@ -136,21 +219,21 @@ const CenterPostButton = styled.button`
   width: 50px;
   height: 50px;
   border-radius: 50%;
-  background: var(--gradient-cta);
-  color: white;
+  background: var(--ms-brand);
+  color: var(--ms-brand-contrast);
   border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
+  box-shadow: var(--ms-brand-shadow);
   margin-top: -20px;
   transition:
     transform 0.2s,
-    box-shadow 0.2s;
+    background-color 0.2s;
 
   &:hover {
-    box-shadow: 0 0 22px rgba(6, 182, 212, 0.6);
+    background: var(--ms-brand-hover);
   }
 
   &:active {
@@ -248,6 +331,12 @@ const AppShell: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const [isMoreOpen, setIsMoreOpen] = React.useState(false);
+  const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
+
+  React.useEffect(() => {
+    setIsMoreOpen(false);
+  }, [location.pathname]);
 
   const isDev = import.meta.env.DEV;
 
@@ -648,7 +737,56 @@ const AppShell: React.FC = () => {
               >
                 <PersonIcon size={24} />
               </BottomBarButton>
+              <BottomBarButton
+                $active={isMoreOpen}
+                onClick={() => setIsMoreOpen((v) => !v)}
+                aria-label="More"
+                aria-expanded={isMoreOpen}
+              >
+                <ThreeBarsIcon size={24} />
+              </BottomBarButton>
             </BottomBarContainer>
+
+            {isMoreOpen && (
+              <MoreSheetBackdrop onClick={() => setIsMoreOpen(false)}>
+                <MoreSheet role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
+                  <Link to="/playground">
+                    <PlayIcon size={20} /> Playground
+                  </Link>
+                  <Link to="/packages">
+                    <PackageIcon size={20} /> Packages
+                  </Link>
+                  <Link to="/repos">
+                    <RepoIcon size={20} /> Repositories
+                  </Link>
+                  {hasCaeJobs && (
+                    <Link to="/jobs">
+                      <GearIcon size={20} /> Jobs
+                    </Link>
+                  )}
+                  <hr />
+                  {user && (
+                    <Link to="/settings">
+                      <GearIcon size={20} /> Settings
+                    </Link>
+                  )}
+                  <button type="button" className="more-row" onClick={toggleTheme}>
+                    {theme === "dark" ? <SunIcon size={20} /> : <MoonIcon size={20} />}
+                    {theme === "dark" ? "Light theme" : "Dark theme"}
+                  </button>
+                  {!user && (
+                    <div className="more-auth">
+                      <Link to="/login" className="ms-btn ms-btn-secondary ms-btn-lg">
+                        Log in
+                      </Link>
+                      <Link to="/signup" className="ms-btn ms-btn-primary ms-btn-lg">
+                        Sign up
+                      </Link>
+                    </div>
+                  )}
+                </MoreSheet>
+              </MoreSheetBackdrop>
+            )}
           </>
         )}
 

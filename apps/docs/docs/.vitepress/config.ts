@@ -8,6 +8,12 @@ import { LANGUAGES, PLATFORM_GROUPS, type LanguageGroupId } from "./theme/data/l
 
 const SITE_DESCRIPTION = `Free, open-source toolchain that imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, and lets you simulate, verify, and export — in the browser, CLI, or VS Code.`;
 
+/** Feature flag: Pricing page and nav are visible in dev mode or when SHOW_PRICING=true */
+const isPricingVisible =
+  process.env["NODE_ENV"] !== "production" ||
+  process.env["SHOW_PRICING"] === "true" ||
+  process.env["VITE_SHOW_PRICING"] === "true";
+
 /** Maps a language's primary group to the industry slug whose name labels the sidebar group. */
 const GROUP_TO_INDUSTRY: Partial<Record<LanguageGroupId, string>> = {
   aerospace: "aerospace",
@@ -159,6 +165,7 @@ export default defineConfig({
         languages: { name: "Languages", link: "https://modelscript.org/languages/overview" },
         industries: { name: "Industries", link: "https://modelscript.org/industries" },
         reference: { name: "Reference", link: "https://modelscript.org/reference/linter-rules" },
+        pricing: { name: "Pricing", link: "https://modelscript.org/pricing" },
       };
 
       const items: { "@type": string; position: number; name: string; item: string }[] = [
@@ -283,6 +290,7 @@ export default defineConfig({
       { component: "PlatformMegaMenu" },
       { component: "LanguagesMegaMenu" },
       { component: "DocsMegaMenu" },
+      ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
       { text: "Playground", link: "https://modelscript.org/playground" },
     ],
     sidebar: (() => {

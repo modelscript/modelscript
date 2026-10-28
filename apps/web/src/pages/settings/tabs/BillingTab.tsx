@@ -6,8 +6,12 @@ import {
   CheckCircleIcon,
   CpuIcon,
   CreditCardIcon,
+  LinkExternalIcon,
   PlusIcon,
+  RocketIcon,
   ServerIcon,
+  ShieldCheckIcon,
+  SyncIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
@@ -16,7 +20,67 @@ import styled from "styled-components";
 import { getUserBillingSummary, topUpCredits, type UserBillingSummary } from "../../../api";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
+import { useFeatureFlags } from "../../../FeatureFlagContext";
 import { DetailSubtitle, DetailTitle, Header } from "../settingsStyles";
+
+const PlanHeaderCard = styled.div`
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+`;
+
+const PlanBadge = styled.span<{ $variant?: "community" | "pro" }>`
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: ${(props) =>
+    props.$variant === "pro"
+      ? "linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25))"
+      : "rgba(16, 185, 129, 0.15)"};
+  color: ${(props) => (props.$variant === "pro" ? "#c084fc" : "#34d399")};
+  border: 1px solid ${(props) => (props.$variant === "pro" ? "rgba(168, 85, 247, 0.35)" : "rgba(16, 185, 129, 0.3)")};
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+`;
+
+const CommercialPromoCard = styled.div`
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(6, 182, 212, 0.08) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 12px;
+  padding: 22px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+`;
+
+const CommercialPillarsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 4px;
+`;
+
+const CommercialPillar = styled.div`
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
 
 const BillingWalletCard = styled.div`
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(6, 182, 212, 0.1) 100%);
@@ -75,6 +139,47 @@ const TopUpPillButton = styled.button`
   }
 `;
 
+const ActionLinkButton = styled.a`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gradient-cta, linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%));
+  color: #ffffff !important;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all 0.15s ease-in-out;
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.25);
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    text-decoration: none;
+  }
+`;
+
+const SecondaryButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--color-border-muted);
+  }
+`;
+
 const LedgerTable = styled.table`
   width: 100%;
   border-collapse: collapse;
@@ -113,10 +218,10 @@ const TxBadge = styled.span<{ $type: string }>`
         : "rgba(218, 54, 51, 0.2)"};
   color: ${(props) =>
     props.$type === "initial_grant"
-      ? "#3fb950"
+      ? "var(--ms-success)"
       : props.$type === "topup" || props.$type === "top_up"
         ? "#22d3ee"
-        : "#f85149"};
+        : "var(--ms-danger)"};
 `;
 
 export interface BillingTabProps {
@@ -142,26 +247,69 @@ type BillingSummaryView = UserBillingSummary & {
   }[];
 };
 
+const DEFAULT_COMMUNITY_VIEW: BillingSummaryView = {
+  userId: 0,
+  creditBalance: 0,
+  totalSpent: 0,
+  totalJobs: 0,
+  totalCpuSeconds: 0,
+  totalGpuSeconds: 0,
+  profileUsage: {},
+  recentTransactions: [],
+  wallet: {
+    balance: 0,
+    total_spent: 0,
+    total_jobs_dispatched: 0,
+    total_cpu_core_hours: 0,
+    total_gpu_hours: 0,
+  },
+  recent_transactions: [],
+};
+
 export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
+  const { isEnabled, setFlagOverride } = useFeatureFlags();
+  const isStripeFeatureEnabled = isEnabled("billing_stripe_live");
+
   const [billingSummary, setBillingSummary] = useState<BillingSummaryView | null>(null);
+  const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchSummary = async () => {
+    try {
+      const data = await getUserBillingSummary();
+      setBillingSummary(data as BillingSummaryView);
+      setIsLiveActive(true);
+      setError(null);
+    } catch {
+      // If billing service is unconfigured or gated, gracefully fall back to Community mode
+      setBillingSummary(DEFAULT_COMMUNITY_VIEW);
+      setIsLiveActive(false);
+    }
+  };
+
   useEffect(() => {
-    getUserBillingSummary()
-      .then((data) => setBillingSummary(data as BillingSummaryView))
-      .catch(() => {
-        setError("Unable to retrieve billing summary. Please check your network connection.");
-      });
-  }, []);
+    fetchSummary();
+  }, [isStripeFeatureEnabled]);
+
+  const toggleSandboxBilling = () => {
+    const nextState = !isStripeFeatureEnabled;
+    setFlagOverride("billing_stripe_live", nextState);
+    if (!nextState) {
+      setIsLiveActive(false);
+      setBillingSummary(DEFAULT_COMMUNITY_VIEW);
+      setTopUpSuccess(null);
+      setError(null);
+    }
+  };
 
   const handleTopUp = async (amount: number) => {
     setIsTopUpLoading(true);
     setError(null);
     setTopUpSuccess(null);
     try {
-      const updatedWallet = await topUpCredits(amount);
+      const updatedWallet = await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card");
       setBillingSummary((prev) =>
         prev
           ? {
@@ -171,18 +319,22 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                 balance:
                   typeof (updatedWallet as any).newBalance === "number"
                     ? (updatedWallet as any).newBalance
-                    : ((updatedWallet as any).balance ?? prev.wallet.balance),
+                    : ((updatedWallet as any).balance ?? prev.wallet.balance + amount),
               },
             }
           : null,
       );
-      getUserBillingSummary()
-        .then((data) => setBillingSummary(data as BillingSummaryView))
-        .catch(() => {});
+      fetchSummary();
       window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
-      setTopUpSuccess(`Successfully credited +${amount.toFixed(2)} compute credits to your wallet.`);
+      setTopUpSuccess(
+        `Successfully credited +${amount.toFixed(2)} compute credits to your wallet (${
+          isLiveActive ? "Live Top-Up" : "Developer Sandbox"
+        }).`,
+      );
     } catch {
-      setError("Top-up request failed. Please check payment method and try again.");
+      setError(
+        "Top-up request failed. In standalone Community mode, enable Developer Sandbox or connect a live Stripe account.",
+      );
     } finally {
       setIsTopUpLoading(false);
     }
@@ -198,8 +350,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
       </Header>
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
-          Monitor high-performance computing quotas, credit balances, and metered usage across SLURM and local solver
-          clusters.
+          Manage your subscription tier, high-performance computing quotas, and metered compute credit ledgers across
+          SLURM and local solver clusters.
         </DetailSubtitle>
 
         {error && (
@@ -212,11 +364,17 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               borderRadius: "6px",
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
               gap: "8px",
             }}
           >
-            <AlertIcon size={16} />
-            <Text fontSize="14px">{error}</Text>
+            <Box display="flex" alignItems="center" gap={2}>
+              <AlertIcon size={16} />
+              <Text fontSize="14px">{error}</Text>
+            </Box>
+            <SecondaryButton style={{ padding: "4px 10px", fontSize: "12px" }} onClick={() => setError(null)}>
+              Dismiss
+            </SecondaryButton>
           </Box>
         )}
 
@@ -230,12 +388,106 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               borderRadius: "6px",
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
               gap: "8px",
             }}
           >
-            <CheckCircleIcon size={16} />
-            <Text fontSize="14px">{topUpSuccess}</Text>
+            <Box display="flex" alignItems="center" gap={2}>
+              <CheckCircleIcon size={16} />
+              <Text fontSize="14px">{topUpSuccess}</Text>
+            </Box>
+            <SecondaryButton style={{ padding: "4px 10px", fontSize: "12px" }} onClick={() => setTopUpSuccess(null)}>
+              Dismiss
+            </SecondaryButton>
           </Box>
+        )}
+
+        {/* Plan Header Card */}
+        <PlanHeaderCard>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Text style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                {isLiveActive ? "ModelScript Pro Cloud" : "ModelScript Community Edition"}
+              </Text>
+              <PlanBadge $variant={isLiveActive ? "pro" : "community"}>
+                <ShieldCheckIcon size={12} />
+                {isLiveActive ? "Active · Cloud HPC" : "Active · AGPL-3.0"}
+              </PlanBadge>
+            </Box>
+            <Text style={{ fontSize: "13px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+              {isLiveActive
+                ? "High-performance Slurm cluster job dispatch, batched SUNDIALS sweeps, and A100 GPU surrogate training active."
+                : "Unlimited zero-latency local WebAssembly ODE/DAE execution, compiler passes, and all 44 engineering formats included free and open source."}
+            </Text>
+          </Box>
+
+          <Box display="flex" alignItems="center" gap={2}>
+            <SecondaryButton onClick={toggleSandboxBilling}>
+              <SyncIcon size={13} />
+              {isStripeFeatureEnabled ? "Disable Sandbox Mode" : "Enable Developer Sandbox"}
+            </SecondaryButton>
+            <ActionLinkButton href="https://modelscript.org/pricing" target="_blank" rel="noopener noreferrer">
+              <span>View Plans &amp; Pricing</span>
+              <LinkExternalIcon size={12} />
+            </ActionLinkButton>
+          </Box>
+        </PlanHeaderCard>
+
+        {/* Commercial & Enterprise Info Banner (shown in Community mode) */}
+        {!isLiveActive && (
+          <CommercialPromoCard>
+            <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+              <Box>
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: "var(--color-text-primary)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <RocketIcon size={15} style={{ color: "var(--color-accent-purple, #a855f7)" }} />
+                  Commercial Licensing &amp; Enterprise Utility Appliances
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                  Need to embed ModelScript without AGPL copyleft obligations, or deploy a hardened, air-gapped NERC CIP
+                  appliance inside your utility firewall?
+                </div>
+              </Box>
+              <ActionLinkButton
+                href="mailto:licensing@modelscript.org?subject=ModelScript%20Commercial%20License%20%2F%20Enterprise%20Inquiry&body=Hi%20ModelScript%20Team%2C%0A%0AWe%20are%20interested%20in%20evaluating%20the%20ModelScript%20Commercial%20SDK%20%2F%20Enterprise%20Appliance%20for%20our%20engineering%20team.%0A%0ACompany%2FOrganization%3A%20%0ATeam%20Size%3A%20%0APrimary%20Engineering%20Formats%20(e.g.%20Modelica%2C%20SysML%2C%20STEP)%3A%20%0A%0ABest%20regards%2C"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span>Inquire About Enterprise</span>
+                <LinkExternalIcon size={12} />
+              </ActionLinkButton>
+            </Box>
+
+            <CommercialPillarsGrid>
+              <CommercialPillar>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  Commercial SDK ($12k/yr)
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+                  Dual-license exemption from AGPL §13 network copyleft for proprietary SaaS or closed desktop software,
+                  with private Slack support and guaranteed SLA.
+                </div>
+              </CommercialPillar>
+
+              <CommercialPillar>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  Enterprise Appliance ($18k/yr)
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+                  Pre-hardened, zero-internet on-premise container deployment meeting FERC CEII and NERC CIP-005/007/010
+                  standards with enterprise SAML SSO.
+                </div>
+              </CommercialPillar>
+            </CommercialPillarsGrid>
+          </CommercialPromoCard>
         )}
 
         {/* Wallet Card */}
@@ -251,7 +503,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   color: "var(--color-text-muted)",
                 }}
               >
-                Current Credit Balance
+                {isLiveActive ? "Current Credit Balance" : "Local Compute Engine"}
               </span>
               <div
                 style={{
@@ -261,24 +513,29 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   marginTop: "4px",
                 }}
               >
-                {billingSummary ? `${billingSummary.wallet.balance.toFixed(2)} cr` : "..."}
+                {isLiveActive ? `${billingSummary?.wallet.balance.toFixed(2) ?? "0.00"} cr` : "Unlimited Local"}
               </div>
               <span
                 style={{
                   fontSize: "12px",
-                  color: "#3fb950",
+                  color: "var(--ms-success)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "4px",
                   marginTop: "4px",
                 }}
               >
-                <CheckCircleIcon size={12} /> Active &amp; Pre-flight Authorized
+                <CheckCircleIcon size={12} />
+                {isLiveActive
+                  ? "Pre-Flight Authorized for Cloud Slurm Offload"
+                  : "Active & Pre-flight Authorized for In-Browser WebAssembly"}
               </span>
             </Box>
 
             <Box display="flex" flexDirection="column" alignItems="flex-end" gap={2}>
-              <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Quick Top-Up</span>
+              <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                {isLiveActive ? "Quick Top-Up (Credits)" : "Developer Sandbox Reload"}
+              </span>
               <Box display="flex" gap={2} flexWrap="wrap">
                 <TopUpPillButton disabled={isTopUpLoading} onClick={() => handleTopUp(50)}>
                   <PlusIcon size={14} /> +50 cr
@@ -302,7 +559,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               <span style={{ fontSize: "12px", fontWeight: "600" }}>Total Spent</span>
             </Box>
             <span style={{ fontSize: "20px", fontWeight: "700", color: "var(--color-text-primary)" }}>
-              {billingSummary ? `${billingSummary.wallet.total_spent.toFixed(2)} cr` : "0.00 cr"}
+              {isLiveActive ? `${billingSummary?.wallet.total_spent.toFixed(2) ?? "0.00"} cr` : "0.00 cr (Local)"}
             </span>
           </StatItem>
 
@@ -312,7 +569,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               <span style={{ fontSize: "12px", fontWeight: "600" }}>HPC Jobs Run</span>
             </Box>
             <span style={{ fontSize: "20px", fontWeight: "700", color: "var(--color-text-primary)" }}>
-              {billingSummary ? billingSummary.wallet.total_jobs_dispatched : 0}
+              {billingSummary?.wallet.total_jobs_dispatched ?? 0}
             </span>
           </StatItem>
 
@@ -397,6 +654,10 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               </tbody>
             </LedgerTable>
           </Box>
+          <div style={{ fontSize: "11px", color: "var(--color-text-muted)", marginTop: "8px", fontStyle: "italic" }}>
+            * Note: Local in-browser WebAssembly simulations (ODE/DAE arena, SUNDIALS CVODE/IDA) run completely
+            client-side without consuming credits. Quotas apply only to distributed Slurm cluster jobs.
+          </div>
         </Box>
 
         {/* Immutable Transaction Ledger */}
@@ -427,7 +688,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                 {!billingSummary || billingSummary.recent_transactions.length === 0 ? (
                   <tr>
                     <td colSpan={6} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
-                      No billing transactions recorded yet.
+                      No cloud billing transactions recorded. Local simulations run entirely within your local/browser
+                      environment without credit consumption.
                     </td>
                   </tr>
                 ) : (
@@ -442,7 +704,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                       <td
                         style={{
                           fontWeight: "700",
-                          color: tx.amount >= 0 ? "#3fb950" : "#f85149",
+                          color: tx.amount >= 0 ? "var(--ms-success)" : "var(--ms-danger)",
                         }}
                       >
                         {tx.amount >= 0 ? `+${tx.amount.toFixed(2)}` : tx.amount.toFixed(2)} cr

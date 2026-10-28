@@ -33,7 +33,7 @@ const BannerContainer = styled.div`
   -webkit-backdrop-filter: blur(8px);
   font-size: 12px;
   font-weight: 500;
-  color: #e6edf3;
+  color: var(--ms-text-1);
   animation: ${slideDown} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 `;

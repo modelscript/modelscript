@@ -89,17 +89,33 @@ export function resolvePackageParams(params: {
   name?: string | undefined;
   version?: string | undefined;
   className?: string | undefined;
+  first?: string | undefined;
+  second?: string | undefined;
 }): {
   name: string | undefined;
   version: string | undefined;
   className: string | undefined;
 } {
-  const rawScope = params.scope ? decodeURIComponent(params.scope) : undefined;
-  const rawName = params.name ? decodeURIComponent(params.name) : undefined;
+  let scope = params.scope;
+  let name = params.name;
+  let version = params.version;
+
+  if (params.first !== undefined && params.second !== undefined) {
+    if (params.first.startsWith("@")) {
+      scope = params.first;
+      name = params.second;
+    } else {
+      name = params.first;
+      version = params.second;
+    }
+  }
+
+  const rawScope = scope ? decodeURIComponent(scope) : undefined;
+  const rawName = name ? decodeURIComponent(name) : undefined;
   const fullName = rawScope && rawName ? `${rawScope}/${rawName}` : rawName;
   return {
     name: fullName,
-    version: params.version ? decodeURIComponent(params.version) : undefined,
+    version: version ? decodeURIComponent(version) : undefined,
     className: params.className ? decodeURIComponent(params.className) : undefined,
   };
 }

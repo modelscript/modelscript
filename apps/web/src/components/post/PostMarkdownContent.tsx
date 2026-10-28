@@ -309,7 +309,7 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
 
   .msx-code-diagram {
     padding: 16px;
-    background: #010409;
+    background: var(--ms-bg);
     display: flex;
     align-items: center;
     justify-content: center;

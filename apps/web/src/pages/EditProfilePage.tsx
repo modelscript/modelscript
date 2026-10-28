@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon } from "@primer/octicons-react";
-import { Button, Flash, Heading, Spinner, TextInput, Textarea } from "@primer/react";
+import { Button, Flash, Spinner, TextInput, Textarea } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUserProfile, updateUserProfile } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
+import PageHeader from "../components/PageHeader";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 
@@ -94,14 +93,7 @@ const EditProfilePage: React.FC = () => {
 
   return (
     <Box minHeight="100vh" style={{ paddingBottom: "100px" }}>
-      <StickyHeader style={{ gap: "16px", padding: "12px 16px" }}>
-        <CircleIconButton onClick={() => navigate(-1)} aria-label="Go Back">
-          <ArrowLeftIcon size={20} />
-        </CircleIconButton>
-        <Heading as="h2" style={{ fontSize: "20px", margin: 0, fontWeight: 700 }}>
-          Edit Profile
-        </Heading>
-      </StickyHeader>
+      <PageHeader back title="Edit Profile" />
 
       <Box p={4} maxWidth="640px" mx="auto">
         {error && (

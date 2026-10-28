@@ -71,7 +71,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             </Box>
             <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
               <span style={{ color: "var(--color-fg-muted)" }}>Execution Engine</span>
-              <span style={{ color: viewConfig.hasWasm ? "#22d3ee" : "#8b949e" }}>
+              <span style={{ color: viewConfig.hasWasm ? "#22d3ee" : "var(--ms-text-3)" }}>
                 {viewConfig.hasWasm ? "WASM in-browser" : "Native Binaries"}
               </span>
             </Box>

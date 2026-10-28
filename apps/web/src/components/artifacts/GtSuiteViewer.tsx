@@ -290,13 +290,19 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           <ChartCanvas>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={pvData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="volumeCc" stroke="#8b949e" tick={{ fontSize: 11 }} unit="cc" name="Cylinder Volume" />
-                <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} unit="bar" name="Pressure" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
+                <XAxis
+                  dataKey="volumeCc"
+                  stroke="var(--ms-text-3)"
+                  tick={{ fontSize: 11 }}
+                  unit="cc"
+                  name="Cylinder Volume"
+                />
+                <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} unit="bar" name="Pressure" />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#161b22",
-                    borderColor: "#30363d",
+                    backgroundColor: "var(--ms-bg-alt)",
+                    borderColor: "var(--ms-border)",
                     borderRadius: "6px",
                     fontSize: "12px",
                   }}

@@ -727,7 +727,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
                   <text x="50" y="25" fill="#22d3ee" fontSize="11" fontFamily="monospace">
                     Trajectory: y(t) [Step Response]
                   </text>
-                  <text x="440" y="185" fill="#8b949e" fontSize="10" fontFamily="monospace">
+                  <text x="440" y="185" fill="var(--ms-text-3)" fontSize="10" fontFamily="monospace">
                     t = 5.0s
                   </text>
                 </svg>

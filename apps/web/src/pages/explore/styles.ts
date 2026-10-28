@@ -13,7 +13,7 @@ export const SearchHeader = styled.div`
   z-index: 10;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  background: rgba(6, 8, 15, 0.85);
+  background: var(--surface-hud);
   border-bottom: 1px solid var(--color-border);
 `;
 

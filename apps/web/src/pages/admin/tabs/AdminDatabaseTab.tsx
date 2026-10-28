@@ -59,7 +59,7 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
             style={{
               fontSize: "24px",
               fontWeight: 800,
-              color: pendingCount > 0 ? "#d29922" : "#3fb950",
+              color: pendingCount > 0 ? "#d29922" : "var(--ms-success)",
             }}
           >
             {pendingCount}
@@ -112,7 +112,7 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
               </Box>
               {dbVerifyResult.issues && dbVerifyResult.issues.length > 0 && (
                 <Box mt={2}>
-                  <ul style={{ paddingLeft: "20px", fontSize: "13px", color: "#f85149" }}>
+                  <ul style={{ paddingLeft: "20px", fontSize: "13px", color: "var(--ms-danger)" }}>
                     {dbVerifyResult.issues.map((iss, i) => (
                       <li key={i}>{iss}</li>
                     ))}

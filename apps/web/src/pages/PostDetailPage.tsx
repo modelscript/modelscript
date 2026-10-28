@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Heading, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { getPost, getPostParents, getPostReplies, recordPostView } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
+import PageHeader from "../components/PageHeader";
 import type { PostItem } from "../types/api";
 import {
   estimateReadingTimeMinutes,
@@ -21,7 +20,6 @@ import { PostDetailThreadView, SplitContainer, TutorialGuideDockPane } from "./p
 
 const PostDetailPage: React.FC = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { token, user } = useAuth();
   const [post, setPost] = useState<PostItem | null>(null);
   const isNotebook = useMemo(() => (post ? isNotebookPost(post) : false), [post]);
@@ -239,14 +237,7 @@ const PostDetailPage: React.FC = () => {
 
   return (
     <Box minHeight="100vh" style={{ paddingBottom: "200px" }}>
-      <StickyHeader style={{ gap: "24px", padding: "12px 16px" }}>
-        <CircleIconButton onClick={() => navigate(-1)} aria-label="Go back">
-          <ArrowLeftIcon size={20} />
-        </CircleIconButton>
-        <Heading as="h2" style={{ fontSize: "18px", margin: 0, fontWeight: 700, color: "var(--color-text-heading)" }}>
-          {isNotebook ? "Engineering Tutorial" : (post as any).artifact_view_id ? "Engineering Inspector" : "Thread"}
-        </Heading>
-      </StickyHeader>
+      <PageHeader back title={isNotebook ? "Engineering Tutorial" : "Post"} />
 
       {isNotebook && notebookData ? (
         <SplitContainer>

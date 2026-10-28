@@ -483,8 +483,8 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                       sx={{
                         transition: "all 0.2s ease",
                         "&:hover": {
-                          backgroundColor: "rgba(255, 255, 255, 0.05)",
-                          borderColor: "var(--color-accent-purple)",
+                          backgroundColor: "var(--ms-surface-hover)",
+                          borderColor: "var(--ms-brand)",
                         },
                       }}
                     >

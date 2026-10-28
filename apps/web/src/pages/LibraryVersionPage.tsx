@@ -100,7 +100,12 @@ const VersionName = styled.span`
 /* ─── main page ─── */
 
 const LibraryVersionPage: React.FC = () => {
-  const rawParams = useParams<{ scope?: string | undefined; name?: string | undefined }>();
+  const rawParams = useParams<{
+    scope?: string | undefined;
+    name?: string | undefined;
+    first?: string | undefined;
+    second?: string | undefined;
+  }>();
   const { name } = resolvePackageParams(rawParams);
   usePageTitle(name ? `${name} — Versions` : "Versions");
   const [library, setLibrary] = useState<Library | null>(null);

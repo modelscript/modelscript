@@ -256,11 +256,11 @@ export const ParityChip = styled.div<{ $status: "compatible" | "warning" | "inco
   color: ${(props) => {
     switch (props.$status) {
       case "compatible":
-        return "#3fb950";
+        return "var(--ms-success)";
       case "warning":
         return "#d29922";
       case "incompatible":
-        return "#f85149";
+        return "var(--ms-danger)";
     }
   }};
 `;

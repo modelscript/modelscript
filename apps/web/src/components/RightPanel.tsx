@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useEffect, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   getClusterStatus,
   getPopularRepos,
@@ -21,7 +21,6 @@ import {
   LegalModal,
   PanelContainer,
   PopularReposCard,
-  SearchFiltersCard,
   SuggestedUsersCard,
   TrendingTopicsCard,
   WalletCard,
@@ -47,8 +46,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   const [legalModal, setLegalModal] = useState<"terms" | "privacy" | "cookies" | null>(null);
   const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
   const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const query = searchParams.get("q") || "";
 
   const panelRef = useRef<HTMLElement>(null);
   const [panelTop, setPanelTop] = useState(0);
@@ -157,8 +154,6 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     >
       <AiSearchHeader onOpenCommandPalette={onOpenCommandPalette} />
 
-      {(location.pathname === "/explore" || query) && <SearchFiltersCard />}
-
       {!user && <AuthPromptCard />}
 
       {user && hasBilling && <WalletCard creditBalance={creditBalance} />}
@@ -173,11 +168,13 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
         />
       )}
 
-      <TrendingTopicsCard
-        trending={trending}
-        activeTrendMenu={activeTrendMenu}
-        setActiveTrendMenu={setActiveTrendMenu}
-      />
+      {location.pathname !== "/explore" && (
+        <TrendingTopicsCard
+          trending={trending}
+          activeTrendMenu={activeTrendMenu}
+          setActiveTrendMenu={setActiveTrendMenu}
+        />
+      )}
 
       {user && <SuggestedUsersCard suggestions={suggestions} currentUsername={user.username} />}
 

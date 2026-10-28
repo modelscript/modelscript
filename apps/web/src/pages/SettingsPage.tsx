@@ -18,6 +18,7 @@ import { DataArchiveTab } from "./settings/tabs/DataArchiveTab";
 import { DisplayAndPreferencesTab } from "./settings/tabs/DisplayAndPreferencesTab";
 import { ModelingPreferencesTab } from "./settings/tabs/ModelingPreferencesTab";
 import { NotificationFiltersTab } from "./settings/tabs/NotificationFiltersTab";
+import { OrganizationTab } from "./settings/tabs/OrganizationTab";
 import { PrivacyTab } from "./settings/tabs/PrivacyTab";
 import { SecurityTab } from "./settings/tabs/SecurityTab";
 import { TokensTab } from "./settings/tabs/TokensTab";
@@ -71,16 +72,21 @@ const MobileBackBar = styled.button`
 `;
 
 const Header = styled.div`
-  padding: 16px;
-  font-size: 20px;
-  font-weight: 800;
+  padding: 0 16px;
+  min-height: 53px;
+  font-size: var(--text-xl, 20px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text-heading);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   position: sticky;
-  top: 0;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
+  top: var(--dev-header-height, 0px);
+  background: var(--surface-hud);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--color-border);
   z-index: 10;
 `;
 
@@ -141,6 +147,7 @@ export type TabType =
   | "deleteAccount"
   | "notificationFilters"
   | "modelingPreferences"
+  | "organizations"
   | "tokens";
 
 const SettingsPage: React.FC = () => {
@@ -155,7 +162,6 @@ const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   usePageTitle("Settings");
 
-  const hasBilling = useFeatureFlag("billing_stripe_live");
   const hasBots = useFeatureFlag("bot_accounts");
 
   React.useEffect(() => {
@@ -218,17 +224,20 @@ const SettingsPage: React.FC = () => {
               keywords: "2fa security access keys ssh token sessions",
               isActive: activeTab === "security",
             },
-            ...(hasBilling
-              ? [
-                  {
-                    id: "billing",
-                    label: "Billing & Compute Quotas",
-                    tab: "billing" as TabType,
-                    keywords: "billing quota compute invoice payment usage",
-                    isActive: activeTab === "billing",
-                  },
-                ]
-              : []),
+            {
+              id: "billing",
+              label: "Subscription & Compute Quotas",
+              tab: "billing" as TabType,
+              keywords: "billing quota compute invoice payment usage subscription commercial license plan credits tier",
+              isActive: activeTab === "billing",
+            },
+            {
+              id: "organizations",
+              label: "Team & Organizations",
+              tab: "organizations" as TabType,
+              keywords: "team organization organizations company seats members invite roles collaborate license",
+              isActive: activeTab === "organizations",
+            },
             ...(hasBots
               ? [
                   {
@@ -353,6 +362,12 @@ const SettingsPage: React.FC = () => {
         )}
         {activeTab === "dataArchive" && <DataArchiveTab onBack={() => handleTabChange("privacy")} />}
         {activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}
+        {activeTab === "organizations" && (
+          <OrganizationTab
+            onBack={handleMobileOrAccountBack}
+            onNavigateTab={(tab) => handleTabChange(tab as TabType)}
+          />
+        )}
         {activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
         {activeTab === "tokens" && <TokensTab onBack={handleMobileOrAccountBack} />}
         {activeTab === "modelingPreferences" && <ModelingPreferencesTab />}

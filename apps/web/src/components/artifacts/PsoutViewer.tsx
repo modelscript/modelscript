@@ -256,13 +256,13 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
         ) : viewMode === "plot" && waveformData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={waveformData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-              <XAxis dataKey={timeKey} stroke="#8b949e" tick={{ fontSize: 11 }} />
-              <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
+              <XAxis dataKey={timeKey} stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
+              <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#161b22",
-                  borderColor: "#30363d",
+                  backgroundColor: "var(--ms-bg-alt)",
+                  borderColor: "var(--ms-border)",
                   borderRadius: "6px",
                   fontSize: "12px",
                 }}

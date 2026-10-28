@@ -2,7 +2,7 @@
 
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
@@ -52,6 +52,19 @@ const TermsPage = React.lazy(() => import("./pages/TermsPage"));
 const VerifyEmailPage = React.lazy(() => import("./pages/VerifyEmailPage"));
 const TemplateDetailPage = React.lazy(() => import("./pages/TemplateDetailPage"));
 const WorkspacePage = React.lazy(() => import("./pages/WorkspacePage"));
+
+/**
+ * Disambiguates two-segment package routes `/packages/:first/:second`:
+ * - If `first` starts with `@` (e.g. `@scope/name`), it's a scoped package version list -> LibraryVersionPage.
+ * - Otherwise (e.g. `Modelica/4.1.0`), it's an unscoped package detail page -> PackageDetailPage.
+ */
+function PackageTwoSegmentRoute() {
+  const { first } = useParams<{ first?: string }>();
+  if (first?.startsWith("@")) {
+    return <LibraryVersionPage />;
+  }
+  return <PackageDetailPage />;
+}
 
 /**
  * Skeleton loading placeholder rendered while lazy-loaded route bundles are fetched.
@@ -285,8 +298,7 @@ function App() {
                     {/* Package browser (unscoped & @scope/name) */}
                     <Route path="/packages" element={<LibraryListPage />} />
                     <Route path="/packages/:name" element={<LibraryVersionPage />} />
-                    <Route path="/packages/:scope/:name" element={<LibraryVersionPage />} />
-                    <Route path="/packages/:name/:version" element={<PackageDetailPage />} />
+                    <Route path="/packages/:first/:second" element={<PackageTwoSegmentRoute />} />
                     <Route path="/packages/:scope/:name/:version" element={<PackageDetailPage />} />
                     <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
                     <Route path="/packages/:scope/:name/:version/classes/:className" element={<ClassDetailPage />} />

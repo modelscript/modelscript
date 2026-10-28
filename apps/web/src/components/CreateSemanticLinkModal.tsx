@@ -387,7 +387,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
           <ParityCard $status={parity.status}>
             {parity.status === "compatible" && (
               <span style={{ flexShrink: 0, display: "inline-flex" }}>
-                <CheckCircleFillIcon size={20} fill="#3fb950" />
+                <CheckCircleFillIcon size={20} fill="var(--ms-success)" />
               </span>
             )}
             {parity.status === "warning" && (
@@ -397,7 +397,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
             )}
             {parity.status === "incompatible" && (
               <span style={{ flexShrink: 0, display: "inline-flex" }}>
-                <XCircleFillIcon size={20} fill="#f85149" />
+                <XCircleFillIcon size={20} fill="var(--ms-danger)" />
               </span>
             )}
 

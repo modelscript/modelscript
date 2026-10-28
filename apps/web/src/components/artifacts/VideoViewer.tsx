@@ -113,7 +113,7 @@ const ProgressBar = styled.input`
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #06b6d4;
+    background: var(--ms-accent-cyan);
     cursor: pointer;
   }
 `;
@@ -251,7 +251,7 @@ const VideoViewer: React.FC<VideoViewerProps> = ({ viewConfig, isFullScreen }) =
             style={{
               background: isLoop ? "rgba(6, 182, 212, 0.15)" : undefined,
               borderColor: isLoop ? "rgba(6, 182, 212, 0.4)" : undefined,
-              color: isLoop ? "#06b6d4" : undefined,
+              color: isLoop ? "var(--ms-accent-cyan)" : undefined,
             }}
           >
             Loop

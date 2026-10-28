@@ -140,7 +140,7 @@ const SolverBadge = styled.span<{ $solver: string }>`
       : props.$solver === "su2"
         ? "var(--color-accent-purple)"
         : props.$solver === "openfoam"
-          ? "#3fb950"
+          ? "var(--ms-success)"
           : "#d29922"};
 `;
 
@@ -329,7 +329,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
                     </Box>
                     <Box display="flex" gap={2} alignItems="center">
                       <SolverBadge $solver={job.solver}>{job.solver}</SolverBadge>
-                      {isSelected && <CheckCircleIcon size={18} fill="#3fb950" />}
+                      {isSelected && <CheckCircleIcon size={18} fill="var(--ms-success)" />}
                     </Box>
                   </Box>
 
@@ -343,7 +343,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
                     </ProfileChip>
                     {job.cpuSeconds > 0 && <ProfileChip>⏱ {job.cpuSeconds.toFixed(1)}s wall clock</ProfileChip>}
                     {job.hasVtu && (
-                      <ProfileChip style={{ color: "#3fb950", borderColor: "rgba(63, 185, 80, 0.3)" }}>
+                      <ProfileChip style={{ color: "var(--ms-success)", borderColor: "rgba(63, 185, 80, 0.3)" }}>
                         <FlameIcon size={12} /> 3D VTU Ready
                       </ProfileChip>
                     )}

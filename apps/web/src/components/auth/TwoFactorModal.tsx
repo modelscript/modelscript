@@ -193,7 +193,7 @@ const ActionButton = styled.button<{ $variant?: "primary" | "danger" | undefined
 const ErrorBanner = styled.div`
   background: rgba(248, 81, 73, 0.12);
   border: 1px solid rgba(248, 81, 73, 0.4);
-  color: #f85149;
+  color: var(--ms-danger);
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 13px;

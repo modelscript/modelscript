@@ -214,7 +214,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
           <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">
             <img
               src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-              alt="Morsel"
+              alt="ModelScript"
               style={{ marginBottom: 8 }}
             />
           </a>

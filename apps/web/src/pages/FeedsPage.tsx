@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlusIcon, RssIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
-import { Button, Dialog, Heading, Text } from "@primer/react";
+import { Button, Dialog, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { getFeeds, subscribeFeed, unsubscribeFeed } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
+import PageHeader from "../components/PageHeader";
+import { CircleIconButton } from "../components/SharedStyles";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 
@@ -175,15 +176,15 @@ const FeedsPage: React.FC = () => {
 
   return (
     <Box>
-      <StickyHeader style={{ justifyContent: "space-between" }}>
-        <Heading as="h2" style={{ fontSize: "20px", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-          <RssIcon size={24} />
-          RSS Feeds
-        </Heading>
-        <Text color="var(--color-fg-muted)" fontSize="14px">
-          {feeds.length} / 10
-        </Text>
-      </StickyHeader>
+      <PageHeader
+        title="RSS Feeds"
+        icon={<RssIcon size={20} />}
+        actions={
+          <Text color="var(--color-fg-muted)" fontSize="14px">
+            {feeds.length} / 10
+          </Text>
+        }
+      />
 
       <InputSection onSubmit={handleSubscribe}>
         <FeedInput

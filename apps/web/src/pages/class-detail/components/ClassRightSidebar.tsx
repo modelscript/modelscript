@@ -4,7 +4,7 @@ import { CheckCircleFillIcon, CpuIcon, GearIcon, PackageIcon } from "@primer/oct
 import { Button, Label, NavList, Text, Truncate } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
-import { getIconUrl } from "../../../api";
+import { getDiagramUrl, getIconUrl } from "../../../api";
 import Box from "../../../components/Box";
 import { resolveTypeTargetUrl } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
@@ -43,16 +43,106 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
   onSelectMember,
   onNavigate,
 }) => {
+  const isModelica = libraryName.toLowerCase().includes("modelica");
+  const isModelicaNoDiagram =
+    isModelica &&
+    (cls.classKind === "package" ||
+      cls.classKind === "type" ||
+      cls.classKind === "record" ||
+      cls.classKind === "function" ||
+      !cls.components?.some((c) => {
+        const k = (c.classKind || "").toLowerCase();
+        return (
+          k === "model" ||
+          k === "block" ||
+          (!k && c.type_name && !["Real", "Integer", "Boolean", "String"].includes(c.type_name))
+        );
+      }));
+  const hasDiagram = !isModelicaNoDiagram;
+
+  const [activePreview, setActivePreview] = React.useState<"icon" | "diagram">("icon");
+  const currentPreview = hasDiagram ? activePreview : "icon";
+  const iconUrl = `${getIconUrl(libraryName, version, className)}?v=${version}&t=${retryCount}`;
+  const diagramUrl = `${getDiagramUrl(libraryName, version, className)}?v=${version}&t=${retryCount}`;
+
   return (
     <aside>
-      {/* Class icon */}
-      <ClassIconBox>
-        <InvertedSvg
-          src={`${getIconUrl(libraryName, version, className)}?t=${retryCount}`}
-          alt=""
-          fallback={<PackageIcon size={32} />}
-        />
-      </ClassIconBox>
+      {/* Class Visual Preview Box */}
+      <Box mb={3}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <SectionTitle as="h3" style={{ margin: 0 }}>
+            {hasDiagram ? "Visual Preview" : "Class Icon"}
+          </SectionTitle>
+          {hasDiagram && (
+            <Box display="flex" gap={1}>
+              <button
+                onClick={() => setActivePreview("icon")}
+                title="Component Icon View"
+                style={{
+                  background:
+                    currentPreview === "icon" ? "var(--color-accent-cyan, #06b6d4)" : "rgba(255, 255, 255, 0.05)",
+                  color: currentPreview === "icon" ? "#ffffff" : "var(--color-text-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                Icon
+              </button>
+              <button
+                onClick={() => setActivePreview("diagram")}
+                title="Schematic Diagram View"
+                style={{
+                  background:
+                    currentPreview === "diagram" ? "var(--color-accent-cyan, #06b6d4)" : "rgba(255, 255, 255, 0.05)",
+                  color: currentPreview === "diagram" ? "#ffffff" : "var(--color-text-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                Diagram
+              </button>
+            </Box>
+          )}
+        </Box>
+        <ClassIconBox>
+          <InvertedSvg
+            key={currentPreview}
+            src={currentPreview === "icon" ? iconUrl : diagramUrl}
+            alt={`${className} ${currentPreview}`}
+            fallback={
+              <Box
+                display="flex"
+                flexDirection="column"
+                alignItems="center"
+                justifyContent="center"
+                gap={2}
+                style={{
+                  padding: "16px",
+                  textAlign: "center",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                <PackageIcon size={32} />
+                <span
+                  style={{ fontSize: "11px", fontFamily: "var(--font-mono, monospace)", textTransform: "uppercase" }}
+                >
+                  {cls.classKind} · {className.split(".").pop()}
+                </span>
+              </Box>
+            }
+          />
+        </ClassIconBox>
+      </Box>
 
       {/* Class info */}
       <SectionTitle as="h3">Class Details</SectionTitle>
@@ -149,8 +239,8 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
                   </Label>
                 </Box>
                 <Box display="flex" alignItems="center" gap={1} mt={1}>
-                  <CheckCircleFillIcon size={12} fill="#3fb950" />
-                  <Text style={{ fontSize: 11, color: "#3fb950" }}>Unit Parity Verified</Text>
+                  <CheckCircleFillIcon size={12} fill="var(--ms-success)" />
+                  <Text style={{ fontSize: 11, color: "var(--ms-success)" }}>Unit Parity Verified</Text>
                 </Box>
               </DetailRow>
             )}

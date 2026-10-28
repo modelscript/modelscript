@@ -372,7 +372,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                           <td
                             style={{
                               padding: "10px 12px",
-                              color: isAdded ? "#3fb950" : isModified ? "#06b6d4" : "inherit",
+                              color: isAdded ? "var(--ms-success)" : isModified ? "var(--ms-accent-cyan)" : "inherit",
                               fontWeight: 600,
                             }}
                           >
@@ -381,7 +381,14 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                           <td style={{ padding: "10px 12px" }}>
                             {delta.delta !== undefined ? (
                               <span
-                                style={{ color: delta.delta > 0 ? "#3fb950" : delta.delta < 0 ? "#f85149" : "inherit" }}
+                                style={{
+                                  color:
+                                    delta.delta > 0
+                                      ? "var(--ms-success)"
+                                      : delta.delta < 0
+                                        ? "var(--ms-danger)"
+                                        : "inherit",
+                                }}
                               >
                                 {delta.delta > 0 ? `+${delta.delta}` : delta.delta}
                               </span>
@@ -394,7 +401,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                               <span
                                 style={{
                                   fontWeight: 600,
-                                  color: delta.pctChange.startsWith("+") ? "#3fb950" : "#f85149",
+                                  color: delta.pctChange.startsWith("+") ? "var(--ms-success)" : "var(--ms-danger)",
                                 }}
                               >
                                 {delta.pctChange}

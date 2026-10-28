@@ -236,7 +236,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
     return DOMPurify.sanitize(`
       <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
         <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        <text x="24" y="30" fill="#f0f6fc" font-size="12" font-weight="bold" font-family="monospace">CFD DOMAIN // ${title}</text>
+        <text x="24" y="30" fill="var(--ms-text-1)" font-size="12" font-weight="bold" font-family="monospace">CFD DOMAIN // ${title}</text>
         <text x="24" y="48" fill="#38bdf8" font-size="11" font-family="monospace">Solver: ${solver || "N/A"}${turbModel ? ` (${turbModel})` : ""}${machNumber !== undefined ? ` | Mach: ${machNumber}` : ""}${aoaDeg !== undefined ? ` | AoA: ${aoaDeg}°` : ""}</text>
         <rect x="60" y="70" width="530" height="230" rx="10" fill="rgba(30, 41, 59, 0.4)" stroke="#38bdf8" stroke-dasharray="6 4" stroke-width="1.5" />
         <g stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6">

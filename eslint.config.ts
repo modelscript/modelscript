@@ -266,6 +266,36 @@ export default defineConfig([
     },
   },
   {
+    // Design-token guard: the GitHub-dark palette hexes below do not follow the
+    // light/dark theme. Use the shared `--ms-*` tokens (packages/design-tokens).
+    files: ["apps/web/src/**/*.{ts,tsx}"],
+    ignores: [
+      "apps/web/src/components/morsel/**",
+      "apps/web/src/components/artifacts/{VegaViewer,MermaidViewer,SimulationPlotViewer,CadDiffViewer,DigitalTwinDashboardViewer,ModelicaDiagramViewer}.tsx",
+      "apps/web/src/components/terminal/AnsiRenderer.tsx",
+      "apps/web/src/components/artifacts/{MultibodyViewport3D,AudioViewer}.tsx",
+      "apps/web/src/pages/libraries/constants.ts",
+      "apps/web/src/pages/package/hooks/usePackageData.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector:
+            "Literal[value=/#(30363d|8b949e|0d1117|010409|161b22|21262d|e6edf3|f0f6fc|c9d1d9|3fb950|f85149)/i]:not([value=/var\\(--[a-z-]+, ?#/])",
+          message:
+            "Use a theme token (e.g. var(--ms-border), var(--ms-text-3)) instead of a hard-coded dark-theme colour.",
+        },
+        {
+          selector:
+            "TemplateElement[value.raw=/#(30363d|8b949e|0d1117|010409|161b22|21262d|e6edf3|f0f6fc|c9d1d9|3fb950|f85149)/i]:not([value.raw=/var\\(--[a-z-]+, ?#/])",
+          message:
+            "Use a theme token (e.g. var(--ms-border), var(--ms-text-3)) instead of a hard-coded dark-theme colour.",
+        },
+      ],
+    },
+  },
+  {
     files: ["apps/web/src/components/morsel/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",

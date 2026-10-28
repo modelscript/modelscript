@@ -175,8 +175,10 @@ export function renderLine(svg: Svg | G, graphicItem: ILine): Line | Path | Poly
   let shape;
   if (graphicItem.smooth === Smooth.BEZIER) {
     shape = svg.path(convertSmoothPath(graphicItem.points));
+    shape.fill("none");
   } else {
     shape = svg.polyline(graphicItem?.points?.map((e) => convertPoint(e)) ?? []);
+    shape.fill("none");
   }
   applyLineArrows(shape, graphicItem);
   applyLineColor(shape, graphicItem);
@@ -235,19 +237,32 @@ export function renderText(
 }
 
 export function applyCoordinateSystem(svg: Svg, coordinateSystem?: ICoordinateSystem): void {
-  const [x, y] = convertPoint(coordinateSystem?.extent?.[0], [-100, -100]);
-  const width = computeWidth(coordinateSystem?.extent);
-  const height = computeHeight(coordinateSystem?.extent);
-  svg.viewbox(x, y, width, height);
+  const extent = coordinateSystem?.extent;
+  const minX = Math.min(extent?.[0]?.[0] ?? -100, extent?.[1]?.[0] ?? 100);
+  const maxX = Math.max(extent?.[0]?.[0] ?? -100, extent?.[1]?.[0] ?? 100);
+  const minY = Math.min(extent?.[0]?.[1] ?? -100, extent?.[1]?.[1] ?? 100);
+  const maxY = Math.max(extent?.[0]?.[1] ?? -100, extent?.[1]?.[1] ?? 100);
+  const width = maxX - minX;
+  const height = maxY - minY;
+  svg.viewbox(minX, -maxY, width, height);
 }
 
 export function applyExtent(shape: Shape, extent?: IExtent): void {
   if (extent == null) return;
-  const [x, y] = convertPoint(extent?.[0]);
-  const width = computeWidth(extent);
-  const height = computeHeight(extent);
-  shape.move(x, y);
-  shape.size(width, height);
+  const minX = Math.min(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
+  const maxX = Math.max(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
+  const minY = Math.min(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
+  const maxY = Math.max(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  if (shape.type === "ellipse") {
+    (shape as Ellipse).radius(width / 2, height / 2);
+    (shape as Ellipse).center((minX + maxX) / 2, -(minY + maxY) / 2);
+  } else {
+    shape.move(minX, -maxY);
+    shape.size(width, height);
+  }
 }
 
 export function applyFillColor(shape: Shape, graphicItem: IFilledShape): void {
@@ -456,7 +471,7 @@ export function applyLineThickness(shape: Shape, graphicItem: IFilledShape | ILi
   } else {
     lineThickness = (graphicItem as IFilledShape).lineThickness;
   }
-  shape.attr("stroke-width", lineThickness ?? 0.25);
+  shape.attr("stroke-width", Math.max(1, lineThickness ?? 1));
   shape.attr("vector-effect", "non-scaling-stroke");
 }
 
@@ -522,7 +537,7 @@ export function applyTextString(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance | ModelicaComponentInstance,
 ): void {
-  let str = graphicItem.string ?? "";
+  let str = graphicItem.string ?? (graphicItem as any).textString ?? "";
   if (str.includes("%")) {
     str = str.replace(/%name/g, classInstance?.name ?? "");
     str = str.replace(/%comment/g, classInstance?.["description"] ?? "");

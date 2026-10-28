@@ -75,7 +75,7 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
               ? clusterInfo.backend === "slurm-rest" || clusterInfo.backend === "slurm"
                 ? `${clusterInfo.nodesCount || 0} NODES`
                 : "ONLINE"
-              : "OFFLINE"}
+              : "LOCAL WASM"}
           </span>
           <button
             onClick={onRefresh}
@@ -219,10 +219,12 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
               <ServerIcon size={18} />
             </div>
             <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-              Cluster Ready &amp; Idle
+              {clusterInfo?.connected ? "Cluster Ready & Idle" : "Local WASM Solver Ready"}
             </div>
             <div style={{ fontSize: "11px", color: "var(--color-text-muted)", maxWidth: 220, lineHeight: 1.4 }}>
-              No active simulations. Run batched SUNDIALS CVODE, SU2 CFD, or CalculiX FEA.
+              {clusterInfo?.connected
+                ? "No active simulations. Run batched SUNDIALS CVODE, SU2 CFD, or CalculiX FEA."
+                : "Zero-latency in-browser DAE solver active. Scale to Slurm HPC for distributed sweeps."}
             </div>
             <CloudRunButton onClick={onOpenSimModal}>
               <PlayIcon size={12} />

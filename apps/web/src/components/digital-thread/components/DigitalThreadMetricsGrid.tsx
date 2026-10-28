@@ -22,8 +22,8 @@ export const DigitalThreadMetricsGrid: React.FC<DigitalThreadMetricsGridProps> =
 
       <MetricCard>
         <MetricLabel>Physical Quantity Parity</MetricLabel>
-        <MetricValue style={{ color: "#3fb950" }}>
-          <CheckCircleFillIcon size={24} fill="#3fb950" />
+        <MetricValue style={{ color: "var(--ms-success)" }}>
+          <CheckCircleFillIcon size={24} fill="var(--ms-success)" />
           {`${metrics.parityRate}%`}
         </MetricValue>
       </MetricCard>

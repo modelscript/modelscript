@@ -89,9 +89,17 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
 }) => {
   const [copiedInstall, setCopiedInstall] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [installTab, setInstallTab] = useState<"cli" | "manifest" | "import">("cli");
+
+  const currentSnippet =
+    installTab === "cli"
+      ? installCmd
+      : installTab === "manifest"
+        ? `"${name}": "^${version}"`
+        : `import { ${name} } from "@modelscript/${name}";`;
 
   const handleCopyInstall = () => {
-    navigator.clipboard.writeText(installCmd);
+    navigator.clipboard.writeText(currentSnippet);
     setCopiedInstall(true);
     setTimeout(() => setCopiedInstall(false), 2000);
   };
@@ -106,9 +114,44 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
 
   return (
     <aside style={{ display: "flex", flexDirection: "column" }}>
-      <MetaLabel style={{ marginBottom: 12 }}>Install</MetaLabel>
-      <InstallBox onClick={handleCopyInstall} title="Click to copy">
-        <code>{installCmd}</code>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <MetaLabel style={{ marginBottom: 0 }}>Install</MetaLabel>
+        <div
+          style={{
+            display: "inline-flex",
+            background: "var(--color-canvas-subtle, rgba(255,255,255,0.05))",
+            borderRadius: 6,
+            padding: 2,
+            border: "1px solid var(--color-border-subtle, rgba(255,255,255,0.08))",
+          }}
+        >
+          {(["cli", "manifest", "import"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setInstallTab(tab)}
+              style={{
+                background: installTab === tab ? "var(--color-bg-card, rgba(255,255,255,0.15))" : "transparent",
+                border: "none",
+                borderRadius: 4,
+                padding: "2px 8px",
+                fontSize: 11,
+                fontWeight: installTab === tab ? 600 : 400,
+                color: installTab === tab ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {tab.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+      <InstallBox onClick={handleCopyInstall} title="Click to copy snippet">
+        <code style={{ fontSize: 12 }}>
+          {installTab === "cli" && <span style={{ color: "var(--color-text-muted)" }}>&gt;&nbsp;</span>}
+          {currentSnippet}
+        </code>
         <span className="copy-icon">{copiedInstall ? <VerifiedIcon size={16} /> : <CopyIcon size={16} />}</span>
       </InstallBox>
 
@@ -122,14 +165,15 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           width: "100%",
           padding: "10px 16px",
           borderRadius: "8px",
-          background: "var(--gradient-cta)",
+          background: "linear-gradient(135deg, var(--color-accent-emphasis, #0969da), #2563eb)",
           color: "white",
           fontSize: "14px",
           fontWeight: 600,
           textDecoration: "none",
           marginBottom: "16px",
-          boxShadow: "var(--glow-ai-sm)",
+          boxShadow: "0 2px 8px rgba(9, 105, 218, 0.25)",
           boxSizing: "border-box",
+          transition: "all 0.2s ease",
         }}
       >
         <CodeIcon size={16} />
@@ -140,85 +184,90 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
       {name && version && (
         <MetaBlock style={{ marginBottom: 16 }}>
           <MetaLabel style={{ marginBottom: 8 }}>Download &amp; Export</MetaLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <a
               href={getPackageDownloadUrl(name, version)}
               download
               style={{
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "6px 10px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 600,
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
                 background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
                 textDecoration: "none",
+                transition: "all 0.15s ease",
               }}
-              title="Download raw package ZIP archive"
+              title="Download complete package ZIP archive"
             >
-              <FileZipIcon size={13} />
-              <span>Archive (.zip)</span>
+              <FileZipIcon size={16} style={{ color: "#eab308", flexShrink: 0 }} />
+              <div style={{ minWidth: 0, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Source</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.zip archive</div>
+              </div>
             </a>
             <a
               href={getPackageAasxExportUrl(name, version)}
               download
               style={{
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "6px 10px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 600,
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
                 background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
                 textDecoration: "none",
+                transition: "all 0.15s ease",
               }}
               title="Export Industry 4.0 Asset Administration Shell (.aasx)"
             >
-              <DownloadIcon size={13} />
-              <span>Twin (.aasx)</span>
+              <DownloadIcon size={16} style={{ color: "#a855f7", flexShrink: 0 }} />
+              <div style={{ minWidth: 0, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Asset Shell</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.aasx twin</div>
+              </div>
             </a>
             <a
               href={getPackageOkhExportUrl(name, version)}
               download
               style={{
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "6px 10px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 600,
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
                 background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
                 textDecoration: "none",
+                transition: "all 0.15s ease",
               }}
               title="Export Open Know-How hardware manifest (.okh.json)"
             >
-              <PackageIcon size={13} />
-              <span>OKH Hardware</span>
+              <PackageIcon size={16} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
+              <div style={{ minWidth: 0, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Hardware</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.okh.json</div>
+              </div>
             </a>
             <a
               href={getPackageSalsaIndexUrl(name, version)}
               download
               style={{
-                display: "inline-flex",
+                display: "flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "6px 10px",
-                borderRadius: 6,
-                fontSize: 12,
-                fontWeight: 600,
+                gap: 8,
+                padding: "8px 10px",
+                borderRadius: 8,
                 background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
                 border: "1px solid var(--color-border)",
                 color: hasSalsaIndex ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)",
                 textDecoration: "none",
+                transition: "all 0.15s ease",
               }}
               title={
                 hasSalsaIndex
@@ -226,8 +275,11 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                   : "Salsa database will be compiled on demand"
               }
             >
-              <DatabaseIcon size={13} />
-              <span>Salsa (.db)</span>
+              <DatabaseIcon size={16} style={{ color: "#3b82f6", flexShrink: 0 }} />
+              <div style={{ minWidth: 0, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Salsa DB</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.db index</div>
+              </div>
             </a>
           </div>
         </MetaBlock>
@@ -309,7 +361,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 gap: 8,
                 padding: "6px 10px",
                 borderRadius: 6,
-                background: "#020408",
+                background: "var(--color-canvas-subtle, rgba(0, 0, 0, 0.25))",
                 border: "1px solid var(--color-border)",
                 fontFamily: "var(--font-mono)",
                 fontSize: 11,

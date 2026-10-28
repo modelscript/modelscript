@@ -273,7 +273,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
               WebkitBackdropFilter: "blur(12px)",
               border: "1px solid rgba(6, 182, 212, 0.4)",
               boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4), 0 0 12px rgba(6, 182, 212, 0.25)",
-              color: "#f0f6fc",
+              color: "var(--ms-text-1)",
               fontSize: 13,
               fontWeight: 600,
               fontFamily: "var(--font-mono, monospace)",

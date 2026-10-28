@@ -235,7 +235,7 @@ export default function VerifyEmailPage() {
 
         {status === "error" && (
           <>
-            <div style={{ color: "#f85149", marginBottom: "16px" }}>
+            <div style={{ color: "var(--ms-danger)", marginBottom: "16px" }}>
               <XCircleIcon size={48} />
             </div>
             <Title>Verification Failed</Title>

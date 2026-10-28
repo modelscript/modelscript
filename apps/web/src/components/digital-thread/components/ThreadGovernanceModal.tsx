@@ -107,9 +107,9 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
                         style={{
                           color:
                             prop.status === "approved" || prop.status === "applied"
-                              ? "#3fb950"
+                              ? "var(--ms-success)"
                               : prop.status === "rejected"
-                                ? "#f85149"
+                                ? "var(--ms-danger)"
                                 : "#d29922",
                         }}
                       />
@@ -200,13 +200,13 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
               alignItems="center"
               gap={2}
             >
-              <VerifiedIcon size={18} fill="#3fb950" />
+              <VerifiedIcon size={18} fill="var(--ms-success)" />
               <div>
                 <Text
                   sx={{
                     fontWeight: 600,
                     fontSize: 13,
-                    color: auditVerification?.valid ? "#3fb950" : "#d29922",
+                    color: auditVerification?.valid ? "var(--ms-success)" : "#d29922",
                     display: "block",
                   }}
                 >

@@ -21,7 +21,7 @@ import {
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -405,6 +405,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
   const themeLabel = theme === "dark" ? "Light theme" : "Dark theme";
   const location = useLocation();
+  const navigate = useNavigate();
   const [showLogoutMenu, setShowLogoutMenu] = React.useState(false);
 
   React.useEffect(() => {
@@ -450,11 +451,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   }
 
   const systemLinks = [];
-  if (user) {
-    systemLinks.push({ to: "/settings", icon: GearIcon, label: "Settings", shortcut: "g s" });
-    if (isAdmin) {
-      systemLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
-    }
+  if (user && isAdmin) {
+    systemLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
   }
 
   const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string | undefined }) => (
@@ -565,6 +563,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                 }}
               >
                 <ThemeIcon size={16} /> {themeLabel}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowLogoutMenu(false);
+                  navigate("/settings");
+                }}
+              >
+                <GearIcon size={16} /> Settings
               </button>
               <hr />
               <button

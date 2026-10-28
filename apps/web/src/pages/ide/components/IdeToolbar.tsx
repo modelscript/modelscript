@@ -129,7 +129,12 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
                   : lspStatus.status === "loading"
                     ? "rgba(210, 153, 34, 0.15)"
                     : "rgba(248, 81, 73, 0.15)",
-              color: lspStatus.status === "ready" ? "#3fb950" : lspStatus.status === "loading" ? "#d29922" : "#f85149",
+              color:
+                lspStatus.status === "ready"
+                  ? "var(--ms-success)"
+                  : lspStatus.status === "loading"
+                    ? "#d29922"
+                    : "var(--ms-danger)",
               border: `1px solid ${
                 lspStatus.status === "ready"
                   ? "rgba(46, 160, 67, 0.3)"

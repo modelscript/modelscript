@@ -291,10 +291,6 @@ export const InstallBox = styled.div`
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    &::before {
-      content: "> ";
-      color: var(--color-text-muted);
-    }
   }
 
   .copy-icon {
@@ -583,24 +579,36 @@ export const MobileTreeToggle = styled.button`
   }
 `;
 
-export const TreeSidebar = styled.div<{ $mobileOpen?: boolean | undefined }>`
-  width: 260px;
+export const TreeSidebar = styled.div<{ $mobileOpen?: boolean | undefined; $collapsed?: boolean | undefined }>`
+  width: ${(props) => (props.$collapsed ? "0px" : "270px")};
+  min-width: ${(props) => (props.$collapsed ? "0px" : "270px")};
+  opacity: ${(props) => (props.$collapsed ? 0 : 1)};
+  visibility: ${(props) => (props.$collapsed ? "hidden" : "visible")};
+  pointer-events: ${(props) => (props.$collapsed ? "none" : "auto")};
   flex-shrink: 0;
-  border-right: 1px solid var(--color-border);
+  border-right: ${(props) => (props.$collapsed ? "none" : "1px solid var(--color-border)")};
   height: calc(100vh - var(--dev-header-height, 0px));
   position: sticky;
   top: var(--dev-header-height, 0px);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  transition:
+    width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    min-width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.2s ease;
+  overflow: hidden;
 
   @media (max-width: 900px) {
     width: 100%;
+    min-width: 100%;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
     position: relative;
     top: 0;
     height: auto;
     max-height: ${(props) => (props.$mobileOpen ? "420px" : "0px")};
-    overflow: hidden;
     border-right: none;
     border-bottom: ${(props) => (props.$mobileOpen ? "1px solid var(--color-border)" : "none")};
     transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);

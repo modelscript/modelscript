@@ -69,10 +69,12 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
                 width: "7px",
                 height: "7px",
                 borderRadius: "50%",
-                backgroundColor: clusterInfo?.connected ? "#10b981" : "#ef4444",
+                backgroundColor: clusterInfo?.connected ? "#10b981" : "#22d3ee",
               }}
             />
-            <span>{clusterInfo?.connected ? "Cluster Connected & Serving" : "Cluster Offline"}</span>
+            <span>
+              {clusterInfo?.connected ? "Cluster Connected & Serving" : "Local WebAssembly Engine (Standalone Mode)"}
+            </span>
           </div>
         </Box>
 

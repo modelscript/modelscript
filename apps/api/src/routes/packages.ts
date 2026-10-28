@@ -21,6 +21,7 @@ import type { JobQueue, JobStatus } from "../jobs.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import type { LibraryStorage } from "../storage.js";
 import { inspectClassSource } from "../util/class-source-inspector.js";
+import { getLanguageIconSvg } from "../util/language-icons.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { renderPolyglotClassDiagramSvg } from "../util/polyglot-doc-indexer.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
@@ -1570,46 +1571,112 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      // 1. Check for custom package icon on disk (override)
       let svg = storage.readSvg(name, version, className, "icon");
-      if (!svg) {
-        const cls = database.getClass(name, version, className);
-        if (cls) {
-          const generated = renderPolyglotClassDiagramSvg(
-            {
-              className,
-              classKind: cls.classKind,
-              description: cls.description,
-              documentation: cls.documentation,
-              baseClasses: cls.extends,
-              components: cls.components.map((c) => ({
-                name: c.component_name,
-                typeName: c.type_name,
-                description: c.description,
-                causality: c.causality,
-                variability: c.variability,
-                modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
-              })),
-            },
-            cls.classKind.startsWith("sysml") ? "SysML v2" : cls.classKind.replace(/_/g, " "),
-          );
-          storage.storeSvg(name, version, className, generated.iconSvg, generated.diagramSvg);
-          svg = generated.iconSvg;
+      const hasDistinctVisual =
+        svg &&
+        !svg.includes('viewBox="0 0 120 80"') &&
+        (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(svg) ||
+          /url\(#/i.test(svg) ||
+          /<text\b[^>]*>(?:(?!<\/?text\b)[^<])+<\/text>/i.test(svg) ||
+          /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0]|fill="url\(#|width="(?!200(?:\.0+)?")[^"]+"|height="(?!200(?:\.0+)?")[^"]+)/i.test(
+            svg,
+          ));
+
+      if (hasDistinctVisual) {
+        res.setHeader("Content-Type", "image/svg+xml");
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        res.send(svg);
+        return;
+      }
+
+      // 2. If this is the root package (e.g. Modelica, or className === name), serve language icon
+      const isRoot = className === name || className === name.split("/").pop() || className === "root";
+      if (isRoot) {
+        let domain = name;
+        const pkgRecord = database.getPackage(name);
+        if (pkgRecord) {
+          const verRow = database.getPackageVersion(pkgRecord.id, version);
+          if (verRow) {
+            const artifacts = database.getArtifacts(verRow.id);
+            for (const a of artifacts) {
+              const t = a.type.toLowerCase();
+              if (t === "cad" || t === "step") {
+                domain = "step";
+                break;
+              }
+              if (t === "sysml" || t === "sysml2" || t === "kerml") {
+                domain = "sysml2";
+                break;
+              }
+              if (t === "scad") {
+                domain = "scad";
+                break;
+              }
+              if (t === "ssp") {
+                domain = "ssp";
+                break;
+              }
+            }
+          }
+        }
+        if (domain === name) {
+          const classes = database.getClasses(name, version);
+          if (classes.some((c) => c.class_kind.toLowerCase().includes("sysml"))) {
+            domain = "sysml2";
+          }
+        }
+        const langSvg = getLanguageIconSvg(domain);
+        if (langSvg) {
+          res.setHeader("Content-Type", "image/svg+xml");
+          res.setHeader("Cache-Control", "no-cache, must-revalidate");
+          res.send(langSvg);
+          return;
         }
       }
-      if (!svg) {
-        res.status(204).end();
-        return;
+
+      // 3. If class has no direct icon, check its inheritance chain (extends)
+      const cls = database.getClass(name, version, className);
+      if (cls && cls.extends && cls.extends.length > 0) {
+        for (const baseClass of cls.extends) {
+          const baseSvg = storage.readSvg(name, version, baseClass, "icon");
+          if (
+            baseSvg &&
+            !baseSvg.includes('viewBox="0 0 120 80"') &&
+            (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(baseSvg) ||
+              /url\(#/i.test(baseSvg) ||
+              /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0])/i.test(baseSvg))
+          ) {
+            res.setHeader("Content-Type", "image/svg+xml");
+            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+            res.send(baseSvg);
+            return;
+          }
+        }
       }
 
-      // Return 404 if the icon has no meaningful visual content
-      const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
-      if (!hasVisual) {
-        res.status(204).end();
-        return;
+      // 4. Default class-kind icon fallback for standard Modelica packages/blocks
+      if (cls) {
+        let fallbackClass: string | null = null;
+        if (cls.classKind === "package") fallbackClass = "Modelica.Icons.Package";
+        else if (cls.classKind === "record") fallbackClass = "Modelica.Icons.RecordsPackage";
+        else if (cls.classKind === "type") fallbackClass = "Modelica.Icons.TypesPackage";
+        else if (cls.classKind === "function") fallbackClass = "Modelica.Icons.FunctionsPackage";
+        else if (cls.classKind === "block") fallbackClass = "Modelica.Blocks.Icons.Block";
+
+        if (fallbackClass) {
+          const fallbackSvg = storage.readSvg(name, version, fallbackClass, "icon");
+          if (fallbackSvg) {
+            res.setHeader("Content-Type", "image/svg+xml");
+            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+            res.send(fallbackSvg);
+            return;
+          }
+        }
       }
 
-      res.setHeader("Content-Type", "image/svg+xml");
-      res.send(svg);
+      // 5. Otherwise return 204 No Content for missing class icon so frontend displays semantic Octicon
+      res.status(204).end();
     },
   );
 
@@ -1667,29 +1734,38 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       let svg = storage.readSvg(name, version, className, "diagram");
+      // If svg contains a synthetic SysML 2 diagram (with stereotype «), discard it
+      if (svg && (svg.includes("«") || svg.includes('viewBox="0 0 680 240"'))) {
+        svg = null;
+      }
+
       if (!svg) {
-        const cls = database.getClass(name, version, className);
-        if (cls) {
-          const generated = renderPolyglotClassDiagramSvg(
-            {
-              className,
-              classKind: cls.classKind,
-              description: cls.description,
-              documentation: cls.documentation,
-              baseClasses: cls.extends,
-              components: cls.components.map((c) => ({
-                name: c.component_name,
-                typeName: c.type_name,
-                description: c.description,
-                causality: c.causality,
-                variability: c.variability,
-                modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
-              })),
-            },
-            cls.classKind.startsWith("sysml") ? "SysML v2" : cls.classKind.replace(/_/g, " "),
-          );
-          storage.storeSvg(name, version, className, generated.iconSvg, generated.diagramSvg);
-          svg = generated.diagramSvg;
+        // Only generate polyglot class diagram for non-Modelica classes (e.g. SysML v2)
+        const isModelica = name.toLowerCase().includes("modelica") || !className.toLowerCase().includes("sysml");
+        if (!isModelica) {
+          const cls = database.getClass(name, version, className);
+          if (cls && cls.classKind.startsWith("sysml")) {
+            const generated = renderPolyglotClassDiagramSvg(
+              {
+                className,
+                classKind: cls.classKind,
+                description: cls.description,
+                documentation: cls.documentation,
+                baseClasses: cls.extends,
+                components: cls.components.map((c) => ({
+                  name: c.component_name,
+                  typeName: c.type_name,
+                  description: c.description,
+                  causality: c.causality,
+                  variability: c.variability,
+                  modifiers: c.modifiers.map((m) => ({ name: m.modifier_name, value: m.modifier_value })),
+                })),
+              },
+              cls.classKind.startsWith("sysml") ? "SysML v2" : cls.classKind.replace(/_/g, " "),
+            );
+            storage.storeSvg(name, version, className, generated.iconSvg, generated.diagramSvg);
+            svg = generated.diagramSvg;
+          }
         }
       }
       if (!svg) {
@@ -1697,7 +1773,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      // Return 404 if the diagram has no meaningful visual content
+      // Return 204 if the diagram has no meaningful visual content
       const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
       if (!hasVisual) {
         res.status(204).end();
@@ -1705,6 +1781,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
       res.send(svg);
     },
   );

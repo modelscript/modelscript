@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookIcon, CpuIcon, PackageIcon, WorkflowIcon } from "@primer/octicons-react";
+import { BookIcon, CpuIcon, DashIcon, PackageIcon, PlusIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Label, Text } from "@primer/react";
 import DOMPurify from "dompurify";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDiagramUrl, getIconUrl, rewriteModelicaUris, type ClassSummary } from "../../../api";
 import CadStepViewer from "../../../components/artifacts/CadStepViewer";
@@ -56,6 +56,7 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
   categorized,
   renderTypeCell,
 }) => {
+  const [diagramZoom, setDiagramZoom] = useState(1);
   const childClasses = useMemo(() => {
     const prefix = `${className}.`;
     const direct = allClasses.filter(
@@ -68,6 +69,14 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
     }
     return [];
   }, [allClasses, className, libraryName]);
+
+  const isModelicaNoDiagram =
+    libraryName.toLowerCase().includes("modelica") &&
+    (cls.classKind === "package" ||
+      cls.classKind === "type" ||
+      cls.classKind === "record" ||
+      cls.classKind === "function" ||
+      categorized.submodels.length === 0);
 
   return (
     <>
@@ -97,23 +106,104 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
       )}
 
       {/* Schematic / Block Definition Diagram */}
-      {!diagramError && !cls.cadResourceUrl && (
+      {!diagramError && !cls.cadResourceUrl && !isModelicaNoDiagram && (
         <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
           <SectionTitle as="h3">Diagram</SectionTitle>
-          <DiagramWrap>
-            <InvertedSvg
-              src={`${getDiagramUrl(libraryName, version, className)}?t=${retryCount}`}
-              alt={`${className} diagram`}
-              onLoad={() => setDiagramLoaded(true)}
-              onError={() => {
-                if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                  setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                } else {
-                  setDiagramError(true);
-                }
-              }}
-            />
-          </DiagramWrap>
+          <div style={{ position: "relative" }}>
+            <DiagramWrap style={{ overflow: "hidden", position: "relative" }}>
+              <div
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  right: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  zIndex: 2,
+                  background: "var(--color-bg-card, rgba(15, 23, 42, 0.75))",
+                  backdropFilter: "blur(8px)",
+                  padding: "3px 6px",
+                  borderRadius: 6,
+                  border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setDiagramZoom((z) => Math.max(Number((z - 0.25).toFixed(2)), 0.5))}
+                  title="Zoom Out"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-text-muted)",
+                    cursor: "pointer",
+                    padding: "2px 6px",
+                    display: "flex",
+                    alignItems: "center",
+                    borderRadius: 4,
+                  }}
+                >
+                  <DashIcon size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiagramZoom(1)}
+                  title="Reset Zoom"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: diagramZoom !== 1 ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)",
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: "2px 4px",
+                    fontFamily: "var(--font-mono, monospace)",
+                  }}
+                >
+                  {Math.round(diagramZoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiagramZoom((z) => Math.min(Number((z + 0.25).toFixed(2)), 3))}
+                  title="Zoom In"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-text-muted)",
+                    cursor: "pointer",
+                    padding: "2px 6px",
+                    display: "flex",
+                    alignItems: "center",
+                    borderRadius: 4,
+                  }}
+                >
+                  <PlusIcon size={13} />
+                </button>
+              </div>
+              <div
+                style={{
+                  transform: `scale(${diagramZoom})`,
+                  transformOrigin: "center center",
+                  transition: "transform 0.15s ease",
+                  width: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
+                <InvertedSvg
+                  src={`${getDiagramUrl(libraryName, version, className)}?t=${retryCount}`}
+                  alt={`${className} diagram`}
+                  onLoad={() => setDiagramLoaded(true)}
+                  onError={() => {
+                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                    } else {
+                      setDiagramError(true);
+                    }
+                  }}
+                />
+              </div>
+            </DiagramWrap>
+          </div>
         </div>
       )}
 

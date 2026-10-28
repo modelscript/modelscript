@@ -57,7 +57,7 @@ const ScrollHintBadge = styled.div<{ $visible: boolean }>`
   left: 50%;
   transform: translate(-50%, -50%);
   background: rgba(13, 17, 23, 0.92);
-  color: #f0f6fc;
+  color: var(--ms-text-1);
   border: 1px solid rgba(6, 182, 212, 0.4);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.5),

@@ -296,12 +296,12 @@ export const ScriptsHeaderHud: React.FC<ScriptsHeaderHudProps> = ({
                 fontWeight: 700,
                 padding: "1px 6px",
                 borderRadius: "4px",
-                background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                color: clusterInfo?.connected ? "#34d399" : "#f87171",
-                border: `1px solid ${clusterInfo?.connected ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+                background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(6, 182, 212, 0.15)",
+                color: clusterInfo?.connected ? "#34d399" : "#22d3ee",
+                border: `1px solid ${clusterInfo?.connected ? "rgba(16, 185, 129, 0.3)" : "rgba(6, 182, 212, 0.3)"}`,
               }}
             >
-              {clusterInfo?.connected ? "ONLINE" : "OFFLINE"}
+              {clusterInfo?.connected ? "ONLINE" : "STANDALONE"}
             </span>
           </div>
           <div

@@ -122,7 +122,7 @@ export function scriptsRouter(db: LibraryDatabase) {
       const offset = parseInt(req.query["offset"] as string) || 0;
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
-      if (!isAdmin && !reqUser?.id && process.env["NODE_ENV"] === "production") {
+      if (!isAdmin && !reqUser?.id) {
         return res.json({ jobs: [] });
       }
       const userId = isAdmin ? null : (reqUser?.id ?? null);
@@ -189,17 +189,25 @@ export function scriptsRouter(db: LibraryDatabase) {
     return;
   });
 
-  router.get("/:id", (req, res) => {
+  router.get("/:id", optionalAuth, (req, res) => {
     try {
-      const paramId = req.params.id as string;
+      const paramId = req.params["id"] as string;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       if (job) {
+        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+          return res.status(404).json({ error: "Job not found" });
+        }
         const steps = db.getJobSteps(job.id);
         return res.json({ job, steps });
       }
 
       const cloudJob = getActiveCloudJob(paramId);
       if (cloudJob) {
+        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
+          return res.status(404).json({ error: "Job not found" });
+        }
         return res.json({
           job: {
             id: cloudJob.jobId,

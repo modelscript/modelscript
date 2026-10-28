@@ -43,6 +43,8 @@
   --color-accent-emerald: var(--hue-emerald);
   --color-accent-amber: var(--hue-amber);
   --color-accent-rose: var(--hue-rose);
+  --color-success: var(--ms-success);
+  --color-danger-fg: var(--ms-danger);
 
   --color-accent-purple-bg: color-mix(in srgb, var(--hue-indigo) 12%, transparent);
   --color-accent-purple-border: color-mix(in srgb, var(--hue-indigo) 28%, transparent);

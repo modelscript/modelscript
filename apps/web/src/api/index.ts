@@ -10,6 +10,7 @@ export * from "./bots";
 export * from "./client";
 export * from "./compute";
 export * from "./governance";
+export * from "./organizations";
 export * from "./packages";
 export * from "./social";
 export * from "./vcs";

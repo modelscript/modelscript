@@ -362,11 +362,11 @@ function highlightStepLine(line: string): React.ReactNode {
       parts.push(line.slice(lastIdx, match.index));
     }
     const token = match[0]!;
-    let color = "#e6edf3";
+    let color = "var(--ms-text-1)";
     let fontWeight: number | undefined;
 
     if (token.startsWith("/*")) {
-      color = "#8b949e";
+      color = "var(--ms-text-3)";
     } else if (token.startsWith("'")) {
       color = "#34d399";
     } else if (/^(?:ISO-10303-21|END-ISO-10303-21|HEADER|ENDSEC|DATA)\b/.test(token)) {

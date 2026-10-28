@@ -9,7 +9,6 @@ export { LegalModal } from "./components/LegalModal";
 export type { LegalModalProps } from "./components/LegalModal";
 export { PopularReposCard } from "./components/PopularReposCard";
 export type { PopularReposCardProps } from "./components/PopularReposCard";
-export { SearchFiltersCard } from "./components/SearchFiltersCard";
 export { SuggestedUsersCard } from "./components/SuggestedUsersCard";
 export type { SuggestedUsersCardProps } from "./components/SuggestedUsersCard";
 export { TrendingTopicsCard } from "./components/TrendingTopicsCard";

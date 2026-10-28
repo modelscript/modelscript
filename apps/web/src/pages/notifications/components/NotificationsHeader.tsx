@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BellIcon, FilterIcon, MentionIcon, PackageIcon, RocketIcon, ShieldIcon } from "@primer/octicons-react";
-import { Button, Heading } from "@primer/react";
+import { Button } from "@primer/react";
 import React from "react";
 import Box from "../../../components/Box";
-import { StickyHeader } from "../../../components/SharedStyles";
+import PageHeader from "../../../components/PageHeader";
 import { TabButton, UnreadPill } from "../styles";
 import type { NotificationCategory } from "../types";
 
@@ -29,29 +29,27 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
 }) => {
   return (
     <>
-      <StickyHeader style={{ justifyContent: "space-between", alignItems: "center" }}>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
-            Notifications
-          </Heading>
-          {unreadCounts.all > 0 && <UnreadPill>{unreadCounts.all} unread</UnreadPill>}
-        </Box>
-        <Box display="flex" gap={2} alignItems="center">
-          <Button
-            size="small"
-            variant={unreadOnly ? "primary" : "invisible"}
-            leadingVisual={FilterIcon}
-            onClick={() => setUnreadOnly((prev) => !prev)}
-          >
-            {unreadOnly ? "Unread Only" : "Filter Unread"}
-          </Button>
-          {hasUnread && (
-            <Button size="small" variant="invisible" onClick={onMarkAllRead}>
-              Mark read
+      <PageHeader
+        title="Notifications"
+        badge={unreadCounts.all > 0 ? <UnreadPill>{unreadCounts.all} unread</UnreadPill> : undefined}
+        actions={
+          <>
+            <Button
+              size="small"
+              variant={unreadOnly ? "primary" : "invisible"}
+              leadingVisual={FilterIcon}
+              onClick={() => setUnreadOnly((prev) => !prev)}
+            >
+              {unreadOnly ? "Unread Only" : "Filter Unread"}
             </Button>
-          )}
-        </Box>
-      </StickyHeader>
+            {hasUnread && (
+              <Button size="small" variant="invisible" onClick={onMarkAllRead}>
+                Mark read
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* ── Category Filter Bar ── */}
       <Box

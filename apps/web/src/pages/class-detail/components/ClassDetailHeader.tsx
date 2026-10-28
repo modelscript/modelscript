@@ -36,16 +36,22 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
     baseClasses: cls.baseClasses,
   });
 
+  const rootPkgName = libraryName.includes("/") ? libraryName.split("/")[1]! : libraryName;
+  const segments = className.split(".");
+  const hasRootPrefix = segments[0] === rootPkgName;
+  const classSegments = hasRootPrefix ? segments.slice(1) : segments;
+  const prefix = hasRootPrefix ? `${rootPkgName}.` : "";
+
   return (
     <HeaderBar>
       <Box mb={3}>
         <Breadcrumbs
           items={[
-            { label: "Libraries", href: "/packages" },
+            { label: "Packages", href: "/packages" },
             { label: libraryName, href: `/packages/${libraryName}` },
-            { label: version, href: `/packages/${libraryName}/${version}` },
-            ...className.split(".").map((segment, i, parts) => {
-              const fullName = parts.slice(0, i + 1).join(".");
+            { label: `v${version}`, href: `/packages/${libraryName}/${version}` },
+            ...classSegments.map((segment, i, parts) => {
+              const fullName = prefix + parts.slice(0, i + 1).join(".");
               const isLast = i === parts.length - 1;
               return {
                 label: segment,

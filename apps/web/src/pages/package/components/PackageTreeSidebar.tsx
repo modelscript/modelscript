@@ -2,6 +2,7 @@
 
 import {
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   CodeIcon,
   CpuIcon,
@@ -33,22 +34,43 @@ import {
   type PolyglotDomain,
 } from "../types";
 
+function getKindBadgeStyle(kind: string): { bg: string; color: string } | null {
+  const k = kind.toLowerCase();
+  if (k === "package" || k === "class") return null;
+  if (k === "model" || k === "block") {
+    return { bg: "rgba(6, 182, 212, 0.15)", color: "var(--color-accent-cyan, #06b6d4)" };
+  }
+  if (k === "function" || k === "algorithm") {
+    return { bg: "rgba(168, 85, 247, 0.15)", color: "#c084fc" };
+  }
+  if (k === "connector") {
+    return { bg: "rgba(234, 179, 8, 0.15)", color: "#eab308" };
+  }
+  if (k === "record" || k === "type") {
+    return { bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6" };
+  }
+  return { bg: "var(--color-border-glass, rgba(255,255,255,0.08))", color: "var(--color-text-muted)" };
+}
+
 const TreeItem = styled(Link)<{ $depth: number }>`
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px 6px ${(p) => 10 + p.$depth * 16}px;
+  padding: 5px 8px 5px ${(p) => 8 + p.$depth * 10}px;
   font-size: 13px;
-  font-family: var(--font-mono);
+  font-family: var(--ms-font-sans, system-ui, -apple-system, sans-serif);
+  font-weight: 500;
   color: var(--color-text-primary);
   text-decoration: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
+  min-height: 28px;
+  box-sizing: border-box;
+
   &:hover {
-    background: var(--color-glass-bg-hover);
-    color: var(--color-accent-cyan);
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.15);
+    background: var(--color-glass-bg-hover, rgba(255, 255, 255, 0.05));
+    color: var(--color-accent-cyan, #06b6d4);
   }
 `;
 
@@ -82,6 +104,7 @@ const ClassTreeNode: React.FC<{
 
   const hasChildren = node.children.length > 0;
   const iconUrl = getIconUrl(libraryName, version, node.fullName);
+  const badgeStyle = getKindBadgeStyle(node.classKind);
 
   return (
     <>
@@ -114,36 +137,58 @@ const ClassTreeNode: React.FC<{
           height={16}
           fallback={
             node.classKind.includes("sysml") ? (
-              <CodeIcon size={16} fill="var(--color-primary)" />
+              <WorkflowIcon size={15} style={{ color: "#a855f7", flexShrink: 0 }} />
             ) : node.classKind.includes("cad") ||
               node.classKind.includes("product") ||
               node.classKind.includes("shape") ? (
-              <CpuIcon size={16} fill="var(--color-warning)" />
+              <PackageIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
+            ) : node.classKind === "function" ? (
+              <CodeIcon size={15} style={{ color: "#c084fc", flexShrink: 0 }} />
+            ) : node.classKind === "connector" ? (
+              <WorkflowIcon size={15} style={{ color: "#eab308", flexShrink: 0 }} />
+            ) : node.classKind === "model" || node.classKind === "block" ? (
+              <CpuIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
+            ) : node.classKind === "record" ? (
+              <DatabaseIcon size={15} style={{ color: "#3b82f6", flexShrink: 0 }} />
             ) : (
-              <PackageIcon size={16} fill="var(--color-text-muted)" />
+              <PackageIcon size={15} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
             )
           }
         />
-        <span>{node.name}</span>
-        <Label
-          variant="secondary"
-          style={{ fontSize: "10px", padding: "0 4px", lineHeight: "16px", marginLeft: "auto" }}
-        >
-          {node.classKind}
-        </Label>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
+        {badgeStyle && (
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              padding: "1px 5px",
+              borderRadius: "4px",
+              marginLeft: "auto",
+              flexShrink: 0,
+              textTransform: "uppercase",
+              letterSpacing: "0.4px",
+              background: badgeStyle.bg,
+              color: badgeStyle.color,
+            }}
+          >
+            {node.classKind}
+          </span>
+        )}
       </TreeItem>
-      {expanded &&
-        hasChildren &&
-        node.children.map((child) => (
-          <ClassTreeNode
-            key={child.fullName}
-            node={child}
-            depth={depth + 1}
-            libraryName={libraryName}
-            version={version}
-            isFiltered={isFiltered}
-          />
-        ))}
+      {expanded && hasChildren && (
+        <div style={{ borderLeft: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.07))", marginLeft: 16 }}>
+          {node.children.map((child) => (
+            <ClassTreeNode
+              key={child.fullName}
+              node={child}
+              depth={depth + 1}
+              libraryName={libraryName}
+              version={version}
+              isFiltered={isFiltered}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 };
@@ -172,6 +217,8 @@ export interface PackageTreeSidebarProps {
   filteredFmu: ArtifactViewerInfo[];
   filteredOther: ArtifactViewerInfo[];
   onOpenArtifact: (av: ArtifactViewerInfo) => void;
+  collapsed?: boolean | undefined;
+  onToggleCollapse?: (() => void) | undefined;
 }
 
 export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
@@ -192,6 +239,8 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   filteredFmu,
   filteredOther,
   onOpenArtifact,
+  collapsed,
+  onToggleCollapse,
 }) => {
   return (
     <>
@@ -209,7 +258,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
         {mobileTreeOpen ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
       </MobileTreeToggle>
 
-      <TreeSidebar $mobileOpen={mobileTreeOpen}>
+      <TreeSidebar $mobileOpen={mobileTreeOpen} $collapsed={collapsed}>
         <Box
           style={{
             height: "72px",
@@ -228,7 +277,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
             height={32}
             style={{ flexShrink: 0 }}
           />
-          <Box display="flex" flexDirection="column" style={{ minWidth: 0 }}>
+          <Box display="flex" flexDirection="column" style={{ minWidth: 0, flex: 1 }}>
             <Box display="flex" alignItems="center" gap={1}>
               <Text
                 style={{
@@ -251,6 +300,36 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
             </Box>
             <Text style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: "2px" }}>v{version}</Text>
           </Box>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              title="Collapse symbol tree"
+              style={{
+                marginLeft: "auto",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--color-text-muted)",
+                padding: "6px",
+                borderRadius: "6px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--color-text-primary)";
+                e.currentTarget.style.background = "var(--color-glass-bg-hover, rgba(255,255,255,0.08))";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--color-text-muted)";
+                e.currentTarget.style.background = "none";
+              }}
+            >
+              <ChevronLeftIcon size={16} />
+            </button>
+          )}
         </Box>
 
         {/* Polyglot Domain Navigation Pills */}

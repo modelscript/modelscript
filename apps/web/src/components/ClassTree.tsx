@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronDownIcon, ChevronRightIcon, CodeIcon, CpuIcon, PackageIcon } from "@primer/octicons-react";
-import { Label } from "@primer/react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CodeIcon,
+  CpuIcon,
+  DatabaseIcon,
+  PackageIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
@@ -11,17 +18,19 @@ import InvertedSvg from "./InvertedSvg";
 
 /* ─── styled components ─── */
 
-const TreeItem = styled(Link)<{ $depth: number }>`
+const TreeItem = styled(Link)<{ $depth: number; $active?: boolean }>`
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 5px 8px 5px ${(p) => 8 + p.$depth * 16}px;
   font-size: 13px;
-  color: var(--color-text-primary);
+  color: ${(p) => (p.$active ? "var(--color-text-heading)" : "var(--color-text-primary)")};
+  background: ${(p) => (p.$active ? "var(--color-glass-bg-active, rgba(255, 255, 255, 0.08))" : "transparent")};
+  font-weight: ${(p) => (p.$active ? 600 : 400)};
   text-decoration: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.15s;
   &:hover {
     background: var(--color-glass-bg-hover);
     color: var(--color-text-heading);
@@ -40,6 +49,24 @@ const TreeToggle = styled.button`
     color: var(--color-text-primary);
   }
 `;
+
+const getKindBadgeStyle = (kind: string) => {
+  if (kind === "package") return null; // Packages are implicit in tree navigation
+  switch (kind) {
+    case "model":
+      return { bg: "rgba(6, 182, 212, 0.15)", color: "var(--color-accent-cyan, #06b6d4)" };
+    case "block":
+      return { bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6" };
+    case "connector":
+      return { bg: "rgba(234, 179, 8, 0.15)", color: "#eab308" };
+    case "record":
+      return { bg: "rgba(16, 185, 129, 0.15)", color: "#10b981" };
+    case "function":
+      return { bg: "rgba(168, 85, 247, 0.15)", color: "#a855f7" };
+    default:
+      return { bg: "var(--color-glass-bg-hover)", color: "var(--color-text-muted)" };
+  }
+};
 
 /* ─── tree node component ─── */
 
@@ -68,13 +95,22 @@ export const ClassTreeNode: React.FC<{
   const hasChildren = node.children.length > 0;
   const iconUrl = getIconUrl(libraryName, version, node.fullName);
   const isActive = activeClassName === node.fullName;
+  const badgeStyle = getKindBadgeStyle(node.classKind);
 
   const fallbackIcon = node.classKind.includes("sysml") ? (
-    <CodeIcon size={16} fill="var(--color-primary)" />
+    <WorkflowIcon size={15} style={{ color: "#a855f7", flexShrink: 0 }} />
   ) : node.classKind.includes("cad") || node.classKind.includes("product") || node.classKind.includes("shape") ? (
-    <CpuIcon size={16} fill="var(--color-warning)" />
+    <PackageIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
+  ) : node.classKind === "function" ? (
+    <CodeIcon size={15} style={{ color: "#c084fc", flexShrink: 0 }} />
+  ) : node.classKind === "connector" ? (
+    <WorkflowIcon size={15} style={{ color: "#eab308", flexShrink: 0 }} />
+  ) : node.classKind === "model" || node.classKind === "block" ? (
+    <CpuIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
+  ) : node.classKind === "record" ? (
+    <DatabaseIcon size={15} style={{ color: "#3b82f6", flexShrink: 0 }} />
   ) : (
-    <PackageIcon size={16} />
+    <PackageIcon size={15} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
   );
 
   return (
@@ -82,7 +118,7 @@ export const ClassTreeNode: React.FC<{
       <TreeItem
         to={`/packages/${libraryName}/${version}/classes/${node.fullName}`}
         $depth={depth}
-        style={isActive ? { background: "var(--color-tree-active-bg)", color: "var(--color-link)" } : undefined}
+        $active={isActive}
         onClick={() => {
           if (hasChildren && !expanded) {
             setExpanded(true);
@@ -104,12 +140,24 @@ export const ClassTreeNode: React.FC<{
         )}
         <InvertedSvg src={iconUrl} fallback={fallbackIcon} alt="" width={16} height={16} />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.name}</span>
-        <Label
-          variant="secondary"
-          style={{ fontSize: "10px", padding: "0 4px", lineHeight: "16px", marginLeft: "auto", flexShrink: 0 }}
-        >
-          {node.classKind}
-        </Label>
+        {badgeStyle && (
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              padding: "1px 5px",
+              borderRadius: "4px",
+              marginLeft: "auto",
+              flexShrink: 0,
+              textTransform: "uppercase",
+              letterSpacing: "0.4px",
+              background: badgeStyle.bg,
+              color: badgeStyle.color,
+            }}
+          >
+            {node.classKind}
+          </span>
+        )}
       </TreeItem>
       {expanded &&
         hasChildren &&

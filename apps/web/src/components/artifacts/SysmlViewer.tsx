@@ -382,10 +382,10 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       const y = 55 + row * 100;
       posMap.set(p.name, { x: x + boxW / 2, y: y + boxH / 2 });
       return `<g transform="translate(${x}, ${y})">
-        <rect width="${boxW}" height="${boxH}" rx="6" fill="#161b22" stroke="#3b82f6" stroke-width="1.5"/>
+        <rect width="${boxW}" height="${boxH}" rx="6" fill="var(--ms-bg-alt)" stroke="#3b82f6" stroke-width="1.5"/>
         <text x="10" y="18" fill="#60a5fa" font-family="monospace" font-size="9">«part» ${p.type}</text>
-        <text x="10" y="38" fill="#e6edf3" font-family="monospace" font-size="12" font-weight="bold">${p.name}${p.multiplicity ? ` [${p.multiplicity}]` : ""}</text>
-        <text x="10" y="56" fill="#8b949e" font-family="monospace" font-size="9">${(p.ports || []).slice(0, 3).join(", ")}</text>
+        <text x="10" y="38" fill="var(--ms-text-1)" font-family="monospace" font-size="12" font-weight="bold">${p.name}${p.multiplicity ? ` [${p.multiplicity}]` : ""}</text>
+        <text x="10" y="56" fill="var(--ms-text-3)" font-family="monospace" font-size="9">${(p.ports || []).slice(0, 3).join(", ")}</text>
       </g>`;
     });
     const edgesSvg = connections.map((c) => {
@@ -397,8 +397,8 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       return `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4 3"/>`;
     });
     return sanitizeSvgMarkup(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
-      <rect width="${width}" height="${height}" rx="8" fill="#0d1117"/>
-      <text x="20" y="28" fill="#e6edf3" font-family="monospace" font-size="12" font-weight="bold">bdd [package] ${systemName}</text>
+      <rect width="${width}" height="${height}" rx="8" fill="var(--ms-bg)"/>
+      <text x="20" y="28" fill="var(--ms-text-1)" font-family="monospace" font-size="12" font-weight="bold">bdd [package] ${systemName}</text>
       ${edgesSvg.join("\n")}
       ${nodesSvg.join("\n")}
     </svg>`);

@@ -41,18 +41,21 @@ export const StatGrid = styled.div`
 `;
 
 export const Header = styled.div`
-  padding: 16px 20px;
-  font-size: 20px;
-  font-weight: 800;
+  padding: 0 16px;
+  min-height: 53px;
+  font-size: var(--text-xl, 20px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text-heading);
   display: flex;
   align-items: center;
   gap: 12px;
   position: sticky;
-  top: 0;
-  background-color: var(--surface-hud, rgba(13, 17, 23, 0.8));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--color-border-default);
+  top: var(--dev-header-height, 0px);
+  background: var(--surface-hud);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--color-border);
   z-index: 10;
 `;
 
@@ -121,13 +124,13 @@ export const Badge = styled.span<{
     switch (props.$variant) {
       case "success":
       case "approved":
-        return "#3fb950";
+        return "var(--ms-success)";
       case "warning":
       case "pending":
         return "#d29922";
       case "danger":
       case "rejected":
-        return "#f85149";
+        return "var(--ms-danger)";
       default:
         return "var(--color-text-muted)";
     }
@@ -156,7 +159,7 @@ export const ActionButton = styled.button<{ $variant?: "primary" | "danger" | "s
       : props.$variant === "primary"
         ? "var(--gradient-cta)"
         : "rgba(255, 255, 255, 0.05)"};
-  color: ${(props) => (props.$variant === "danger" ? "#f85149" : "var(--color-text-primary)")};
+  color: ${(props) => (props.$variant === "danger" ? "var(--ms-danger)" : "var(--color-text-primary)")};
   transition: all 0.15s ease;
 
   &:hover:not(:disabled) {

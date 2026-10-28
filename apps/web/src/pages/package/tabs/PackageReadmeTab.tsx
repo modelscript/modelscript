@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PackageIcon, SyncIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ChevronUpIcon, CpuIcon, PackageIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Label, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -42,9 +42,9 @@ export const PackageReadmeTab: React.FC<PackageReadmeTabProps> = ({
   onNavigateToDigitalThread,
   jobStatus,
 }) => {
-  const [diagramLoaded, setDiagramLoaded] = useState(false);
   const [diagramError, setDiagramError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [showDiagram, setShowDiagram] = useState(false);
 
   const topModules = useMemo(() => {
     if (!classes || classes.length === 0) return [];
@@ -85,24 +85,53 @@ export const PackageReadmeTab: React.FC<PackageReadmeTabProps> = ({
         </GlassCard>
       )}
 
-      {/* Root class diagram */}
+      {/* Root class diagram - collapsible so README remains hero content */}
       {!diagramError && (
-        <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
-          <DiagramWrap>
-            <InvertedSvg
-              src={`${getDiagramUrl(name, version, rootClassName || name)}?t=${retryCount}`}
-              alt={`${name} diagram`}
-              onLoad={() => setDiagramLoaded(true)}
-              onError={() => {
-                if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                  setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                } else {
-                  setDiagramError(true);
-                }
-              }}
-            />
-          </DiagramWrap>
-        </div>
+        <GlassCard
+          style={{
+            padding: "12px 18px",
+            marginBottom: 20,
+            borderRadius: 12,
+            border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))",
+            background: "var(--color-bg-card, rgba(15, 23, 42, 0.4))",
+          }}
+        >
+          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <CpuIcon size={16} fill="var(--color-accent-cyan, #06b6d4)" />
+              <Text style={{ fontWeight: 600, fontSize: 13, color: "var(--color-text-heading)" }}>
+                Architecture &amp; Type Specification
+              </Text>
+              <Text style={{ fontSize: 12, color: "var(--color-text-muted)" }}>({rootClassName || name})</Text>
+            </Box>
+            <Button
+              size="small"
+              variant="invisible"
+              onClick={() => setShowDiagram((prev) => !prev)}
+              leadingVisual={showDiagram ? ChevronUpIcon : ChevronDownIcon}
+              style={{ color: "var(--color-text-primary)", fontSize: 12 }}
+            >
+              {showDiagram ? "Hide Diagram" : "View Diagram"}
+            </Button>
+          </Box>
+          {showDiagram && (
+            <Box mt={3} pt={3} style={{ borderTop: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))" }}>
+              <DiagramWrap style={{ margin: 0, border: "none", background: "transparent", padding: 0 }}>
+                <InvertedSvg
+                  src={`${getDiagramUrl(name, version, rootClassName || name)}?t=${retryCount}`}
+                  alt={`${name} diagram`}
+                  onError={() => {
+                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                    } else {
+                      setDiagramError(true);
+                    }
+                  }}
+                />
+              </DiagramWrap>
+            </Box>
+          )}
+        </GlassCard>
       )}
 
       <DocCard>

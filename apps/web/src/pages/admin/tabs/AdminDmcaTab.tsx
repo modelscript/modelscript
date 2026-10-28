@@ -93,7 +93,7 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
             </Box>
 
             {n.action_taken && (
-              <Box fontSize="13px" color="#3fb950">
+              <Box fontSize="13px" color="var(--ms-success)">
                 <strong>Action Taken:</strong> {n.action_taken}
               </Box>
             )}

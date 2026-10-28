@@ -124,7 +124,7 @@ export const MorselMobileTabBar: React.FC<MorselMobileTabBarProps> = ({
       <div
         style={{
           position: "fixed",
-          bottom: "16px",
+          bottom: "84px",
           right: "16px",
           zIndex: 9999,
           display: "flex",

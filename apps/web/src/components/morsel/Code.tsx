@@ -80,11 +80,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     let cancelled = false;
 
     (async () => {
-      props.onProgress?.(20, "Starting language server…");
+      props.onProgress?.(20, "Initializing modeling & simulation engine…");
       const connection = await startLsp(languageIdRef.current);
       if (cancelled) return;
 
-      props.onProgress?.(40, "Connecting editor to language server…");
+      props.onProgress?.(40, "Connecting editor to compiler runtime…");
 
       // Register Monaco providers that proxy to the LSP
       adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection as any, uriRef.current, {

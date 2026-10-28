@@ -101,7 +101,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
               onClick={() => setViewMode("diagram")}
               style={{
                 background: viewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "diagram" ? "#06b6d4" : "var(--color-fg-muted)",
+                color: viewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
                 border: "none",
                 borderRadius: "4px",
                 padding: "2px 8px",
@@ -120,7 +120,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
               onClick={() => setViewMode("code")}
               style={{
                 background: viewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "code" ? "#06b6d4" : "var(--color-fg-muted)",
+                color: viewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
                 border: "none",
                 borderRadius: "4px",
                 padding: "2px 8px",

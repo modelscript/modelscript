@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon, SearchIcon } from "@primer/octicons-react";
-import { Heading, Spinner } from "@primer/react";
+import { SearchIcon } from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { getBookmarks } from "../api";
 import { useAuth } from "../AuthContext";
@@ -12,23 +11,12 @@ import Post from "../components/Post";
 import type { PostItem } from "../types/api";
 import { usePageTitle } from "../util/title";
 
-import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
-
-const BookmarksHeader = styled(StickyHeader)`
-  border-bottom: none;
-`;
-
-const HeaderTop = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 24px;
-`;
+import PageHeader from "../components/PageHeader";
 
 const SearchInputWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: center;
-  margin-top: 16px;
 
   svg {
     position: absolute;
@@ -63,7 +51,6 @@ const SearchInputWrapper = styled.div`
 
 const BookmarksPage: React.FC = () => {
   usePageTitle("Bookmarks");
-  const navigate = useNavigate();
   const { token } = useAuth();
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,20 +87,12 @@ const BookmarksPage: React.FC = () => {
 
   return (
     <Box>
-      <BookmarksHeader style={{ flexDirection: "column", alignItems: "stretch" }}>
-        <HeaderTop>
-          <CircleIconButton onClick={() => navigate(-1)}>
-            <ArrowLeftIcon size={20} />
-          </CircleIconButton>
-          <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
-            Bookmarks
-          </Heading>
-        </HeaderTop>
+      <PageHeader back title="Bookmarks">
         <SearchInputWrapper>
           <SearchIcon size={16} />
           <input placeholder="Search Bookmarks" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </SearchInputWrapper>
-      </BookmarksHeader>
+      </PageHeader>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">

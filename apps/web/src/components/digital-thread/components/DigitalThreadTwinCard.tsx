@@ -62,11 +62,11 @@ export const DigitalThreadTwinCard: React.FC<DigitalThreadTwinCardProps> = ({
 
         <ParityChip $status={twin.parity.status} title={twin.parity.message}>
           {twin.parity.status === "compatible" ? (
-            <CheckCircleFillIcon size={14} fill="#3fb950" />
+            <CheckCircleFillIcon size={14} fill="var(--ms-success)" />
           ) : twin.parity.status === "warning" ? (
             <AlertFillIcon size={14} fill="#d29922" />
           ) : (
-            <XCircleFillIcon size={14} fill="#f85149" />
+            <XCircleFillIcon size={14} fill="var(--ms-danger)" />
           )}
           <span>{twin.parity.message}</span>
         </ParityChip>

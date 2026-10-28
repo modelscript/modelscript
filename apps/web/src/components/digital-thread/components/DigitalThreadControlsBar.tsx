@@ -95,7 +95,7 @@ export const DigitalThreadControlsBar: React.FC<DigitalThreadControlsBarProps> =
               border: "1px solid var(--color-accent-emphasis, #0969da)",
             }}
           >
-            <ZapIcon size={13} fill="#3fb950" />
+            <ZapIcon size={13} fill="var(--ms-success)" />
             Live Collaborative Thread Active
           </Label>
         )}
@@ -119,7 +119,7 @@ export const DigitalThreadControlsBar: React.FC<DigitalThreadControlsBarProps> =
           </FilterPill>
           <FilterPill
             $active={parityFilter === "compatible"}
-            $color="#3fb950"
+            $color="var(--ms-success)"
             onClick={() => onParityFilterChange("compatible")}
           >
             ✔ Verified ({compatibleCount})
@@ -127,7 +127,7 @@ export const DigitalThreadControlsBar: React.FC<DigitalThreadControlsBarProps> =
           {incompatibleCount > 0 && (
             <FilterPill
               $active={parityFilter === "incompatible"}
-              $color="#f85149"
+              $color="var(--ms-danger)"
               onClick={() => onParityFilterChange("incompatible")}
             >
               ✖ Issues ({incompatibleCount})

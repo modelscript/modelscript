@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronRightIcon, GlobeIcon, PaintbrushIcon } from "@primer/octicons-react";
+import { GlobeIcon, PaintbrushIcon } from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
 import { getUserTopics, updateUserTopic } from "../../../api";
 import Box from "../../../components/Box";
@@ -223,7 +223,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                 style={{ borderTop: "1px solid var(--color-border-subtle)" }}
               >
                 <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>ActivityPub Protocol</span>
-                <span style={{ fontSize: "13px", color: "#3fb950", fontWeight: "600" }}>
+                <span style={{ fontSize: "13px", color: "var(--ms-success)", fontWeight: "600" }}>
                   RFC 9421 &amp; FEP-521a Ed25519 Active
                 </span>
               </Box>
@@ -234,7 +234,9 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                 style={{ borderTop: "1px solid var(--color-border-subtle)" }}
               >
                 <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>HPC / SLURM Gateway</span>
-                <span style={{ fontSize: "13px", color: "#3fb950", fontWeight: "600" }}>Connected &amp; Metered</span>
+                <span style={{ fontSize: "13px", color: "var(--ms-success)", fontWeight: "600" }}>
+                  Connected &amp; Metered
+                </span>
               </Box>
               <Box
                 display="flex"
@@ -260,25 +262,38 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
           Manage how ModelScript content is displayed to you and select your preferred language.
         </DetailSubtitle>
       </Box>
-      <DetailItem $clickable onClick={toggleTheme}>
+      <DetailItem>
         <DetailIcon>
           <PaintbrushIcon size={20} />
         </DetailIcon>
         <DetailText>
           <DetailTitle>Theme</DetailTitle>
-          <DetailSubtitle>Toggle light or dark mode. Current: {theme}</DetailSubtitle>
+          <DetailSubtitle>Choose how ModelScript looks on this device.</DetailSubtitle>
         </DetailText>
-        <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+        <Box display="flex" gap={1}>
+          {(["light", "dark"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className="ms-chip"
+              aria-pressed={theme === mode}
+              onClick={() => {
+                if (theme !== mode) toggleTheme();
+              }}
+            >
+              {mode === "light" ? "Light" : "Dark"}
+            </button>
+          ))}
+        </Box>
       </DetailItem>
-      <DetailItem $clickable>
+      <DetailItem>
         <DetailIcon>
           <GlobeIcon size={20} />
         </DetailIcon>
         <DetailText>
           <DetailTitle>Language</DetailTitle>
-          <DetailSubtitle>English (Only English is supported for now)</DetailSubtitle>
+          <DetailSubtitle>English (more languages coming soon)</DetailSubtitle>
         </DetailText>
-        <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
     </>
   );

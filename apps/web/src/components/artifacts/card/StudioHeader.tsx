@@ -112,7 +112,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
           style={{
             fontSize: "10px",
             background: "rgba(6, 182, 212, 0.15)",
-            color: "#06b6d4",
+            color: "var(--ms-accent-cyan)",
             border: "1px solid rgba(6, 182, 212, 0.3)",
             padding: "2px 8px",
             borderRadius: "6px",
@@ -182,7 +182,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               style={{
                 fontSize: "10px",
                 background: "rgba(6, 182, 212, 0.15)",
-                color: "#06b6d4",
+                color: "var(--ms-accent-cyan)",
                 border: "1px solid rgba(6, 182, 212, 0.3)",
                 padding: "2px 8px",
                 borderRadius: "6px",
@@ -315,7 +315,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
           style={{
             background: isStudioSidebarOpen ? "rgba(6, 182, 212, 0.2)" : "rgba(255, 255, 255, 0.08)",
             border: isStudioSidebarOpen ? "1px solid rgba(6, 182, 212, 0.4)" : "1px solid rgba(255, 255, 255, 0.15)",
-            color: isStudioSidebarOpen ? "#06b6d4" : "#e2e8f0",
+            color: isStudioSidebarOpen ? "var(--ms-accent-cyan)" : "#e2e8f0",
             borderRadius: "6px",
             padding: "5px 10px",
             fontSize: "12px",

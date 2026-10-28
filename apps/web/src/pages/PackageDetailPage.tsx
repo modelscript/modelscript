@@ -158,6 +158,8 @@ const PackageDetailPage: React.FC = () => {
     scope?: string | undefined;
     name?: string | undefined;
     version?: string | undefined;
+    first?: string | undefined;
+    second?: string | undefined;
   }>();
   const { name, version } = resolvePackageParams(rawParams);
   const navigate = useNavigate();
@@ -168,6 +170,7 @@ const PackageDetailPage: React.FC = () => {
   const { user } = useAuth();
 
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
+  const [treeCollapsed, setTreeCollapsed] = useState(false);
   const [treeSearchFilter, setTreeSearchFilter] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<PolyglotDomain>("all");
   const [artifactTabDomainFilter, setArtifactTabDomainFilter] = useState<PolyglotDomain>("all");
@@ -266,6 +269,8 @@ const PackageDetailPage: React.FC = () => {
           filteredFmu={pkg.filteredFmu}
           filteredOther={pkg.filteredOther}
           onOpenArtifact={handleOpenArtifact}
+          collapsed={treeCollapsed}
+          onToggleCollapse={() => setTreeCollapsed((p) => !p)}
         />
       )}
 
@@ -294,26 +299,42 @@ const PackageDetailPage: React.FC = () => {
           setManageModal={mgmt.setManageModal}
           onAcceptPendingTransfer={mgmt.handleAcceptPendingTransfer}
           onCancelPendingTransfer={mgmt.handleCancelPendingTransfer}
+          versionList={pkg.versionList}
+          treeCollapsed={treeCollapsed}
+          onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
         />
 
         {/* ── Tab Bar ── */}
         <TabBar>
-          {TABS.map((tab) => (
-            <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
-              {React.isValidElement(tab.icon)
-                ? tab.icon
-                : typeof tab.icon === "function" ||
-                    (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
-                  ? React.createElement(tab.icon as any, { size: 16 })
-                  : tab.icon}
-              <span>{tab.label}</span>
-              {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
-                <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                  {pkg.artifactViewers.length}
-                </Label>
-              )}
-            </Tab>
-          ))}
+          {TABS.map((tab) => {
+            const depCount = Object.keys(pkg.dependencies || {}).length;
+            return (
+              <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
+                {React.isValidElement(tab.icon)
+                  ? tab.icon
+                  : typeof tab.icon === "function" ||
+                      (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
+                    ? React.createElement(tab.icon as any, { size: 16 })
+                    : tab.icon}
+                <span>{tab.label}</span>
+                {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
+                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                    {pkg.artifactViewers.length}
+                  </Label>
+                )}
+                {tab.id === "versions" && pkg.versionList.length > 0 && (
+                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                    {pkg.versionList.length}
+                  </Label>
+                )}
+                {tab.id === "dependencies" && depCount > 0 && (
+                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                    {depCount}
+                  </Label>
+                )}
+              </Tab>
+            );
+          })}
         </TabBar>
 
         {/* ── Body ── */}

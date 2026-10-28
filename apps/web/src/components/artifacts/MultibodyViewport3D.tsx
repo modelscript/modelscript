@@ -83,8 +83,8 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
         infiniteGrid
         cellSize={0.5}
         sectionSize={2.0}
-        cellColor="#21262d"
-        sectionColor="#30363d"
+        cellColor="var(--ms-bg-soft)"
+        sectionColor="var(--ms-border)"
         fadeDistance={40}
         position={[0, 0, 0]}
       />
@@ -94,7 +94,7 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
         const [x, y, z] = node.position;
         const [dx, dy, dz] = node.dimensions || (node.type === "body" ? [1.2, 0.6, 0.4] : [0.15, 0.15, 0.15]);
         const color =
-          node.color || (node.type === "body" ? "#58a6ff" : node.type === "wheelset" ? "#d29922" : "#3fb950");
+          node.color || (node.type === "body" ? "#58a6ff" : node.type === "wheelset" ? "#d29922" : "var(--ms-success)");
 
         return (
           <group key={node.id} position={[x, z, -y]}>
@@ -123,7 +123,7 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
 
       <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
-        <GizmoViewport axisColors={["#f85149", "#3fb950", "#58a6ff"]} labelColor="#ffffff" />
+        <GizmoViewport axisColors={["var(--ms-danger)", "var(--ms-success)", "#58a6ff"]} labelColor="#ffffff" />
       </GizmoHelper>
     </>
   );

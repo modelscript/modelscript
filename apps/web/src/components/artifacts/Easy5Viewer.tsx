@@ -288,13 +288,13 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           <ChartCanvas>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={bodeData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                <XAxis dataKey="freq" stroke="#8b949e" tick={{ fontSize: 11 }} scale="log" unit="Hz" />
-                <YAxis stroke="#8b949e" tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--ms-bg-soft)" />
+                <XAxis dataKey="freq" stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} scale="log" unit="Hz" />
+                <YAxis stroke="var(--ms-text-3)" tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#161b22",
-                    borderColor: "#30363d",
+                    backgroundColor: "var(--ms-bg-alt)",
+                    borderColor: "var(--ms-border)",
                     borderRadius: "6px",
                     fontSize: "12px",
                   }}

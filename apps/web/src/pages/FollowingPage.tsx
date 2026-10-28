@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArrowLeftIcon } from "@primer/octicons-react";
-import { Heading, Spinner, Text } from "@primer/react";
+import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
@@ -10,7 +9,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import FederatedDomainPill from "../components/FederatedDomainPill";
 import FollowButton from "../components/FollowButton";
-import { CircleIconButton } from "../components/SharedStyles";
+import PageHeader from "../components/PageHeader";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
@@ -70,7 +69,7 @@ const TabButton = styled(Link)<{ $active?: boolean | undefined }>`
   transition: all 0.15s;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: var(--surface-row-hover);
     color: var(--color-fg-default);
     text-decoration: none;
   }
@@ -125,26 +124,7 @@ const FollowingPage: React.FC = () => {
 
   return (
     <Box>
-      <Box
-        p={3}
-        borderBottom="1px solid var(--color-border)"
-        position="sticky"
-        top="var(--dev-header-height, 0px)"
-        bg="var(--color-canvas-default)"
-        zIndex={10}
-        display="flex"
-        alignItems="center"
-        gap={3}
-      >
-        <CircleIconButton onClick={() => navigate(`/${username}`)} aria-label="Back">
-          <ArrowLeftIcon size={20} />
-        </CircleIconButton>
-        <Box display="flex" flexDirection="column">
-          <Heading as="h2" style={{ fontSize: "18px", margin: 0, fontWeight: 700 }}>
-            @{username}
-          </Heading>
-        </Box>
-      </Box>
+      <PageHeader back={() => navigate(`/${username}`)} title={`@${username}`} divider={false} />
 
       <TabBar>
         <TabButton to={`/${username}/followers`} $active={false}>

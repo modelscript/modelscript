@@ -492,7 +492,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       isInitialized.current = true;
 
       setLoadingProgress(10);
-      setLoadingMessage("Starting language server…");
+      setLoadingMessage("Initializing modeling & simulation engine…");
 
       try {
         const conn = await startLsp(dialect);
@@ -516,7 +516,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
 
       setLoadingProgress(80);
-      setLoadingMessage("Loading workspace…");
+      setLoadingMessage("Loading modeling workspace…");
 
       // Notify LSP of the initial file content
       didOpen(documentUri, content, dialect);

@@ -288,7 +288,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
     return DOMPurify.sanitize(`
       <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
         <rect width="${width}" height="${height}" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        <text x="20" y="26" fill="#f0f6fc" font-size="12" font-weight="bold" font-family="monospace">${title}</text>
+        <text x="20" y="26" fill="var(--ms-text-1)" font-size="12" font-weight="bold" font-family="monospace">${title}</text>
         ${polys.join("\n")}
       </svg>
     `);
