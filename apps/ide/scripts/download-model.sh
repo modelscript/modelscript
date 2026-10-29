@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# Download Qwen3-0.6B-q4f16_1-MLC model weights and WASM for WebLLM.
+# Download Qwen3-1.7B-q4f16_1-MLC (primary) and Qwen3-0.6B-q4f16_1-MLC (fallback)
+# model weights and WebGPU WASM runtimes for WebLLM.
 # Files are cached — re-running is a no-op if all files already exist.
 #
 # Usage: ./scripts/download-model.sh [target_dir]
 # Default target_dir: apps/ide/models
+# Environment variables:
+#   WEBLLM_MODELS="Qwen3-1.7B-q4f16_1-MLC Qwen3-0.6B-q4f16_1-MLC"
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET="${1:-$REPO_ROOT/models}"
+MODELS_TO_DOWNLOAD="${WEBLLM_MODELS:-Qwen3-1.7B-q4f16_1-MLC Qwen3-0.6B-q4f16_1-MLC}"
 
-MODEL_DIR="$TARGET/Qwen3-0.6B-q4f16_1-MLC"
-
-HF_BASE="https://huggingface.co/mlc-ai/Qwen3-0.6B-q4f16_1-MLC/resolve/main"
-WASM_NAME="Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
-
-# Files to download from the HuggingFace model repo
-MODEL_FILES=(
+META_FILES=(
   mlc-chat-config.json
   ndarray-cache.json
   tensor-cache.json
@@ -27,47 +25,75 @@ MODEL_FILES=(
   tokenizer_config.json
   vocab.json
   merges.txt
-  params_shard_0.bin
-  params_shard_1.bin
-  params_shard_2.bin
-  params_shard_3.bin
-  params_shard_4.bin
-  params_shard_5.bin
-  params_shard_6.bin
-  params_shard_7.bin
-  params_shard_8.bin
 )
 
-echo "==> Downloading Qwen3-0.6B-q4f16_1-MLC model to $TARGET"
+download_model_repo() {
+  local model_id="$1"
+  local model_dir="$TARGET/$model_id"
+  local hf_base="https://huggingface.co/mlc-ai/$model_id/resolve/main"
 
-mkdir -p "$MODEL_DIR"
+  echo "==> Downloading $model_id model to $model_dir"
+  mkdir -p "$model_dir"
 
-# Download model files
-for file in "${MODEL_FILES[@]}"; do
-  if [ -f "$MODEL_DIR/$file" ]; then
-    echo "  [cached] $file"
+  for file in "${META_FILES[@]}"; do
+    if [ -f "$model_dir/$file" ]; then
+      echo "  [cached] $model_id/$file"
+    else
+      echo "  [downloading] $model_id/$file"
+      curl -fSL --retry 3 "$hf_base/$file" -o "$model_dir/$file"
+    fi
+  done
+
+  # Parse shard filenames dynamically from ndarray-cache.json
+  local shards
+  shards=$(grep -o '"dataPath": *"[^"]*"' "$model_dir/ndarray-cache.json" | cut -d'"' -f4 | sort -u)
+  for shard in $shards; do
+    if [ -f "$model_dir/$shard" ]; then
+      echo "  [cached] $model_id/$shard"
+    else
+      echo "  [downloading] $model_id/$shard"
+      curl -fSL --retry 3 "$hf_base/$shard" -o "$model_dir/$shard"
+    fi
+  done
+}
+
+download_wasm_runtime() {
+  local wasm_name="$1"
+  local wasm_url="$2"
+
+  if [ ! -f "$TARGET/$wasm_name" ]; then
+    local repo_wasm="$REPO_ROOT/models/$wasm_name"
+    if [ -f "$repo_wasm" ]; then
+      echo "  [copy] $wasm_name (from repo)"
+      cp "$repo_wasm" "$TARGET/$wasm_name"
+    else
+      echo "  [downloading] $wasm_name"
+      if ! curl -fSL --retry 3 "$wasm_url" -o "$TARGET/$wasm_name"; then
+        echo "  [WARNING] $wasm_name download failed. WebGPU AI assistant will fall back if runtime is unavailable."
+      fi
+    fi
   else
-    echo "  [downloading] $file"
-    curl -fSL --retry 3 "$HF_BASE/$file" -o "$MODEL_DIR/$file"
+    echo "  [cached] $wasm_name"
   fi
+}
+
+for model_id in $MODELS_TO_DOWNLOAD; do
+  download_model_repo "$model_id"
 done
 
-# Download WebGPU WASM runtime
-WASM_URL="https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models/v0_2_80/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
-if [ ! -f "$TARGET/$WASM_NAME" ]; then
-  # Try to find it in the repo checkout (for CI/Docker contexts)
-  REPO_WASM="$REPO_ROOT/models/$WASM_NAME"
-  if [ -f "$REPO_WASM" ]; then
-    echo "  [copy] $WASM_NAME (from repo)"
-    cp "$REPO_WASM" "$TARGET/$WASM_NAME"
-  else
-    echo "  [downloading] $WASM_NAME"
-    if ! curl -fSL --retry 3 "$WASM_URL" -o "$TARGET/$WASM_NAME"; then
-      echo "  [WARNING] $WASM_NAME download failed. WebGPU AI assistant will be disabled until wasm runtime is provided."
-    fi
-  fi
-else
-  echo "  [cached] $WASM_NAME"
-fi
+# Download WebGPU WASM runtimes for Qwen3-1.7B and Qwen3-0.6B
+WASM_BASE="https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/web-llm-models"
+download_wasm_runtime \
+  "Qwen3-1.7B-q4f16_1_cs1k-webgpu.wasm" \
+  "$WASM_BASE/v0_2_84/base/Qwen3-1.7B-q4f16_1_cs1k-webgpu.wasm"
+
+download_wasm_runtime \
+  "Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm" \
+  "$WASM_BASE/v0_2_80/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm"
+
+download_wasm_runtime \
+  "Qwen3-0.6B-q4f16_1_cs1k-webgpu.wasm" \
+  "$WASM_BASE/v0_2_84/base/Qwen3-0.6B-q4f16_1_cs1k-webgpu.wasm"
 
 echo "==> Model download complete"
+

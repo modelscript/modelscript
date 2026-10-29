@@ -134,6 +134,10 @@ const ClassDetailPage: React.FC = () => {
 
   const fetchClassDetail = useCallback(async () => {
     if (!name || !version || !className) return;
+    if (name === "Modelica" && (className === "Demo" || className.startsWith("Demo."))) {
+      navigate(`/packages/${name}/${version}`, { replace: true });
+      return;
+    }
     try {
       const data = await getClassDetail(name, version, className);
       setCls(data);
@@ -144,7 +148,7 @@ const ClassDetailPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [name, version, className]);
+  }, [name, version, className, navigate]);
 
   useEffect(() => {
     setLoading(true);
@@ -157,12 +161,19 @@ const ClassDetailPage: React.FC = () => {
     const checkStatus = async () => {
       try {
         const status = await getJobStatus(name, version);
-        setJobStatus(status.status);
-        if (status.status === "completed") {
-          fetchClassDetail();
+        setJobStatus((prev) => {
+          if (status.status === "completed" && (prev === "pending" || prev === "processing")) {
+            fetchClassDetail();
+          }
+          return status.status;
+        });
+      } catch (err: unknown) {
+        const errorObj = err as { response?: { status?: number | undefined } | undefined };
+        if (errorObj?.response?.status === 404) {
+          setJobStatus("failed");
+        } else {
+          console.error("Failed to check job status", err);
         }
-      } catch (err) {
-        console.error("Failed to check job status", err);
       }
     };
 
@@ -216,6 +227,11 @@ const ClassDetailPage: React.FC = () => {
           <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
             The class may not exist, is still being processed, or the server is unavailable.
           </Text>
+          {name && version && (
+            <TypeLink to={`/packages/${name}/${version}`} style={{ marginTop: 8, fontSize: 14 }}>
+              Back to {name}@{version}
+            </TypeLink>
+          )}
         </Box>
       </PageWrap>
     );

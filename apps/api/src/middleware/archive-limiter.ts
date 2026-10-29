@@ -80,8 +80,19 @@ export class ArchiveExportRateLimiter {
     };
   }
 
+  private static readonly MAX_RECORDS = 10_000;
+
   public record(userId: string | number): void {
     const now = Date.now();
+    if (this.userRecords.size >= ArchiveExportRateLimiter.MAX_RECORDS) {
+      for (const [k, v] of this.userRecords) {
+        if (now >= v.resetAt) this.userRecords.delete(k);
+      }
+      if (this.userRecords.size >= ArchiveExportRateLimiter.MAX_RECORDS) {
+        const oldestKey = this.userRecords.keys().next().value;
+        if (oldestKey !== undefined) this.userRecords.delete(oldestKey);
+      }
+    }
     const record = this.userRecords.get(userId);
 
     if (!record || now >= record.resetAt) {

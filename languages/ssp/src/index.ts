@@ -6,4 +6,5 @@ export * from "./language.js";
 export * from "./linter.js";
 export * from "./projection.js";
 export * from "./ssd-parser.js";
+export * from "./tabular.js";
 export * from "./types.js";

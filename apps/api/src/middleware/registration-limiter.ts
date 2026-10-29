@@ -35,8 +35,19 @@ export class RegistrationRateLimiter {
     return { allowed: true, remaining: this.maxPerHour - record.count, resetInMs: record.resetAt - now };
   }
 
+  private static readonly MAX_RECORDS = 10_000;
+
   public record(ip: string): void {
     const now = Date.now();
+    if (this.attempts.size >= RegistrationRateLimiter.MAX_RECORDS) {
+      for (const [k, v] of this.attempts) {
+        if (now >= v.resetAt) this.attempts.delete(k);
+      }
+      if (this.attempts.size >= RegistrationRateLimiter.MAX_RECORDS) {
+        const oldestKey = this.attempts.keys().next().value;
+        if (oldestKey !== undefined) this.attempts.delete(oldestKey);
+      }
+    }
     const record = this.attempts.get(ip);
 
     if (!record || now >= record.resetAt) {

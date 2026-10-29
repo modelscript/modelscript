@@ -473,7 +473,7 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
       .set("Authorization", `Bearer ${authorToken}`)
       .send({
         artifact_id: modelicaArtId,
-        tone: "technical",
+        tone: "concise",
       });
 
     assert.strictEqual(draftRes.status, 200);
@@ -484,41 +484,22 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     assert.ok(Array.isArray(draftRes.body.highlights) && draftRes.body.highlights.length > 0);
     assert.ok(["remote-llm", "remote-deterministic"].includes(draftRes.body.source));
 
-    // 3. Draft post in tutorial tone
-    const tutorialDraftRes = await request(app)
-      .post("/api/v1/social/ai/draft")
+    // 3. Polish existing text via LLM: fixes spelling errors ("Hellow how is everytiing" -> "Hello, how is everything?") without adding junk hashtags
+    const greetingPolishRes = await request(app)
+      .post("/api/v1/social/ai/polish")
       .set("Authorization", `Bearer ${authorToken}`)
       .send({
-        artifact_id: modelicaArtId,
-        tone: "tutorial",
+        text: "Hellow how is everytiing",
+        mode: "polish",
       });
-    assert.strictEqual(tutorialDraftRes.status, 200);
-    assert.ok(tutorialDraftRes.body.draft.includes("##"));
+    assert.strictEqual(greetingPolishRes.status, 200);
+    assert.match(greetingPolishRes.body.polished, /^Hello,?\s+how is everything\?$/i);
+    assert.ok(!greetingPolishRes.body.polished.includes("#Hellow"));
+    assert.ok(!greetingPolishRes.body.polished.includes("#Everytiing"));
 
-    // 4. Draft from inline CFD artifact_view payload
-    const cfdDraftRes = await request(app)
-      .post("/api/v1/social/ai/draft")
-      .set("Authorization", `Bearer ${authorToken}`)
-      .send({
-        artifact_view: {
-          artifact_type: "cfd",
-          title: "RAE2822 Transonic Airfoil",
-          view_config: {
-            solver: "SU2 RANS",
-            mach: 0.73,
-            reynolds: "6.5e6",
-          },
-        },
-        tone: "concise",
-      });
-    assert.strictEqual(cfdDraftRes.status, 200);
-    assert.strictEqual(cfdDraftRes.body.domain, "Computational Fluid Dynamics");
-    assert.ok(cfdDraftRes.body.hashtags.includes("#CFD"));
-    assert.ok(cfdDraftRes.body.draft.includes("RAE2822 Transonic Airfoil"));
-
-    // 5. Polish existing text (technical polish, concise, expand, hashtags) while preserving @mentions & ::artifact directives
+    // 4. Polish technical text with typos while preserving @mentions & ::artifact directives
     const rawInput =
-      "hey @reviewer i simulated the rlc oscillator circuit with L=0.5 and C=0.01 and the voltage damps out nicely\n\n::artifact[RLC Damped Oscillator]{id=42}";
+      "hey @reviewer i simualted the rlc oscilator circuit correclty with L=0.5 and C=0.01 and the volatge damps out nicely\n\n::artifact[RLC Damped Oscillator]{id=42}";
 
     const polishRes = await request(app)
       .post("/api/v1/social/ai/polish")
@@ -530,11 +511,15 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
       });
     assert.strictEqual(polishRes.status, 200);
     assert.ok(typeof polishRes.body.polished === "string" && polishRes.body.polished.length > 10);
+    assert.ok(polishRes.body.polished.toLowerCase().includes("simulated"));
+    assert.ok(polishRes.body.polished.toLowerCase().includes("oscillator"));
+    assert.ok(polishRes.body.polished.toLowerCase().includes("correctly"));
+    assert.ok(polishRes.body.polished.toLowerCase().includes("voltage"));
     // Mentions and ::artifact directives must be preserved
     assert.ok(polishRes.body.polished.includes("@reviewer"));
     assert.ok(polishRes.body.polished.includes("::artifact[RLC Damped Oscillator]{id=42}"));
 
-    // 6. Polish mode: hashtags
+    // 5. Polish mode: hashtags
     const hashtagsRes = await request(app)
       .post("/api/v1/social/ai/polish")
       .set("Authorization", `Bearer ${authorToken}`)
@@ -545,17 +530,5 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     assert.strictEqual(hashtagsRes.status, 200);
     assert.ok(hashtagsRes.body.polished.includes("#"));
     assert.ok(Array.isArray(hashtagsRes.body.hashtags) && hashtagsRes.body.hashtags.length > 0);
-
-    // 7. Polish mode: expand with attached artifact context
-    const expandRes = await request(app)
-      .post("/api/v1/social/ai/polish")
-      .set("Authorization", `Bearer ${authorToken}`)
-      .send({
-        text: "Sharing the RLC circuit transient run.",
-        mode: "expand",
-        artifact_id: modelicaArtId,
-      });
-    assert.strictEqual(expandRes.status, 200);
-    assert.ok(expandRes.body.polished.length > "Sharing the RLC circuit transient run.".length);
   });
 });

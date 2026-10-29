@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import api from "./api";
+import api, { getTotalAdminBadgeCount, type AdminOverviewCounts } from "./api";
 import { clearOfflineCache } from "./util/offline-storage";
 
 export interface User {
@@ -42,6 +42,8 @@ interface AuthContextType {
   unreadCount: number;
   setUnreadCount: (c: number) => void;
   refreshUnreadCount: () => void;
+  adminPendingCount: number;
+  refreshAdminCount: () => void;
   creditBalance: number;
   refreshWallet: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -57,7 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(!!token);
 
   const [unreadCount, setUnreadCount] = useState(0);
+  const [adminPendingCount, setAdminPendingCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number>(0);
+
+  const isAdmin = Boolean(user && (user.account_type === "admin" || user.role === "admin"));
 
   // Set/clear the axios default header whenever token changes
   useEffect(() => {
@@ -80,14 +85,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {});
   }, [token]);
 
+  const refreshAdminCount = useCallback(() => {
+    if (!token || !isAdmin) {
+      setAdminPendingCount(0);
+      return;
+    }
+    api
+      .get("/admin/overview")
+      .then((res) => {
+        if (res.data && typeof res.data === "object") {
+          setAdminPendingCount(getTotalAdminBadgeCount(res.data as AdminOverviewCounts));
+        }
+      })
+      .catch(() => {});
+  }, [token, isAdmin]);
+
   const refreshWallet = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await api.get("/billing/wallet");
-      if (typeof res.data?.creditBalance === "number") {
-        setCreditBalance(res.data.creditBalance);
-      } else if (typeof res.data?.balance === "number") {
-        setCreditBalance(res.data.balance);
+      const res = await api.get("/auth/me");
+      if (res.data?.user) {
+        setUser(res.data.user);
+        if (typeof res.data.user.credit_balance === "number") {
+          setCreditBalance(res.data.user.credit_balance);
+        }
       }
     } catch {
       // Ignore wallet fetch error
@@ -95,18 +116,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setAdminPendingCount(0);
+      return;
+    }
     refreshUnreadCount();
+    refreshAdminCount();
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
       refreshUnreadCount();
+      refreshAdminCount();
     }, 10000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         refreshUnreadCount();
+        refreshAdminCount();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -115,32 +142,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [token, refreshUnreadCount]);
-
-  useEffect(() => {
-    if (token) {
-      void refreshWallet();
-    }
-  }, [token, refreshWallet]);
+  }, [token, refreshUnreadCount, refreshAdminCount]);
 
   useEffect(() => {
     const handleWalletUpdate = () => {
       void refreshWallet();
     };
+    const handleAdminOverviewUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<AdminOverviewCounts | undefined>)?.detail;
+      if (detail && typeof detail === "object" && "pendingReports" in detail) {
+        setAdminPendingCount(getTotalAdminBadgeCount(detail));
+      } else {
+        refreshAdminCount();
+      }
+    };
     window.addEventListener("modelscript:wallet-update", handleWalletUpdate);
+    window.addEventListener("modelscript:admin-overview-update", handleAdminOverviewUpdate);
 
     const handleAuthExpired = () => {
       void clearOfflineCache();
       setToken(null);
       setUser(null);
+      setAdminPendingCount(0);
     };
     window.addEventListener("modelscript:auth-expired", handleAuthExpired);
 
     return () => {
       window.removeEventListener("modelscript:wallet-update", handleWalletUpdate);
+      window.removeEventListener("modelscript:admin-overview-update", handleAdminOverviewUpdate);
       window.removeEventListener("modelscript:auth-expired", handleAuthExpired);
     };
-  }, [refreshWallet]);
+  }, [refreshWallet, refreshAdminCount]);
 
   // Validate stored or newly set token when user is not yet populated
   useEffect(() => {
@@ -264,6 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       delete api.defaults.headers.common["Authorization"];
       setToken(null);
       setUser(null);
+      setAdminPendingCount(0);
     }
   }, []);
 
@@ -272,9 +305,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void clearOfflineCache();
     setToken(null);
     setUser(null);
+    setAdminPendingCount(0);
   }, []);
-
-  const isAdmin = Boolean(user && (user.account_type === "admin" || user.role === "admin"));
 
   return (
     <AuthContext.Provider
@@ -292,6 +324,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unreadCount,
         setUnreadCount,
         refreshUnreadCount,
+        adminPendingCount,
+        refreshAdminCount,
         creditBalance,
         refreshWallet,
         refreshUser,

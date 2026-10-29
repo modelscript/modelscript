@@ -3447,6 +3447,7 @@ export function triggerInteractiveInput(
 
 export * from "./affine-matrix.js";
 export * from "./aspen-diagram-builder.js";
+export * from "./autosar-diagram-builder.js";
 export * from "./collab-manager.js";
 export * from "./collab-overlay.js";
 export * from "./color-inversion.js";
@@ -3463,6 +3464,7 @@ export * from "./lps-diagram-builder.js";
 export * from "./olga-diagram-builder.js";
 export * from "./opendss-diagram-builder.js";
 export * from "./openscenario-diagram-builder.js";
+export * from "./plcopen-diagram-builder.js";
 export * from "./polyglot-diagram-builder.js";
 export * from "./port-ilp-solver.js";
 export * from "./port-router.js";
@@ -3485,5 +3487,6 @@ export * from "./telemetry.js";
 export type { TopologyEdge, TopologyGraph, TopologyNode } from "./topology.js";
 export * from "./touchstone-diagram-builder.js";
 export * from "./tsm-layout.js";
+export * from "./verilog-a-diagram-builder.js";
 export * from "./visual-diff-graph.js";
 export * from "./visual-diff-renderer.js";

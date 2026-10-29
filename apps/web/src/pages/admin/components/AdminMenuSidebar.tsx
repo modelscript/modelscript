@@ -2,11 +2,13 @@
 
 import {
   DatabaseIcon,
+  GearIcon,
   GlobeIcon,
   GraphIcon,
   HistoryIcon,
   LawIcon,
   PeopleIcon,
+  PulseIcon,
   ReportIcon,
   ShieldLockIcon,
   SlidersIcon,
@@ -81,6 +83,14 @@ export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, o
         <TabButton $active={activeTab === "database"} onClick={() => onSelectTab("database")}>
           <DatabaseIcon size={16} />
           <span>Database &amp; Migrations</span>
+        </TabButton>
+        <TabButton $active={activeTab === "settings"} onClick={() => onSelectTab("settings")}>
+          <GearIcon size={16} />
+          <span>Instance Settings &amp; Invites</span>
+        </TabButton>
+        <TabButton $active={activeTab === "system"} onClick={() => onSelectTab("system")}>
+          <PulseIcon size={16} />
+          <span>System Health &amp; Diagnostics</span>
         </TabButton>
         <TabButton $active={activeTab === "flags"} onClick={() => onSelectTab("flags")}>
           <SlidersIcon size={16} />

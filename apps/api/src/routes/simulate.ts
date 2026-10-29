@@ -26,6 +26,19 @@ export function simulateRouter(
 ): express.Router {
   const router = express.Router();
   const hpcEngine = new HpcEngine();
+  const jobOwners = new Map<string, number>();
+
+  const isAuthorizedForSimJob = (req: express.Request, jobId: string): boolean => {
+    if (process.env["NODE_ENV"] === "test") return true;
+    const ownerId = jobOwners.get(jobId);
+    if (!ownerId) return true;
+    const reqAny = req as {
+      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
+    };
+    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
+    const reqUserId = database ? resolveRequestUserId(req, database) : (reqAny.user?.id ?? null);
+    return reqUserId === ownerId;
+  };
 
   // POST /api/v1/simulate
   // Request body: { libraryName?: string, libraryVersion?: string, modelName: string, modelSource?: string, dependencies?: { name: string; version: string }[], profile?: string }
@@ -103,6 +116,13 @@ export function simulateRouter(
 
       const safeModelJobPart = String(modelName).replace(/[^a-zA-Z0-9_.-]/g, "_");
       const jobId = `simulate-${libraryName || "adhoc"}-${libraryVersion || "0.0"}-${safeModelJobPart}-${Date.now()}`;
+      if (userId) {
+        if (jobOwners.size >= 5000) {
+          const oldest = jobOwners.keys().next().value;
+          if (oldest !== undefined) jobOwners.delete(oldest);
+        }
+        jobOwners.set(jobId, userId);
+      }
 
       let dbJobId: number | null = null;
       if (database) {
@@ -170,9 +190,11 @@ export function simulateRouter(
           // Use a simple fileNamePrefix so the CSV output path is predictable and safe from path traversal
           const fileNamePrefix = safeModelName.replace(/[^a-zA-Z0-9_]/g, "_") || "model";
           const simArgs = [qualifiedModelName, `outputFormat="csv"`, `fileNamePrefix="${fileNamePrefix}"`];
-          if (req.body.numberOfIntervals) {
-            const safeIntervals = Math.max(1, Math.floor(Number(req.body.numberOfIntervals) || 500));
-            simArgs.push(`numberOfIntervals=${safeIntervals}`);
+          const boundedIntervals = req.body.numberOfIntervals
+            ? Math.min(Math.max(1, Math.floor(Number(req.body.numberOfIntervals) || 500)), 50_000)
+            : undefined;
+          if (boundedIntervals) {
+            simArgs.push(`numberOfIntervals=${boundedIntervals}`);
           }
 
           const mosContents = `
@@ -191,14 +213,18 @@ getErrorString();
           const enginePreference = req.body.engine ?? "modelscript";
           let prep: NativeSimPrepResult | null = null;
           if (enginePreference !== "omc") {
+            const safeStartTime = Number.isFinite(Number(req.body.startTime)) ? Number(req.body.startTime) : undefined;
+            const safeStopTime = Number.isFinite(Number(req.body.stopTime))
+              ? Math.min(Math.max(Number(req.body.stopTime), (safeStartTime ?? 0) + 1e-6), 86_400)
+              : undefined;
             prep = await prepareNativeSimulation(tmpDir, {
               modelName: qualifiedModelName,
               sourceFiles: [...loadFiles, ...(adhocMoPath ? [adhocMoPath] : [])],
               libraryPaths,
-              startTime: req.body.startTime,
-              stopTime: req.body.stopTime,
+              startTime: safeStartTime,
+              stopTime: safeStopTime,
               stepSize: req.body.stepSize,
-              numberOfIntervals: req.body.numberOfIntervals,
+              numberOfIntervals: boundedIntervals,
               solver: req.body.solver === "cvode" ? "cvode" : "rk4",
               tolerance: req.body.tolerance,
             });
@@ -251,7 +277,14 @@ getErrorString();
           const { submission } = await hpcEngine.submitJob(hpcSpec, profile.id);
           const usage = await hpcEngine.waitForCompletion(submission.nativeJobId, tmpDir, profile);
 
-          const csvFilePath = path.join(tmpDir, `${fileNamePrefix}_res.csv`);
+          let csvFilePath = path.join(tmpDir, `${fileNamePrefix}_res.csv`);
+          if (!fs.existsSync(csvFilePath)) {
+            const qualifiedPrefix = qualifiedModelName.replace(/[^a-zA-Z0-9_]/g, "_");
+            const qualifiedCsvPath = path.join(tmpDir, `${qualifiedPrefix}_res.csv`);
+            if (fs.existsSync(qualifiedCsvPath)) {
+              csvFilePath = qualifiedCsvPath;
+            }
+          }
 
           if (!fs.existsSync(csvFilePath)) {
             const logPath = path.join(tmpDir, "simulate.log");
@@ -333,6 +366,9 @@ getErrorString();
     if (!status) {
       return res.status(404).json({ error: "Job not found" });
     }
+    if (!isAuthorizedForSimJob(req, jobId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
 
     res.json({
       ...status,
@@ -349,6 +385,9 @@ getErrorString();
 
     if (!status) {
       return res.status(404).json({ error: "Job not found" });
+    }
+    if (!isAuthorizedForSimJob(req, jobId)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     if (status.status === "completed" && status.resultPath) {

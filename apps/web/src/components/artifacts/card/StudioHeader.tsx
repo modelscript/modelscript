@@ -36,6 +36,7 @@ export interface StudioHeaderProps {
   onCopyLink: () => void;
   onOpenDiff: () => void;
   onToggleSidebar: () => void;
+  onRunOnHpc?: () => void;
 }
 
 export const StudioHeader: React.FC<StudioHeaderProps> = ({
@@ -52,6 +53,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onCopyLink,
   onOpenDiff,
   onToggleSidebar,
+  onRunOnHpc,
 }) => {
   const navigate = useNavigate();
 
@@ -301,6 +303,31 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 title="Inspect execution recipe and reproduction parameters"
               >
                 ⚡ Fork &amp; Reproduce
+              </button>
+            )}
+            {onRunOnHpc && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRunOnHpc();
+                }}
+                style={{
+                  background: "linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(6, 182, 212, 0.22))",
+                  color: "#34d399",
+                  border: "1px solid rgba(16, 185, 129, 0.45)",
+                  borderRadius: "6px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                title="Dispatch simulation job against this model artifact on Cloud HPC"
+              >
+                ☁️ Run on HPC
               </button>
             )}
             {!isMultiFile && (

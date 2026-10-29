@@ -198,10 +198,19 @@ export class SlurmDriver implements HpcDriver {
     };
   }
 
+  private assertSafeNativeJobId(nativeJobId: string): string {
+    const trimmed = String(nativeJobId).trim();
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(trimmed) || trimmed.startsWith("-")) {
+      throw new Error(`Invalid Slurm nativeJobId: ${nativeJobId}`);
+    }
+    return trimmed;
+  }
+
   public async pollStatus(nativeJobId: string): Promise<{ state: HpcJobState; exitCode?: number | undefined }> {
     try {
+      const safeId = this.assertSafeNativeJobId(nativeJobId);
       // 1. Check active queue first (squeue)
-      const { stdout: squeueOut } = await this.executor("squeue", ["-h", "-j", nativeJobId, "-o", "%T"]);
+      const { stdout: squeueOut } = await this.executor("squeue", ["-h", "-j", safeId, "-o", "%T"]);
       const stateStr = squeueOut.trim().toUpperCase();
 
       if (stateStr) {
@@ -218,7 +227,7 @@ export class SlurmDriver implements HpcDriver {
         "-n",
         "-P",
         "-j",
-        nativeJobId,
+        safeId,
         "--format=JobID,CPUTimeRAW,TotalCPU,MaxRSS,AllocCPUs,ElapsedRaw,State,ExitCode,AllocTRES",
       ]);
 
@@ -231,7 +240,8 @@ export class SlurmDriver implements HpcDriver {
 
   public async cancel(nativeJobId: string): Promise<boolean> {
     try {
-      await this.executor("scancel", [nativeJobId]);
+      const safeId = this.assertSafeNativeJobId(nativeJobId);
+      await this.executor("scancel", [safeId]);
       return true;
     } catch {
       return false;
@@ -240,11 +250,12 @@ export class SlurmDriver implements HpcDriver {
 
   public async getMetrics(nativeJobId: string, _workingDir: string, profile: ComputeProfile): Promise<HpcUsageMetrics> {
     try {
+      const safeId = this.assertSafeNativeJobId(nativeJobId);
       const { stdout: sacctOut } = await this.executor("sacct", [
         "-n",
         "-P",
         "-j",
-        nativeJobId,
+        safeId,
         "--format=JobID,CPUTimeRAW,TotalCPU,MaxRSS,AllocCPUs,ElapsedRaw,State,ExitCode,AllocTRES",
       ]);
 
@@ -258,7 +269,7 @@ export class SlurmDriver implements HpcDriver {
         peakMemoryMb: parsed.peakMemoryMb,
         gpuSeconds: gpusUsed ? parsed.elapsedSeconds * gpusUsed : 0,
         costCredits,
-        nativeJobId,
+        nativeJobId: safeId,
         exitCode: parsed.exitCode,
       };
     } catch {
@@ -274,6 +285,7 @@ export class SlurmDriver implements HpcDriver {
   }
 
   public getLogPath(nativeJobId: string, workingDir: string): string {
-    return path.join(workingDir, `slurm-${nativeJobId}.out`);
+    const safeId = this.assertSafeNativeJobId(nativeJobId);
+    return path.join(workingDir, `slurm-${safeId}.out`);
   }
 }

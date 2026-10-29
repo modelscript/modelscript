@@ -110,6 +110,10 @@ export function authRouter(database: LibraryDatabase): Router {
         res.status(400).json({ error: "Password must be at least 8 characters" });
         return;
       }
+      if (Buffer.byteLength(password, "utf8") > 72) {
+        res.status(400).json({ error: "Password must not exceed 72 bytes" });
+        return;
+      }
 
       const emailRegex =
         /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
@@ -134,6 +138,29 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       try {
+        const instanceSettings = database.getInstanceSettings();
+        const inviteCode = typeof req.body?.inviteCode === "string" ? req.body.inviteCode.trim() : "";
+
+        if (instanceSettings.registrationMode === "closed") {
+          res.status(403).json({
+            error: "Public registration is currently closed on this instance.",
+          });
+          return;
+        }
+
+        if (instanceSettings.registrationMode === "domain_allowlist" && !inviteCode) {
+          const emailDomain = String(email).split("@")[1]?.toLowerCase() || "";
+          const allowed = instanceSettings.allowedEmailDomains.some(
+            (d) => emailDomain === d || emailDomain.endsWith(`.${d}`),
+          );
+          if (!allowed) {
+            res.status(403).json({
+              error: `Registration on this instance is restricted to approved email domains (${instanceSettings.allowedEmailDomains.join(", ") || "none"}).`,
+            });
+            return;
+          }
+        }
+
         const existing = database.getUserByEmail(email);
         if (existing) {
           res.status(409).json({ error: "An account with this email already exists" });
@@ -146,16 +173,56 @@ export function authRouter(database: LibraryDatabase): Router {
           return;
         }
 
+        let redeemedInvite:
+          | {
+              id: number;
+              code: string;
+              initialCredits: number;
+              assignedRole: string;
+            }
+          | undefined;
+
+        if (instanceSettings.registrationMode === "invite_only" || inviteCode) {
+          if (!inviteCode) {
+            res.status(403).json({
+              error: "An invitation code is required to register on this instance.",
+            });
+            return;
+          }
+          const validation = database.validateAndConsumeInstanceInvite(inviteCode);
+          if (!validation.valid || !validation.invite) {
+            res.status(403).json({
+              error: validation.reason || "Invalid invitation code",
+            });
+            return;
+          }
+          redeemedInvite = validation.invite;
+        }
+
         const passwordHash = await bcrypt.hash(password, 10);
 
-        // Create user with compute credits withheld until verification
-        const user = database.createUser(username, email, passwordHash, {
-          emailVerified: false,
-          initialCredits: 0.0,
-          status: "pending_verification",
+        // Create user with compute credits withheld until verification (unless invited)
+        let user = database.createUser(username, email, passwordHash, {
+          emailVerified: Boolean(redeemedInvite),
+          initialCredits: redeemedInvite ? redeemedInvite.initialCredits : 0.0,
+          status: redeemedInvite ? "active" : "pending_verification",
           termsAcceptedAt: new Date().toISOString(),
           registrationIp: clientIp,
         });
+
+        if (
+          redeemedInvite &&
+          redeemedInvite.assignedRole &&
+          redeemedInvite.assignedRole !== "user" &&
+          (redeemedInvite.assignedRole === "moderator" ||
+            redeemedInvite.assignedRole === "auditor" ||
+            redeemedInvite.assignedRole === "admin")
+        ) {
+          database.moderateUserAccount(user.id, {
+            role: redeemedInvite.assignedRole,
+          });
+          user = database.getUserById(user.id) ?? user;
+        }
 
         // Record successful registration for IP velocity limit
         defaultRegistrationLimiter.record(clientIp);
@@ -176,7 +243,11 @@ export function authRouter(database: LibraryDatabase): Router {
           resourceType: "auth",
           resourceId: String(user.id),
           ipAddress: clientIp,
-          details: { username: user.username, email: user.email },
+          details: {
+            username: user.username,
+            email: user.email,
+            ...(redeemedInvite ? { inviteCode: redeemedInvite.code, assignedRole: redeemedInvite.assignedRole } : {}),
+          },
         });
 
         const verificationToken = signEmailVerificationToken(user.id, user.email);
@@ -277,6 +348,12 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
+    const currentUser = database.getUserById(verification.userId);
+    if (currentUser && verification.email && currentUser.email.toLowerCase() !== verification.email.toLowerCase()) {
+      res.status(400).json({ error: "Email verification token does not match current account email" });
+      return;
+    }
+
     const result = database.verifyUserEmail(verification.userId, 50.0);
     if (!result.success || !result.user) {
       res.status(404).json({ error: "User account not found or email verification failed" });
@@ -316,6 +393,10 @@ export function authRouter(database: LibraryDatabase): Router {
 
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+    if (typeof password !== "string" || Buffer.byteLength(password, "utf8") > 72) {
+      res.status(400).json({ error: "Password must not exceed 72 bytes" });
       return;
     }
 
@@ -878,6 +959,10 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(400).json({ error: "New password must be at least 8 characters" });
       return;
     }
+    if (Buffer.byteLength(newPassword, "utf8") > 72) {
+      res.status(400).json({ error: "New password must not exceed 72 bytes" });
+      return;
+    }
 
     const payload = parsePasswordResetTokenPayload(token);
     if (!payload || !payload.userId) {
@@ -1178,6 +1263,7 @@ export function authRouter(database: LibraryDatabase): Router {
     const oauthCookieMatch = cookieHeader.match(/(?:^|;\s*)oauth_state=([^;]+)/);
     const cookieState =
       req.cookies?.["oauth_state"] || (oauthCookieMatch?.[1] ? decodeURIComponent(oauthCookieMatch[1]) : undefined);
+    res.clearCookie("oauth_state", { path: "/" });
     if (cookieState && stateParam && decodeURIComponent(stateParam) !== cookieState && stateParam !== cookieState) {
       res.redirect(`${frontendUrl}/settings?error=InvalidState`);
       return;
@@ -1420,10 +1506,11 @@ export function authRouter(database: LibraryDatabase): Router {
 
   // ── Enterprise OpenID Connect (OIDC / SSO) ──
   router.get("/oidc/config", (_req: Request, res: Response) => {
+    const isProductionEnv = process.env["NODE_ENV"] === "production";
     res.json({
       enabled: defaultOidcService.isConfigured(),
       issuer: process.env["OIDC_ISSUER_URL"] || null,
-      adminGroup: process.env["OIDC_ADMIN_GROUP"] || "Engineering-Admins",
+      ...(isProductionEnv ? {} : { adminGroup: process.env["OIDC_ADMIN_GROUP"] || "Engineering-Admins" }),
     });
   });
 
@@ -1456,6 +1543,7 @@ export function authRouter(database: LibraryDatabase): Router {
     const oidcCookieMatch = cookieHeader.match(/(?:^|;\s*)oidc_state=([^;]+)/);
     const cookieState =
       req.cookies?.["oidc_state"] || (oidcCookieMatch?.[1] ? decodeURIComponent(oidcCookieMatch[1]) : undefined);
+    res.clearCookie("oidc_state", { path: "/" });
     if (cookieState && state !== cookieState) {
       res.status(400).json({ error: "Invalid OIDC state parameter" });
       return;
@@ -1500,6 +1588,10 @@ export function authRouter(database: LibraryDatabase): Router {
     const { idToken } = req.body || {};
     if (!idToken || typeof idToken !== "string") {
       res.status(400).json({ error: "idToken is required" });
+      return;
+    }
+    if (process.env["NODE_ENV"] === "production" && !defaultOidcService.isConfigured()) {
+      res.status(501).json({ error: "Enterprise OIDC is not configured on this node" });
       return;
     }
 
@@ -1564,7 +1656,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const hash = database.getPasswordHash(userId);
       // Require password confirmation only if account has a password set (i.e. not OAuth-only)
       if (hash) {
-        if (!password) {
+        if (!password || typeof password !== "string" || Buffer.byteLength(password, "utf8") > 72) {
           res.status(400).json({ error: "Password is required to confirm changes" });
           return;
         }
@@ -1608,11 +1700,7 @@ export function authRouter(database: LibraryDatabase): Router {
         database.updateAccount(userId, u, e);
 
         if (emailChanged) {
-          try {
-            database.db.prepare(`UPDATE users SET email_verified = 0 WHERE id = ?`).run(userId);
-          } catch {
-            // Ignore if raw db handle is unavailable
-          }
+          database.setUserEmailVerified(userId, false);
           const verificationToken = signEmailVerificationToken(userId, e);
           void defaultMailer.sendVerificationEmail(e, u, verificationToken).catch((err) => {
             console.error("[Auth] Failed to dispatch verification email on email change:", err);
@@ -1646,12 +1734,16 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(400).json({ error: "New password must be at least 8 characters" });
       return;
     }
+    if (Buffer.byteLength(newPassword, "utf8") > 72) {
+      res.status(400).json({ error: "New password must not exceed 72 bytes" });
+      return;
+    }
 
     try {
       const hash = database.getPasswordHash(userId);
       // If user already has a password, verify old password
       if (hash) {
-        if (!oldPassword) {
+        if (!oldPassword || typeof oldPassword !== "string" || Buffer.byteLength(oldPassword, "utf8") > 72) {
           res.status(400).json({ error: "Current password is required" });
           return;
         }
@@ -1879,6 +1971,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * Generate a new personal access token (PAT)
    */
   router.post("/tokens", requireAuth, (req: Request, res: Response): void => {
+    if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
+      res.status(403).json({ error: "Personal access tokens cannot mint new API tokens without admin scope" });
+      return;
+    }
     const { name, scopes, packagePattern, expiresInDays } = req.body || {};
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -1919,11 +2015,17 @@ export function authRouter(database: LibraryDatabase): Router {
     }
 
     let expiresAt: string | null = null;
-    if (typeof expiresInDays === "number" && expiresInDays > 0) {
-      const expiry = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+    if (typeof expiresInDays === "number" && Number.isFinite(expiresInDays) && expiresInDays > 0) {
+      const cappedDays = Math.min(expiresInDays, 3650);
+      const expiry = new Date(Date.now() + cappedDays * 24 * 60 * 60 * 1000);
       expiresAt = expiry.toISOString();
     } else if (typeof req.body?.expiresAt === "string") {
-      expiresAt = new Date(req.body.expiresAt).toISOString();
+      const parsedMs = Date.parse(req.body.expiresAt);
+      if (Number.isNaN(parsedMs)) {
+        res.status(400).json({ error: "Invalid expiresAt timestamp" });
+        return;
+      }
+      expiresAt = new Date(parsedMs).toISOString();
     }
 
     try {
@@ -1971,6 +2073,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * Revoke an API token
    */
   router.delete("/tokens/:id", requireAuth, (req: Request, res: Response): void => {
+    if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
+      res.status(403).json({ error: "Personal access tokens cannot revoke API tokens without admin scope" });
+      return;
+    }
     const rawId = req.params["id"];
     const idStr = Array.isArray(rawId) ? rawId[0] : rawId;
     const tokenId = parseInt(idStr || "", 10);

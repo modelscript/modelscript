@@ -17,7 +17,10 @@ import { parsePackageMo } from "../util/package-mo.js";
 import { scanPackageArchive } from "../util/package-scanner.js";
 import { extractManifestFromZip } from "../util/zip.js";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 function resolvePackageParams(req: Request): { name: string; version: string; baseName: string } {
   const scope = req.params["scope"] as string | undefined;
@@ -97,7 +100,7 @@ export function publishRouter(
       if (
         !isScoped &&
         !isCoreOrTestNamespace &&
-        req.headers["x-test-allow-unscoped"] !== "true" &&
+        !(process.env["NODE_ENV"] !== "production" && req.headers["x-test-allow-unscoped"] === "true") &&
         req.user?.username !== "admin"
       ) {
         const existing = database.getLibraryReleases(name);
@@ -395,8 +398,25 @@ export function publishRouter(
       return;
     }
 
-    // Check if user has permission to manage this package
-    if (!database.canUserManagePackage(name, req.user!.id)) {
+    if (req.tokenScopes) {
+      if (
+        !req.tokenScopes.includes("*") &&
+        !req.tokenScopes.includes("admin") &&
+        !req.tokenScopes.includes("packages:manage")
+      ) {
+        res.status(403).json({ error: "Insufficient permissions: token lacks 'packages:manage' scope" });
+        return;
+      }
+    }
+    if (req.tokenPackagePattern && !matchesPackagePattern(name, req.tokenPackagePattern)) {
+      res.status(403).json({
+        error: `Insufficient permissions: token package pattern '${req.tokenPackagePattern}' does not permit unpublishing '${name}'`,
+      });
+      return;
+    }
+
+    // Check if user has owner/admin permission to unpublish this package
+    if (!database.canUserAdministerPackage(name, req.user!.id)) {
       res.status(403).json({ error: "You do not have permission to unpublish this package" });
       return;
     }

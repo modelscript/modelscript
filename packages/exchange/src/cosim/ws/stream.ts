@@ -68,6 +68,11 @@ interface WsServerMessage {
  * });
  * ```
  */
+const MAX_SUBSCRIBED_PARTICIPANTS = 256;
+const MAX_SUBSCRIBED_VARIABLES = 2048;
+const MAX_PENDING_UPDATES = 4096;
+const MAX_WS_CLIENTS = 256;
+
 export function createCosimWebSocketHandler(
   mqttClient: CosimMqttClient | null,
 ): (ws: WsWebSocket, req: IncomingMessage) => void {
@@ -81,6 +86,12 @@ export function createCosimWebSocketHandler(
       for (const client of clients) {
         if (client.participants.size > 0 && !client.participants.has(participantId)) continue;
         if (client.variables.size > 0 && !client.variables.has(variableName)) continue;
+        if (
+          client.pendingUpdates.size >= MAX_PENDING_UPDATES &&
+          !client.pendingUpdates.has(`${participantId}/${variableName}`)
+        ) {
+          continue;
+        }
 
         // Buffer the update for throttled delivery
         const key = `${participantId}/${variableName}`;
@@ -90,6 +101,11 @@ export function createCosimWebSocketHandler(
   }
 
   return (ws: WsWebSocket, _req: IncomingMessage) => {
+    if (clients.size >= MAX_WS_CLIENTS) {
+      ws.close(1013, "Maximum concurrent co-simulation stream clients reached");
+      return;
+    }
+
     const state: ClientState = {
       ws,
       participants: new Set(),
@@ -128,11 +144,19 @@ export function createCosimWebSocketHandler(
 
         switch (msg.type) {
           case "subscribe":
-            if (msg.participants) {
-              state.participants = new Set(msg.participants);
+            if (Array.isArray(msg.participants)) {
+              state.participants = new Set(
+                msg.participants
+                  .filter((p): p is string => typeof p === "string" && p.length <= 256)
+                  .slice(0, MAX_SUBSCRIBED_PARTICIPANTS),
+              );
             }
-            if (msg.variables) {
-              state.variables = new Set(msg.variables);
+            if (Array.isArray(msg.variables)) {
+              state.variables = new Set(
+                msg.variables
+                  .filter((v): v is string => typeof v === "string" && v.length <= 256)
+                  .slice(0, MAX_SUBSCRIBED_VARIABLES),
+              );
             }
             send(ws, { type: "subscribed" });
             break;
@@ -145,8 +169,13 @@ export function createCosimWebSocketHandler(
             break;
 
           case "setThrottle":
-            if (msg.throttleMs && msg.throttleMs >= 10) {
-              state.throttleMs = msg.throttleMs;
+            if (
+              typeof msg.throttleMs === "number" &&
+              Number.isFinite(msg.throttleMs) &&
+              msg.throttleMs >= 10 &&
+              msg.throttleMs <= 60_000
+            ) {
+              state.throttleMs = Math.floor(msg.throttleMs);
               // Restart flush timer with new interval
               if (state.flushTimer) clearInterval(state.flushTimer);
               state.flushTimer = setInterval(() => {
@@ -183,7 +212,7 @@ export function attachCosimWebSocket(
   mqttClient: CosimMqttClient | null,
   path = "/api/v1/cosim/stream",
 ): void {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const handler = createCosimWebSocketHandler(mqttClient);
 
   server.on("upgrade", (req, socket, head) => {

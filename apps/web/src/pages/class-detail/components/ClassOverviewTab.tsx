@@ -126,7 +126,7 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
           <div style={{ position: "relative" }}>
             <DiagramWrap style={{ overflow: "hidden", position: "relative" }}>
               {!diagramLoaded && !diagramError && (
-                <div className="skeleton" style={{ width: "100%", height: "280px", borderRadius: "8px" }} />
+                <div className="skeleton" style={{ width: "100%", height: "100%", borderRadius: "8px" }} />
               )}
               {diagramLoaded && (
                 <div
@@ -206,8 +206,10 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
                         transformOrigin: "center center",
                         transition: "transform 0.15s ease",
                         width: "100%",
+                        height: "100%",
                         display: "flex",
                         justifyContent: "center",
+                        alignItems: "center",
                       }
                     : {
                         position: "absolute",
@@ -219,6 +221,8 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
                 <InvertedSvg
                   src={`${getDiagramUrl(libraryName, version, className)}?t=${retryCount}`}
                   alt={`${className} diagram`}
+                  width="100%"
+                  height="100%"
                   onLoad={() => setDiagramLoaded(true)}
                   onError={() => {
                     if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {

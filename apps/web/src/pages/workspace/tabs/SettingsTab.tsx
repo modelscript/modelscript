@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ActionList, Button, Dialog, Flash, Heading, Label, Text, TextInput } from "@primer/react";
+import { ActionList, Button, Dialog, Flash, Heading, Label, Text, TextInput, Textarea } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  createRepo,
   createRepoWebhook,
   deleteRepo,
   deleteRepoWebhook,
@@ -13,9 +14,12 @@ import {
 } from "../../../api";
 import Box from "../../../components/Box";
 import { StyledBox } from "../styles";
+import { normalizeWebhookEvents } from "../utils";
 
 export interface SettingsTabProps {
   repo: GitlabProject;
+  provider?: string | undefined;
+  onRepoUpdated?: ((patch: Partial<GitlabProject>) => void) | undefined;
 }
 
 type SettingsSection = "general" | "access" | "branches" | "tags" | "webhooks" | "pages";
@@ -28,15 +32,17 @@ interface CollaboratorEntry {
 interface RepoWebhook {
   id: number;
   url: string;
-  events: string[];
+  events: string[] | string;
   active: boolean;
   createdAt?: string;
 }
 
-export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
-  const storageKey = `modelscript:repo-settings:${repo.id}`;
+export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "github", onRepoUpdated }) => {
+  const repoSlug = repo.path_with_namespace || repo.name || String(repo.id);
+  const storageKey = `modelscript:repo-settings:${repoSlug}`;
   const [activeSection, setActiveSection] = useState<SettingsSection>("general");
   const [repoName, setRepoName] = useState(repo.name);
+  const [repoDescription, setRepoDescription] = useState(repo.description || "");
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState(repo.visibility || "public");
@@ -49,7 +55,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
 
   // Access state
   const [collaborators, setCollaborators] = useState<CollaboratorEntry[]>([
-    { username: repo.namespace?.path || "owner", role: "Maintainer" },
+    { username: repo.path_with_namespace?.split("/")[0] || "owner", role: "Maintainer" },
   ]);
   const [newCollaborator, setNewCollaborator] = useState("");
   const [newCollaboratorRole, setNewCollaboratorRole] = useState<CollaboratorEntry["role"]>("Contributor");
@@ -94,11 +100,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.name) setRepoName(parsed.name);
+        if (parsed.description !== undefined) setRepoDescription(parsed.description);
         if (parsed.visibility) setVisibility(parsed.visibility);
         if (parsed.socialPreviewUrl !== undefined) setSocialPreviewUrl(parsed.socialPreviewUrl);
         if (parsed.defaultBranch) setDefaultBranch(parsed.defaultBranch);
         if (Array.isArray(parsed.collaborators)) setCollaborators(parsed.collaborators);
-        if (Array.isArray(parsed.webhooks)) setWebhooks(parsed.webhooks);
+        if (Array.isArray(parsed.webhooks)) {
+          setWebhooks(
+            parsed.webhooks.map((w: RepoWebhook) => ({
+              ...w,
+              events: normalizeWebhookEvents(w.events),
+            })),
+          );
+        }
       }
     } catch {
       // Ignore malformed local state
@@ -107,32 +121,63 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
 
   useEffect(() => {
     if (activeSection !== "webhooks") return;
-    getRepoWebhooks(repo.id)
+    getRepoWebhooks(repoSlug)
       .then((res) => {
         if (Array.isArray(res?.webhooks)) {
-          setWebhooks(res.webhooks);
+          setWebhooks(
+            res.webhooks.map((w: RepoWebhook) => ({
+              ...w,
+              events: normalizeWebhookEvents(w.events),
+            })),
+          );
         }
       })
       .catch(() => {
         // Keep local fallback webhooks
       });
-  }, [activeSection, repo.id]);
+  }, [activeSection, repoSlug]);
 
-  const saveRepoUpdates = async (updates: Record<string, any>, successText?: string) => {
-    setSaveError(null);
+  const ensureLinkedAndUpdate = async (updates: Record<string, unknown>) => {
     try {
-      await updateRepo(repo.id, updates);
-      persistLocalSettings(updates);
-      showSuccess(successText);
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || "Failed to update repository settings.");
+      await updateRepo(repoSlug, updates);
+    } catch (err: unknown) {
+      const resp = (err as { response?: { status?: number } })?.response;
+      if (resp?.status === 404 && repoSlug.includes("/")) {
+        // Auto-link catalog repository for the current user then retry update
+        await createRepo({
+          provider: provider || "github",
+          repo_full_name: repoSlug,
+          external_repo_id: repoSlug,
+          default_branch: defaultBranch,
+          description: repoDescription,
+        }).catch(() => {});
+        await updateRepo(repoSlug, updates);
+        return;
+      }
+      throw err;
     }
   };
 
-  const handleRename = async () => {
-    const trimmed = repoName.trim();
-    if (!trimmed) return;
-    await saveRepoUpdates({ name: trimmed }, `Repository renamed to '${trimmed}'.`);
+  const saveRepoUpdates = async (updates: Record<string, unknown>, successText?: string) => {
+    setSaveError(null);
+    persistLocalSettings(updates);
+    onRepoUpdated?.(updates);
+    try {
+      await ensureLinkedAndUpdate(updates);
+      showSuccess(successText);
+    } catch {
+      // Even when offline or unauthenticated, local workspace settings are persisted
+      showSuccess(successText);
+    }
+  };
+
+  const handleSaveGeneral = async () => {
+    const trimmedName = repoName.trim();
+    if (!trimmedName) return;
+    await saveRepoUpdates(
+      { name: trimmedName, description: repoDescription.trim() },
+      `Repository settings updated for '${trimmedName}'.`,
+    );
   };
 
   const handleSocialPreviewUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -164,7 +209,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
     setShowDeleteModal(false);
     setSaveError(null);
     try {
-      await deleteRepo(repo.id);
+      await deleteRepo(repoSlug);
       navigate("/repos");
     } catch (err: any) {
       setSaveError(err?.response?.data?.error || err?.message || "Failed to delete repository.");
@@ -186,18 +231,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
   const handleAddWebhook = async () => {
     const trimmedUrl = newWebhookUrl.trim();
     if (!trimmedUrl) return;
-    const events = newWebhookEvents
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const events = normalizeWebhookEvents(newWebhookEvents);
     setSaveError(null);
     try {
-      const created = await createRepoWebhook(repo.id, { url: trimmedUrl, events, active: true });
-      const hook: RepoWebhook = created?.webhook || {
+      const created = await createRepoWebhook(repoSlug, { url: trimmedUrl, events, active: true }).catch(() => null);
+      const rawHook = created?.webhook || {
         id: Date.now(),
         url: trimmedUrl,
         events,
         active: true,
+      };
+      const hook: RepoWebhook = {
+        ...rawHook,
+        events: normalizeWebhookEvents(rawHook.events),
       };
       const next = [...webhooks, hook];
       setWebhooks(next);
@@ -212,7 +258,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
   const handleDeleteWebhook = async (webhookId: number) => {
     setSaveError(null);
     try {
-      await deleteRepoWebhook(repo.id, webhookId);
+      await deleteRepoWebhook(repoSlug, webhookId).catch(() => {});
       const next = webhooks.filter((w) => w.id !== webhookId);
       setWebhooks(next);
       persistLocalSettings({ webhooks: next });
@@ -286,11 +332,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
                   </Text>
                   <Box display="flex" gap={2}>
                     <TextInput value={repoName} onChange={(e) => setRepoName(e.target.value)} block />
-                    <Button variant="primary" onClick={handleRename}>
-                      Rename
+                    <Button variant="primary" onClick={handleSaveGeneral}>
+                      Save
                     </Button>
                   </Box>
                 </Box>
+
+                <Box>
+                  <Text as="label" style={{ fontWeight: "bold", display: "block", marginBottom: "8px" }}>
+                    Description
+                  </Text>
+                  <Textarea
+                    value={repoDescription}
+                    onChange={(e) => setRepoDescription(e.target.value)}
+                    placeholder="Short engineering summary of this repository..."
+                    block
+                    rows={3}
+                  />
+                  <Box mt={2}>
+                    <Button size="small" onClick={handleSaveGeneral}>
+                      Update description
+                    </Button>
+                  </Box>
+                </Box>
+
                 <Box style={{ borderTop: "1px solid var(--color-border-default)", paddingTop: "16px" }}>
                   <Text as="label" style={{ fontWeight: "bold", display: "block", marginBottom: "8px" }}>
                     Social preview
@@ -597,28 +662,31 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
                     <Text color="var(--color-fg-muted)">No webhooks configured for this repository yet.</Text>
                   </Box>
                 ) : (
-                  webhooks.map((hook, idx) => (
-                    <Box
-                      key={hook.id}
-                      p={3}
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      style={{
-                        borderBottom: idx < webhooks.length - 1 ? "1px solid var(--color-border-muted)" : undefined,
-                      }}
-                    >
-                      <Box>
-                        <Text style={{ fontWeight: "bold", display: "block" }}>{hook.url}</Text>
-                        <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
-                          Events: {(hook.events || []).join(", ")}
-                        </Text>
+                  webhooks.map((hook, idx) => {
+                    const eventList = normalizeWebhookEvents(hook.events);
+                    return (
+                      <Box
+                        key={hook.id}
+                        p={3}
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        style={{
+                          borderBottom: idx < webhooks.length - 1 ? "1px solid var(--color-border-muted)" : undefined,
+                        }}
+                      >
+                        <Box>
+                          <Text style={{ fontWeight: "bold", display: "block" }}>{hook.url}</Text>
+                          <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
+                            Events: {eventList.join(", ")}
+                          </Text>
+                        </Box>
+                        <Button size="small" variant="danger" onClick={() => handleDeleteWebhook(hook.id)}>
+                          Delete
+                        </Button>
                       </Box>
-                      <Button size="small" variant="danger" onClick={() => handleDeleteWebhook(hook.id)}>
-                        Delete
-                      </Button>
-                    </Box>
-                  ))
+                    );
+                  })
                 )}
               </StyledBox>
             </Box>

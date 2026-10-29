@@ -197,6 +197,8 @@ function extractFileFromSspZip(zipData: Buffer, targetName: string): string | nu
   return result ? result.toString("utf-8") : null;
 }
 
+const MAX_SSP_ENTRY_BYTES = 50 * 1024 * 1024; // 50 MB per extracted file
+
 /**
  * Extract a binary file from a ZIP archive by name.
  */
@@ -212,39 +214,49 @@ function extractBinaryFromSspZip(zipData: Buffer, targetName: string): Buffer | 
   // Find End of Central Directory record
   let eocdOffset = -1;
   const len = typeof zipData === "string" || Array.isArray(zipData) || !Buffer.isBuffer(zipData) ? 0 : zipData.length;
-  for (let i = len - 22; i >= 0; i--) {
+  if (len < 22) return null;
+  const minEocdOffset = Math.max(0, len - 22 - 65535);
+  for (let i = len - 22; i >= minEocdOffset; i--) {
     if (zipData.readUInt32LE(i) === 0x06054b50) {
       eocdOffset = i;
       break;
     }
   }
-  if (eocdOffset === -1) return null;
+  if (eocdOffset === -1 || eocdOffset + 20 > len) return null;
 
   const cdOffset = zipData.readUInt32LE(eocdOffset + 16);
   const cdSize = zipData.readUInt32LE(eocdOffset + 12);
-  const cdEnd = cdOffset + cdSize;
+  const cdEnd = Math.min(len, cdOffset + cdSize);
+  if (cdOffset >= len || cdOffset < 0) return null;
 
   // Scan central directory for the target file
   let pos = cdOffset;
-  while (pos < cdEnd) {
+  while (pos + 46 <= cdEnd) {
     if (zipData.readUInt32LE(pos) !== 0x02014b50) break;
 
     const compressionMethod = zipData.readUInt16LE(pos + 10);
     const compressedSize = zipData.readUInt32LE(pos + 20);
+    const uncompressedSize = zipData.readUInt32LE(pos + 24);
     const fileNameLength = zipData.readUInt16LE(pos + 28);
     const extraLength = zipData.readUInt16LE(pos + 30);
     const commentLength = zipData.readUInt16LE(pos + 32);
     const localHeaderOffset = zipData.readUInt32LE(pos + 42);
+    if (pos + 46 + fileNameLength > len) break;
     const fileName = zipData.subarray(pos + 46, pos + 46 + fileNameLength).toString("utf-8");
 
     if (fileName === targetName) {
+      if (uncompressedSize > MAX_SSP_ENTRY_BYTES || compressedSize > MAX_SSP_ENTRY_BYTES) {
+        return null;
+      }
       // Read from local file header
       const localPos = localHeaderOffset;
+      if (localPos < 0 || localPos + 30 > len) return null;
       if (zipData.readUInt32LE(localPos) !== 0x04034b50) return null;
 
       const localFileNameLen = zipData.readUInt16LE(localPos + 26);
       const localExtraLen = zipData.readUInt16LE(localPos + 28);
       const dataStart = localPos + 30 + localFileNameLen + localExtraLen;
+      if (dataStart < 0 || dataStart + compressedSize > len) return null;
 
       if (compressionMethod === 0) {
         // Stored (no compression)
@@ -252,7 +264,9 @@ function extractBinaryFromSspZip(zipData: Buffer, targetName: string): Buffer | 
       } else if (compressionMethod === 8) {
         // Deflated
         try {
-          return inflateRawSync(zipData.subarray(dataStart, dataStart + compressedSize));
+          return inflateRawSync(zipData.subarray(dataStart, dataStart + compressedSize), {
+            maxOutputLength: MAX_SSP_ENTRY_BYTES,
+          });
         } catch {
           return null;
         }
@@ -261,7 +275,9 @@ function extractBinaryFromSspZip(zipData: Buffer, targetName: string): Buffer | 
       return null;
     }
 
-    pos += 46 + fileNameLength + extraLength + commentLength;
+    const step = 46 + fileNameLength + extraLength + commentLength;
+    if (step <= 0) break;
+    pos += step;
   }
 
   return null;

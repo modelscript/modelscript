@@ -45,7 +45,13 @@ declare module "express" {
 export { JWT_SECRET };
 
 export function isAccountBlocked(status?: string | null): boolean {
-  return status === "suspended" || status === "suspended_dispute" || status === "frozen" || status === "deleted";
+  return (
+    status === "suspended" ||
+    status === "banned" ||
+    status === "suspended_dispute" ||
+    status === "frozen" ||
+    status === "deleted"
+  );
 }
 
 function parseBotScopes(rawScopes?: string | null): string[] {
@@ -366,10 +372,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       return;
     }
 
-    sharedAuthDatabase.touchApiToken(tokenRecord.id, (req.headers["x-forwarded-for"] as string) || req.ip);
+    const remoteAddr = req.socket?.remoteAddress || req.ip || "";
+    const tokenClientIp =
+      isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string"
+        ? req.headers["x-forwarded-for"].split(",")[0]?.trim() || req.ip
+        : req.ip;
+    sharedAuthDatabase.touchApiToken(tokenRecord.id, tokenClientIp);
 
     req.user = {
       ...user,
+      role: user.account_type || "user",
       accountType: user.account_type || "user",
     };
     req.tokenScopes = tokenRecord.scopes;
@@ -401,6 +413,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
     req.user = {
       ...botUser,
+      role: botUser.account_type || "user",
       accountType: botUser.account_type,
     };
     req.tokenScopes = parseBotScopes(botUser.bot_scopes);
@@ -446,8 +459,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         return;
       }
 
-      decoded.accountType = user.account_type || decoded.accountType || decoded.role || "user";
+      const dbRole = user.account_type;
+      decoded.accountType = dbRole || decoded.accountType || decoded.role || "user";
       decoded.account_type = decoded.accountType;
+      decoded.role = dbRole && dbRole !== "user" ? dbRole : decoded.role || decoded.accountType;
     }
 
     req.user = decoded;
@@ -456,6 +471,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: "Invalid or expired token" });
   }
 }
+
+export type StaffRole = "admin" | "moderator" | "auditor";
 
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
@@ -472,8 +489,57 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
       return;
     }
 
+    if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
+      res.status(403).json({
+        error: "Insufficient permissions: missing required token scope 'admin' or '*'",
+        requiredScopes: ["admin", "*"],
+        currentScopes: req.tokenScopes,
+      });
+      return;
+    }
+
     next();
   });
+}
+
+export function requireStaffRole(
+  ...allowedRoles: StaffRole[]
+): (req: Request, res: Response, next: NextFunction) => void {
+  const effectiveRoles = new Set<string>(allowedRoles.length > 0 ? allowedRoles : ["admin"]);
+  effectiveRoles.add("admin"); // Administrators always have access to staff endpoints
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    requireAuth(req, res, () => {
+      const user = req.user;
+      if (!user) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      const candidateRoles = [user.role, user.accountType, user.account_type].filter(
+        (r): r is string => typeof r === "string" && r.length > 0,
+      );
+      const hasRole = candidateRoles.some((r) => effectiveRoles.has(r));
+
+      if (!hasRole) {
+        res.status(403).json({
+          error: `Access denied: Administrator privileges required (allowed roles: ${Array.from(effectiveRoles).join(", ")})`,
+        });
+        return;
+      }
+
+      if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
+        res.status(403).json({
+          error: "Insufficient permissions: missing required token scope 'admin' or '*'",
+          requiredScopes: ["admin", "*"],
+          currentScopes: req.tokenScopes,
+        });
+        return;
+      }
+
+      next();
+    });
+  };
 }
 
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
@@ -505,6 +571,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
         if (user && !isAccountBlocked(user.status)) {
           req.user = {
             ...user,
+            role: user.account_type || "user",
             accountType: user.account_type || "user",
           };
           req.tokenScopes = tokenRecord.scopes;
@@ -533,6 +600,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
         sharedAuthDatabase.touchBotLastUsed(botUser.id);
         req.user = {
           ...botUser,
+          role: botUser.account_type || "user",
           accountType: botUser.account_type,
         };
         req.tokenScopes = parseBotScopes(botUser.bot_scopes);
@@ -556,6 +624,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       if (user && !isAccountBlocked(user.status) && (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)) {
         decoded.accountType = user.account_type || decoded.accountType || decoded.role || "user";
         decoded.account_type = decoded.accountType;
+        decoded.role = decoded.role || decoded.accountType;
         req.user = decoded;
       }
     } else {

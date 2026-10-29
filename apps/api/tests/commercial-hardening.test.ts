@@ -255,8 +255,10 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
 
   it("Pillar 3: supports CIDR subnet blocks in TRUSTED_PROXY_IPS, intranet SSRF allowlists, and airgapped readiness probes", async () => {
     const prevNodeEnv = process.env["NODE_ENV"];
+    const prevLicenseEnforce = process.env["MSX_LICENSE_ENFORCE"];
     try {
       process.env["NODE_ENV"] = "production";
+      process.env["MSX_LICENSE_ENFORCE"] = "false";
       process.env["TRUSTED_PROXY_IPS"] = "127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
 
       assert.equal(isIpTrustedProxy("10.24.19.8"), true);
@@ -304,6 +306,11 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
       }
     } finally {
       process.env["NODE_ENV"] = prevNodeEnv;
+      if (prevLicenseEnforce === undefined) {
+        delete process.env["MSX_LICENSE_ENFORCE"];
+      } else {
+        process.env["MSX_LICENSE_ENFORCE"] = prevLicenseEnforce;
+      }
     }
   });
 

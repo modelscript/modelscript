@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import {
-  createBaeldungStarterCells,
   createCellId,
+  createStarterNotebookCells,
   extractArtifactIdsFromCells,
   hasArtifactDirectives,
   type NotebookCell,
@@ -65,18 +65,18 @@ export function useComposeNotebookState({
 
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [pendingInsertAfterCellId, setPendingInsertAfterCellId] = useState<string | null>(null);
-  const [showTutorialMetaEditor, setShowTutorialMetaEditor] = useState(true);
+  const [showTutorialMetaEditor, setShowTutorialMetaEditor] = useState(false);
 
   const syncNotebookToContentAndArtifact = (cells: NotebookCell[], title?: string) => {
     setNotebookCells(cells);
-    const serialized = serializeCellsToMarkdown(cells, title || notebookTitle);
+    const serialized = serializeCellsToMarkdown(cells, title ?? notebookTitle);
     setContent(serialized);
     const artIds = extractArtifactIdsFromCells(cells);
     setArtifactId(artIds[0] ?? null);
   };
 
-  const handleLoadBaeldungTemplate = () => {
-    const starter = createBaeldungStarterCells();
+  const handleLoadStarterTemplate = () => {
+    const starter = createStarterNotebookCells();
     if (!notebookTitle.trim()) {
       setNotebookTitle(starter.title);
     }
@@ -110,7 +110,7 @@ export function useComposeNotebookState({
         setNotebookTitle(parsed.title);
       }
       setNotebookCells(nextCells);
-      setActiveCellId(nextCells[nextCells.length - 1]?.id || null);
+      setActiveCellId(nextCells[0]?.id || null);
       setIsNotebookMode(true);
     } else {
       const serialized = serializeCellsToMarkdown(notebookCells, notebookTitle);
@@ -133,8 +133,8 @@ export function useComposeNotebookState({
     syncNotebookToContentAndArtifact(nextCells, notebookTitle);
   };
 
-  const addMarkdownCellAfter = (afterCellId?: string | null) => {
-    const newCell: NotebookCell = { id: createCellId("md"), type: "markdown", content: "" };
+  const addMarkdownCellAfter = (afterCellId?: string | null, initialContent = ""): string => {
+    const newCell: NotebookCell = { id: createCellId("md"), type: "markdown", content: initialContent };
     const nextCells = [...notebookCells];
     if (afterCellId) {
       const idx = nextCells.findIndex((c) => c.id === afterCellId);
@@ -148,6 +148,28 @@ export function useComposeNotebookState({
     }
     syncNotebookToContentAndArtifact(nextCells, notebookTitle);
     setActiveCellId(newCell.id);
+    return newCell.id;
+  };
+
+  const duplicateCell = (cellId: string): string | null => {
+    const idx = notebookCells.findIndex((c) => c.id === cellId);
+    if (idx === -1) return null;
+    const source = notebookCells[idx]!;
+    const copy: NotebookCell =
+      source.type === "markdown"
+        ? { id: createCellId("md"), type: "markdown", content: source.content }
+        : {
+            id: createCellId("art"),
+            type: "artifact",
+            artifactId: source.artifactId,
+            ...(source.title ? { title: source.title } : {}),
+            ...(source.caption ? { caption: source.caption } : {}),
+          };
+    const nextCells = [...notebookCells];
+    nextCells.splice(idx + 1, 0, copy);
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+    setActiveCellId(copy.id);
+    return copy.id;
   };
 
   const moveCell = (cellId: string, direction: -1 | 1) => {
@@ -162,9 +184,15 @@ export function useComposeNotebookState({
   };
 
   const removeCell = (cellId: string) => {
+    const idx = notebookCells.findIndex((c) => c.id === cellId);
     const nextCells = notebookCells.filter((c) => c.id !== cellId);
     if (nextCells.length === 0) {
-      nextCells.push({ id: createCellId("md"), type: "markdown", content: "" });
+      const fallbackId = createCellId("md");
+      nextCells.push({ id: fallbackId, type: "markdown", content: "" });
+      setActiveCellId(fallbackId);
+    } else if (activeCellId === cellId) {
+      const focusIdx = Math.max(0, idx - 1);
+      setActiveCellId(nextCells[focusIdx]?.id || null);
     }
     syncNotebookToContentAndArtifact(nextCells, notebookTitle);
   };
@@ -235,12 +263,13 @@ export function useComposeNotebookState({
     showTutorialMetaEditor,
     setShowTutorialMetaEditor,
     syncNotebookToContentAndArtifact,
-    handleLoadBaeldungTemplate,
+    handleLoadStarterTemplate,
     insertMarkdownSnippet,
     handleToggleNotebookMode,
     updateMarkdownCell,
     updateArtifactCellCaption,
     addMarkdownCellAfter,
+    duplicateCell,
     moveCell,
     removeCell,
     attachArtifactToComposer,

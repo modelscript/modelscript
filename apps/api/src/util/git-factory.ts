@@ -8,13 +8,12 @@ const gitlabProvider = new GitLabProvider();
 const localGitProvider = new LocalGitProvider();
 
 export function getGitProvider(idOrUrl: string): IGitProvider {
-  // If it's a standard URL (http, https, ssh) or ends with .git, use LocalGitProvider.
+  // If it's a standard HTTP(S) URL (or ends with .git in non-production), use LocalGitProvider.
   // Otherwise, fallback to GitLabProvider which assumes it's a GitLab project ID.
   if (
     idOrUrl.startsWith("http://") ||
     idOrUrl.startsWith("https://") ||
-    idOrUrl.startsWith("ssh://") ||
-    idOrUrl.endsWith(".git")
+    (process.env["NODE_ENV"] !== "production" && idOrUrl.endsWith(".git"))
   ) {
     return localGitProvider;
   }

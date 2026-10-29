@@ -26,7 +26,8 @@ let webllm: WebLLMModule | null = null;
 
 let engine: WebLLMEngine | null = null;
 
-const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
+const PRIMARY_MODEL_ID = "Qwen3-1.7B-q4f16_1-MLC";
+const FALLBACK_MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
 
 /**
  * Load the WebLLM engine lazily on first use.
@@ -50,16 +51,23 @@ async function ensureEngine(): Promise<void> {
         throw new Error("Failed to load @mlc-ai/web-llm");
       }
 
-      progress.report({ message: `Downloading ${MODEL_ID}...` });
-
-      engine = await webllm.CreateMLCEngine(MODEL_ID, {
-        initProgressCallback: (report: { text: string; progress: number }) => {
-          const pct = Math.round(report.progress * 100);
-          progress.report({ message: report.text, increment: pct });
-        },
-      });
-
-      progress.report({ message: "Model ready!" });
+      for (const candidateId of [PRIMARY_MODEL_ID, FALLBACK_MODEL_ID]) {
+        try {
+          progress.report({ message: `Downloading ${candidateId}...` });
+          engine = await webllm.CreateMLCEngine(candidateId, {
+            initProgressCallback: (report: { text: string; progress: number }) => {
+              const pct = Math.round(report.progress * 100);
+              progress.report({ message: report.text, increment: pct });
+            },
+          });
+          progress.report({ message: `${candidateId} ready!` });
+          return;
+        } catch (err) {
+          if (candidateId === FALLBACK_MODEL_ID) {
+            throw err;
+          }
+        }
+      }
     },
   );
 }

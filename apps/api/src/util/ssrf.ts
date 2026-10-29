@@ -32,16 +32,20 @@ export function isPrivateIp(ip: string): boolean {
     if (
       lower === "::1" ||
       lower === "::" ||
-      lower.startsWith("fe80:") || // link-local
+      /^fe[89ab][0-9a-f]:/i.test(lower) || // link-local fe80::/10
       /^f[cd][0-9a-f]{1,2}:/i.test(lower) || // unique local fc00::/7
-      lower.startsWith("ff00:") || // multicast
-      lower.startsWith("2001:db8:") // documentation
+      /^ff[0-9a-f]{2}:/i.test(lower) || // multicast ff00::/8
+      lower.startsWith("2001:db8:") || // documentation
+      lower.startsWith("2001:2:") || // benchmarking
+      lower.startsWith("100::") || // discard prefix 100::/64
+      lower.startsWith("64:ff9b:") || // NAT64 well-known & local-use
+      lower.startsWith("2002:") // 6to4 prefix
     ) {
       return true;
     }
-    // IPv4-mapped IPv6 address (e.g. ::ffff:127.0.0.1)
-    if (lower.startsWith("::ffff:")) {
-      const rest = lower.slice(7);
+    // IPv4-mapped IPv6 address (e.g. ::ffff:127.0.0.1 or ::ffff:7f00:1) or IPv4-compatible (::127.0.0.1)
+    if (lower.startsWith("::ffff:") || (lower.startsWith("::") && lower.slice(2).includes("."))) {
+      const rest = lower.startsWith("::ffff:") ? lower.slice(7) : lower.slice(2);
       if (rest.includes(".")) {
         const parts = rest.split(".").map(Number);
         return isPrivateIpv4(parts[0]!, parts[1], parts[2], parts[3]);

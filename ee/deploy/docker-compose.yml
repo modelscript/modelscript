@@ -46,6 +46,14 @@ services:
 
       # Air-Gap Resource Limits (NERC CIP-007 Memory Budgeting)
       - NODE_OPTIONS=--max-old-space-size=4096
+
+      # Optional On-Premises / Intranet LLM Inference (Ollama / vLLM inside utility enclave)
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - airgap-internal
 

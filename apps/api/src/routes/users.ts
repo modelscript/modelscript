@@ -24,7 +24,7 @@ export function usersRouter(
    * GET /api/v1/users/suggestions
    */
   router.get("/suggestions", optionalAuth, (req: Request, res: Response) => {
-    const limit = Number(req.query["limit"]) || 3;
+    const limit = Math.min(Math.max(1, Number(req.query["limit"]) || 3), 50);
     const currentUserId = req.user?.id;
     const suggestions = database.getUserSuggestions(currentUserId, limit);
     res.json({ suggestions });
@@ -128,7 +128,32 @@ export function usersRouter(
     const userId = req.user!.id;
     const { display_name, bio, location, website, avatar_url, banner_url } = req.body;
 
-    database.updateProfile(userId, { display_name, bio, location, website, avatar_url, banner_url });
+    const isSafeProfileUrl = (u: unknown): boolean => {
+      if (u === undefined || u === null || u === "") return true;
+      if (typeof u !== "string" || u.length > 2048) return false;
+      const trimmed = u.trim();
+      if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    };
+
+    if (!isSafeProfileUrl(website) || !isSafeProfileUrl(avatar_url) || !isSafeProfileUrl(banner_url)) {
+      res.status(400).json({ error: "Profile URLs must use http://, https://, or a relative path" });
+      return;
+    }
+
+    database.updateProfile(userId, {
+      display_name: typeof display_name === "string" ? display_name.slice(0, 100) : display_name,
+      bio: typeof bio === "string" ? bio.slice(0, 1000) : bio,
+      location: typeof location === "string" ? location.slice(0, 100) : location,
+      website,
+      avatar_url,
+      banner_url,
+    });
     res.json({ success: true });
   });
 
@@ -599,6 +624,31 @@ export function usersRouter(
     res.json({ bots });
   });
 
+  const ALLOWED_BOT_SCOPES = new Set(["social:read", "social:write", "repos:read", "repos:review", "packages:read"]);
+
+  function sanitizeBotScopes(rawScopes: unknown): { valid: boolean; normalized: string; invalidScope?: string } {
+    if (rawScopes === undefined || rawScopes === null || rawScopes === "") {
+      return { valid: true, normalized: "social:read,social:write" };
+    }
+    const list = Array.isArray(rawScopes)
+      ? rawScopes.map((s) => String(s).trim()).filter(Boolean)
+      : typeof rawScopes === "string"
+        ? rawScopes
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+    if (list.length === 0) {
+      return { valid: true, normalized: "social:read,social:write" };
+    }
+    for (const scope of list) {
+      if (!ALLOWED_BOT_SCOPES.has(scope)) {
+        return { valid: false, normalized: "", invalidScope: scope };
+      }
+    }
+    return { valid: true, normalized: list.join(",") };
+  }
+
   /**
    * POST /api/v1/users/me/bots
    */
@@ -608,6 +658,14 @@ export function usersRouter(
 
     if (!username || !display_name) {
       res.status(400).json({ error: "Missing username or display_name" });
+      return;
+    }
+
+    const scopeCheck = sanitizeBotScopes(scopes);
+    if (!scopeCheck.valid) {
+      res.status(400).json({
+        error: `Invalid or forbidden bot scope '${scopeCheck.invalidScope}'. Allowed bot scopes: ${Array.from(ALLOWED_BOT_SCOPES).join(", ")}`,
+      });
       return;
     }
 
@@ -644,7 +702,7 @@ export function usersRouter(
       bio || "",
       avatar_url || "",
       tokenHash,
-      scopes || "social:read,social:write",
+      scopeCheck.normalized,
       system_prompt || "",
       model || "gemini-1.5-flash",
       api_key || "",
@@ -673,6 +731,17 @@ export function usersRouter(
     }
 
     const { display_name, bio, avatar_url, scopes, system_prompt, model, api_key, endpoint_url } = req.body;
+    let validatedScopes: string | undefined;
+    if (scopes !== undefined) {
+      const scopeCheck = sanitizeBotScopes(scopes);
+      if (!scopeCheck.valid) {
+        res.status(400).json({
+          error: `Invalid or forbidden bot scope '${scopeCheck.invalidScope}'. Allowed bot scopes: ${Array.from(ALLOWED_BOT_SCOPES).join(", ")}`,
+        });
+        return;
+      }
+      validatedScopes = scopeCheck.normalized;
+    }
     if (endpoint_url && typeof endpoint_url === "string" && endpoint_url.trim().length > 0) {
       try {
         if (process.env["NODE_ENV"] === "production") {
@@ -689,7 +758,7 @@ export function usersRouter(
       displayName: display_name,
       bio,
       avatarUrl: avatar_url,
-      scopes,
+      scopes: validatedScopes,
       systemPrompt: system_prompt,
       model,
       apiKey: api_key,

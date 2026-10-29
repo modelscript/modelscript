@@ -77,11 +77,24 @@ export function cosimRouter(
   const router = express.Router();
   router.use(defaultApiLimiter);
 
+  const requireCosimAuthInProd: express.RequestHandler = (req, res, next) => {
+    if (process.env["NODE_ENV"] === "production") {
+      const user = (req as express.Request & { user?: { id?: number | undefined } | undefined }).user;
+      if (!user?.id) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+    }
+    next();
+  };
+
   // ── Session Management ──
 
   // POST /api/v1/cosim/ssp/import — Import an SSP archive to initialize a co-simulation session
   router.post(
     "/ssp/import",
+    optionalAuth,
+    requireCosimAuthInProd,
     express.raw({
       type: ["application/octet-stream", "application/zip", "application/x-zip-compressed"],
       limit: "100mb",
@@ -158,7 +171,7 @@ export function cosimRouter(
   );
 
   // POST /api/v1/cosim/sessions — Create a new co-simulation session
-  router.post("/sessions", (req, res) => {
+  router.post("/sessions", optionalAuth, requireCosimAuthInProd, (req, res) => {
     const {
       startTime = 0,
       stopTime = 10,
@@ -178,6 +191,20 @@ export function cosimRouter(
       autoRemediateLoops?: boolean | "delay" | "newton" | "aitken" | undefined;
       directFeedthrough?: DirectFeedthroughInput | undefined;
     };
+
+    if (
+      !Number.isFinite(startTime) ||
+      !Number.isFinite(stopTime) ||
+      !Number.isFinite(stepSize) ||
+      stepSize <= 0 ||
+      stopTime <= startTime ||
+      (stopTime - startTime) / stepSize > 1_000_000
+    ) {
+      res.status(400).json({
+        error: "Invalid simulation time bounds: stepSize must be > 0 and total steps must not exceed 1,000,000",
+      });
+      return;
+    }
 
     const session = sessionManager.createSession(
       { startTime, stopTime, stepSize },
@@ -210,8 +237,8 @@ export function cosimRouter(
   // ── Participant Enrollment ──
 
   // POST /api/v1/cosim/sessions/:id/participants/fmu — Add an FMU participant
-  router.post("/sessions/:id/participants/fmu", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
+  router.post("/sessions/:id/participants/fmu", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const session = sessionManager.getSession(String(req.params["id"] ?? ""));
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
@@ -244,7 +271,7 @@ export function cosimRouter(
 
   // GET /api/v1/cosim/sessions/:id/participants — List session participants
   router.get("/sessions/:id/participants", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
+    const session = sessionManager.getSession(String(req.params["id"] ?? ""));
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
@@ -260,14 +287,14 @@ export function cosimRouter(
   });
 
   // DELETE /api/v1/cosim/sessions/:id/participants/:pid — Remove a participant
-  router.delete("/sessions/:id/participants/:pid", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
+  router.delete("/sessions/:id/participants/:pid", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const session = sessionManager.getSession(String(req.params["id"] ?? ""));
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
 
     try {
-      session.removeParticipant(req.params["pid"] ?? "");
+      session.removeParticipant(String(req.params["pid"] ?? ""));
       res.json({ ok: true });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -278,8 +305,8 @@ export function cosimRouter(
   // ── Couplings ──
 
   // POST /api/v1/cosim/sessions/:id/couplings — Define variable couplings
-  router.post("/sessions/:id/couplings", (req, res) => {
-    const session = sessionManager.getSession(req.params["id"] ?? "");
+  router.post("/sessions/:id/couplings", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const session = sessionManager.getSession(String(req.params["id"] ?? ""));
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
@@ -308,7 +335,7 @@ export function cosimRouter(
   // ── Orchestrator Control ──
 
   // POST /api/v1/cosim/sessions/:id/start — Start co-simulation
-  router.post("/sessions/:id/start", optionalAuth, (req, res) => {
+  router.post("/sessions/:id/start", optionalAuth, requireCosimAuthInProd, (req, res) => {
     const session = sessionManager.getSession(String(req.params["id"] ?? ""));
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
@@ -434,8 +461,8 @@ export function cosimRouter(
   });
 
   // POST /api/v1/cosim/sessions/:id/pause — Pause simulation
-  router.post("/sessions/:id/pause", (req, res) => {
-    const sessionId = req.params["id"] ?? "";
+  router.post("/sessions/:id/pause", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const sessionId = String(req.params["id"] ?? "");
     const orchestrator = orchestrators.get(sessionId);
     if (!orchestrator) {
       return res.status(404).json({ error: "No running orchestrator for this session" });
@@ -446,8 +473,8 @@ export function cosimRouter(
   });
 
   // POST /api/v1/cosim/sessions/:id/resume — Resume simulation
-  router.post("/sessions/:id/resume", (req, res) => {
-    const sessionId = req.params["id"] ?? "";
+  router.post("/sessions/:id/resume", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const sessionId = String(req.params["id"] ?? "");
     const orchestrator = orchestrators.get(sessionId);
     if (!orchestrator) {
       return res.status(404).json({ error: "No running orchestrator for this session" });
@@ -458,8 +485,8 @@ export function cosimRouter(
   });
 
   // POST /api/v1/cosim/sessions/:id/stop — Stop and terminate
-  router.post("/sessions/:id/stop", (req, res) => {
-    const sessionId = req.params["id"] ?? "";
+  router.post("/sessions/:id/stop", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const sessionId = String(req.params["id"] ?? "");
     const orchestrator = orchestrators.get(sessionId);
     if (!orchestrator) {
       return res.status(404).json({ error: "No running orchestrator for this session" });
@@ -481,8 +508,8 @@ export function cosimRouter(
   });
 
   // DELETE /api/v1/cosim/sessions/:id — Remove completed/failed session
-  router.delete("/sessions/:id", (req, res) => {
-    const sessionId = req.params["id"] ?? "";
+  router.delete("/sessions/:id", optionalAuth, requireCosimAuthInProd, (req, res) => {
+    const sessionId = String(req.params["id"] ?? "");
     orchestrators.delete(sessionId);
     sessionManager.removeSession(sessionId);
     res.json({ ok: true });

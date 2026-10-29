@@ -35,6 +35,7 @@ export function sparqlRouter(database: LibraryDatabase): Router {
       }
 
       // Extract the SPARQL query from the request
+      const MAX_SPARQL_BYTES = 64 * 1024;
       let query: string | undefined;
       if (req.method === "GET") {
         query = typeof req.query["query"] === "string" ? req.query["query"] : undefined;
@@ -42,8 +43,15 @@ export function sparqlRouter(database: LibraryDatabase): Router {
         const contentType = req.headers["content-type"] ?? "";
         if (contentType.includes("application/sparql-query")) {
           const chunks: Buffer[] = [];
+          let totalBytes = 0;
           for await (const chunk of req) {
-            chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+            const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+            totalBytes += buf.length;
+            if (totalBytes > MAX_SPARQL_BYTES) {
+              res.status(413).json({ error: "SPARQL query exceeds maximum size of 64 KB" });
+              return;
+            }
+            chunks.push(buf);
           }
           query = Buffer.concat(chunks).toString("utf-8");
         } else {
@@ -53,6 +61,16 @@ export function sparqlRouter(database: LibraryDatabase): Router {
 
       if (!query) {
         res.status(400).json({ error: "A SPARQL query must be provided via ?query= parameter or request body" });
+        return;
+      }
+
+      if (Buffer.byteLength(query, "utf8") > MAX_SPARQL_BYTES) {
+        res.status(413).json({ error: "SPARQL query exceeds maximum size of 64 KB" });
+        return;
+      }
+
+      if (/\bSERVICE\s+(?:SILENT\s+)?[<a-zA-Z?]/i.test(query)) {
+        res.status(400).json({ error: "Federated SPARQL SERVICE clauses are not permitted" });
         return;
       }
 

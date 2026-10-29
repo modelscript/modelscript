@@ -166,14 +166,37 @@ export function billingRouter(database: LibraryDatabase): Router {
       }
 
       const origin = req.headers.origin || process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+      const resolveSafeRedirectUrl = (candidate: unknown, fallbackPath: string): string => {
+        const defaultUrl = `${origin}${fallbackPath}`;
+        if (typeof candidate !== "string" || !candidate.trim()) return defaultUrl;
+        try {
+          const parsed = new URL(candidate.trim());
+          if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            return defaultUrl;
+          }
+          if (process.env["NODE_ENV"] === "production") {
+            const allowedOrigin = new URL(process.env["PUBLIC_URL"] || "https://hub.modelscript.org").origin;
+            if (parsed.origin !== allowedOrigin && !parsed.hostname.endsWith(".modelscript.org")) {
+              throw new Error("Invalid redirect URL origin");
+            }
+          }
+          return parsed.toString();
+        } catch (err) {
+          if (err instanceof Error && err.message === "Invalid redirect URL origin") {
+            throw err;
+          }
+          return defaultUrl;
+        }
+      };
+
       const session = await createStripeCheckoutSession(
         {
           userId,
           orgId,
           amountCredits: amount,
           clientIp,
-          successUrl: req.body.successUrl || `${origin}/settings?tab=billing&checkout=success`,
-          cancelUrl: req.body.cancelUrl || `${origin}/settings?tab=billing&checkout=cancelled`,
+          successUrl: resolveSafeRedirectUrl(req.body.successUrl, "/settings?tab=billing&checkout=success"),
+          cancelUrl: resolveSafeRedirectUrl(req.body.cancelUrl, "/settings?tab=billing&checkout=cancelled"),
           idempotencyKey: (req.headers["idempotency-key"] as string) || req.body.idempotencyKey,
         },
         defaultPaymentGuard,
@@ -414,7 +437,15 @@ export function billingRouter(database: LibraryDatabase): Router {
         if (!verification.verified) {
           return res.status(403).json({ error: verification.reason || "Unable to verify PaymentIntent." });
         }
-        database.recordProcessedStripeEvent(`org_topup_${paymentIntentId}`, paymentIntentId, userId, amount);
+        const recorded = database.recordProcessedStripeEvent(
+          `org_topup_${paymentIntentId}`,
+          paymentIntentId,
+          userId,
+          amount,
+        );
+        if (!recorded) {
+          return res.status(409).json({ error: `PaymentIntent '${paymentIntentId}' has already been settled.` });
+        }
       }
 
       const newBalance = database.grantOrgCredits(
@@ -453,13 +484,20 @@ export function billingRouter(database: LibraryDatabase): Router {
         if (!webhookSecret || typeof sigHeader !== "string" || !sigHeader) {
           return res.status(400).json({ error: "Missing or unconfigured Stripe webhook signature" });
         }
-        const parts = Object.fromEntries(
-          sigHeader.split(",").map((kv) => {
-            const idx = kv.indexOf("=");
-            return idx > 0 ? [kv.slice(0, idx).trim(), kv.slice(idx + 1).trim()] : [kv.trim(), ""];
-          }),
-        );
-        const timestamp = parts["t"] || "";
+        let timestamp = "";
+        const v1Signatures: string[] = [];
+        for (const kv of sigHeader.split(",")) {
+          const idx = kv.indexOf("=");
+          if (idx > 0) {
+            const k = kv.slice(0, idx).trim();
+            const v = kv.slice(idx + 1).trim();
+            if (k === "t") timestamp = v;
+            else if (k === "v1" && v) v1Signatures.push(v);
+          }
+        }
+        if (v1Signatures.length === 0) {
+          v1Signatures.push(sigHeader.trim());
+        }
         if (isProd && !timestamp) {
           return res.status(400).json({ error: "Missing Stripe webhook timestamp (t=) in signature header" });
         }
@@ -469,7 +507,6 @@ export function billingRouter(database: LibraryDatabase): Router {
             return res.status(400).json({ error: "Stripe webhook timestamp outside 5-minute replay window" });
           }
         }
-        const v1 = parts["v1"] || sigHeader;
         const rawPayload =
           (req as express.Request & { rawBody?: string | Buffer | undefined }).rawBody ?? JSON.stringify(req.body);
         const payloadStr = Buffer.isBuffer(rawPayload) ? rawPayload.toString("utf-8") : String(rawPayload);
@@ -478,14 +515,19 @@ export function billingRouter(database: LibraryDatabase): Router {
           : "";
         const validDated =
           expectedDated.length > 0 &&
-          expectedDated.length === v1.length &&
-          crypto.timingSafeEqual(Buffer.from(expectedDated), Buffer.from(v1));
+          v1Signatures.some(
+            (sig) =>
+              expectedDated.length === sig.length &&
+              crypto.timingSafeEqual(Buffer.from(expectedDated), Buffer.from(sig)),
+          );
         const expectedRaw =
           !isProd && !timestamp ? crypto.createHmac("sha256", webhookSecret).update(payloadStr).digest("hex") : "";
         const validRaw =
           expectedRaw.length > 0 &&
-          expectedRaw.length === v1.length &&
-          crypto.timingSafeEqual(Buffer.from(expectedRaw), Buffer.from(v1));
+          v1Signatures.some(
+            (sig) =>
+              expectedRaw.length === sig.length && crypto.timingSafeEqual(Buffer.from(expectedRaw), Buffer.from(sig)),
+          );
         if (!validDated && !validRaw) {
           return res.status(400).json({ error: "Invalid Stripe webhook signature" });
         }

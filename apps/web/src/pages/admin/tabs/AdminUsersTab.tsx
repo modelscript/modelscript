@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleIcon, LockIcon, ShieldCheckIcon, TrashIcon } from "@primer/octicons-react";
+import { CheckCircleIcon, EyeIcon, LockIcon, PlusIcon, ShieldCheckIcon, TrashIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
+import { type AdminUserForensics, getAdminUserForensics } from "../../../api/admin";
 import Box from "../../../components/Box";
 import {
   ActionButton,
@@ -16,46 +17,77 @@ import {
   Table,
   Textarea,
 } from "../styles";
-import type { AdminUserSummary } from "../types";
+import type { AdminUsersStatusBreakdown, AdminUserSummary } from "../types";
 
 export interface AdminUsersTabProps {
   users: AdminUserSummary[];
+  totalUsers?: number | undefined;
+  statusBreakdown?: AdminUsersStatusBreakdown | null | undefined;
   userSearchQuery: string;
   setUserSearchQuery: (q: string) => void;
   userStatusFilter: string;
   setUserStatusFilter: (status: string) => void;
   userRoleFilter: string;
   setUserRoleFilter: (role: string) => void;
+  userPageOffset?: number | undefined;
+  setUserPageOffset?: ((offset: number) => void) | undefined;
   onModerateUser: (
     userId: number,
     payload: {
       status?: "active" | "frozen" | "suspended" | undefined;
-      role?: "user" | "admin" | undefined;
+      role?: "user" | "moderator" | "auditor" | "admin" | undefined;
       reason?: string | undefined;
       revokeSessions?: boolean | undefined;
       purgePosts?: boolean | undefined;
     },
   ) => Promise<void>;
+  onAdjustUserCredits?: ((userId: number, amount: number, reason: string) => Promise<void>) | undefined;
+  initialForensics?: AdminUserForensics | null | undefined;
   loading: boolean;
 }
 
 export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
   users,
+  totalUsers,
+  statusBreakdown,
   userSearchQuery,
   setUserSearchQuery,
   userStatusFilter,
   setUserStatusFilter,
   userRoleFilter,
   setUserRoleFilter,
+  userPageOffset = 0,
+  setUserPageOffset,
   onModerateUser,
+  onAdjustUserCredits,
+  initialForensics = null,
   loading,
 }) => {
   const [selectedUser, setSelectedUser] = useState<AdminUserSummary | null>(null);
   const [targetStatus, setTargetStatus] = useState<"active" | "frozen" | "suspended">("active");
-  const [targetRole, setTargetRole] = useState<"user" | "admin">("user");
+  const [targetRole, setTargetRole] = useState<"user" | "moderator" | "auditor" | "admin">("user");
   const [moderationReason, setModerationReason] = useState("");
   const [revokeSessions, setRevokeSessions] = useState(true);
   const [purgePosts, setPurgePosts] = useState(false);
+
+  const [creditModalUser, setCreditModalUser] = useState<AdminUserSummary | null>(null);
+  const [creditDelta, setCreditDelta] = useState<string>("100");
+  const [creditReason, setCreditReason] = useState<string>("Admin compute credit grant");
+
+  const [forensicsData, setForensicsData] = useState<AdminUserForensics | null>(initialForensics);
+  const [forensicsLoading, setForensicsLoading] = useState(false);
+
+  const handleOpenForensics = async (userId: number) => {
+    setForensicsLoading(true);
+    try {
+      const data = await getAdminUserForensics(userId);
+      setForensicsData(data);
+    } catch {
+      // Ignore error in read-only drawer
+    } finally {
+      setForensicsLoading(false);
+    }
+  };
 
   const openGovernanceModal = (user: AdminUserSummary, presetStatus?: "active" | "frozen" | "suspended") => {
     setSelectedUser(user);
@@ -63,7 +95,11 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
       user.status === "frozen" || user.status === "suspended" ? user.status : "active";
     const nextStatus = presetStatus ?? normalizedStatus;
     setTargetStatus(nextStatus);
-    setTargetRole(user.account_type === "admin" ? "admin" : "user");
+    const currentRole =
+      user.account_type === "admin" || user.account_type === "moderator" || user.account_type === "auditor"
+        ? user.account_type
+        : "user";
+    setTargetRole(currentRole);
     setModerationReason("");
     setRevokeSessions(nextStatus !== "active");
     setPurgePosts(false);
@@ -81,16 +117,27 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
     setSelectedUser(null);
   };
 
-  const activeCount = users.filter((u) => u.status === "active").length;
-  const frozenCount = users.filter((u) => u.status === "frozen").length;
-  const suspendedCount = users.filter((u) => u.status === "suspended").length;
+  const handleConfirmCredits = async () => {
+    if (!creditModalUser || !onAdjustUserCredits) return;
+    const amount = Number(creditDelta);
+    if (!Number.isFinite(amount) || amount === 0) return;
+    await onAdjustUserCredits(creditModalUser.id, amount, creditReason.trim() || "Admin compute credit adjustment");
+    setCreditModalUser(null);
+  };
+
+  const activeCount = statusBreakdown ? statusBreakdown.active : users.filter((u) => u.status === "active").length;
+  const frozenCount = statusBreakdown ? statusBreakdown.frozen : users.filter((u) => u.status === "frozen").length;
+  const suspendedCount = statusBreakdown
+    ? statusBreakdown.suspended
+    : users.filter((u) => u.status === "suspended").length;
+  const effectiveTotal = totalUsers ?? users.length;
 
   return (
     <div>
       <StatGrid>
         <Card>
           <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Matching Accounts</span>
-          <span style={{ fontSize: "22px", fontWeight: 800 }}>{users.length}</span>
+          <span style={{ fontSize: "22px", fontWeight: 800 }}>{effectiveTotal}</span>
         </Card>
         <Card>
           <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Active</span>
@@ -128,6 +175,12 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
           </FilterPill>
           <FilterPill $active={userRoleFilter === "admin"} onClick={() => setUserRoleFilter("admin")}>
             Admins
+          </FilterPill>
+          <FilterPill $active={userRoleFilter === "moderator"} onClick={() => setUserRoleFilter("moderator")}>
+            Moderators
+          </FilterPill>
+          <FilterPill $active={userRoleFilter === "auditor"} onClick={() => setUserRoleFilter("auditor")}>
+            Auditors
           </FilterPill>
           <FilterPill $active={userRoleFilter === "user"} onClick={() => setUserRoleFilter("user")}>
             Users
@@ -175,7 +228,17 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                 </td>
                 <td>
                   <Box display="flex" gap={1} flexWrap="wrap">
-                    <Badge $variant={u.account_type === "admin" ? "approved" : "neutral"}>{u.account_type}</Badge>
+                    <Badge
+                      $variant={
+                        u.account_type === "admin"
+                          ? "approved"
+                          : u.account_type === "moderator" || u.account_type === "auditor"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      {u.account_type}
+                    </Badge>
                     {u.totp_enabled === 1 && <Badge $variant="success">2FA</Badge>}
                     {u.email_verified === 1 && <Badge $variant="neutral">Verified</Badge>}
                   </Box>
@@ -197,7 +260,26 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                     </span>
                   </Box>
                 </td>
-                <td style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{u.credit_balance ?? 0}</td>
+                <td style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>{u.credit_balance ?? 0}</span>
+                    {onAdjustUserCredits && (
+                      <ActionButton
+                        $variant="secondary"
+                        disabled={loading}
+                        onClick={() => {
+                          setCreditModalUser(u);
+                          setCreditDelta("100");
+                          setCreditReason("Admin compute credit grant");
+                        }}
+                        title="Grant or deduct compute credits"
+                      >
+                        <PlusIcon size={12} />
+                        <span>Credits</span>
+                      </ActionButton>
+                    )}
+                  </Box>
+                </td>
                 <td style={{ textAlign: "right" }}>
                   <Box display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
                     {u.status !== "active" && (
@@ -230,6 +312,14 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                         <span>Suspend</span>
                       </ActionButton>
                     )}
+                    <ActionButton
+                      $variant="secondary"
+                      disabled={loading || forensicsLoading}
+                      onClick={() => void handleOpenForensics(u.id)}
+                    >
+                      <EyeIcon size={13} />
+                      <span>Forensics</span>
+                    </ActionButton>
                     <ActionButton $variant="secondary" disabled={loading} onClick={() => openGovernanceModal(u)}>
                       <ShieldCheckIcon size={13} />
                       <span>Manage...</span>
@@ -241,6 +331,125 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
           )}
         </tbody>
       </Table>
+
+      {setUserPageOffset && effectiveTotal > 50 && (
+        <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
+          <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+            Showing {userPageOffset + 1}–{Math.min(userPageOffset + users.length, effectiveTotal)} of {effectiveTotal}
+          </span>
+          <Box display="flex" gap={2}>
+            <ActionButton
+              $variant="secondary"
+              disabled={loading || userPageOffset === 0}
+              onClick={() => setUserPageOffset(Math.max(0, userPageOffset - 50))}
+            >
+              Previous Page
+            </ActionButton>
+            <ActionButton
+              $variant="secondary"
+              disabled={loading || userPageOffset + 50 >= effectiveTotal}
+              onClick={() => setUserPageOffset(userPageOffset + 50)}
+            >
+              Next Page
+            </ActionButton>
+          </Box>
+        </Box>
+      )}
+
+      {forensicsData && (
+        <ModalOverlay>
+          <ModalBox style={{ maxWidth: "680px", maxHeight: "85vh", overflowY: "auto" }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <span style={{ fontWeight: 800, fontSize: "16px" }}>
+                User Forensic Dossier — @{forensicsData.user.username} (#{forensicsData.user.id})
+              </span>
+              <Badge $variant={forensicsData.user.status === "active" ? "success" : "danger"}>
+                {forensicsData.user.status}
+              </Badge>
+            </Box>
+
+            <Box display="flex" gap={2} flexWrap="wrap" fontSize="12px" color="var(--color-text-muted)">
+              <span>
+                Role: <strong>{forensicsData.user.account_type}</strong>
+              </span>
+              <span>•</span>
+              <span>
+                Balance: <strong>{forensicsData.user.credit_balance} cr</strong> (Spent:{" "}
+                {forensicsData.user.total_spent} cr)
+              </span>
+              <span>•</span>
+              <span>
+                2FA: <strong>{forensicsData.user.totp_enabled ? "Enabled" : "Off"}</strong>
+              </span>
+              <span>•</span>
+              <span>
+                Email Verified: <strong>{forensicsData.user.email_verified ? "Yes" : "No"}</strong>
+              </span>
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={1}>
+              <span style={{ fontWeight: 700, fontSize: "13px" }}>
+                Recent Posts ({forensicsData.recentPosts.length})
+              </span>
+              {forensicsData.recentPosts.length === 0 ? (
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>No posts authored.</span>
+              ) : (
+                forensicsData.recentPosts.slice(0, 5).map((p) => (
+                  <Box
+                    key={p.id}
+                    p={2}
+                    style={{
+                      background: "var(--color-bg-primary)",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-subtle)",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <strong>#{p.id}</strong> ({p.visibility}){p.content_warning ? ` [CW: ${p.content_warning}]` : ""}:{" "}
+                    {p.content.slice(0, 140)}
+                  </Box>
+                ))
+              )}
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={1}>
+              <span style={{ fontWeight: 700, fontSize: "13px" }}>
+                Published Packages ({forensicsData.publishedPackages.length}) &amp; Reports (
+                {forensicsData.reportsAgainstUser.length})
+              </span>
+              {forensicsData.publishedPackages.map((pkg) => (
+                <Box key={pkg.name} fontSize="12px">
+                  <code>{pkg.name}</code> — {pkg.description || "No description"}
+                </Box>
+              ))}
+              {forensicsData.reportsAgainstUser.map((rep) => (
+                <Box key={rep.id} fontSize="12px" color="var(--ms-danger)">
+                  Report #{rep.id} ({rep.status}): {rep.reason}
+                </Box>
+              ))}
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={1}>
+              <span style={{ fontWeight: 700, fontSize: "13px" }}>
+                Recent Audit &amp; Credit Ledger ({forensicsData.recentAuditLogs.length} audit /{" "}
+                {forensicsData.recentTransactions.length} tx)
+              </span>
+              {forensicsData.recentAuditLogs.slice(0, 5).map((log) => (
+                <Box key={log.id} fontSize="11px" color="var(--color-text-muted)">
+                  [{log.created_at}] <code>{log.action}</code> ({log.resource_type}:{log.resource_id || "-"}) IP:{" "}
+                  <code>{log.ip_address || "-"}</code>
+                </Box>
+              ))}
+            </Box>
+
+            <Box display="flex" justifyContent="flex-end" mt={2}>
+              <ActionButton $variant="secondary" onClick={() => setForensicsData(null)}>
+                Close Dossier
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
 
       {selectedUser && (
         <ModalOverlay>
@@ -263,9 +472,14 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
 
             <Box display="flex" flexDirection="column" gap={1}>
               <label style={{ fontSize: "12px", fontWeight: 600 }}>RBAC Role</label>
-              <Select value={targetRole} onChange={(e) => setTargetRole(e.target.value as "user" | "admin")}>
+              <Select
+                value={targetRole}
+                onChange={(e) => setTargetRole(e.target.value as "user" | "moderator" | "auditor" | "admin")}
+              >
                 <option value="user">user — Standard member</option>
-                <option value="admin">admin — Instance Administrator</option>
+                <option value="moderator">moderator — Trust &amp; Safety / Content &amp; DMCA Moderator</option>
+                <option value="auditor">auditor — Read-Only Compliance &amp; Audit Inspector</option>
+                <option value="admin">admin — Full Instance Administrator</option>
               </Select>
             </Box>
 
@@ -312,6 +526,59 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
               </ActionButton>
               <ActionButton $variant="primary" onClick={handleConfirmGovernance} disabled={loading}>
                 Apply Governance Action
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {creditModalUser && (
+        <ModalOverlay>
+          <ModalBox>
+            <span style={{ fontWeight: 800, fontSize: "16px" }}>
+              Adjust Compute Credits — @{creditModalUser.username} (Balance: {creditModalUser.credit_balance ?? 0})
+            </span>
+
+            <Box display="flex" gap={1} flexWrap="wrap">
+              {[100, 500, 1000, -100].map((preset) => (
+                <FilterPill
+                  key={preset}
+                  type="button"
+                  $active={Number(creditDelta) === preset}
+                  onClick={() => setCreditDelta(String(preset))}
+                >
+                  {preset > 0 ? `+${preset} Credits` : `${preset} Credits`}
+                </FilterPill>
+              ))}
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={1}>
+              <label style={{ fontSize: "12px", fontWeight: 600 }}>
+                Credit Delta (positive to grant, negative to deduct)
+              </label>
+              <Input
+                type="number"
+                value={creditDelta}
+                onChange={(e) => setCreditDelta(e.target.value)}
+                placeholder="e.g. 250 or -50"
+              />
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={1}>
+              <label style={{ fontSize: "12px", fontWeight: 600 }}>Ledger &amp; Audit Note</label>
+              <Input
+                value={creditReason}
+                onChange={(e) => setCreditReason(e.target.value)}
+                placeholder="e.g. Academic research grant / SLA refund"
+              />
+            </Box>
+
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <ActionButton $variant="secondary" onClick={() => setCreditModalUser(null)}>
+                Cancel
+              </ActionButton>
+              <ActionButton $variant="primary" onClick={handleConfirmCredits} disabled={loading}>
+                Apply Credit Adjustment
               </ActionButton>
             </Box>
           </ModalBox>

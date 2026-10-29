@@ -88,6 +88,8 @@ export interface SspParameterValue {
   type: SspConnectorType;
   /** Value. */
   value: number | string | boolean;
+  /** Optional physical unit string (e.g., "kWh", "V", "K"). */
+  unit?: string | undefined;
   /** 1-based line number in XML source. */
   line?: number | undefined;
 }
@@ -106,6 +108,8 @@ export interface SspParameterBinding {
 export interface SspDefaultExperiment {
   startTime?: number | undefined;
   stopTime?: number | undefined;
+  stepSize?: number | undefined;
+  algorithm?: string | undefined;
 }
 
 /** Root system structure from SystemStructure.ssd. */

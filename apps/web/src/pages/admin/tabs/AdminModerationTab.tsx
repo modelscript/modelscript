@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, ShieldLockIcon, TrashIcon, XIcon } from "@primer/octicons-react";
-import React, { useEffect, useMemo, useState } from "react";
+import { CheckIcon, TrashIcon, XIcon } from "@primer/octicons-react";
+import React, { useMemo, useState } from "react";
 import Box from "../../../components/Box";
 import { ActionButton, Badge, Card, FilterPill, Input, ModalBox, ModalOverlay, Select, Textarea } from "../styles";
 import type { AdminModerationAction, AdminModerationReport } from "../types";
@@ -73,8 +73,10 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
     "all",
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedReportId, setSelectedReportId] = useState<number | null>(null);
   const [selectedBatchIds, setSelectedBatchIds] = useState<number[]>([]);
+  const [focusedIndex, setFocusedIndex] = useState<number>(0);
+  const [page, setPage] = useState<number>(0);
+  const pageSize = 20;
 
   const filteredReports = useMemo(() => {
     return reports.filter((r) => {
@@ -103,35 +105,64 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
     });
   }, [reports, targetTypeFilter, searchQuery]);
 
-  const inspectedReport = useMemo(() => {
-    if (filteredReports.length === 0) return null;
-    if (selectedReportId !== null) {
-      const found = filteredReports.find((r) => r.id === selectedReportId);
-      if (found) return found;
-    }
-    return filteredReports[0] ?? null;
-  }, [filteredReports, selectedReportId]);
+  const paginatedReports = useMemo(
+    () => filteredReports.slice(page * pageSize, (page + 1) * pageSize),
+    [filteredReports, page],
+  );
 
-  // Keyboard j/k navigation for fast queue triage
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || activeReportToResolve) {
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        !target ||
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable ||
+        activeReportToResolve
+      ) {
         return;
       }
-      if (filteredReports.length === 0) return;
-      const currentIdx = inspectedReport ? filteredReports.findIndex((r) => r.id === inspectedReport.id) : 0;
+      if (paginatedReports.length === 0) return;
+
       if (e.key === "j") {
-        const next = filteredReports[Math.min(filteredReports.length - 1, currentIdx + 1)];
-        if (next) setSelectedReportId(next.id);
+        e.preventDefault();
+        setFocusedIndex((prev) => Math.min(paginatedReports.length - 1, prev + 1));
       } else if (e.key === "k") {
-        const prev = filteredReports[Math.max(0, currentIdx - 1)];
-        if (prev) setSelectedReportId(prev.id);
+        e.preventDefault();
+        setFocusedIndex((prev) => Math.max(0, prev - 1));
+      } else if (e.key === "x") {
+        e.preventDefault();
+        const item = paginatedReports[focusedIndex];
+        if (item && item.status === "pending") {
+          setSelectedBatchIds((prev) =>
+            prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id],
+          );
+        }
+      } else if (e.key === "r") {
+        e.preventDefault();
+        const item = paginatedReports[focusedIndex];
+        if (item && item.status === "pending") {
+          setActiveReportToResolve(item);
+          setModResolutionStatus("resolved");
+          setModResolutionAction("delete_post");
+        }
+      } else if (e.key === "d") {
+        e.preventDefault();
+        const item = paginatedReports[focusedIndex];
+        if (item && item.status === "pending") {
+          void onResolveReport(item.id, {
+            status: "dismissed",
+            action: "none",
+            resolutionNotes: "Dismissed via keyboard triage.",
+          });
+        }
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filteredReports, inspectedReport, activeReportToResolve]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [paginatedReports, focusedIndex, activeReportToResolve, onResolveReport]);
 
   const handleConfirmResolve = async () => {
     if (!activeReportToResolve) return;
@@ -182,13 +213,17 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
     setSelectedBatchIds([]);
   };
 
+  const showBulkToolbar = Boolean(
+    onBulkResolveReports && (selectedBatchIds.length > 0 || pendingFilteredIds.length > 1),
+  );
+
   return (
     <div>
       {/* ── TOP FILTER & SEARCH BAR ── */}
       <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
-        <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+        <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
           <FilterPill $active={modFilter === "all"} onClick={() => setModFilter("all")}>
-            All Reports
+            All
           </FilterPill>
           <FilterPill $active={modFilter === "pending"} onClick={() => setModFilter("pending")}>
             Pending
@@ -199,36 +234,42 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
           <FilterPill $active={modFilter === "dismissed"} onClick={() => setModFilter("dismissed")}>
             Dismissed
           </FilterPill>
-
-          <span style={{ color: "var(--color-border)", margin: "0 4px" }}>|</span>
-
-          <FilterPill $active={targetTypeFilter === "all"} onClick={() => setTargetTypeFilter("all")}>
-            All Targets
-          </FilterPill>
-          <FilterPill $active={targetTypeFilter === "post"} onClick={() => setTargetTypeFilter("post")}>
-            Posts
-          </FilterPill>
-          <FilterPill $active={targetTypeFilter === "user"} onClick={() => setTargetTypeFilter("user")}>
-            Accounts
-          </FilterPill>
-          <FilterPill $active={targetTypeFilter === "appeal"} onClick={() => setTargetTypeFilter("appeal")}>
-            Appeals
-          </FilterPill>
-          <FilterPill $active={targetTypeFilter === "package"} onClick={() => setTargetTypeFilter("package")}>
-            Packages
-          </FilterPill>
+          <Badge $variant="neutral" title="Keyboard triage shortcuts">
+            Keys: j/k navigate • x select • r resolve • d dismiss
+          </Badge>
         </Box>
 
-        <Input
-          style={{ width: "260px" }}
-          placeholder="Search reason, @user, domain..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+          <Select
+            aria-label="Filter by target type"
+            value={targetTypeFilter}
+            onChange={(e) => {
+              setTargetTypeFilter(e.target.value as typeof targetTypeFilter);
+              setPage(0);
+            }}
+            style={{ padding: "6px 10px", fontSize: "12px" }}
+          >
+            <option value="all">All Targets</option>
+            <option value="post">Posts</option>
+            <option value="user">Accounts</option>
+            <option value="appeal">Appeals</option>
+            <option value="package">Packages</option>
+          </Select>
+
+          <Input
+            style={{ width: "240px", padding: "6px 12px", fontSize: "12px" }}
+            placeholder="Search reason, @user, domain..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(0);
+            }}
+          />
+        </Box>
       </Box>
 
       {/* ── BULK TRIAGE TOOLBAR ── */}
-      {onBulkResolveReports && pendingFilteredIds.length > 0 && (
+      {showBulkToolbar && (
         <Box
           display="flex"
           alignItems="center"
@@ -287,143 +328,167 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
         </Box>
       )}
 
-      {filteredReports.length === 0 ? (
+      {paginatedReports.length === 0 ? (
         <Card>
           <Box color="var(--color-text-muted)" textAlign="center" py={4}>
             No moderation reports found for this filter.
           </Box>
         </Card>
       ) : (
-        <Box
-          display="grid"
-          style={{
-            gridTemplateColumns: inspectedReport ? "minmax(0, 1.35fr) minmax(300px, 1fr)" : "1fr",
-            gap: "16px",
-            alignItems: "start",
-          }}
-        >
-          {/* ── LEFT PANE: REPORT CARDS ── */}
-          <div>
-            {filteredReports.map((report) => {
-              const isSelected = inspectedReport?.id === report.id;
-              const targetUsername = report.author_username || report.target_username;
-              return (
-                <Card
-                  key={report.id}
-                  onClick={() => setSelectedReportId(report.id)}
-                  style={{
-                    cursor: "pointer",
-                    borderColor: isSelected ? "var(--color-accent-purple)" : undefined,
-                  }}
-                >
-                  <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-                    <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-                      {onBulkResolveReports && report.status === "pending" && (
-                        <input
-                          type="checkbox"
-                          checked={selectedBatchIds.includes(report.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => toggleBatchSelect(report.id)}
-                          aria-label={`Select report #${report.id}`}
-                        />
-                      )}
-                      <span style={{ fontWeight: 700 }}>Report #{report.id}</span>
-                      <Badge
-                        $variant={
-                          report.status === "resolved"
-                            ? "success"
-                            : report.status === "dismissed"
-                              ? "neutral"
-                              : "warning"
-                        }
-                      >
-                        {report.status}
+        <div>
+          {paginatedReports.map((report, idx) => {
+            const targetUsername = report.author_username || report.target_username;
+            const targetKind = report.target_type || (report.post_id ? "post" : "user");
+            const isFocused = idx === focusedIndex;
+            return (
+              <Card
+                key={report.id}
+                style={
+                  isFocused
+                    ? { borderColor: "var(--color-accent-primary)", boxShadow: "0 0 0 1px var(--color-accent-primary)" }
+                    : undefined
+                }
+                onClick={() => setFocusedIndex(idx)}
+              >
+                {/* ── HEADER ROW ── */}
+                <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+                  <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                    {onBulkResolveReports && report.status === "pending" && (
+                      <input
+                        type="checkbox"
+                        checked={selectedBatchIds.includes(report.id)}
+                        onChange={() => toggleBatchSelect(report.id)}
+                        aria-label={`Select report #${report.id}`}
+                      />
+                    )}
+                    <span style={{ fontWeight: 700, fontSize: "14px" }}>Report #{report.id}</span>
+                    <Badge
+                      $variant={
+                        report.status === "resolved" ? "success" : report.status === "dismissed" ? "neutral" : "warning"
+                      }
+                    >
+                      {report.status}
+                    </Badge>
+                    <Badge $variant="neutral">{targetKind}</Badge>
+                    {report.target_report_count && report.target_report_count > 1 && (
+                      <Badge $variant="danger">{report.target_report_count}x reports</Badge>
+                    )}
+                    {report.author_prior_violations && report.author_prior_violations > 0 ? (
+                      <Badge $variant="warning">
+                        {report.author_prior_violations} prior violation
+                        {report.author_prior_violations > 1 ? "s" : ""}
                       </Badge>
-                      <Badge $variant="neutral">{report.target_type || (report.post_id ? "post" : "user")}</Badge>
-                      {report.target_report_count && report.target_report_count > 1 && (
-                        <Badge $variant="danger">{report.target_report_count}x reports</Badge>
-                      )}
-                      {report.author_prior_violations && report.author_prior_violations > 0 ? (
-                        <Badge $variant="warning">
-                          {report.author_prior_violations} prior violation
-                          {report.author_prior_violations > 1 ? "s" : ""}
-                        </Badge>
-                      ) : null}
-                    </Box>
-                    <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                      {new Date(report.created_at).toLocaleString()}
-                    </span>
+                    ) : null}
                   </Box>
+                  <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                    {new Date(report.created_at).toLocaleString()}
+                  </span>
+                </Box>
 
-                  <Box fontSize="13px" color="var(--color-text-primary)">
-                    <strong>Reason:</strong> {report.reason}
+                {/* ── REASON & DETAILS ── */}
+                <Box display="flex" flexDirection="column" gap={1}>
+                  <Box fontSize="14px" color="var(--color-text-primary)" style={{ fontWeight: 600 }}>
+                    {report.reason}
                   </Box>
-
                   {report.details && (
-                    <Box fontSize="12px" color="var(--color-text-muted)">
-                      <strong>Details:</strong> {report.details}
+                    <Box fontSize="13px" color="var(--color-text-muted)">
+                      {report.details}
                     </Box>
                   )}
+                </Box>
 
+                {/* ── REPORTED POST SNAPSHOT ── */}
+                {report.post_content && (
+                  <Box
+                    p={3}
+                    style={{
+                      background: "var(--color-bg-primary)",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-subtle)",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: "var(--color-text-muted)",
+                        fontSize: "11px",
+                        display: "block",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Post #{report.post_id || "deleted"} (by @{report.author_username || "author"}):
+                    </span>
+                    {report.post_content}
+                  </Box>
+                )}
+
+                {report.resolution_notes && (
+                  <Box fontSize="12px" color="var(--color-text-muted)">
+                    <strong>Resolution Notes:</strong> {report.resolution_notes}
+                  </Box>
+                )}
+
+                {/* ── FOOTER: PARTICIPANTS & ACTIONS ── */}
+                <Box
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  flexWrap="wrap"
+                  gap={2}
+                  pt={2}
+                  style={{ borderTop: "1px solid var(--color-border-subtle)" }}
+                >
                   <Box display="flex" gap={3} flexWrap="wrap" fontSize="12px" color="var(--color-text-muted)">
+                    {targetUsername && (
+                      <span>
+                        Target: <strong style={{ color: "var(--color-text-primary)" }}>@{targetUsername}</strong>
+                        {report.author_domain ? ` (${report.author_domain})` : ""}
+                      </span>
+                    )}
                     {report.reporter_username && (
                       <span>
                         Reported by: <strong>@{report.reporter_username}</strong>
                       </span>
                     )}
-                    {targetUsername && (
-                      <span>
-                        Target Account: <strong>@{targetUsername}</strong>
-                        {report.author_domain ? ` (${report.author_domain})` : ""}
-                      </span>
-                    )}
                     {report.action_taken && report.action_taken !== "none" && (
                       <span>
-                        Action Enforced: <strong>{report.action_taken}</strong>
+                        Action: <strong>{report.action_taken}</strong>
                       </span>
                     )}
                   </Box>
 
-                  {report.post_content && (
-                    <Box
-                      p={3}
-                      style={{
-                        background: "var(--color-bg-primary)",
-                        borderRadius: "6px",
-                        border: "1px solid var(--color-border-subtle)",
-                        fontSize: "13px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          color: "var(--color-text-muted)",
-                          fontSize: "11px",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        Target Post #{report.post_id || "deleted"} (by @{report.author_username || "author"}):
-                      </span>
-                      {report.post_content}
-                    </Box>
-                  )}
-
-                  {report.resolution_notes && (
-                    <Box fontSize="12px" color="var(--color-text-muted)">
-                      <strong>Resolution Notes:</strong> {report.resolution_notes}
-                    </Box>
-                  )}
-
-                  <Box display="flex" gap={2} mt={2} alignItems="center" onClick={(e) => e.stopPropagation()}>
-                    {report.status === "pending" ? (
+                  <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                    {report.status === "pending" && (
                       <>
+                        {report.target_type === "appeal" && report.target_user_id && (
+                          <ActionButton
+                            $variant="secondary"
+                            disabled={loading}
+                            onClick={() =>
+                              void onResolveReport(report.id, {
+                                status: "resolved",
+                                action: "restore_user",
+                                resolutionNotes: "Moderation appeal approved; account restored to active status.",
+                                resolveAllForTarget: true,
+                              })
+                            }
+                          >
+                            Approve Appeal
+                          </ActionButton>
+                        )}
                         <ActionButton
                           $variant="primary"
                           onClick={() => {
                             setActiveReportToResolve(report);
                             setModResolutionStatus("resolved");
                             setModResolutionAction(
-                              report.post_id ? "delete_post" : report.target_type === "user" ? "freeze_user" : "none",
+                              report.post_id
+                                ? "delete_post"
+                                : report.target_type === "appeal"
+                                  ? "restore_user"
+                                  : report.target_type === "user"
+                                    ? "freeze_user"
+                                    : "none",
                             );
                           }}
                         >
@@ -440,10 +505,6 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
                           Dismiss
                         </ActionButton>
                       </>
-                    ) : (
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Status: <strong style={{ textTransform: "capitalize" }}>{report.status}</strong>
-                      </span>
                     )}
                     {report.post_id && (
                       <ActionButton $variant="danger" onClick={() => onDeletePost(report.post_id!)} disabled={loading}>
@@ -452,173 +513,36 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
                       </ActionButton>
                     )}
                   </Box>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* ── RIGHT PANE: FORENSIC INSPECTOR DOSSIER ── */}
-          {inspectedReport && (
-            <Card style={{ position: "sticky", top: "76px" }}>
-              <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Box display="flex" alignItems="center" gap={2}>
-                  <ShieldLockIcon size={16} fill="var(--color-accent-purple)" />
-                  <span style={{ fontWeight: 800, fontSize: "14px" }}>
-                    Forensic Dossier — Report #{inspectedReport.id}
-                  </span>
                 </Box>
-                <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>j / k to navigate</span>
+              </Card>
+            );
+          })}
+
+          {filteredReports.length > pageSize && (
+            <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
+              <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filteredReports.length)} of{" "}
+                {filteredReports.length} reports
+              </span>
+              <Box display="flex" gap={2}>
+                <ActionButton
+                  $variant="secondary"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  Previous
+                </ActionButton>
+                <ActionButton
+                  $variant="secondary"
+                  disabled={(page + 1) * pageSize >= filteredReports.length}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </ActionButton>
               </Box>
-
-              <Box
-                p={2}
-                style={{
-                  background: "var(--color-bg-primary)",
-                  borderRadius: "6px",
-                  border: "1px solid var(--color-border-subtle)",
-                  fontSize: "12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                }}
-              >
-                <div>
-                  <strong>Target Type:</strong>{" "}
-                  {(inspectedReport.target_type || (inspectedReport.post_id ? "post" : "user")).toUpperCase()}
-                </div>
-                <div>
-                  <strong>Target Subject:</strong>{" "}
-                  {inspectedReport.author_username || inspectedReport.target_username
-                    ? `@${inspectedReport.author_username || inspectedReport.target_username}`
-                    : inspectedReport.post_id
-                      ? `Post #${inspectedReport.post_id}`
-                      : `User #${inspectedReport.target_user_id || "unknown"}`}
-                </div>
-                <div>
-                  <strong>Origin Instance:</strong> {inspectedReport.author_domain || "Local Instance"}
-                </div>
-                <div>
-                  <strong>Target Report Volume:</strong> {inspectedReport.target_report_count ?? 1} total report(s)
-                </div>
-                <div>
-                  <strong>Prior Resolved Violations:</strong> {inspectedReport.author_prior_violations ?? 0}
-                </div>
-              </Box>
-
-              {inspectedReport.post_content && (
-                <Box display="flex" flexDirection="column" gap={1}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--color-text-muted)" }}>
-                    PRESERVED CONTENT SNAPSHOT
-                  </span>
-                  <Box
-                    p={2}
-                    style={{
-                      background: "var(--color-bg-primary)",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-subtle)",
-                      fontSize: "12px",
-                      whiteSpace: "pre-wrap",
-                      maxHeight: "180px",
-                      overflowY: "auto",
-                    }}
-                  >
-                    {inspectedReport.post_content}
-                  </Box>
-                </Box>
-              )}
-
-              {inspectedReport.status === "pending" && (
-                <Box display="flex" flexDirection="column" gap={2} mt={1}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--color-text-muted)" }}>
-                    ONE-CLICK GRADUATED ENFORCEMENT
-                  </span>
-                  <Box display="flex" flexWrap="wrap" gap={2}>
-                    {inspectedReport.post_id && (
-                      <>
-                        <ActionButton
-                          $variant="secondary"
-                          disabled={loading}
-                          onClick={() =>
-                            void onResolveReport(inspectedReport.id, {
-                              status: "resolved",
-                              action: "mark_sensitive",
-                              resolutionNotes: "Content warning (CW) applied to post.",
-                              resolveAllForTarget: true,
-                            })
-                          }
-                        >
-                          Mark Sensitive (CW)
-                        </ActionButton>
-                        <ActionButton
-                          $variant="secondary"
-                          disabled={loading}
-                          onClick={() =>
-                            void onResolveReport(inspectedReport.id, {
-                              status: "resolved",
-                              action: "silence_post",
-                              resolutionNotes: "Post unlisted from public timelines.",
-                              resolveAllForTarget: true,
-                            })
-                          }
-                        >
-                          Unlist / Silence Post
-                        </ActionButton>
-                      </>
-                    )}
-                    {inspectedReport.target_type === "appeal" && inspectedReport.target_user_id && (
-                      <ActionButton
-                        $variant="primary"
-                        disabled={loading}
-                        onClick={() =>
-                          void onResolveReport(inspectedReport.id, {
-                            status: "resolved",
-                            action: "restore_user",
-                            resolutionNotes: "Moderation appeal approved; account restored to active status.",
-                            resolveAllForTarget: true,
-                          })
-                        }
-                      >
-                        Approve Appeal &amp; Restore User
-                      </ActionButton>
-                    )}
-                    {(inspectedReport.target_user_id || inspectedReport.post_id) && (
-                      <>
-                        <ActionButton
-                          $variant="secondary"
-                          disabled={loading}
-                          onClick={() =>
-                            void onResolveReport(inspectedReport.id, {
-                              status: "resolved",
-                              action: "freeze_user",
-                              resolutionNotes: "Account frozen (read-only) pending investigation.",
-                              resolveAllForTarget: true,
-                            })
-                          }
-                        >
-                          Freeze Author
-                        </ActionButton>
-                        <ActionButton
-                          $variant="danger"
-                          disabled={loading}
-                          onClick={() =>
-                            void onResolveReport(inspectedReport.id, {
-                              status: "resolved",
-                              action: "suspend_user",
-                              resolutionNotes: "Account suspended and spam content purged.",
-                              resolveAllForTarget: true,
-                            })
-                          }
-                        >
-                          Suspend Author
-                        </ActionButton>
-                      </>
-                    )}
-                  </Box>
-                </Box>
-              )}
-            </Card>
+            </Box>
           )}
-        </Box>
+        </div>
       )}
 
       {/* ── RESOLUTION MODAL ── */}

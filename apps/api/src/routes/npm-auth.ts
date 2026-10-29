@@ -56,6 +56,11 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
         return;
       }
 
+      if (typeof password !== "string" || Buffer.byteLength(password, "utf8") > 72) {
+        res.status(400).json({ error: "Password must not exceed 72 bytes" });
+        return;
+      }
+
       try {
         // Check if user exists
         const existing = database.getUserByUsername(effectiveUsername);

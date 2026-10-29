@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ import type {
   GitTreeItem,
   IGitProvider,
 } from "../interfaces/git-provider.js";
-import { assertSafePublicUrl } from "./ssrf.js";
+import { assertSafePublicUrlAsync } from "./ssrf.js";
 
 const CACHE_DIR = process.env["GIT_CACHE_DIR"] || path.join(os.tmpdir(), "modelscript-git-cache");
 
@@ -45,32 +46,58 @@ function sanitizeGitSubpath(subpath: string): string {
 
 export class LocalGitProvider implements IGitProvider {
   private async getRepoPath(url: string): Promise<string> {
-    if (url.startsWith("-") || hasControlChar(url)) {
+    if (!url || typeof url !== "string" || url.startsWith("-") || hasControlChar(url)) {
       throw new Error("Invalid git repository URL");
     }
-    if (/^https?:\/\//i.test(url) && process.env["NODE_ENV"] === "production") {
-      assertSafePublicUrl(url);
+
+    const isHttpUrl = /^https?:\/\//i.test(url);
+    if (process.env["NODE_ENV"] === "production") {
+      if (!isHttpUrl) {
+        throw new Error("Only http:// and https:// git repository URLs are permitted in production");
+      }
+      await assertSafePublicUrlAsync(url);
+    } else if (isHttpUrl) {
+      // In non-test environments, still block private/loopback URLs unless allowlisted
+      if (process.env["NODE_ENV"] !== "test") {
+        await assertSafePublicUrlAsync(url);
+      }
+    } else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url)) {
+      throw new Error("Unsupported git protocol: only http:// and https:// are permitted");
     }
 
     await fs.mkdir(CACHE_DIR, { recursive: true });
 
-    // Hash the URL or use a safe folder name
-    const safeName = path.basename(url.replace(/[^a-zA-Z0-9_-]/g, "_"));
+    // Use SHA-256 hash of the full URL to prevent cache directory collisions across distinct repositories
+    const urlHash = crypto.createHash("sha256").update(url).digest("hex").slice(0, 24);
+    const basePart = path.basename(url.replace(/[^a-zA-Z0-9_-]/g, "_")).slice(0, 48) || "repo";
+    const safeName = `${basePart}-${urlHash}`;
     const repoPath = path.resolve(CACHE_DIR, safeName);
     if (!repoPath.startsWith(path.resolve(CACHE_DIR) + path.sep)) {
       throw new Error("Invalid git repository cache path");
     }
 
-    const git: SimpleGit = simpleGit();
+    const git: SimpleGit = simpleGit({ timeout: { block: 30_000 } });
+    const gitProtocolArgs = isHttpUrl
+      ? [
+          "-c",
+          "protocol.allow=never",
+          "-c",
+          "protocol.https.allow=always",
+          "-c",
+          "protocol.http.allow=always",
+          "-c",
+          "http.followRedirects=false",
+        ]
+      : [];
 
     try {
       await fs.access(repoPath);
       // If it exists, fetch latest
-      const localGit = simpleGit(repoPath);
-      await localGit.fetch(["--all"]);
+      const localGit = simpleGit(repoPath, { timeout: { block: 30_000 } });
+      await localGit.raw([...gitProtocolArgs, "fetch", "--all"]);
     } catch {
       // If not, clone bare repo
-      await git.clone(url, repoPath, ["--bare", "--"]);
+      await git.raw([...gitProtocolArgs, "clone", "--bare", "--", url, repoPath]);
     }
 
     return repoPath;
@@ -130,7 +157,7 @@ export class LocalGitProvider implements IGitProvider {
     const repoPath = await this.getRepoPath(idOrUrl);
     const git = simpleGit(repoPath);
 
-    const log = await git.log([safeRefName]);
+    const log = await git.log(["-n", "100", safeRefName, "--"]);
 
     return log.all.map((c) => ({
       id: c.hash,

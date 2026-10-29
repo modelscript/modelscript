@@ -119,16 +119,24 @@ function broadcastToRoom(room: CollabRoom, payload: unknown, excludePeerId?: str
   }
 }
 
+const MAX_ROOMS = 200;
+const MAX_PEERS_PER_ROOM = 50;
+const MAX_DOC_BYTES = 2 * 1024 * 1024;
+const MAX_SYMBOL_SPANS = 2000;
+
 export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/stream"): void {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
   const rooms = new Map<string, CollabRoom>();
 
-  function getOrCreateRoom(documentUri: string, initialContent = ""): CollabRoom {
+  function getOrCreateRoom(documentUri: string, initialContent = ""): CollabRoom | null {
     let room = rooms.get(documentUri);
     if (!room) {
+      if (rooms.size >= MAX_ROOMS) {
+        return null;
+      }
       room = {
         documentUri,
-        content: initialContent,
+        content: initialContent.slice(0, MAX_DOC_BYTES),
         version: 0,
         peers: new Map(),
         sockets: new Map(),
@@ -171,13 +179,21 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
       }
 
       if (msg.type === "join") {
-        const documentUri = String(msg.documentUri || "untitled:model.mo");
-        const peerId = String(msg.peerId || `peer-${Math.random().toString(36).slice(2, 8)}`);
-        const displayName = String(msg.displayName || peerId);
+        const documentUri = String(msg.documentUri || "untitled:model.mo").slice(0, 512);
+        const peerId = String(msg.peerId || `peer-${Math.random().toString(36).slice(2, 8)}`).slice(0, 128);
+        const displayName = String(msg.displayName || peerId).slice(0, 128);
         const room = getOrCreateRoom(documentUri, typeof msg.initialContent === "string" ? msg.initialContent : "");
+        if (!room) {
+          sendJson(ws, { type: "error", message: "Maximum active collaboration rooms reached" });
+          return;
+        }
+        if (!room.peers.has(peerId) && room.peers.size >= MAX_PEERS_PER_ROOM) {
+          sendJson(ws, { type: "error", message: "Maximum peers per room reached" });
+          return;
+        }
 
         if (Array.isArray(msg.symbolSpans)) {
-          room.symbolSpans = msg.symbolSpans;
+          room.symbolSpans = msg.symbolSpans.slice(0, MAX_SYMBOL_SPANS);
         }
 
         const color = String(msg.color || PEER_COLORS[room.peers.size % PEER_COLORS.length]);
@@ -237,7 +253,7 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
       if (!room) return;
 
       if (msg.type === "symbol_spans" && Array.isArray(msg.symbolSpans)) {
-        room.symbolSpans = msg.symbolSpans;
+        room.symbolSpans = msg.symbolSpans.slice(0, MAX_SYMBOL_SPANS);
         for (const p of room.peers.values()) {
           p.activeSymbolName = findSymbolAtOffset(room.symbolSpans, p.cursorOffset)?.name;
         }

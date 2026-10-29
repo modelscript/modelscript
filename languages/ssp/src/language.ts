@@ -10,6 +10,7 @@
 import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
 import { sspToModelicaBlock } from "./projection.js";
 import { parseSsd } from "./ssd-parser.js";
+import { sspTabularConfig } from "./tabular.js";
 
 /**
  * ModelScript SSP (System Structure and Parameterization) language specification.
@@ -249,6 +250,7 @@ export const sspLanguage = language({
       }),
     ],
   },
+  tabular: sspTabularConfig,
 });
 
 export default sspLanguage;

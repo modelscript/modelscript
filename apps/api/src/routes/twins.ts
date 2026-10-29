@@ -131,6 +131,10 @@ export function twinsRouter(database: LibraryDatabase): Router {
 
     try {
       if (Array.isArray(samples)) {
+        if (samples.length > 5000) {
+          res.status(400).json({ error: "Telemetry batch exceeds maximum of 5000 samples" });
+          return;
+        }
         let lastResult: Awaited<ReturnType<typeof twinManager.ingestTelemetry>> | undefined;
         for (const sample of samples) {
           lastResult = await twinManager.ingestTelemetry(
@@ -159,6 +163,9 @@ export function twinsRouter(database: LibraryDatabase): Router {
     }
   });
 
+  let activeTwinSseClients = 0;
+  const MAX_TWIN_SSE_CLIENTS = 100;
+
   /**
    * GET /api/v1/twins/:id/stream
    * Real-time Server-Sent Events stream of telemetry, residuals, and drift events.
@@ -169,9 +176,14 @@ export function twinsRouter(database: LibraryDatabase): Router {
       res.status(400).json({ error: "Invalid twin ID" });
       return;
     }
+    if (activeTwinSseClients >= MAX_TWIN_SSE_CLIENTS) {
+      res.status(503).json({ error: "Too many active twin stream connections" });
+      return;
+    }
 
     try {
       await twinManager.getOrCreateSession(twinId, database);
+      activeTwinSseClients++;
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -195,6 +207,7 @@ export function twinsRouter(database: LibraryDatabase): Router {
       heartbeatInterval.unref?.();
 
       req.on("close", () => {
+        activeTwinSseClients = Math.max(0, activeTwinSseClients - 1);
         clearInterval(heartbeatInterval);
         unsubscribe();
       });
@@ -245,6 +258,12 @@ export function twinsRouter(database: LibraryDatabase): Router {
    * Run forward predictive simulation under projected mission profile; return RUL.
    */
   router.post("/:id/prognostics", async (req: Request, res: Response): Promise<void> => {
+    const authUser = (req as Request & { user?: { id?: number | undefined } | undefined }).user;
+    if (!authUser && process.env["NODE_ENV"] === "production") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
     const twinId = Number(req.params["id"]);
     if (isNaN(twinId)) {
       res.status(400).json({ error: "Invalid twin ID" });
@@ -297,8 +316,15 @@ export function twinsRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const reviewerId = Number(authUser?.id) || Number(req.body?.reviewerId) || 1;
+    const reviewerId =
+      Number(authUser?.id) || (process.env["NODE_ENV"] === "test" ? Number(req.body?.reviewerId) || 1 : 0);
     const notes = req.body?.notes;
+
+    const existingProposal = database.getTwinProposal(proposalId);
+    if (!existingProposal || existingProposal.twin_id !== twinId) {
+      res.status(404).json({ error: "Proposal not found for this digital twin" });
+      return;
+    }
 
     const ok = database.reviewTwinProposal(proposalId, "approved", reviewerId, notes);
     if (!ok) {
@@ -334,12 +360,20 @@ export function twinsRouter(database: LibraryDatabase): Router {
     }
 
     const proposalId = Number(req.params["proposalId"]);
-    if (isNaN(proposalId)) {
+    const twinId = Number(req.params["id"]);
+    if (isNaN(proposalId) || isNaN(twinId)) {
       res.status(400).json({ error: "Invalid proposal ID" });
       return;
     }
 
-    const reviewerId = Number(authUser?.id) || Number(req.body?.reviewerId) || 1;
+    const existingProposal = database.getTwinProposal(proposalId);
+    if (!existingProposal || existingProposal.twin_id !== twinId) {
+      res.status(404).json({ error: "Proposal not found for this digital twin" });
+      return;
+    }
+
+    const reviewerId =
+      Number(authUser?.id) || (process.env["NODE_ENV"] === "test" ? Number(req.body?.reviewerId) || 1 : 0);
     const notes = req.body?.notes;
 
     const ok = database.reviewTwinProposal(proposalId, "rejected", reviewerId, notes);

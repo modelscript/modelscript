@@ -882,10 +882,16 @@ function extractPolyglotMetadataFromFile(relPath: string, content: string, spec:
  */
 export function indexRemainingPolyglotFiles(options: PolyglotIndexOptions): ClassRenderResult[] {
   const allFiles = listFilesRecursive(options.extractedDir);
+  const hasModelicaPackage = allFiles.some(
+    (f) => path.basename(f.relPath).toLowerCase() === "package.mo" || path.extname(f.relPath).toLowerCase() === ".mo",
+  );
   const results: ClassRenderResult[] = [];
   const indexedNames = new Set<string>();
 
   for (const f of allFiles) {
+    if (hasModelicaPackage && (f.relPath.startsWith("Resources/") || f.relPath.includes("/Resources/"))) {
+      continue;
+    }
     const ext = path.extname(f.relPath).toLowerCase();
     const spec = POLYGLOT_SPECS.find((s) => s.extensions.includes(ext));
     if (!spec) continue;

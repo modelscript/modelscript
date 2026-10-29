@@ -35,6 +35,15 @@ export function mcpRouter(database: LibraryDatabase): Router {
     }
 
     if (token) {
+      if (token.startsWith("ms_pat_")) {
+        const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+        const tokenRecord = database.getApiTokenByHash(tokenHash);
+        if (!tokenRecord) return null;
+        if (tokenRecord.expires_at && new Date(tokenRecord.expires_at).getTime() < Date.now()) return null;
+        const u = database.getUserById(tokenRecord.user_id);
+        if (u && !isAccountBlocked(u.status)) return u.id;
+        return null;
+      }
       if (token.startsWith("ms_bot_")) {
         const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
         const botUser = database.getUserByBotTokenHash(tokenHash);
@@ -116,15 +125,22 @@ export function mcpRouter(database: LibraryDatabase): Router {
           return database.getReplies(postId, userId);
         },
         createPost: async (params) => {
-          const user = database.getUserById(params.authorId);
+          const requestedAuthorId = params.authorId !== undefined ? Number(params.authorId) : userId;
+          if (requestedAuthorId !== userId) {
+            const maybeBot = database.getBotById(requestedAuthorId);
+            if (!maybeBot || maybeBot.owner_id !== userId) {
+              throw new Error("Forbidden: Cannot create a post on behalf of another user");
+            }
+          }
+          const user = database.getUserById(requestedAuthorId);
           if (user?.account_type === "bot") {
-            const bot = database.getBotById(params.authorId);
+            const bot = database.getBotById(requestedAuthorId);
             const scopes = (bot?.bot_scopes || "").split(",").map((s) => s.trim());
             if (!scopes.includes("social:write")) {
               throw new Error("Bot lacks social:write scope");
             }
           }
-          return database.createPost(params.authorId, params.content, params.artifactViewId, params.replyToId);
+          return database.createPost(requestedAuthorId, params.content, params.artifactViewId, params.replyToId);
         },
       },
     };
@@ -151,6 +167,11 @@ export function mcpRouter(database: LibraryDatabase): Router {
     }
 
     const session = sessions.get(sessionId)!;
+    const callerId = resolveAuth(req);
+    if (callerId !== null && callerId !== session.userId) {
+      res.status(403).json({ error: "Session belongs to a different user." });
+      return;
+    }
     await session.transport.handlePostMessage(req, res);
   });
 

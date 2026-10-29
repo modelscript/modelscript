@@ -12,6 +12,7 @@ export interface LLMCompletionOptions {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  reasoningEffort?: "none" | "low" | "medium" | "high";
 }
 
 export interface LLMResponse {
@@ -25,6 +26,13 @@ export interface LLMResponse {
 
 export interface LLMProvider {
   complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse>;
+}
+
+export function stripLLMThinkBlocks(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>\s*/gi, "")
+    .replace(/<think>[\s\S]*/gi, "")
+    .trim();
 }
 
 /**
@@ -55,33 +63,44 @@ export class DeterministicEngineeringProvider implements LLMProvider {
 export class OpenAICompatibleProvider implements LLMProvider {
   #apiKey: string;
   #baseUrl: string;
+  #allowInternalHost: boolean;
 
-  constructor(apiKey: string, baseUrl: string = "https://api.openai.com/v1") {
+  constructor(apiKey: string, baseUrl: string = "https://api.openai.com/v1", allowInternalHost: boolean = false) {
     this.#apiKey = apiKey;
     this.#baseUrl = baseUrl.replace(/\/+$/, "");
+    this.#allowInternalHost = allowInternalHost;
   }
 
   async complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse> {
     const model = options?.model || "gpt-4o-mini";
-    const payload = {
+    const payload: Record<string, unknown> = {
       model,
       messages,
       temperature: options?.temperature ?? 0.2,
       max_tokens: options?.maxTokens ?? 1024,
     };
+    if (options?.reasoningEffort) {
+      payload["reasoning_effort"] = options.reasoningEffort;
+    }
 
     const targetUrl = `${this.#baseUrl}/chat/completions`;
-    if (process.env["NODE_ENV"] === "production") {
+    if (process.env["NODE_ENV"] === "production" && !this.#allowInternalHost) {
       assertSafePublicUrl(targetUrl);
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${this.#apiKey}`,
+    };
+    if (process.env["NODE_ENV"] === "test") {
+      headers["Connection"] = "close";
     }
 
     const res = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.#apiKey}`,
-      },
+      headers,
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(25_000),
     });
 
     if (!res.ok) {
@@ -95,10 +114,115 @@ export class OpenAICompatibleProvider implements LLMProvider {
     };
     const choice = data.choices?.[0]?.message;
     return {
-      content: choice?.content || "",
+      content: stripLLMThinkBlocks(choice?.content || ""),
       model: data.model || model,
     };
   }
+}
+
+export function getDefaultCloudModelId(): string {
+  return process.env["AI_MODEL"] || (process.env["OPENAI_API_KEY"] ? "gpt-4o-mini" : "gemini-2.5-flash");
+}
+
+let cachedOllamaDiscovery: {
+  provider: OpenAICompatibleProvider;
+  baseUrl: string;
+  warmModel?: string | undefined;
+  installedModels: string[];
+  checkedAt: number;
+} | null = null;
+let lastFailedOllamaCheckAt = 0;
+
+const FAST_MODEL_SIZE_RE = /(?:^|[:\-_])(0\.6b|1\.5b|1\.7b|2b|3b|4b|7b|8b|mini|flash)(?:$|[:\-_])/i;
+const QUALITY_MODEL_SIZE_RE = /(?:^|[:\-_])(14b|27b|30b|32b|70b)(?:$|[:\-_])/i;
+
+function pickOllamaModel(
+  installedModels: string[],
+  warmModel: string | undefined,
+  preferTier: "fast" | "quality" = "fast",
+): string | undefined {
+  const envModel = process.env["OLLAMA_MODEL"];
+  if (envModel && (installedModels.includes(envModel) || warmModel === envModel)) {
+    return envModel;
+  }
+  if (preferTier === "quality") {
+    return (
+      installedModels.find((n) => QUALITY_MODEL_SIZE_RE.test(n)) ||
+      warmModel ||
+      installedModels.find((n) => FAST_MODEL_SIZE_RE.test(n)) ||
+      installedModels[0]
+    );
+  }
+  // For interactive "fast" mode, prefer a fast model already warm in GPU/RAM, or an installed <=8B model
+  if (warmModel && FAST_MODEL_SIZE_RE.test(warmModel)) {
+    return warmModel;
+  }
+  return installedModels.find((n) => FAST_MODEL_SIZE_RE.test(n)) || warmModel || installedModels[0];
+}
+
+/**
+ * Probes local/configured Ollama servers (`OLLAMA_BASE_URL`, `127.0.0.1:11434`,
+ * `host.docker.internal:11434`, `ollama:11434`) and returns an OpenAICompatibleProvider
+ * bound to the best available model.
+ */
+export async function discoverOllamaProvider(options?: {
+  preferTier?: "fast" | "quality";
+}): Promise<{ provider: OpenAICompatibleProvider; model: string } | null> {
+  const preferTier = options?.preferTier || "fast";
+  const now = Date.now();
+  if (cachedOllamaDiscovery && now - cachedOllamaDiscovery.checkedAt < 60_000) {
+    const model = pickOllamaModel(cachedOllamaDiscovery.installedModels, cachedOllamaDiscovery.warmModel, preferTier);
+    if (model) {
+      return { provider: cachedOllamaDiscovery.provider, model };
+    }
+  }
+  if (now - lastFailedOllamaCheckAt < 15_000) {
+    return null;
+  }
+
+  const configuredBase = (process.env["OLLAMA_BASE_URL"] || process.env["OLLAMA_HOST"] || "").replace(/\/+$/, "");
+  const candidateBases = configuredBase
+    ? [configuredBase]
+    : ["http://127.0.0.1:11434", "http://host.docker.internal:11434", "http://ollama:11434"];
+
+  for (const ollamaBase of candidateBases) {
+    try {
+      let warmModel: string | undefined;
+      let installedModels: string[] = [];
+
+      // 1. Check /api/ps to see if a model is already warm in memory
+      const psRes = await fetch(`${ollamaBase}/api/ps`, { signal: AbortSignal.timeout(800) });
+      if (psRes.ok) {
+        const psData = (await psRes.json()) as { models?: { name?: string | undefined }[] | undefined };
+        warmModel = psData.models?.[0]?.name;
+      }
+
+      // 2. Check /api/tags for installed models
+      const tagsRes = await fetch(`${ollamaBase}/api/tags`, { signal: AbortSignal.timeout(800) });
+      if (tagsRes.ok) {
+        const tagsData = (await tagsRes.json()) as { models?: { name?: string | undefined }[] | undefined };
+        installedModels = (tagsData.models || []).map((m) => m.name).filter((n): n is string => Boolean(n));
+      }
+
+      const chosen = pickOllamaModel(installedModels, warmModel, preferTier);
+      if (chosen) {
+        const provider = new OpenAICompatibleProvider("ollama", `${ollamaBase}/v1`, true);
+        cachedOllamaDiscovery = {
+          provider,
+          baseUrl: ollamaBase,
+          warmModel,
+          installedModels,
+          checkedAt: now,
+        };
+        return { provider, model: chosen };
+      }
+    } catch {
+      // Try next candidate base URL
+    }
+  }
+
+  lastFailedOllamaCheckAt = now;
+  return null;
 }
 
 export function createDefaultLLMProvider(): LLMProvider {
@@ -110,6 +234,7 @@ export function createDefaultLLMProvider(): LLMProvider {
       apiKey,
       baseUrl ||
         (process.env["GEMINI_API_KEY"] ? "https://generativelanguage.googleapis.com/v1beta/openai" : undefined),
+      true,
     );
   }
 

@@ -1012,6 +1012,46 @@ export class LibraryDatabase {
         secret     TEXT NOT NULL,
         expires_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS instance_settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS instance_invites (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        code            TEXT NOT NULL UNIQUE,
+        created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        max_uses        INTEGER NOT NULL DEFAULT 1,
+        used_count      INTEGER NOT NULL DEFAULT 0,
+        initial_credits REAL NOT NULL DEFAULT 100.0,
+        assigned_role   TEXT NOT NULL DEFAULT 'user',
+        note            TEXT,
+        expires_at      TEXT,
+        revoked_at      TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_instance_invites_code ON instance_invites(code);
+
+      CREATE TABLE IF NOT EXISTS quarantined_resources (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        resource_type   TEXT NOT NULL,
+        resource_id     TEXT NOT NULL,
+        reason          TEXT NOT NULL,
+        dmca_notice_id  INTEGER REFERENCES dmca_notices(id) ON DELETE SET NULL,
+        quarantined_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        status          TEXT NOT NULL DEFAULT 'quarantined',
+        counter_notice  TEXT,
+        restore_after   TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        restored_at     TEXT,
+        UNIQUE(resource_type, resource_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_quarantined_resources_status ON quarantined_resources(status);
     `);
 
     // Migrations
@@ -1529,7 +1569,13 @@ export class LibraryDatabase {
     }
 
     this.#db
-      .prepare(`UPDATE users SET email_verified = 1, status = 'active', credit_balance = ? WHERE id = ?`)
+      .prepare(
+        `UPDATE users
+         SET email_verified = 1,
+             status = CASE WHEN status IN ('suspended', 'banned', 'frozen', 'suspended_dispute', 'deleted') THEN status ELSE 'active' END,
+             credit_balance = ?
+         WHERE id = ?`,
+      )
       .run(newBalance, userId);
 
     if (creditsToGrant > 0) {
@@ -1547,6 +1593,10 @@ export class LibraryDatabase {
 
     const updatedUser = this.#db.prepare(`SELECT * FROM users WHERE id = ?`).get(userId) as UserRow | undefined;
     return { success: true, creditsGranted: creditsToGrant, user: updatedUser };
+  }
+
+  setUserEmailVerified(userId: number, verified: boolean): void {
+    this.#db.prepare(`UPDATE users SET email_verified = ? WHERE id = ?`).run(verified ? 1 : 0, userId);
   }
 
   freezeUserForDispute(userId: number, reason: string): { success: boolean; previousBalance: number } {
@@ -1644,6 +1694,14 @@ export class LibraryDatabase {
 
       try {
         this.#db.prepare(`DELETE FROM users WHERE owner_id = ? AND account_type = 'bot'`).run(userId);
+      } catch {}
+
+      try {
+        this.#db.prepare(`DELETE FROM api_tokens WHERE user_id = ?`).run(userId);
+      } catch {}
+
+      try {
+        this.#db.prepare(`DELETE FROM pending_totp_secrets WHERE user_id = ?`).run(userId);
       } catch {}
 
       try {
@@ -3715,6 +3773,67 @@ export class LibraryDatabase {
     return this.getDomainTier(domain).tier === "silence";
   }
 
+  isDomainAllowedForFederation(domain: string): boolean {
+    const cleanDomain = domain.toLowerCase().trim();
+    if (!cleanDomain) return false;
+    const settings = this.getInstanceSettings();
+    if (settings.federationMode === "disabled") {
+      return false;
+    }
+    if (settings.federationMode === "allowlist") {
+      const row = this.#db.prepare(`SELECT tier FROM federation_domains WHERE domain = ?`).get(cleanDomain) as
+        | { tier: string }
+        | undefined;
+      return row?.tier === "allow";
+    }
+    return !this.isDomainSuspended(cleanDomain);
+  }
+
+  exportFederationDomains(format: "json" | "csv" = "json"): string {
+    const domains = this.listFederationDomains();
+    if (format === "csv") {
+      const header = "#domain,#severity,#public_comment";
+      const rows = domains.map((d) => {
+        const severity = d.tier === "suspend" ? "suspend" : d.tier === "silence" ? "silence" : "allow";
+        const comment = (d.reason ?? "").replace(/"/g, '""');
+        return `${d.domain},${severity},"${comment}"`;
+      });
+      return [header, ...rows].join("\n");
+    }
+    return JSON.stringify(
+      domains.map((d) => ({
+        domain: d.domain,
+        tier: d.tier,
+        reason: d.reason ?? "",
+        updatedAt: d.updated_at,
+      })),
+      null,
+      2,
+    );
+  }
+
+  importFederationDomains(
+    entries: { domain: string; tier?: "allow" | "silence" | "suspend"; reason?: string | null | undefined }[],
+    mode: "merge" | "replace" = "merge",
+  ): { importedCount: number } {
+    let importedCount = 0;
+    const tx = this.#db.transaction(() => {
+      if (mode === "replace") {
+        this.#db.prepare(`DELETE FROM federation_domains`).run();
+      }
+      for (const entry of entries) {
+        const cleanDomain = (entry.domain || "").toLowerCase().trim();
+        if (!cleanDomain || cleanDomain.startsWith("#")) continue;
+        const normalizedTier =
+          entry.tier === "suspend" || entry.tier === "silence" || entry.tier === "allow" ? entry.tier : "suspend";
+        this.setDomainTier(cleanDomain, normalizedTier, entry.reason ?? undefined);
+        importedCount++;
+      }
+    });
+    tx();
+    return { importedCount };
+  }
+
   // ── Federation Delivery Queue ─────────────────────────────────────
 
   enqueueFederationDelivery(
@@ -3822,6 +3941,7 @@ export class LibraryDatabase {
     id: number;
     activity_type: string;
     activity_id: string;
+    payload: string;
     target_inbox_url: string;
     target_domain: string;
     attempts: number;
@@ -3846,7 +3966,7 @@ export class LibraryDatabase {
     params.push(limit);
     return this.#db
       .prepare(
-        `SELECT id, activity_type, activity_id, target_inbox_url, target_domain, attempts, max_attempts, next_retry_at, last_error, status, created_at, updated_at
+        `SELECT id, activity_type, activity_id, payload, target_inbox_url, target_domain, attempts, max_attempts, next_retry_at, last_error, status, created_at, updated_at
          FROM federation_delivery_queue
          ${whereSql}
          ORDER BY id DESC LIMIT ?`,
@@ -3855,6 +3975,7 @@ export class LibraryDatabase {
       id: number;
       activity_type: string;
       activity_id: string;
+      payload: string;
       target_inbox_url: string;
       target_domain: string;
       attempts: number;
@@ -4063,7 +4184,7 @@ export class LibraryDatabase {
       reason: string;
       details?: string | undefined;
     },
-  ): { id: number; status: string } {
+  ): { id: number; status: string; autoQuarantined?: boolean } {
     let effectiveTargetUserId = data.targetUserId ?? null;
     const resolvedTargetType = data.targetType || (data.postId ? "post" : "user");
     const resolvedResourceId =
@@ -4160,7 +4281,46 @@ export class LibraryDatabase {
         data.details ?? null,
         JSON.stringify(snapshotObj),
       );
-    return { id: Number(result.lastInsertRowid), status: "pending" };
+
+    let autoQuarantined = false;
+    try {
+      const settings = this.getInstanceSettings();
+      const threshold = settings.autoQuarantineReportThreshold;
+      if (threshold > 0 && resolvedTargetType && resolvedResourceId) {
+        const countRow = this.#db
+          .prepare(
+            `SELECT COUNT(DISTINCT reporter_id) as c
+             FROM content_reports
+             WHERE status = 'pending'
+               AND ((? IS NOT NULL AND post_id = ?) OR (target_type = ? AND target_resource_id = ?))`,
+          )
+          .get(data.postId ?? null, data.postId ?? null, resolvedTargetType, resolvedResourceId) as
+          | { c: number }
+          | undefined;
+        const distinctReporters = countRow?.c ?? 0;
+        if (distinctReporters >= threshold) {
+          this.quarantineResource({
+            resourceType: resolvedTargetType,
+            resourceId: resolvedResourceId,
+            reason: `Auto-quarantined after reaching threshold of ${threshold} distinct user reports`,
+          });
+          if (resolvedTargetType === "post" && data.postId) {
+            this.#db
+              .prepare(
+                `UPDATE posts
+                 SET content_warning = COALESCE(content_warning, '[Auto-Quarantined Pending Moderator Review]')
+                 WHERE id = ?`,
+              )
+              .run(data.postId);
+          }
+          autoQuarantined = true;
+        }
+      }
+    } catch {
+      // Non-fatal if settings table not initialized in isolated unit test
+    }
+
+    return { id: Number(result.lastInsertRowid), status: "pending", autoQuarantined };
   }
 
   getContentReport(reportId: number): ContentReportRow | undefined {
@@ -4184,7 +4344,13 @@ export class LibraryDatabase {
     return row ? this.#hydrateContentReport(row) : undefined;
   }
 
-  getModerationQueue(status?: string, limit: number = 50, offset: number = 0): ContentReportRow[] {
+  getModerationQueue(
+    status?: string,
+    limit: number = 50,
+    offset: number = 0,
+    targetType?: string,
+    search?: string,
+  ): ContentReportRow[] {
     const baseQuery = `
       SELECT r.*, 
              u.username as reporter_username, 
@@ -4211,15 +4377,71 @@ export class LibraryDatabase {
       LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
     `;
 
-    const rows = (
-      status
-        ? this.#db
-            .prepare(`${baseQuery} WHERE r.status = ? ORDER BY r.created_at DESC LIMIT ? OFFSET ?`)
-            .all(status, limit, offset)
-        : this.#db.prepare(`${baseQuery} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`).all(limit, offset)
-    ) as ContentReportRow[];
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (status && status !== "all") {
+      clauses.push("r.status = ?");
+      params.push(status);
+    }
+    if (targetType && targetType !== "all") {
+      if (targetType === "post") {
+        clauses.push("(r.target_type = 'post' OR (r.target_type IS NULL AND r.post_id IS NOT NULL))");
+      } else {
+        clauses.push("r.target_type = ?");
+        params.push(targetType);
+      }
+    }
+    if (search && search.trim()) {
+      const q = `%${search.trim().toLowerCase()}%`;
+      clauses.push(
+        "(LOWER(COALESCE(r.reason, '')) LIKE ? OR LOWER(COALESCE(r.details, '')) LIKE ? OR LOWER(COALESCE(p.content, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(target_u.username, '')) LIKE ? OR LOWER(COALESCE(r.target_resource_id, '')) LIKE ?)",
+      );
+      params.push(q, q, q, q, q, q);
+    }
+
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.#db
+      .prepare(`${baseQuery} ${whereSql} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`)
+      .all(...params, limit, offset) as ContentReportRow[];
 
     return rows.map((r) => this.#hydrateContentReport(r));
+  }
+
+  getModerationQueueCount(status?: string, targetType?: string, search?: string): number {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (status && status !== "all") {
+      clauses.push("r.status = ?");
+      params.push(status);
+    }
+    if (targetType && targetType !== "all") {
+      if (targetType === "post") {
+        clauses.push("(r.target_type = 'post' OR (r.target_type IS NULL AND r.post_id IS NOT NULL))");
+      } else {
+        clauses.push("r.target_type = ?");
+        params.push(targetType);
+      }
+    }
+    if (search && search.trim()) {
+      const q = `%${search.trim().toLowerCase()}%`;
+      clauses.push(
+        "(LOWER(COALESCE(r.reason, '')) LIKE ? OR LOWER(COALESCE(r.details, '')) LIKE ? OR LOWER(COALESCE(p.content, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(target_u.username, '')) LIKE ? OR LOWER(COALESCE(r.target_resource_id, '')) LIKE ?)",
+      );
+      params.push(q, q, q, q, q, q);
+    }
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const row = this.#db
+      .prepare(
+        `SELECT COUNT(*) as c
+         FROM content_reports r
+         LEFT JOIN users u ON r.reporter_id = u.id
+         LEFT JOIN posts p ON r.post_id = p.id
+         LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
+         ${whereSql}`,
+      )
+      .get(...params) as { c: number } | undefined;
+    return row?.c ?? 0;
   }
 
   resolveContentReport(
@@ -4333,7 +4555,7 @@ export class LibraryDatabase {
     return { success: true, apId: post.ap_id ?? undefined, authorId: post.author_id };
   }
 
-  // ── DMCA Notices ─────────────────────────────────────────────────
+  // ── DMCA Notices & Universal Resource Quarantine ──────────────────
 
   createDmcaNotice(data: {
     claimantName: string;
@@ -4379,6 +4601,129 @@ export class LibraryDatabase {
       .prepare(`UPDATE dmca_notices SET status = ?, action_taken = ?, resolved_at = datetime('now') WHERE id = ?`)
       .run(status, actionTaken, id);
     return res.changes > 0;
+  }
+
+  quarantineResource(data: {
+    resourceType: string;
+    resourceId: string;
+    reason: string;
+    dmcaNoticeId?: number | null | undefined;
+    quarantinedBy?: number | null | undefined;
+    counterNotice?: string | null | undefined;
+    restoreAfter?: string | null | undefined;
+  }): { id: number; resourceType: string; resourceId: string } {
+    const cleanType = data.resourceType.trim().toLowerCase() || "package";
+    const cleanId = data.resourceId.trim();
+    this.#db
+      .prepare(
+        `INSERT INTO quarantined_resources (resource_type, resource_id, reason, dmca_notice_id, quarantined_by, status, counter_notice, restore_after, created_at, restored_at)
+         VALUES (?, ?, ?, ?, ?, 'quarantined', ?, ?, datetime('now'), NULL)
+         ON CONFLICT(resource_type, resource_id) DO UPDATE SET
+           reason = excluded.reason,
+           dmca_notice_id = COALESCE(excluded.dmca_notice_id, quarantined_resources.dmca_notice_id),
+           quarantined_by = excluded.quarantined_by,
+           status = 'quarantined',
+           counter_notice = COALESCE(excluded.counter_notice, quarantined_resources.counter_notice),
+           restore_after = COALESCE(excluded.restore_after, quarantined_resources.restore_after),
+           restored_at = NULL`,
+      )
+      .run(
+        cleanType,
+        cleanId,
+        data.reason,
+        data.dmcaNoticeId ?? null,
+        data.quarantinedBy ?? null,
+        data.counterNotice ?? null,
+        data.restoreAfter ?? null,
+      );
+    const row = this.#db
+      .prepare(`SELECT id FROM quarantined_resources WHERE resource_type = ? AND resource_id = ?`)
+      .get(cleanType, cleanId) as { id: number } | undefined;
+    return { id: row?.id ?? 0, resourceType: cleanType, resourceId: cleanId };
+  }
+
+  restoreQuarantinedResource(resourceType: string, resourceId: string): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE quarantined_resources
+         SET status = 'restored', restored_at = datetime('now')
+         WHERE resource_type = ? AND resource_id = ? AND status = 'quarantined'`,
+      )
+      .run(resourceType.trim().toLowerCase(), resourceId.trim());
+    return res.changes > 0;
+  }
+
+  isResourceQuarantined(resourceType: string, resourceId: string): boolean {
+    const row = this.#db
+      .prepare(
+        `SELECT 1 FROM quarantined_resources
+         WHERE resource_type = ? AND resource_id = ? AND status = 'quarantined'`,
+      )
+      .get(resourceType.trim().toLowerCase(), resourceId.trim());
+    return Boolean(row);
+  }
+
+  listQuarantinedResources(status?: string): {
+    id: number;
+    resource_type: string;
+    resource_id: string;
+    reason: string;
+    dmca_notice_id: number | null;
+    quarantined_by: number | null;
+    status: string;
+    counter_notice: string | null;
+    restore_after: string | null;
+    created_at: string;
+    restored_at: string | null;
+  }[] {
+    if (status && status !== "all") {
+      return this.#db
+        .prepare(`SELECT * FROM quarantined_resources WHERE status = ? ORDER BY created_at DESC`)
+        .all(status) as {
+        id: number;
+        resource_type: string;
+        resource_id: string;
+        reason: string;
+        dmca_notice_id: number | null;
+        quarantined_by: number | null;
+        status: string;
+        counter_notice: string | null;
+        restore_after: string | null;
+        created_at: string;
+        restored_at: string | null;
+      }[];
+    }
+    return this.#db.prepare(`SELECT * FROM quarantined_resources ORDER BY created_at DESC`).all() as {
+      id: number;
+      resource_type: string;
+      resource_id: string;
+      reason: string;
+      dmca_notice_id: number | null;
+      quarantined_by: number | null;
+      status: string;
+      counter_notice: string | null;
+      restore_after: string | null;
+      created_at: string;
+      restored_at: string | null;
+    }[];
+  }
+
+  fileDmcaCounterNotice(noticeId: number, counterNoticeText: string): { success: boolean; restoreAfter: string } {
+    const notice = this.getDmcaNotice(noticeId);
+    const restoreAfter = new Date(Date.now() + 14 * 86_400_000).toISOString();
+    if (!notice) {
+      return { success: false, restoreAfter };
+    }
+    const updatedAction = `${notice.action_taken ? `${notice.action_taken} | ` : ""}Counter-Notice filed: ${counterNoticeText} (Eligible for restoration after ${restoreAfter.slice(0, 10)})`;
+    this.#db.prepare(`UPDATE dmca_notices SET action_taken = ? WHERE id = ?`).run(updatedAction, noticeId);
+    this.#db
+      .prepare(
+        `UPDATE quarantined_resources
+         SET counter_notice = ?, restore_after = ?
+         WHERE dmca_notice_id = ?`,
+      )
+      .run(counterNoticeText, restoreAfter, noticeId);
+    return { success: true, restoreAfter };
   }
 
   // ── Admin Overview & User Governance ─────────────────────────────
@@ -4435,7 +4780,18 @@ export class LibraryDatabase {
     role?: string | undefined;
     limit?: number | undefined;
     offset?: number | undefined;
-  }): { users: AdminUserSummaryRow[]; total: number } {
+  }): {
+    users: AdminUserSummaryRow[];
+    total: number;
+    statusBreakdown: {
+      active: number;
+      frozen: number;
+      suspended: number;
+      admins: number;
+      moderators: number;
+      auditors: number;
+    };
+  } {
     const clauses: string[] = [];
     const params: unknown[] = [];
 
@@ -4458,6 +4814,28 @@ export class LibraryDatabase {
       | { c: number }
       | undefined;
     const total = totalRow?.c ?? 0;
+
+    const breakdownRow = this.#db
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN COALESCE(status, 'active') = 'active' THEN 1 ELSE 0 END) as active,
+           SUM(CASE WHEN status = 'frozen' THEN 1 ELSE 0 END) as frozen,
+           SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) as suspended,
+           SUM(CASE WHEN account_type = 'admin' THEN 1 ELSE 0 END) as admins,
+           SUM(CASE WHEN account_type = 'moderator' THEN 1 ELSE 0 END) as moderators,
+           SUM(CASE WHEN account_type = 'auditor' THEN 1 ELSE 0 END) as auditors
+         FROM users`,
+      )
+      .get() as
+      | {
+          active: number | null;
+          frozen: number | null;
+          suspended: number | null;
+          admins: number | null;
+          moderators: number | null;
+          auditors: number | null;
+        }
+      | undefined;
 
     const limit = Math.min(100, Math.max(1, options?.limit || 50));
     const offset = Math.max(0, options?.offset || 0);
@@ -4485,14 +4863,25 @@ export class LibraryDatabase {
       )
       .all(...params, limit, offset) as AdminUserSummaryRow[];
 
-    return { users, total };
+    return {
+      users,
+      total,
+      statusBreakdown: {
+        active: Number(breakdownRow?.active ?? 0),
+        frozen: Number(breakdownRow?.frozen ?? 0),
+        suspended: Number(breakdownRow?.suspended ?? 0),
+        admins: Number(breakdownRow?.admins ?? 0),
+        moderators: Number(breakdownRow?.moderators ?? 0),
+        auditors: Number(breakdownRow?.auditors ?? 0),
+      },
+    };
   }
 
   moderateUserAccount(
     userId: number,
     options: {
       status?: "active" | "frozen" | "suspended" | "pending_verification" | undefined;
-      role?: "user" | "admin" | undefined;
+      role?: "user" | "moderator" | "auditor" | "admin" | undefined;
       revokeSessions?: boolean | undefined;
       purgePosts?: boolean | undefined;
     },
@@ -4538,6 +4927,51 @@ export class LibraryDatabase {
     };
   }
 
+  adjustUserCreditsForAdmin(
+    userId: number,
+    deltaCredits: number,
+    reason: string,
+  ): {
+    success: boolean;
+    userId: number;
+    previousBalance: number;
+    newBalance: number;
+  } {
+    const user = this.getUserById(userId);
+    if (!user) {
+      return { success: false, userId, previousBalance: 0, newBalance: 0 };
+    }
+    const previousBalance = Number(user.credit_balance ?? 0);
+    const newBalance = Math.max(0, Number((previousBalance + deltaCredits).toFixed(4)));
+    const txType = deltaCredits >= 0 ? "admin_grant" : "admin_deduction";
+
+    const tx = this.#db.transaction(() => {
+      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
+      this.#db
+        .prepare(
+          `INSERT INTO credit_transactions (user_id, amount, balance_after, type, description)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(userId, deltaCredits, newBalance, txType, reason || "Administrator compute wallet adjustment");
+    });
+    tx();
+
+    return {
+      success: true,
+      userId,
+      previousBalance,
+      newBalance,
+    };
+  }
+
+  static #hashAuditIpToken(ipAddress?: string | null): string {
+    if (!ipAddress) return "";
+    if (ipAddress.startsWith("REDACTED:")) {
+      return ipAddress.slice("REDACTED:".length);
+    }
+    return crypto.createHash("sha256").update(`msx-audit-ip-v1:${ipAddress}`).digest("hex").slice(0, 16);
+  }
+
   logAudit(data: {
     actorId?: number | null | undefined;
     action: string;
@@ -4552,13 +4986,14 @@ export class LibraryDatabase {
         .prepare(`SELECT entry_hash FROM audit_logs WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1`)
         .get() as { entry_hash: string } | undefined;
       const prevHash = prevRow?.entry_hash || "GENESIS";
+      const ipToken = LibraryDatabase.#hashAuditIpToken(data.ipAddress);
       const canonicalPayload = [
         prevHash,
         String(data.actorId ?? ""),
         data.action,
         data.resourceType,
         String(data.resourceId ?? ""),
-        String(data.ipAddress ?? ""),
+        ipToken,
         detailsStr ?? "",
       ].join("|");
       const entryHash = crypto.createHash("sha256").update(canonicalPayload).digest("hex");
@@ -4616,7 +5051,19 @@ export class LibraryDatabase {
           brokenAtId: row.id,
         };
       }
-      const canonicalPayload: string = [
+      const ipToken = LibraryDatabase.#hashAuditIpToken(row.ip_address);
+      const tokenPayload: string = [
+        prevHash,
+        String(row.actor_id ?? ""),
+        row.action,
+        row.resource_type,
+        String(row.resource_id ?? ""),
+        ipToken,
+        row.details ?? "",
+      ].join("|");
+      const recomputedTokenHash: string = crypto.createHash("sha256").update(tokenPayload).digest("hex");
+
+      const legacyPayload: string = [
         prevHash,
         String(row.actor_id ?? ""),
         row.action,
@@ -4625,8 +5072,9 @@ export class LibraryDatabase {
         String(row.ip_address ?? ""),
         row.details ?? "",
       ].join("|");
-      const recomputedHash: string = crypto.createHash("sha256").update(canonicalPayload).digest("hex");
-      if (recomputedHash !== row.entry_hash) {
+      const recomputedLegacyHash: string = crypto.createHash("sha256").update(legacyPayload).digest("hex");
+
+      if (recomputedTokenHash !== row.entry_hash && recomputedLegacyHash !== row.entry_hash) {
         return {
           valid: false,
           totalEntries: rows.length,
@@ -4675,13 +5123,771 @@ export class LibraryDatabase {
   }
 
   /**
-   * GDPR / Security Compliance: Purges audit and operational security logs
-   * older than the specified retention window (default: 30 days).
+   * GDPR / Security Compliance: Redacts raw IP addresses on audit log entries
+   * older than the specified retention window (default: 30 days) while preserving
+   * the cryptographic SHA-256 hash chain (`REDACTED:<ipToken>`).
    */
-  purgeExpiredLogs(retentionDays: number = 30): { deletedCount: number } {
-    const cutoffDate = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
-    const result = this.#db.prepare(`DELETE FROM audit_logs WHERE created_at < ?`).run(cutoffDate);
-    return { deletedCount: Number(result.changes) };
+  purgeExpiredLogs(retentionDays: number = 30): { deletedCount: number; redactedCount: number } {
+    const cutoffMs = retentionDays <= 0 ? Date.now() + 60_000 : Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+    const cutoffDate = new Date(cutoffMs).toISOString().replace("T", " ").slice(0, 19);
+    const expiredRows = this.#db
+      .prepare(
+        `SELECT id, ip_address FROM audit_logs
+         WHERE created_at <= ? AND ip_address IS NOT NULL AND ip_address != '' AND ip_address NOT LIKE 'REDACTED:%'`,
+      )
+      .all(cutoffDate) as { id: number; ip_address: string }[];
+
+    let redactedCount = 0;
+    const updateStmt = this.#db.prepare(`UPDATE audit_logs SET ip_address = ? WHERE id = ?`);
+    const tx = this.#db.transaction(() => {
+      for (const row of expiredRows) {
+        const token = LibraryDatabase.#hashAuditIpToken(row.ip_address);
+        updateStmt.run(`REDACTED:${token}`, row.id);
+        redactedCount++;
+      }
+    });
+    tx();
+    return { deletedCount: redactedCount, redactedCount };
+  }
+
+  getAuditLogsCount(action?: string, resourceType?: string): number {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (action && action.trim()) {
+      clauses.push(`(a.action = ? OR LOWER(a.action) LIKE ?)`);
+      params.push(action.trim(), `%${action.trim().toLowerCase()}%`);
+    }
+    if (resourceType && resourceType.trim() && resourceType !== "all") {
+      clauses.push(`a.resource_type = ?`);
+      params.push(resourceType.trim());
+    }
+
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const row = this.#db.prepare(`SELECT COUNT(*) as c FROM audit_logs a ${whereSql}`).get(...params) as
+      | { c: number }
+      | undefined;
+    return row?.c ?? 0;
+  }
+
+  // ── Instance Settings, Invites & System Diagnostics ──────────────
+
+  getInstanceSettings(): {
+    instanceName: string;
+    instanceDescription: string;
+    contactEmail: string;
+    registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
+    allowedEmailDomains: string[];
+    federationMode: "open" | "allowlist" | "disabled";
+    maintenanceMode: boolean;
+    announcementBanner: string;
+    announcementLevel: "info" | "warning" | "critical";
+    autoQuarantineReportThreshold: number;
+    backupRetentionCount: number;
+    lockedByEnv: string[];
+  } {
+    const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
+    const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+
+    const lockedByEnv: string[] = [];
+    if (process.env["MSX_INSTANCE_NAME"]) lockedByEnv.push("instanceName");
+    if (process.env["MSX_REGISTRATION_MODE"]) lockedByEnv.push("registrationMode");
+    if (process.env["MSX_FEDERATION_MODE"]) lockedByEnv.push("federationMode");
+
+    const rawRegMode = process.env["MSX_REGISTRATION_MODE"] || map.get("registrationMode") || "open";
+    const registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed" =
+      rawRegMode === "invite_only" || rawRegMode === "domain_allowlist" || rawRegMode === "closed"
+        ? rawRegMode
+        : "open";
+
+    const rawFedMode = process.env["MSX_FEDERATION_MODE"] || map.get("federationMode") || "open";
+    const federationMode: "open" | "allowlist" | "disabled" =
+      rawFedMode === "allowlist" || rawFedMode === "disabled" ? rawFedMode : "open";
+
+    let allowedEmailDomains: string[] = [];
+    try {
+      const parsed = JSON.parse(map.get("allowedEmailDomains") || "[]");
+      if (Array.isArray(parsed)) {
+        allowedEmailDomains = parsed.map((d) => String(d).trim().toLowerCase()).filter(Boolean);
+      }
+    } catch {
+      allowedEmailDomains = [];
+    }
+
+    const rawLevel = map.get("announcementLevel") || "info";
+    const announcementLevel: "info" | "warning" | "critical" =
+      rawLevel === "warning" || rawLevel === "critical" ? rawLevel : "info";
+
+    return {
+      instanceName: process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "ModelScript Engineering Hub",
+      instanceDescription:
+        map.get("instanceDescription") ||
+        "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform.",
+      contactEmail: process.env["MSX_CONTACT_EMAIL"] || map.get("contactEmail") || "admin@modelscript.org",
+      registrationMode,
+      allowedEmailDomains,
+      federationMode,
+      maintenanceMode: map.get("maintenanceMode") === "true",
+      announcementBanner: map.get("announcementBanner") || "",
+      announcementLevel,
+      autoQuarantineReportThreshold: Math.max(
+        0,
+        Number.parseInt(map.get("autoQuarantineReportThreshold") || "5", 10) || 5,
+      ),
+      backupRetentionCount: Math.max(1, Number.parseInt(map.get("backupRetentionCount") || "7", 10) || 7),
+      lockedByEnv,
+    };
+  }
+
+  updateInstanceSettings(
+    patch: Record<string, unknown>,
+    actorId: number | null = null,
+  ): ReturnType<LibraryDatabase["getInstanceSettings"]> {
+    const allowedKeys = [
+      "instanceName",
+      "instanceDescription",
+      "contactEmail",
+      "registrationMode",
+      "allowedEmailDomains",
+      "federationMode",
+      "maintenanceMode",
+      "announcementBanner",
+      "announcementLevel",
+      "autoQuarantineReportThreshold",
+      "backupRetentionCount",
+    ];
+    const upsertStmt = this.#db.prepare(
+      `INSERT INTO instance_settings (key, value, updated_by, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_by = excluded.updated_by,
+         updated_at = datetime('now')`,
+    );
+
+    const tx = this.#db.transaction(() => {
+      for (const key of allowedKeys) {
+        if (patch[key] === undefined) continue;
+        const val = patch[key];
+        const serialized = typeof val === "object" && val !== null ? JSON.stringify(val) : String(val);
+        upsertStmt.run(key, serialized, actorId);
+      }
+    });
+    tx();
+    return this.getInstanceSettings();
+  }
+
+  isSetupCompleted(): boolean {
+    const row = this.#db.prepare(`SELECT value FROM instance_settings WHERE key = 'setupCompleted'`).get() as
+      | { value: string }
+      | undefined;
+    return row?.value === "true";
+  }
+
+  markSetupCompleted(actorId: number | null = null): void {
+    this.#db
+      .prepare(
+        `INSERT INTO instance_settings (key, value, updated_by, updated_at)
+         VALUES ('setupCompleted', 'true', ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+           value = 'true',
+           updated_by = excluded.updated_by,
+           updated_at = datetime('now')`,
+      )
+      .run(actorId);
+  }
+
+  getSetupStatus(): {
+    needsSetup: boolean;
+    hasAdmin: boolean;
+    setupCompleted: boolean;
+    userCount: number;
+    settings: ReturnType<LibraryDatabase["getInstanceSettings"]>;
+  } {
+    const hasAdmin = this.hasAdminUser();
+    const explicitSetupCompleted = this.isSetupCompleted();
+    const needsSetup = !hasAdmin && !explicitSetupCompleted;
+    return {
+      needsSetup,
+      hasAdmin,
+      setupCompleted: explicitSetupCompleted || hasAdmin,
+      userCount: this.getTotalUsersCount(),
+      settings: this.getInstanceSettings(),
+    };
+  }
+
+  createInstanceInvite(options?: {
+    code?: string | undefined;
+    createdBy?: number | null | undefined;
+    maxUses?: number | undefined;
+    initialCredits?: number | undefined;
+    assignedRole?: string | undefined;
+    note?: string | undefined;
+    expiresInDays?: number | undefined;
+  }): {
+    id: number;
+    code: string;
+    createdBy: number | null;
+    maxUses: number;
+    usedCount: number;
+    usesCount: number;
+    initialCredits: number;
+    assignedRole: string;
+    note: string | null;
+    expiresAt: string | null;
+    revoked: boolean;
+    createdAt: string;
+  } {
+    const rawCode = options?.code?.trim() || `msx-inv-${crypto.randomBytes(4).toString("hex")}`;
+    const maxUses = Math.max(1, Math.min(10000, Number(options?.maxUses) || 1));
+    const initialCredits = options?.initialCredits !== undefined ? Math.max(0, Number(options.initialCredits)) : 100.0;
+    const assignedRole =
+      options?.assignedRole && ["user", "moderator", "auditor", "admin"].includes(options.assignedRole)
+        ? options.assignedRole
+        : "user";
+    const note = options?.note?.trim() || null;
+    const expiresAt =
+      options?.expiresInDays && Number(options.expiresInDays) > 0
+        ? new Date(Date.now() + Number(options.expiresInDays) * 86_400_000).toISOString()
+        : null;
+
+    const res = this.#db
+      .prepare(
+        `INSERT INTO instance_invites (code, created_by, max_uses, used_count, initial_credits, assigned_role, note, expires_at, created_at)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?, datetime('now'))`,
+      )
+      .run(rawCode, options?.createdBy ?? null, maxUses, initialCredits, assignedRole, note, expiresAt);
+
+    return {
+      id: Number(res.lastInsertRowid),
+      code: rawCode,
+      createdBy: options?.createdBy ?? null,
+      maxUses,
+      usedCount: 0,
+      usesCount: 0,
+      initialCredits,
+      assignedRole,
+      note,
+      expiresAt,
+      revoked: false,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  listInstanceInvites(): {
+    id: number;
+    code: string;
+    created_by: number | null;
+    createdBy: number | null;
+    creator_username: string | null;
+    max_uses: number;
+    maxUses: number;
+    used_count: number;
+    usesCount: number;
+    initial_credits: number;
+    assigned_role: string;
+    note: string | null;
+    expires_at: string | null;
+    expiresAt: string | null;
+    revoked_at: string | null;
+    revoked: boolean;
+    created_at: string;
+    createdAt: string;
+  }[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT i.*, u.username as creator_username
+         FROM instance_invites i
+         LEFT JOIN users u ON i.created_by = u.id
+         ORDER BY i.id DESC`,
+      )
+      .all() as {
+      id: number;
+      code: string;
+      created_by: number | null;
+      creator_username: string | null;
+      max_uses: number;
+      used_count: number;
+      initial_credits: number;
+      assigned_role: string;
+      note: string | null;
+      expires_at: string | null;
+      revoked_at: string | null;
+      created_at: string;
+    }[];
+    return rows.map((r) => ({
+      ...r,
+      createdBy: r.created_by,
+      maxUses: r.max_uses,
+      usesCount: r.used_count,
+      expiresAt: r.expires_at,
+      revoked: Boolean(r.revoked_at),
+      createdAt: r.created_at,
+    }));
+  }
+
+  revokeInstanceInvite(id: number): boolean {
+    const res = this.#db
+      .prepare(`UPDATE instance_invites SET revoked_at = datetime('now') WHERE id = ? AND revoked_at IS NULL`)
+      .run(id);
+    return res.changes > 0;
+  }
+
+  getSystemDiagnostics(): {
+    dbSizeBytes: number;
+    walSizeBytes: number;
+    counts: {
+      users: number;
+      posts: number;
+      packages: number;
+      repositories: number;
+      jobs: number;
+      auditLogs: number;
+      pendingReports: number;
+      quarantinedResources: number;
+    };
+    backups: {
+      count: number;
+      totalBytes: number;
+      latestAt: string | null;
+    };
+    jobQueue: {
+      pending: number;
+      running: number;
+      completed: number;
+      failed: number;
+    };
+  } {
+    let dbSizeBytes = 0;
+    let walSizeBytes = 0;
+    try {
+      const dbPath = path.join(this.dbDir, "library.db");
+      if (fs.existsSync(dbPath)) dbSizeBytes = fs.statSync(dbPath).size;
+      const walPath = `${dbPath}-wal`;
+      if (fs.existsSync(walPath)) walSizeBytes = fs.statSync(walPath).size;
+    } catch {
+      // Ignore stat errors for in-memory DBs
+    }
+
+    const countTable = (sql: string): number => {
+      try {
+        const r = this.#db.prepare(sql).get() as { c: number } | undefined;
+        return r?.c ?? 0;
+      } catch {
+        return 0;
+      }
+    };
+
+    const backups = this.listBackups();
+    const totalBackupBytes = backups.reduce((sum, b) => sum + b.sizeBytes, 0);
+
+    return {
+      dbSizeBytes,
+      walSizeBytes,
+      counts: {
+        users: countTable("SELECT COUNT(*) as c FROM users"),
+        posts: countTable("SELECT COUNT(*) as c FROM posts"),
+        packages: countTable("SELECT COUNT(*) as c FROM packages"),
+        repositories: countTable("SELECT COUNT(*) as c FROM git_repos"),
+        jobs: countTable("SELECT COUNT(*) as c FROM jobs"),
+        auditLogs: countTable("SELECT COUNT(*) as c FROM audit_logs"),
+        pendingReports: countTable("SELECT COUNT(*) as c FROM content_reports WHERE status = 'pending'"),
+        quarantinedResources: countTable(
+          "SELECT COUNT(*) as c FROM quarantined_resources WHERE status = 'quarantined'",
+        ),
+      },
+      backups: {
+        count: backups.length,
+        totalBytes: totalBackupBytes,
+        latestAt: backups[0]?.createdAt ?? null,
+      },
+      jobQueue: {
+        pending: countTable("SELECT COUNT(*) as c FROM jobs WHERE status IN ('PENDING', 'QUEUED')"),
+        running: countTable("SELECT COUNT(*) as c FROM jobs WHERE status = 'RUNNING'"),
+        completed: countTable("SELECT COUNT(*) as c FROM jobs WHERE status = 'SUCCESS'"),
+        failed: countTable("SELECT COUNT(*) as c FROM jobs WHERE status IN ('FAILED', 'ERROR', 'CANCELLED')"),
+      },
+    };
+  }
+
+  validateAndConsumeInstanceInvite(code: string): {
+    valid: boolean;
+    reason?: string | undefined;
+    invite?:
+      | {
+          id: number;
+          code: string;
+          initialCredits: number;
+          assignedRole: string;
+        }
+      | undefined;
+  } {
+    const cleanCode = code.trim();
+    if (!cleanCode) {
+      return { valid: false, reason: "Invite code is required" };
+    }
+    const row = this.#db.prepare(`SELECT * FROM instance_invites WHERE code = ?`).get(cleanCode) as
+      | {
+          id: number;
+          code: string;
+          max_uses: number;
+          used_count: number;
+          initial_credits: number;
+          assigned_role: string;
+          expires_at: string | null;
+          revoked_at: string | null;
+        }
+      | undefined;
+
+    if (!row) {
+      return { valid: false, reason: "Invalid registration invite code" };
+    }
+    if (row.revoked_at) {
+      return { valid: false, reason: "This registration invite code has been revoked" };
+    }
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+      return { valid: false, reason: "This registration invite code has expired" };
+    }
+    if (row.used_count >= row.max_uses) {
+      return { valid: false, reason: "This registration invite code has reached its maximum uses" };
+    }
+
+    this.#db.prepare(`UPDATE instance_invites SET used_count = used_count + 1 WHERE id = ?`).run(row.id);
+
+    return {
+      valid: true,
+      invite: {
+        id: row.id,
+        code: row.code,
+        initialCredits: Number(row.initial_credits ?? 100),
+        assignedRole: row.assigned_role || "user",
+      },
+    };
+  }
+
+  getUserForensicsForAdmin(userId: number): {
+    user: {
+      id: number;
+      username: string;
+      email: string | null;
+      display_name: string | null;
+      account_type: string;
+      status: string;
+      credit_balance: number;
+      total_spent: number;
+      remote_domain: string | null;
+      email_verified: number;
+      totp_enabled: number;
+      created_at: string;
+    };
+    recentPosts: {
+      id: number;
+      content: string;
+      content_warning: string | null;
+      visibility: string;
+      created_at: string;
+    }[];
+    publishedPackages: {
+      name: string;
+      description: string | null;
+      created_at: string;
+    }[];
+    recentTransactions: {
+      id: number;
+      amount: number;
+      balance_after: number;
+      type: string;
+      description: string | null;
+      created_at: string;
+    }[];
+    recentAuditLogs: {
+      id: number;
+      action: string;
+      resource_type: string;
+      resource_id: string | null;
+      ip_address: string | null;
+      created_at: string;
+    }[];
+    reportsAgainstUser: {
+      id: number;
+      reason: string;
+      status: string;
+      target_type: string | null;
+      created_at: string;
+    }[];
+  } | null {
+    const user = this.#db
+      .prepare(
+        `SELECT id, username, email, display_name, COALESCE(account_type, 'user') as account_type,
+                COALESCE(status, 'active') as status,
+                COALESCE(credit_balance, 0) as credit_balance,
+                COALESCE((SELECT SUM(ABS(amount)) FROM credit_transactions ct WHERE ct.user_id = users.id AND ct.amount < 0), 0) as total_spent,
+                remote_domain, COALESCE(email_verified, 0) as email_verified,
+                COALESCE(totp_enabled, 0) as totp_enabled, created_at
+         FROM users WHERE id = ?`,
+      )
+      .get(userId) as
+      | {
+          id: number;
+          username: string;
+          email: string | null;
+          display_name: string | null;
+          account_type: string;
+          status: string;
+          credit_balance: number;
+          total_spent: number;
+          remote_domain: string | null;
+          email_verified: number;
+          totp_enabled: number;
+          created_at: string;
+        }
+      | undefined;
+
+    if (!user) return null;
+
+    const recentPosts = this.#db
+      .prepare(
+        `SELECT id, content, content_warning,
+                COALESCE(reply_visibility, 'everyone') as visibility,
+                created_at
+         FROM posts WHERE author_id = ? ORDER BY id DESC LIMIT 10`,
+      )
+      .all(userId) as {
+      id: number;
+      content: string;
+      content_warning: string | null;
+      visibility: string;
+      created_at: string;
+    }[];
+
+    let publishedPackages: { name: string; description: string | null; created_at: string }[] = [];
+    try {
+      publishedPackages = this.#db
+        .prepare(
+          `SELECT DISTINCT p.name, p.description, p.created_at
+           FROM packages p
+           JOIN package_versions pv ON pv.package_id = p.id
+           WHERE pv.published_by = ?
+           ORDER BY p.id DESC LIMIT 10`,
+        )
+        .all(userId) as { name: string; description: string | null; created_at: string }[];
+    } catch {
+      publishedPackages = [];
+    }
+
+    const recentTransactions = this.#db
+      .prepare(
+        `SELECT id, amount, balance_after, type, description, created_at
+         FROM credit_transactions WHERE user_id = ? ORDER BY id DESC LIMIT 10`,
+      )
+      .all(userId) as {
+      id: number;
+      amount: number;
+      balance_after: number;
+      type: string;
+      description: string | null;
+      created_at: string;
+    }[];
+
+    const recentAuditLogs = this.#db
+      .prepare(
+        `SELECT id, action, resource_type, resource_id, ip_address, created_at
+         FROM audit_logs
+         WHERE actor_id = ? OR (resource_type = 'user' AND resource_id = ?)
+         ORDER BY id DESC LIMIT 15`,
+      )
+      .all(userId, String(userId)) as {
+      id: number;
+      action: string;
+      resource_type: string;
+      resource_id: string | null;
+      ip_address: string | null;
+      created_at: string;
+    }[];
+
+    const reportsAgainstUser = this.#db
+      .prepare(
+        `SELECT r.id, r.reason, r.status, r.target_type, r.created_at
+         FROM content_reports r
+         LEFT JOIN posts p ON r.post_id = p.id
+         WHERE r.target_user_id = ? OR p.author_id = ?
+         ORDER BY r.id DESC LIMIT 10`,
+      )
+      .all(userId, userId) as {
+      id: number;
+      reason: string;
+      status: string;
+      target_type: string | null;
+      created_at: string;
+    }[];
+
+    return {
+      user,
+      recentPosts,
+      publishedPackages,
+      recentTransactions,
+      recentAuditLogs,
+      reportsAgainstUser,
+    };
+  }
+
+  exportInstanceBundle(): {
+    formatVersion: number;
+    exportedAt: string;
+    snapshot: {
+      fileName: string;
+      sizeBytes: number;
+      sha256: string;
+    };
+    settings: ReturnType<LibraryDatabase["getInstanceSettings"]>;
+    federationDomains: ReturnType<LibraryDatabase["listFederationDomains"]>;
+    quarantinedResources: ReturnType<LibraryDatabase["listQuarantinedResources"]>;
+    featureFlags: ReturnType<LibraryDatabase["getFeatureFlags"]>;
+    packageCount: number;
+    userCount: number;
+    bundleSha256: string;
+  } {
+    const snapshot = this.createHotBackup("bundle-export");
+    const settings = this.getInstanceSettings();
+    const federationDomains = this.listFederationDomains();
+    const quarantinedResources = this.listQuarantinedResources();
+    const featureFlags = this.getFeatureFlags();
+    const diag = this.getSystemDiagnostics();
+
+    const payloadWithoutHash = {
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      snapshot: {
+        fileName: snapshot.fileName,
+        sizeBytes: snapshot.sizeBytes,
+        sha256: snapshot.sha256,
+      },
+      settings,
+      federationDomains,
+      quarantinedResources,
+      featureFlags,
+      packageCount: diag.counts.packages,
+      userCount: diag.counts.users,
+    };
+    const bundleSha256 = crypto.createHash("sha256").update(JSON.stringify(payloadWithoutHash)).digest("hex");
+
+    return {
+      ...payloadWithoutHash,
+      bundleSha256,
+    };
+  }
+
+  importInstanceBundle(
+    bundle: {
+      settings?: Record<string, unknown> | undefined;
+      federationDomains?:
+        | { domain: string; tier?: "allow" | "silence" | "suspend"; reason?: string | null }[]
+        | undefined;
+      featureFlags?:
+        | { flag_key: string; is_enabled: number | boolean; allowed_roles?: string; rollout_percentage?: number }[]
+        | undefined;
+      quarantinedResources?: { resource_type: string; resource_id: string; reason: string }[] | undefined;
+    },
+    actorId: number | null = null,
+  ): {
+    success: boolean;
+    settingsUpdated: boolean;
+    importedDomains: number;
+    importedFlags: number;
+    importedQuarantines: number;
+  } {
+    let settingsUpdated = false;
+    if (bundle.settings && typeof bundle.settings === "object") {
+      this.updateInstanceSettings(bundle.settings, actorId);
+      settingsUpdated = true;
+    }
+
+    let importedDomains = 0;
+    if (Array.isArray(bundle.federationDomains) && bundle.federationDomains.length > 0) {
+      const res = this.importFederationDomains(bundle.federationDomains, "merge");
+      importedDomains = res.importedCount;
+    }
+
+    let importedFlags = 0;
+    if (Array.isArray(bundle.featureFlags)) {
+      for (const f of bundle.featureFlags) {
+        if (!f.flag_key) continue;
+        this.setFeatureFlag(
+          String(f.flag_key),
+          Boolean(f.is_enabled),
+          f.allowed_roles ?? "",
+          typeof f.rollout_percentage === "number" ? f.rollout_percentage : 100,
+        );
+        importedFlags++;
+      }
+    }
+
+    let importedQuarantines = 0;
+    if (Array.isArray(bundle.quarantinedResources)) {
+      for (const q of bundle.quarantinedResources) {
+        if (!q.resource_type || !q.resource_id) continue;
+        this.quarantineResource({
+          resourceType: String(q.resource_type),
+          resourceId: String(q.resource_id),
+          reason: String(q.reason || "Imported from instance migration bundle"),
+          quarantinedBy: actorId,
+        });
+        importedQuarantines++;
+      }
+    }
+
+    return {
+      success: true,
+      settingsUpdated,
+      importedDomains,
+      importedFlags,
+      importedQuarantines,
+    };
+  }
+
+  recordActivityPubMigration(data: {
+    sourceActorUri: string;
+    targetActorUri: string;
+    alsoKnownAs?: string[] | undefined;
+    actorId?: number | null | undefined;
+  }): {
+    activityId: string;
+    type: "Move";
+    actor: string;
+    object: string;
+    target: string;
+    alsoKnownAs: string[];
+    queuedDeliveries: number;
+  } {
+    const activityId = `${data.sourceActorUri.replace(/\/+$/, "")}#move-${Date.now()}`;
+    const activityPayload = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      id: activityId,
+      type: "Move",
+      actor: data.sourceActorUri,
+      object: data.sourceActorUri,
+      target: data.targetActorUri,
+      alsoKnownAs: data.alsoKnownAs ?? [data.targetActorUri],
+      published: new Date().toISOString(),
+    };
+
+    // Enqueue Move activity to all known active peer federation domains
+    const domains = this.listFederationDomains().filter((d) => d.tier === "allow");
+    let queuedDeliveries = 0;
+    for (const d of domains) {
+      this.enqueueFederationDelivery("Move", activityId, activityPayload, `https://${d.domain}/inbox`, d.domain);
+      queuedDeliveries++;
+    }
+
+    return {
+      activityId,
+      type: "Move",
+      actor: data.sourceActorUri,
+      object: data.sourceActorUri,
+      target: data.targetActorUri,
+      alsoKnownAs: activityPayload.alsoKnownAs,
+      queuedDeliveries,
+    };
   }
 
   // ── RSS Feeds ───────────────────────────────────────────────────
@@ -5334,6 +6540,7 @@ export class LibraryDatabase {
         SELECT r.*, u.username, u.display_name, COALESCE(r.avatar_url, u.avatar_url) as avatar_url
         FROM linked_repos r
         JOIN users u ON r.user_id = u.id
+        WHERE COALESCE(r.visibility, 'public') = 'public'
         GROUP BY r.provider, r.namespace, r.project
         ORDER BY r.pinned DESC, r.id ASC
         LIMIT ?
@@ -5350,19 +6557,33 @@ export class LibraryDatabase {
     defaultBranch?: string,
     description?: string,
     avatarUrl?: string,
-  ): void {
+  ): LinkedRepoRow | undefined {
     const parts = repoFullName.split("/");
     const namespace = parts[0] || "";
     const project = parts.slice(1).join("/") || repoFullName;
     const branch = defaultBranch || "main";
 
-    const existing = this.#db
+    const matchingRows = this.#db
       .prepare(
-        `SELECT id FROM linked_repos WHERE user_id = ? AND (external_id = ? OR (provider = ? AND namespace = ? AND project = ?))`,
+        `SELECT id FROM linked_repos
+         WHERE user_id = ? AND ((? != '' AND external_id = ?) OR (provider = ? AND namespace = ? AND project = ?))
+         ORDER BY CASE WHEN provider = ? AND namespace = ? AND project = ? THEN 0 ELSE 1 END, id ASC`,
       )
-      .get(userId, externalId, provider, namespace, project) as { id: number } | undefined;
+      .all(userId, externalId || "", externalId || "", provider, namespace, project, provider, namespace, project) as {
+      id: number;
+    }[];
+    const existing = matchingRows[0];
+    if (matchingRows.length > 1 && existing) {
+      const deleteDuplicate = this.#db.prepare(`DELETE FROM linked_repos WHERE id = ?`);
+      for (let i = 1; i < matchingRows.length; i++) {
+        const dup = matchingRows[i];
+        if (dup) {
+          deleteDuplicate.run(dup.id);
+        }
+      }
+    }
     if (!existing) {
-      this.#db
+      const info = this.#db
         .prepare(
           `
         INSERT INTO linked_repos (user_id, provider, namespace, project, external_id, default_branch, description, avatar_url)
@@ -5370,6 +6591,7 @@ export class LibraryDatabase {
       `,
         )
         .run(userId, provider, namespace, project, externalId, branch, description || null, avatarUrl || null);
+      return this.getLinkedRepoById(Number(info.lastInsertRowid));
     } else {
       this.#db
         .prepare(
@@ -5395,6 +6617,7 @@ export class LibraryDatabase {
           avatarUrl || null,
           existing.id,
         );
+      return this.getLinkedRepoById(existing.id);
     }
   }
 
@@ -5479,8 +6702,30 @@ export class LibraryDatabase {
     return this.getLinkedRepoById(existing.id);
   }
 
-  getLinkedRepoById(id: number): LinkedRepoRow | undefined {
-    return this.#db.prepare(`SELECT * FROM linked_repos WHERE id = ?`).get(id) as LinkedRepoRow | undefined;
+  getLinkedRepoById(idOrSlug: number | string, preferredUserId?: number): LinkedRepoRow | undefined {
+    const idStr = String(idOrSlug).trim();
+    const numId = Number(idStr);
+    if (!Number.isNaN(numId) && Number.isFinite(numId) && /^\d+$/.test(idStr)) {
+      const byPk = this.#db.prepare(`SELECT * FROM linked_repos WHERE id = ?`).get(numId) as LinkedRepoRow | undefined;
+      if (byPk) return byPk;
+    }
+    if (preferredUserId !== undefined) {
+      const byUserSlug = this.#db
+        .prepare(
+          `SELECT * FROM linked_repos
+           WHERE user_id = ? AND (external_id = ? OR LOWER(namespace || '/' || project) = LOWER(?) OR LOWER(project) = LOWER(?))
+           ORDER BY id ASC LIMIT 1`,
+        )
+        .get(preferredUserId, idStr, idStr, idStr) as LinkedRepoRow | undefined;
+      if (byUserSlug) return byUserSlug;
+    }
+    return this.#db
+      .prepare(
+        `SELECT * FROM linked_repos
+         WHERE external_id = ? OR LOWER(namespace || '/' || project) = LOWER(?) OR LOWER(project) = LOWER(?)
+         ORDER BY id ASC LIMIT 1`,
+      )
+      .get(idStr, idStr, idStr) as LinkedRepoRow | undefined;
   }
 
   // ==========================================
@@ -5859,6 +7104,26 @@ export class LibraryDatabase {
   }
 
   /**
+   * Count indexed classes for a library version without loading documentation/row payloads.
+   */
+  getClassCount(libraryName: string, libraryVersion: string): number {
+    const row = this.#db
+      .prepare(`SELECT COUNT(*) AS cnt FROM classes WHERE library_name = ? AND library_version = ?`)
+      .get(libraryName, libraryVersion) as { cnt: number } | undefined;
+    return row?.cnt ?? 0;
+  }
+
+  /**
+   * Check whether a specific class exists for a library version without loading component relations.
+   */
+  hasClass(libraryName: string, libraryVersion: string, className: string): boolean {
+    const row = this.#db
+      .prepare(`SELECT 1 AS ok FROM classes WHERE library_name = ? AND library_version = ? AND class_name = ? LIMIT 1`)
+      .get(libraryName, libraryVersion, className) as { ok: number } | undefined;
+    return Boolean(row);
+  }
+
+  /**
    * Get a single class with its extends and components.
    */
   getClass(
@@ -6195,6 +7460,41 @@ export class LibraryDatabase {
     }
 
     // For unscoped packages, check if user is the primary owner (initial publisher / transfer recipient)
+    const initialRelease = this.#db
+      .prepare(`SELECT published_by FROM library_releases WHERE library_name = ? ORDER BY id ASC LIMIT 1`)
+      .get(libraryName) as { published_by: number } | undefined;
+    return initialRelease ? initialRelease.published_by === userId : false;
+  }
+
+  /**
+   * Check if a user has administrative permissions (owner/org-maintainer/admin collaborator) over a package.
+   * Excludes 'write' collaborators from destructive/ownership/collaborator-management actions.
+   */
+  canUserAdministerPackage(libraryName: string, userId: number): boolean {
+    const user = this.getUserById(userId);
+    if (!user) return false;
+    if (user.account_type === "admin") return true;
+
+    const collabPerm = this.getPackageCollaboratorPermission(libraryName, userId);
+    if (collabPerm === "admin") {
+      return true;
+    }
+
+    if (libraryName.startsWith("@")) {
+      const scope = libraryName.split("/")[0]!.slice(1).toLowerCase();
+      if (user.username.toLowerCase() === scope) {
+        return true;
+      }
+      const org = this.getOrganizationBySlug(scope);
+      if (org) {
+        const role = this.getOrganizationMemberRole(org.id, userId);
+        if (role === "owner" || role === "maintainer") {
+          return true;
+        }
+      }
+      return false;
+    }
+
     const initialRelease = this.#db
       .prepare(`SELECT published_by FROM library_releases WHERE library_name = ? ORDER BY id ASC LIMIT 1`)
       .get(libraryName) as { published_by: number } | undefined;
@@ -7694,16 +8994,15 @@ export class LibraryDatabase {
       | undefined;
     if (!org) return null;
 
-    const orgTag = `%"orgId":${orgId}%`;
     const transactions = this.#db
       .prepare(
         `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
          FROM credit_transactions
-         WHERE metadata LIKE ?
+         WHERE json_valid(metadata) AND CAST(json_extract(metadata, '$.orgId') AS INTEGER) = ?
          ORDER BY id DESC
          LIMIT 50`,
       )
-      .all(orgTag) as CreditTransactionRow[];
+      .all(orgId) as CreditTransactionRow[];
 
     return {
       orgId: org.id,
@@ -7720,6 +9019,7 @@ export class LibraryDatabase {
     backupPath: string;
     sizeBytes: number;
     createdAt: string;
+    sha256: string;
   } {
     const backupDir = path.resolve(this.dbDir, "backups");
     if (!fs.existsSync(backupDir)) {
@@ -7738,11 +9038,13 @@ export class LibraryDatabase {
     this.#db.prepare("VACUUM INTO ?").run(backupPath);
 
     const stats = fs.statSync(backupPath);
+    const sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
     return {
       fileName,
       backupPath,
       sizeBytes: stats.size,
       createdAt: stats.mtime.toISOString(),
+      sha256,
     };
   }
 
@@ -7751,6 +9053,7 @@ export class LibraryDatabase {
     backupPath: string;
     sizeBytes: number;
     createdAt: string;
+    sha256: string;
   }[] {
     const backupDir = path.join(this.dbDir, "backups");
     if (!fs.existsSync(backupDir)) {
@@ -7762,14 +9065,161 @@ export class LibraryDatabase {
       .map((fileName) => {
         const backupPath = path.join(backupDir, fileName);
         const stats = fs.statSync(backupPath);
+        let sha256 = "";
+        try {
+          sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
+        } catch {
+          sha256 = "";
+        }
         return {
           fileName,
           backupPath,
           sizeBytes: stats.size,
           createdAt: stats.mtime.toISOString(),
+          sha256,
         };
       })
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  getBackupByFileName(fileName: string): {
+    fileName: string;
+    backupPath: string;
+    sizeBytes: number;
+    createdAt: string;
+    sha256: string;
+  } | null {
+    const cleanName = path.basename(fileName.trim());
+    if (!cleanName || cleanName !== fileName.trim() || !cleanName.endsWith(".db")) {
+      return null;
+    }
+    const backupDir = path.resolve(this.dbDir, "backups");
+    const backupPath = path.resolve(backupDir, cleanName);
+    const rel = path.relative(backupDir, backupPath);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(backupPath)) {
+      return null;
+    }
+    const stats = fs.statSync(backupPath);
+    const sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
+    return {
+      fileName: cleanName,
+      backupPath,
+      sizeBytes: stats.size,
+      createdAt: stats.mtime.toISOString(),
+      sha256,
+    };
+  }
+
+  deleteBackup(fileName: string): boolean {
+    const backup = this.getBackupByFileName(fileName);
+    if (!backup) return false;
+    try {
+      fs.unlinkSync(backup.backupPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  pruneBackups(keepCount: number = 7): { deletedCount: number; deletedFiles: string[] } {
+    const safeKeep = Math.max(1, Math.min(100, Math.floor(keepCount)));
+    const all = this.listBackups();
+    if (all.length <= safeKeep) {
+      return { deletedCount: 0, deletedFiles: [] };
+    }
+    const toDelete = all.slice(safeKeep);
+    const deletedFiles: string[] = [];
+    for (const item of toDelete) {
+      if (this.deleteBackup(item.fileName)) {
+        deletedFiles.push(item.fileName);
+      }
+    }
+    return { deletedCount: deletedFiles.length, deletedFiles };
+  }
+
+  restoreFromBackup(fileName: string): {
+    success: boolean;
+    restoredFrom: string;
+    preRestoreBackup: string;
+    tablesRestored: number;
+  } {
+    const target = this.getBackupByFileName(fileName);
+    if (!target) {
+      throw new Error(`Backup snapshot '${fileName}' not found.`);
+    }
+
+    // 1. Verify integrity of the target backup snapshot before touching the live database
+    const verifyDb = new Database(target.backupPath, { readonly: true });
+    try {
+      const check = verifyDb.pragma("integrity_check") as { integrity_check: string }[];
+      const isOk = check.length === 1 && check[0]?.integrity_check === "ok";
+      if (!isOk) {
+        throw new Error(`Backup snapshot '${fileName}' failed SQLite integrity_check.`);
+      }
+    } finally {
+      verifyDb.close();
+    }
+
+    // 2. Create an automatic pre-restore safety snapshot
+    const preRestore = this.createHotBackup("pre-restore");
+
+    // 3. Perform online atomic table restoration from the attached backup snapshot
+    this.#db.pragma("foreign_keys = OFF");
+    this.#db.prepare(`ATTACH DATABASE ? AS restore_src`).run(target.backupPath);
+    let tablesRestored = 0;
+    try {
+      const mainTables = (
+        this.#db
+          .prepare(`SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+          .all() as { name: string }[]
+      ).map((r) => r.name);
+
+      const srcTables = new Set(
+        (
+          this.#db
+            .prepare(`SELECT name FROM restore_src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+            .all() as { name: string }[]
+        ).map((r) => r.name),
+      );
+
+      const restoreTx = this.#db.transaction(() => {
+        for (const table of mainTables) {
+          if (!srcTables.has(table) || !/^[a-zA-Z0-9_]+$/.test(table)) continue;
+          const mainCols = (this.#db.prepare(`PRAGMA main.table_info("${table}")`).all() as { name: string }[]).map(
+            (c) => c.name,
+          );
+          const srcCols = new Set(
+            (this.#db.prepare(`PRAGMA restore_src.table_info("${table}")`).all() as { name: string }[]).map(
+              (c) => c.name,
+            ),
+          );
+          const sharedCols = mainCols.filter((c) => srcCols.has(c) && /^[a-zA-Z0-9_]+$/.test(c));
+          if (sharedCols.length === 0) continue;
+
+          const colList = sharedCols.map((c) => `"${c}"`).join(", ");
+          this.#db.prepare(`DELETE FROM main."${table}"`).run();
+          this.#db
+            .prepare(`INSERT INTO main."${table}" (${colList}) SELECT ${colList} FROM restore_src."${table}"`)
+            .run();
+          tablesRestored++;
+        }
+      });
+      restoreTx();
+    } finally {
+      try {
+        this.#db.prepare(`DETACH DATABASE restore_src`).run();
+      } catch {
+        // Ignore if already detached
+      }
+      this.#db.pragma("foreign_keys = ON");
+    }
+
+    return {
+      success: true,
+      restoredFrom: target.fileName,
+      preRestoreBackup: preRestore.fileName,
+      tablesRestored,
+    };
   }
 
   getUserBillingSummary(userId: number): UserBillingSummary {

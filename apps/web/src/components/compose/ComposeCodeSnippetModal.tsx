@@ -189,7 +189,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
             gap={2}
           >
             <Text style={{ fontSize: "11.5px", color: "var(--color-text-muted)" }}>
-              Renders with Baeldung-style line numbers, syntax highlighting, Copy, and ▶ Open in Playground buttons.
+              Renders with line numbers, syntax highlighting, Copy, and ▶ Open in Playground buttons.
             </Text>
             <Box display="flex" gap={2}>
               {token && (

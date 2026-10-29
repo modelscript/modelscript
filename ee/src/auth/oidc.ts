@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 export interface OidcClaims {
   sub: string;
   email: string;
+  email_verified?: boolean | undefined;
   name?: string | undefined;
   preferred_username?: string | undefined;
   groups?: string[] | undefined;
@@ -15,6 +16,7 @@ export interface OidcClaims {
 interface DecodedOidcPayload {
   sub?: string | undefined;
   email?: string | undefined;
+  email_verified?: boolean | string | undefined;
   name?: string | undefined;
   preferred_username?: string | undefined;
   groups?: string | string[] | undefined;
@@ -25,6 +27,8 @@ export interface OidcUserRecord {
   id: number;
   username: string;
   email: string;
+  password_hash?: string | undefined;
+  email_verified?: number | undefined;
   account_type?: string | undefined;
   status?: string | undefined;
   totp_enabled?: number | undefined;
@@ -75,11 +79,21 @@ export interface OidcDatabaseAdapter {
 }
 
 function isAccountStatusBlocked(status?: string | null): boolean {
-  return status === "suspended" || status === "banned" || status === "deleted";
+  return (
+    status === "suspended" ||
+    status === "banned" ||
+    status === "deleted" ||
+    status === "frozen" ||
+    status === "suspended_dispute"
+  );
 }
 
 function getJwtSecret(): string {
-  return process.env["JWT_SECRET"] || "modelscript-dev-secret";
+  const envSecret = process.env["JWT_SECRET"];
+  if (process.env["NODE_ENV"] === "production" && (!envSecret || envSecret === "modelscript-dev-secret")) {
+    throw new Error("CRITICAL: JWT_SECRET environment variable must be set to a strong secret in production.");
+  }
+  return envSecret || "modelscript-dev-secret";
 }
 
 /**
@@ -196,6 +210,7 @@ export class OidcService {
         throw new Error("Invalid JWKS payload: missing keys array");
       }
 
+      this.jwksCache.clear();
       for (const key of jwks.keys) {
         if (key.kty === "RSA" || key.kty === "EC") {
           try {
@@ -215,11 +230,15 @@ export class OidcService {
       throw err;
     }
 
-    if (kid && this.jwksCache.has(kid)) {
+    if (kid) {
       const cached = this.jwksCache.get(kid);
       if (cached) {
         return cached.pem;
       }
+      if (process.env["NODE_ENV"] === "test") {
+        return "dummy-secret";
+      }
+      throw new Error(`No matching signing key found in JWKS for kid: '${kid}'`);
     }
 
     const firstKey = this.jwksCache.values().next().value;
@@ -231,7 +250,7 @@ export class OidcService {
       return "dummy-secret";
     }
 
-    throw new Error(`No matching signing key found in JWKS for kid: '${kid || "default"}'`);
+    throw new Error("No signing keys available in JWKS");
   }
 
   public async verifyIdToken(idToken: string): Promise<OidcClaims> {
@@ -270,6 +289,10 @@ export class OidcService {
     return {
       sub: decoded.sub,
       email: decoded.email.toLowerCase().trim(),
+      email_verified:
+        decoded.email_verified === undefined
+          ? undefined
+          : decoded.email_verified === true || decoded.email_verified === "true",
       name: decoded.name || decoded.preferred_username || decoded.email.split("@")[0],
       preferred_username: decoded.preferred_username,
       groups: Array.isArray(decoded.groups)
@@ -290,6 +313,10 @@ export class OidcService {
     return {
       sub: decoded.sub,
       email: decoded.email.toLowerCase().trim(),
+      email_verified:
+        decoded.email_verified === undefined
+          ? undefined
+          : decoded.email_verified === true || decoded.email_verified === "true",
       name: decoded.name || decoded.preferred_username || decoded.email.split("@")[0],
       preferred_username: decoded.preferred_username,
       groups: Array.isArray(decoded.groups)
@@ -370,11 +397,25 @@ export class OidcService {
         err.status = 403;
         throw err;
       }
+      if (claims.email_verified === false) {
+        const err = new Error("OIDC email claim is not verified; cannot auto-link to existing account.") as Error & {
+          status?: number;
+        };
+        err.status = 403;
+        throw err;
+      }
+      const existingLink = database.getOAuthAccountByUserId(user.id, "oidc");
+      if (!existingLink && user.email_verified === 0) {
+        const err = new Error(
+          "Existing local account has an unverified email; verify local email before linking OIDC.",
+        ) as Error & { status?: number };
+        err.status = 403;
+        throw err;
+      }
       if (isAdmin && user.account_type !== "admin") {
         database.setUserAccountType(user.id, "admin");
         user.account_type = "admin";
       }
-      const existingLink = database.getOAuthAccountByUserId(user.id, "oidc");
       if (!existingLink) {
         database.linkOAuthAccount(user.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
       }

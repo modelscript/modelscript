@@ -51,7 +51,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);
 
   const isAuthorizedForCaeJob = (req: express.Request, dbJob: { user_id?: number | null | undefined }): boolean => {
-    if (process.env["NODE_ENV"] !== "production") return true;
+    if (process.env["NODE_ENV"] === "test") return true;
     if (!dbJob.user_id) return true;
     const reqAny = req as {
       user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
@@ -62,7 +62,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   };
 
   const isAuthorizedForCaeSweep = (req: express.Request, sweep: { userId?: number | null | undefined }): boolean => {
-    if (process.env["NODE_ENV"] !== "production") return true;
+    if (process.env["NODE_ENV"] === "test") return true;
     if (!sweep.userId) return true;
     const reqAny = req as {
       user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
@@ -287,7 +287,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         });
       } catch (err: unknown) {
         console.error("POST /cae/jobs ERROR:", err);
-        return res.status(500).json({ error: String(err), stack: err instanceof Error ? err.stack : undefined });
+        return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
       }
       return;
     },
@@ -872,7 +872,11 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   // 10. List All Sweeps
   router.get("/cae/sweeps", (req, res) => {
     const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
-    const authUserId = reqAny.user?.id ?? reqAny.userId;
+    const authUserId = reqAny.user?.id ?? reqAny.userId ?? resolveRequestUserId(req, database) ?? undefined;
+    if (process.env["NODE_ENV"] === "production" && !authUserId) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
 
     const allSweeps = sweepOrchestrator
       .getAllSweeps()
@@ -950,6 +954,13 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   // 14. Compile and Extract SnapshotMatrixDataset from Completed Sweep
   router.get("/cae/sweeps/:id/dataset", (req, res) => {
     try {
+      const sweep = sweepOrchestrator.getSweep(req.params.id);
+      if (!sweep) {
+        return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+      }
+      if (!isAuthorizedForCaeSweep(req, sweep)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const targetField = (req.query["targetField"] as string) || "vonMisesStress";
       const dataset = sweepOrchestrator.extractDataset(req.params.id, targetField);
       res.json({
@@ -968,17 +979,26 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : "Failed to extract dataset from sweep." });
     }
+    return;
   });
 
   // 15. 1-Click Surrogate Training from Sweep
   router.post("/cae/sweeps/:id/train-surrogate", express.json(), async (req, res) => {
     try {
+      const sweep = sweepOrchestrator.getSweep(req.params.id);
+      if (!sweep) {
+        return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
+      }
+      if (!isAuthorizedForCaeSweep(req, sweep)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const options = req.body || {};
       const trainResult = await sweepOrchestrator.trainSurrogate(req.params.id, options);
       res.json(trainResult);
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : "Failed to train surrogate from sweep." });
     }
+    return;
   });
 
   return router;

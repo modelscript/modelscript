@@ -14,4 +14,5 @@ export interface EnterpriseAuthRouters {
  */
 export function mountEnterpriseAuthAndRbac(app: Express, routers: EnterpriseAuthRouters): void {
   app.use("/api/v1/organizations", requireEnterpriseFeature("saml_oidc_sso"), routers.organizationsRouter);
+  app.use("/api/v1/auth/oidc", requireEnterpriseFeature("saml_oidc_sso"));
 }

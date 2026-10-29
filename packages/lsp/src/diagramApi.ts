@@ -5096,6 +5096,30 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       });
     }
 
+    if (plugin?.id === "autosar" || /\.arxml$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseArxml } = await import("@modelscript/autosar");
+        const { buildAutosarDiagram } = await import("@modelscript/diagram/autosar-diagram-builder");
+        return buildAutosarDiagram(parseArxml(text) as never);
+      });
+    }
+
+    if (plugin?.id === "verilog-a" || /\.(va|vams)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text) => {
+        const { parseVerilogA } = await import("@modelscript/verilog-a");
+        const { buildVerilogADiagram } = await import("@modelscript/diagram/verilog-a-diagram-builder");
+        return buildVerilogADiagram(parseVerilogA(text) as never);
+      });
+    }
+
+    if (plugin?.id === "plcopen" || /\.(plcopen|st|iec|pou)$/i.test(uri)) {
+      return createDomainBuilderBackend(async (text, params) => {
+        const { parsePlcopen } = await import("@modelscript/plcopen");
+        const { buildPlcopenDiagram } = await import("@modelscript/diagram/plcopen-diagram-builder");
+        return buildPlcopenDiagram(parsePlcopen(text, params.uri) as never).diagram;
+      });
+    }
+
     return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);
   }
 

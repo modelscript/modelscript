@@ -5,6 +5,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import jwt from "jsonwebtoken";
 import { execFileSync, spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
@@ -47,13 +48,40 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
 
     const cleanNs = namespace.replace(/[^a-zA-Z0-9_.-]/g, "");
     const cleanProj = project.replace(/\.git$/, "").replace(/[^a-zA-Z0-9_.-]/g, "");
-    if (!cleanNs || !cleanProj) return null;
+    if (
+      !cleanNs ||
+      !cleanProj ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(cleanNs) ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(cleanProj)
+    ) {
+      return null;
+    }
 
-    const resolved = path.resolve(baseDir, cleanNs, `${cleanProj}.git`);
-    if (!resolved.startsWith(path.resolve(baseDir))) {
+    const resolvedBase = path.resolve(baseDir);
+    const resolved = path.resolve(resolvedBase, cleanNs, `${cleanProj}.git`);
+    if (!resolved.startsWith(resolvedBase + path.sep)) {
       return null;
     }
     return resolved;
+  }
+
+  function verifyPatOrBotToken(token: string) {
+    if (token.startsWith("ms_pat_")) {
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const tokenRecord = database.getApiTokenByHash(tokenHash);
+      if (!tokenRecord) return null;
+      if (tokenRecord.expires_at && new Date(tokenRecord.expires_at).getTime() < Date.now()) return null;
+      const user = database.getUserById(tokenRecord.user_id);
+      if (!user || isAccountBlocked(user.status)) return null;
+      return user;
+    }
+    if (token.startsWith("ms_bot_")) {
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const botUser = database.getUserByBotTokenHash(tokenHash);
+      if (!botUser || isAccountBlocked(botUser.status)) return null;
+      return database.getUserById(botUser.id) ?? null;
+    }
+    return null;
   }
 
   function authenticate(req: Request): { user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>> | null } {
@@ -69,12 +97,17 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         const username = credentials.slice(0, sepIndex);
         const password = credentials.slice(sepIndex + 1);
 
+        const patUser = verifyPatOrBotToken(password);
+        if (patUser) return { user: patUser };
+
         const user = database.getUserByUsername(username) || database.getUserByEmail(username);
         if (!user || isAccountBlocked(user.status)) return { user: null };
 
-        const passwordHash = database.getPasswordHash(user.id);
-        if (passwordHash && bcrypt.compareSync(password, passwordHash)) {
-          return { user };
+        if (Buffer.byteLength(password, "utf8") <= 72) {
+          const passwordHash = database.getPasswordHash(user.id);
+          if (passwordHash && bcrypt.compareSync(password, passwordHash)) {
+            return { user };
+          }
         }
 
         try {
@@ -105,6 +138,8 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     } else if (authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.slice(7);
+        const patUser = verifyPatOrBotToken(token);
+        if (patUser) return { user: patUser };
         const decoded = jwt.verify(token, JWT_SECRET) as
           | {
               id?: number | undefined;
@@ -137,7 +172,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>,
     namespace: string,
   ): boolean {
-    if (process.env["NODE_ENV"] !== "production") {
+    if (process.env["NODE_ENV"] === "test") {
       return true;
     }
     const cleanNs = namespace.toLowerCase();

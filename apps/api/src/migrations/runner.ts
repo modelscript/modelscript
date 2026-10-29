@@ -40,8 +40,10 @@ export class SqliteMigrationRunner {
     const appliedNames = new Set(applied.map((m) => m.name));
     const pending = allMigrations.filter((m) => !appliedNames.has(m.name));
     const currentVersion = applied.length > 0 ? applied[applied.length - 1]!.name : null;
+    const targetVersion = allMigrations.length > 0 ? allMigrations[allMigrations.length - 1]!.name : null;
+    const pendingCount = pending.length;
 
-    return { applied, pending, currentVersion };
+    return { applied, pending, currentVersion, targetVersion, pendingCount };
   }
 
   async createBackup(): Promise<string | null> {

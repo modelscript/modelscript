@@ -47,12 +47,15 @@ function hoursAgoSqliteTimestamp(hoursAgo: number): string {
  * Idempotent: safe to run on every server startup or dev reset.
  */
 export function seedPolyglotUsers(db: LibraryDatabase): Map<string, number> {
-  const passwordHash = bcrypt.hashSync("password", 4);
+  let passwordHash: string | null = null;
   const userIds = new Map<string, number>();
 
   for (const persona of SEED_PERSONAS) {
     let existing = db.getUserByUsername(persona.username);
     if (!existing) {
+      if (!passwordHash) {
+        passwordHash = bcrypt.hashSync("password", 4);
+      }
       const created = db.createUser(persona.username, persona.email, passwordHash, {
         emailVerified: true,
         initialCredits: persona.initialCredits ?? (persona.accountType === "admin" ? 5000.0 : 1500.0),
@@ -69,14 +72,23 @@ export function seedPolyglotUsers(db: LibraryDatabase): Map<string, number> {
       db.setUserAccountType(existing.id, "admin");
     }
 
-    db.updateProfile(existing.id, {
-      display_name: persona.displayName,
-      bio: persona.bio,
-      location: persona.location,
-      website: persona.website,
-      avatar_url: persona.avatarSvg,
-      banner_url: persona.bannerSvg,
-    });
+    if (
+      existing.display_name !== persona.displayName ||
+      existing.bio !== persona.bio ||
+      existing.location !== persona.location ||
+      existing.website !== persona.website ||
+      existing.avatar_url !== persona.avatarSvg ||
+      existing.banner_url !== persona.bannerSvg
+    ) {
+      db.updateProfile(existing.id, {
+        display_name: persona.displayName,
+        bio: persona.bio,
+        location: persona.location,
+        website: persona.website,
+        avatar_url: persona.avatarSvg,
+        banner_url: persona.bannerSvg,
+      });
+    }
   }
 
   for (const [followerUsername, followingUsername] of SEED_FOLLOW_PAIRS) {

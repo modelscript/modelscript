@@ -15,7 +15,16 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
     return <div style={{ minHeight: "100vh", backgroundColor: "transparent" }} />;
   }
 
-  if (!user || !isAdmin) {
+  const isStaff = Boolean(
+    user &&
+    (isAdmin ||
+      user.role === "moderator" ||
+      user.role === "auditor" ||
+      user.account_type === "moderator" ||
+      user.account_type === "auditor"),
+  );
+
+  if (!isStaff) {
     return <Navigate to="/home" replace />;
   }
 

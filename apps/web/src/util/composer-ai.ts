@@ -14,6 +14,20 @@ export type ComposerAiEngineMode = "auto" | "local" | "remote";
 
 const AI_ENGINE_STORAGE_KEY = "modelscript:composer_ai_engine";
 
+const WEBLLM_MODEL_CANDIDATES: readonly {
+  modelId: string;
+  wasmFiles: readonly string[];
+}[] = [
+  {
+    modelId: "Qwen3-1.7B-q4f16_1-MLC",
+    wasmFiles: ["Qwen3-1.7B-q4f16_1_cs1k-webgpu.wasm", "Qwen3-1.7B-q4f16_1-ctx4k_cs1k-webgpu.wasm"],
+  },
+  {
+    modelId: "Qwen3-0.6B-q4f16_1-MLC",
+    wasmFiles: ["Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm", "Qwen3-0.6B-q4f16_1_cs1k-webgpu.wasm"],
+  },
+];
+
 export function getPreferredAiEngine(): ComposerAiEngineMode {
   if (typeof window === "undefined") return "auto";
   try {
@@ -53,11 +67,53 @@ interface WindowWithBuiltInAi {
   LanguageModel?: BrowserLanguageModelFactory | undefined;
 }
 
-let cachedBrowserSession: BrowserPromptSession | null = null;
-let localEngineReady = false;
+interface WebLLMChatCompletionResponse {
+  choices?: {
+    message?: {
+      content?: string | null | undefined;
+    };
+  }[];
+}
 
+interface WebLLMEngineInstance {
+  chat: {
+    completions: {
+      create(params: {
+        messages: { role: "system" | "user" | "assistant"; content: string }[];
+        temperature?: number;
+        max_tokens?: number;
+        stream?: false;
+        extra_body?: Record<string, unknown>;
+      }): Promise<WebLLMChatCompletionResponse>;
+    };
+  };
+}
+
+let cachedBrowserSession: BrowserPromptSession | null = null;
+let cachedWebLLMEngine: WebLLMEngineInstance | null = null;
+let activeWebLLMModelId: string = WEBLLM_MODEL_CANDIDATES[0]!.modelId;
+let webllmLoadingPromise: Promise<WebLLMEngineInstance | null> | null = null;
+
+/**
+ * Returns true only when an actual in-browser LLM (WebLLM WebGPU engine or Browser Prompt API)
+ * is already initialized in memory.
+ */
 export function isLocalAiLoaded(): boolean {
-  return localEngineReady || cachedBrowserSession !== null;
+  return cachedWebLLMEngine !== null || cachedBrowserSession !== null;
+}
+
+function stripThinkAndQuotes(raw: string): string {
+  let cleaned = raw
+    .replace(/<think>[\s\S]*?<\/think>\s*/gi, "")
+    .replace(/<think>[\s\S]*/gi, "")
+    .trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"') && !cleaned.slice(1, -1).includes('"')) ||
+    (cleaned.startsWith("“") && cleaned.endsWith("”"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
 }
 
 async function getBrowserBuiltInSession(systemPrompt: string): Promise<BrowserPromptSession | null> {
@@ -76,11 +132,148 @@ async function getBrowserBuiltInSession(systemPrompt: string): Promise<BrowserPr
     }
     const session = await factory.create({ systemPrompt });
     cachedBrowserSession = session;
-    localEngineReady = true;
     return session;
   } catch {
     return null;
   }
+}
+
+/**
+ * Lazily initializes the in-browser WebLLM engine over WebGPU, preferring
+ * `Qwen3-1.7B-q4f16_1-MLC` and falling back to `Qwen3-0.6B-q4f16_1-MLC`
+ * on memory-constrained devices or when only 0.6B is cached locally.
+ */
+async function ensureWebLLMEngine(): Promise<WebLLMEngineInstance | null> {
+  if (cachedWebLLMEngine) return cachedWebLLMEngine;
+  if (webllmLoadingPromise) return webllmLoadingPromise;
+  if (typeof window === "undefined" || typeof navigator === "undefined") return null;
+
+  const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } };
+  if (!nav.gpu) return null;
+
+  webllmLoadingPromise = (async () => {
+    try {
+      const adapter = await nav.gpu!.requestAdapter();
+      if (!adapter) return null;
+
+      const webllm = await import("@mlc-ai/web-llm");
+      const origin = window.location.origin;
+
+      for (const candidate of WEBLLM_MODEL_CANDIDATES) {
+        try {
+          const prebuiltModel = webllm.prebuiltAppConfig.model_list.find((m) => m.model_id === candidate.modelId);
+          let modelUrl = prebuiltModel?.model || `https://huggingface.co/mlc-ai/${candidate.modelId}`;
+          let modelLibUrl = prebuiltModel?.model_lib || `${origin}/api/models/${candidate.wasmFiles[0]}`;
+
+          // Check if model weights are self-hosted at /api/models/<modelId> (Docker / EE Appliance / modelscript.org)
+          try {
+            const localConfigRes = await fetch(`${origin}/api/models/${candidate.modelId}/mlc-chat-config.json`, {
+              method: "HEAD",
+            });
+            if (localConfigRes.ok) {
+              modelUrl = `${origin}/api/models/${candidate.modelId}`;
+            }
+          } catch {
+            // Fall back to HuggingFace CDN URL
+          }
+
+          // Check if WASM runtime is self-hosted at /api/models/<wasmFile>
+          for (const wasmFile of candidate.wasmFiles) {
+            try {
+              const localWasmUrl = `${origin}/api/models/${wasmFile}`;
+              const localWasmRes = await fetch(localWasmUrl, { method: "HEAD" });
+              if (localWasmRes.ok) {
+                modelLibUrl = localWasmUrl;
+                break;
+              }
+            } catch {
+              // Ignore and try next or use prebuiltModel.model_lib
+            }
+          }
+
+          const engine = (await webllm.CreateMLCEngine(candidate.modelId, {
+            appConfig: {
+              model_list: [
+                {
+                  model: modelUrl,
+                  model_id: candidate.modelId,
+                  model_lib: modelLibUrl,
+                  overrides: prebuiltModel?.overrides,
+                },
+              ],
+            },
+          })) as unknown as WebLLMEngineInstance;
+
+          cachedWebLLMEngine = engine;
+          activeWebLLMModelId = candidate.modelId;
+          return engine;
+        } catch {
+          // Try next smaller candidate (e.g., Qwen3-0.6B-q4f16_1-MLC)
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    } finally {
+      webllmLoadingPromise = null;
+    }
+  })();
+
+  return webllmLoadingPromise;
+}
+
+async function completeWithLocalBrowserLLM(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<{ text: string; provider: string; model: string } | null> {
+  // 1. Try WebLLM (Qwen3-1.7B / Qwen3-0.6B WebGPU)
+  const webllmEngine = await ensureWebLLMEngine();
+  if (webllmEngine) {
+    try {
+      const response = await webllmEngine.chat.completions.create({
+        messages: [
+          { role: "system", content: `${systemPrompt}\n/no_think` },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 400,
+        stream: false,
+        extra_body: { enable_thinking: false },
+      });
+      const raw = response.choices?.[0]?.message?.content || "";
+      const text = stripThinkAndQuotes(raw);
+      if (text) {
+        return {
+          text,
+          provider: "local-window-ai",
+          model: activeWebLLMModelId,
+        };
+      }
+    } catch {
+      // Fall through to browser built-in Prompt API
+    }
+  }
+
+  // 2. Try Browser Built-in Prompt API (window.ai / LanguageModel)
+  const browserSession = await getBrowserBuiltInSession(systemPrompt);
+  if (browserSession) {
+    try {
+      const raw = await browserSession.prompt(userPrompt);
+      const text = stripThinkAndQuotes(raw);
+      if (text) {
+        return {
+          text,
+          provider: "local-window-ai",
+          model: "browser-builtin-llm",
+        };
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  return null;
 }
 
 interface LocalArtifactSummary {
@@ -92,6 +285,7 @@ interface LocalArtifactSummary {
 }
 
 const LOCAL_DOMAIN_MAP: Record<string, { domain: string; hashtags: string[] }> = {
+  modelica: { domain: "Modelica & Physical Modeling", hashtags: ["#Modelica", "#DAE", "#Simulation"] },
   "modelica-diagram": { domain: "Modelica & Physical Modeling", hashtags: ["#Modelica", "#DAE", "#Simulation"] },
   "modelica-code": { domain: "Modelica & Physical Modeling", hashtags: ["#Modelica", "#DAE", "#PhysicalModeling"] },
   morsel: { domain: "Multi-Domain Simulation", hashtags: ["#ModelScript", "#Simulation", "#DAE"] },
@@ -106,8 +300,10 @@ const LOCAL_DOMAIN_MAP: Record<string, { domain: string; hashtags: string[] }> =
   "cad-step": { domain: "3D CAD & Mechanical Geometry", hashtags: ["#CAD", "#STEP", "#MechanicalEngineering"] },
   "3d-model": { domain: "3D Visualization & Digital Twin", hashtags: ["#3D", "#DigitalTwin", "#CAD"] },
   scad: { domain: "Parametric CSG & CAD", hashtags: ["#OpenSCAD", "#ParametricCAD", "#CSG"] },
+  cfd: { domain: "Computational Fluid Dynamics", hashtags: ["#CFD", "#Aerodynamics", "#FluidDynamics"] },
   "cfd-config": { domain: "Computational Fluid Dynamics", hashtags: ["#CFD", "#Aerodynamics", "#FluidDynamics"] },
   "cfd-result": { domain: "Computational Fluid Dynamics", hashtags: ["#CFD", "#Aerodynamics", "#FlowSimulation"] },
+  fea: { domain: "Finite Element Structural Analysis", hashtags: ["#FEA", "#StructuralAnalysis", "#Mechanics"] },
   "fea-deck": { domain: "Finite Element Structural Analysis", hashtags: ["#FEA", "#StructuralAnalysis", "#Mechanics"] },
   "fea-result": {
     domain: "Finite Element Structural Analysis",
@@ -128,7 +324,7 @@ export function classifyArtifactLocally(rawView: Record<string, unknown> | null 
   const viewType = String(rawView?.["view_type"] || rawView?.["artifact_type"] || "modelica-diagram")
     .toLowerCase()
     .trim();
-  const rawConfig = rawView?.["view_config"];
+  const rawConfig = rawView?.["view_config"] ?? rawView?.["config"];
   let config: Record<string, unknown> = {};
   if (typeof rawConfig === "string") {
     try {
@@ -143,24 +339,29 @@ export function classifyArtifactLocally(rawView: Record<string, unknown> | null 
     config = rawConfig as Record<string, unknown>;
   }
 
-  const rawTitle = String(
-    rawView?.["title"] || config["title"] || config["modelName"] || config["name"] || config["project"] || "Model",
-  );
-  const cleanTitle = rawTitle.replace(/\.[a-z0-9]{1,8}$/i, "").trim() || rawTitle;
-
   const mapped = LOCAL_DOMAIN_MAP[viewType] || {
     domain: "Multi-Domain Systems Engineering",
     hashtags: ["#ModelScript", "#Engineering", "#Simulation"],
   };
 
+  const rawTitle = String(
+    rawView?.["title"] ||
+      config["title"] ||
+      config["modelName"] ||
+      config["name"] ||
+      config["project"] ||
+      "Engineering Artifact",
+  );
+  const title = rawTitle.replace(/\.[a-z0-9]{1,8}$/i, "").trim() || rawTitle;
+
   const highlights: string[] = [];
-  const code = typeof config["code"] === "string" ? config["code"] : "";
+  const code = String(config["code"] || config["modelicaCode"] || config["source"] || "");
   if (code) {
     const derMatches = Array.from(code.matchAll(/\bder\s*\(\s*([A-Za-z0-9_]+)\s*\)/g)).map((m) => m[1]!);
     const uniqueStates = Array.from(new Set(derMatches));
     if (uniqueStates.length > 0) {
       highlights.push(
-        `${uniqueStates.length} continuous state${uniqueStates.length > 1 ? "s" : ""} (${uniqueStates.slice(0, 4).join(", ")})`,
+        `${uniqueStates.length} state${uniqueStates.length > 1 ? "s" : ""} (${uniqueStates.slice(0, 3).join(", ")})`,
       );
     }
     const paramMatches = Array.from(
@@ -176,20 +377,24 @@ export function classifyArtifactLocally(rawView: Record<string, unknown> | null 
     }
   }
 
-  if (typeof config["busCount"] === "number") {
-    highlights.push(`${config["busCount"]}-bus network`);
-  }
   if (typeof config["componentCount"] === "number" && config["componentCount"] > 0) {
-    highlights.push(`${config["componentCount"]} components`);
+    highlights.push(
+      `${config["componentCount"]} components${
+        typeof config["connectionCount"] === "number" ? `, ${config["connectionCount"]} connections` : ""
+      }`,
+    );
   }
-  if (typeof config["solver"] === "string") {
-    highlights.push(`Solver: ${config["solver"]}`);
+  if (typeof config["busCount"] === "number") {
+    highlights.push(
+      `${config["busCount"]}-bus network${
+        typeof config["generatorCount"] === "number" ? `, ${config["generatorCount"]} generators` : ""
+      }`,
+    );
   }
-  if (typeof config["fmiVersion"] === "string") {
-    highlights.push(`FMI ${config["fmiVersion"]} FMU`);
-  }
-  if (typeof config["version"] === "string" && viewType === "package") {
-    highlights.push(`v${config["version"]}`);
+  if (typeof config["solver"] === "string" && config["solver"]) {
+    highlights.push(
+      `Solver: ${config["solver"]}${typeof config["machNumber"] === "number" ? ` · Mach ${config["machNumber"]}` : ""}`,
+    );
   }
   if (typeof config["description"] === "string" && config["description"].trim()) {
     highlights.push(config["description"].trim());
@@ -197,14 +402,14 @@ export function classifyArtifactLocally(rawView: Record<string, unknown> | null 
 
   return {
     viewType,
-    title: cleanTitle,
+    title,
     domain: mapped.domain,
     highlights,
     suggestedHashtags: mapped.hashtags,
   };
 }
 
-function draftLocallyFromSummary(
+export function draftLocallyFromSummary(
   summary: LocalArtifactSummary,
   tone: AiDraftTone = "technical",
   existingText?: string,
@@ -213,57 +418,95 @@ function draftLocallyFromSummary(
   const notebookTitle = `${summary.title}: ${summary.domain} Analysis`;
   const notebookSummary = `Interactive ${summary.domain.toLowerCase()} exploration of ${summary.title}.`;
 
-  let draft: string;
   if (tone === "hashtags") {
-    const base = (existingText || `Exploring **${summary.title}** (${summary.domain}).`).trim();
+    const base = (existingText || `Sharing ${summary.title} (${summary.domain}).`).trim();
     const missing = summary.suggestedHashtags.filter((t) => !base.toLowerCase().includes(t.toLowerCase()));
-    draft = missing.length > 0 ? `${base}\n\n${missing.join(" ")}` : base;
-  } else if (tone === "concise") {
-    const detail = summary.highlights.length > 0 ? ` — ${summary.highlights.slice(0, 2).join(" | ")}` : "";
-    draft = `Sharing **${summary.title}** (${summary.domain})${detail}. ${tags}`.trim();
-  } else if (tone === "expand") {
+    return {
+      draft: missing.length > 0 ? `${base}\n\n${missing.join(" ")}` : base,
+      notebookTitle,
+      notebookSummary,
+      domain: summary.domain,
+      highlights: summary.highlights,
+      suggestedHashtags: summary.suggestedHashtags,
+      provider: "local-browser-ai",
+      model: "browser-engineering-classifier-v1",
+    };
+  }
+
+  if (tone === "concise") {
+    const body =
+      summary.highlights.length > 0
+        ? `Sharing **${summary.title}** — ${summary.highlights.slice(0, 2).join(" | ")}.`
+        : `Sharing **${summary.title}** (${summary.domain}) for interactive simulation and inspection.`;
+    return {
+      draft: `${body} ${tags}`.trim(),
+      notebookTitle,
+      notebookSummary,
+      domain: summary.domain,
+      highlights: summary.highlights,
+      suggestedHashtags: summary.suggestedHashtags,
+      provider: "local-browser-ai",
+      model: "browser-engineering-classifier-v1",
+    };
+  }
+
+  if (tone === "expand") {
     const bullets =
       summary.highlights.length > 0
         ? summary.highlights.map((h) => `- ${h}`).join("\n")
-        : `- Domain: ${summary.domain}\n- Ready for interactive simulation and parameter inspection`;
-    draft = `Sharing **${summary.title}** for ${summary.domain.toLowerCase()} verification.\n\n### Technical Highlights\n${bullets}\n\n${tags}`;
-  } else {
-    const detail =
-      summary.highlights.length > 0
-        ? `Key model characteristics: ${summary.highlights.join("; ")}.`
-        : `Configured for interactive ${summary.domain.toLowerCase()} inspection and parameter exploration.`;
-    draft = `Exploring **${summary.title}** in ${summary.domain}. ${detail}\n\n${tags}`;
+        : `- Domain: ${summary.domain}\n- Interactive model inspection & simulation`;
+    const draft = [
+      `Sharing **${summary.title}** for ${summary.domain.toLowerCase()} verification and analysis.`,
+      `### Key Highlights\n${bullets}`,
+      `Open the attached artifact in the playground to inspect parameters and simulation trajectories.\n\n${tags}`,
+    ].join("\n\n");
+    return {
+      draft,
+      notebookTitle,
+      notebookSummary,
+      domain: summary.domain,
+      highlights: summary.highlights,
+      suggestedHashtags: summary.suggestedHashtags,
+      provider: "local-browser-ai",
+      model: "browser-engineering-classifier-v1",
+    };
   }
 
-  localEngineReady = true;
+  const detail =
+    summary.highlights.length > 0
+      ? `Key model characteristics: ${summary.highlights.join("; ")}.`
+      : `Configured for interactive ${summary.domain.toLowerCase()} inspection and parameter exploration.`;
+
   return {
-    draft: draft.trim(),
+    draft: `Exploring **${summary.title}** in ${summary.domain}. ${detail}\n\n${tags}`.trim(),
     notebookTitle,
     notebookSummary,
     domain: summary.domain,
+    highlights: summary.highlights,
     suggestedHashtags: summary.suggestedHashtags,
     provider: "local-browser-ai",
     model: "browser-engineering-classifier-v1",
   };
 }
 
-function polishLocally(
-  content: string,
+export function polishLocally(
+  rawContent: string,
   mode: AiPolishMode = "polish",
   artifactSummary?: LocalArtifactSummary | null,
 ): AiPolishResponse {
-  const trimmed = content.trim();
+  const trimmed = rawContent.trim();
   const domain = artifactSummary?.domain || "Multi-Domain Systems Engineering";
-  const existingTags = Array.from(new Set(trimmed.match(/#[a-zA-Z0-9_-]+/g) || []));
 
+  const existingTags = Array.from(new Set(trimmed.match(/#[a-zA-Z0-9_-]+/g) || []));
   const candidateTags: string[] = [...(artifactSummary?.suggestedHashtags || [])];
+
   if (/\b(modelica|dae|der|oscillator|pendulum|equation)\b/i.test(trimmed)) {
     candidateTags.push("#Modelica", "#DAE", "#Simulation");
   }
-  if (/\b(cfd|mach|airfoil|navier|turbulence|su2|openfoam)\b/i.test(trimmed)) {
+  if (/\b(cfd|mach|airfoil|navier|turbulence|su2)\b/i.test(trimmed)) {
     candidateTags.push("#CFD", "#Aerodynamics");
   }
-  if (/\b(fea|stress|von\s*mises|mesh|calculix|structural)\b/i.test(trimmed)) {
+  if (/\b(fea|stress|von\s*mises|mesh|structural)\b/i.test(trimmed)) {
     candidateTags.push("#FEA", "#StructuralAnalysis");
   }
   if (/\b(pscad|psse|grid|bus|transformer|fault|ieee)\b/i.test(trimmed)) {
@@ -272,29 +515,30 @@ function polishLocally(
   if (/\b(sysml|requirement|mbse|architecture)\b/i.test(trimmed)) {
     candidateTags.push("#SysMLv2", "#MBSE");
   }
-  if (/\b(fmu|fmi|ssp|cosim)\b/i.test(trimmed)) {
-    candidateTags.push("#FMI", "#CoSimulation");
-  }
   if (candidateTags.length === 0) {
     candidateTags.push("#ModelScript", "#Engineering", "#Simulation");
   }
 
-  const newTags: string[] = [];
-  for (const tag of candidateTags) {
-    if (
-      !newTags.some((t) => t.toLowerCase() === tag.toLowerCase()) &&
-      !existingTags.some((t) => t.toLowerCase() === tag.toLowerCase())
-    ) {
-      newTags.push(tag);
-    }
-    if (newTags.length >= 3) break;
+  const newTags = Array.from(new Set(candidateTags))
+    .filter((t) => !existingTags.some((e) => e.toLowerCase() === t.toLowerCase()))
+    .slice(0, 3);
+
+  if (!trimmed && artifactSummary) {
+    const drafted = draftLocallyFromSummary(artifactSummary, "technical");
+    return {
+      polished: drafted.draft,
+      mode,
+      domain,
+      suggestedHashtags: artifactSummary.suggestedHashtags,
+      provider: "local-browser-ai",
+      model: "browser-engineering-classifier-v1",
+    };
   }
 
   if (mode === "hashtags") {
-    const polished = newTags.length > 0 ? `${trimmed}\n\n${newTags.join(" ")}` : trimmed;
-    localEngineReady = true;
+    const polished = newTags.length > 0 ? `${trimmed}\n\n${newTags.join(" ")}`.trim() : trimmed;
     return {
-      polished: polished.trim(),
+      polished,
       mode,
       domain,
       suggestedHashtags: [...existingTags, ...newTags],
@@ -303,90 +547,8 @@ function polishLocally(
     };
   }
 
-  // Preserve code blocks, math, and ::artifact directives
-  const preserved: string[] = [];
-  const masked = trimmed.replace(
-    /(```[\s\S]*?```|\$\$[\s\S]*?\$\$|::artifact(?:\[[^[\]\r\n]*\])?\{[^{}\r\n]*\})/g,
-    (m) => {
-      const idx = preserved.length;
-      preserved.push(m);
-      return `__MS_LOCAL_BLOCK_${idx}__`;
-    },
-  );
-
-  let body = masked
-    .replace(/[ \t]+/g, " ")
-    .replace(/\bi\b/g, "I")
-    .replace(/\bim\b/gi, "I'm")
-    .replace(/\bdont\b/gi, "don't")
-    .replace(/\bcant\b/gi, "can't")
-    .trim();
-
-  if (/^[a-z]/.test(body)) {
-    body = body.charAt(0).toUpperCase() + body.slice(1);
-  }
-
-  const trailingTagsMatch = body.match(/((?:\s+#[a-zA-Z0-9_-]+)+)\s*$/);
-  const trailingTags = trailingTagsMatch ? trailingTagsMatch[1]!.trim() : "";
-  let mainText = trailingTagsMatch ? body.slice(0, body.length - trailingTagsMatch[0].length).trim() : body;
-
-  if (mainText && !/[.!?`:_]$/.test(mainText)) {
-    mainText += ".";
-  }
-
-  if (mode === "concise") {
-    mainText = mainText
-      .replace(/\b(?:just wanted to share|i wanted to share|here is a quick look at|check out this)\b\s*/gi, "Sharing ")
-      .replace(/\b(?:in order to)\b/gi, "to")
-      .replace(/\b(?:due to the fact that)\b/gi, "because")
-      .trim();
-    if (/^[a-z]/.test(mainText)) {
-      mainText = mainText.charAt(0).toUpperCase() + mainText.slice(1);
-    }
-    const restored = mainText.replace(/__MS_LOCAL_BLOCK_(\d+)__/g, (_m, i) => preserved[Number(i)] || "");
-    const tagSuffix = trailingTags || newTags.slice(0, 2).join(" ");
-    localEngineReady = true;
-    return {
-      polished: tagSuffix ? `${restored} ${tagSuffix}`.trim() : restored,
-      mode,
-      domain,
-      suggestedHashtags: [...existingTags, ...newTags],
-      provider: "local-browser-ai",
-      model: "browser-engineering-classifier-v1",
-    };
-  }
-
-  if (mode === "expand") {
-    const restored = mainText.replace(/__MS_LOCAL_BLOCK_(\d+)__/g, (_m, i) => preserved[Number(i)] || "");
-    const extra =
-      artifactSummary && artifactSummary.highlights.length > 0
-        ? `\n\n**Technical Context (${artifactSummary.title}):** ${artifactSummary.highlights.join(" · ")}.`
-        : `\n\nVerified for reproducible ${domain.toLowerCase()} analysis and interactive simulation.`;
-    const tagSuffix = trailingTags || newTags.join(" ");
-    localEngineReady = true;
-    return {
-      polished: `${restored}${extra}${tagSuffix ? `\n\n${tagSuffix}` : ""}`.trim(),
-      mode,
-      domain,
-      suggestedHashtags: [...existingTags, ...newTags],
-      provider: "local-browser-ai",
-      model: "browser-engineering-classifier-v1",
-    };
-  }
-
-  // Default "polish" mode
-  mainText = mainText
-    .replace(/^hey\s+(?:everyone|guys|folks)[,!\s]*/i, "")
-    .replace(/\bcheck out my\b/gi, "Exploring our")
-    .replace(/\bi made a\b/gi, "Developed a");
-  if (/^[a-z]/.test(mainText)) {
-    mainText = mainText.charAt(0).toUpperCase() + mainText.slice(1);
-  }
-  const restored = mainText.replace(/__MS_LOCAL_BLOCK_(\d+)__/g, (_m, i) => preserved[Number(i)] || "");
-  const tagSuffix = trailingTags || newTags.join(" ");
-  localEngineReady = true;
   return {
-    polished: tagSuffix ? `${restored}\n\n${tagSuffix}`.trim() : restored,
+    polished: trimmed,
     mode,
     domain,
     suggestedHashtags: [...existingTags, ...newTags],
@@ -395,8 +557,12 @@ function polishLocally(
   };
 }
 
+/**
+ * Orchestrates AI post drafting across Local Browser LLM (WebLLM WebGPU / Browser Prompt API)
+ * and Remote LLM (`POST /api/v1/social/ai/draft` backed by Ollama / OpenAI / Gemini / BYOK).
+ */
 export async function runComposerAiDraft(options: {
-  artifactId: number;
+  artifactId?: number | null | undefined;
   artifactView?: Record<string, unknown> | null | undefined;
   existingText?: string | undefined;
   tone?: AiDraftTone | undefined;
@@ -423,34 +589,44 @@ export async function runComposerAiDraft(options: {
     }
     const localSummary = classifyArtifactLocally(rawView);
 
-    // Check if browser built-in Prompt API is available
-    const browserSession = await getBrowserBuiltInSession(
-      "You are ModelScript AI Composer Assistant. Draft a concise, technical engineering social post with 2-3 relevant hashtags.",
-    );
-    if (browserSession) {
+    const systemPrompt =
+      "You are ModelScript AI Composer Assistant. Draft a concise, engaging technical engineering post introducing the attached artifact with 2-3 relevant hashtags. Output ONLY the post text.";
+    const userPrompt = `Draft a ${tone} post for artifact "${localSummary.title}" (${localSummary.domain}). Highlights: ${
+      localSummary.highlights.join("; ") || "Interactive model"
+    }. Suggested hashtags: ${localSummary.suggestedHashtags.join(" ")}`;
+
+    const llmOut = await completeWithLocalBrowserLLM(systemPrompt, userPrompt);
+    if (llmOut) {
+      return {
+        draft: llmOut.text,
+        notebookTitle: `${localSummary.title}: ${localSummary.domain} Analysis`,
+        notebookSummary: `Interactive ${localSummary.domain.toLowerCase()} exploration of ${localSummary.title}.`,
+        domain: localSummary.domain,
+        highlights: localSummary.highlights,
+        suggestedHashtags: localSummary.suggestedHashtags,
+        provider: llmOut.provider,
+        model: llmOut.model,
+      };
+    }
+
+    // If user chose "local" but WebGPU/window.ai wasn't available, try remote LLM before static fallback
+    if (engineMode === "local") {
       try {
-        const promptText = `Draft a ${tone} post for artifact "${localSummary.title}" (${localSummary.domain}). Highlights: ${localSummary.highlights.join("; ")}. Include hashtags: ${localSummary.suggestedHashtags.join(" ")}`;
-        const generated = (await browserSession.prompt(promptText)).trim();
-        if (generated) {
-          return {
-            draft: generated,
-            notebookTitle: `${localSummary.title}: ${localSummary.domain} Analysis`,
-            notebookSummary: `Interactive ${localSummary.domain.toLowerCase()} exploration of ${localSummary.title}.`,
-            domain: localSummary.domain,
-            suggestedHashtags: localSummary.suggestedHashtags,
-            provider: "local-window-ai",
-            model: "browser-builtin-llm",
-          };
-        }
+        return await draftPostWithAi({
+          artifactId: options.artifactId,
+          existingText: options.existingText,
+          tone,
+          isNotebook: options.isNotebook,
+        });
       } catch {
-        // Fall through to deterministic local synthesizer
+        // Fall through to offline summary
       }
     }
 
     return draftLocallyFromSummary(localSummary, tone, options.existingText);
   }
 
-  // Remote-first (or Auto when local AI is not yet loaded)
+  // Remote-first (or Auto when local browser LLM is not yet loaded in memory)
   try {
     return await draftPostWithAi({
       artifactId: options.artifactId,
@@ -459,7 +635,6 @@ export async function runComposerAiDraft(options: {
       isNotebook: options.isNotebook,
     });
   } catch {
-    // Fallback to local browser classification & drafting if remote call fails
     let rawView = options.artifactView;
     if (!rawView && options.artifactId) {
       try {
@@ -489,33 +664,50 @@ export async function runComposerAiPolish(options: {
 
   const shouldUseLocalFirst = engineMode === "local" || (engineMode === "auto" && isLocalAiLoaded());
 
-  if (shouldUseLocalFirst) {
+  if (shouldUseLocalFirst && options.content.trim()) {
     const localSummary = options.artifactView ? classifyArtifactLocally(options.artifactView) : null;
+    const fallback = polishLocally(options.content, mode, localSummary);
 
-    const browserSession = await getBrowserBuiltInSession(
-      "You are ModelScript AI Writing Polish Assistant. Improve clarity and technical precision while preserving @mentions, #hashtags, code blocks, math, and ::artifact directives. Output only the revised text.",
-    );
-    if (browserSession && options.content.trim()) {
-      try {
-        const promptText = `Mode: ${mode}\nText:\n${options.content}`;
-        const generated = (await browserSession.prompt(promptText)).trim();
-        if (generated) {
-          const fallback = polishLocally(options.content, mode, localSummary);
-          return {
-            polished: generated,
-            mode,
-            domain: fallback.domain,
-            suggestedHashtags: fallback.suggestedHashtags,
-            provider: "local-window-ai",
-            model: "browser-builtin-llm",
-          };
-        }
-      } catch {
-        // Fall through to local deterministic polisher
-      }
+    const modeInstructions: Record<AiPolishMode, string> = {
+      polish:
+        "Correct all spelling errors, typos, grammar mistakes, capitalization, and punctuation while lightly polishing the phrasing. Do NOT add hashtags unless hashtags are already in the text.",
+      concise:
+        "Correct all spelling and grammar errors and make the text concise and direct. Do NOT add hashtags unless hashtags are already in the text.",
+      expand:
+        "Correct all spelling and grammar errors, expand with brief technical context, and add 2-3 engineering hashtags at the end.",
+      hashtags:
+        "Correct any spelling or grammar errors in the text and append 3-4 relevant engineering hashtags at the end.",
+    };
+
+    const systemPrompt = [
+      "You are an AI writing assistant integrated into the ModelScript social composer.",
+      `Instruction: ${modeInstructions[mode]}`,
+      "Preserve @mentions, #hashtags, LaTeX math ($...$), code blocks, and ::artifact directives verbatim.",
+      "Output ONLY the revised text without quotes or explanation.",
+    ].join("\n");
+
+    const llmOut = await completeWithLocalBrowserLLM(systemPrompt, options.content);
+    if (llmOut) {
+      return {
+        polished: llmOut.text,
+        mode,
+        domain: fallback.domain,
+        suggestedHashtags: fallback.suggestedHashtags,
+        provider: llmOut.provider,
+        model: llmOut.model,
+      };
     }
 
-    return polishLocally(options.content, mode, localSummary);
+    // If local WebGPU/Prompt API wasn't available, fall back to remote LLM API
+    try {
+      return await polishPostWithAi({
+        content: options.content,
+        mode,
+        artifactId: options.artifactId ?? undefined,
+      });
+    } catch {
+      return fallback;
+    }
   }
 
   try {

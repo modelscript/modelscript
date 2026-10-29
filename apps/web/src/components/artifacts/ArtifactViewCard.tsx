@@ -22,6 +22,7 @@ import {
 } from "./card";
 
 const ArtifactDiffModal = React.lazy(() => import("./ArtifactDiffModal"));
+const CloudSimulationModal = React.lazy(() => import("../cloud-sim/CloudSimulationModal"));
 
 export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   artifactId,
@@ -37,6 +38,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
+  const [isHpcModalOpen, setIsHpcModalOpen] = useState(false);
   const { resolvedColorMode } = useTheme();
   const navigate = useNavigate();
 
@@ -244,6 +246,81 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     />
   );
 
+  const normalizedViewType = String(artifact?.view_type || "").toLowerCase();
+  const isNonSimulatableViewType = [
+    "csv",
+    "tsv",
+    "dataset",
+    "dataset-table",
+    "json-table",
+    "pdf",
+    "picture",
+    "video",
+    "youtube_video",
+    "audio",
+    "tei-document",
+    "link-preview",
+    "mermaid",
+    "mermaid-diagram",
+    "vega",
+    "vega-plot",
+    "owl",
+    "owl2",
+  ].includes(normalizedViewType);
+
+  const isSimulatableArtifact =
+    !isNonSimulatableViewType &&
+    (Boolean(viewConfig?.code) ||
+      [
+        "modelica",
+        "modelica-code",
+        "modelica-diagram",
+        "morsel",
+        "polyglot-morsel",
+        "modelscript",
+        "msx",
+        "simulation",
+        "cad",
+        "fea",
+        "fea-deck",
+        "fea-inp",
+        "cfd",
+        "cfd-config",
+        "cfd-su2",
+        "spice",
+        "pscad",
+        "pscx",
+        "pslx",
+        "simpack",
+        "spck",
+        "sim",
+        "mbs",
+        "gensys",
+        "calc",
+        "run",
+        "sub",
+        "fmu",
+        "fmu-package",
+        "fmu-simulator",
+        "fmi",
+        "ssp",
+        "ssd",
+        "diagram",
+      ].includes(normalizedViewType));
+
+  const hpcModalElement = isHpcModalOpen ? (
+    <Suspense fallback={null}>
+      <CloudSimulationModal
+        isOpen={isHpcModalOpen}
+        onClose={() => setIsHpcModalOpen(false)}
+        artifactId={artifactId}
+        artifactTitle={artifact?.title || artifact?.name || viewConfig?.title || `Artifact #${artifactId}`}
+        fileContent={viewConfig?.code || ""}
+        dialect={viewConfig?.dialect || artifact?.view_type || "modelica"}
+      />
+    </Suspense>
+  ) : null;
+
   if (isFullScreen) {
     const currentThumbnailUrl =
       resolvedColorMode === "dark"
@@ -277,6 +354,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           onCopyLink={handleCopyLink}
           onOpenDiff={() => setIsDiffOpen(true)}
           onToggleSidebar={() => setIsStudioSidebarOpen((prev) => !prev)}
+          {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
         />
 
         <Box flex={1} display="flex" overflow="hidden" position="relative">
@@ -333,10 +411,12 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             viewConfig={viewConfig}
             isLoaded={isLoaded}
             onOpenFullScreen={() => setIsFullScreen(true)}
+            {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
           />
         </Box>
 
         {typeof document !== "undefined" ? createPortal(fullScreenOverlay, document.body) : fullScreenOverlay}
+        {hpcModalElement}
         {isDiffOpen && resolvedForkedFromId && (
           <Suspense fallback={null}>
             <ArtifactDiffModal
@@ -370,7 +450,9 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         viewConfig={viewConfig}
         isLoaded={isLoaded}
         onOpenFullScreen={() => setIsFullScreen(true)}
+        {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
       />
+      {hpcModalElement}
       {isDiffOpen && resolvedForkedFromId && (
         <Suspense fallback={null}>
           <ArtifactDiffModal

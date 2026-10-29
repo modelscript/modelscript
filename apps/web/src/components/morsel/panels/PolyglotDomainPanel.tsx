@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useMemo, useState } from "react";
+import { ReqifViewer } from "../../artifacts/ReqifViewer";
 
 export interface PolyglotDomainPanelProps {
   dialect: string;
   code: string;
   colorMode: "dark" | "light";
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
+  onCodeChange?: ((newCode: string) => void) | undefined;
 }
 
 interface KpiCard {
@@ -1433,9 +1435,16 @@ function analyzeGeneralModel(dialect: string, _code: string, lines: string[]): D
   };
 }
 
-export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({ dialect, code, colorMode, onRevealLine }) => {
+export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
+  dialect,
+  code,
+  colorMode,
+  onRevealLine,
+  onCodeChange,
+}) => {
   const [filterText, setFilterText] = useState("");
   const isDark = colorMode === "dark";
+  const isReqIf = dialect.toLowerCase() === "reqif" || dialect.toLowerCase() === "reqifz" || code.includes("<REQ-IF");
 
   const analysis = useMemo<DomainAnalysisResult>(() => {
     const lines = code.split(/\r?\n/);
@@ -1473,6 +1482,14 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({ dialec
     }
     return analyzeGeneralModel(d, code, lines);
   }, [dialect, code]);
+
+  if (isReqIf) {
+    return (
+      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <ReqifViewer viewConfig={{ code }} isFullScreen onCodeChange={onCodeChange} onRevealLine={onRevealLine} />
+      </div>
+    );
+  }
 
   const borderCol = "var(--color-border-default)";
   const cardBg = "var(--color-bg-card)";

@@ -11,6 +11,7 @@
 import type { FmiScalarVariable, StoredFmu } from "@modelscript/exchange/cosim";
 import { FmuStorage } from "@modelscript/exchange/cosim";
 import express from "express";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 
 export const defaultFmuStorage = new FmuStorage();
 
@@ -23,43 +24,60 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
   const router = express.Router();
   const fmuStorage = storage ?? defaultFmuStorage;
 
+  const requireFmuAuthInProd: express.RequestHandler = (req, res, next) => {
+    if (process.env["NODE_ENV"] === "production") {
+      const user = (req as express.Request & { user?: { id?: number | undefined } | undefined }).user;
+      if (!user?.id) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+    }
+    next();
+  };
+
   // POST /api/v1/fmus — Upload an FMU archive
-  router.post("/", express.raw({ type: "application/octet-stream", limit: "100mb" }), (req, res) => {
-    const rawFilename = req.headers["x-filename"];
-    const filename =
-      (typeof rawFilename === "string" ? rawFilename : Array.isArray(rawFilename) ? rawFilename[0] : undefined) ??
-      "upload.fmu";
-    const id = filename.replace(/\.fmu$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
+  router.post(
+    "/",
+    optionalAuth,
+    requireFmuAuthInProd,
+    express.raw({ type: "application/octet-stream", limit: "100mb" }),
+    (req, res) => {
+      const rawFilename = req.headers["x-filename"];
+      const filename =
+        (typeof rawFilename === "string" ? rawFilename : Array.isArray(rawFilename) ? rawFilename[0] : undefined) ??
+        "upload.fmu";
+      const id = filename.replace(/\.fmu$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_") + "_" + Date.now();
 
-    if (
-      typeof req.body === "string" ||
-      Array.isArray(req.body) ||
-      !Buffer.isBuffer(req.body) ||
-      req.body.length === 0
-    ) {
-      return res.status(400).json({ error: "Empty request body. Send the FMU file as raw binary." });
-    }
+      if (
+        typeof req.body === "string" ||
+        Array.isArray(req.body) ||
+        !Buffer.isBuffer(req.body) ||
+        req.body.length === 0
+      ) {
+        return res.status(400).json({ error: "Empty request body. Send the FMU file as raw binary." });
+      }
 
-    try {
-      const stored = fmuStorage.store(id, filename, req.body);
-      res.status(201).json({
-        id: stored.id,
-        filename: stored.filename,
-        modelName: stored.modelDescription.modelName,
-        guid: stored.modelDescription.guid,
-        supportsCoSimulation: stored.modelDescription.supportsCoSimulation,
-        supportsModelExchange: stored.modelDescription.supportsModelExchange,
-        variableCount: stored.modelDescription.variables.length,
-        sizeBytes: stored.sizeBytes,
-        uploadedAt: stored.uploadedAt,
-      });
-    } catch (err) {
-      res.status(422).json({
-        error: err instanceof Error ? err.message : "Failed to process FMU archive",
-      });
-    }
-    return;
-  });
+      try {
+        const stored = fmuStorage.store(id, filename, req.body);
+        res.status(201).json({
+          id: stored.id,
+          filename: stored.filename,
+          modelName: stored.modelDescription.modelName,
+          guid: stored.modelDescription.guid,
+          supportsCoSimulation: stored.modelDescription.supportsCoSimulation,
+          supportsModelExchange: stored.modelDescription.supportsModelExchange,
+          variableCount: stored.modelDescription.variables.length,
+          sizeBytes: stored.sizeBytes,
+          uploadedAt: stored.uploadedAt,
+        });
+      } catch (err) {
+        res.status(422).json({
+          error: err instanceof Error ? err.message : "Failed to process FMU archive",
+        });
+      }
+      return;
+    },
+  );
 
   // GET /api/v1/fmus — List all uploaded FMUs
   router.get("/", (_req, res) => {
@@ -126,15 +144,16 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
     if (!fmu || !archive) {
       return res.status(404).json({ error: "FMU not found" });
     }
+    const safeDownloadName = String(fmu.filename || "download.fmu").replace(/[^a-zA-Z0-9._-]/g, "_");
     res.set("Content-Type", "application/octet-stream");
-    res.set("Content-Disposition", `attachment; filename="${fmu.filename}"`);
+    res.set("Content-Disposition", `attachment; filename="${safeDownloadName}"`);
     res.send(archive);
     return;
   });
 
   // DELETE /api/v1/fmus/:id — Delete an FMU
-  router.delete("/:id", (req, res) => {
-    const id = req.params["id"] ?? "";
+  router.delete("/:id", optionalAuth, requireFmuAuthInProd, (req, res) => {
+    const id = String(req.params["id"] ?? "");
     const deleted = fmuStorage.delete(id);
     if (!deleted) {
       return res.status(404).json({ error: "FMU not found" });

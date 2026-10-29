@@ -3,7 +3,7 @@
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
-import { recordPageViewBeacon } from "./api/admin";
+import { getPublicInstanceBanner, recordPageViewBeacon } from "./api/admin";
 import { AuthProvider, useAuth } from "./AuthContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
@@ -49,6 +49,7 @@ const SolutionPage = React.lazy(() => import("./pages/SolutionPage"));
 const PrivacyPage = React.lazy(() => import("./pages/PrivacyPage"));
 const ResetPasswordPage = React.lazy(() => import("./pages/ResetPasswordPage"));
 const SettingsPage = React.lazy(() => import("./pages/SettingsPage"));
+const SetupWizardPage = React.lazy(() => import("./pages/SetupWizardPage"));
 const SignupPage = React.lazy(() => import("./pages/SignupPage"));
 const TermsPage = React.lazy(() => import("./pages/TermsPage"));
 const VerifyEmailPage = React.lazy(() => import("./pages/VerifyEmailPage"));
@@ -257,12 +258,131 @@ function PageViewTracker() {
   return null;
 }
 
+export function InstanceAnnouncementBanner({
+  initialBanner,
+}: {
+  initialBanner?: {
+    maintenanceMode: boolean;
+    announcementBanner: string;
+    announcementLevel: "info" | "warning" | "critical";
+    needsSetup?: boolean;
+  };
+}) {
+  const [banner, setBanner] = React.useState(initialBanner ?? null);
+  const [dismissed, setDismissed] = React.useState(false);
+
+  React.useEffect(() => {
+    if (initialBanner) return;
+    let mounted = true;
+    getPublicInstanceBanner()
+      .then((res) => {
+        if (mounted) setBanner(res);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [initialBanner]);
+
+  if (!banner || dismissed) return null;
+
+  if (banner.needsSetup) {
+    return (
+      <div
+        role="status"
+        data-testid="instance-setup-banner"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+          padding: "10px 16px",
+          fontSize: "13px",
+          fontWeight: 600,
+          backgroundColor: "rgba(37, 99, 235, 0.16)",
+          borderBottom: "1px solid rgba(37, 99, 235, 0.45)",
+          color: "#3b82f6",
+        }}
+      >
+        <div>
+          <strong style={{ marginRight: "8px" }}>[FIRST-BOOT SETUP]</strong>
+          <span>Welcome to your new ModelScript instance! No administrator account has been configured yet.</span>
+        </div>
+        <a
+          href="/setup"
+          style={{
+            padding: "5px 12px",
+            borderRadius: "6px",
+            backgroundColor: "#2563eb",
+            color: "#ffffff",
+            textDecoration: "none",
+            fontSize: "12px",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Launch Install Wizard →
+        </a>
+      </div>
+    );
+  }
+
+  if (!banner.maintenanceMode && !banner.announcementBanner) return null;
+
+  const isCritical = banner.maintenanceMode || banner.announcementLevel === "critical";
+  const isWarning = !isCritical && banner.announcementLevel === "warning";
+
+  return (
+    <div
+      role="status"
+      data-testid="instance-announcement-banner"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+        padding: "8px 16px",
+        fontSize: "13px",
+        fontWeight: 600,
+        backgroundColor: isCritical
+          ? "rgba(239, 68, 68, 0.16)"
+          : isWarning
+            ? "rgba(245, 158, 11, 0.16)"
+            : "rgba(59, 130, 246, 0.14)",
+        borderBottom: `1px solid ${
+          isCritical ? "rgba(239, 68, 68, 0.4)" : isWarning ? "rgba(245, 158, 11, 0.4)" : "rgba(59, 130, 246, 0.35)"
+        }`,
+        color: isCritical ? "#ef4444" : isWarning ? "#f59e0b" : "#3b82f6",
+      }}
+    >
+      <div>
+        {banner.maintenanceMode && <strong style={{ marginRight: "8px" }}>[MAINTENANCE MODE]</strong>}
+        <span>{banner.announcementBanner || "Scheduled instance maintenance is currently in progress."}</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => setDismissed(true)}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "inherit",
+          cursor: "pointer",
+          fontSize: "12px",
+          fontWeight: 700,
+        }}
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
 /**
  * Core ModelScript Hub React router and layout shell.
  */
 function App() {
   const { theme } = useTheme();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, login } = useAuth();
   const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
@@ -285,12 +405,14 @@ function App() {
         <ToastProvider>
           <BrowserRouter>
             <PageViewTracker />
+            <InstanceAnnouncementBanner />
             <GlobalModals />
             <RealtimeNotificationListener />
             <ErrorBoundary>
               <Suspense fallback={<PageLoadingFallback />}>
                 <Routes>
                   <Route path="/" element={<Navigate to={user ? "/home" : "/explore"} replace />} />
+                  <Route path="/setup" element={<SetupWizardPage onLoginSuccess={login} />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignupPage />} />
                   <Route path="/terms" element={<TermsPage />} />

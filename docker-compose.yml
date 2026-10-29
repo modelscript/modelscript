@@ -88,6 +88,14 @@ services:
       - TIMESCALE_URL=${TIMESCALE_URL:-}
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=1024}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1"]
       interval: 10s
@@ -137,6 +145,14 @@ services:
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
       - JWT_SECRET=${JWT_SECRET}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1"]
       interval: 10s
@@ -185,6 +201,12 @@ services:
       - ENTERPRISE_APPLIANCE=true
       - AIRGAP_ENFORCED=true
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
       interval: 15s

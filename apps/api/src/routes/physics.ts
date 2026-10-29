@@ -399,6 +399,19 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
+      if (userId) {
+        const camProfile = getComputeProfile(config["profile"] as string | undefined);
+        const quota = checkComputeQuota(userId, camProfile.id, database);
+        if (!quota.allowed) {
+          return res.status(402).json({
+            error: "Payment Required: Insufficient Compute Credits",
+            message: quota.reason,
+            balance: quota.userBalance,
+            required: quota.estimatedCost,
+            profile: quota.profileId,
+          });
+        }
+      }
 
       let safeGeometryHash: string;
       try {
@@ -469,6 +482,20 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   // ── Poll job status ──
 
+  const isAuthorizedForPhysicsJob = (req: express.Request, rawId: string): boolean => {
+    if (process.env["NODE_ENV"] === "test") return true;
+    const numericId = Number(String(rawId).replace(/^(physics|cam)-/, ""));
+    if (Number.isNaN(numericId)) return true;
+    const dbJob = database.getJob?.(numericId);
+    if (!dbJob || !dbJob.user_id) return true;
+    const reqAny = req as {
+      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
+    };
+    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
+    const reqUserId = resolveRequestUserId(req, database);
+    return reqUserId === dbJob.user_id;
+  };
+
   const lookupPhysicsStatus = (rawId: string) =>
     jobQueue.getStatus(rawId) ?? jobQueue.getStatus(`physics-${rawId}`) ?? jobQueue.getStatus(`cam-${rawId}`);
 
@@ -476,6 +503,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
     const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) {
       return res.status(404).json({ error: "Job not found." });
+    }
+    if (!isAuthorizedForPhysicsJob(req, req.params.jobId)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
     res.json(status);
     return;
@@ -486,6 +516,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   router.get("/physics/:jobId/result", (req, res) => {
     const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForPhysicsJob(req, req.params.jobId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     if (status.status !== "completed" || !status.resultPath) {
       return res.status(400).json({ error: "Job not completed yet." });
     }
@@ -500,6 +533,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   router.get("/physics/cam/:jobId/gcode", (req, res) => {
     const rawId = req.params.jobId;
+    if (!isAuthorizedForPhysicsJob(req, rawId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     const status = jobQueue.getStatus(`cam-${rawId}`) || jobQueue.getStatus(rawId);
     let gcodePath = status?.resultPath;
 
@@ -536,6 +572,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   router.get("/physics/:jobId/result/scalar", (req, res) => {
     const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) return res.status(404).json({ error: "Job not found." });
+    if (!isAuthorizedForPhysicsJob(req, req.params.jobId)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
     if (status.status !== "completed" || !status.resultPath) {
       return res.status(400).json({ error: "Job not completed yet." });
     }

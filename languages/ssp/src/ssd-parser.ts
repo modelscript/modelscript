@@ -172,8 +172,15 @@ export function parseSsv(xml: string, fullXml: string = xml, baseOffset: number 
     const realEl = getChild(paramEl, "Real");
     if (realEl) {
       const val = getAttr(realEl, "value");
+      const unit = getAttr(realEl, "unit");
       if (val !== undefined) {
-        values.push({ name: paramName, type: "Real", value: parseFloat(val), line });
+        values.push({
+          name: paramName,
+          type: "Real",
+          value: parseFloat(val),
+          ...(unit ? { unit } : {}),
+          line,
+        });
       }
       continue;
     }
@@ -181,8 +188,15 @@ export function parseSsv(xml: string, fullXml: string = xml, baseOffset: number 
     const intEl = getChild(paramEl, "Integer");
     if (intEl) {
       const val = getAttr(intEl, "value");
+      const unit = getAttr(intEl, "unit");
       if (val !== undefined) {
-        values.push({ name: paramName, type: "Integer", value: parseInt(val, 10), line });
+        values.push({
+          name: paramName,
+          type: "Integer",
+          value: parseInt(val, 10),
+          ...(unit ? { unit } : {}),
+          line,
+        });
       }
       continue;
     }
@@ -376,7 +390,11 @@ function parseConnections(systemEl: XmlElement, lineStarts: number[]): SspConnec
 
 function parseParameterBindings(systemEl: XmlElement, lineStarts: number[]): SspParameterBinding[] {
   const bindings: SspParameterBinding[] = [];
-  const bindElements = getChildren(systemEl, "ParameterBinding");
+  const bindingsContainer = getChild(systemEl, "ParameterBindings");
+  const bindElements = [
+    ...getChildren(systemEl, "ParameterBinding"),
+    ...getChildren(bindingsContainer, "ParameterBinding"),
+  ];
 
   for (const bindEl of bindElements) {
     const prefix = getAttr(bindEl, "prefix");
@@ -392,14 +410,32 @@ function parseParameterBindings(systemEl: XmlElement, lineStarts: number[]): Ssp
       const realEl = getChild(paramEl, "Real");
       if (realEl) {
         const val = getAttr(realEl, "value");
-        if (val !== undefined) values.push({ name: paramName, type: "Real", value: parseFloat(val), line });
+        const unit = getAttr(realEl, "unit");
+        if (val !== undefined) {
+          values.push({
+            name: paramName,
+            type: "Real",
+            value: parseFloat(val),
+            ...(unit ? { unit } : {}),
+            line,
+          });
+        }
         continue;
       }
 
       const intEl = getChild(paramEl, "Integer");
       if (intEl) {
         const val = getAttr(intEl, "value");
-        if (val !== undefined) values.push({ name: paramName, type: "Integer", value: parseInt(val, 10), line });
+        const unit = getAttr(intEl, "unit");
+        if (val !== undefined) {
+          values.push({
+            name: paramName,
+            type: "Integer",
+            value: parseInt(val, 10),
+            ...(unit ? { unit } : {}),
+            line,
+          });
+        }
         continue;
       }
 
@@ -433,10 +469,16 @@ function parseDefaultExperiment(
 
   const startTimeStr = getAttr(expEl, "startTime");
   const stopTimeStr = getAttr(expEl, "stopTime");
+  const stepSizeStr = getAttr(expEl, "stepSize");
+  const algorithmStr = getAttr(expEl, "algorithm");
 
   const exp: SspDefaultExperiment = {};
   if (startTimeStr !== undefined) exp.startTime = parseFloat(startTimeStr);
   if (stopTimeStr !== undefined) exp.stopTime = parseFloat(stopTimeStr);
+  if (stepSizeStr !== undefined && !Number.isNaN(parseFloat(stepSizeStr))) {
+    exp.stepSize = parseFloat(stepSizeStr);
+  }
+  if (algorithmStr) exp.algorithm = algorithmStr;
 
   return exp;
 }

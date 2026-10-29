@@ -52,8 +52,26 @@ export class LoginRateLimiter {
     return { allowed: true, remaining, resetInMs };
   }
 
+  private static readonly MAX_RECORDS = 10_000;
+
+  private pruneExpired(now: number): void {
+    if (this.attempts.size < LoginRateLimiter.MAX_RECORDS) return;
+    for (const [k, v] of this.attempts) {
+      if (now >= v.resetAt) {
+        this.attempts.delete(k);
+      }
+    }
+    if (this.attempts.size >= LoginRateLimiter.MAX_RECORDS) {
+      const oldestKey = this.attempts.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.attempts.delete(oldestKey);
+      }
+    }
+  }
+
   public recordFailure(ip: string, email?: string): void {
     const now = Date.now();
+    this.pruneExpired(now);
     const key = this.buildKey(ip, email);
     const ipKey = this.buildKey(ip);
 

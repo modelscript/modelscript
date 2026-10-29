@@ -51,6 +51,7 @@ const GensysViewer = React.lazy(() => import("../GensysViewer"));
 const SimpackViewer = React.lazy(() => import("../SimpackViewer"));
 const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
 const FortranViewer = React.lazy(() => import("../FortranViewer"));
+const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 
 export interface ViewerDispatcherProps {
@@ -327,6 +328,9 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "f08":
       case "f18":
         return <FortranViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "reqif":
+      case "reqifz":
+        return <ReqifViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "aspen":
       case "swmm":
       case "touchstone":
@@ -347,7 +351,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "epanet":
       case "opendrive":
       case "plcopen":
-      case "reqif":
       case "simulink":
       case "spice":
       case "urdf":

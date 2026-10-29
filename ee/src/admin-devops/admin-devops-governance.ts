@@ -20,7 +20,7 @@ export interface EnterpriseAdminDevopsRouters {
  * - Enterprise W3C SPARQL 1.1 & OWL 2 RL Knowledge Graph Endpoint (`/api/v1/libraries/sparql`) gated by `plm_connectors`
  */
 export function mountEnterpriseAdminAndDevops(app: Express, routers: EnterpriseAdminDevopsRouters): void {
-  app.use("/api/v1/admin", requireEnterpriseFeature("airgap_compliance"));
+  app.use(["/api/v1/admin/stats", "/api/v1/admin/ee"], requireEnterpriseFeature("airgap_compliance"));
   app.use("/api/v1", routers.adminRouter);
 
   app.use("/api/v1/webhooks", requireEnterpriseFeature("plm_connectors"), routers.webhooksRouter);

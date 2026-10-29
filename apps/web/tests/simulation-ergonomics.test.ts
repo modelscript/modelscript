@@ -2,6 +2,12 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import {
+  BUILTIN_HPC_TEMPLATES,
+  CURATED_MODEL_ARTIFACTS,
+  extractArtifactMetadata,
+  generateSbatchPreview,
+} from "../src/components/cloud-sim/hpcTemplates.js";
 
 /**
  * Computes statistical metrics across a time-series dataset for a variable.
@@ -320,6 +326,64 @@ describe("Simulation Ergonomics & Analysis Engine", () => {
       const maxPressure = Math.max(...mold.points.map((p) => p.pressure));
       // Max pressure should reach peak packing pressure (~0.92 * 85 ~= 78.2 MPa)
       assert.ok(maxPressure > 70 && maxPressure <= 85);
+    });
+  });
+
+  describe("Cloud HPC Template Gallery, Model Artifact Extraction & Slurm Manifests", () => {
+    it("provides a complete SharePoint-style gallery of multi-domain HPC simulation templates", () => {
+      assert.ok(BUILTIN_HPC_TEMPLATES.length >= 9);
+      const slugs = new Set(BUILTIN_HPC_TEMPLATES.map((t) => t.slug));
+      assert.ok(slugs.has("transient-multiphysics-dae"));
+      assert.ok(slugs.has("steady-state-cfd"));
+      assert.ok(slugs.has("static-structural-fea"));
+
+      for (const tpl of BUILTIN_HPC_TEMPLATES) {
+        assert.ok(tpl.pipelineSteps.length >= 4, `Template ${tpl.slug} should define pipeline steps`);
+        assert.equal(tpl.presets.length, 3, `Template ${tpl.slug} should offer Fast/Balanced/High presets`);
+      }
+    });
+
+    it("extracts model name, experiment annotations, and tunable parameters from Modelica artifacts", () => {
+      const ehaArtifact = CURATED_MODEL_ARTIFACTS[0];
+      assert.ok(ehaArtifact);
+      const meta = extractArtifactMetadata(ehaArtifact.code);
+
+      assert.equal(meta.modelName, "ElectroHydrostaticActuator");
+      assert.equal(meta.stopTime, 2.0);
+      assert.equal(meta.tolerance, 1e-6);
+      assert.ok(meta.parameters.length >= 8);
+
+      const bulkModulus = meta.parameters.find((p) => p.name === "beta_oil");
+      assert.ok(bulkModulus);
+      assert.equal(bulkModulus.unit, "Pa");
+      assert.equal(bulkModulus.defaultValue, 1.45e9);
+    });
+
+    it("generates a reproducible Slurm #SBATCH batch script preview with parameter overrides", () => {
+      const tpl = BUILTIN_HPC_TEMPLATES[0];
+      assert.ok(tpl);
+      const sbatch = generateSbatchPreview({
+        jobName: "eha_transient_run",
+        modelName: "ElectroHydrostaticActuator",
+        template: tpl,
+        profileId: "gpu-a100",
+        cpus: 16,
+        memoryMb: 65536,
+        gpus: 1,
+        gpuType: "a100",
+        partition: "gpu-a100",
+        startTime: 0,
+        stopTime: 2.0,
+        numberOfIntervals: 1000,
+        tolerance: "1e-6",
+        parameterOverrides: { Kp_pos: 55.0 },
+      });
+
+      assert.ok(sbatch.includes("#!/bin/bash"));
+      assert.ok(sbatch.includes("#SBATCH --partition=gpu-a100"));
+      assert.ok(sbatch.includes("#SBATCH --gres=gpu:a100:1"));
+      assert.ok(sbatch.includes("--solver=cvode"));
+      assert.ok(sbatch.includes('--override="Kp_pos=55"'));
     });
   });
 });

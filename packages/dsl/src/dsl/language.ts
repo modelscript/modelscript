@@ -14,6 +14,7 @@ import type { McpDeclarationConfig } from "./mcp-types.js";
 import { SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL, type u32 } from "./primitives.js";
 import type { ASTQueryFunction, CompilationPipeline, CompilerLint, ModelProperty } from "./query-types.js";
 import type { ExternalScannerFunction, RuntimeFileInput, ScannerPrimitives } from "./scanner-types.js";
+import type { TabularConfig } from "./tabular-types.js";
 import type { PolyglotConfig } from "./tgg-types.js";
 import type { WritebackConfig, WritebackHandler } from "./writeback-types.js";
 
@@ -258,6 +259,9 @@ export interface LanguageOptions<
 
   /** Declarative 2D Diagram & Visual Modeling Configuration */
   diagram?: DiagramConfig<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
+
+  /** Declarative & Programmatic Bidirectional Tabular View / Spreadsheet Editor Configuration */
+  tabular?: TabularConfig<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
 
   /** Declarative Property Inspector Configuration */
   properties?: PropertyInspectorConfig<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
@@ -543,6 +547,7 @@ export * from "./mcp-types.js";
 export * from "./primitives.js";
 export * from "./query-types.js";
 export * from "./scanner-types.js";
+export * from "./tabular-types.js";
 export * from "./tgg-types.js";
 
 export {

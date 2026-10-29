@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * FMU-JS co-simulation participant.
@@ -14,6 +13,7 @@
  * without recompilation.
  */
 
+import vm from "node:vm";
 import type { FmiModelDescription, FmiScalarVariable } from "../../fmu/model-description.js";
 import type { FmuStorage, StoredFmu } from "../../fmu/storage.js";
 import type { ParticipantMetadata, ParticipantVariable } from "../mqtt/protocol.js";
@@ -145,17 +145,67 @@ export class FmuJsParticipant implements CoSimParticipant {
     if (modelJsBuf) {
       try {
         const jsSource = typeof modelJsBuf === "string" ? modelJsBuf : new TextDecoder().decode(modelJsBuf);
-        const factory = new Function(`${jsSource}\nreturn new FmuModel();`) as () => {
+        const sandbox = Object.create(null) as Record<string, unknown>;
+        Object.assign(sandbox, {
+          Math,
+          Number,
+          Boolean,
+          String,
+          Array,
+          Object,
+          Float64Array,
+          Int32Array,
+          Uint8Array,
+          JSON,
+          NaN,
+          Infinity,
+          isFinite,
+          isNaN,
+        });
+        const vmContext = vm.createContext(sandbox, {
+          codeGeneration: { strings: false, wasm: false },
+        });
+        const instantiated = vm.runInContext(`${jsSource}\nnew FmuModel();`, vmContext, {
+          timeout: 1000,
+        }) as {
           vars: Float64Array;
           time: number;
           getDerivatives: () => void;
           doStep: (t: number, dt: number) => void;
         };
-        this.jsModel = factory();
-        this.syncToJsModel();
-        this.jsModel.time = this.currentTime;
-        this.jsModel.getDerivatives();
-        this.syncFromJsModel();
+        if (
+          instantiated &&
+          typeof instantiated === "object" &&
+          typeof instantiated.getDerivatives === "function" &&
+          typeof instantiated.doStep === "function" &&
+          instantiated.vars instanceof Float64Array
+        ) {
+          this.jsModel = {
+            vars: instantiated.vars,
+            get time() {
+              return instantiated.time;
+            },
+            set time(v: number) {
+              instantiated.time = v;
+            },
+            getDerivatives: () => {
+              vm.runInContext("this.__inst.getDerivatives()", Object.assign(vmContext, { __inst: instantiated }), {
+                timeout: 250,
+              });
+            },
+            doStep: (t: number, dt: number) => {
+              vm.runInContext(
+                "this.__inst.doStep(this.__t, this.__dt)",
+                Object.assign(vmContext, { __inst: instantiated, __t: t, __dt: dt }),
+                { timeout: 250 },
+              );
+            },
+          };
+          this.syncToJsModel();
+          this.jsModel.time = this.currentTime;
+          this.jsModel.getDerivatives();
+          this.syncFromJsModel();
+        }
       } catch {
         this.jsModel = null;
       }
@@ -307,20 +357,13 @@ export class FmuJsParticipant implements CoSimParticipant {
 
   private evalSimpleExpr(expr: string, time: number): number {
     const trimmed = expr.trim();
+    if (!trimmed || trimmed.length > 4096) return 0;
     const num = Number(trimmed);
     if (!Number.isNaN(num)) return num;
     if (trimmed === "time") return time;
     if (this.values.has(trimmed)) return this.values.get(trimmed)!;
-    // Substitute known variable names in expression
-    let replaced = trimmed.replace(/\btime\b/g, String(time));
-    const sortedVars = [...this.values.entries()].sort((a, b) => b[0].length - a[0].length);
-    for (const [k, v] of sortedVars) {
-      const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      replaced = replaced.replace(new RegExp(`\\b${escaped}\\b`, "g"), `(${v})`);
-    }
     try {
-      const fn = new Function("Math", `return Number(${replaced});`) as (m: Math) => number;
-      const res = fn(Math);
+      const res = evaluateSafeMathExpr(trimmed, time, this.values);
       return Number.isFinite(res) ? res : 0;
     } catch {
       return 0;
@@ -367,6 +410,193 @@ export class FmuJsParticipant implements CoSimParticipant {
 }
 
 // ── Helpers ──
+
+const SAFE_MATH_FUNCS: Record<string, (...args: number[]) => number> = {
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  atan2: Math.atan2,
+  sinh: Math.sinh,
+  cosh: Math.cosh,
+  tanh: Math.tanh,
+  exp: Math.exp,
+  log: Math.log,
+  log10: Math.log10,
+  sqrt: Math.sqrt,
+  abs: Math.abs,
+  sign: Math.sign,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  round: Math.round,
+  min: Math.min,
+  max: Math.max,
+  pow: Math.pow,
+};
+
+/**
+ * Safe recursive-descent arithmetic evaluator supporting numbers, variables,
+ * `time`, `Math.*` functions, unary `+/-`, `+`, `-`, `*`, `/`, `%`, and `**`/`^`.
+ * Never invokes `eval` or `new Function`.
+ */
+function evaluateSafeMathExpr(expr: string, time: number, vars: ReadonlyMap<string, number>): number {
+  let pos = 0;
+  const len = expr.length;
+
+  function skipWs(): void {
+    while (pos < len && (expr[pos] === " " || expr[pos] === "\t" || expr[pos] === "\n" || expr[pos] === "\r")) {
+      pos++;
+    }
+  }
+
+  function parseExpression(): number {
+    let val = parseTerm();
+    while (true) {
+      skipWs();
+      const ch = expr[pos];
+      if (ch === "+") {
+        pos++;
+        val += parseTerm();
+      } else if (ch === "-") {
+        pos++;
+        val -= parseTerm();
+      } else {
+        break;
+      }
+    }
+    return val;
+  }
+
+  function parseTerm(): number {
+    let val = parsePower();
+    while (true) {
+      skipWs();
+      const ch = expr[pos];
+      if (ch === "*" && expr[pos + 1] !== "*") {
+        pos++;
+        val *= parsePower();
+      } else if (ch === "/") {
+        pos++;
+        const rhs = parsePower();
+        val = rhs === 0 ? 0 : val / rhs;
+      } else if (ch === "%") {
+        pos++;
+        const rhs = parsePower();
+        val = rhs === 0 ? 0 : val % rhs;
+      } else {
+        break;
+      }
+    }
+    return val;
+  }
+
+  function parsePower(): number {
+    const base = parseUnary();
+    skipWs();
+    if (expr[pos] === "^") {
+      pos++;
+      return Math.pow(base, parsePower());
+    }
+    if (expr[pos] === "*" && expr[pos + 1] === "*") {
+      pos += 2;
+      return Math.pow(base, parsePower());
+    }
+    return base;
+  }
+
+  function parseUnary(): number {
+    skipWs();
+    if (expr[pos] === "+") {
+      pos++;
+      return parseUnary();
+    }
+    if (expr[pos] === "-") {
+      pos++;
+      return -parseUnary();
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): number {
+    skipWs();
+    if (pos >= len) throw new Error("Unexpected end of expression");
+
+    if (expr[pos] === "(") {
+      pos++;
+      const inner = parseExpression();
+      skipWs();
+      if (expr[pos] !== ")") throw new Error("Missing closing parenthesis");
+      pos++;
+      return inner;
+    }
+
+    // Numeric literal
+    const numMatch = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(expr.slice(pos));
+    if (numMatch) {
+      pos += numMatch[0].length;
+      return Number(numMatch[0]);
+    }
+
+    // Check `der(...)` variable lookup first if present in vars
+    if (expr.startsWith("der(", pos)) {
+      const closeIdx = expr.indexOf(")", pos + 4);
+      if (closeIdx !== -1) {
+        const candidate = expr.slice(pos, closeIdx + 1);
+        if (vars.has(candidate)) {
+          pos = closeIdx + 1;
+          return vars.get(candidate)!;
+        }
+      }
+    }
+
+    // Identifier (including dotted names like `Math.sin` or `comp.var`)
+    const idMatch = /^[A-Za-z_][A-Za-z0-9_.]*/.exec(expr.slice(pos));
+    if (idMatch) {
+      const ident = idMatch[0];
+      pos += ident.length;
+      skipWs();
+
+      // Function call
+      if (expr[pos] === "(") {
+        pos++;
+        const args: number[] = [];
+        skipWs();
+        if (expr[pos] !== ")") {
+          args.push(parseExpression());
+          skipWs();
+          while (expr[pos] === ",") {
+            pos++;
+            args.push(parseExpression());
+            skipWs();
+          }
+        }
+        if (expr[pos] !== ")") throw new Error("Missing closing parenthesis in call");
+        pos++;
+        const fnKey = ident.startsWith("Math.") ? ident.slice(5) : ident;
+        const fn = SAFE_MATH_FUNCS[fnKey];
+        if (!fn) throw new Error(`Unsupported function: ${ident}`);
+        return fn(...args);
+      }
+
+      if (ident === "time") return time;
+      if (ident === "Math.PI" || ident === "pi") return Math.PI;
+      if (ident === "Math.E") return Math.E;
+      if (vars.has(ident)) return vars.get(ident)!;
+      throw new Error(`Unknown identifier: ${ident}`);
+    }
+
+    throw new Error(`Unexpected token at position ${pos}`);
+  }
+
+  const result = parseExpression();
+  skipWs();
+  if (pos < len) {
+    throw new Error(`Unexpected trailing characters at position ${pos}`);
+  }
+  return result;
+}
 
 /** Map FMI causality to participant variable causality. */
 function mapFmiCausality(causality: string): "input" | "output" | "parameter" | "local" {

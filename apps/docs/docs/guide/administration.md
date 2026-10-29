@@ -8,21 +8,57 @@ The **ModelScript Enterprise Hub** (`@modelscript/api`, `@modelscript/web`, and 
 
 ---
 
-## 1. Administrative Console & Role-Based Access Control (RBAC)
+## 1. First-Run Install Wizard (`/setup`), Console & Staff RBAC
 
-Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` endpoints is strictly enforced via JWT authentication and role-based middleware (`requireAdmin`):
+### First-Run Install Wizard (`/setup`) & Headless Bootstrap
 
-- **`admin`**: Full platform superuser privileges (user moderation, runtime feature flag mutation, system maintenance windows, compute wallet minting, and audit log verification).
-- **`moderator`**: Read/moderation access to public registry packages, flagged comments, and community discussions.
+When a new ModelScript instance is deployed without an existing administrator account (`needsSetup: true` on `GET /api/v1/instance/banner` and `GET /api/v1/setup/status`), the web UI displays a `[FIRST-BOOT SETUP]` banner and provides a guided 4-step **First-Run Install Wizard** at `/setup`:
+
+1. **Deployment Architecture Profile & Migration Restore**:
+   - **Tier 1: Independent Federated Node** (`invite_only` registration, `open` ActivityPub S2S federation, `3` report auto-quarantine threshold).
+   - **Tier 2: Corporate Intranet / Air-Gapped Appliance** (`domain_allowlist` registration, `disabled` outbound federation, `14` hot backup retention).
+   - **Tier 3: Public Flagship Hub** (`open` registration with anti-Sybil verification, `open` federation, `30` hot backup retention).
+   - **Optional Migration Restore**: Upload a Portable Instance Migration Bundle (`.json`) directly in Step 1 to clone settings, federation policies, feature flags, and quarantines from a prior instance.
+2. **Founding Administrator Account**: Creates the initial `admin` user (`1,000` initial compute credits) and provisions Ed25519 instance keys plus RSA-2048 ActivityPub actor keys.
+3. **Instance Identity, Registration & Federation Policy**: Configures NodeInfo 2.0/2.1 metadata, email domain allowlists, and moderation auto-quarantine thresholds.
+4. **Starter Invites & Baseline Snapshot**: Generates initial invitation codes, records a `first-boot-baseline` SQLite hot backup (`VACUUM INTO` + SHA-256), signs the founding admin in, and **permanently locks** `POST /api/v1/setup/complete` (`403 Forbidden` on any subsequent calls).
+
+For automated GitOps / Helm / Ansible deployments, setting `ADMIN_INIT_USERNAME` and `ADMIN_INIT_PASSWORD` (or `AUTO_SEED_ADMIN=true`) bootstraps the founding administrator headlessly on boot.
+
+### Role-Based Access Control (RBAC)
+
+Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` endpoints is enforced via JWT authentication and tiered staff RBAC (`requireStaffRole`):
+
+- **`admin`**: Full platform superuser privileges across all 9 Admin Console tabs (Moderation, Users & Credits, Analytics, Federation, DMCA & Quarantine, Audit Logs, Database & Backups, Feature Flags, Instance Settings & Invites, and System & License Posture).
+- **`moderator`**: Trust & Safety access to the **Moderation Queue** (`/api/v1/admin/moderation/*`) and **Users & Governance** (`/api/v1/admin/users`, including User Forensic Dossiers). Cannot promote accounts to `admin`/`auditor` or mutate database/system settings.
+- **`auditor`**: Read-only compliance inspector access to **Security & Audit Logs** (`/api/v1/admin/audit-logs`, hash-chain verification), **Analytics & Traffic** (`/api/v1/admin/analytics`), **System Health** (`/api/v1/admin/system`), and **Enterprise Compliance Posture** (`/api/v1/admin/ee/posture`).
 - **`user` / Organization Roles (`owner`, `admin`, `member`, `billing`, `viewer`)**: Scoped access within `/api/v1/organizations/:org` namespaces.
 
-### User & Account Governance (`/api/v1/admin/users`)
+### Instance Admin Console Tabs (`/admin`)
 
-Platform administrators can search, filter, and manage user accounts via the Admin Console or REST API:
+1. **Moderation Queue**: Enriched forensic snapshots, keyboard-driven triage (`j`/`k` navigate, `x` select, `r` resolve, `d` dismiss), bulk resolution, content warnings (`mark_sensitive`), ActivityPub `Delete` tombstone broadcast, outbound `Flag` forwarding, and automated report-threshold quarantine (`autoQuarantineReportThreshold`).
+2. **Users & Governance**: Global status breakdown (`active`, `frozen`, `suspended`, `admins`, `moderators`, `auditors`), role promotion (`user` | `moderator` | `auditor` | `admin`), session token revocation, HPC compute credit grants/deductions (`POST /api/v1/admin/users/:id/credits`), and slide-over **User Forensic Dossiers** (`GET /api/v1/admin/users/:id/forensics`).
+3. **Analytics & Traffic**: First-party privacy-preserving pageview rollups across `web` and `docs` surfaces, bot filtering, geographic heatmaps, and retention pruning.
+4. **Federation Domains & S2S Queue**: Domain policy tiers (`allow`, `silence`, `suspend`), consortium `allowlist` mode, Mastodon/Oliphant CSV & JSON blocklist import/export, live WebFinger + NodeInfo peer connectivity tester, S2S JSON payload inspector, and ActivityPub `Move` (`alsoKnownAs`) migration broadcast.
+5. **DMCA & Universal Resource Quarantine**: Public statutory takedown intake (`POST /api/v1/admin/dmca/notices`), universal resource quarantine across `post`, `package`, `repository`, and `artifact` targets, 17 U.S.C. § 512(g) counter-notice filing (14-day statutory window), and one-click restoration.
+6. **Security & Audit Logs**: Cryptographic SHA-256 hash-chained audit ledger (`GET /api/v1/admin/audit-logs/verify`) with hash-preserving GDPR IP redaction (`POST /api/v1/admin/audit-logs/redact-expired`, replacing expired raw IPs with `REDACTED:<ipToken>` without breaking chain verification).
+7. **Database, Backups & Migration**: Live schema migration dry-run/upgrade, `PRAGMA` relational & physical integrity checks, online SQLite WAL `VACUUM INTO` snapshots with SHA-256 checksums, `.db` snapshot download, point-in-time online restore (with automatic `pre-restore` safety snapshot), retention pruning, and portable instance migration bundles (`/api/v1/admin/bundle/export` & `/import`).
+8. **Instance Settings & Registration Invites**: Dynamic NodeInfo 2.0/2.1 branding (`instanceName`, `instanceDescription`, `contactEmail`), registration policy (`open`, `invite_only`, `domain_allowlist`, `closed`), multi-use registration invite codes with initial compute credit and role grants, and a live global announcement / maintenance mode banner (`/api/v1/instance/banner`).
+9. **System Health & Enterprise Posture**: Live storage & SQLite WAL telemetry, HPC job queue counters, GeoIP/Mailer readiness, and (in Enterprise Edition) Air-Gap / FERC CEII / ITAR compliance posture.
 
-- **Role Assignment (`PATCH /api/v1/admin/users/:id/role`)**: Promote or demote accounts between `user`, `moderator`, and `admin`. Self-demotion by the active administrator is blocked to prevent accidental lockout.
-- **Account Suspension (`POST /api/v1/admin/users/:id/suspend` & `/unsuspend`)**: Immediately revokes active JWT refresh tokens, blocks package publishing, and halts running cloud HPC jobs while preserving historical audit trails.
-- **Platform Telemetry (`GET /api/v1/admin/stats`)**: Real-time metrics covering total registered users, published package versions, active Co-Simulation sessions, cloud HPC queue depth, and object storage consumption.
+### Headless CLI Database & Backup Management (`msx db`)
+
+```bash
+msx db status                                  # View current schema version and pending migrations
+msx db upgrade [--dry-run]                     # Apply pending migrations with automatic pre-flight snapshot
+msx db verify                                  # Run PRAGMA foreign_key_check & integrity_check
+msx db backup [--label pre-release]            # Create online SQLite WAL snapshot with SHA-256 digest
+msx db backups                                 # List available snapshots, sizes, and SHA-256 digests
+msx db restore --file modelscript-backup-..db  # Verify integrity & perform online point-in-time restore
+msx db prune [--keep 7]                        # Prune older snapshots while retaining latest N
+msx db export-bundle --file bundle.json        # Export portable instance migration bundle + snapshot
+msx db import-bundle --file bundle.json        # Import settings, federation rules, flags & quarantines
+```
 
 ---
 
@@ -169,8 +205,8 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
 
 - Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
-- Includes the full 44-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, and Web IDE.
-- Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
+- Includes the full 44-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Web IDE, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
+- Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/stats`, `/api/v1/admin/ee/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
 
 ```bash
 # Option 1: Run the physically isolated Community Edition API container directly

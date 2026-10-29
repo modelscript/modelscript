@@ -151,4 +151,91 @@ describe("SysML v2 Element Table & Attribute Rewriting Engine", () => {
     const invalidBool = ElementTableEngine.validateTableCell("isComposite", "maybe");
     assert.strictEqual(invalidBool.valid, false);
   });
+
+  it("should bridge declarative DSL TabularConfig into ElementsTablePayload and TextEdits", async () => {
+    const reqCols = ElementTableEngine.getColumnDefinitions("reqif");
+    assert.ok(reqCols.some((c) => c.id === "identifier" && !c.editable));
+    assert.ok(reqCols.some((c) => c.id === "contract" && c.editable));
+    assert.ok(reqCols.some((c) => c.id === "asilLevel" && c.type === "select"));
+
+    const { reqifTabularConfig } = await import("@modelscript/reqif/tabular");
+    const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">
+  <CORE-CONTENT>
+    <REQ-IF-CONTENT>
+      <SPEC-OBJECTS>
+        <SPEC-OBJECT IDENTIFIER="REQ-01" LONG-NAME="Brake Torque" ASIL="ASIL-C" STATUS="Proposed">
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING>
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-TEXT</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+              <THE-VALUE>The brake controller shall satisfy torque &lt;= 420 N*m.</THE-VALUE>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+      </SPEC-OBJECTS>
+    </REQ-IF-CONTENT>
+  </CORE-CONTENT>
+</REQ-IF>`;
+
+    const payload = ElementTableEngine.buildFromTabularConfig(
+      reqifTabularConfig,
+      sampleXml,
+      "requirements",
+      "file:///safety.reqif",
+    );
+    assert.strictEqual(payload.totalCount, 1);
+    assert.strictEqual(payload.rows[0]?.qualifiedName, "REQ-01");
+    assert.strictEqual(payload.rows[0]?.attributes.asilLevel, "ASIL-C");
+
+    const edits = ElementTableEngine.updateFromTabularConfig(
+      reqifTabularConfig,
+      sampleXml,
+      "requirements",
+      "REQ-01",
+      "asilLevel",
+      "ASIL-D",
+    );
+    assert.ok(edits && edits.length === 1);
+    assert.ok(edits[0]?.newText.includes("ASIL-D"));
+
+    // Verify SysML v2 TabularConfig execution & writeback
+    const { sysml2TabularConfig } = await import("../../../languages/sysml2/src/tabular.js");
+    const sysmlSrc = `package Powertrain {\n  part engine : Engine {\n    attribute mass = 150 [kg];\n  }\n}`;
+    const sysmlTable = ElementTableEngine.buildFromTabularConfig(sysml2TabularConfig, sysmlSrc, "parts");
+    assert.strictEqual(sysmlTable.totalCount, 1);
+    assert.strictEqual(sysmlTable.rows[0]?.mass, "150 [kg]");
+    const sysmlEdits = ElementTableEngine.updateFromTabularConfig(
+      sysml2TabularConfig,
+      sysmlSrc,
+      "parts",
+      "engine",
+      "mass",
+      "175 [kg]",
+    );
+    assert.ok(sysmlEdits.length === 1);
+    assert.strictEqual(sysmlEdits[0]?.newText, "175 [kg]");
+
+    // Verify SSP TabularConfig execution & writeback
+    const { sspTabularConfig } = await import("@modelscript/ssp");
+    const ssdSrc = `<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription" name="Drive" version="1.0">
+  <ssd:System name="Root">
+    <ssd:Elements>
+      <ssd:Component name="Motor" source="resources/Motor.fmu" type="application/x-fmu-sharedlibrary"/>
+    </ssd:Elements>
+  </ssd:System>
+</ssd:SystemStructureDescription>`;
+    const sspTable = ElementTableEngine.buildFromTabularConfig(sspTabularConfig, ssdSrc, "components");
+    assert.strictEqual(sspTable.totalCount, 1);
+    assert.strictEqual(sspTable.rows[0]?.source, "resources/Motor.fmu");
+    const sspEdits = ElementTableEngine.updateFromTabularConfig(
+      sspTabularConfig,
+      ssdSrc,
+      "components",
+      "Motor",
+      "source",
+      "resources/MotorV2.fmu",
+    );
+    assert.ok(sspEdits.length === 1);
+    assert.ok(sspEdits[0]?.newText.includes("resources/MotorV2.fmu"));
+  });
 });

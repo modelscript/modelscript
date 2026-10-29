@@ -304,6 +304,31 @@ export function solutionsRouter(database: LibraryDatabase): Router {
       return;
     }
 
+    const isSafeSolutionUrl = (raw: unknown): boolean => {
+      if (raw === undefined || raw === null || raw === "") return true;
+      if (typeof raw !== "string") return false;
+      const trimmed = raw.trim();
+      if (trimmed.startsWith("/")) return !trimmed.startsWith("//");
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === "https:" || parsed.protocol === "http:";
+      } catch {
+        return false;
+      }
+    };
+
+    if (
+      !isSafeSolutionUrl(bundle_url) ||
+      !isSafeSolutionUrl(tauri_windows_url) ||
+      !isSafeSolutionUrl(tauri_linux_url) ||
+      !isSafeSolutionUrl(tauri_darwin_url)
+    ) {
+      res
+        .status(400)
+        .json({ error: "Invalid URL protocol in bundle_url or tauri URLs; must be http(s) or relative path" });
+      return;
+    }
+
     try {
       const normalizedBundleUrl = normalizeSolutionBundleUrl(bundle_url, slug);
       const solutionId = database.createOrUpdateSolution(userId, {

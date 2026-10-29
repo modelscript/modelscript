@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronDownIcon, ChevronUpIcon, GraphIcon, SearchIcon } from "@primer/octicons-react";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  DownloadIcon,
+  GraphIcon,
+  SearchIcon,
+  XCircleFillIcon,
+} from "@primer/octicons-react";
 import { Button, Spinner, Text, TextInput } from "@primer/react";
 import Papa from "papaparse";
 import React, { useEffect, useMemo, useState } from "react";
@@ -48,15 +55,15 @@ const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
   min-height: 44px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
-  gap: 12px;
+  padding: 6px 12px;
+  gap: 10px;
+  flex-wrap: wrap;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 `;
@@ -114,6 +121,7 @@ const StyledTable = styled.table`
   border-collapse: collapse;
   font-size: 12.5px;
   text-align: left;
+  font-variant-numeric: tabular-nums;
 
   th {
     position: sticky;
@@ -128,6 +136,12 @@ const StyledTable = styled.table`
     white-space: nowrap;
     z-index: 2;
 
+    &:first-child {
+      left: 0;
+      z-index: 3;
+      border-right: 1px solid var(--color-border-subtle, #21262d);
+    }
+
     &:hover {
       background: rgba(255, 255, 255, 0.05);
     }
@@ -141,17 +155,31 @@ const StyledTable = styled.table`
     max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
+
+    &:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: var(--color-canvas-default, #0d1117);
+      color: var(--color-text-primary, #e6edf3);
+      font-weight: 500;
+      border-right: 1px solid var(--color-border-subtle, #21262d);
+    }
   }
 
   tr:hover td {
     background: rgba(255, 255, 255, 0.02);
     color: var(--color-text-primary, #e6edf3);
+
+    &:first-child {
+      background: var(--color-canvas-subtle, #161b22);
+    }
   }
 `;
 
 const PaginationBar = styled.div`
-  height: 38px;
-  min-height: 38px;
+  height: 36px;
+  min-height: 36px;
   background: var(--color-canvas-subtle, #161b22);
   border-top: 1px solid var(--color-border-default, #30363d);
   display: flex;
@@ -160,6 +188,7 @@ const PaginationBar = styled.div`
   padding: 0 12px;
   font-size: 11.5px;
   color: var(--color-text-muted, #8b949e);
+  gap: 8px;
 `;
 
 export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }) => {
@@ -247,12 +276,14 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
     return sliced;
   }, [csvData, maxPreviewRows]);
 
+  const isFiltering = searchQuery.trim().length > 0;
+
   // Search filtering
   const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return rawRows;
-    const q = searchQuery.toLowerCase();
+    if (!isFiltering) return rawRows;
+    const q = searchQuery.trim().toLowerCase();
     return rawRows.filter((row) => row.some((cell) => String(cell).toLowerCase().includes(q)));
-  }, [rawRows, searchQuery]);
+  }, [rawRows, searchQuery, isFiltering]);
 
   // Column sorting
   const sortedRows = useMemo(() => {
@@ -294,7 +325,41 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
     }
   };
 
+  const handleDownloadCsv = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rawTitle = (typeof viewConfig?.title === "string" && viewConfig.title.trim()) || "dataset";
+    const filename = rawTitle.toLowerCase().endsWith(".csv") ? rawTitle : `${rawTitle}.csv`;
+
+    if (typeof viewConfig?.url === "string" && viewConfig.url.trim()) {
+      const a = document.createElement("a");
+      a.href = viewConfig.url;
+      a.download = filename;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.click();
+      return;
+    }
+
+    const csvString =
+      typeof viewConfig?.code === "string"
+        ? viewConfig.code
+        : typeof viewConfig?.data === "string"
+          ? viewConfig.data
+          : Papa.unparse(csvData);
+
+    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const formatBadge = (viewConfig?.format || "CSV").toUpperCase();
+  const hasMultiplePages = totalPages > 1;
+  const showPageSizeSelector = rawRows.length > 25;
+  const showBottomBar = hasMultiplePages || isFiltering || reportedTotal > rawRows.length;
 
   if (loading) {
     return (
@@ -315,16 +380,24 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
   return (
     <TableWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
-        <Box display="flex" alignItems="center" gap={2} flex={1} maxWidth="420px">
-          {typeof viewConfig?.title === "string" && viewConfig.title && (
-            <Text fontWeight="bold" fontSize="13px" color="var(--color-text-primary)" style={{ whiteSpace: "nowrap" }}>
-              {viewConfig.title}
-            </Text>
-          )}
+        <Box display="flex" alignItems="center" gap={2} flex={1} style={{ minWidth: "180px", maxWidth: "340px" }}>
           <TextInput
             leadingVisual={SearchIcon}
+            trailingAction={
+              isFiltering ? (
+                <TextInput.Action
+                  onClick={() => {
+                    setSearchQuery("");
+                    setPage(1);
+                  }}
+                  icon={XCircleFillIcon}
+                  aria-label="Clear filter"
+                  sx={{ color: "fg.subtle" }}
+                />
+              ) : undefined
+            }
             size="small"
-            placeholder="Search dataset rows..."
+            placeholder={`Filter ${reportedTotal} rows, ${headers.length} cols...`}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -335,32 +408,36 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
           />
         </Box>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0, marginLeft: "auto" }}>
           <span
             style={{
-              fontSize: "10.5px",
+              fontSize: "11px",
               fontFamily: "var(--font-mono, monospace)",
-              padding: "2px 6px",
-              borderRadius: "4px",
-              background: "rgba(255, 255, 255, 0.06)",
+              padding: "2px 8px",
+              borderRadius: "5px",
+              background: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.1)",
-              color: "var(--color-text-muted)",
+              color: "var(--color-text-muted, #8b949e)",
               fontWeight: 600,
+              whiteSpace: "nowrap",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
             }}
           >
-            {formatBadge}
+            <strong style={{ color: "var(--color-text-primary, #e6edf3)" }}>{formatBadge}</strong>
+            <span>&middot;</span>
+            <span>
+              {isFiltering ? `${totalRows} / ${reportedTotal}` : reportedTotal} rows &times; {headers.length} cols
+            </span>
           </span>
-
-          <Text fontSize="12px" color="var(--color-text-muted)">
-            {reportedTotal} rows &bull; {headers.length} cols
-          </Text>
 
           {columnsMeta.length > 0 && (
             <Button
               size="small"
               variant={showStats ? "primary" : "default"}
               onClick={() => setShowStats((prev) => !prev)}
-              title="Toggle Column Statistics"
+              title="Toggle column summary statistics (min, max, average)"
             >
               <GraphIcon size={13} />
               <Text fontSize="11px" ml={1}>
@@ -369,25 +446,41 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
             </Button>
           )}
 
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-            style={{
-              padding: "4px 8px",
-              borderRadius: "6px",
-              border: "1px solid var(--color-border-default)",
-              background: "var(--color-canvas-default)",
-              color: "var(--color-text-primary)",
-              fontSize: "12px",
-            }}
-          >
-            <option value={25}>25 / page</option>
-            <option value={50}>50 / page</option>
-            <option value={100}>100 / page</option>
-          </select>
+          {showPageSizeSelector && (
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              aria-label="Rows per page"
+              style={{
+                padding: "3px 8px",
+                borderRadius: "6px",
+                border: "1px solid var(--color-border-default)",
+                background: "var(--color-canvas-default)",
+                color: "var(--color-text-primary)",
+                fontSize: "11.5px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <option value={25}>25 / page</option>
+              <option value={50}>50 / page</option>
+              <option value={100}>100 / page</option>
+            </select>
+          )}
+
+          {csvData.length > 0 && (
+            <Button
+              size="small"
+              onClick={handleDownloadCsv}
+              title="Download CSV file"
+              aria-label="Download CSV file"
+              sx={{ px: 2 }}
+            >
+              <DownloadIcon size={13} />
+            </Button>
+          )}
         </Box>
       </Toolbar>
 
@@ -421,7 +514,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
           <thead>
             <tr>
               {headers.map((h, i) => (
-                <th key={i} onClick={() => handleHeaderClick(i)}>
+                <th key={i} onClick={() => handleHeaderClick(i)} title={`Sort by ${h}`}>
                   <Box display="flex" alignItems="center" gap={1}>
                     <span>{h}</span>
                     {sortCol === i ? sortAsc ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} /> : null}
@@ -446,7 +539,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
                   colSpan={headers.length || 1}
                   style={{ textAlign: "center", padding: "24px", color: "var(--color-text-muted)" }}
                 >
-                  {csvData.length === 0 ? "No CSV dataset rows available." : "No matching records found."}
+                  {csvData.length === 0 ? "No CSV dataset rows available." : `No rows matching "${searchQuery}".`}
                 </td>
               </tr>
             )}
@@ -454,24 +547,58 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
         </StyledTable>
       </TableContainer>
 
-      <PaginationBar>
-        <span>
-          Showing {totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalRows)}{" "}
-          of {totalRows} filtered entries
-        </span>
-        <Box display="flex" gap={1}>
-          <Button size="small" disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            Previous
-          </Button>
-          <Button
-            size="small"
-            disabled={currentPage >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
-            Next
-          </Button>
-        </Box>
-      </PaginationBar>
+      {showBottomBar && (
+        <PaginationBar>
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {isFiltering ? (
+              <>
+                Found <strong>{totalRows}</strong> matching {totalRows === 1 ? "row" : "rows"} (filtered from{" "}
+                {rawRows.length} total) &mdash;{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setPage(1);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-accent-fg, #58a6ff)",
+                    cursor: "pointer",
+                    padding: 0,
+                    fontSize: "11.5px",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Reset filter
+                </button>
+              </>
+            ) : (
+              <>
+                Showing rows {totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1}&ndash;
+                {Math.min(currentPage * pageSize, totalRows)} of {reportedTotal}
+              </>
+            )}
+          </span>
+          {hasMultiplePages && (
+            <Box display="flex" alignItems="center" gap={1} style={{ flexShrink: 0 }}>
+              <Button size="small" disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                Previous
+              </Button>
+              <Text fontSize="11px" mx={1}>
+                Page {currentPage} of {totalPages}
+              </Text>
+              <Button
+                size="small"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </Button>
+            </Box>
+          )}
+        </PaginationBar>
+      )}
     </TableWrapper>
   );
 };

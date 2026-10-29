@@ -1355,7 +1355,18 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
-          <PolyglotDomainPanel dialect={dialect} code={editorValue} colorMode={colorMode} onRevealLine={onRevealLine} />
+          <PolyglotDomainPanel
+            dialect={dialect}
+            code={editorValue}
+            colorMode={colorMode}
+            onRevealLine={onRevealLine}
+            onCodeChange={(nextCode) => {
+              const targetEditor = editorRef.current ?? editor;
+              if (targetEditor && targetEditor.getValue() !== nextCode) {
+                targetEditor.setValue(nextCode);
+              }
+            }}
+          />
         </div>
       </div>
     </div>

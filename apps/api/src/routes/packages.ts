@@ -18,7 +18,7 @@ import {
 } from "@modelscript/exchange";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue, JobStatus } from "../jobs.js";
-import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { matchesPackagePattern, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import type { LibraryStorage } from "../storage.js";
 import { inspectClassSource } from "../util/class-source-inspector.js";
 import { getLanguageIconSvg } from "../util/language-icons.js";
@@ -28,6 +28,26 @@ import { extractPackageMoFromZip } from "../util/zip.js";
 
 function isValidPackageName(name: string): boolean {
   return /^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name);
+}
+
+function checkPackageTokenAccess(req: Request, res: Response, packageName: string, allowedScopes: string[]): boolean {
+  if (req.tokenScopes) {
+    const allowed =
+      req.tokenScopes.includes("*") ||
+      req.tokenScopes.includes("admin") ||
+      allowedScopes.some((s) => req.tokenScopes!.includes(s));
+    if (!allowed) {
+      res.status(403).json({ error: "Insufficient permissions: token lacks required package scope" });
+      return false;
+    }
+  }
+  if (req.tokenPackagePattern && !matchesPackagePattern(packageName, req.tokenPackagePattern)) {
+    res.status(403).json({
+      error: `Insufficient permissions: token package pattern '${req.tokenPackagePattern}' does not permit access to '${packageName}'`,
+    });
+    return false;
+  }
+  return true;
 }
 
 function safeUpstreamUrl(pathname: string): URL {
@@ -626,7 +646,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      if (!database.canUserManagePackage(name, req.user!.id)) {
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage"])) {
+        return;
+      }
+
+      if (!database.canUserAdministerPackage(name, req.user!.id)) {
         res.status(403).json({ error: "You do not have permission to manage collaborators for this package" });
         return;
       }
@@ -672,7 +696,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      if (!database.canUserManagePackage(name, req.user!.id)) {
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage"])) {
+        return;
+      }
+
+      if (!database.canUserAdministerPackage(name, req.user!.id)) {
         res.status(403).json({ error: "You do not have permission to remove collaborators for this package" });
         return;
       }
@@ -922,6 +950,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       const file = storage.read(name, version);
       if (!file) {
+        if (process.env["AIRGAP_ENFORCED"] === "true") {
+          res.status(404).json({ error: `Library ${name}@${version} not found locally (air-gapped mode enforced)` });
+          return;
+        }
         // FEDERATION: Proxy download from upstream and cache it
         try {
           const upstreamUrl = safeUpstreamUrl(
@@ -1152,8 +1184,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const { name, version } = extractPkgAndVersion(req);
       const variant = req.query["variant"] as string | undefined;
 
-      if (!name || !version) {
-        res.status(400).json({ error: "Package name and version are required" });
+      if (!name || !version || !isValidPackageName(name) || !semver.valid(version)) {
+        res.status(400).json({ error: "Valid package name and version are required" });
         return;
       }
 
@@ -1185,7 +1217,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         const aasxU8 = OpcAasxPackager.buildAasx({ aasJson, files });
         const nodeBuf = Buffer.from(aasxU8);
 
-        if (!variant) {
+        if (!variant && (storage.exists(name, version) || Boolean(database.getPackage(name)))) {
           storage.storeCachedAasx(name, version, nodeBuf);
         }
 
@@ -1342,7 +1374,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      const keys = String(keysParam).split(",");
+      const keys = String(keysParam).split(",").slice(0, 200);
       const result: Record<string, unknown> = {};
 
       try {
@@ -1397,6 +1429,19 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const status = jobQueue.getStatus(jobKey);
 
       if (!status) {
+        const pkg = database.getPackage(name);
+        const ver = pkg ? database.getPackageVersion(pkg.id, version) : null;
+        if (ver || storage.exists(name, version)) {
+          const classes = database.getClasses(name, version);
+          res.json({
+            name,
+            version,
+            status: "completed",
+            classesProcessed: classes.length,
+            logs: [],
+          });
+          return;
+        }
         res.status(404).json({ error: `No job found for "${jobKey}"` });
         return;
       }
@@ -1585,7 +1630,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       if (hasDistinctVisual) {
         res.setHeader("Content-Type", "image/svg+xml");
-        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+        res.setHeader(
+          "Content-Security-Policy",
+          "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+        );
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Cache-Control", "public, max-age=300");
         res.send(svg);
         return;
       }
@@ -1629,7 +1679,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         const langSvg = getLanguageIconSvg(domain);
         if (langSvg) {
           res.setHeader("Content-Type", "image/svg+xml");
-          res.setHeader("Cache-Control", "no-cache, must-revalidate");
+          res.setHeader(
+            "Content-Security-Policy",
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+          );
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Cache-Control", "public, max-age=300");
           res.send(langSvg);
           return;
         }
@@ -1648,7 +1703,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
               /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0])/i.test(baseSvg))
           ) {
             res.setHeader("Content-Type", "image/svg+xml");
-            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+            res.setHeader(
+              "Content-Security-Policy",
+              "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+            );
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("Cache-Control", "public, max-age=300");
             res.send(baseSvg);
             return;
           }
@@ -1668,7 +1728,12 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           const fallbackSvg = storage.readSvg(name, version, fallbackClass, "icon");
           if (fallbackSvg) {
             res.setHeader("Content-Type", "image/svg+xml");
-            res.setHeader("Cache-Control", "no-cache, must-revalidate");
+            res.setHeader(
+              "Content-Security-Policy",
+              "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+            );
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("Cache-Control", "public, max-age=300");
             res.send(fallbackSvg);
             return;
           }
@@ -1781,6 +1846,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       res.setHeader("Content-Type", "image/svg+xml");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
+      res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader("Cache-Control", "no-cache, must-revalidate");
       res.send(svg);
     },
@@ -1825,6 +1892,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'none'; style-src 'unsafe-inline'; img-src data: 'self'; sandbox",
+      );
+      res.setHeader("X-Content-Type-Options", "nosniff");
       res.sendFile(resolved);
     },
   );
@@ -1908,6 +1980,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage", "packages:yank", "packages:publish"])) {
+        return;
+      }
+
       if (!database.canUserManagePackage(name, req.user!.id)) {
         res.status(403).json({ error: "You do not have permission to deprecate this package" });
         return;
@@ -1947,6 +2023,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage", "packages:yank", "packages:publish"])) {
+        return;
+      }
+
       if (!database.canUserManagePackage(name, req.user!.id)) {
         res.status(403).json({ error: "You do not have permission to manage this package" });
         return;
@@ -1983,6 +2063,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       if (!name || !version || !isValidPackageName(name)) {
         res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage", "packages:yank"])) {
         return;
       }
 
@@ -2034,6 +2118,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage", "packages:yank"])) {
+        return;
+      }
+
       if (!database.canUserManagePackage(name, req.user!.id)) {
         res.status(403).json({ error: "You do not have permission to manage this package" });
         return;
@@ -2073,7 +2161,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         return;
       }
 
-      if (!database.canUserManagePackage(name, req.user!.id)) {
+      if (!checkPackageTokenAccess(req, res, name, ["packages:manage"])) {
+        return;
+      }
+
+      if (!database.canUserAdministerPackage(name, req.user!.id)) {
         res.status(403).json({ error: "You do not have permission to transfer this package" });
         return;
       }

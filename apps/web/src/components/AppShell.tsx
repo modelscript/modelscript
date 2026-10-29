@@ -326,7 +326,16 @@ const AppShell: React.FC = () => {
     () => localStorage.getItem("modelscript:dev_header") !== "false",
   );
   const [isDevFlagsModalOpen, setIsDevFlagsModalOpen] = React.useState(false);
-  const { user, isAdmin, isLoading: loading, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
+  const {
+    user,
+    isAdmin,
+    isLoading: loading,
+    logout,
+    unreadCount,
+    adminPendingCount,
+    creditBalance,
+    refreshWallet,
+  } = useAuth();
   const [clusterStatus, setClusterStatus] = React.useState<ClusterStatus | null>(null);
   const [isTopUpModalOpen, setIsTopUpModalOpen] = React.useState(false);
   const [isTopUpLoading, setIsTopUpLoading] = React.useState(false);
@@ -360,8 +369,8 @@ const AppShell: React.FC = () => {
   // Standalone full-bleed layout for /playground (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
   const isStandaloneRoute = location.pathname.startsWith("/playground");
 
-  // Make wide layout for /settings/*
-  const isWideLayout = location.pathname.startsWith("/settings");
+  // Make wide layout for /settings/* and /admin/* (no right panel)
+  const isWideLayout = location.pathname.startsWith("/settings") || location.pathname.startsWith("/admin");
 
   const [isNotebookInspector, setIsNotebookInspector] = React.useState(false);
 
@@ -393,7 +402,8 @@ const AppShell: React.FC = () => {
   const showsRightPanel = !isStandaloneRoute && !isWideLayout && !isFullScreenLayout && !isInspectorLayout;
 
   React.useEffect(() => {
-    if (!user || !showsRightPanel) return;
+    const devBarActive = isDev && isDevHeaderVisible;
+    if (!user || (!hasCaeJobs && !devBarActive) || (!showsRightPanel && !devBarActive)) return;
     let mounted = true;
     const fetchCluster = () => {
       if (document.visibilityState !== "visible") return;
@@ -414,7 +424,7 @@ const AppShell: React.FC = () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [user, showsRightPanel]);
+  }, [user, showsRightPanel, hasCaeJobs, isDev, isDevHeaderVisible]);
 
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -680,7 +690,22 @@ const AppShell: React.FC = () => {
                   <hr />
                   {user && isAdmin && (
                     <Link to="/admin">
-                      <ShieldLockIcon size={20} /> Admin
+                      <ShieldLockIcon size={20} />
+                      <span style={{ flex: 1 }}>Admin</span>
+                      {adminPendingCount > 0 && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            padding: "2px 8px",
+                            borderRadius: "12px",
+                            background: "rgba(210, 153, 34, 0.2)",
+                            color: "#d29922",
+                          }}
+                        >
+                          {adminPendingCount > 99 ? "99+" : adminPendingCount}
+                        </span>
+                      )}
                     </Link>
                   )}
                   {user && (

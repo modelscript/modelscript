@@ -36,7 +36,12 @@ function getWorkbenchTemplate(testWebDir: string): string | null {
 }
 
 function escapeJSON(value: unknown): string {
-  return JSON.stringify(value).replace(/"/g, "&quot;");
+  return JSON.stringify(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function escapeHtml(unsafe: string): string {
@@ -474,8 +479,17 @@ export function ideWorkbenchRouter(): express.Router {
   });
 
   router.use("/api/github", async (req, res) => {
+    if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
+      res.status(405).json({ error: "Method not allowed on GitHub read-only proxy" });
+      return;
+    }
     try {
-      const upstreamUrl = new URL(req.url, "https://api.github.com");
+      const cleanSubpath = "/" + (req.url || "/").replace(/^\/+/, "");
+      const upstreamUrl = new URL(cleanSubpath, "https://api.github.com");
+      if (upstreamUrl.origin !== "https://api.github.com" || cleanSubpath.includes("..")) {
+        res.status(400).json({ error: "Invalid GitHub API path" });
+        return;
+      }
       const headers: Record<string, string> = {
         "User-Agent": "ModelScript-IDE",
         Accept: (req.headers["accept"] as string) || "application/vnd.github.v3+json",
@@ -502,8 +516,8 @@ export function ideWorkbenchRouter(): express.Router {
 
       const buffer = Buffer.from(await response.arrayBuffer());
       res.send(buffer);
-    } catch (err) {
-      res.status(502).json({ error: "GitHub proxy failed", details: String(err) });
+    } catch {
+      res.status(502).json({ error: "GitHub proxy failed" });
     }
   });
 
@@ -516,8 +530,8 @@ export function ideWorkbenchRouter(): express.Router {
     try {
       const raw = readFileSync(regPath, "utf-8");
       return res.type("application/json").send(raw);
-    } catch (err) {
-      return res.status(500).json({ error: String(err) });
+    } catch {
+      return res.status(500).json({ error: "Failed to read user language registry" });
     }
   });
 
@@ -551,6 +565,10 @@ export function ideWorkbenchRouter(): express.Router {
   let registryWatcher: FSWatcher | null = null;
 
   router.get("/api/languages/user/events", (req, res) => {
+    if (registryClients.length >= 100) {
+      res.status(429).json({ error: "Too many active language event listeners" });
+      return;
+    }
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -610,10 +628,13 @@ export function ideWorkbenchRouter(): express.Router {
       }
     }
 
-    const forwardedProto = req.headers["x-forwarded-proto"];
-    const protocol = forwardedProto ? String(forwardedProto).split(",")[0]!.trim() : req.protocol || "http";
-    const forwardedHost = req.headers["x-forwarded-host"];
-    const host = forwardedHost ? String(forwardedHost).split(",")[0]!.trim() : req.get("host") || "localhost:3000";
+    const trustProxy = process.env["TRUST_PROXY"] === "true";
+    const forwardedProto = trustProxy ? req.headers["x-forwarded-proto"] : undefined;
+    const rawProto = forwardedProto ? String(forwardedProto).split(",")[0]!.trim() : req.protocol || "http";
+    const protocol = rawProto === "https" ? "https" : "http";
+    const forwardedHost = trustProxy ? req.headers["x-forwarded-host"] : undefined;
+    const rawHost = forwardedHost ? String(forwardedHost).split(",")[0]!.trim() : req.get("host") || "localhost:3000";
+    const host = /^[a-zA-Z0-9._:-]+$/.test(rawHost) ? rawHost : "localhost:3000";
     const { status, html } = renderWorkbenchHtml(protocol, host, folderConfig, ideRoot);
     res.status(status).type("text/html").send(html);
   });

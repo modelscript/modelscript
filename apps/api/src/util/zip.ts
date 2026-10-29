@@ -5,6 +5,10 @@ import fs from "node:fs";
 import path from "node:path";
 import yauzl from "yauzl";
 
+const MAX_ZIP_ENTRIES = 10_000;
+const MAX_SINGLE_FILE_BYTES = 50 * 1024 * 1024; // 50 MB
+const MAX_TOTAL_UNCOMPRESSED_BYTES = 250 * 1024 * 1024; // 250 MB
+
 /**
  * Extract the content of the root-level package.mo file from a zip buffer.
  *
@@ -71,7 +75,15 @@ export async function extractPackageMoFromZip(buffer: Buffer, preferredName?: st
           }
 
           const chunks: Buffer[] = [];
-          readStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          let totalRead = 0;
+          readStream.on("data", (chunk: Buffer) => {
+            totalRead += chunk.length;
+            if (totalRead > MAX_SINGLE_FILE_BYTES) {
+              readStream.destroy(new Error("package.mo exceeds maximum allowed size (50 MB)"));
+              return;
+            }
+            chunks.push(chunk);
+          });
           readStream.on("end", () => {
             resolve(Buffer.concat(chunks).toString("utf-8"));
           });
@@ -90,20 +102,40 @@ export async function extractPackageMoFromZip(buffer: Buffer, preferredName?: st
 export async function extractZipToDir(buffer: Buffer, targetDir: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const safeTargetDir = path.resolve(targetDir);
+    let entryCount = 0;
+    let totalBytesWritten = 0;
+    let settled = false;
+
+    const fail = (err: Error, zipfile?: yauzl.ZipFile) => {
+      if (settled) return;
+      settled = true;
+      try {
+        zipfile?.close();
+      } catch {
+        // Ignore close error
+      }
+      reject(err);
+    };
 
     yauzl.fromBuffer(buffer, { lazyEntries: true }, (err, zipfile) => {
       if (err || !zipfile) {
-        reject(err ?? new Error("Failed to open zip"));
+        fail(err ?? new Error("Failed to open zip"));
         return;
       }
 
       zipfile.readEntry();
 
       zipfile.on("entry", (entry: yauzl.Entry) => {
+        if (settled) return;
+        entryCount++;
+        if (entryCount > MAX_ZIP_ENTRIES) {
+          fail(new Error(`Zip archive exceeds maximum entry count (${MAX_ZIP_ENTRIES})`), zipfile);
+          return;
+        }
+
         const entryPath = path.resolve(safeTargetDir, entry.fileName);
         if (!entryPath.startsWith(safeTargetDir + path.sep) && entryPath !== safeTargetDir) {
-          zipfile.close();
-          reject(new Error(`Zip Slip path traversal detected: illegal entry "${entry.fileName}"`));
+          fail(new Error(`Zip Slip path traversal detected: illegal entry "${entry.fileName}"`), zipfile);
           return;
         }
 
@@ -113,23 +145,48 @@ export async function extractZipToDir(buffer: Buffer, targetDir: string): Promis
           return;
         }
 
+        if (entry.uncompressedSize > MAX_SINGLE_FILE_BYTES) {
+          fail(new Error(`Zip entry "${entry.fileName}" exceeds maximum single-file size`), zipfile);
+          return;
+        }
+
         fs.mkdirSync(path.dirname(entryPath), { recursive: true });
 
         zipfile.openReadStream(entry, (err, readStream) => {
           if (err || !readStream) {
-            reject(err ?? new Error("Failed to read entry"));
+            fail(err ?? new Error("Failed to read entry"), zipfile);
             return;
           }
 
           const writeStream = fs.createWriteStream(entryPath);
+          readStream.on("data", (chunk: Buffer) => {
+            totalBytesWritten += chunk.length;
+            if (totalBytesWritten > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+              readStream.destroy(new Error("Zip archive exceeds maximum total uncompressed size (250 MB)"));
+            }
+          });
+          readStream.on("error", (streamErr) => {
+            writeStream.destroy();
+            fail(streamErr, zipfile);
+          });
+          writeStream.on("error", (writeErr) => {
+            readStream.destroy();
+            fail(writeErr, zipfile);
+          });
+          writeStream.on("close", () => {
+            if (!settled) zipfile.readEntry();
+          });
           readStream.pipe(writeStream);
-          writeStream.on("close", () => zipfile.readEntry());
-          writeStream.on("error", reject);
         });
       });
 
-      zipfile.on("end", resolve);
-      zipfile.on("error", reject);
+      zipfile.on("end", () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      });
+      zipfile.on("error", (zipErr) => fail(zipErr, zipfile));
     });
   });
 }

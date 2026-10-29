@@ -91,7 +91,10 @@ export class GitLabProvider implements IGitProvider {
     return new Promise((resolve, reject) => {
       const encodedId = encodeURIComponent(projectIdOrPath);
       const encodedFile = encodeURIComponent(filePath);
-      const url = new URL(`${GITLAB_URL}/api/v4/projects/${encodedId}/repository/files/${encodedFile}/raw?ref=${ref}`);
+      const encodedRef = encodeURIComponent(ref);
+      const url = new URL(
+        `${GITLAB_URL}/api/v4/projects/${encodedId}/repository/files/${encodedFile}/raw?ref=${encodedRef}`,
+      );
       const client = url.protocol === "http:" ? http : https;
 
       const headers: Record<string, string> = {};
@@ -105,10 +108,20 @@ export class GitLabProvider implements IGitProvider {
           method: "GET",
           headers,
           family: 4, // Force IPv4
+          timeout: 15_000,
         },
         (res) => {
           let data = "";
-          res.on("data", (chunk) => (data += chunk));
+          let bytesRead = 0;
+          const maxBytes = 25 * 1024 * 1024; // 25 MB cap
+          res.on("data", (chunk: Buffer | string) => {
+            bytesRead += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+            if (bytesRead > maxBytes) {
+              req.destroy(new GitlabError(413, "GitLab raw file exceeds maximum allowed size (25 MB)"));
+              return;
+            }
+            data += chunk;
+          });
           res.on("end", () => {
             if (!res.statusCode || res.statusCode >= 400) {
               reject(new GitlabError(res.statusCode || 500, `Failed to fetch raw file: ${res.statusCode}`));
@@ -119,6 +132,7 @@ export class GitLabProvider implements IGitProvider {
         },
       );
 
+      req.on("timeout", () => req.destroy(new GitlabError(504, "GitLab API request timed out")));
       req.on("error", reject);
       req.end();
     });
@@ -137,7 +151,8 @@ export class GitLabProvider implements IGitProvider {
 
   async getPipelineJobs(projectIdOrPath: string, pipelineId: string): Promise<GitJobItem[]> {
     const encodedId = encodeURIComponent(projectIdOrPath);
-    return gitlabRequest<GitJobItem[]>(`/projects/${encodedId}/pipelines/${pipelineId}/jobs`);
+    const encodedPipelineId = encodeURIComponent(String(pipelineId));
+    return gitlabRequest<GitJobItem[]>(`/projects/${encodedId}/pipelines/${encodedPipelineId}/jobs`);
   }
 
   async getIssues(projectIdOrPath: string): Promise<GitIssueItem[]> {

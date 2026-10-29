@@ -528,6 +528,14 @@ export function lintSsd(xml: string): SspDiagnostic[] {
             "error",
             `Connector type mismatch in connection '${startLabel}' (${startConn.type}) -> '${endLabel}' (${endConn.type}).`,
           );
+        } else if (startConn.unit && endConn.unit && startConn.unit !== endConn.unit) {
+          emit(
+            endConnAttr.valueStart,
+            endConnAttr.valueEnd,
+            "SSP_CONNECTOR_UNIT_MISMATCH",
+            "warning",
+            `Connector unit mismatch in connection '${startLabel}' [${startConn.unit}] -> '${endLabel}' [${endConn.unit}].`,
+          );
         }
 
         // Component-to-component causality validation

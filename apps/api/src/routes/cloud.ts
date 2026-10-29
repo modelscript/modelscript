@@ -110,7 +110,7 @@ export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, databa
   }
 
   const isAuthorizedForCloudJob = (req: Request, job: CloudJobRecord): boolean => {
-    if (process.env["NODE_ENV"] !== "production") return true;
+    if (process.env["NODE_ENV"] === "test") return true;
     const reqAny = req as Request & {
       user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
       userId?: number | undefined;
@@ -632,7 +632,12 @@ getErrorString();
   // List active and historical jobs
   router.get("/cloud/jobs", (req: Request, res: Response): void => {
     const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
-    const authUserId = reqAny.user?.id ?? reqAny.userId;
+    const authUserId =
+      reqAny.user?.id ?? reqAny.userId ?? (database ? resolveRequestUserId(req, database) : null) ?? undefined;
+    if (process.env["NODE_ENV"] === "production" && !authUserId) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
 
     const list: {
       jobId: string;
@@ -843,7 +848,12 @@ getErrorString();
       return;
     }
 
-    const userId = existing.userId ?? (database ? resolveRequestUserId(req, database) : null);
+    const reqUserId = database ? resolveRequestUserId(req, database) : null;
+    const userId = existing.userId ?? reqUserId;
+    if (process.env["NODE_ENV"] === "production" && !userId) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
     let estimatedCost = 0;
     if (database && userId) {
       const quota = checkComputeQuota(userId, existing.profile, database);

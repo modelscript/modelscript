@@ -25,7 +25,10 @@ interface WorkerGlobalWithOrigin {
 let engine: WorkerMLCEngine | null = null;
 let loading = false;
 
-const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
+const MODEL_CANDIDATES: readonly { modelId: string; wasmFile: string }[] = [
+  { modelId: "Qwen3-1.7B-q4f16_1-MLC", wasmFile: "Qwen3-1.7B-q4f16_1_cs1k-webgpu.wasm" },
+  { modelId: "Qwen3-0.6B-q4f16_1-MLC", wasmFile: "Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm" },
+];
 
 // Build the local model URL base from the worker's location.
 // The worker is loaded via blob: URL, so self.location won't help.
@@ -49,20 +52,18 @@ function getModelBaseUrl(): string {
 }
 
 // Build custom appConfig pointing to local model files
-function getAppConfig() {
+function getAppConfig(modelId: string, wasmFile: string) {
   const modelBaseUrl = getModelBaseUrl();
-
-  // Find the model in the prebuilt config to get the model_lib info
-  const prebuiltModel = prebuiltAppConfig.model_list.find((m) => m.model_id === MODEL_ID);
+  const prebuiltModel = prebuiltAppConfig.model_list.find((m) => m.model_id === modelId);
 
   return {
     model_list: [
       {
-        model: `${modelBaseUrl}/${MODEL_ID}`,
-        model_id: MODEL_ID,
+        model: `${modelBaseUrl}/${modelId}`,
+        model_id: modelId,
         // Always use the locally-hosted WASM — external GitHub URLs are
         // blocked by VS Code's COEP (require-corp).
-        model_lib: `${modelBaseUrl}/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm`,
+        model_lib: `${modelBaseUrl}/${wasmFile}`,
         overrides: prebuiltModel?.overrides,
       },
     ],
@@ -85,14 +86,22 @@ async function ensureEngine(): Promise<void> {
     const adapter = await nav.gpu.requestAdapter();
     if (!adapter) throw new Error("No WebGPU adapter found");
 
-    engine = (await CreateMLCEngine(MODEL_ID, {
-      appConfig: getAppConfig(),
-      initProgressCallback: (report: { text: string; progress: number }) => {
-        self.postMessage({ type: "progress", text: report.text, progress: report.progress });
-      },
-    })) as unknown as WorkerMLCEngine;
-
-    self.postMessage({ type: "ready" });
+    let lastError: unknown = null;
+    for (const candidate of MODEL_CANDIDATES) {
+      try {
+        engine = (await CreateMLCEngine(candidate.modelId, {
+          appConfig: getAppConfig(candidate.modelId, candidate.wasmFile),
+          initProgressCallback: (report: { text: string; progress: number }) => {
+            self.postMessage({ type: "progress", text: report.text, progress: report.progress });
+          },
+        })) as unknown as WorkerMLCEngine;
+        self.postMessage({ type: "ready", modelId: candidate.modelId });
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Failed to initialize WebLLM engine");
   } catch (e) {
     self.postMessage({ type: "error", error: e instanceof Error ? e.message : String(e) });
     throw e;

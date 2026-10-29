@@ -17,6 +17,7 @@ function requireGitWriteAuth(req: Request, res: Response, next: NextFunction): v
 export function gitRouter(): Router {
   const router = Router();
   router.use(defaultApiLimiter);
+  router.use(requireGitWriteAuth);
 
   /**
    * Get project metadata

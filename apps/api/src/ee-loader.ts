@@ -193,10 +193,12 @@ export function createOptionalEnterpriseHeadersMiddleware(): RequestHandler {
 
 const CE_UNSUPPORTED_PREFIXES = [
   "/api/v1/ee",
-  "/api/v1/admin",
+  "/api/v1/admin/stats",
+  "/api/v1/admin/ee",
   "/api/v1/compliance/airgap",
   "/api/v1/compliance/readiness",
   "/api/v1/organizations",
+  "/api/v1/auth/oidc",
   "/api/v1/cae",
   "/api/v1/cloud",
   "/api/v1/billing",
@@ -212,9 +214,12 @@ const CE_UNSUPPORTED_PREFIXES = [
   "/api/v1/git",
   "/api/v1/gitlab",
   "/api/v1/libraries/sparql",
+  "/api/v1/libraries/:name/:version/sparql",
+  "/api/v1/libraries/:scope/:name/:version/sparql",
   "/api/v1/repos/:id/reviews",
   "/api/v1/libraries/:name/:version/export/kpar",
   "/api/v1/libraries/:scope/:name/:version/export/kpar",
+  "/api/v1/libraries/:name/:version/export/kpar",
   "/api/v1/libraries/:name/:version/export/aasx",
   "/api/v1/libraries/:scope/:name/:version/export/aasx",
   "/projects",
@@ -222,7 +227,8 @@ const CE_UNSUPPORTED_PREFIXES = [
 
 /**
  * Mounts Enterprise Edition (`ee/`) routes onto `ctx.app` when active, or mounts
- * Community Edition (`ce`) 501 stub responses when `MSX_EDITION=ce` or `ee/` is absent.
+ * Community Edition (`ce`) 501 stub responses when `MSX_EDITION=ce` or `ee/` is absent,
+ * while keeping core Instance Admin routes (`/api/v1/admin/*`) available to CE operators.
  */
 export function mountEditionRoutes(ctx: EnterpriseHostContext, customPlugin?: EnterprisePlugin): void {
   if (customPlugin) {
@@ -246,4 +252,9 @@ export function mountEditionRoutes(ctx: EnterpriseHostContext, customPlugin?: En
       pricingUrl: "https://modelscript.org/pricing",
     });
   });
+
+  // Core Instance Admin routes are available in Community Edition for independent federated operators
+  if (ctx.adminDevops?.adminRouter) {
+    ctx.app.use("/api/v1", ctx.adminDevops.adminRouter);
+  }
 }

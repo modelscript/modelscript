@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookIcon } from "@primer/octicons-react";
-import React from "react";
+import { BookIcon, GearIcon, PlusIcon, RepoIcon, SlidersIcon, SparklesFillIcon } from "@primer/octicons-react";
+import React, { useEffect, useRef, useState } from "react";
 import type { TutorialDifficulty } from "../../util/notebook";
-import Box from "../Box";
-import { CellActionBtn, NotebookTitleInput } from "./styles";
+import {
+  NotebookSubtitleInput,
+  NotebookTitleInput,
+  NotionGhostButton,
+  NotionPropertyLabel,
+  NotionPropertyRow,
+  NotionPropertyTable,
+  NotionPropertyValueInput,
+} from "./styles";
 
 export interface ComposeTutorialMetaEditorProps {
   notebookTitle: string;
@@ -21,9 +28,11 @@ export interface ComposeTutorialMetaEditorProps {
   setNotebookCompanionRepo: (val: string) => void;
   showTutorialMetaEditor: boolean;
   setShowTutorialMetaEditor: (val: boolean) => void;
-  handleLoadBaeldungTemplate: () => void;
+  handleLoadStarterTemplate: () => void;
   handleToggleNotebookMode: () => void;
   onTitleChange: (nextTitle: string) => void;
+  onFocusFirstBlock?: (() => void) | undefined;
+  isEmptyDocument?: boolean | undefined;
 }
 
 export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps> = ({
@@ -41,183 +50,205 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
   setNotebookCompanionRepo,
   showTutorialMetaEditor,
   setShowTutorialMetaEditor,
-  handleLoadBaeldungTemplate,
-  handleToggleNotebookMode,
+  handleLoadStarterTemplate,
   onTitleChange,
+  onFocusFirstBlock,
+  isEmptyDocument,
 }) => {
+  const [showSubtitle, setShowSubtitle] = useState(() => Boolean(notebookSummary.trim()));
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const subtitleRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (notebookSummary.trim() && !showSubtitle) {
+      setShowSubtitle(true);
+    }
+  }, [notebookSummary, showSubtitle]);
+
+  useEffect(() => {
+    if (titleRef.current) {
+      titleRef.current.style.height = "auto";
+      titleRef.current.style.height = `${titleRef.current.scrollHeight}px`;
+    }
+  }, [notebookTitle]);
+
+  useEffect(() => {
+    if (subtitleRef.current) {
+      subtitleRef.current.style.height = "auto";
+      subtitleRef.current.style.height = `${subtitleRef.current.scrollHeight}px`;
+    }
+  }, [notebookSummary, showSubtitle]);
+
+  const activePropertyCount = [notebookSeries.trim(), notebookDialect.trim(), notebookCompanionRepo.trim()].filter(
+    Boolean,
+  ).length;
+
   return (
-    <>
-      <Box
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        flexWrap="wrap"
-        gap={1}
-        px={2}
-        py={1}
-        borderRadius="8px"
+    <div style={{ marginBottom: "20px" }}>
+      {/* Subtle Notion-style page controls above title */}
+      <div
         style={{
-          background: "linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(6, 182, 212, 0.08))",
-          border: "1px solid rgba(139, 92, 246, 0.25)",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          marginBottom: "8px",
+          flexWrap: "wrap",
         }}
       >
-        <span
-          style={{
-            fontSize: "12px",
-            fontWeight: 700,
-            fontFamily: "var(--font-mono, monospace)",
-            color: "var(--color-accent-cyan)",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "6px",
-          }}
-        >
-          <BookIcon size={13} />
-          <span>Baeldung-Style Tutorial & Engineering Notebook</span>
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-          <CellActionBtn
+        {!showSubtitle && (
+          <NotionGhostButton
             type="button"
-            onClick={handleLoadBaeldungTemplate}
-            title="Populate a structured 5-section Baeldung tutorial scaffold"
-            style={{
-              color: "var(--color-accent-cyan)",
-              background: "rgba(6, 182, 212, 0.12)",
-              borderColor: "rgba(6, 182, 212, 0.3)",
-              fontWeight: 600,
+            onClick={() => {
+              setShowSubtitle(true);
+              requestAnimationFrame(() => subtitleRef.current?.focus());
             }}
           >
-            ⚡ Load Baeldung Template
-          </CellActionBtn>
-          <CellActionBtn
+            <PlusIcon size={12} />
+            <span>Add subtitle</span>
+          </NotionGhostButton>
+        )}
+        <NotionGhostButton
+          type="button"
+          $active={showTutorialMetaEditor}
+          onClick={() => setShowTutorialMetaEditor(!showTutorialMetaEditor)}
+        >
+          <SlidersIcon size={12} />
+          <span>Properties{activePropertyCount > 0 ? ` (${activePropertyCount})` : ""}</span>
+        </NotionGhostButton>
+        {isEmptyDocument && (
+          <NotionGhostButton
             type="button"
-            onClick={() => setShowTutorialMetaEditor(!showTutorialMetaEditor)}
-            title="Toggle tutorial metadata fields (Series, Difficulty, Dialect, Summary)"
+            onClick={handleLoadStarterTemplate}
+            title="Populate a structured multi-section article template"
           >
-            ⚙️ Metadata {showTutorialMetaEditor ? "▲" : "▼"}
-          </CellActionBtn>
-          <CellActionBtn type="button" onClick={handleToggleNotebookMode} title="Switch to raw Markdown view">
-            Raw Markdown (`::artifact`)
-          </CellActionBtn>
-        </div>
-      </Box>
+            <SparklesFillIcon size={12} />
+            <span>Use starter template</span>
+          </NotionGhostButton>
+        )}
+      </div>
 
+      {/* Notion-style Large Borderless Title */}
       <NotebookTitleInput
-        type="text"
-        placeholder="Tutorial / Article Title (e.g., Guide to Damped Oscillators in ModelScript)..."
+        ref={titleRef}
+        rows={1}
+        placeholder="Untitled"
         value={notebookTitle}
         onChange={(e) => {
-          const nextTitle = e.target.value;
+          const nextTitle = e.target.value.replace(/\n/g, " ");
           setNotebookTitle(nextTitle);
           onTitleChange(nextTitle);
         }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === "ArrowDown") {
+            e.preventDefault();
+            if (showSubtitle && subtitleRef.current) {
+              subtitleRef.current.focus();
+            } else {
+              onFocusFirstBlock?.();
+            }
+          }
+        }}
       />
 
-      {showTutorialMetaEditor && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            padding: "10px 12px",
-            borderRadius: "10px",
-            background: "rgba(255, 255, 255, 0.025)",
-            border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+      {/* Optional Subtitle */}
+      {showSubtitle && (
+        <NotebookSubtitleInput
+          ref={subtitleRef}
+          rows={1}
+          placeholder="Add a subtitle or brief summary..."
+          value={notebookSummary}
+          onChange={(e) => setNotebookSummary(e.target.value.replace(/\n/g, " "))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === "ArrowDown") {
+              e.preventDefault();
+              onFocusFirstBlock?.();
+            } else if (e.key === "Backspace" && !notebookSummary) {
+              e.preventDefault();
+              setShowSubtitle(false);
+              titleRef.current?.focus();
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              titleRef.current?.focus();
+            }
           }}
-        >
-          <input
-            type="text"
-            placeholder="Tutorial Subtitle / TL;DR Summary (shown in tutorial hero header)..."
-            value={notebookSummary}
-            onChange={(e) => setNotebookSummary(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "7px 10px",
-              fontSize: "13px",
-              borderRadius: "8px",
-              border: "1px solid var(--color-border-default)",
-              background: "rgba(0, 0, 0, 0.25)",
-              color: "var(--color-fg-default)",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-              gap: "8px",
-            }}
-          >
-            <select
-              value={notebookDifficulty || "Intermediate"}
-              onChange={(e) => setNotebookDifficulty(e.target.value as TutorialDifficulty)}
-              style={{
-                padding: "6px 10px",
-                fontSize: "12px",
-                fontFamily: "var(--font-mono, monospace)",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                background: "var(--color-bg-primary, #0b1120)",
-                color: "var(--color-fg-default)",
-                outline: "none",
-              }}
-            >
-              <option value="Beginner">● Beginner</option>
-              <option value="Intermediate">● Intermediate</option>
-              <option value="Advanced">● Advanced</option>
-            </select>
-            <input
+        />
+      )}
+
+      {/* Notion-style Collapsible Properties Table */}
+      {showTutorialMetaEditor && (
+        <NotionPropertyTable>
+          <NotionPropertyRow>
+            <NotionPropertyLabel>
+              <SlidersIcon size={13} />
+              <span>Difficulty</span>
+            </NotionPropertyLabel>
+            <div style={{ display: "flex", gap: "4px", paddingLeft: "4px" }}>
+              {(["Beginner", "Intermediate", "Advanced"] as const).map((level) => {
+                const isSelected = (notebookDifficulty || "Intermediate") === level;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setNotebookDifficulty(level)}
+                    style={{
+                      padding: "3px 10px",
+                      fontSize: "12px",
+                      fontWeight: isSelected ? 600 : 500,
+                      borderRadius: "6px",
+                      border: isSelected ? "1px solid var(--ms-border-strong)" : "1px solid transparent",
+                      background: isSelected ? "var(--ms-surface-selected)" : "transparent",
+                      color: isSelected ? "var(--ms-text-1)" : "var(--ms-text-3)",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {level}
+                  </button>
+                );
+              })}
+            </div>
+          </NotionPropertyRow>
+
+          <NotionPropertyRow>
+            <NotionPropertyLabel>
+              <BookIcon size={13} />
+              <span>Series</span>
+            </NotionPropertyLabel>
+            <NotionPropertyValueInput
               type="text"
-              placeholder="Series (e.g., ModelScript Core)"
+              placeholder="Empty"
               value={notebookSeries}
               onChange={(e) => setNotebookSeries(e.target.value)}
-              style={{
-                padding: "6px 10px",
-                fontSize: "12px",
-                fontFamily: "var(--font-mono, monospace)",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                background: "rgba(0, 0, 0, 0.25)",
-                color: "var(--color-fg-default)",
-                outline: "none",
-              }}
             />
-            <input
+          </NotionPropertyRow>
+
+          <NotionPropertyRow>
+            <NotionPropertyLabel>
+              <GearIcon size={13} />
+              <span>Dialect</span>
+            </NotionPropertyLabel>
+            <NotionPropertyValueInput
               type="text"
-              placeholder="Dialect (e.g., Modelica 3.4)"
+              placeholder="Empty (e.g., Modelica 4.1)"
               value={notebookDialect}
               onChange={(e) => setNotebookDialect(e.target.value)}
-              style={{
-                padding: "6px 10px",
-                fontSize: "12px",
-                fontFamily: "var(--font-mono, monospace)",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                background: "rgba(0, 0, 0, 0.25)",
-                color: "var(--color-fg-default)",
-                outline: "none",
-              }}
             />
-            <input
+          </NotionPropertyRow>
+
+          <NotionPropertyRow>
+            <NotionPropertyLabel>
+              <RepoIcon size={13} />
+              <span>Repository</span>
+            </NotionPropertyLabel>
+            <NotionPropertyValueInput
               type="text"
-              placeholder="Companion Repo (e.g., modelscript/tutorials)"
+              placeholder="Empty (e.g., modelscript/tutorials)"
               value={notebookCompanionRepo}
               onChange={(e) => setNotebookCompanionRepo(e.target.value)}
-              style={{
-                padding: "6px 10px",
-                fontSize: "12px",
-                fontFamily: "var(--font-mono, monospace)",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                background: "rgba(0, 0, 0, 0.25)",
-                color: "var(--color-fg-default)",
-                outline: "none",
-              }}
             />
-          </div>
-        </div>
+          </NotionPropertyRow>
+        </NotionPropertyTable>
       )}
-    </>
+    </div>
   );
 };

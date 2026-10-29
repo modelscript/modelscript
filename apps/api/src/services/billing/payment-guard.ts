@@ -19,6 +19,9 @@ interface FailureRecord {
  * Anti-carding and payment attempt lockout guard.
  * Blocks automated micro-charge testing by restricting failure velocity per account/IP.
  */
+const MAX_GUARD_RECORDS = 10_000;
+const MAX_SANDBOX_INTENTS = 10_000;
+
 export class PaymentFraudGuard {
   private readonly records = new Map<string, FailureRecord>();
 
@@ -39,6 +42,12 @@ export class PaymentFraudGuard {
     const existing = this.records.get(key);
 
     if (!existing || now > existing.lockedUntil) {
+      if (!this.records.has(key) && this.records.size >= MAX_GUARD_RECORDS) {
+        const oldestKey = this.records.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.records.delete(oldestKey);
+        }
+      }
       const newRecord = { count: 1, lockedUntil: now + PAYMENT_LIMITS.LOCKOUT_MS };
       this.records.set(key, newRecord);
       return { locked: false, count: 1 };
@@ -194,6 +203,12 @@ export async function createStripePaymentIntent(
 
   const paymentIntentId = `pi_${crypto.randomBytes(12).toString("hex")}`;
   const clientSecret = `${paymentIntentId}_secret_${crypto.randomBytes(16).toString("hex")}`;
+  if (issuedSandboxIntents.size >= MAX_SANDBOX_INTENTS) {
+    const oldestKey = issuedSandboxIntents.keys().next().value;
+    if (oldestKey !== undefined) {
+      issuedSandboxIntents.delete(oldestKey);
+    }
+  }
   issuedSandboxIntents.set(paymentIntentId, { userId, amountCents, createdAt: Date.now() });
 
   return {
@@ -238,6 +253,7 @@ export async function verifyStripePaymentIntent(
         id?: string;
         status?: string;
         amount?: number;
+        currency?: string;
         metadata?: { userId?: string };
       };
       if (pi.status !== "succeeded") {
@@ -245,6 +261,9 @@ export async function verifyStripePaymentIntent(
           verified: false,
           reason: `PaymentIntent status is '${pi.status || "unknown"}', expected 'succeeded'.`,
         };
+      }
+      if (pi.currency && pi.currency.toLowerCase() !== "usd") {
+        return { verified: false, reason: `Unsupported PaymentIntent currency '${pi.currency}'.` };
       }
       if (pi.metadata?.userId && String(pi.metadata.userId) !== String(expectedUserId)) {
         return { verified: false, reason: "PaymentIntent userId metadata mismatch." };
@@ -276,6 +295,10 @@ export async function verifyStripePaymentIntent(
       return { verified: false, reason: "Sandbox PaymentIntent user or amount mismatch." };
     }
     return { verified: true };
+  }
+
+  if (process.env["NODE_ENV"] !== "test") {
+    return { verified: false, reason: "Unknown sandbox PaymentIntent ID." };
   }
 
   return { verified: true };
@@ -480,6 +503,9 @@ export function handleStripeWebhookEvent(
       if (!userId && !orgId) {
         return { handled: false, action: "missing_user_id" };
       }
+      if (typeof obj["currency"] === "string" && obj["currency"].toLowerCase() !== "usd") {
+        return { handled: false, action: "unsupported_currency" };
+      }
 
       const paymentIntentId = typeof obj["id"] === "string" && obj["id"].trim() ? obj["id"].trim() : undefined;
       if (database.hasProcessedStripeEvent(eventId, paymentIntentId)) {
@@ -541,6 +567,12 @@ export function handleStripeWebhookEvent(
     case "checkout.session.completed": {
       if (!userId && !orgId) {
         return { handled: false, action: "missing_user_id" };
+      }
+      if (typeof obj["payment_status"] === "string" && obj["payment_status"] !== "paid") {
+        return { handled: false, action: "payment_not_paid" };
+      }
+      if (typeof obj["currency"] === "string" && obj["currency"].toLowerCase() !== "usd") {
+        return { handled: false, action: "unsupported_currency" };
       }
 
       const sessionId = typeof obj["id"] === "string" && obj["id"].trim() ? obj["id"].trim() : undefined;

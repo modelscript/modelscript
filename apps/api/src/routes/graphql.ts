@@ -64,6 +64,34 @@ export function graphqlRouter(database: LibraryDatabase): Router {
       return;
     }
 
+    const rawQuery =
+      typeof req.body?.query === "string"
+        ? req.body.query
+        : typeof req.query["query"] === "string"
+          ? req.query["query"]
+          : "";
+    if (rawQuery.length > 32 * 1024) {
+      res.status(413).json({ errors: [{ message: "GraphQL query exceeds maximum length of 32 KB" }] });
+      return;
+    }
+    if (rawQuery) {
+      let depth = 0;
+      let maxDepth = 0;
+      for (let i = 0; i < rawQuery.length; i++) {
+        const ch = rawQuery[i];
+        if (ch === "{") {
+          depth++;
+          if (depth > maxDepth) maxDepth = depth;
+        } else if (ch === "}") {
+          depth = Math.max(0, depth - 1);
+        }
+      }
+      if (maxDepth > 12) {
+        res.status(400).json({ errors: [{ message: "GraphQL query exceeds maximum nesting depth of 12" }] });
+        return;
+      }
+    }
+
     const schema = new GraphQLSchema({
       query: new GraphQLObjectType({
         name: "Query",

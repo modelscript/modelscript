@@ -84,7 +84,13 @@ export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, s
     }
 
     const reqWithRaw = req as Request & { rawBody?: Buffer | undefined };
-    const rawPayload = reqWithRaw.rawBody ? reqWithRaw.rawBody.toString("utf-8") : JSON.stringify(req.body);
+    if (provider === "github" && process.env["NODE_ENV"] === "production" && !Buffer.isBuffer(reqWithRaw.rawBody)) {
+      res.status(400).json({ error: "Raw request body required for GitHub webhook signature verification" });
+      return;
+    }
+    const rawPayload = Buffer.isBuffer(reqWithRaw.rawBody)
+      ? reqWithRaw.rawBody.toString("utf-8")
+      : JSON.stringify(req.body);
 
     let authenticatedWebhook = null;
     const timingSafeStringMatch = (a: string, b: string): boolean => {
@@ -122,7 +128,7 @@ export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, s
       database.recordWebhookDelivery({
         webhookId: matchingWebhooks[0]!.id,
         eventType: githubEvent || (req.headers["x-gitlab-event"] as string) || "webhook",
-        payload: rawPayload,
+        payload: rawPayload.slice(0, 4096),
         responseStatus: 401,
         errorMessage: "Signature or secret token verification failed",
       });

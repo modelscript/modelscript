@@ -21,6 +21,14 @@
       "types": "./dist/src/parser/reqif-parser.d.ts",
       "default": "./dist/src/parser/reqif-parser.js"
     },
+    "./tabular": {
+      "types": "./dist/src/tabular.d.ts",
+      "default": "./dist/src/tabular.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram.d.ts",
+      "default": "./dist/src/diagram.js"
+    },
     "./lints": {
       "types": "./dist/src/lints/index.d.ts",
       "default": "./dist/src/lints/index.js"

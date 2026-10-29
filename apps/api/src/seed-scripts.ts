@@ -12,6 +12,48 @@ export function seedScriptsAndTemplates(db: LibraryDatabase): void {
   // ── Script Templates ─────────────────────────────────────────────
 
   db.createScriptTemplate(
+    "Transient DAE System Simulation (SUNDIALS)",
+    "modelica-transient-dae",
+    "Flattens multi-domain Modelica/ModelScript models to BLT-partitioned DAE systems and integrates stiff/non-stiff trajectories using SUNDIALS CVODE/IDA or RK45.",
+    "System Dynamics",
+    "pulse",
+    {
+      solver: "SUNDIALS CVODE / IDA",
+      computeProfile: "hpc-standard",
+      steps: [
+        "Flatten Model & Lower to DAE Arena",
+        "Alias Elimination & BLT Partitioning",
+        "Initialize Algebraic & State Variables",
+        "Integrate Trajectory (SUNDIALS)",
+        "Stream Telemetry & Archive CSV/Parquet",
+      ],
+      estimatedDuration: "15s – 3 min",
+      requiredInputs: ["Model artifact (.mo / .msx)", "Stop time (s)", "Relative tolerance"],
+    },
+  );
+
+  db.createScriptTemplate(
+    "Monte Carlo & Sensitivity Sweep",
+    "parametric-monte-carlo",
+    "Executes batched Latin Hypercube or Sobol quasi-random parameter sweeps across GPU/CPU worker arrays to quantify uncertainty envelopes and Sobol indices.",
+    "Design & UQ",
+    "graph",
+    {
+      solver: "Batched WebGPU / MPI Runner",
+      computeProfile: "gpu-accelerated",
+      steps: [
+        "Compile Parameterized DAE Kernel",
+        "Generate Sobol / LHS Sample Matrix",
+        "Dispatch Slurm Array Tasks",
+        "Aggregate Quantile Envelopes (P5/P50/P95)",
+        "Compute Sobol Sensitivity Indices",
+      ],
+      estimatedDuration: "1 – 10 min",
+      requiredInputs: ["Model artifact (.mo / .msx)", "Ensemble sample count", "Parameter distributions"],
+    },
+  );
+
+  db.createScriptTemplate(
     "Steady-State CFD (OpenFOAM)",
     "steady-state-cfd",
     "Runs a steady-state RANS simulation using OpenFOAM's simpleFoam solver. Suitable for external aerodynamics, duct flows, and HVAC analysis. Includes automatic mesh generation with snappyHexMesh and post-processing with ParaView.",

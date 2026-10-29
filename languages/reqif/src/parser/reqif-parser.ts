@@ -391,16 +391,17 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
             if (ad?.longName) attrName = ad.longName;
           }
 
-          attributes.set(defRef || attrName, {
+          const attrKey = defRef || attrName || `ReqIF.Text`;
+          attributes.set(attrKey, {
             definitionRef: defRef,
-            name: attrName,
+            name: attrName || "ReqIF.Text",
             kind,
             value: parsedValue,
             span: attrSpan,
           });
 
           // Check if this attribute represents the requirement text
-          const lowerName = attrName.toLowerCase();
+          const lowerName = (attrName || defRef).toLowerCase();
           if (
             lowerName.includes("text") ||
             lowerName.includes("description") ||
@@ -431,7 +432,44 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
       }
 
       const contract = extractFormalContract(requirementText);
-      const asil = extractAsilLevel(requirementText);
+
+      // Extract ASIL level from explicit attribute, VALUES, or requirement text/title
+      let asil = extractAsilLevel(`${longName || ""} ${requirementText}`);
+      const explicitAsilAttr = getAttr(soEl, "ASIL") || getAttr(soEl, "ASIL-LEVEL");
+      if (explicitAsilAttr) {
+        const parsedAsil = extractAsilLevel(explicitAsilAttr);
+        if (parsedAsil) asil = parsedAsil;
+      }
+      for (const attr of attributes.values()) {
+        const keyLower = `${attr.definitionRef} ${attr.name}`.toLowerCase();
+        if (keyLower.includes("asil") || keyLower.includes("safety")) {
+          const parsedAsil = extractAsilLevel(String(attr.value));
+          if (parsedAsil) asil = parsedAsil;
+        }
+      }
+
+      // Extract Status from explicit attribute or VALUES
+      let status: ReqIfSpecObject["status"] | undefined;
+      const rawStatus =
+        getAttr(soEl, "STATUS") ||
+        getChild(soEl, "STATUS")?.text.trim() ||
+        (() => {
+          for (const attr of attributes.values()) {
+            const keyLower = `${attr.definitionRef} ${attr.name}`.toLowerCase();
+            if (keyLower.includes("status") || keyLower.includes("state")) {
+              return String(attr.value).trim();
+            }
+          }
+          return undefined;
+        })();
+      if (rawStatus) {
+        const normStatus = rawStatus.toLowerCase();
+        if (normStatus.includes("verif")) status = "Verified";
+        else if (normStatus.includes("approv")) status = "Approved";
+        else if (normStatus.includes("review")) status = "Review";
+        else if (normStatus.includes("violat") || normStatus.includes("fail")) status = "Violated";
+        else if (normStatus.includes("draft") || normStatus.includes("new")) status = "Draft";
+      }
 
       specObjects.set(id, {
         identifier: id,
@@ -443,6 +481,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
         span,
         contract,
         asilLevel: asil,
+        status,
       });
     }
   }
@@ -456,18 +495,28 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
 
       const id = getAttr(srEl, "IDENTIFIER") || `REL-${specRelations.length + 1}`;
       const longName = getAttr(srEl, "LONG-NAME");
-      const typeRef = getChildRefText(srEl, "TYPE", "SPEC-RELATION-TYPE-REF");
-      const sourceId = getChildRefText(srEl, "SOURCE", "SPEC-OBJECT-REF") || "";
-      const targetId = getChildRefText(srEl, "TARGET", "SPEC-OBJECT-REF") || "";
+      const typeRef = getChildRefText(srEl, "TYPE", "SPEC-RELATION-TYPE-REF") || getAttr(srEl, "TYPE");
+      const sourceId =
+        getChildRefText(srEl, "SOURCE", "SPEC-OBJECT-REF") ||
+        getChild(srEl, "SOURCE")?.text.trim() ||
+        getAttr(srEl, "SOURCE") ||
+        getAttr(srEl, "SOURCE-REF") ||
+        "";
+      const targetId =
+        getChildRefText(srEl, "TARGET", "SPEC-OBJECT-REF") ||
+        getChild(srEl, "TARGET")?.text.trim() ||
+        getAttr(srEl, "TARGET") ||
+        getAttr(srEl, "TARGET-REF") ||
+        "";
       const span = createSpan(srEl.start, srEl.end, lineStarts);
 
       let relationType: ReqIfRelationKind = "satisfies";
-      const candidateType = (longName || typeRef || "").toLowerCase();
-      if (candidateType.includes("verify") || candidateType.includes("verification")) relationType = "verifies";
-      else if (candidateType.includes("refine")) relationType = "refines";
-      else if (candidateType.includes("allocate")) relationType = "allocates";
+      const candidateType = (getAttr(srEl, "RELATION-TYPE") || longName || typeRef || "").toLowerCase();
+      if (candidateType.includes("verif")) relationType = "verifies";
+      else if (candidateType.includes("refin")) relationType = "refines";
+      else if (candidateType.includes("allocat")) relationType = "allocates";
       else if (candidateType.includes("conflict")) relationType = "conflicts";
-      else if (candidateType.includes("derive")) relationType = "derives";
+      else if (candidateType.includes("deriv")) relationType = "derives";
 
       specRelations.push({
         identifier: id,
@@ -626,8 +675,10 @@ export function serializeReqIf(doc: ReqIfDocument): string {
   // Spec Objects
   parts.push("      <SPEC-OBJECTS>");
   for (const so of doc.specObjects.values()) {
+    const statusAttr = so.status ? ` STATUS="${escapeXml(so.status)}"` : "";
+    const asilAttr = so.asilLevel ? ` ASIL="${escapeXml(so.asilLevel)}"` : "";
     parts.push(
-      `        <SPEC-OBJECT IDENTIFIER="${so.identifier}" LONG-NAME="${escapeXml(so.longName || so.identifier)}">`,
+      `        <SPEC-OBJECT IDENTIFIER="${so.identifier}" LONG-NAME="${escapeXml(so.longName || so.identifier)}"${asilAttr}${statusAttr}>`,
     );
     if (so.typeRef) {
       parts.push("          <TYPE>");
@@ -655,6 +706,12 @@ export function serializeReqIf(doc: ReqIfDocument): string {
         }
         parts.push(`            </${tagName}>`);
       }
+      parts.push("          </VALUES>");
+    } else if (so.text) {
+      parts.push("          <VALUES>");
+      parts.push("            <ATTRIBUTE-VALUE-STRING>");
+      parts.push(`              <THE-VALUE>${escapeXml(so.text)}</THE-VALUE>`);
+      parts.push("            </ATTRIBUTE-VALUE-STRING>");
       parts.push("          </VALUES>");
     }
     parts.push("        </SPEC-OBJECT>");

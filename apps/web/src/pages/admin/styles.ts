@@ -16,7 +16,7 @@ export const AdminContainer = styled.div`
 `;
 
 export const MenuColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
-  flex: 0 0 320px;
+  flex: 0 0 260px;
   border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
@@ -34,7 +34,6 @@ export const DetailColumn = styled.div<{ $hideOnMobile?: boolean | undefined }>`
   min-width: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
 
   @media (max-width: 900px) {
     display: ${(props) => (props.$hideOnMobile ? "none" : "flex")};

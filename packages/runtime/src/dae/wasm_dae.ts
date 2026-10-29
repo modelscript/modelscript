@@ -6,8 +6,6 @@
  * Implements `IDaeBuilder` backed by the zero-GC WebAssembly `DaeBuilder` runtime.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { SourceLocation } from "../runtime.js";
 import type { FmuInstanceMetadata } from "../simulation/wasm_fmu_subsystem.js";
 import type { StringId } from "../workspace/wasm_string_pool.js";
@@ -352,25 +350,43 @@ export function getDefaultWasmExports(): any {
   }
   if (typeof process !== "undefined" && process.versions?.node != null) {
     try {
+      let fsModule: { existsSync: (p: string) => boolean; readFileSync: (p: string) => Uint8Array } | undefined;
+      let pathModule: { join: (...p: string[]) => string } | undefined;
+      const proc = process as { getBuiltinModule?: (m: string) => unknown };
+      if (typeof proc.getBuiltinModule === "function") {
+        fsModule = proc.getBuiltinModule("node:fs") as typeof fsModule;
+        pathModule = proc.getBuiltinModule("node:path") as typeof pathModule;
+      }
+      if (!fsModule || !pathModule) {
+        try {
+          const req = typeof require !== "undefined" ? (require as (id: string) => unknown) : null;
+          if (req) {
+            fsModule = fsModule || (req("node:fs") as typeof fsModule);
+            pathModule = pathModule || (req("node:path") as typeof pathModule);
+          }
+        } catch {}
+      }
+      if (!fsModule || !pathModule) return null;
+
       const dir = typeof import.meta.dirname === "string" ? import.meta.dirname : "";
       const candidates = [
-        dir ? join(dir, "..", "build", "release.wasm") : null,
-        dir ? join(dir, "..", "..", "build", "release.wasm") : null,
-        join(process.cwd(), "packages", "runtime", "build", "release.wasm"),
-        join(process.cwd(), "build", "release.wasm"),
+        dir ? pathModule.join(dir, "..", "build", "release.wasm") : null,
+        dir ? pathModule.join(dir, "..", "..", "build", "release.wasm") : null,
+        pathModule.join(process.cwd(), "packages", "runtime", "build", "release.wasm"),
+        pathModule.join(process.cwd(), "build", "release.wasm"),
       ].filter((p): p is string => Boolean(p));
 
       let wasmPath: string | null = null;
       for (const cand of candidates) {
-        if (existsSync(cand)) {
+        if (fsModule.existsSync(cand)) {
           wasmPath = cand;
           break;
         }
       }
 
       if (wasmPath) {
-        const bytes = readFileSync(wasmPath);
-        const mod = new WebAssembly.Module(bytes);
+        const bytes = fsModule.readFileSync(wasmPath);
+        const mod = new WebAssembly.Module(bytes as BufferSource);
         const inst = new WebAssembly.Instance(mod, {
           env: {
             abort: () => {

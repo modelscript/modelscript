@@ -29,6 +29,8 @@ data:
   TRUSTED_PROXY_IPS: "*"
   ENTERPRISE_ADMIN_GROUPS: "AD-Transmission-Planning-Admins,Engineering-Admins,Admins"
   NODE_OPTIONS: "--max-old-space-size=4096"
+  OLLAMA_BASE_URL: "http://ollama.modelscript-system.svc.cluster.local:11434"
+  OLLAMA_MODEL: "qwen3:8b"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

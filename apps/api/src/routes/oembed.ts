@@ -114,7 +114,14 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
     }
     _buildUrl() {
       var directSrc = this.getAttribute("src");
-      if (directSrc) return directSrc;
+      if (directSrc) {
+        var trimmedSrc = String(directSrc).trim();
+        if (trimmedSrc.startsWith("/") && !trimmedSrc.startsWith("//")) return trimmedSrc;
+        try {
+          var parsedSrc = new URL(trimmedSrc, window.location.href);
+          if (parsedSrc.protocol === "https:" || parsedSrc.protocol === "http:") return parsedSrc.toString();
+        } catch (e) {}
+      }
       var host = (this.getAttribute("host") || SCRIPT_ORIGIN).replace(/\\/$/, "");
       var params = new URLSearchParams();
       var morsel = this.getAttribute("morsel");
@@ -135,7 +142,8 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
       return host + "/embed/playground" + (qs ? "?" + qs : "");
     }
     _render() {
-      var height = this.getAttribute("height") || "480px";
+      var rawHeight = this.getAttribute("height") || "480px";
+      var height = /^[0-9]+(\\.[0-9]+)?(px|%|vh|vw|rem|em)?$/.test(rawHeight.trim()) ? rawHeight.trim() : "480px";
       var url = this._buildUrl();
       this._ready = false;
       this._shadow.innerHTML =
@@ -270,6 +278,10 @@ export function oembedRouter(database: LibraryDatabase): Router {
       ...(effectiveTitle ? { title: effectiveTitle } : {}),
       view: effectiveView,
     });
+    if (serializedPayload.length > 2.5 * 1024 * 1024) {
+      res.status(413).json({ error: "Morsel payload exceeds maximum size of 2.5 MB." });
+      return;
+    }
 
     const id = database.saveMorselSnippet(serializedPayload, effectiveDialect, effectiveTitle, req.user?.id ?? null);
 
@@ -365,6 +377,11 @@ export function oembedRouter(database: LibraryDatabase): Router {
       parsedUrl = new URL(rawUrl);
     } catch {
       res.status(400).json({ error: "Invalid URL provided" });
+      return;
+    }
+
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      res.status(400).json({ error: "Invalid URL protocol; only http and https are supported" });
       return;
     }
 

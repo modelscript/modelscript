@@ -17,9 +17,10 @@ import {
   ThreadSerializer,
   TradeStudyEngine,
 } from "@modelscript/runtime";
-import { Router, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import type { Database, ThreadAuditLogEntry, ThreadProposal } from "../database.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 export interface ThreadMetadata {
@@ -116,6 +117,10 @@ export function threadRouter(
 
   // ── GET /api/v1/threads/stream ────────────────────────────────────────
   router.get("/stream", (req, res) => {
+    if (sseClients.size >= 100) {
+      res.status(429).json({ error: "Too many active thread SSE streams" });
+      return;
+    }
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -198,7 +203,11 @@ export function threadRouter(
   }
 
   // ── POST /api/v1/threads/seed-demo ─────────────────────────────────────
-  router.post("/seed-demo", (_req, res) => {
+  router.post("/seed-demo", optionalAuth, (req: Request, res: Response) => {
+    if (process.env["NODE_ENV"] === "production" && !req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
     seedDemoThreads(hypergraph, metadataMap, conflictRegistry, db, persistSnapshot);
     res.json({
       success: true,

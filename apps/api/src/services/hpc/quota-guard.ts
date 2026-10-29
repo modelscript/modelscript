@@ -30,6 +30,13 @@ export function validateResourceLimits(
   const effectiveProfile = profile || getComputeProfile();
   const maxTime = effectiveProfile.maxWallClockMinutes ?? HARD_LIMITS.DEFAULT_WALL_CLOCK_MINUTES;
 
+  if (
+    resources.timeLimitMinutes !== undefined &&
+    (!Number.isFinite(resources.timeLimitMinutes) || resources.timeLimitMinutes <= 0)
+  ) {
+    return { valid: false, reason: "Invalid requested time limit." };
+  }
+
   if (resources.timeLimitMinutes && resources.timeLimitMinutes > maxTime) {
     return {
       valid: false,
@@ -40,6 +47,16 @@ export function validateResourceLimits(
   const nodes = resources.nodes ?? 1;
   const tasksPerNode = resources.tasksPerNode ?? 1;
   const cpusPerTask = resources.cpusPerTask ?? effectiveProfile.cpus;
+  if (
+    !Number.isFinite(nodes) ||
+    nodes < 1 ||
+    !Number.isFinite(tasksPerNode) ||
+    tasksPerNode < 1 ||
+    !Number.isFinite(cpusPerTask) ||
+    cpusPerTask < 1
+  ) {
+    return { valid: false, reason: "Invalid CPU/node resource specification." };
+  }
   const totalCores = nodes * tasksPerNode * cpusPerTask;
 
   if (totalCores > HARD_LIMITS.MAX_JOB_CPUS) {
@@ -50,6 +67,9 @@ export function validateResourceLimits(
   }
 
   const memoryMb = resources.memoryMb ?? effectiveProfile.memoryMb;
+  if (!Number.isFinite(memoryMb) || memoryMb <= 0) {
+    return { valid: false, reason: "Invalid memory resource specification." };
+  }
   if (memoryMb > HARD_LIMITS.MAX_JOB_MEMORY_MB) {
     return {
       valid: false,
@@ -127,7 +147,7 @@ export function checkComputeQuota(
 
 /**
  * Resolves the authenticated user ID from an Express request,
- * falling back to the primary dev user in development/test environments.
+ * falling back to the primary dev user only in test environments.
  */
 export function resolveRequestUserId(req: express.Request, database: LibraryDatabase): number | null {
   const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
@@ -138,11 +158,11 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
     return reqAny.userId;
   }
 
-  if (process.env["NODE_ENV"] === "production") {
+  if (process.env["NODE_ENV"] !== "test") {
     return null;
   }
 
-  // Fallback to dev user in test/development
+  // Fallback to dev user in test environments
   const devUser = database.getUserByUsername("dev");
   if (devUser) {
     return devUser.id;

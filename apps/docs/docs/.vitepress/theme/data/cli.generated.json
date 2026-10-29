@@ -965,11 +965,17 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: status | upgrade | verify",
+        "description": "Action to perform: status | upgrade | verify | backup | backups | restore | prune | export-bundle | import-bundle",
         "choices": [
           "status",
           "upgrade",
-          "verify"
+          "verify",
+          "backup",
+          "backups",
+          "restore",
+          "prune",
+          "export-bundle",
+          "import-bundle"
         ]
       }
     ],
@@ -987,6 +993,25 @@
         "type": "boolean",
         "description": "Skip automated pre-flight hot snapshot (not recommended for production)",
         "default": false
+      },
+      {
+        "name": "label",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional snapshot label when creating a hot backup (`msx db backup --label pre-release`)"
+      },
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "Backup snapshot or bundle file path (`msx db restore --file ...` / `msx db import-bundle --file ...`)"
+      },
+      {
+        "name": "keep",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of most recent snapshots to keep when pruning (`msx db prune --keep 7`)",
+        "default": 7
       },
       {
         "name": "api-url",

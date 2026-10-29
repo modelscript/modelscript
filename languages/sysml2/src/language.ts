@@ -23,6 +23,7 @@ import { SysML2ErrorCode } from "./errors.js";
 import type { SysmlCstNode } from "./flattener/cst-lowerer.js";
 import { LoopInvariantAnalyzer } from "./loop-invariant-analyzer.js";
 import { emitAxioms } from "./reasoner-bridge.js";
+import { sysml2TabularConfig } from "./tabular.js";
 import {
   checkConnectionTypeCompatibility,
   checkFeatureAssignmentType,
@@ -6963,6 +6964,7 @@ export const sysml2Language = language({
       }),
     ],
   },
+  tabular: sysml2TabularConfig,
 });
 
 export default sysml2Language;

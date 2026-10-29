@@ -34,17 +34,63 @@ export function npmRegistryRouter(database: LibraryDatabase, storage?: LibrarySt
       }
 
       const cleanPath = req.path.replace(/^\/api\/v1\/npm\b/, "") || "/";
+      if (cleanPath.includes("..") || cleanPath.includes("%2e%2e") || cleanPath.includes("%2E%2E")) {
+        return res.status(400).json({ error: "Invalid registry path" });
+      }
 
       // Handle local npm registry search endpoint
       if (req.method === "GET" && cleanPath === "/-/v1/search") {
         const text = typeof req.query["text"] === "string" ? req.query["text"] : "";
-        const size = Number(req.query["size"]) || 20;
-        const from = Number(req.query["from"]) || 0;
+        const size = Math.min(Math.max(1, Number(req.query["size"]) || 20), 250);
+        const from = Math.max(0, Number(req.query["from"]) || 0);
         return res.json(database.searchPackages(text, size, from));
       }
 
       // Extract package name from path (e.g. /Modelica, /%40org%2Fpkg, or /@org/pkg)
       const segments = cleanPath.split("/").filter(Boolean);
+
+      // Handle local tarball downloads: /:pkg/-/:tarball or /@:scope/:pkg/-/:tarball
+      if (req.method === "GET" && storage) {
+        let tarballPkg: string | null = null;
+        let tarballFile: string | null = null;
+        try {
+          if (segments.length === 3 && segments[1] === "-") {
+            tarballPkg = decodeURIComponent(segments[0]!);
+            tarballFile = decodeURIComponent(segments[2]!);
+          } else if (segments.length === 4 && segments[2] === "-" && decodeURIComponent(segments[0]!).startsWith("@")) {
+            tarballPkg = `${decodeURIComponent(segments[0]!)}/${decodeURIComponent(segments[1]!)}`;
+            tarballFile = decodeURIComponent(segments[3]!);
+          }
+        } catch {
+          tarballPkg = null;
+        }
+        if (tarballPkg && tarballFile) {
+          const baseName = tarballPkg.startsWith("@") ? tarballPkg.split("/")[1]! : tarballPkg;
+          const prefix = `${baseName}-`;
+          const suffix = tarballFile.endsWith(".tgz")
+            ? ".tgz"
+            : tarballFile.endsWith(".tar.gz")
+              ? ".tar.gz"
+              : tarballFile.endsWith(".zip")
+                ? ".zip"
+                : "";
+          if (tarballFile.startsWith(prefix) && suffix) {
+            const version = tarballFile.slice(prefix.length, tarballFile.length - suffix.length);
+            if (version && storage.exists(tarballPkg, version)) {
+              const archive = storage.read(tarballPkg, version);
+              if (archive) {
+                res.setHeader("Content-Type", "application/octet-stream");
+                res.setHeader(
+                  "Content-Disposition",
+                  `attachment; filename="${tarballFile.replace(/[^a-zA-Z0-9._-]/g, "_")}"`,
+                );
+                return res.send(archive.buffer);
+              }
+            }
+          }
+        }
+      }
+
       let decodedName: string | null = null;
       try {
         if (segments.length === 1 && segments[0] !== "-") {
@@ -109,14 +155,18 @@ export function npmRegistryRouter(database: LibraryDatabase, storage?: LibrarySt
         return res.status(404).json({ error: "Package not found or still processing" });
       }
 
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        return res.status(405).json({ error: "Write operations are not proxied to upstream registry" });
+      }
+
       const gitlabToken = process.env["GITLAB_TOKEN"] || "";
       if (process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true" || !gitlabToken) {
         return res.status(404).json({ error: "Package not found" });
       }
 
       // GitLab NPM Package Registry Endpoint
-      const gitlabUrl = process.env["GITLAB_URL"] || "https://gitlab.com";
-      const targetUrl = `${gitlabUrl}/api/v4/packages/npm${cleanPath}`;
+      const gitlabUrl = (process.env["GITLAB_URL"] || "https://gitlab.com").replace(/\/+$/, "");
+      const targetUrl = `${gitlabUrl}/api/v4/packages/npm/${encodeURIComponent(decodedName)}`;
 
       const headers = new Headers();
 
@@ -135,14 +185,6 @@ export function npmRegistryRouter(database: LibraryDatabase, storage?: LibrarySt
         method: req.method,
         headers,
       };
-
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        // Forward body if present.
-        // Express has already parsed req.body via express.json()
-        if (req.body && Object.keys(req.body).length > 0) {
-          fetchOptions.body = JSON.stringify(req.body);
-        }
-      }
 
       const response = await fetch(targetUrl, fetchOptions);
 

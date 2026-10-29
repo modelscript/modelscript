@@ -261,14 +261,14 @@ export async function seedPrepackagedLibraries(
           }
         }
 
-        const classes = database.getClasses(pkg.name, pkg.version);
+        const classCount = database.getClassCount(pkg.name, pkg.version);
         const minExpectedClasses = pkg.name === "Modelica" ? 6000 : 40;
         const hasSysmlRoot =
           pkg.name !== "SysML" ||
-          (classes.some((c) => c.class_name === "SysML") &&
-            classes.some((c) => c.class_name === "Parts.Part") &&
+          (database.hasClass(pkg.name, pkg.version, "SysML") &&
+            database.hasClass(pkg.name, pkg.version, "Parts.Part") &&
             Boolean(existingPkg.readme));
-        if (classes.length >= minExpectedClasses && hasSysmlRoot) {
+        if (classCount >= minExpectedClasses && hasSysmlRoot) {
           continue; // Already seeded and fully processed
         }
 

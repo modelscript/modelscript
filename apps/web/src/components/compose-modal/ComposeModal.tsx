@@ -296,19 +296,30 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     setView("compose");
   };
 
-  const computedMaxWidth = editorLayout === "split" || isExpandedWidth ? "1180px" : notebookMode ? "840px" : "600px";
+  const isFullPageNotebook = notebookMode && view === "compose";
+  const computedMaxWidth = isFullPageNotebook
+    ? "100vw"
+    : editorLayout === "split" || isExpandedWidth
+      ? "1180px"
+      : "600px";
 
   const modal = (
     <>
       <Overlay
         onClick={view === "drafts" ? onClose : view === "compose" ? handleCloseClick : undefined}
-        style={{ paddingTop: editorLayout === "split" || isExpandedWidth ? "3vh" : "7vh" }}
+        style={{
+          paddingTop: isFullPageNotebook ? "0" : editorLayout === "split" || isExpandedWidth ? "3vh" : "7vh",
+        }}
       >
         <ModalPanel
           onClick={(e) => e.stopPropagation()}
           style={{
+            width: isFullPageNotebook ? "100vw" : "100%",
             maxWidth: view === "drafts" ? "600px" : computedMaxWidth,
-            maxHeight: editorLayout === "split" || isExpandedWidth ? "92vh" : "86vh",
+            height: isFullPageNotebook ? "100vh" : undefined,
+            maxHeight: isFullPageNotebook ? "100vh" : editorLayout === "split" || isExpandedWidth ? "92vh" : "86vh",
+            borderRadius: isFullPageNotebook ? "0" : "16px",
+            border: isFullPageNotebook ? "none" : undefined,
             margin: "0 auto",
             display: "flex",
           }}
@@ -322,6 +333,49 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 deleteDraft(id);
                 setDraftsList(getDrafts());
               }}
+            />
+          ) : isFullPageNotebook ? (
+            <ComposeBox
+              editPostId={initialState?.editPostId}
+              forkedFromArtifactId={initialState?.forkedFromArtifactId}
+              content={content}
+              setContent={setContent}
+              artifactId={artifactId}
+              setArtifactId={setArtifactId}
+              notebookMode={notebookMode}
+              setNotebookMode={setNotebookMode}
+              notebookTitle={notebookTitle}
+              setNotebookTitle={setNotebookTitle}
+              notebookSummary={notebookSummary}
+              setNotebookSummary={setNotebookSummary}
+              notebookDifficulty={notebookDifficulty}
+              setNotebookDifficulty={setNotebookDifficulty}
+              notebookSeries={notebookSeries}
+              setNotebookSeries={setNotebookSeries}
+              notebookDialect={notebookDialect}
+              setNotebookDialect={setNotebookDialect}
+              notebookCompanionRepo={notebookCompanionRepo}
+              setNotebookCompanionRepo={setNotebookCompanionRepo}
+              notebookCells={notebookCells}
+              setNotebookCells={setNotebookCells}
+              onCloseModal={handleCloseClick}
+              onOpenDrafts={handleDraftsClick}
+              editorLayout={editorLayout}
+              setEditorLayout={setEditorLayout}
+              onPostCreated={(post) => {
+                if (activeDraftId) {
+                  deleteDraft(activeDraftId);
+                  setActiveDraftId(null);
+                }
+                onPostCreated?.(post);
+                onClose();
+              }}
+              quotePost={currentQuotePost}
+              replyToPost={currentReplyToPost}
+              pendingPin={currentPendingPin}
+              minRows={1}
+              autoFocus={true}
+              isModal={true}
             />
           ) : (
             <>
@@ -359,7 +413,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       gap: "5px",
                     }}
                   >
-                    <PencilIcon size={12} /> Editing {notebookMode ? "Tutorial" : "Post"} #{initialState.editPostId}
+                    <PencilIcon size={12} /> Editing Post #{initialState.editPostId}
                   </span>
                 )}
                 <Box flex={1} />
@@ -409,7 +463,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsExpandedWidth(!isExpandedWidth)}
-                  title="Toggle full-width tutorial studio"
+                  title="Toggle expanded width"
                   style={{
                     background: "rgba(255, 255, 255, 0.04)",
                     border: "1px solid var(--color-border-subtle)",
@@ -517,6 +571,10 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       setNotebookCompanionRepo={setNotebookCompanionRepo}
                       notebookCells={notebookCells}
                       setNotebookCells={setNotebookCells}
+                      onCloseModal={handleCloseClick}
+                      onOpenDrafts={handleDraftsClick}
+                      editorLayout={editorLayout}
+                      setEditorLayout={setEditorLayout}
                       onPostCreated={(post) => {
                         if (activeDraftId) {
                           deleteDraft(activeDraftId);

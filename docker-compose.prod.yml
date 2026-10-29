@@ -41,6 +41,14 @@ services:
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
       - TIMESCALE_URL=${TIMESCALE_URL:-postgres://modelscript:modelscript@timescaledb:5432/modelscript_historian}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=2048}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: always
 
   web:

@@ -13,6 +13,7 @@ interface CachedPublicKey {
 
 /** 24-hour cache TTL for verified remote ActivityPub actor public keys */
 const PUBLIC_KEY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_KEY_CACHE_MAX_SIZE = 5_000;
 const publicKeyCache = new Map<string, CachedPublicKey>();
 
 export function clearPublicKeyCache(): void {
@@ -28,6 +29,20 @@ export function setCachedPublicKey(
   publicKeyPem: string,
   actorPayload: Record<string, unknown> = {},
 ): void {
+  if (publicKeyCache.size >= PUBLIC_KEY_CACHE_MAX_SIZE && !publicKeyCache.has(actorUrl)) {
+    const now = Date.now();
+    for (const [k, v] of publicKeyCache) {
+      if (now - v.cachedAt >= PUBLIC_KEY_CACHE_TTL_MS) {
+        publicKeyCache.delete(k);
+      }
+    }
+    if (publicKeyCache.size >= PUBLIC_KEY_CACHE_MAX_SIZE) {
+      const oldestKey = publicKeyCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        publicKeyCache.delete(oldestKey);
+      }
+    }
+  }
   publicKeyCache.set(actorUrl, {
     publicKeyPem,
     actorPayload,
@@ -45,6 +60,7 @@ interface RateLimitRecord {
  * Protects against inbox flood DoS (max 120 requests/minute per remote instance / IP).
  */
 export class ActivityPubInboxRateLimiter {
+  private static readonly MAX_RECORDS = 10_000;
   private readonly records = new Map<string, RateLimitRecord>();
   private readonly maxPerWindow: number;
   private readonly windowMs: number;
@@ -71,6 +87,15 @@ export class ActivityPubInboxRateLimiter {
 
   public record(key: string): void {
     const now = Date.now();
+    if (this.records.size >= ActivityPubInboxRateLimiter.MAX_RECORDS) {
+      for (const [k, v] of this.records) {
+        if (now >= v.resetAt) this.records.delete(k);
+      }
+      if (this.records.size >= ActivityPubInboxRateLimiter.MAX_RECORDS) {
+        const oldestKey = this.records.keys().next().value;
+        if (oldestKey !== undefined) this.records.delete(oldestKey);
+      }
+    }
     const record = this.records.get(key);
 
     if (!record || now >= record.resetAt) {
@@ -232,14 +257,28 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           return;
         }
 
-        // Validate Content-Digest if present in covered components
+        // Validate Content-Digest if present in covered components (required on POST in production)
+        if (
+          req.method === "POST" &&
+          process.env["NODE_ENV"] === "production" &&
+          !coveredComponents.includes("content-digest")
+        ) {
+          res.status(401).json({ error: "POST requests require content-digest in Signature-Input covered components" });
+          return;
+        }
         if (coveredComponents.includes("content-digest")) {
           const contentDigestHeader = req.headers["content-digest"] as string | undefined;
           if (!contentDigestHeader) {
             res.status(401).json({ error: "Missing Content-Digest header" });
             return;
           }
-          const rawBody = req.body ? JSON.stringify(req.body) : "";
+          const rawBody = Buffer.isBuffer(req.rawBody)
+            ? req.rawBody
+            : typeof req.rawBody === "string"
+              ? req.rawBody
+              : req.body
+                ? JSON.stringify(req.body)
+                : "";
           const expectedHash = crypto.createHash("sha256").update(rawBody).digest("base64");
           if (!contentDigestHeader.includes(expectedHash)) {
             res.status(401).json({ error: "Content-Digest mismatch" });
@@ -312,16 +351,8 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
             return;
           }
 
-          publicKeyCache.set(actorUrl.href, {
-            publicKeyPem,
-            actorPayload,
-            cachedAt: Date.now(),
-          });
-          publicKeyCache.set(actorBaseUrl, {
-            publicKeyPem,
-            actorPayload,
-            cachedAt: Date.now(),
-          });
+          setCachedPublicKey(actorUrl.href, publicKeyPem, actorPayload);
+          setCachedPublicKey(actorBaseUrl, publicKeyPem, actorPayload);
         }
 
         // Build RFC 9421 signature base
@@ -479,20 +510,17 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
 
         // Cache for 24 hours
-        publicKeyCache.set(actorUrl.href, {
-          publicKeyPem,
-          actorPayload: actor,
-          cachedAt: Date.now(),
-        });
-        publicKeyCache.set(actorBaseUrl, {
-          publicKeyPem,
-          actorPayload: actor,
-          cachedAt: Date.now(),
-        });
+        setCachedPublicKey(actorUrl.href, publicKeyPem, actor);
+        setCachedPublicKey(actorBaseUrl, publicKeyPem, actor);
       }
 
       // Reconstruct the string to sign
       const headersList = parts["headers"].split(" ");
+
+      if (req.method === "POST" && process.env["NODE_ENV"] === "production" && !headersList.includes("digest")) {
+        res.status(401).json({ error: "POST requests require digest in signed headers" });
+        return;
+      }
 
       if (headersList.includes("digest")) {
         const digestHeader = req.headers["digest"] as string | undefined;
@@ -500,7 +528,13 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           res.status(401).json({ error: "Missing Digest header" });
           return;
         }
-        const rawBody = typeof req.rawBody === "string" ? req.rawBody : req.body ? JSON.stringify(req.body) : "";
+        const rawBody = Buffer.isBuffer(req.rawBody)
+          ? req.rawBody
+          : typeof req.rawBody === "string"
+            ? req.rawBody
+            : req.body
+              ? JSON.stringify(req.body)
+              : "";
         const expectedHash = crypto.createHash("sha256").update(rawBody).digest("base64");
         if (!digestHeader.includes(expectedHash)) {
           res.status(401).json({ error: "Digest header mismatch" });

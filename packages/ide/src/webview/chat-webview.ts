@@ -102,11 +102,13 @@ let activeSelectedText: string | null = null;
 let activeCursorLine: number | null = null;
 let activeSymbols: { name: string; kind: string }[] = [];
 
+let activeWebgpuLabel = "Qwen3-1.7B";
+
 if (modelProviderSelect) {
   modelProviderSelect.addEventListener("change", () => {
     currentProvider = modelProviderSelect.value;
     if (currentProvider === "webgpu") {
-      statusEl.textContent = engine ? "Qwen3-0.6B ready" : "Ready";
+      statusEl.textContent = engine ? `${activeWebgpuLabel} ready` : "Ready";
     } else if (currentProvider === "ollama") {
       statusEl.textContent = "Ollama ready";
     } else if (currentProvider === "hosted-mcp") {
@@ -115,7 +117,22 @@ if (modelProviderSelect) {
   });
 }
 
-const MODEL_ID = "Qwen3-0.6B-q4f16_1-MLC";
+const MODEL_CANDIDATES: readonly {
+  modelId: string;
+  label: string;
+  wasmFile: string;
+}[] = [
+  {
+    modelId: "Qwen3-1.7B-q4f16_1-MLC",
+    label: "Qwen3-1.7B",
+    wasmFile: "Qwen3-1.7B-q4f16_1_cs1k-webgpu.wasm",
+  },
+  {
+    modelId: "Qwen3-0.6B-q4f16_1-MLC",
+    label: "Qwen3-0.6B",
+    wasmFile: "Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm",
+  },
+];
 
 export const MODELSCRIPT_TOOLS = [
   {
@@ -430,15 +447,15 @@ Do not use <think> tags. Answer concisely based on the context provided.`;
 
 // ── WebLLM Engine (runs in main thread, GPU inference in internal workers) ──
 
-function getAppConfig() {
-  const prebuiltModel = prebuiltAppConfig.model_list.find((m) => m.model_id === MODEL_ID);
+function getAppConfig(modelId: string, wasmFile: string) {
+  const prebuiltModel = prebuiltAppConfig.model_list.find((m) => m.model_id === modelId);
 
   return {
     model_list: [
       {
-        model: `${MODEL_BASE_URL}/${MODEL_ID}`,
-        model_id: MODEL_ID,
-        model_lib: `${MODEL_BASE_URL}/Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm`,
+        model: `${MODEL_BASE_URL}/${modelId}`,
+        model_id: modelId,
+        model_lib: `${MODEL_BASE_URL}/${wasmFile}`,
         overrides: prebuiltModel?.overrides,
       },
     ],
@@ -460,21 +477,32 @@ async function ensureEngine(): Promise<void> {
     if (!adapter) throw new Error("No WebGPU adapter found");
 
     progressContainer.style.display = "block";
-    progressText.textContent = "Downloading model (~336 MB, cached after first time)...";
     statusEl.textContent = "Loading...";
 
-    engine = (await CreateMLCEngine(MODEL_ID, {
-      appConfig: getAppConfig(),
-      initProgressCallback: (report: { text: string; progress: number }) => {
-        const pct = Math.round(report.progress * 100);
-        progressBar.style.width = pct + "%";
-        progressText.textContent = report.text;
-        statusEl.textContent = `Loading ${pct}%`;
-      },
-    })) as unknown as MLCEngineLike;
+    let lastError: unknown = null;
+    for (const candidate of MODEL_CANDIDATES) {
+      try {
+        progressText.textContent = `Downloading ${candidate.label} (cached after first time)...`;
+        engine = (await CreateMLCEngine(candidate.modelId, {
+          appConfig: getAppConfig(candidate.modelId, candidate.wasmFile),
+          initProgressCallback: (report: { text: string; progress: number }) => {
+            const pct = Math.round(report.progress * 100);
+            progressBar.style.width = pct + "%";
+            progressText.textContent = report.text;
+            statusEl.textContent = `Loading ${pct}%`;
+          },
+        })) as unknown as MLCEngineLike;
 
-    progressContainer.style.display = "none";
-    statusEl.textContent = "Qwen3-0.6B ready";
+        activeWebgpuLabel = candidate.label;
+        progressContainer.style.display = "none";
+        statusEl.textContent = `${candidate.label} ready`;
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Failed to initialize WebLLM engine");
   } catch (e) {
     progressContainer.style.display = "none";
     statusEl.textContent = "Error";
@@ -818,8 +846,7 @@ async function* streamChatCompletion(
   } else if (currentProvider === "ollama") {
     const baseUrl =
       typeof OLLAMA_BASE_URL === "string" && OLLAMA_BASE_URL.length > 0 ? OLLAMA_BASE_URL : "http://localhost:11434";
-    const targetModel =
-      typeof OLLAMA_MODEL === "string" && OLLAMA_MODEL.length > 0 ? OLLAMA_MODEL : "qwen2.5-coder:latest";
+    const targetModel = typeof OLLAMA_MODEL === "string" && OLLAMA_MODEL.length > 0 ? OLLAMA_MODEL : "qwen3:8b";
     const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

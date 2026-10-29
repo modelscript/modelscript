@@ -91,4 +91,12 @@ export const SspErrorCode = {
     severity: "error" as const,
     message: () => `DefaultExperiment stopTime must be strictly greater than startTime.`,
   },
+  CONNECTOR_UNIT_MISMATCH: {
+    code: 7013,
+    stdCode: "S7013",
+    rule: "SSP_CONNECTOR_UNIT_MISMATCH",
+    severity: "warning" as const,
+    message: (startUnit: string, endUnit: string) =>
+      `Connector unit mismatch: '${startUnit}' connected to '${endUnit}'.`,
+  },
 } as const;

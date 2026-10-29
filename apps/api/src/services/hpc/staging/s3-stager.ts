@@ -171,17 +171,27 @@ export class S3ObjectStager implements ObjectStager {
     }
   }
 
+  private sanitizeStagingIdentifier(value: string, label: string): string {
+    const clean = path.basename(value);
+    if (!clean || clean !== value || clean === "." || clean === ".." || !/^[a-zA-Z0-9._-]+$/.test(clean)) {
+      throw new Error(`Invalid HPC staging ${label}: ${value}`);
+    }
+    return clean;
+  }
+
   public async createJobStagingManifest(
     jobId: string,
     inputFiles: Record<string, string>,
     expectedOutputs: string[],
   ): Promise<JobStagingManifest> {
+    const safeJobId = this.sanitizeStagingIdentifier(jobId, "jobId");
     const inputDownloads: StagedDownloadSpec[] = [];
     const outputUploads: StagedUploadSpec[] = [];
 
     // 1. Stage each input file
     for (const [filename, localPath] of Object.entries(inputFiles)) {
-      const remoteKey = `jobs/${jobId}/inputs/${filename}`;
+      const safeFile = this.sanitizeStagingIdentifier(filename, "input filename");
+      const remoteKey = `jobs/${safeJobId}/inputs/${safeFile}`;
       if (fs.existsSync(localPath)) {
         await this.uploadFile(remoteKey, localPath);
       }
@@ -189,25 +199,26 @@ export class S3ObjectStager implements ObjectStager {
       inputDownloads.push({
         remoteKey,
         downloadUrl,
-        localFilename: filename,
+        localFilename: safeFile,
       });
     }
 
     // 2. Prepare pre-signed upload URLs for expected output files
     for (const filename of expectedOutputs) {
-      const remoteKey = `jobs/${jobId}/outputs/${filename}`;
+      const safeFile = this.sanitizeStagingIdentifier(filename, "output filename");
+      const remoteKey = `jobs/${safeJobId}/outputs/${safeFile}`;
       const uploadUrl = await this.getUploadUrl(remoteKey);
       outputUploads.push({
         remoteKey,
         uploadUrl,
-        targetFilename: filename,
+        targetFilename: safeFile,
       });
     }
 
     // 3. Generate prologue bash snippet
     const prologueLines = [
       `# --- MODELScript HPC Prologue (Input Staging) ---`,
-      `echo "[HPC-Prologue] Staging input files for Job #${jobId}..."`,
+      `echo "[HPC-Prologue] Staging input files for Job #${safeJobId}..."`,
       ...inputDownloads.map((inSpec) => `curl -s -f -o "${inSpec.localFilename}" "${inSpec.downloadUrl}"`),
       `echo "[HPC-Prologue] All inputs staged successfully."`,
     ];
@@ -215,7 +226,7 @@ export class S3ObjectStager implements ObjectStager {
     // 4. Generate epilogue bash snippet
     const epilogueLines = [
       `# --- MODELScript HPC Epilogue (Output Publishing) ---`,
-      `echo "[HPC-Epilogue] Publishing results for Job #${jobId}..."`,
+      `echo "[HPC-Epilogue] Publishing results for Job #${safeJobId}..."`,
       `for f in slurm-*.out; do if [ -f "$f" ] && [ ! -f "output.log" ]; then cp "$f" "output.log"; break; fi; done`,
       ...outputUploads.map(
         (outSpec) =>
@@ -225,7 +236,7 @@ export class S3ObjectStager implements ObjectStager {
     ];
 
     return {
-      jobId,
+      jobId: safeJobId,
       inputDownloads,
       outputUploads,
       prologueScript: prologueLines.join("\n"),

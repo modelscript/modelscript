@@ -84,6 +84,7 @@ export function formatFormalSignature(cls: {
 
 export function buildClassTree(classes: ClassSummary[], rootName: string): TreeNode[] {
   const root: TreeNode = { name: rootName, fullName: rootName, classKind: "package", children: [] };
+  const isHierarchicalPackage = classes.some((c) => c.class_name.startsWith(rootName + "."));
   const sorted = [...classes].sort((a, b) => a.class_name.localeCompare(b.class_name));
 
   for (const cls of sorted) {
@@ -92,6 +93,13 @@ export function buildClassTree(classes: ClassSummary[], rootName: string): TreeN
     if (fullName === rootName) continue;
 
     const hasRootPrefix = fullName.startsWith(rootName + ".");
+    if (isHierarchicalPackage && !hasRootPrefix) {
+      // Skip stray unprefixed Modelica classes (e.g. Demo), Resources/ C-Source modules, or built-in primitives
+      if (classifyClassDomain(cls) === "modelica" || cls.class_kind === "c_module" || PRIMITIVE_TYPES.has(fullName)) {
+        continue;
+      }
+    }
+
     const cleanName = hasRootPrefix ? fullName.slice(rootName.length + 1) : fullName;
     const parts = cleanName.split(".");
     let currentPath = hasRootPrefix ? rootName : "";
@@ -118,6 +126,14 @@ export function buildClassTree(classes: ClassSummary[], rootName: string): TreeN
       parentNode = node;
     }
   }
+
+  const sortChildren = (nodes: TreeNode[]) => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    for (const n of nodes) {
+      if (n.children.length > 1) sortChildren(n.children);
+    }
+  };
+  sortChildren(root.children);
 
   return root.children;
 }

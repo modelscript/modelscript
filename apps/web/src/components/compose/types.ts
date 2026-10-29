@@ -35,4 +35,8 @@ export interface ComposeBoxProps {
   setNotebookCompanionRepo?: ((val: string) => void) | undefined;
   notebookCells?: NotebookCell[] | undefined;
   setNotebookCells?: ((cells: NotebookCell[]) => void) | undefined;
+  onCloseModal?: (() => void) | undefined;
+  onOpenDrafts?: (() => void) | undefined;
+  editorLayout?: "write" | "split" | "preview" | undefined;
+  setEditorLayout?: ((layout: "write" | "split" | "preview") => void) | undefined;
 }

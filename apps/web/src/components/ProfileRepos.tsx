@@ -1,20 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable react-hooks/exhaustive-deps */
-import { PlusIcon, RepoForkedIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
-import { Button, Dialog, Heading, Spinner, Text, TextInput } from "@primer/react";
+import { CodeIcon, GitBranchIcon, PlusIcon, RepoForkedIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
+import { Button, Dialog, Heading, Label, Spinner, Text, TextInput } from "@primer/react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { createRepo, getRepos } from "../api";
 import Box from "./Box";
 
 export default function ProfileRepos({ username, isOwnProfile }: { username: string; isOwnProfile: boolean }) {
   const { token } = useAuth();
+  const navigate = useNavigate();
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
+  const [repoDesc, setRepoDesc] = useState("");
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
 
@@ -69,10 +71,12 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
         external_repo_id: fullName,
         repo_full_name: fullName,
         default_branch: "main",
+        description: repoDesc.trim() || undefined,
       });
 
       setShowAddModal(false);
       setRepoUrl("");
+      setRepoDesc("");
       setLinkError(null);
       fetchRepos();
     } catch (err: any) {
@@ -129,39 +133,88 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
         </Box>
       ) : (
         <Box display="grid" gridTemplateColumns="repeat(auto-fill, minmax(300px, 1fr))" gridGap={3}>
-          {repos.map((repo) => (
-            <Box
-              key={repo.id}
-              p={3}
-              sx={{
-                border: "1px solid var(--color-border-default)",
-                borderRadius: 2,
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <Box display="flex" alignItems="center" gap={2} mb={2}>
-                <RepoIcon fill="var(--color-fg-muted)" />
-                <Link
-                  to={`/repos/${repo.provider}/${repo.repo_full_name}`}
-                  style={{ color: "var(--color-accent-emphasis)", fontWeight: "bold", textDecoration: "none" }}
+          {repos.map((repo) => {
+            const fullName =
+              repo.repo_full_name ||
+              (repo.namespace && repo.project
+                ? `${repo.namespace}/${repo.project}`
+                : repo.external_id || repo.name || "repository");
+            const provider = repo.provider || "github";
+            const branch = repo.default_branch || "main";
+            return (
+              <Box
+                key={repo.id || fullName}
+                p={3}
+                sx={{
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: 2,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Box>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} mb={2}>
+                    <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0 }}>
+                      <RepoIcon fill="var(--color-fg-muted)" />
+                      <Link
+                        to={`/repos/${provider}/${fullName}`}
+                        style={{
+                          color: "var(--color-accent-fg, var(--color-accent-emphasis))",
+                          fontWeight: "bold",
+                          textDecoration: "none",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {fullName}
+                      </Link>
+                    </Box>
+                    <Label variant="secondary" size="small" style={{ textTransform: "capitalize" }}>
+                      {provider === "gitlab" ? "GitLab" : provider === "local" ? "ModelScript" : "GitHub"}
+                    </Label>
+                  </Box>
+                  <Text
+                    color="var(--color-fg-muted)"
+                    fontSize={1}
+                    mb={3}
+                    style={{ display: "block", lineHeight: 1.45 }}
+                  >
+                    {repo.description || `Engineering repository linked via ${provider}.`}
+                  </Text>
+                </Box>
+
+                <Box
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  color="var(--color-fg-muted)"
+                  fontSize={0}
                 >
-                  {repo.repo_full_name}
-                </Link>
-              </Box>
-              <Text color="var(--color-fg-muted)" fontSize={1} mb={3} sx={{ flex: 1 }}>
-                Linked from {repo.provider}
-              </Text>
-              <Box display="flex" gap={3} color="var(--color-fg-muted)" fontSize={0}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <StarIcon /> {repo.stars_count ?? (repo as any).stargazers_count ?? 0}
+                  <Box display="flex" gap={3} alignItems="center">
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <GitBranchIcon size={12} /> {branch}
+                    </Box>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <StarIcon size={12} /> {repo.stars_count ?? repo.stargazers_count ?? 0}
+                    </Box>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <RepoForkedIcon size={12} /> {repo.forks_count ?? 0}
+                    </Box>
+                  </Box>
+
+                  <Button
+                    size="small"
+                    leadingVisual={CodeIcon}
+                    onClick={() => navigate(`/repos/${provider}/${fullName}/ide?ref=${encodeURIComponent(branch)}`)}
+                  >
+                    IDE
+                  </Button>
                 </Box>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <RepoForkedIcon /> {repo.forks_count ?? 0}
-                </Box>
               </Box>
-            </Box>
-          ))}
+            );
+          })}
         </Box>
       )}
 
@@ -169,7 +222,7 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
         <Dialog onClose={() => setShowAddModal(false)} title="Link Repository" width="large">
           <Box p={3}>
             <Text as="p" mb={3} color="var(--color-fg-muted)">
-              Enter the URL of a public GitLab or GitHub repository to link it to your profile.
+              Enter the URL or owner/project of a public GitHub or GitLab repository to link it to your profile.
             </Text>
             {linkError && (
               <Box
@@ -193,7 +246,14 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
                 setRepoUrl(e.target.value);
                 if (linkError) setLinkError(null);
               }}
-              placeholder="e.g., https://gitlab.com/modelscript/msl"
+              placeholder="e.g., https://github.com/modelica/ModelicaStandardLibrary"
+              sx={{ mb: 2 }}
+            />
+            <TextInput
+              block
+              value={repoDesc}
+              onChange={(e) => setRepoDesc(e.target.value)}
+              placeholder="Optional description..."
               sx={{ mb: 3 }}
             />
             <Box display="flex" justifyContent="flex-end" gap={2}>

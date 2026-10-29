@@ -11,6 +11,7 @@ import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import FortranViewer from "./FortranViewer";
+import ReqifViewer from "./ReqifViewer";
 
 export interface PolyglotArtifactViewerProps {
   viewConfig: any;
@@ -178,6 +179,101 @@ export function renderSourceToDiagramSvg(
       target: tgt,
       targetPort: `${tgt}.in`,
     });
+  }
+
+  // Verilog-A / Verilog-AMS analog branch contributions: I(drain, source) <+ ..., V(p, n) <+ ..., Pwr(tj) <+ ...
+  const vaBranchRe =
+    /\b(V|I|Potential|Flow|Temp|Pwr)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*))?\s*\)\s*<\+/g;
+  while ((cm = vaBranchRe.exec(content)) !== null) {
+    const nature = cm[1]!;
+    const n1 = cm[2]!;
+    const n2 = cm[3] || "gnd";
+    const branchId = `${nature}_${n1}_${n2}`;
+    addNode(n1, "Port", n1);
+    addNode(branchId, "Branch", `${nature}(${n1}${cm[3] ? `, ${n2}` : ""}) <+`);
+    addNode(n2, "Port", n2);
+    edges.push({
+      id: `e-${edges.length + 1}`,
+      source: n1,
+      sourcePort: `${n1}.out`,
+      target: branchId,
+      targetPort: `${branchId}.in`,
+    });
+    edges.push({
+      id: `e-${edges.length + 1}`,
+      source: branchId,
+      sourcePort: `${branchId}.out`,
+      target: n2,
+      targetPort: `${n2}.in`,
+    });
+  }
+
+  // AUTOSAR ARXML child <SHORT-NAME> inside SWC / Port / Runnable tags
+  const arxmlElemRe =
+    /<(SW-COMPONENT-PROTOTYPE|APPLICATION-SW-COMPONENT-TYPE|SENSOR-ACTUATOR-SW-COMPONENT-TYPE|P-PORT-PROTOTYPE|R-PORT-PROTOTYPE|RUNNABLE-ENTITY)\b[^>]*>\s*<SHORT-NAME>([^<]+)<\/SHORT-NAME>/gi;
+  const arxmlNodes: string[] = [];
+  while ((cm = arxmlElemRe.exec(content)) !== null) {
+    const tag = cm[1]!;
+    const shortName = cm[2]!.trim();
+    addNode(shortName, tag, shortName);
+    arxmlNodes.push(shortName);
+  }
+  if (arxmlNodes.length > 1 && edges.length === 0) {
+    for (let i = 0; i < arxmlNodes.length - 1; i++) {
+      edges.push({
+        id: `e-${edges.length + 1}`,
+        source: arxmlNodes[i]!,
+        sourcePort: `${arxmlNodes[i]!}.out`,
+        target: arxmlNodes[i + 1]!,
+        targetPort: `${arxmlNodes[i + 1]!}.in`,
+      });
+    }
+  }
+
+  // PLCopen XML (<pou name="..." pouType="...">, <variable name="...">) & IEC 61131-3 ST (:=)
+  const plcPouRe = /<pou\b[^>]*\bname=["']([^"']+)["'][^>]*\bpouType=["']([^"']+)["']/gi;
+  let primaryPouId: string | null = null;
+  while ((cm = plcPouRe.exec(content)) !== null) {
+    const pouName = cm[1]!;
+    const pouType = cm[2]!.toUpperCase();
+    primaryPouId = pouName;
+    addNode(pouName, pouType, `${pouName} (${pouType})`);
+  }
+  const plcVarRe = /<variable\b[^>]*\bname=["']([^"']+)["'][^>]*>\s*<type>\s*<([A-Za-z0-9_]+)/gi;
+  while ((cm = plcVarRe.exec(content)) !== null) {
+    const varName = cm[1]!;
+    const varType = cm[2]!;
+    addNode(varName, varType, `${varName} : ${varType}`);
+    if (primaryPouId && varName !== primaryPouId) {
+      edges.push({
+        id: `e-${edges.length + 1}`,
+        source: varName,
+        sourcePort: `${varName}.out`,
+        target: primaryPouId,
+        targetPort: `${primaryPouId}.in`,
+      });
+    }
+  }
+  const stAssignRe = /\b([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;]+);/g;
+  while ((cm = stAssignRe.exec(content)) !== null) {
+    const lhs = cm[1]!;
+    const rhs = cm[2]!;
+    addNode(lhs, "ST_OUT", lhs);
+    const idRe = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
+    let idm: RegExpExecArray | null;
+    while ((idm = idRe.exec(rhs)) !== null) {
+      const tok = idm[1]!;
+      if (/^(AND|OR|XOR|NOT|TRUE|FALSE|MOD|IF|THEN|ELSIF|ELSE|END_IF)$/i.test(tok) || tok === lhs) continue;
+      if (seenIds.has(tok)) {
+        edges.push({
+          id: `e-${edges.length + 1}`,
+          source: tok,
+          sourcePort: `${tok}.out`,
+          target: lhs,
+          targetPort: `${lhs}.in`,
+        });
+      }
+    }
   }
 
   // Arrow & keyword connections: a -> b, a --> b, CONNECT a TO b
@@ -479,22 +575,7 @@ export function highlightPolyglotLine(line: string, dialect: string): React.Reac
   });
 }
 
-const CODE_ONLY_DIALECTS = new Set([
-  "fortran",
-  "f90",
-  "f95",
-  "f08",
-  "f18",
-  "c",
-  "plcopen",
-  "verilog-a",
-  "scad",
-  "csg",
-  "ccsds",
-  "energyplus",
-  "reqif",
-  "autosar",
-]);
+const CODE_ONLY_DIALECTS = new Set(["fortran", "f90", "f95", "f08", "f18", "c", "scad", "csg", "ccsds", "energyplus"]);
 
 function stripSyntheticDiagramComments(raw: string): string {
   if (!raw) return "";
@@ -569,6 +650,12 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
     addStat("Junctions", viewConfig?.junctionCount);
     addStat("Conduits", viewConfig?.conduitCount);
     addStat("Ports", viewConfig?.portCount);
+    addStat("Inputs", viewConfig?.inputCount);
+    addStat("Outputs", viewConfig?.outputCount);
+    addStat("Branches", viewConfig?.branchCount);
+    addStat("Parameters", viewConfig?.parameterCount);
+    addStat("Runnables", viewConfig?.runnableCount);
+    addStat("Connectors", viewConfig?.connectorCount);
     addStat("Passive", viewConfig?.isPassive);
     addStat("Components", viewConfig?.componentCount);
     addStat("Models", viewConfig?.modelCount);
@@ -610,6 +697,18 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
 
   if (dialect === "fortran" || dialect === "f90" || dialect === "f95" || dialect === "f08" || dialect === "f18") {
     return <FortranViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+  }
+
+  if (dialect === "reqif" || dialect === "reqifz") {
+    return (
+      <ReqifViewer
+        viewConfig={{
+          ...viewConfig,
+          code: rawCode || inlineCode,
+        }}
+        isFullScreen={isFullScreen}
+      />
+    );
   }
 
   const handleCopy = () => {

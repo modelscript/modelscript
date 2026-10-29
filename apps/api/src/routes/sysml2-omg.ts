@@ -17,6 +17,7 @@
 
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { OMG_SYSML2_CONTEXT, SysML2OmgService } from "../services/sysml2-omg-service.js";
 
 function getParam(val: string | string[] | undefined): string {
@@ -26,6 +27,19 @@ function getParam(val: string | string[] | undefined): string {
 
 export function sysml2OmgRouter(service?: SysML2OmgService): Router {
   const router = createRouter();
+  router.use(optionalAuth);
+  router.use((req: Request, res: Response, next) => {
+    if (
+      process.env["NODE_ENV"] === "production" &&
+      (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE") &&
+      !req.path.endsWith("/queries") &&
+      !req.user
+    ) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    next();
+  });
   const omgService = service || new SysML2OmgService();
 
   // Helper to set standard OMG JSON-LD headers
@@ -177,11 +191,13 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
       return;
     }
 
-    const pageSize = req.query["page[size]"]
+    const rawPageSize = req.query["page[size]"]
       ? Number(req.query["page[size]"])
       : req.query["pageSize"]
         ? Number(req.query["pageSize"])
         : undefined;
+    const pageSize =
+      rawPageSize !== undefined && Number.isFinite(rawPageSize) ? Math.min(Math.max(1, rawPageSize), 200) : undefined;
 
     const pageAfter = (req.query["page[after]"] || req.query["pageAfter"]) as string | undefined;
     const type = req.query["type"] as string | undefined;

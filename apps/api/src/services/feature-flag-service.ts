@@ -59,7 +59,15 @@ export class FeatureFlagService {
   /**
    * Check if a feature flag is enabled for the given user context.
    */
-  public isEnabled(flagKey: string, user?: { role?: string | undefined; id?: number | undefined } | null): boolean {
+  public isEnabled(
+    flagKey: string,
+    user?: {
+      role?: string | undefined;
+      accountType?: string | undefined;
+      account_type?: string | undefined;
+      id?: number | undefined;
+    } | null,
+  ): boolean {
     const def: FeatureFlagDefinition | undefined = FEATURE_FLAGS[flagKey];
     const envKey = `FEATURE_FLAG_${flagKey.toUpperCase()}`;
     const envVal = process.env[envKey];
@@ -82,7 +90,7 @@ export class FeatureFlagService {
     const isEnabledInDb = dbFlag ? dbFlag.isEnabled : (def?.defaultValue ?? false);
     const allowedRoles = dbFlag?.allowedRoles?.length ? dbFlag.allowedRoles : (def?.allowedRoles ?? []);
 
-    const userRole = user?.role || "guest";
+    const userRole = user?.role || user?.accountType || user?.account_type || (user?.id ? "user" : "guest");
     const isAdmin = userRole === "admin";
 
     // If flag is globally disabled in DB, allow access ONLY if user is an admin and admin is in allowedRoles
@@ -121,7 +129,12 @@ export class FeatureFlagService {
    * Evaluates all flags for the current user and returns a key-boolean dictionary.
    */
   public getAllFlagsForUser(
-    user?: { role?: string | undefined; id?: number | undefined } | null,
+    user?: {
+      role?: string | undefined;
+      accountType?: string | undefined;
+      account_type?: string | undefined;
+      id?: number | undefined;
+    } | null,
   ): Record<string, boolean> {
     const result: Record<string, boolean> = {};
     for (const key of Object.keys(FEATURE_FLAGS)) {

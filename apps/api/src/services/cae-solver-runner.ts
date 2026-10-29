@@ -40,15 +40,20 @@ export function getValidatedGeometryPath(rawPath: string): string {
   }
   const resolved = path.resolve(rawPath);
 
-  const cwdRoot = path.resolve(process.cwd());
-  const relCwd = path.relative(cwdRoot, resolved);
+  // In production, only allow files inside the designated data/storage directory or os.tmpdir()
+  // to prevent staging arbitrary server source/database/config files from process.cwd().
+  const allowedCwdRoot =
+    process.env["NODE_ENV"] === "production"
+      ? path.resolve(process.env["STORAGE_PATH"] || path.join(process.cwd(), "data"))
+      : path.resolve(process.cwd());
+  const relCwd = path.relative(allowedCwdRoot, resolved);
   if (!relCwd.startsWith("..") && !path.isAbsolute(relCwd)) {
-    const candidate = path.resolve(cwdRoot, relCwd);
+    const candidate = path.resolve(allowedCwdRoot, relCwd);
     if (fs.existsSync(candidate)) {
       const real = fs.realpathSync(candidate);
-      const relReal = path.relative(cwdRoot, real);
+      const relReal = path.relative(allowedCwdRoot, real);
       if (!relReal.startsWith("..") && !path.isAbsolute(relReal)) {
-        return path.resolve(cwdRoot, relReal);
+        return path.resolve(allowedCwdRoot, relReal);
       }
     }
   }
@@ -99,6 +104,9 @@ export class CaeSolverRunner {
    */
   public async executeJob(spec: CaeJobSpec, telemetryStreamer: CaeTelemetryStreamer): Promise<CaeExecutionResult> {
     const startTime = Date.now();
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(spec.jobId)) {
+      throw new Error("Invalid CAE jobId");
+    }
     const safeResultDir = path.resolve(spec.resultDir);
     const relResult = path.relative(path.resolve("/"), safeResultDir);
     if (!relResult || relResult.startsWith("..") || path.isAbsolute(relResult)) {

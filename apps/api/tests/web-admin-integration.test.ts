@@ -629,4 +629,450 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
       assert.ok(typeof verifyChainRes.body.headHash === "string" && verifyChainRes.body.headHash.length === 64);
     },
   );
+
+  await t.test(
+    "Phase 1–3 Lifecycle: Multi-tier RBAC (moderator/auditor), Credit Adjustments, Universal Quarantine & Counter-Notices, Blocklist Import/Export, Online Backup Restore, Instance Settings/Invites/Banner, System Diagnostics, and Hash-Preserving GDPR IP Redaction",
+    async () => {
+      // 1. Multi-tier RBAC: create moderator and auditor users
+      const modUser = db.createUser("trust_safety_mod", "mod@modelscript.test", "hash_mod", {
+        accountType: "user",
+        emailVerified: true,
+      });
+      const audUser = db.createUser("compliance_auditor", "auditor@modelscript.test", "hash_aud", {
+        accountType: "user",
+        emailVerified: true,
+      });
+
+      // Promote via PATCH /api/v1/admin/users/:id
+      const promoteModRes = await request(app)
+        .patch(`/api/v1/admin/users/${modUser.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ role: "moderator", reason: "Trust & Safety team onboarding" })
+        .expect(200);
+      assert.strictEqual(promoteModRes.body.role, "moderator");
+
+      const promoteAudRes = await request(app)
+        .patch(`/api/v1/admin/users/${audUser.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ role: "auditor", reason: "SOC2 external auditor" })
+        .expect(200);
+      assert.strictEqual(promoteAudRes.body.role, "auditor");
+
+      const modToken = jwt.sign(
+        { id: modUser.id, username: modUser.username, email: modUser.email, accountType: "moderator" },
+        JWT_SECRET,
+        { expiresIn: "1h" },
+      );
+      const audToken = jwt.sign(
+        { id: audUser.id, username: audUser.username, email: audUser.email, accountType: "auditor" },
+        JWT_SECRET,
+        { expiresIn: "1h" },
+      );
+
+      // Moderator can access moderation queue and DMCA notices, but NOT database upgrade or instance settings
+      await request(app).get("/api/v1/admin/moderation/queue").set("Authorization", `Bearer ${modToken}`).expect(200);
+      await request(app).get("/api/v1/admin/dmca/notices").set("Authorization", `Bearer ${modToken}`).expect(200);
+      await request(app)
+        .post("/api/v1/admin/db/upgrade")
+        .set("Authorization", `Bearer ${modToken}`)
+        .send({ dryRun: true })
+        .expect(403);
+
+      // Auditor can access audit-logs, verify chain, and system diagnostics, but NOT moderation queue or user mutation
+      await request(app).get("/api/v1/admin/audit-logs").set("Authorization", `Bearer ${audToken}`).expect(200);
+      await request(app).get("/api/v1/admin/audit-logs/verify").set("Authorization", `Bearer ${audToken}`).expect(200);
+      await request(app).get("/api/v1/admin/system").set("Authorization", `Bearer ${audToken}`).expect(200);
+      await request(app).get("/api/v1/admin/moderation/queue").set("Authorization", `Bearer ${audToken}`).expect(403);
+
+      // 2. Global user statusBreakdown and Compute Credit Adjustment
+      const usersListRes = await request(app)
+        .get("/api/v1/admin/users")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(usersListRes.body.statusBreakdown);
+      assert.ok(usersListRes.body.statusBreakdown.moderators >= 1);
+      assert.ok(usersListRes.body.statusBreakdown.auditors >= 1);
+
+      const creditRes = await request(app)
+        .post(`/api/v1/admin/users/${regularUser.id}/credits`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ deltaCredits: 250, reason: "Academic research grant allocation" })
+        .expect(200);
+      assert.strictEqual(creditRes.body.success, true);
+      assert.strictEqual(creditRes.body.deltaCredits, 250);
+      assert.ok(creditRes.body.newBalance >= 250);
+
+      // 3. Universal DMCA Resource Quarantine, Counter-Notice (§ 512(g)), and Restore
+      const dmcaPkgNotice = await request(app)
+        .post("/api/v1/admin/dmca/notices")
+        .send({
+          claimantName: "AeroCorp Legal",
+          claimantEmail: "ip@aerocorp.example",
+          copyrightOwner: "AeroCorp Inc.",
+          workDescription: "Proprietary FlightDynamics Modelica package",
+          infringingUrl: "https://hub.modelscript.org/packages/@aerocorp/flight-dynamics",
+        })
+        .expect(201);
+
+      await request(app)
+        .post(`/api/v1/admin/dmca/notices/${dmcaPkgNotice.body.noticeId}/resolve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          status: "resolved",
+          actionTaken: "Quarantined package pending counter-notice window.",
+          quarantineResource: true,
+          resourceType: "package",
+          resourceId: "@aerocorp/flight-dynamics",
+        })
+        .expect(200);
+
+      const quarantineList1 = await request(app)
+        .get("/api/v1/admin/quarantine")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(
+        quarantineList1.body.resources.some(
+          (q: any) => q.resource_type === "package" && q.resource_id === "@aerocorp/flight-dynamics",
+        ),
+      );
+
+      const counterRes = await request(app)
+        .post(`/api/v1/admin/dmca/notices/${dmcaPkgNotice.body.noticeId}/counter-notice`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          counterNoticeText:
+            "Licensed under Apache-2.0 prior to assignment; good-faith dispute under 17 U.S.C. 512(g).",
+        })
+        .expect(200);
+      assert.strictEqual(counterRes.body.success, true);
+      assert.ok(counterRes.body.restoreEligibleAt);
+
+      const restoreQuarantineRes = await request(app)
+        .post("/api/v1/admin/quarantine/restore")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ resourceType: "package", resourceId: "@aerocorp/flight-dynamics" })
+        .expect(200);
+      assert.strictEqual(restoreQuarantineRes.body.success, true);
+
+      // 4. Federation Blocklist CSV/JSON Export, Import, and Peer Policy Tester
+      const importCsvRes = await request(app)
+        .post("/api/v1/admin/federation/domains/import")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          mode: "merge",
+          csv: "#domain,#tier,#reason\nbotnet-alpha.org,suspend,Automated scraper network\nnoisy-relay.social,silence,Unfiltered relay",
+        })
+        .expect(200);
+      assert.strictEqual(importCsvRes.body.imported, 2);
+
+      const exportCsvRes = await request(app)
+        .get("/api/v1/admin/federation/domains/export?format=csv")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(exportCsvRes.text.includes("botnet-alpha.org"));
+      assert.ok(exportCsvRes.text.includes("noisy-relay.social"));
+
+      const testDomainRes = await request(app)
+        .post("/api/v1/admin/federation/test-domain")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ domain: "botnet-alpha.org", probeNetwork: false })
+        .expect(200);
+      assert.strictEqual(testDomainRes.body.effectiveTier, "suspend");
+      assert.strictEqual(testDomainRes.body.allowedByPolicy, false);
+
+      // 5. Instance Settings, Registration Invites, Public Banner, Dynamic NodeInfo, and System Diagnostics
+      const patchSettingsRes = await request(app)
+        .patch("/api/v1/admin/settings")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          instanceName: "Acme Intranet Modeling Hub",
+          instanceDescription: "Corporate Cyber-Physical Digital Thread Appliance",
+          contactEmail: "devops@acme.corp",
+          registrationMode: "invite_only",
+          federationMode: "allowlist",
+          maintenanceMode: true,
+          announcementBanner: "Scheduled solver cluster upgrade at 02:00 UTC.",
+          announcementLevel: "warning",
+          backupRetentionCount: 10,
+        })
+        .expect(200);
+      assert.strictEqual(patchSettingsRes.body.settings.instanceName, "Acme Intranet Modeling Hub");
+      assert.strictEqual(patchSettingsRes.body.settings.registrationMode, "invite_only");
+      assert.strictEqual(patchSettingsRes.body.settings.federationMode, "allowlist");
+
+      // Public banner endpoint reflects announcement and maintenance mode
+      const bannerRes = await request(app).get("/api/v1/instance/banner").expect(200);
+      assert.strictEqual(bannerRes.body.maintenanceMode, true);
+      assert.strictEqual(bannerRes.body.announcementBanner, "Scheduled solver cluster upgrade at 02:00 UTC.");
+      assert.strictEqual(bannerRes.body.announcementLevel, "warning");
+      assert.strictEqual(bannerRes.body.registrationMode, "invite_only");
+
+      // Dynamic NodeInfo reflects updated instance settings
+      const nodeInfoRes = await request(app).get("/nodeinfo/2.0").expect(200);
+      assert.strictEqual(nodeInfoRes.body.openRegistrations, false);
+      assert.strictEqual(nodeInfoRes.body.metadata.nodeName, "Acme Intranet Modeling Hub");
+      assert.strictEqual(nodeInfoRes.body.metadata.federationMode, "allowlist");
+
+      // Create, list, and revoke registration invite code
+      const createInviteRes = await request(app)
+        .post("/api/v1/admin/invites")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ note: "Propulsion Team", maxUses: 5, expiresInDays: 7 })
+        .expect(201);
+      assert.ok(createInviteRes.body.invite.code.startsWith("msx-inv-"));
+
+      const listInvitesRes = await request(app)
+        .get("/api/v1/admin/invites")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(listInvitesRes.body.invites.some((i: any) => i.id === createInviteRes.body.invite.id));
+
+      await request(app)
+        .delete(`/api/v1/admin/invites/${createInviteRes.body.invite.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      // System health diagnostics
+      const sysRes = await request(app)
+        .get("/api/v1/admin/system")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(sysRes.body.auditChainValid, true);
+      assert.ok(sysRes.body.counts.users >= 4);
+
+      // 6. Hot Backup SHA-256, Download, Prune, and Online Point-in-Time Restore
+      const backupRes = await request(app)
+        .post("/api/v1/admin/backups")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ label: "milestone-test" })
+        .expect(201);
+      const snapFile = backupRes.body.backup.fileName;
+      assert.ok(snapFile);
+      assert.strictEqual(typeof backupRes.body.backup.sha256, "string");
+      assert.strictEqual(backupRes.body.backup.sha256.length, 64);
+
+      const dlRes = await request(app)
+        .get(`/api/v1/admin/backups/${snapFile}/download`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(dlRes.headers["x-backup-sha256"], backupRes.body.backup.sha256);
+
+      // Mutate a setting after backup, then restore from backup and verify setting rolled back
+      await request(app)
+        .patch("/api/v1/admin/settings")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ instanceName: "Temporary Mutated Name" })
+        .expect(200);
+      assert.strictEqual(db.getInstanceSettings().instanceName, "Temporary Mutated Name");
+
+      const restoreDbRes = await request(app)
+        .post(`/api/v1/admin/backups/${snapFile}/restore`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(restoreDbRes.body.success, true);
+      assert.ok(restoreDbRes.body.restoredTables > 0);
+      assert.ok(restoreDbRes.body.preRestoreSnapshot.fileName.includes("pre-restore"));
+      assert.strictEqual(db.getInstanceSettings().instanceName, "Acme Intranet Modeling Hub");
+
+      // Prune backups
+      const pruneBackupsRes = await request(app)
+        .post("/api/v1/admin/backups/prune")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ keepLatest: 5 })
+        .expect(200);
+      assert.strictEqual(pruneBackupsRes.body.success, true);
+
+      // 7. GDPR IP Redaction without breaking SHA-256 Audit Log Hash Chain
+      const redactRes = await request(app)
+        .post("/api/v1/admin/audit-logs/redact-expired")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ retentionDays: 0 })
+        .expect(200);
+      assert.strictEqual(redactRes.body.success, true);
+      assert.ok(redactRes.body.redactedAuditIps >= 1);
+
+      const row1 = db.db.prepare("SELECT ip_address FROM audit_logs WHERE ip_address IS NOT NULL LIMIT 1").get() as {
+        ip_address: string;
+      };
+      assert.ok(row1.ip_address.startsWith("REDACTED:"), `Expected REDACTED:<token>, got ${row1.ip_address}`);
+
+      // Verify SHA-256 chain is STILL 100% valid after GDPR IP redaction!
+      const chainAfterRedact = await request(app)
+        .get("/api/v1/admin/audit-logs/verify")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(chainAfterRedact.body.valid, true);
+      assert.strictEqual(chainAfterRedact.body.verifiedEntries, chainAfterRedact.body.totalEntries);
+
+      // 8. Registration Policy Enforcement (invite_only) & Invite Code Redemption
+      const inviteForSignup = await request(app)
+        .post("/api/v1/admin/invites")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          maxUses: 2,
+          initialCredits: 300,
+          assignedRole: "moderator",
+          note: "Moderator onboarding invite",
+        })
+        .expect(201);
+      const signupCode = inviteForSignup.body.invite.code as string;
+
+      // Without inviteCode in invite_only mode -> 403
+      await request(app)
+        .post("/api/v1/auth/register")
+        .send({
+          username: "uninvited_eng",
+          email: "uninvited@acme.corp",
+          password: "StrongPassword123!",
+          acceptTerms: true,
+          captchaToken: "mock-token",
+        })
+        .expect(403);
+
+      // With valid inviteCode -> 201, grants initialCredits (300) and assignedRole ('moderator')
+      const invitedSignupRes = await request(app)
+        .post("/api/v1/auth/register")
+        .send({
+          username: "invited_mod_eng",
+          email: "invited_mod@acme.corp",
+          password: "StrongPassword123!",
+          acceptTerms: true,
+          captchaToken: "mock-token",
+          inviteCode: signupCode,
+        })
+        .expect(201);
+      assert.strictEqual(invitedSignupRes.body.user.account_type, "moderator");
+      assert.strictEqual(invitedSignupRes.body.user.credit_balance, 300);
+
+      // Restore registrationMode to open for any subsequent tests
+      db.updateInstanceSettings({ registrationMode: "open", autoQuarantineReportThreshold: 2 });
+
+      // 9. Automated Report-Threshold Quarantine
+      const autoQPost = db.createPost(regularUser.id, "Suspicious spam post triggering auto-quarantine");
+      const r1 = db.createContentReport(adminUser.id, {
+        postId: autoQPost.id,
+        reason: "Automated spam link",
+      });
+      assert.strictEqual(r1.autoQuarantined, false);
+      const r2 = db.createContentReport(modUser.id, {
+        postId: autoQPost.id,
+        reason: "Automated spam link confirmed",
+      });
+      assert.strictEqual(r2.autoQuarantined, true);
+      assert.strictEqual(db.isResourceQuarantined("post", String(autoQPost.id)), true);
+
+      // 10. User Forensics Dossier Endpoint
+      const forensicsRes = await request(app)
+        .get(`/api/v1/admin/users/${regularUser.id}/forensics`)
+        .set("Authorization", `Bearer ${modToken}`)
+        .expect(200);
+      assert.strictEqual(forensicsRes.body.user.id, regularUser.id);
+      assert.ok(Array.isArray(forensicsRes.body.recentPosts));
+      assert.ok(Array.isArray(forensicsRes.body.recentTransactions));
+      assert.ok(Array.isArray(forensicsRes.body.recentAuditLogs));
+
+      // 11. Portable Instance Migration Bundle Export & Import + ActivityPub Move Broadcast
+      const bundleExportRes = await request(app)
+        .get("/api/v1/admin/bundle/export")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(bundleExportRes.body.formatVersion, 1);
+      assert.ok(bundleExportRes.body.bundleSha256.length === 64);
+      assert.ok(bundleExportRes.body.snapshot.fileName.endsWith(".db"));
+
+      const bundleImportRes = await request(app)
+        .post("/api/v1/admin/bundle/import")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          settings: { instanceName: "Restored Bundle Hub" },
+          federationDomains: [{ domain: "partner.bundle.org", tier: "allow", reason: "Bundle import peer" }],
+        })
+        .expect(200);
+      assert.strictEqual(bundleImportRes.body.success, true);
+      assert.strictEqual(bundleImportRes.body.settingsUpdated, true);
+      assert.strictEqual(db.getInstanceSettings().instanceName, "Restored Bundle Hub");
+
+      const moveRes = await request(app)
+        .post("/api/v1/admin/federation/move")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          sourceActorUri: "https://old.modelscript.org/users/admin",
+          targetActorUri: "https://new.modelscript.org/users/admin",
+        })
+        .expect(200);
+      assert.strictEqual(moveRes.body.success, true);
+      assert.strictEqual(moveRes.body.type, "Move");
+      assert.ok(moveRes.body.queuedDeliveries >= 1);
+
+      // 12. First-Run Install Wizard (/api/v1/setup/status & /api/v1/setup/complete) on a fresh deployment
+      const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), "fresh-setup-test-"));
+      const freshDb = new LibraryDatabase(path.join(freshDir, "db"));
+      const freshStorage = new LibraryStorage(path.join(freshDir, "storage"));
+      const freshApp = createApp({ database: freshDb, storage: freshStorage });
+
+      try {
+        const statusBefore = await request(freshApp).get("/api/v1/setup/status").expect(200);
+        assert.strictEqual(statusBefore.body.needsSetup, true);
+        assert.strictEqual(statusBefore.body.hasAdmin, false);
+        assert.strictEqual(statusBefore.body.setupCompleted, false);
+        assert.ok(statusBefore.body.presets.tier1_federated);
+        assert.ok(statusBefore.body.presets.tier2_corporate);
+        assert.ok(statusBefore.body.presets.tier3_flagship);
+
+        const bannerBefore = await request(freshApp).get("/api/v1/instance/banner").expect(200);
+        assert.strictEqual(bannerBefore.body.needsSetup, true);
+
+        const completeRes = await request(freshApp)
+          .post("/api/v1/setup/complete")
+          .send({
+            profileTier: "tier1_federated",
+            admin: {
+              username: "founding_admin",
+              email: "founder@federated.test",
+              password: "SuperSecurePassword123!",
+              displayName: "Founding Operator",
+            },
+            settings: {
+              instanceName: "Federated Lab Node",
+              instanceDescription: "Independent federated ModelScript node",
+            },
+            initialInvitesCount: 2,
+            initialInviteMaxUses: 5,
+            initialInviteCredits: 250,
+            createInitialBackup: true,
+          })
+          .expect(201);
+
+        assert.strictEqual(completeRes.body.success, true);
+        assert.strictEqual(completeRes.body.setupCompleted, true);
+        assert.ok(completeRes.body.token);
+        assert.strictEqual(completeRes.body.user.username, "founding_admin");
+        assert.strictEqual(completeRes.body.user.account_type, "admin");
+        assert.strictEqual(completeRes.body.settings.instanceName, "Federated Lab Node");
+        assert.strictEqual(completeRes.body.settings.registrationMode, "invite_only");
+        assert.strictEqual(completeRes.body.invites.length, 2);
+        assert.ok(completeRes.body.backupSnapshot.fileName.includes("first-boot-baseline"));
+
+        // Verify self-locking: subsequent call to /api/v1/setup/complete is rejected with 403
+        await request(freshApp)
+          .post("/api/v1/setup/complete")
+          .send({
+            admin: {
+              username: "attacker_admin",
+              email: "attacker@federated.test",
+              password: "AttackerPassword123!",
+            },
+          })
+          .expect(403);
+
+        const statusAfter = await request(freshApp).get("/api/v1/setup/status").expect(200);
+        assert.strictEqual(statusAfter.body.needsSetup, false);
+        assert.strictEqual(statusAfter.body.hasAdmin, true);
+        assert.strictEqual(statusAfter.body.setupCompleted, true);
+      } finally {
+        freshDb.db.close();
+        fs.rmSync(freshDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

@@ -121,7 +121,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
     return (
       <Box display="flex" flexDirection="column" gap={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
         {cwBanner}
-        {/* Baeldung-style Tutorial Hero Banner */}
+        {/* Tutorial Hero Banner */}
         <PostNotebookHeader
           notebookData={notebookData}
           readTimeMinutes={readTimeMinutes}
@@ -310,7 +310,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           </button>
         )}
 
-        {/* Baeldung-style Companion Code & Web IDE Footer on Detail View */}
+        {/* Companion Code & Web IDE Footer on Detail View */}
         {isDetailView && (
           <div
             style={{

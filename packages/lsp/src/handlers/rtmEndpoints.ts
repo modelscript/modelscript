@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { completeReqIfTabularCell, reqifTabularConfig, validateReqIfTabularCell } from "@modelscript/reqif/tabular";
 import type { LspContext } from "../lsp-context.js";
 import {
   CstLinkSynthesizer,
@@ -327,8 +328,21 @@ export function registerRtmEndpoints(context: LspContext): void {
       filter?: string | undefined;
     }): Promise<ElementsTablePayload> => {
       try {
-        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         const metaclass = params.metaclass ?? "part";
+        const isReqIfUri =
+          params.uri?.endsWith(".reqif") || params.uri?.endsWith(".reqifz") || metaclass.toLowerCase() === "reqif";
+        if (isReqIfUri && params.uri) {
+          const doc = context.documentManager.documents.get(params.uri);
+          if (doc) {
+            return ElementTableEngine.buildFromTabularConfig(
+              reqifTabularConfig,
+              doc.getText(),
+              "requirements",
+              params.uri,
+            );
+          }
+        }
+        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         return ElementTableEngine.buildElementsTable(db, metaclass, params.uri);
       } catch (e) {
         console.error("[elementTable] Error building elements table:", e);
@@ -358,12 +372,23 @@ export function registerRtmEndpoints(context: LspContext): void {
         }
 
         const text = doc.getText();
-        const edits = ElementTableEngine.updateElementAttribute(
-          text,
-          params.qualifiedName,
-          params.attributeName,
-          params.newValue,
-        );
+        const isReqIf = params.uri.endsWith(".reqif") || params.uri.endsWith(".reqifz") || text.includes("<REQ-IF");
+
+        const edits = isReqIf
+          ? ElementTableEngine.updateFromTabularConfig(
+              reqifTabularConfig,
+              text,
+              "requirements",
+              params.qualifiedName,
+              params.attributeName,
+              params.newValue,
+            )
+          : ElementTableEngine.updateElementAttribute(
+              text,
+              params.qualifiedName,
+              params.attributeName,
+              params.newValue,
+            );
 
         if (!edits || edits.length === 0) {
           return {
@@ -395,6 +420,26 @@ export function registerRtmEndpoints(context: LspContext): void {
       prefix?: string | undefined;
     }): Promise<TableCellCompletionItem[]> => {
       try {
+        const isReqIfUri =
+          params.uri?.endsWith(".reqif") ||
+          params.uri?.endsWith(".reqifz") ||
+          params.metaclass?.toLowerCase() === "reqif";
+        if (isReqIfUri && params.uri) {
+          const doc = context.documentManager.documents.get(params.uri);
+          if (doc) {
+            return completeReqIfTabularCell(
+              doc.getText(),
+              "requirements",
+              "",
+              params.attributeName,
+              params.prefix ?? "",
+            ).map((item) => ({
+              label: item.label,
+              kind: "property" as const,
+              detail: item.detail,
+            }));
+          }
+        }
         const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         return ElementTableEngine.getTableCellCompletions(
           db,
@@ -413,9 +458,27 @@ export function registerRtmEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/validateTableCell",
     async (params: {
+      uri?: string | undefined;
+      rowId?: string | undefined;
       attributeName: string;
       value: string;
     }): Promise<{ valid: boolean; error?: string | undefined }> => {
+      if (
+        params.uri?.endsWith(".reqif") ||
+        params.uri?.endsWith(".reqifz") ||
+        params.attributeName === "contract" ||
+        params.attributeName === "asilLevel"
+      ) {
+        const doc = params.uri ? context.documentManager.documents.get(params.uri) : undefined;
+        const res = validateReqIfTabularCell(
+          doc?.getText() ?? "",
+          "requirements",
+          params.rowId ?? "",
+          params.attributeName,
+          params.value,
+        );
+        return { valid: res.valid, error: res.message };
+      }
       return ElementTableEngine.validateTableCell(params.attributeName, params.value);
     },
   );

@@ -251,16 +251,41 @@ export function verifyEnterpriseLicense(
   }
 }
 
+let cachedLicenseCacheKey: string | null = null;
+let cachedLicenseResult: LicenseVerificationResult | null = null;
+let cachedLicenseAtMs = 0;
+const LICENSE_CACHE_TTL_MS = 5_000;
+
 /**
  * Resolves the active Enterprise License from `MSX_LICENSE_KEY` or `MSX_LICENSE_FILE`.
- * When `MSX_LICENSE_ENFORCE=true` is not set and the server is running in local development/test mode,
- * returns a permissive `dev-evaluation` result unless an invalid/expired key was explicitly supplied.
+ * In `NODE_ENV=production`, license enforcement is enabled by default unless `MSX_LICENSE_ENFORCE=false`.
+ * In local development/test mode, returns a permissive `dev-evaluation` result when `MSX_LICENSE_ENFORCE=true`
+ * is not set and no invalid/expired key was supplied.
  */
 export function resolveActiveEnterpriseLicense(): LicenseVerificationResult {
-  let rawToken = process.env["MSX_LICENSE_KEY"]?.trim();
-  const licenseFile = process.env["MSX_LICENSE_FILE"]?.trim();
+  const envKey = process.env["MSX_LICENSE_KEY"]?.trim() ?? "";
+  const licenseFile = process.env["MSX_LICENSE_FILE"]?.trim() ?? "";
+  const enforceEnv = process.env["MSX_LICENSE_ENFORCE"] ?? "";
+  const nodeEnv = process.env["NODE_ENV"] ?? "";
+  const pubKeyEnv = process.env["MSX_LICENSE_PUBLIC_KEY"] ?? "";
 
-  if (!rawToken && licenseFile && fs.existsSync(licenseFile)) {
+  let fileMtime = 0;
+  if (!envKey && licenseFile && fs.existsSync(licenseFile)) {
+    try {
+      fileMtime = fs.statSync(licenseFile).mtimeMs;
+    } catch {
+      fileMtime = -1;
+    }
+  }
+
+  const cacheKey = `${nodeEnv}|${enforceEnv}|${pubKeyEnv}|${envKey}|${licenseFile}:${fileMtime}`;
+  const nowMs = Date.now();
+  if (cachedLicenseResult && cachedLicenseCacheKey === cacheKey && nowMs - cachedLicenseAtMs < LICENSE_CACHE_TTL_MS) {
+    return cachedLicenseResult;
+  }
+
+  let rawToken = envKey;
+  if (!rawToken && licenseFile && fileMtime > 0) {
     try {
       rawToken = fs.readFileSync(licenseFile, "utf-8").trim();
     } catch {
@@ -269,21 +294,29 @@ export function resolveActiveEnterpriseLicense(): LicenseVerificationResult {
   }
 
   if (rawToken) {
-    return verifyEnterpriseLicense(rawToken);
+    const result = verifyEnterpriseLicense(rawToken);
+    cachedLicenseCacheKey = cacheKey;
+    cachedLicenseResult = result;
+    cachedLicenseAtMs = nowMs;
+    return result;
   }
 
-  const strictEnforce = process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const strictEnforce = enforceEnv === "true" || (nodeEnv === "production" && enforceEnv !== "false");
   if (strictEnforce) {
-    return {
+    const result: LicenseVerificationResult = {
       valid: false,
       mode: "unlicensed",
       reason:
         "Missing Enterprise Edition license key (set MSX_LICENSE_KEY or MSX_LICENSE_FILE). Visit https://modelscript.org/pricing.",
     };
+    cachedLicenseCacheKey = cacheKey;
+    cachedLicenseResult = result;
+    cachedLicenseAtMs = nowMs;
+    return result;
   }
 
-  const nowSec = Math.floor(Date.now() / 1000);
-  return {
+  const nowSec = Math.floor(nowMs / 1000);
+  const evalResult: LicenseVerificationResult = {
     valid: true,
     mode: "dev-evaluation",
     claims: {
@@ -298,4 +331,8 @@ export function resolveActiveEnterpriseLicense(): LicenseVerificationResult {
       exp: nowSec + 86400 * 365,
     },
   };
+  cachedLicenseCacheKey = cacheKey;
+  cachedLicenseResult = evalResult;
+  cachedLicenseAtMs = nowMs;
+  return evalResult;
 }

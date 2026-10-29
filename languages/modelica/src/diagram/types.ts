@@ -115,8 +115,10 @@ export enum LinePattern {
 export interface IPlacement {
   "@type": "Placement";
   icon?: ITransformation | undefined;
+  iconTransformation?: ITransformation | undefined;
   transformation?: ITransformation | undefined;
   visible?: boolean | undefined;
+  iconVisible?: boolean | undefined;
 }
 
 export type IPoint = [number, number];
@@ -149,6 +151,7 @@ export interface IText extends IFilledShape, IGraphicItem {
   string?: string | undefined;
   textString?: string | undefined;
   textStyle?: TextStyle[] | undefined;
+  textColor?: IColor | undefined;
 }
 
 export enum TextAlignment {

@@ -2,29 +2,58 @@
 
 const NODE_BUILTINS = [
   "assert",
+  "assert/strict",
+  "async_hooks",
   "buffer",
   "child_process",
+  "cluster",
+  "console",
+  "constants",
   "crypto",
+  "dgram",
   "diagnostics_channel",
+  "dns",
+  "dns/promises",
+  "domain",
   "events",
   "fs",
   "fs/promises",
   "http",
+  "http2",
   "https",
+  "inspector",
+  "inspector/promises",
   "module",
   "net",
   "os",
   "path",
+  "path/posix",
+  "path/win32",
+  "perf_hooks",
   "process",
+  "punycode",
+  "querystring",
   "readline",
+  "readline/promises",
+  "repl",
   "stream",
+  "stream/consumers",
+  "stream/promises",
+  "stream/web",
   "string_decoder",
+  "timers",
+  "timers/promises",
   "tls",
+  "trace_events",
+  "tty",
   "url",
   "util",
+  "util/types",
+  "v8",
+  "vm",
+  "wasi",
   "worker_threads",
   "zlib",
-  "tty",
   "esbuild",
   "assemblyscript",
   "assemblyscript/asc",
@@ -33,7 +62,7 @@ const NODE_BUILTINS = [
 ];
 
 const BUILTINS_FILTER = new RegExp(
-  `^(node:)?(?:${NODE_BUILTINS.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`,
+  `^(?:node:.+|${NODE_BUILTINS.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$`,
 );
 
 export const BROWSER_BUFFER_BANNER = `if (typeof globalThis.Buffer === "undefined") {
@@ -67,18 +96,20 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
   self.process = globalThis.process;
 }`;
 
+import type { Plugin, PluginBuild } from "esbuild";
+
 export const BROWSER_BUFFER_AND_PROCESS_BANNER = `${BROWSER_BUFFER_BANNER}\n${BROWSER_PROCESS_BANNER}`;
 
 /**
  * Shared esbuild plugin providing lightweight browser-safe shims for Node.js builtins
  * (`events`, `path`, `buffer`, `util`, `url`, `fs`, `os`, `child_process`, `net`, `readline`, `zlib`, `crypto`, `module`, `process`).
  */
-export function createNodeBuiltinsIgnorePlugin(): { name: string; setup(build: any): void } {
+export function createNodeBuiltinsIgnorePlugin(): Plugin {
   return {
     name: "node-builtins-ignore",
-    setup(build: any) {
-      build.onResolve({ filter: BUILTINS_FILTER }, (args: any) => ({ path: args.path, namespace: "ignore" }));
-      build.onLoad({ filter: /.*/, namespace: "ignore" }, (args: any) => {
+    setup(build: PluginBuild) {
+      build.onResolve({ filter: BUILTINS_FILTER }, (args) => ({ path: args.path, namespace: "ignore" }));
+      build.onLoad({ filter: /.*/, namespace: "ignore" }, (args) => {
         const mod = args.path.replace(/^node:/, "");
         if (mod === "events") {
           return {
@@ -426,7 +457,105 @@ module.exports.default = proc;
             loader: "js",
           };
         }
-        return { contents: "", loader: "js" };
+        if (mod === "vm") {
+          return {
+            contents: `
+const vmShim = {
+  createContext: (ctx) => ctx || {},
+  isContext: (ctx) => Boolean(ctx),
+  runInContext: (code, ctx) => undefined,
+  runInNewContext: (code, ctx) => undefined,
+  runInThisContext: (code) => undefined,
+  compileFunction: () => () => {},
+  measureMemory: async () => ({ total: { jsMemoryEstimate: 0, jsMemoryRange: [0, 0] } }),
+  Script: class Script {
+    constructor(code) { this.code = code; }
+    runInContext(ctx) { return undefined; }
+    runInNewContext(ctx) { return undefined; }
+    runInThisContext() { return undefined; }
+  },
+  constants: {
+    DONT_CONTEXTIFY: 1,
+  },
+};
+vmShim.default = vmShim;
+module.exports = vmShim;
+`,
+            loader: "js",
+          };
+        }
+        if (mod === "perf_hooks") {
+          return {
+            contents: `
+const performance = typeof globalThis.performance !== 'undefined' ? globalThis.performance : { now: () => Date.now() };
+const perfShim = {
+  performance,
+  PerformanceObserver: class {
+    observe() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  },
+};
+perfShim.default = perfShim;
+module.exports = perfShim;
+`,
+            loader: "js",
+          };
+        }
+        if (mod === "timers/promises") {
+          return {
+            contents: `
+const tpShim = {
+  setTimeout: (ms, val) => new Promise((resolve) => setTimeout(() => resolve(val), ms)),
+  setImmediate: (val) => new Promise((resolve) => setTimeout(() => resolve(val), 0)),
+  setInterval: async function* (ms, val) { while (true) { await new Promise((r) => setTimeout(r, ms)); yield val; } },
+};
+tpShim.default = tpShim;
+module.exports = tpShim;
+`,
+            loader: "js",
+          };
+        }
+        if (mod === "timers") {
+          return {
+            contents: `
+const timersShim = {
+  setTimeout: globalThis.setTimeout,
+  clearTimeout: globalThis.clearTimeout,
+  setInterval: globalThis.setInterval,
+  clearInterval: globalThis.clearInterval,
+  setImmediate: (cb, ...args) => setTimeout(cb, 0, ...args),
+  clearImmediate: (id) => clearTimeout(id),
+};
+timersShim.default = timersShim;
+module.exports = timersShim;
+`,
+            loader: "js",
+          };
+        }
+        if (mod === "querystring") {
+          return {
+            contents: `
+const qsShim = {
+  stringify: (obj) => new URLSearchParams(obj).toString(),
+  parse: (str) => Object.fromEntries(new URLSearchParams(str)),
+  escape: encodeURIComponent,
+  unescape: decodeURIComponent,
+};
+qsShim.default = qsShim;
+module.exports = qsShim;
+`,
+            loader: "js",
+          };
+        }
+        return {
+          contents: `
+const empty = {};
+empty.default = empty;
+module.exports = empty;
+`,
+          loader: "js",
+        };
       });
     },
   };

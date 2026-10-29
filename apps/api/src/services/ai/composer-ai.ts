@@ -5,6 +5,8 @@ import { extractTopics } from "../../util/extract-topics.js";
 import {
   createDefaultLLMProvider,
   DeterministicEngineeringProvider,
+  discoverOllamaProvider,
+  getDefaultCloudModelId,
   OpenAICompatibleProvider,
   type LLMMessage,
   type LLMProvider,
@@ -506,178 +508,98 @@ export function buildDeterministicArtifactDraft(
   };
 }
 
+function cleanLLMOutput(raw: string): string {
+  let cleaned = raw.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"') && !cleaned.slice(1, -1).includes('"')) ||
+    (cleaned.startsWith("“") && cleaned.endsWith("”"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
 export function buildDeterministicPolishedText(
-  rawContent: string,
-  mode: ComposerPolishMode = "polish",
+  content: string,
+  mode: ComposerPolishMode,
   artifactCtx?: ArtifactSummaryContext | null,
 ): { polished: string; domain: string; suggestedHashtags: string[] } {
-  const trimmed = rawContent.trim();
-  const domain = artifactCtx?.domain || "Multi-Domain Systems Engineering";
-
-  // Extract existing hashtags & topics
-  const existingHashtags = Array.from(new Set(trimmed.match(/#[a-zA-Z0-9_-]+/g) || []));
-  const topics = extractTopics(trimmed);
-  const derivedTags: string[] = [...(artifactCtx?.suggestedHashtags || [])];
-
-  if (/\b(modelica|dae|der|oscillator|pendulum|equation)\b/i.test(trimmed)) {
-    derivedTags.push("#Modelica", "#DAE", "#Simulation");
-  }
-  if (/\b(cfd|mach|airfoil|navier|turbulence|su2|openfoam)\b/i.test(trimmed)) {
-    derivedTags.push("#CFD", "#Aerodynamics");
-  }
-  if (/\b(fea|stress|von\s*mises|mesh|calculix|structural)\b/i.test(trimmed)) {
-    derivedTags.push("#FEA", "#StructuralAnalysis");
-  }
-  if (/\b(pscad|psse|grid|bus|transformer|fault|ieee)\b/i.test(trimmed)) {
-    derivedTags.push("#PowerSystems", "#GridSimulation");
-  }
-  if (/\b(sysml|requirement|mbse|architecture)\b/i.test(trimmed)) {
-    derivedTags.push("#SysMLv2", "#MBSE");
-  }
-  if (/\b(fmu|fmi|ssp|cosim)\b/i.test(trimmed)) {
-    derivedTags.push("#FMI", "#CoSimulation");
-  }
-  if (/\b(cad|step|csg|geometry|scad)\b/i.test(trimmed)) {
-    derivedTags.push("#CAD", "#3DGeometry");
-  }
-
-  for (const t of topics) {
-    const clean = t.displayName.replace(/[^a-zA-Z0-9]/g, "");
-    if (clean.length >= 4 && derivedTags.length < 6) {
-      derivedTags.push(`#${clean.charAt(0).toUpperCase()}${clean.slice(1)}`);
-    }
-  }
-
-  if (derivedTags.length === 0) {
-    derivedTags.push("#ModelScript", "#Engineering", "#Simulation");
-  }
-
-  const uniqueSuggestedTags: string[] = [];
-  for (const tag of derivedTags) {
-    if (
-      !uniqueSuggestedTags.some((u) => u.toLowerCase() === tag.toLowerCase()) &&
-      !existingHashtags.some((e) => e.toLowerCase() === tag.toLowerCase())
-    ) {
-      uniqueSuggestedTags.push(tag);
-    }
-    if (uniqueSuggestedTags.length >= 4) break;
-  }
-
+  const trimmed = content.trim();
   if (!trimmed) {
     if (artifactCtx) {
-      const drafted = buildDeterministicArtifactDraft(artifactCtx, "technical");
+      const drafted = buildDeterministicArtifactDraft(
+        artifactCtx,
+        mode === "concise" ? "concise" : mode === "expand" ? "expand" : "technical",
+      );
       return {
         polished: drafted.draft,
-        domain,
+        domain: artifactCtx.domain,
         suggestedHashtags: artifactCtx.suggestedHashtags,
       };
     }
-    return { polished: "", domain, suggestedHashtags: uniqueSuggestedTags };
+    return { polished: "", domain: "Systems Engineering", suggestedHashtags: ["#ModelScript", "#Simulation"] };
   }
+
+  let domain = artifactCtx?.domain || "Systems Engineering";
+  let baseTags = artifactCtx?.suggestedHashtags ? [...artifactCtx.suggestedHashtags] : [];
+
+  const lower = trimmed.toLowerCase();
+  if (baseTags.length === 0) {
+    if (/\b(modelica|dae|equation|der\(|pendulum|oscillator|thermal|damper)\b/.test(lower)) {
+      domain = "Modelica & Physical Modeling";
+      baseTags = ["#Modelica", "#DAE", "#Simulation"];
+    } else if (/\b(cfd|navier|aerodynamic|turbulence|mach|airfoil|su2)\b/.test(lower)) {
+      domain = "Computational Fluid Dynamics";
+      baseTags = ["#CFD", "#Aerodynamics", "#FluidDynamics"];
+    } else if (/\b(fea|stress|strain|von mises|structural|mesh|calculix)\b/.test(lower)) {
+      domain = "Finite Element Structural Analysis";
+      baseTags = ["#FEA", "#StructuralAnalysis", "#Mechanics"];
+    } else if (/\b(sysml|requirement|mbse|architecture|block)\b/.test(lower)) {
+      domain = "Systems Engineering & SysML v2";
+      baseTags = ["#SysMLv2", "#MBSE", "#SystemsEngineering"];
+    } else if (/\b(pscad|psse|microgrid|voltage|frequency|power|grid|inverter|ieee)\b/.test(lower)) {
+      domain = "Power Systems & Grid Dynamics";
+      baseTags = ["#PowerSystems", "#GridSimulation", "#EMT"];
+    } else if (/\b(cad|step|scad|csg|geometry|3d)\b/.test(lower)) {
+      domain = "3D CAD & Mechanical Geometry";
+      baseTags = ["#CAD", "#3DModeling", "#Engineering"];
+    } else if (/\b(fmu|fmi|ssp|cosim|co-simulation)\b/.test(lower)) {
+      domain = "FMI Co-Simulation & Exchange";
+      baseTags = ["#FMI", "#FMU", "#CoSimulation"];
+    } else {
+      baseTags = ["#ModelScript", "#Simulation", "#SystemsEngineering"];
+    }
+  }
+
+  const existingHashtags = Array.from(trimmed.matchAll(/#([a-zA-Z0-9_]+)/g)).map((m) => `#${m[1]}`);
+  const existingLower = new Set(existingHashtags.map((t) => t.toLowerCase()));
+  const uniqueSuggestedTags = baseTags.filter((t) => !existingLower.has(t.toLowerCase())).slice(0, 4);
 
   if (mode === "hashtags") {
-    const tagsToAdd = uniqueSuggestedTags.slice(0, 3);
-    const polished = tagsToAdd.length > 0 ? `${trimmed}\n\n${tagsToAdd.join(" ")}` : trimmed;
+    const tagBlock = uniqueSuggestedTags.join(" ");
+    const polished = tagBlock ? `${trimmed}\n\n${tagBlock}` : trimmed;
     return {
       polished,
-      domain,
-      suggestedHashtags: [...existingHashtags, ...tagsToAdd],
-    };
-  }
-
-  // Protect code blocks, inline math, and ::artifact directives while polishing prose
-  const preservedBlocks: string[] = [];
-  const placeholderText = trimmed.replace(
-    /(```[\s\S]*?```|\$\$[\s\S]*?\$\$|::artifact(?:\[[^[\]\r\n]*\])?\{[^{}\r\n]*\})/g,
-    (match) => {
-      const idx = preservedBlocks.length;
-      preservedBlocks.push(match);
-      return `__MS_PRESERVED_${idx}__`;
-    },
-  );
-
-  // Clean whitespace and sentence capitalization on prose segments
-  let normalizedProse = placeholderText
-    .replace(/[ \t]+/g, " ")
-    .replace(/\bi\b/g, "I")
-    .replace(/\bim\b/gi, "I'm")
-    .replace(/\bdont\b/gi, "don't")
-    .replace(/\bcant\b/gi, "can't")
-    .replace(/\bwont\b/gi, "won't")
-    .trim();
-
-  // Capitalize first letter if it starts with a lowercase letter (not @mention or #hashtag or placeholder)
-  if (/^[a-z]/.test(normalizedProse)) {
-    normalizedProse = normalizedProse.charAt(0).toUpperCase() + normalizedProse.slice(1);
-  }
-
-  // Ensure terminal punctuation before trailing hashtags or end of sentence
-  const trailingTagsMatch = normalizedProse.match(/((?:\s+#[a-zA-Z0-9_-]+)+)\s*$/);
-  const trailingTags = trailingTagsMatch ? trailingTagsMatch[1]!.trim() : "";
-  let mainBody = trailingTagsMatch
-    ? normalizedProse.slice(0, normalizedProse.length - trailingTagsMatch[0].length).trim()
-    : normalizedProse;
-
-  if (mainBody && !/[.!?`:_]$/.test(mainBody)) {
-    mainBody += ".";
-  }
-
-  if (mode === "concise") {
-    mainBody = mainBody
-      .replace(/\b(?:just wanted to share|i wanted to share|here is a quick look at|check out this)\b\s*/gi, "Sharing ")
-      .replace(/\b(?:in order to)\b/gi, "to")
-      .replace(/\b(?:due to the fact that)\b/gi, "because")
-      .replace(/\b(?:at this point in time)\b/gi, "now")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (/^[a-z]/.test(mainBody)) {
-      mainBody = mainBody.charAt(0).toUpperCase() + mainBody.slice(1);
-    }
-    const restored = mainBody.replace(/__MS_PRESERVED_(\d+)__/g, (_m, idxStr) => preservedBlocks[Number(idxStr)] || "");
-    const finalTags = trailingTags || uniqueSuggestedTags.slice(0, 2).join(" ");
-    return {
-      polished: finalTags ? `${restored} ${finalTags}`.trim() : restored,
       domain,
       suggestedHashtags: [...existingHashtags, ...uniqueSuggestedTags],
     };
   }
 
   if (mode === "expand") {
-    const restored = mainBody.replace(/__MS_PRESERVED_(\d+)__/g, (_m, idxStr) => preservedBlocks[Number(idxStr)] || "");
     const contextAddendum =
       artifactCtx && artifactCtx.highlights.length > 0
         ? `\n\n**Technical Context (${artifactCtx.title}):** ${artifactCtx.highlights.join(" · ")}.`
         : `\n\nVerified for reproducible ${domain.toLowerCase()} analysis and interactive parameter inspection.`;
-    const allTags = trailingTags
-      ? `${trailingTags} ${uniqueSuggestedTags.slice(0, 2).join(" ")}`.trim()
-      : uniqueSuggestedTags.slice(0, 3).join(" ");
+    const tagSuffix = uniqueSuggestedTags.slice(0, 3).join(" ");
     return {
-      polished: `${restored}${contextAddendum}${allTags ? `\n\n${allTags}` : ""}`.trim(),
+      polished: `${trimmed}${contextAddendum}${tagSuffix ? `\n\n${tagSuffix}` : ""}`.trim(),
       domain,
       suggestedHashtags: [...existingHashtags, ...uniqueSuggestedTags],
     };
   }
 
-  // Default "polish" mode: clean technical phrasing + ensure hashtags
-  mainBody = mainBody
-    .replace(/^hey\s+(?:everyone|guys|folks)[,!\s]*/i, "")
-    .replace(/\bcheck out my\b/gi, "Exploring our")
-    .replace(/\bi made a\b/gi, "Developed a");
-
-  if (/^[a-z]/.test(mainBody)) {
-    mainBody = mainBody.charAt(0).toUpperCase() + mainBody.slice(1);
-  }
-
-  if (artifactCtx && !mainBody.toLowerCase().includes(artifactCtx.title.toLowerCase()) && mainBody.length < 90) {
-    const highlightSnippet = artifactCtx.highlights[0] ? ` (${artifactCtx.highlights[0]})` : "";
-    mainBody = `${mainBody} Attached: **${artifactCtx.title}**${highlightSnippet}.`;
-  }
-
-  const restored = mainBody.replace(/__MS_PRESERVED_(\d+)__/g, (_m, idxStr) => preservedBlocks[Number(idxStr)] || "");
-  const effectiveTags = trailingTags || uniqueSuggestedTags.slice(0, 3).join(" ");
-
   return {
-    polished: effectiveTags ? `${restored}\n\n${effectiveTags}`.trim() : restored,
+    polished: trimmed,
     domain,
     suggestedHashtags: [...existingHashtags, ...uniqueSuggestedTags],
   };
@@ -692,7 +614,10 @@ export class ComposerAIService {
     this.#llm = llmProvider || createDefaultLLMProvider();
   }
 
-  #resolveProviderForUser(userId?: number): { provider: LLMProvider; model: string; isDeterministic: boolean } {
+  async #resolveProviderForUser(
+    userId?: number,
+  ): Promise<{ provider: LLMProvider; model: string; isDeterministic: boolean }> {
+    const defaultCloudModel = getDefaultCloudModelId();
     if (userId) {
       try {
         const bots = this.#database.getUserBots(userId);
@@ -703,7 +628,7 @@ export class ComposerAIService {
               byokBot.bot_api_key,
               byokBot.bot_endpoint_url || "https://api.openai.com/v1",
             ),
-            model: byokBot.bot_model || "gemini-1.5-flash",
+            model: byokBot.bot_model || defaultCloudModel,
             isDeterministic: false,
           };
         }
@@ -711,11 +636,29 @@ export class ComposerAIService {
         // Ignore lookup error and fall back to default provider
       }
     }
-    const isDeterministic = this.#llm instanceof DeterministicEngineeringProvider;
+
+    if (!(this.#llm instanceof DeterministicEngineeringProvider)) {
+      return {
+        provider: this.#llm,
+        model: defaultCloudModel,
+        isDeterministic: false,
+      };
+    }
+
+    // Check if local/server Ollama LLM is running (127.0.0.1:11434, host.docker.internal:11434, ollama:11434)
+    const ollama = await discoverOllamaProvider({ preferTier: "fast" });
+    if (ollama) {
+      return {
+        provider: ollama.provider,
+        model: ollama.model,
+        isDeterministic: false,
+      };
+    }
+
     return {
       provider: this.#llm,
-      model: isDeterministic ? "modelscript-engineering-v1" : "gemini-1.5-flash",
-      isDeterministic,
+      model: "modelscript-engineering-v1",
+      isDeterministic: true,
     };
   }
 
@@ -748,7 +691,7 @@ export class ComposerAIService {
     const tone: ComposerDraftTone = input.tone || "technical";
     const fallback = buildDeterministicArtifactDraft(ctx, tone, input.existingText);
 
-    const { provider, model, isDeterministic } = this.#resolveProviderForUser(input.userId);
+    const { provider, model, isDeterministic } = await this.#resolveProviderForUser(input.userId);
     if (isDeterministic) {
       return {
         draft: fallback.draft,
@@ -764,21 +707,17 @@ export class ComposerAIService {
       };
     }
 
-    const systemPrompt = `You are ModelScript AI Composer Assistant for an engineering and scientific modeling platform.
-Draft a concise, engaging, technically accurate social post introducing the user's attached engineering artifact.
+    const systemPrompt = `Draft a concise technical social post introducing "${ctx.title}" (${ctx.domain}).
 Rules:
-- Highlight specific model parameters, equations, or simulation metrics when provided.
-- Keep the tone ${tone === "concise" ? "ultra-concise (1-2 sentences)" : tone === "expand" ? "detailed with bulleted technical takeaways" : "professional, insightful, and technical (2-4 sentences)"}.
-- Include 2-4 relevant hashtags at the end (${ctx.suggestedHashtags.join(" ")}).
-- Output ONLY the post markdown text without surrounding quotes or preamble.`;
+- Mention the exact title "${ctx.title}".
+- Style: ${tone === "concise" ? "1-2 short sentences" : tone === "expand" ? "include a '## Key Highlights' heading and 2-3 bullet points" : "2-3 technical sentences"}.
+- End with hashtags: ${ctx.suggestedHashtags.join(" ")}.
+- Output ONLY the post markdown without quotes.`;
 
     const userPrompt = [
-      `Artifact Title: ${ctx.title}`,
-      `Artifact Type: ${ctx.viewType} (${ctx.domain})`,
-      ctx.highlights.length > 0 ? `Extracted Telemetry & Highlights: ${ctx.highlights.join("; ")}` : "",
-      ctx.codeExcerpt ? `Code Excerpt:\n\`\`\`\n${ctx.codeExcerpt}\n\`\`\`` : "",
-      input.existingText?.trim() ? `User's current notes/text: "${input.existingText.trim()}"` : "",
-      `Please draft the post in "${tone}" style.`,
+      `Title: ${ctx.title} (${ctx.viewType})`,
+      ctx.highlights.length > 0 ? `Highlights: ${ctx.highlights.join("; ")}` : "",
+      input.existingText?.trim() ? `Notes: "${input.existingText.trim()}"` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -790,13 +729,15 @@ Rules:
       ];
       const response = await provider.complete(messages, {
         model,
-        temperature: 0.4,
-        maxTokens: 400,
+        temperature: 0.3,
+        maxTokens: tone === "concise" ? 80 : 140,
+        reasoningEffort: "none",
       });
-      const text = response.content?.trim();
+      const text = cleanLLMOutput(response.content || "");
       if (text && !text.startsWith("I have received your request:")) {
+        const finalDraft = tone === "expand" && !text.includes("##") ? `## ${ctx.title}\n\n${text}` : text;
         return {
-          draft: text,
+          draft: finalDraft,
           notebookTitle: fallback.notebookTitle,
           notebookSummary: fallback.notebookSummary,
           domain: ctx.domain,
@@ -831,7 +772,7 @@ Rules:
     const artifactCtx = input.artifactId ? this.#loadArtifactContext(input.artifactId) : null;
     const fallback = buildDeterministicPolishedText(input.content, mode, artifactCtx);
 
-    const { provider, model, isDeterministic } = this.#resolveProviderForUser(input.userId);
+    const { provider, model, isDeterministic } = await this.#resolveProviderForUser(input.userId);
     if (isDeterministic || !input.content.trim()) {
       return {
         polished: fallback.polished,
@@ -847,40 +788,41 @@ Rules:
 
     const modeInstructions: Record<ComposerPolishMode, string> = {
       polish:
-        "Improve clarity, grammar, technical precision, and flow while keeping the author's voice. Append 2-3 relevant engineering hashtags if none are present.",
-      concise: "Condense and tighten the text into a punchy, high-signal engineering post with zero fluff.",
+        "Correct all spelling errors, typos, grammar mistakes, capitalization, and punctuation while lightly polishing the text for clarity. Keep the user's original intent and tone. Do NOT add hashtags unless hashtags were already present in the input.",
+      concise:
+        "Correct all spelling and grammar errors, and condense the text into a concise, direct, punchy version. Do NOT add hashtags unless hashtags were already present.",
       expand:
-        "Expand the post with deeper technical context, physical modeling significance, and structured takeaways.",
+        "Correct all spelling and grammar errors, expand the post with 1-2 sentences of technical context, and include 2-3 relevant engineering hashtags at the end.",
       hashtags:
-        "Keep the existing text intact and append 3-4 highly relevant engineering domain hashtags at the end without duplicating existing tags.",
+        "Correct any spelling or grammar errors in the text and append 3-4 relevant engineering hashtags at the end without duplicating existing hashtags.",
     };
 
-    const systemPrompt = `You are ModelScript AI Writing Polish Assistant for systems engineers and researchers.
-Task: ${modeInstructions[mode]}
-Critical rules:
-- Preserve all @mentions (e.g. @alice, @user@domain), existing #hashtags, LaTeX math ($...$, $$...$$), code blocks (\`\`\`...\`\`\`), and ::artifact[...]{...} directives verbatim.
-- Output ONLY the revised post text without any explanation, quotes, or conversational filler.`;
+    const systemPrompt = [
+      "You are an AI writing assistant integrated into the ModelScript social composer.",
+      `Task: ${modeInstructions[mode]}`,
+      "Rules:",
+      "- Preserve all @mentions (e.g. @alice, @user@domain), existing #hashtags, LaTeX math ($...$, $$...$$), code blocks (```...```), and ::artifact[...]{...} directives verbatim.",
+      "- Output ONLY the revised text. Do NOT wrap the output in quotes and do NOT include any preamble or explanation.",
+    ].join("\n");
 
-    const userPrompt = [
-      artifactCtx
-        ? `Attached Artifact Context: ${artifactCtx.title} (${artifactCtx.domain} — ${artifactCtx.highlights.join(", ")})`
-        : "",
-      `Original Post Text:\n${input.content}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const userPrompt =
+      artifactCtx && (mode === "expand" || mode === "hashtags")
+        ? `Attached Artifact Context: ${artifactCtx.title} (${artifactCtx.domain} — ${artifactCtx.highlights.join(", ")})\n\nText to revise:\n${input.content}`
+        : input.content;
 
     try {
       const messages: LLMMessage[] = [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ];
+      const maxTokens = mode === "expand" ? 180 : Math.min(300, Math.max(60, Math.ceil(input.content.length * 0.6)));
       const response = await provider.complete(messages, {
         model,
-        temperature: 0.3,
-        maxTokens: 500,
+        temperature: 0.2,
+        maxTokens,
+        reasoningEffort: "none",
       });
-      const text = response.content?.trim();
+      const text = cleanLLMOutput(response.content || "");
       if (text && !text.startsWith("I have received your request:")) {
         return {
           polished: text,

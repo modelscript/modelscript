@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import Box from "../../../components/Box";
 import { sanitizeHttpUrl } from "../../../util/url";
-import { ActionButton, Badge, Card, FilterPill, ModalBox, ModalOverlay, Select, Textarea } from "../styles";
-import type { AdminDmcaNotice } from "../types";
+import { ActionButton, Badge, Card, FilterPill, ModalBox, ModalOverlay, Select, Table, Textarea } from "../styles";
+import type { AdminDmcaNotice, AdminQuarantinedResource } from "../types";
 
 export interface AdminDmcaTabProps {
   dmcaNotices: AdminDmcaNotice[];
@@ -15,6 +15,9 @@ export interface AdminDmcaTabProps {
     actionTaken: string,
     options?: { status?: "resolved" | "rejected" | undefined; quarantineResource?: boolean | undefined },
   ) => Promise<void>;
+  onFileCounterNotice?: ((noticeId: number, counterNoticeText: string) => Promise<void>) | undefined;
+  quarantinedResources?: AdminQuarantinedResource[] | undefined;
+  onRestoreQuarantinedResource?: ((resourceType: string, resourceId: string) => Promise<void>) | undefined;
   loading: boolean;
 }
 
@@ -22,7 +25,7 @@ const DMCA_TEMPLATES = [
   {
     label: "Statutory Takedown Executed",
     status: "resolved" as const,
-    text: "Takedown executed per 17 U.S.C. § 512(c) statutory requirements; target resource removed.",
+    text: "Takedown executed per 17 U.S.C. § 512(c) statutory requirements; target resource quarantined.",
   },
   {
     label: "Incomplete Statutory Elements",
@@ -41,12 +44,18 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
   dmcaFilter,
   setDmcaFilter,
   onResolveDmca,
+  onFileCounterNotice,
+  quarantinedResources = [],
+  onRestoreQuarantinedResource,
   loading,
 }) => {
   const [activeDmcaToResolve, setActiveDmcaToResolve] = useState<AdminDmcaNotice | null>(null);
   const [dmcaActionTaken, setDmcaActionTaken] = useState("");
   const [dmcaResolutionStatus, setDmcaResolutionStatus] = useState<"resolved" | "rejected">("resolved");
   const [quarantineResource, setQuarantineResource] = useState(true);
+
+  const [counterNoticeModal, setCounterNoticeModal] = useState<AdminDmcaNotice | null>(null);
+  const [counterNoticeText, setCounterNoticeText] = useState("");
 
   const handleConfirmResolve = async () => {
     if (!activeDmcaToResolve || !dmcaActionTaken.trim()) return;
@@ -56,6 +65,13 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
     });
     setActiveDmcaToResolve(null);
     setDmcaActionTaken("");
+  };
+
+  const handleConfirmCounterNotice = async () => {
+    if (!counterNoticeModal || !onFileCounterNotice || !counterNoticeText.trim()) return;
+    await onFileCounterNotice(counterNoticeModal.id, counterNoticeText.trim());
+    setCounterNoticeModal(null);
+    setCounterNoticeText("");
   };
 
   return (
@@ -90,6 +106,7 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
                 <Badge $variant={n.status === "resolved" ? "success" : n.status === "rejected" ? "neutral" : "warning"}>
                   {n.status}
                 </Badge>
+                {n.resource_type && <Badge $variant="neutral">{n.resource_type}</Badge>}
               </Box>
               <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                 {new Date(n.created_at).toLocaleString()}
@@ -130,36 +147,97 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
               </Box>
             )}
 
-            {n.status === "pending" && (
-              <Box mt={2} display="flex" gap={2}>
-                <ActionButton
-                  $variant="primary"
-                  onClick={() => {
-                    setActiveDmcaToResolve(n);
-                    setDmcaResolutionStatus("resolved");
-                    setQuarantineResource(true);
-                    setDmcaActionTaken("Takedown executed per statutory requirements.");
-                  }}
-                >
-                  Resolve Notice...
-                </ActionButton>
+            <Box mt={2} display="flex" gap={2} flexWrap="wrap">
+              {n.status === "pending" && (
+                <>
+                  <ActionButton
+                    $variant="primary"
+                    onClick={() => {
+                      setActiveDmcaToResolve(n);
+                      setDmcaResolutionStatus("resolved");
+                      setQuarantineResource(true);
+                      setDmcaActionTaken("Takedown executed per statutory requirements.");
+                    }}
+                  >
+                    Resolve Notice...
+                  </ActionButton>
+                  <ActionButton
+                    $variant="secondary"
+                    onClick={() => {
+                      setActiveDmcaToResolve(n);
+                      setDmcaResolutionStatus("rejected");
+                      setQuarantineResource(false);
+                      setDmcaActionTaken(
+                        "Rejected: Notice lacks required statutory elements under 17 U.S.C. § 512(c)(3).",
+                      );
+                    }}
+                  >
+                    Reject Notice...
+                  </ActionButton>
+                </>
+              )}
+              {n.status === "resolved" && onFileCounterNotice && (
                 <ActionButton
                   $variant="secondary"
                   onClick={() => {
-                    setActiveDmcaToResolve(n);
-                    setDmcaResolutionStatus("rejected");
-                    setQuarantineResource(false);
-                    setDmcaActionTaken(
-                      "Rejected: Notice lacks required statutory elements under 17 U.S.C. § 512(c)(3).",
-                    );
+                    setCounterNoticeModal(n);
+                    setCounterNoticeText("");
                   }}
                 >
-                  Reject Notice...
+                  Record § 512(g) Counter-Notice...
                 </ActionButton>
-              </Box>
-            )}
+              )}
+            </Box>
           </Card>
         ))
+      )}
+
+      {quarantinedResources.length > 0 && (
+        <Box mt={4}>
+          <Box fontWeight={700} fontSize="14px" mb={2}>
+            Quarantined Engineering Resources ({quarantinedResources.length})
+          </Box>
+          <Table>
+            <thead>
+              <tr>
+                <th>Resource Type</th>
+                <th>Resource ID / Target</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Restore Eligible</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quarantinedResources.map((q) => (
+                <tr key={q.id}>
+                  <td>
+                    <Badge $variant="neutral">{q.resource_type}</Badge>
+                  </td>
+                  <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{q.resource_id}</td>
+                  <td style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{q.reason}</td>
+                  <td>
+                    <Badge $variant={q.status === "quarantined" ? "danger" : "success"}>{q.status}</Badge>
+                  </td>
+                  <td style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                    {q.restore_after ? new Date(q.restore_after).toLocaleDateString() : "—"}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {q.status === "quarantined" && onRestoreQuarantinedResource && (
+                      <ActionButton
+                        $variant="secondary"
+                        disabled={loading}
+                        onClick={() => void onRestoreQuarantinedResource(q.resource_type, q.resource_id)}
+                      >
+                        Restore Resource
+                      </ActionButton>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Box>
       )}
 
       {/* ── DMCA RESOLUTION MODAL ── */}
@@ -227,7 +305,7 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
                   checked={quarantineResource}
                   onChange={(e) => setQuarantineResource(e.target.checked)}
                 />
-                Automatically remove matching local Post URL if referenced in Infringing URL
+                Automatically quarantine target resource (Post, Package, Repository, FMU, or Solution)
               </label>
             )}
 
@@ -241,6 +319,38 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
                 disabled={loading || !dmcaActionTaken.trim()}
               >
                 Confirm Resolution
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {/* ── DMCA COUNTER-NOTICE MODAL ── */}
+      {counterNoticeModal && (
+        <ModalOverlay>
+          <ModalBox>
+            <span style={{ fontWeight: 800, fontSize: "16px" }}>
+              Record § 512(g) Counter-Notice — Notice #{counterNoticeModal.id}
+            </span>
+            <Box fontSize="12px" color="var(--color-text-muted)">
+              Filing a statutory counter-notice starts the 14-day waiting window before the quarantined resource becomes
+              eligible for restoration unless the claimant files notice of court action.
+            </Box>
+            <Textarea
+              placeholder="Paste respondent's statutory counter-notice statement and contact details..."
+              value={counterNoticeText}
+              onChange={(e) => setCounterNoticeText(e.target.value)}
+            />
+            <Box display="flex" justifyContent="flex-end" gap={2}>
+              <ActionButton $variant="secondary" onClick={() => setCounterNoticeModal(null)}>
+                Cancel
+              </ActionButton>
+              <ActionButton
+                $variant="primary"
+                onClick={handleConfirmCounterNotice}
+                disabled={loading || !counterNoticeText.trim()}
+              >
+                Record Counter-Notice
               </ActionButton>
             </Box>
           </ModalBox>

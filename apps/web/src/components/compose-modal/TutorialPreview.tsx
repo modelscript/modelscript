@@ -31,13 +31,13 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
   return (
     <div
       style={{
-        padding: "16px",
+        padding: "24px 28px",
         borderRadius: "12px",
-        border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
-        background: "rgba(3, 7, 18, 0.55)",
+        border: "1px solid var(--ms-divider)",
+        background: "var(--color-canvas-inset, #ffffff)",
         display: "flex",
         flexDirection: "column",
-        gap: "12px",
+        gap: "16px",
       }}
     >
       <div
@@ -45,104 +45,102 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          borderBottom: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))",
-          paddingBottom: "8px",
+          borderBottom: "1px solid var(--ms-divider)",
+          paddingBottom: "10px",
         }}
       >
         <span
           style={{
-            fontFamily: "var(--font-mono, monospace)",
-            fontSize: "11px",
-            fontWeight: 700,
-            color: "var(--color-accent-cyan)",
+            fontSize: "11.5px",
+            fontWeight: 600,
+            color: "var(--ms-text-3)",
             textTransform: "uppercase",
+            letterSpacing: "0.04em",
           }}
         >
-          👁️ Live Baeldung Tutorial Preview
+          Live Article Preview
         </span>
-        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px", color: "var(--color-text-muted)" }}>
-          ⏱ {readMins} min read
-        </span>
+        <span style={{ fontSize: "12px", color: "var(--ms-text-3)" }}>{readMins} min read</span>
       </div>
 
       {notebookMode ? (
         <>
-          <div
-            style={{
-              padding: "12px 14px",
-              borderRadius: "10px",
-              background: "linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.06))",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-            }}
-          >
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-              {notebookSeries && (
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    fontFamily: "var(--font-mono, monospace)",
-                    padding: "2px 8px",
-                    borderRadius: "9999px",
-                    background: "rgba(6, 182, 212, 0.15)",
-                    color: "var(--color-accent-cyan)",
-                  }}
-                >
-                  📚 {notebookSeries}
-                </span>
-              )}
-              {notebookDifficulty && (
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    fontFamily: "var(--font-mono, monospace)",
-                    padding: "2px 8px",
-                    borderRadius: "9999px",
-                    background: "rgba(16, 185, 129, 0.14)",
-                    color: "var(--color-status-verified, #34d399)",
-                  }}
-                >
-                  ● {notebookDifficulty}
-                </span>
-              )}
-              {notebookDialect && (
-                <span
-                  style={{
-                    fontSize: "10px",
-                    fontFamily: "var(--font-mono, monospace)",
-                    padding: "2px 8px",
-                    borderRadius: "9999px",
-                    background: "rgba(255, 255, 255, 0.06)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  ⚙️ {notebookDialect}
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--color-text-heading)" }}>
-              {notebookTitle || "Untitled Tutorial"}
-            </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "8px" }}>
+            {(notebookSeries || notebookDifficulty || notebookDialect) && (
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                {notebookSeries && (
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      background: "var(--ms-surface-hover)",
+                      color: "var(--ms-text-2)",
+                    }}
+                  >
+                    {notebookSeries}
+                  </span>
+                )}
+                {notebookDifficulty && (
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      background: "var(--ms-surface-hover)",
+                      color: "var(--ms-text-2)",
+                    }}
+                  >
+                    {notebookDifficulty}
+                  </span>
+                )}
+                {notebookDialect && (
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      background: "var(--ms-surface-hover)",
+                      color: "var(--ms-text-3)",
+                    }}
+                  >
+                    {notebookDialect}
+                  </span>
+                )}
+              </div>
+            )}
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "32px",
+                lineHeight: 1.2,
+                fontWeight: 800,
+                letterSpacing: "-0.025em",
+                color: "var(--ms-text-heading, var(--ms-text-1))",
+              }}
+            >
+              {notebookTitle || "Untitled"}
+            </h1>
             {notebookSummary && (
-              <div style={{ fontSize: "13.5px", color: "var(--color-text-secondary)" }}>{notebookSummary}</div>
+              <p style={{ margin: 0, fontSize: "17px", lineHeight: 1.5, color: "var(--ms-text-2)" }}>
+                {notebookSummary}
+              </p>
             )}
           </div>
 
           {notebookCells.map((cell, idx) =>
             cell.type === "markdown" ? (
-              <div key={cell.id} style={{ fontSize: "15.5px", lineHeight: 1.65 }}>
-                <RenderContent text={cell.content || "*Empty section*"} isLongForm={true} />
+              <div key={cell.id} style={{ fontSize: "16px", lineHeight: 1.72, color: "var(--ms-text-1)" }}>
+                <RenderContent text={cell.content || "*Empty block*"} isLongForm={true} />
               </div>
             ) : (
               <div
                 key={cell.id}
                 style={{
                   borderRadius: "10px",
-                  border: "1px solid rgba(139, 92, 246, 0.25)",
+                  border: "1px solid var(--ms-divider)",
                   overflow: "hidden",
                 }}
               >
@@ -150,14 +148,14 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
                 {(cell.caption || cell.title) && (
                   <div
                     style={{
-                      padding: "6px 10px",
-                      fontSize: "11.5px",
-                      color: "var(--color-text-muted)",
-                      background: "rgba(0,0,0,0.2)",
+                      padding: "8px 12px",
+                      fontSize: "12.5px",
+                      color: "var(--ms-text-2)",
+                      borderTop: "1px solid var(--ms-divider)",
+                      background: "var(--ms-surface-hover)",
                     }}
                   >
-                    <strong style={{ color: "var(--color-accent-cyan)" }}>Fig. {idx + 1}:</strong>{" "}
-                    {cell.caption || cell.title}
+                    <strong>Fig. {idx + 1}:</strong> {cell.caption || cell.title}
                   </div>
                 )}
               </div>

@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArchiveIcon, CheckCircleIcon, DatabaseIcon } from "@primer/octicons-react";
+import {
+  ArchiveIcon,
+  CheckCircleIcon,
+  DatabaseIcon,
+  DownloadIcon,
+  HistoryIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
 import React, { useState } from "react";
+import {
+  type AdminInstanceBundle,
+  broadcastAdminActivityPubMove,
+  exportAdminInstanceBundle,
+  getAdminBackupDownloadUrl,
+} from "../../../api";
 import Box from "../../../components/Box";
 import { ActionButton, Badge, Card, Input, StatGrid, Table } from "../styles";
 import type { AdminBackupInfo, AdminDbStatus } from "../types";
@@ -21,6 +34,9 @@ export interface AdminDatabaseTabProps {
   onUpgradeDb: () => Promise<void>;
   backups?: AdminBackupInfo[] | undefined;
   onCreateHotBackup?: ((label?: string) => Promise<void>) | undefined;
+  onRestoreBackup?: ((fileName: string) => Promise<void>) | undefined;
+  onDeleteBackup?: ((fileName: string) => Promise<void>) | undefined;
+  onPruneBackups?: ((keepCount?: number) => Promise<void>) | undefined;
   loading: boolean;
 }
 
@@ -34,9 +50,17 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
   onUpgradeDb,
   backups = [],
   onCreateHotBackup,
+  onRestoreBackup,
+  onDeleteBackup,
+  onPruneBackups,
   loading,
 }) => {
   const [backupLabel, setBackupLabel] = useState("");
+  const [keepCount, setKeepCount] = useState(7);
+  const [exportedBundle, setExportedBundle] = useState<AdminInstanceBundle | null>(null);
+  const [sourceActorUri, setSourceActorUri] = useState("");
+  const [targetActorUri, setTargetActorUri] = useState("");
+  const [moveResultMsg, setMoveResultMsg] = useState<string | null>(null);
 
   const appliedList = dbStatus?.applied || dbStatus?.appliedMigrations || [];
   const pendingList = dbStatus?.pending || dbStatus?.pendingMigrations || [];
@@ -52,6 +76,29 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
     if (!onCreateHotBackup) return;
     await onCreateHotBackup(backupLabel.trim() || undefined);
     setBackupLabel("");
+  };
+
+  const handleExportBundle = async () => {
+    try {
+      const bundle = await exportAdminInstanceBundle();
+      setExportedBundle(bundle);
+    } catch {
+      // Handled by caller
+    }
+  };
+
+  const handleBroadcastMove = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sourceActorUri.trim() || !targetActorUri.trim()) return;
+    try {
+      const res = await broadcastAdminActivityPubMove({
+        sourceActorUri: sourceActorUri.trim(),
+        targetActorUri: targetActorUri.trim(),
+      });
+      setMoveResultMsg(`Broadcast Move (${res.activityId}) to ${res.queuedDeliveries} peer inbox(es).`);
+    } catch {
+      setMoveResultMsg("Failed to broadcast Move activity.");
+    }
   };
 
   return (
@@ -110,8 +157,30 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
 
       {onCreateHotBackup && (
         <Card>
-          <span style={{ fontWeight: 700, fontSize: "14px" }}>Hot SQLite WAL Backups</span>
-          <Box display="flex" alignItems="center" gap={2} mt={1} flexWrap="wrap">
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+            <span style={{ fontWeight: 700, fontSize: "14px" }}>
+              Hot SQLite WAL Backups &amp; Point-in-Time Restore ({backups.length})
+            </span>
+            {onPruneBackups && backups.length > 1 && (
+              <Box display="flex" alignItems="center" gap={1}>
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Retain latest:</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  style={{ width: "68px", padding: "4px 8px" }}
+                  value={keepCount}
+                  onChange={(e) => setKeepCount(Math.max(1, Number(e.target.value) || 7))}
+                />
+                <ActionButton $variant="secondary" disabled={loading} onClick={() => void onPruneBackups(keepCount)}>
+                  <TrashIcon size={13} />
+                  <span>Prune Old Snapshots</span>
+                </ActionButton>
+              </Box>
+            )}
+          </Box>
+
+          <Box display="flex" alignItems="center" gap={2} mt={2} flexWrap="wrap">
             <Input
               style={{ width: "260px" }}
               placeholder="Backup label (e.g. pre-migration)..."
@@ -130,7 +199,9 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
                   <tr>
                     <th>Snapshot File</th>
                     <th>Size</th>
+                    <th>SHA-256</th>
                     <th>Created At</th>
+                    <th style={{ textAlign: "right" }}>Disaster Recovery Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -138,8 +209,49 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
                     <tr key={b.fileName}>
                       <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{b.fileName}</td>
                       <td>{(b.sizeBytes / 1024).toFixed(1)} KB</td>
+                      <td
+                        style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--color-text-muted)" }}
+                        title={b.sha256}
+                      >
+                        {b.sha256 ? `${b.sha256.slice(0, 12)}…` : "—"}
+                      </td>
                       <td style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>
                         {new Date(b.createdAt).toLocaleString()}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <Box display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
+                          <a
+                            href={getAdminBackupDownloadUrl(b.fileName)}
+                            download={b.fileName}
+                            style={{ textDecoration: "none" }}
+                          >
+                            <ActionButton type="button" $variant="secondary">
+                              <DownloadIcon size={13} />
+                              <span>Download</span>
+                            </ActionButton>
+                          </a>
+                          {onRestoreBackup && (
+                            <ActionButton
+                              $variant="secondary"
+                              disabled={loading}
+                              onClick={() => void onRestoreBackup(b.fileName)}
+                              title="Verify integrity, take pre-restore snapshot, and restore live DB"
+                            >
+                              <HistoryIcon size={13} />
+                              <span>Restore</span>
+                            </ActionButton>
+                          )}
+                          {onDeleteBackup && (
+                            <ActionButton
+                              $variant="danger"
+                              disabled={loading}
+                              onClick={() => void onDeleteBackup(b.fileName)}
+                            >
+                              <TrashIcon size={13} />
+                              <span>Delete</span>
+                            </ActionButton>
+                          )}
+                        </Box>
                       </td>
                     </tr>
                   ))}
@@ -149,6 +261,63 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
           )}
         </Card>
       )}
+
+      <Card>
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <span style={{ fontWeight: 700, fontSize: "14px" }}>
+              Portable Instance Migration Bundle &amp; ActivityPub Domain Move
+            </span>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              Export a signed JSON manifest + SQLite snapshot for VPS-to-VPS migration, or broadcast a W3C ActivityPub{" "}
+              <code>Move</code> (<code>alsoKnownAs</code>) activity to federated peers.
+            </span>
+          </Box>
+          <ActionButton $variant="secondary" type="button" onClick={() => void handleExportBundle()} disabled={loading}>
+            <DownloadIcon size={14} />
+            <span>Export Migration Bundle</span>
+          </ActionButton>
+        </Box>
+
+        {exportedBundle && (
+          <Box mt={2} fontSize="12px">
+            <Badge $variant="success">Bundle Ready</Badge>{" "}
+            <span>
+              Snapshot: <code>{exportedBundle.snapshot.fileName}</code> • SHA-256:{" "}
+              <code>{exportedBundle.bundleSha256.slice(0, 16)}…</code>
+            </span>
+          </Box>
+        )}
+
+        <form onSubmit={handleBroadcastMove}>
+          <Box display="flex" gap={2} mt={2} flexWrap="wrap" alignItems="center">
+            <Input
+              style={{ flex: 1, minWidth: "200px" }}
+              placeholder="Source Actor URI (https://old.example/users/alice)"
+              value={sourceActorUri}
+              onChange={(e) => setSourceActorUri(e.target.value)}
+            />
+            <Input
+              style={{ flex: 1, minWidth: "200px" }}
+              placeholder="Target Actor URI (https://new.example/users/alice)"
+              value={targetActorUri}
+              onChange={(e) => setTargetActorUri(e.target.value)}
+            />
+            <ActionButton
+              $variant="secondary"
+              type="submit"
+              disabled={loading || !sourceActorUri.trim() || !targetActorUri.trim()}
+            >
+              Broadcast ActivityPub Move
+            </ActionButton>
+          </Box>
+        </form>
+        {moveResultMsg && (
+          <Box mt={1} fontSize="12px" color="var(--color-text-muted)">
+            {moveResultMsg}
+          </Box>
+        )}
+      </Card>
 
       {dbVerifyResult &&
         (() => {

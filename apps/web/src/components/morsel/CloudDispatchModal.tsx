@@ -56,9 +56,11 @@ export function CloudDispatchModal({
       isOpen={isOpen}
       onClose={onClose}
       modelName={modelName}
+      dialect={dialect}
       fileName={modelName ? `${modelName}.${ext}` : undefined}
       fileContent={sourceCode ?? modelCode ?? ""}
-      experimentConfig={mergedExperimentConfig as any}
+      parameterOverrides={parameterOverrides}
+      experimentConfig={mergedExperimentConfig}
       onResultLoaded={onResultLoaded}
       onResultsLoaded={onResultsLoaded}
     />

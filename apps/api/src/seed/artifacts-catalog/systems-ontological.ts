@@ -205,79 +205,152 @@ equation
   attribute def MassKg;
   attribute def VelocityMps;
   attribute def ThrustKn;
+  attribute def AngleDeg;
+  attribute def TimeMs;
+  attribute def Percentage;
 
   port def SpaceWireTelemetryPort {
-    out attribute altitudeMeters;
-    out attribute surfaceVelocityMps;
-    out attribute hazardMapConfidence;
+    out attribute altitudeMeters = 150.0;
+    out attribute surfaceVelocityMps : VelocityMps = 1.12;
+    out attribute hazardMapConfidence = 0.994;
   }
 
   port def GimbalActuationPort {
-    out attribute pitchGimbalDeg;
-    out attribute yawGimbalDeg;
-    out attribute throttlePct;
+    out attribute pitchGimbalDeg : AngleDeg = 1.8;
+    out attribute yawGimbalDeg : AngleDeg = -0.6;
+    out attribute throttlePct : Percentage = 62.5;
   }
 
   part def TerrainRelativeNavSensor {
+    doc /* Coherent Doppler LiDAR & optical terrain relative navigation sensor suite */
+    attribute fovDeg : AngleDeg = 45.0;
+    attribute rangeResolutionCm = 1.8;
     port trnOut : SpaceWireTelemetryPort;
   }
 
   part def DescentFlightComputer {
+    doc /* Triple-modular redundant RAD750 convex-guidance flight computer */
+    attribute voterLatencyMs : TimeMs = 0.85;
+    attribute faultToleranceChannels = 2;
     port sensorIn : ~SpaceWireTelemetryPort;
     port engineCmd : GimbalActuationPort;
   }
 
   part def MethaloxDescentEngine {
+    doc /* Deep-throttling 44.5 kN LOX/CH4 gimbaled descent engine (5:1 throttle ratio) */
     attribute maxThrust : ThrustKn = 44.5;
+    attribute minThrottleThrust : ThrustKn = 8.9;
     attribute specificImpulseSec = 362.0;
     port controlIn : ~GimbalActuationPort;
   }
 
+  state def PoweredDescentMode {
+    doc /* Modal GNC state machine from orbital braking burn to touchdown */
+    entry; then BrakingBurn;
+    state BrakingBurn;
+    state PitchUpApproach;
+    state HazardDivert;
+    state ConstantVelocityTouchdown;
+
+    transition braking_to_approach
+      first BrakingBurn
+      if altitudeMeters <= 1500.0
+      then PitchUpApproach;
+
+    transition approach_to_divert
+      first PitchUpApproach
+      if altitudeMeters <= 150.0
+      then HazardDivert;
+
+    transition divert_to_touchdown
+      first HazardDivert
+      if altitudeMeters <= 25.0
+      then ConstantVelocityTouchdown;
+  }
+
   part def LunarDescentStage {
+    doc /* Integrated Artemis Lunar Descent Stage GNC & propulsion assembly */
+    attribute touchdownVerticalVelMps : VelocityMps = 1.12;
+    attribute touchdownLateralVelMps : VelocityMps = 0.24;
+    attribute landingSlopeDeg : AngleDeg = 9.5;
+    attribute divertLateralMeters = 128.0;
+    attribute propellantMarginPct : Percentage = 11.4;
+    attribute activeFaultChannels = 2;
+    attribute thrusterGlitchMs : TimeMs = 0.0;
+
     part lidarHazardScanner : TerrainRelativeNavSensor[2];
     part tripleRedundantFcc : DescentFlightComputer[3];
     part mainEngines : MethaloxDescentEngine[3];
 
+    exhibit state descentMode : PoweredDescentMode;
+
     connect lidarHazardScanner.trnOut to tripleRedundantFcc.sensorIn;
     connect tripleRedundantFcc.engineCmd to mainEngines.controlIn;
+
+    satisfy requirement SafeTouchdownVelocityReq by tripleRedundantFcc;
+    satisfy requirement HazardDivertCapabilityReq by mainEngines;
+    satisfy requirement DualFaultToleranceReq by tripleRedundantFcc;
   }
 
   requirement def <'REQ-LND-001'> SafeTouchdownVelocityReq {
-    doc /* Touchdown vertical sink rate shall not exceed 1.5 m/s and lateral drift shall be < 0.4 m/s on slopes up to 12 deg. */
+    doc /* Touchdown vertical sink rate shall not exceed 1.5 m/s and lateral drift shall be <= 0.4 m/s on slopes up to 12 deg. */
+    subject stage : LunarDescentStage;
+    attribute maxVerticalVelMps : VelocityMps = 1.5;
+    attribute maxLateralVelMps : VelocityMps = 0.4;
+    attribute maxSlopeDeg : AngleDeg = 12.0;
+    require constraint {
+      touchdownVerticalVelMps <= 1.5 and touchdownLateralVelMps <= 0.4 and landingSlopeDeg <= 12.0
+    }
   }
 
   requirement def <'REQ-LND-002'> HazardDivertCapabilityReq {
-    doc /* The GNC subsystem shall execute a 120m autonomous lateral hazard divert at 150m altitude with >= 8.5% propellant margin. */
+    doc /* The GNC subsystem shall execute a >= 120m autonomous lateral hazard divert at 150m altitude with >= 8.5% propellant margin. */
+    subject stage : LunarDescentStage;
+    attribute minDivertMeters = 120.0;
+    attribute minPropellantMarginPct : Percentage = 8.5;
+    require constraint {
+      divertLateralMeters >= 120.0 and propellantMarginPct >= 8.5 and maxThrust >= 40.0
+    }
   }
 
   requirement def <'REQ-LND-003'> DualFaultToleranceReq {
-    doc /* Triple-modular redundant flight computers shall survive any single Byzantinesensor fault with zero thruster glitch. */
+    doc /* Triple-modular redundant flight computers shall survive Byzantine sensor faults (activeFaultChannels >= 2) with voter latency <= 2.0 ms and zero thruster glitch. */
+    subject fcc : DescentFlightComputer;
+    attribute minFaultChannels = 2;
+    attribute maxVoterLatencyMs : TimeMs = 2.0;
+    require constraint {
+      activeFaultChannels >= 2 and voterLatencyMs <= 2.0 and thrusterGlitchMs <= 0.0
+    }
   }
 }`,
     extraViewConfig: {
       format: "SysML2",
       systemName: "ArtemisLunarLanderGNC",
+      rootPartDef: "LunarDescentStage",
       standalone: true,
       parts: [
         {
           name: "lidarHazardScanner",
           type: "TerrainRelativeNavSensor",
           multiplicity: "2",
-          ports: ["trnOut : SpaceWireTelemetryPort"],
+          ports: ["out trnOut : SpaceWireTelemetryPort"],
+          attributes: ["fovDeg = 45.0°", "rangeResolutionCm = 1.8 cm"],
           description: "Dual coherent Doppler LiDAR & optical terrain relative navigation sensors",
         },
         {
           name: "tripleRedundantFcc",
           type: "DescentFlightComputer",
           multiplicity: "3",
-          ports: ["sensorIn : ~SpaceWireTelemetryPort", "engineCmd : GimbalActuationPort"],
+          ports: ["in sensorIn : ~SpaceWireTelemetryPort", "out engineCmd : GimbalActuationPort"],
+          attributes: ["voterLatencyMs = 0.85 ms", "faultToleranceChannels = 2"],
           description: "RAD750 triple-modular redundant convex-guidance flight computers",
         },
         {
           name: "mainEngines",
           type: "MethaloxDescentEngine",
           multiplicity: "3",
-          ports: ["controlIn : ~GimbalActuationPort"],
+          ports: ["in controlIn : ~GimbalActuationPort"],
+          attributes: ["maxThrust = 44.5 kN", "minThrottleThrust = 8.9 kN", "specificImpulseSec = 362.0 s"],
           description: "Deep-throttling 44.5 kN LOX/CH4 gimbaled descent engines (5:1 throttle ratio)",
         },
       ],
@@ -297,20 +370,63 @@ equation
         {
           id: "REQ-LND-001",
           name: "SafeTouchdownVelocityReq",
-          text: "Touchdown vertical sink rate <= 1.5 m/s and lateral drift < 0.4 m/s on 12 deg lunar regolith slope.",
+          text: "Touchdown vertical sink rate shall not exceed 1.5 m/s and lateral drift shall be <= 0.4 m/s on slopes up to 12 deg.",
           status: "verified",
+          subject: "stage : LunarDescentStage",
+          satisfiedBy: "tripleRedundantFcc",
+          constraintExpr:
+            "touchdownVerticalVelMps <= 1.5 and touchdownLateralVelMps <= 0.4 and landingSlopeDeg <= 12.0",
+          witnesses: [
+            {
+              expr: "touchdownVerticalVelMps <= 1.5",
+              actual: "1.12 m/s",
+              bound: "1.5 m/s",
+              margin: "+25.3%",
+              passed: true,
+            },
+            {
+              expr: "touchdownLateralVelMps <= 0.4",
+              actual: "0.24 m/s",
+              bound: "0.4 m/s",
+              margin: "+40.0%",
+              passed: true,
+            },
+            { expr: "landingSlopeDeg <= 12.0", actual: "9.5 deg", bound: "12.0 deg", margin: "+20.8%", passed: true },
+          ],
         },
         {
           id: "REQ-LND-002",
           name: "HazardDivertCapabilityReq",
-          text: "Autonomous 120m lateral hazard divert at 150m altitude with >= 8.5% propellant reserve.",
-          status: "satisfied",
+          text: "The GNC subsystem shall execute a >= 120m autonomous lateral hazard divert at 150m altitude with >= 8.5% propellant margin.",
+          status: "verified",
+          subject: "stage : LunarDescentStage",
+          satisfiedBy: "mainEngines",
+          constraintExpr: "divertLateralMeters >= 120.0 and propellantMarginPct >= 8.5 and maxThrust >= 40.0",
+          witnesses: [
+            {
+              expr: "divertLateralMeters >= 120.0",
+              actual: "128.0 m",
+              bound: "120.0 m",
+              margin: "+6.7%",
+              passed: true,
+            },
+            { expr: "propellantMarginPct >= 8.5", actual: "11.4%", bound: "8.5%", margin: "+34.1%", passed: true },
+            { expr: "maxThrust >= 40.0", actual: "44.5 kN", bound: "40.0 kN", margin: "+11.3%", passed: true },
+          ],
         },
         {
           id: "REQ-LND-003",
           name: "DualFaultToleranceReq",
-          text: "TMR flight computers survive Byzantine sensor fault with zero thruster transient.",
+          text: "Triple-modular redundant flight computers shall survive Byzantine sensor faults (activeFaultChannels >= 2) with voter latency <= 2.0 ms and zero thruster glitch.",
           status: "verified",
+          subject: "fcc : DescentFlightComputer",
+          satisfiedBy: "tripleRedundantFcc",
+          constraintExpr: "activeFaultChannels >= 2 and voterLatencyMs <= 2.0 and thrusterGlitchMs <= 0.0",
+          witnesses: [
+            { expr: "activeFaultChannels >= 2", actual: "2", bound: "2", margin: "exact", passed: true },
+            { expr: "voterLatencyMs <= 2.0", actual: "0.85 ms", bound: "2.0 ms", margin: "+57.5%", passed: true },
+            { expr: "thrusterGlitchMs <= 0.0", actual: "0.0 ms", bound: "0.0 ms", margin: "exact", passed: true },
+          ],
         },
       ],
     },
@@ -343,73 +459,194 @@ equation
       "Uploaded the SSP 1.0 (`SystemStructure.ssd`) co-simulation harness for our 800V Electric Vehicle Integrated Thermal Management System. Couples 4 FMI 3.0 Co-Simulation FMUs: Solid-State 110 kWh Battery Pack, SiC Rear eDrive Inverter/Motor, R290 Heat Pump Chiller, and Dual-Zone Cabin HVAC with 2 ms master communication step. #ssp #fmi3 #cosimulation #ev #thermalmanagement",
     code: `<?xml version="1.0" encoding="UTF-8"?>
 <ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+  xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+  xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
   name="EVThermalManagementSystem" version="1.0">
   <ssd:System name="EV_800V_Thermal_Harness" description="Integrated 800V Battery, eDrive &amp; R290 Heat Pump Co-Simulation">
+    <ssd:SystemGeometry x1="0" y1="0" x2="980" y2="540" />
     <ssd:Elements>
       <ssd:Component name="BatteryPack800V" type="application/x-fmu-sharedlibrary" source="resources/BatteryPack800V.fmu">
+        <ssd:ElementGeometry x1="76" y1="72" x2="318" y2="232" />
         <ssd:Connectors>
-          <ssd:Connector name="q_heat_loss_W" kind="output"/>
-          <ssd:Connector name="T_coolant_in_K" kind="input"/>
-          <ssd:Connector name="T_cell_max_K" kind="output"/>
+          <ssd:Connector name="T_coolant_in_K" kind="input">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
+          <ssd:Connector name="q_heat_loss_W" kind="output">
+            <ssc:Real unit="W" />
+          </ssd:Connector>
+          <ssd:Connector name="T_cell_max_K" kind="output">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
         </ssd:Connectors>
       </ssd:Component>
       <ssd:Component name="SiC_eDrive_Unit" type="application/x-fmu-sharedlibrary" source="resources/SiC_eDrive_Unit.fmu">
+        <ssd:ElementGeometry x1="76" y1="268" x2="318" y2="418" />
         <ssd:Connectors>
-          <ssd:Connector name="q_inverter_loss_W" kind="output"/>
-          <ssd:Connector name="T_glycol_in_K" kind="input"/>
+          <ssd:Connector name="T_glycol_in_K" kind="input">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
+          <ssd:Connector name="q_inverter_loss_W" kind="output">
+            <ssc:Real unit="W" />
+          </ssd:Connector>
         </ssd:Connectors>
       </ssd:Component>
       <ssd:Component name="R290_HeatPump_Chiller" type="application/x-fmu-sharedlibrary" source="resources/R290_HeatPump_Chiller.fmu">
+        <ssd:ElementGeometry x1="398" y1="146" x2="656" y2="338" />
         <ssd:Connectors>
-          <ssd:Connector name="q_batt_load_W" kind="input"/>
-          <ssd:Connector name="q_edrive_load_W" kind="input"/>
-          <ssd:Connector name="T_chiller_supply_K" kind="output"/>
-          <ssd:Connector name="T_cabin_supply_K" kind="output"/>
+          <ssd:Connector name="q_batt_load_W" kind="input">
+            <ssc:Real unit="W" />
+          </ssd:Connector>
+          <ssd:Connector name="q_edrive_load_W" kind="input">
+            <ssc:Real unit="W" />
+          </ssd:Connector>
+          <ssd:Connector name="T_cabin_supply_K" kind="output">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
+          <ssd:Connector name="T_chiller_supply_K" kind="output">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
         </ssd:Connectors>
       </ssd:Component>
       <ssd:Component name="CabinHvacZone" type="application/x-fmu-sharedlibrary" source="resources/CabinHvacZone.fmu">
+        <ssd:ElementGeometry x1="726" y1="146" x2="944" y2="316" />
         <ssd:Connectors>
-          <ssd:Connector name="T_air_supply_K" kind="input"/>
-          <ssd:Connector name="T_cabin_comfort_K" kind="output"/>
+          <ssd:Connector name="T_air_supply_K" kind="input">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
+          <ssd:Connector name="T_cabin_comfort_K" kind="output">
+            <ssc:Real unit="K" />
+          </ssd:Connector>
         </ssd:Connectors>
       </ssd:Component>
     </ssd:Elements>
     <ssd:Connections>
       <ssd:Connection startElement="BatteryPack800V" startConnector="q_heat_loss_W" endElement="R290_HeatPump_Chiller" endConnector="q_batt_load_W"/>
       <ssd:Connection startElement="SiC_eDrive_Unit" startConnector="q_inverter_loss_W" endElement="R290_HeatPump_Chiller" endConnector="q_edrive_load_W"/>
+      <ssd:Connection startElement="R290_HeatPump_Chiller" startConnector="T_cabin_supply_K" endElement="CabinHvacZone" endConnector="T_air_supply_K"/>
       <ssd:Connection startElement="R290_HeatPump_Chiller" startConnector="T_chiller_supply_K" endElement="BatteryPack800V" endConnector="T_coolant_in_K"/>
       <ssd:Connection startElement="R290_HeatPump_Chiller" startConnector="T_chiller_supply_K" endElement="SiC_eDrive_Unit" endConnector="T_glycol_in_K"/>
-      <ssd:Connection startElement="R290_HeatPump_Chiller" startConnector="T_cabin_supply_K" endElement="CabinHvacZone" endConnector="T_air_supply_K"/>
     </ssd:Connections>
+    <ssd:ParameterBindings>
+      <ssd:ParameterBinding prefix="BatteryPack800V">
+        <ssd:ParameterValues>
+          <ssv:ParameterSet version="1.0" name="BatteryPack800V_Params">
+            <ssv:Parameters>
+              <ssv:Parameter name="C_thermal"><ssv:Real value="185.0" unit="kJ/K"/></ssv:Parameter>
+              <ssv:Parameter name="R_int"><ssv:Real value="14.2" unit="mOhm"/></ssv:Parameter>
+            </ssv:Parameters>
+          </ssv:ParameterSet>
+        </ssd:ParameterValues>
+      </ssd:ParameterBinding>
+      <ssd:ParameterBinding prefix="SiC_eDrive_Unit">
+        <ssd:ParameterValues>
+          <ssv:ParameterSet version="1.0" name="SiC_eDrive_Params">
+            <ssv:Parameters>
+              <ssv:Parameter name="eta_nom"><ssv:Real value="0.965"/></ssv:Parameter>
+              <ssv:Parameter name="m_dot_glycol"><ssv:Real value="0.18" unit="kg/s"/></ssv:Parameter>
+            </ssv:Parameters>
+          </ssv:ParameterSet>
+        </ssd:ParameterValues>
+      </ssd:ParameterBinding>
+      <ssd:ParameterBinding prefix="R290_HeatPump_Chiller">
+        <ssd:ParameterValues>
+          <ssv:ParameterSet version="1.0" name="R290_Chiller_Params">
+            <ssv:Parameters>
+              <ssv:Parameter name="COP_nom"><ssv:Real value="3.45"/></ssv:Parameter>
+              <ssv:Parameter name="m_R290"><ssv:Real value="0.42" unit="kg"/></ssv:Parameter>
+            </ssv:Parameters>
+          </ssv:ParameterSet>
+        </ssd:ParameterValues>
+      </ssd:ParameterBinding>
+      <ssd:ParameterBinding prefix="CabinHvacZone">
+        <ssd:ParameterValues>
+          <ssv:ParameterSet version="1.0" name="CabinHvac_Params">
+            <ssv:Parameters>
+              <ssv:Parameter name="V_cabin"><ssv:Real value="3.2" unit="m3"/></ssv:Parameter>
+              <ssv:Parameter name="T_set"><ssv:Real value="294.65" unit="K"/></ssv:Parameter>
+            </ssv:Parameters>
+          </ssv:ParameterSet>
+        </ssd:ParameterValues>
+      </ssd:ParameterBinding>
+    </ssd:ParameterBindings>
   </ssd:System>
+  <ssd:DefaultExperiment startTime="0.0" stopTime="600.0" stepSize="0.002" algorithm="Fixed-Step Gauss-Seidel" />
 </ssd:SystemStructureDescription>`,
     extraViewConfig: {
       systemName: "EV_800V_Thermal_Harness",
+      sspVersion: "1.0",
+      fmiVersion: "3.0 Co-Simulation",
+      masterAlgorithm: "Fixed-Step Gauss-Seidel",
+      communicationStepMs: 2.0,
+      startTime: 0.0,
+      stopTime: 600.0,
       standalone: true,
       fmuComponents: [
         {
           name: "BatteryPack800V",
           source: "resources/BatteryPack800V.fmu",
+          mimeType: "application/x-fmu-sharedlibrary",
+          fmiType: "FMI 3.0 CS",
           inputs: ["T_coolant_in_K"],
           outputs: ["q_heat_loss_W", "T_cell_max_K"],
+          ports: [
+            { name: "T_coolant_in_K", kind: "input", type: "Real", unit: "K" },
+            { name: "q_heat_loss_W", kind: "output", type: "Real", unit: "W" },
+            { name: "T_cell_max_K", kind: "output", type: "Real", unit: "K" },
+          ],
+          parameters: [
+            { name: "C_thermal", value: "185.0", unit: "kJ/K" },
+            { name: "R_int", value: "14.2", unit: "mOhm" },
+          ],
         },
         {
           name: "SiC_eDrive_Unit",
           source: "resources/SiC_eDrive_Unit.fmu",
+          mimeType: "application/x-fmu-sharedlibrary",
+          fmiType: "FMI 3.0 CS",
           inputs: ["T_glycol_in_K"],
           outputs: ["q_inverter_loss_W"],
+          ports: [
+            { name: "T_glycol_in_K", kind: "input", type: "Real", unit: "K" },
+            { name: "q_inverter_loss_W", kind: "output", type: "Real", unit: "W" },
+          ],
+          parameters: [
+            { name: "eta_nom", value: "0.965" },
+            { name: "m_dot_glycol", value: "0.18", unit: "kg/s" },
+          ],
         },
         {
           name: "R290_HeatPump_Chiller",
           source: "resources/R290_HeatPump_Chiller.fmu",
+          mimeType: "application/x-fmu-sharedlibrary",
+          fmiType: "FMI 3.0 CS",
           inputs: ["q_batt_load_W", "q_edrive_load_W"],
-          outputs: ["T_chiller_supply_K", "T_cabin_supply_K"],
+          outputs: ["T_cabin_supply_K", "T_chiller_supply_K"],
+          ports: [
+            { name: "q_batt_load_W", kind: "input", type: "Real", unit: "W" },
+            { name: "q_edrive_load_W", kind: "input", type: "Real", unit: "W" },
+            { name: "T_cabin_supply_K", kind: "output", type: "Real", unit: "K" },
+            { name: "T_chiller_supply_K", kind: "output", type: "Real", unit: "K" },
+          ],
+          parameters: [
+            { name: "COP_nom", value: "3.45" },
+            { name: "m_R290", value: "0.42", unit: "kg" },
+          ],
         },
         {
           name: "CabinHvacZone",
           source: "resources/CabinHvacZone.fmu",
+          mimeType: "application/x-fmu-sharedlibrary",
+          fmiType: "FMI 3.0 CS",
           inputs: ["T_air_supply_K"],
           outputs: ["T_cabin_comfort_K"],
+          ports: [
+            { name: "T_air_supply_K", kind: "input", type: "Real", unit: "K" },
+            { name: "T_cabin_comfort_K", kind: "output", type: "Real", unit: "K" },
+          ],
+          parameters: [
+            { name: "V_cabin", value: "3.2", unit: "m3" },
+            { name: "T_set", value: "294.65", unit: "K" },
+          ],
         },
       ],
       connections: [
@@ -418,25 +655,47 @@ equation
           startConnector: "q_heat_loss_W",
           endElement: "R290_HeatPump_Chiller",
           endConnector: "q_batt_load_W",
+          type: "Real",
+          unit: "W",
         },
         {
           startElement: "SiC_eDrive_Unit",
           startConnector: "q_inverter_loss_W",
           endElement: "R290_HeatPump_Chiller",
           endConnector: "q_edrive_load_W",
-        },
-        {
-          startElement: "R290_HeatPump_Chiller",
-          startConnector: "T_chiller_supply_K",
-          endElement: "BatteryPack800V",
-          endConnector: "T_coolant_in_K",
+          type: "Real",
+          unit: "W",
         },
         {
           startElement: "R290_HeatPump_Chiller",
           startConnector: "T_cabin_supply_K",
           endElement: "CabinHvacZone",
           endConnector: "T_air_supply_K",
+          type: "Real",
+          unit: "K",
         },
+        {
+          startElement: "R290_HeatPump_Chiller",
+          startConnector: "T_chiller_supply_K",
+          endElement: "BatteryPack800V",
+          endConnector: "T_coolant_in_K",
+          type: "Real",
+          unit: "K",
+        },
+        {
+          startElement: "R290_HeatPump_Chiller",
+          startConnector: "T_chiller_supply_K",
+          endElement: "SiC_eDrive_Unit",
+          endConnector: "T_glycol_in_K",
+          type: "Real",
+          unit: "K",
+        },
+      ],
+      parameterSets: [
+        "BatteryPack800V_Params.ssv",
+        "SiC_eDrive_Params.ssv",
+        "R290_Chiller_Params.ssv",
+        "CabinHvac_Params.ssv",
       ],
     },
     comments: [
@@ -541,26 +800,43 @@ Ontology(<https://modelscript.org/ontologies/cps-asset>
   <CORE-CONTENT>
     <REQ-IF-CONTENT>
       <SPEC-OBJECTS>
-        <SPEC-OBJECT IDENTIFIER="REQ-FCS-014" LONG-NAME="Aileron EHA Step Response Bandwidth">
+        <SPEC-OBJECT IDENTIFIER="REQ-FCS-014" LONG-NAME="Aileron EHA Step Response Bandwidth" ASIL="ASIL-D" STATUS="Approved">
           <VALUES>
-            <ATTRIBUTE-VALUE-STRING THE-VALUE="The Electro-Hydrostatic Actuator shall achieve 90% of a 35mm step command within 180 ms under an 18.5 kN aerodynamic hinge moment with overshoot <= 2.5%."/>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="The Electro-Hydrostatic Actuator shall achieve 90% of a 35mm step command within 180 ms under an 18.5 kN aerodynamic hinge moment with overshoot &lt;= 2.5 %."/>
           </VALUES>
         </SPEC-OBJECT>
-        <SPEC-OBJECT IDENTIFIER="REQ-FCS-028" LONG-NAME="Pitch Rate Command Augmentation Phase Margin">
+        <SPEC-OBJECT IDENTIFIER="REQ-FCS-028" LONG-NAME="Inner-Loop Pitch Damper Overshoot Bound" ASIL="ASIL-D" STATUS="Approved">
           <VALUES>
-            <ATTRIBUTE-VALUE-STRING THE-VALUE="The longitudinal C* pitch rate loop shall maintain >= 45 deg phase margin and >= 6 dB gain margin across Mach 0.2 to Mach 0.92."/>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="The inner-loop pitch damper shall bound transient overshoot &lt;= 1.8 % under gust disturbance (ASIL-D)."/>
           </VALUES>
         </SPEC-OBJECT>
-        <SPEC-OBJECT IDENTIFIER="REQ-FCS-041" LONG-NAME="Triple-Redundant Sensor Voter Fault Isolation">
+        <SPEC-OBJECT IDENTIFIER="REQ-FCS-041" LONG-NAME="Triple-Redundant Sensor Voter Fault Isolation" ASIL="ASIL-D" STATUS="Verified">
           <VALUES>
-            <ATTRIBUTE-VALUE-STRING THE-VALUE="The mid-value voter shall isolate a hard-over rate gyro fault within 2 minor frames (2.0 ms) with transient pitch acceleration < 0.05 g."/>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="The mid-value voter shall isolate a hard-over rate gyro fault with latency &lt;= 2.0 ms and transient pitch overshoot &lt;= 1.5 %."/>
           </VALUES>
         </SPEC-OBJECT>
       </SPEC-OBJECTS>
       <SPEC-RELATIONS>
-        <SPEC-RELATION IDENTIFIER="REL-01" SOURCE="REQ-FCS-014" TARGET="REQ-FCS-028"/>
-        <SPEC-RELATION IDENTIFIER="REL-02" SOURCE="REQ-FCS-028" TARGET="REQ-FCS-041"/>
+        <SPEC-RELATION IDENTIFIER="REL-01" SOURCE="REQ-FCS-028" TARGET="REQ-FCS-014" RELATION-TYPE="refines"/>
+        <SPEC-RELATION IDENTIFIER="REL-02" SOURCE="REQ-FCS-041" TARGET="REQ-FCS-028" RELATION-TYPE="verifies"/>
       </SPEC-RELATIONS>
+      <SPECIFICATIONS>
+        <SPECIFICATION IDENTIFIER="SPEC-PFCS-01" LONG-NAME="DO-178C DAL-A Primary Flight Control System">
+          <CHILDREN>
+            <SPEC-HIERARCHY IDENTIFIER="SH-1">
+              <OBJECT><SPEC-OBJECT-REF>REQ-FCS-014</SPEC-OBJECT-REF></OBJECT>
+              <CHILDREN>
+                <SPEC-HIERARCHY IDENTIFIER="SH-1-1">
+                  <OBJECT><SPEC-OBJECT-REF>REQ-FCS-028</SPEC-OBJECT-REF></OBJECT>
+                </SPEC-HIERARCHY>
+                <SPEC-HIERARCHY IDENTIFIER="SH-1-2">
+                  <OBJECT><SPEC-OBJECT-REF>REQ-FCS-041</SPEC-OBJECT-REF></OBJECT>
+                </SPEC-HIERARCHY>
+              </CHILDREN>
+            </SPEC-HIERARCHY>
+          </CHILDREN>
+        </SPECIFICATION>
+      </SPECIFICATIONS>
     </REQ-IF-CONTENT>
   </CORE-CONTENT>
 </REQ-IF>`,

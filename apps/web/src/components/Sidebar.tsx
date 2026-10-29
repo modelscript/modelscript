@@ -128,15 +128,15 @@ const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
   align-items: center;
   text-decoration: none;
   color: var(--color-text-heading, #0f1419);
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: ${(props) => (props.$active ? "600" : "500")};
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: ${(props) => (props.$active ? "700" : "500")};
   width: 100%;
   box-sizing: border-box;
 
   .nav-label {
-    font-size: 15px;
-    line-height: 20px;
+    font-size: 17px;
+    line-height: 22px;
     font-weight: inherit;
     color: inherit;
   }
@@ -179,10 +179,11 @@ const SectionDivider = styled.div`
 `;
 
 const NavPill = styled.div<{ $active?: boolean | undefined }>`
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 12px;
+  gap: 16px;
+  padding: 9px 14px;
   border-radius: 10px;
   width: 100%;
   border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
@@ -196,6 +197,35 @@ const NavPill = styled.div<{ $active?: boolean | undefined }>`
     padding: 0;
     justify-content: center;
     border-radius: 10px;
+  }
+`;
+
+const AdminNavBadge = styled.span`
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.4;
+
+  @media (max-width: 1280px) {
+    position: absolute;
+    top: 4px;
+    right: 2px;
+    margin-left: 0;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    font-size: 10px;
+    border-radius: 999px;
+    background: #d29922;
+    color: #ffffff;
+    box-shadow: 0 0 0 2px var(--color-bg-primary);
   }
 `;
 
@@ -255,7 +285,7 @@ const BrandTitle = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-text-heading);
@@ -400,7 +430,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
-  const { user, isAdmin, logout, unreadCount, setUnreadCount } = useAuth();
+  const { user, isAdmin, logout, unreadCount, setUnreadCount, adminPendingCount } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
   const themeLabel = theme === "dark" ? "Light theme" : "Dark theme";
@@ -479,11 +509,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 22,
-              height: 22,
+              width: 24,
+              height: 24,
             }}
           >
-            <link.icon size={18} />
+            <link.icon size={20} />
             {link.to === "/notifications" && unreadCount > 0 && (
               <div
                 style={{
@@ -509,6 +539,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
             )}
           </div>
           <Text className="nav-label">{link.label}</Text>
+          {link.to === "/admin" && adminPendingCount > 0 && (
+            <AdminNavBadge data-testid="admin-nav-badge" aria-label={`${adminPendingCount} pending admin events`}>
+              {adminPendingCount > 99 ? "99+" : adminPendingCount}
+            </AdminNavBadge>
+          )}
         </NavPill>
       </NavItem>
     );

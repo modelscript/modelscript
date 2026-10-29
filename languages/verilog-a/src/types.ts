@@ -55,8 +55,10 @@ export interface VerilogAVariable {
   sourceRange: SourceRange;
 }
 
+export type VerilogABranchNature = "V" | "I" | "Potential" | "Flow" | "Temp" | "Pwr" | "Phi" | "MMF" | "Omega" | "Tau";
+
 export interface VerilogABranchAccess {
-  nature: "V" | "I" | "Potential" | "Flow";
+  nature: VerilogABranchNature;
   node1: string;
   node2?: string | undefined;
   sourceRange: SourceRange;
@@ -76,7 +78,7 @@ export type VerilogAExpr =
     }
   | {
       kind: "branch_access";
-      nature: "V" | "I" | "Potential" | "Flow";
+      nature: VerilogABranchNature;
       node1: string;
       node2?: string | undefined;
       sourceRange: SourceRange;

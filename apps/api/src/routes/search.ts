@@ -12,7 +12,8 @@ export function searchRouter(database: LibraryDatabase): Router {
    */
   router.get("/completions", (req: Request, res: Response) => {
     const q = req.query["q"] as string;
-    const limit = Number(req.query["limit"]) || 3;
+    const rawLimit = Number(req.query["limit"]);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 50) : 3;
 
     if (!q || typeof q !== "string") {
       res.json({ topics: [], users: [], packages: [], repositories: [] });
@@ -20,7 +21,7 @@ export function searchRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      const results = database.globalSearch(q, limit);
+      const results = database.globalSearch(q.slice(0, 200), limit);
       res.json(results);
     } catch {
       res.status(500).json({ error: "Search failed" });

@@ -1,22 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export function getAvatarUrl(username: string, originalUrl?: string): string {
-  if (originalUrl) {
+export function getAvatarUrl(username?: string | null, originalUrl?: string | null): string {
+  const candidateUrl =
+    originalUrl && (originalUrl.startsWith("http") || originalUrl.startsWith("/") || originalUrl.startsWith("data:"))
+      ? originalUrl
+      : username && (username.startsWith("http") || username.startsWith("/") || username.startsWith("data:"))
+        ? username
+        : undefined;
+  if (candidateUrl) {
     try {
       const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://modelscript.org";
-      const hostname = new URL(originalUrl, baseUrl).hostname;
+      const hostname = new URL(candidateUrl, baseUrl).hostname;
       if (hostname !== "ui-avatars.com" && !hostname.endsWith(".ui-avatars.com")) {
-        return originalUrl;
+        return candidateUrl;
       }
     } catch {
       // Invalid URL, continue to generated avatar
     }
   }
 
-  const initials = (username || "?").substring(0, 2).toUpperCase();
+  const effectiveUsername =
+    username && !username.startsWith("http") && !username.startsWith("/") && !username.startsWith("data:")
+      ? username
+      : originalUrl &&
+          !originalUrl.startsWith("http") &&
+          !originalUrl.startsWith("/") &&
+          !originalUrl.startsWith("data:")
+        ? originalUrl
+        : "?";
+
+  const initials = effectiveUsername.substring(0, 2).toUpperCase();
   let hash = 0;
-  for (let i = 0; i < (username || "").length; i++) {
-    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < effectiveUsername.length; i++) {
+    hash = effectiveUsername.charCodeAt(i) + ((hash << 5) - hash);
   }
   const h = Math.abs(hash) % 360;
   const bgColor = `hsl(${h}, 70%, 80%)`;

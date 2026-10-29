@@ -5,6 +5,7 @@ import { api } from "./client";
 export type AdminModerationAction =
   | "none"
   | "delete_post"
+  | "quarantine_resource"
   | "silence_post"
   | "mark_sensitive"
   | "silence_domain"
@@ -64,6 +65,15 @@ export interface AdminUserSummary {
   resolved_violation_count: number;
 }
 
+export interface AdminUsersStatusBreakdown {
+  active: number;
+  frozen: number;
+  suspended: number;
+  admins: number;
+  moderators: number;
+  auditors: number;
+}
+
 export interface AdminFederationDomain {
   domain: string;
   tier: "allow" | "silence" | "suspend";
@@ -84,6 +94,7 @@ export interface AdminFederationDeliveryItem {
   id: number;
   activity_type: string;
   activity_id: string;
+  payload?: string | undefined;
   target_inbox_url: string;
   target_domain: string;
   attempts: number;
@@ -108,6 +119,20 @@ export interface AdminDmcaNotice {
   action_taken?: string | undefined;
   created_at: string;
   resolved_at?: string | undefined;
+}
+
+export interface AdminQuarantinedResource {
+  id: number;
+  resource_type: string;
+  resource_id: string;
+  reason: string;
+  dmca_notice_id: number | null;
+  quarantined_by: number | null;
+  status: string;
+  counter_notice: string | null;
+  restore_after: string | null;
+  created_at: string;
+  restored_at: string | null;
 }
 
 export interface AdminAuditLog {
@@ -135,8 +160,10 @@ export interface AdminAuditChainVerification {
 export interface AdminBackupInfo {
   fileName: string;
   filePath?: string | undefined;
+  backupPath?: string | undefined;
   sizeBytes: number;
   createdAt: string;
+  sha256?: string | undefined;
 }
 
 export interface AdminDbStatus {
@@ -157,8 +184,100 @@ export interface AdminDbStatus {
   appliedMigrations?: { id: number; name: string; applied_at?: string | undefined }[] | undefined;
 }
 
+export interface AdminInstanceSettings {
+  instanceName: string;
+  instanceDescription: string;
+  contactEmail: string;
+  registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
+  allowedEmailDomains: string[];
+  federationMode: "open" | "allowlist" | "disabled";
+  maintenanceMode: boolean;
+  announcementBanner: string;
+  announcementLevel: "info" | "warning" | "critical";
+  autoQuarantineReportThreshold: number;
+  backupRetentionCount: number;
+  lockedByEnv: string[];
+}
+
+export interface AdminInstanceInvite {
+  id: number;
+  code: string;
+  created_by: number | null;
+  creator_username: string | null;
+  max_uses: number;
+  used_count: number;
+  initial_credits: number;
+  assigned_role: string;
+  note: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface AdminSystemDiagnosticsResponse {
+  edition: "ce" | "ee";
+  uptimeSeconds: number;
+  nodeVersion: string;
+  memoryUsage: {
+    rss: number;
+    heapTotal: number;
+    heapUsed: number;
+    external: number;
+  };
+  geoipReady: boolean;
+  mailerConfigured: boolean;
+  airgapMode: boolean;
+  auditChainValid: boolean;
+  auditVerifiedEntries: number;
+  schemaVersion: string | null;
+  pendingMigrations: number;
+  diagnostics: {
+    dbSizeBytes: number;
+    walSizeBytes: number;
+    counts: {
+      users: number;
+      posts: number;
+      packages: number;
+      repositories: number;
+      jobs: number;
+      auditLogs: number;
+      pendingReports: number;
+      quarantinedResources: number;
+    };
+    backups: {
+      count: number;
+      totalBytes: number;
+      latestAt: string | null;
+    };
+    jobQueue: {
+      pending: number;
+      running: number;
+      completed: number;
+      failed: number;
+    };
+  };
+  settings: AdminInstanceSettings;
+}
+
+export const getTotalAdminBadgeCount = (counts?: AdminOverviewCounts | null): number => {
+  if (!counts) return 0;
+  return (
+    (Number(counts.pendingReports) || 0) +
+    (Number(counts.restrictedUsers) || 0) +
+    (Number(counts.failedDeliveries) || 0) +
+    (Number(counts.pendingDmca) || 0)
+  );
+};
+
+const notifyAdminOverviewUpdated = (detail?: AdminOverviewCounts) => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("modelscript:admin-overview-update", detail ? { detail } : undefined));
+  }
+};
+
 export const getAdminOverview = async (): Promise<AdminOverviewCounts> => {
   const { data } = await api.get("/admin/overview");
+  notifyAdminOverviewUpdated(data);
   return data;
 };
 
@@ -166,8 +285,17 @@ export const getAdminModerationQueue = async (
   status?: string,
   limit = 50,
   offset = 0,
-): Promise<{ reports: AdminModerationReport[]; count: number; pendingCount?: number | undefined }> => {
-  const { data } = await api.get("/admin/moderation/queue", { params: { status, limit, offset } });
+  targetType?: string,
+  q?: string,
+): Promise<{
+  reports: AdminModerationReport[];
+  count: number;
+  total?: number | undefined;
+  pendingCount?: number | undefined;
+}> => {
+  const { data } = await api.get("/admin/moderation/queue", {
+    params: { status, limit, offset, targetType, q },
+  });
   return data;
 };
 
@@ -190,6 +318,7 @@ export const resolveAdminModerationReport = async (
   federatedFlagQueued?: boolean | undefined;
 }> => {
   const res = await api.post(`/admin/moderation/reports/${id}/resolve`, data);
+  notifyAdminOverviewUpdated();
   return res.data;
 };
 
@@ -201,6 +330,7 @@ export const bulkResolveAdminModerationReports = async (data: {
   contentWarning?: string | undefined;
 }): Promise<{ success: boolean; resolvedCount: number; status: string }> => {
   const res = await api.post("/admin/moderation/bulk-resolve", data);
+  notifyAdminOverviewUpdated();
   return res.data;
 };
 
@@ -208,6 +338,7 @@ export const deleteAdminPost = async (
   postId: number,
 ): Promise<{ success: boolean; postId: number; tombstonePropagated: boolean }> => {
   const { data } = await api.delete(`/admin/posts/${postId}`);
+  notifyAdminOverviewUpdated();
   return data;
 };
 
@@ -217,7 +348,12 @@ export const getAdminUsers = async (options?: {
   role?: string | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
-}): Promise<{ users: AdminUserSummary[]; total: number; count: number }> => {
+}): Promise<{
+  users: AdminUserSummary[];
+  total: number;
+  count: number;
+  statusBreakdown?: AdminUsersStatusBreakdown | undefined;
+}> => {
   const { data } = await api.get("/admin/users", { params: options });
   return data;
 };
@@ -226,7 +362,7 @@ export const moderateAdminUser = async (
   userId: number,
   data: {
     status?: "active" | "frozen" | "suspended" | "pending_verification" | undefined;
-    role?: "user" | "admin" | undefined;
+    role?: "user" | "moderator" | "auditor" | "admin" | undefined;
     revokeSessions?: boolean | undefined;
     purgePosts?: boolean | undefined;
     reason?: string | undefined;
@@ -240,7 +376,23 @@ export const moderateAdminUser = async (
   purgedPostCount: number;
 }> => {
   const res = await api.patch(`/admin/users/${userId}`, data);
+  notifyAdminOverviewUpdated();
   return res.data;
+};
+
+export const adjustAdminUserCredits = async (
+  userId: number,
+  amount: number,
+  reason: string,
+): Promise<{
+  success: boolean;
+  userId: number;
+  delta: number;
+  newBalance: number;
+  reason: string;
+}> => {
+  const { data } = await api.post(`/admin/users/${userId}/credits`, { amount, reason });
+  return data;
 };
 
 export const getAdminFederationDomains = async (): Promise<{ domains: AdminFederationDomain[]; count: number }> => {
@@ -254,6 +406,7 @@ export const setAdminFederationDomainTier = async (
   reason?: string,
 ): Promise<{ success: boolean; domain: string; tier: string; reason?: string | undefined }> => {
   const { data } = await api.post("/admin/federation/domains", { domain, tier, reason });
+  notifyAdminOverviewUpdated();
   return data;
 };
 
@@ -261,6 +414,42 @@ export const deleteAdminFederationDomainTier = async (
   domain: string,
 ): Promise<{ success: boolean; domain: string }> => {
   const { data } = await api.delete(`/admin/federation/domains/${encodeURIComponent(domain)}`);
+  notifyAdminOverviewUpdated();
+  return data;
+};
+
+export const exportAdminFederationDomains = async (
+  format: "csv" | "json" = "csv",
+): Promise<{ format: "csv" | "json"; count: number; content: string }> => {
+  const { data } = await api.get("/admin/federation/domains/export", { params: { format } });
+  return data;
+};
+
+export const importAdminFederationDomains = async (payload: {
+  content?: string | undefined;
+  format?: "csv" | "json" | undefined;
+  mode?: "merge" | "replace" | undefined;
+}): Promise<{ success: boolean; importedCount: number; mode: string }> => {
+  const { data } = await api.post("/admin/federation/domains/import", payload);
+  notifyAdminOverviewUpdated();
+  return data;
+};
+
+export const testAdminFederationDomain = async (
+  domain: string,
+): Promise<{
+  domain: string;
+  validSyntax: boolean;
+  currentTier: string;
+  reason: string | null;
+  federationMode: string;
+  exportControlStatus: string;
+  allowedByPolicy: boolean;
+  nodeInfoUrl: string;
+  actorInboxUrl: string;
+  ready: boolean;
+}> => {
+  const { data } = await api.post("/admin/federation/test-domain", { domain });
   return data;
 };
 
@@ -281,6 +470,7 @@ export const retryAdminFederationQueue = async (
   domain?: string,
 ): Promise<{ success: boolean; retriedCount: number }> => {
   const { data } = await api.post("/admin/federation/queue/retry", domain ? { domain } : {});
+  notifyAdminOverviewUpdated();
   return data;
 };
 
@@ -289,6 +479,7 @@ export const purgeAdminFederationQueue = async (
   domain?: string,
 ): Promise<{ success: boolean; deletedCount: number }> => {
   const { data } = await api.delete("/admin/federation/queue", { params: { status, domain } });
+  notifyAdminOverviewUpdated();
   return data;
 };
 
@@ -307,6 +498,30 @@ export const resolveAdminDmcaNotice = async (
 ): Promise<{ success: boolean; noticeId: number; status?: string | undefined; actionTaken: string }> => {
   const payload = options ? { actionTaken, ...options } : { actionTaken };
   const { data } = await api.post(`/admin/dmca/notices/${id}/resolve`, payload);
+  notifyAdminOverviewUpdated();
+  return data;
+};
+
+export const fileAdminDmcaCounterNotice = async (
+  id: number,
+  counterNoticeText: string,
+): Promise<{ success: boolean; noticeId: number; restoreAfter: string }> => {
+  const { data } = await api.post(`/admin/dmca/notices/${id}/counter-notice`, { counterNoticeText });
+  return data;
+};
+
+export const getAdminQuarantinedResources = async (
+  status?: string,
+): Promise<{ items: AdminQuarantinedResource[]; count: number }> => {
+  const { data } = await api.get("/admin/quarantine", { params: { status } });
+  return data;
+};
+
+export const restoreAdminQuarantinedResource = async (
+  resourceType: string,
+  resourceId: string,
+): Promise<{ success: boolean; resourceType: string; resourceId: string }> => {
+  const { data } = await api.post("/admin/quarantine/restore", { resourceType, resourceId });
   return data;
 };
 
@@ -315,7 +530,7 @@ export const getAdminAuditLogs = async (
   offset = 0,
   action?: string,
   resourceType?: string,
-): Promise<{ logs: AdminAuditLog[]; count: number }> => {
+): Promise<{ logs: AdminAuditLog[]; count: number; total?: number | undefined }> => {
   const params: Record<string, any> = { limit, offset, action };
   if (resourceType !== undefined) {
     params.resourceType = resourceType;
@@ -326,6 +541,18 @@ export const getAdminAuditLogs = async (
 
 export const verifyAdminAuditLogsChain = async (): Promise<AdminAuditChainVerification> => {
   const { data } = await api.get("/admin/audit-logs/verify");
+  return data;
+};
+
+export const redactExpiredAdminAuditLogs = async (
+  retentionDays = 30,
+): Promise<{
+  success: boolean;
+  retentionDays: number;
+  redactedCount: number;
+  chainValid: boolean;
+}> => {
+  const { data } = await api.post("/admin/audit-logs/redact-expired", { retentionDays });
   return data;
 };
 
@@ -364,6 +591,77 @@ export const getAdminBackups = async (): Promise<{ backups: AdminBackupInfo[]; c
 
 export const createAdminHotBackup = async (label?: string): Promise<{ success: boolean; backup: AdminBackupInfo }> => {
   const { data } = await api.post("/admin/backup", label ? { label } : {});
+  return data;
+};
+
+export const deleteAdminBackup = async (fileName: string): Promise<{ success: boolean; fileName: string }> => {
+  const { data } = await api.delete(`/admin/backups/${encodeURIComponent(fileName)}`);
+  return data;
+};
+
+export const pruneAdminBackups = async (
+  keepCount = 7,
+): Promise<{ success: boolean; keepCount: number; deletedCount: number; deletedFiles: string[] }> => {
+  const { data } = await api.post("/admin/backups/prune", { keepCount });
+  return data;
+};
+
+export const restoreAdminBackup = async (
+  fileName: string,
+): Promise<{
+  success: boolean;
+  restoredFrom: string;
+  preRestoreBackup: string;
+  tablesRestored: number;
+}> => {
+  const { data } = await api.post(`/admin/backups/${encodeURIComponent(fileName)}/restore`, {});
+  return data;
+};
+
+export const getAdminBackupDownloadUrl = (fileName: string): string => {
+  return `/api/v1/admin/backups/${encodeURIComponent(fileName)}/download`;
+};
+
+export const getAdminInstanceSettings = async (): Promise<{ settings: AdminInstanceSettings }> => {
+  const { data } = await api.get("/admin/settings");
+  return data;
+};
+
+export const patchAdminInstanceSettings = async (
+  patch: Partial<AdminInstanceSettings>,
+): Promise<{ success: boolean; settings: AdminInstanceSettings }> => {
+  const { data } = await api.patch("/admin/settings", patch);
+  return data;
+};
+
+export const getAdminInvites = async (): Promise<{ invites: AdminInstanceInvite[]; count: number }> => {
+  const { data } = await api.get("/admin/invites");
+  return data;
+};
+
+export const createAdminInvite = async (payload: {
+  code?: string | undefined;
+  maxUses?: number | undefined;
+  initialCredits?: number | undefined;
+  assignedRole?: string | undefined;
+  note?: string | undefined;
+  expiresInDays?: number | undefined;
+}): Promise<{ success: boolean; invite: AdminInstanceInvite }> => {
+  const { data } = await api.post("/admin/invites", payload);
+  return data;
+};
+
+export const revokeAdminInvite = async (id: number): Promise<{ success: boolean; id: number }> => {
+  const { data } = await api.delete(`/admin/invites/${id}`);
+  return data;
+};
+
+export const getAdminInstanceInvites = getAdminInvites;
+export const createAdminInstanceInvite = createAdminInvite;
+export const revokeAdminInstanceInvite = revokeAdminInvite;
+
+export const getAdminSystemHealth = async (): Promise<AdminSystemDiagnosticsResponse> => {
+  const { data } = await api.get("/admin/system");
   return data;
 };
 
@@ -464,4 +762,200 @@ export const recordPageViewBeacon = (path: string, surface: "web" | "docs" = "we
   }
 
   api.post("/analytics/pageview", { path: cleanPath, surface }).catch(() => {});
+};
+
+export interface AdminUserForensics {
+  user: {
+    id: number;
+    username: string;
+    email: string | null;
+    display_name: string | null;
+    account_type: string;
+    status: string;
+    credit_balance: number;
+    total_spent: number;
+    remote_domain: string | null;
+    email_verified: number;
+    totp_enabled: number;
+    created_at: string;
+  };
+  recentPosts: {
+    id: number;
+    content: string;
+    content_warning: string | null;
+    visibility: string;
+    created_at: string;
+  }[];
+  publishedPackages: {
+    name: string;
+    description: string | null;
+    created_at: string;
+  }[];
+  recentTransactions: {
+    id: number;
+    amount: number;
+    balance_after: number;
+    type: string;
+    description: string | null;
+    created_at: string;
+  }[];
+  recentAuditLogs: {
+    id: number;
+    action: string;
+    resource_type: string;
+    resource_id: string | null;
+    ip_address: string | null;
+    created_at: string;
+  }[];
+  reportsAgainstUser: {
+    id: number;
+    reason: string;
+    status: string;
+    target_type: string | null;
+    created_at: string;
+  }[];
+}
+
+export const getAdminUserForensics = async (userId: number): Promise<AdminUserForensics> => {
+  const { data } = await api.get(`/admin/users/${userId}/forensics`);
+  return data;
+};
+
+export interface AdminInstanceBundle {
+  formatVersion: number;
+  exportedAt: string;
+  snapshot: {
+    fileName: string;
+    sizeBytes: number;
+    sha256: string;
+  };
+  settings: AdminInstanceSettings;
+  federationDomains: FederationDomainRule[];
+  quarantinedResources: QuarantinedResourceItem[];
+  featureFlags: AdminFeatureFlag[];
+  packageCount: number;
+  userCount: number;
+  bundleSha256: string;
+}
+
+export const exportAdminInstanceBundle = async (): Promise<AdminInstanceBundle> => {
+  const { data } = await api.get("/admin/bundle/export");
+  return data;
+};
+
+export const importAdminInstanceBundle = async (
+  bundle: Record<string, unknown>,
+): Promise<{
+  success: boolean;
+  settingsUpdated: boolean;
+  importedDomains: number;
+  importedFlags: number;
+  importedQuarantines: number;
+}> => {
+  const { data } = await api.post("/admin/bundle/import", bundle);
+  return data;
+};
+
+export const broadcastAdminActivityPubMove = async (payload: {
+  sourceActorUri: string;
+  targetActorUri: string;
+  alsoKnownAs?: string[];
+}): Promise<{
+  success: boolean;
+  activityId: string;
+  actor: string;
+  target: string;
+  queuedDeliveries: number;
+}> => {
+  const { data } = await api.post("/admin/federation/move", payload);
+  return data;
+};
+
+export const getPublicInstanceBanner = async (): Promise<{
+  instanceName: string;
+  instanceDescription?: string;
+  maintenanceMode: boolean;
+  announcementBanner: string;
+  announcementLevel: "info" | "warning" | "critical";
+  registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
+  federationMode?: "open" | "allowlist" | "disabled";
+  needsSetup?: boolean;
+  setupCompleted?: boolean;
+}> => {
+  const { data } = await api.get("/instance/banner");
+  return data;
+};
+
+export interface SetupTierPreset {
+  id: "tier1_federated" | "tier2_corporate" | "tier3_flagship";
+  label: string;
+  description: string;
+  registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
+  federationMode: "open" | "allowlist" | "disabled";
+  autoQuarantineReportThreshold: number;
+  backupRetentionCount: number;
+}
+
+export interface InstanceSetupStatus {
+  needsSetup: boolean;
+  hasAdmin: boolean;
+  setupCompleted: boolean;
+  userCount: number;
+  edition: "ce" | "ee";
+  airgapEnforced: boolean;
+  settings: AdminInstanceSettings;
+  presets: Record<"tier1_federated" | "tier2_corporate" | "tier3_flagship", SetupTierPreset>;
+}
+
+export const getInstanceSetupStatus = async (): Promise<InstanceSetupStatus> => {
+  const { data } = await api.get("/setup/status");
+  return data;
+};
+
+export const completeInstanceSetup = async (payload: {
+  profileTier?: "tier1_federated" | "tier2_corporate" | "tier3_flagship";
+  admin?: {
+    username: string;
+    email: string;
+    password: string;
+    displayName?: string;
+  };
+  settings?: Partial<AdminInstanceSettings>;
+  initialInvitesCount?: number;
+  initialInviteMaxUses?: number;
+  initialInviteCredits?: number;
+  initialInviteRole?: "user" | "moderator" | "auditor";
+  createInitialBackup?: boolean;
+  migrationBundle?: Record<string, unknown> | null;
+}): Promise<{
+  success: boolean;
+  setupCompleted: boolean;
+  token: string;
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    display_name: string | null;
+    account_type: string;
+    status: string;
+    credit_balance: number;
+  };
+  settings: AdminInstanceSettings;
+  invites: AdminInstanceInvite[];
+  backupSnapshot: {
+    fileName: string;
+    sizeBytes: number;
+    sha256: string;
+    createdAt: string;
+  } | null;
+  importedBundle: {
+    success: boolean;
+    settingsUpdated: boolean;
+    importedDomains: number;
+    importedFlags: number;
+    importedQuarantines: number;
+  } | null;
+}> => {
+  const { data } = await api.post("/setup/complete", payload);
+  return data;
 };

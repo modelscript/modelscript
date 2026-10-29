@@ -2,6 +2,7 @@
 
 export * from "./CloudSimulationModal";
 export { default } from "./CloudSimulationModal";
+export * from "./hpcTemplates";
 export * from "./ProfileSelector";
 export * from "./SimulationProgressSteps";
 export * from "./SimulationResultsView";

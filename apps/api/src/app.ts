@@ -131,11 +131,12 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     console.error("[LocationService] Error during init:", err);
   });
 
-  // Seed initial admin if specified via env vars or if running in non-test mode and no admin exists
+  // Seed initial admin if specified via env vars (ADMIN_INIT_USERNAME / ADMIN_INIT_PASSWORD / AUTO_SEED_ADMIN=true);
+  // otherwise fresh deployments launch the interactive /setup First-Run Install Wizard.
   if (
     process.env["ADMIN_INIT_USERNAME"] ||
     process.env["ADMIN_INIT_PASSWORD"] ||
-    process.env["NODE_ENV"] === "production"
+    process.env["AUTO_SEED_ADMIN"] === "true"
   ) {
     void seedInitialAdmin(database)
       .then((res) => {
@@ -169,15 +170,17 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     seedScriptsAndTemplates(database);
     seedPolyglotUsers(database);
 
-    // Run asynchronously in the background
-    void seedPolyglotSocialData(database).catch((err) => {
-      console.error("[DevServer] Failed to seed 44-language polyglot social catalog:", err);
-    });
-    void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
-      console.error("[DevServer] Failed to seed example packages:", err);
-    });
-    void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
-      console.error("[DevServer] Failed to seed prepackaged libraries:", err);
+    // Run asynchronously in the background after the HTTP listener binds
+    setImmediate(() => {
+      void seedPolyglotSocialData(database).catch((err) => {
+        console.error("[DevServer] Failed to seed 44-language polyglot social catalog:", err);
+      });
+      void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
+        console.error("[DevServer] Failed to seed example packages:", err);
+      });
+      void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
+        console.error("[DevServer] Failed to seed prepackaged libraries:", err);
+      });
     });
 
     if (process.env["NODE_ENV"] !== "production") {
@@ -399,7 +402,13 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       },
       hpcBilling: {
         optionalAuthMiddleware: optionalAuth,
-        caeFeatureGuard: requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
+        caeFeatureGuard: (req, res, next) => {
+          if (req.path === "/cluster/status" || req.path === "/cae/cluster/status") {
+            next();
+            return;
+          }
+          requireFeatureFlag(() => featureFlagService, "cae_cloud_solver")(req, res, next);
+        },
         billingFeatureGuard: requireFeatureFlag(() => featureFlagService, "billing_stripe_live"),
         caeRouter: caeRouter(jobQueue, database),
         cloudRouter: cloudRouter(libraryStorage, jobQueue, database),

@@ -458,7 +458,17 @@ async function main() {
     throw new Error(`Unexpected Modelica block projection: ${projectedCode.slice(0, 300)}`);
   }
 
-  console.log("✓ Multi-FMU Powertrain Container & Connection Validation Benchmark passed");
+  // 7. Test SSP 1.0 Schematic SVG Renderer (renderSspSvg)
+  const { renderSspSvg } = await import("../src/diagram.js");
+  const schematicSvg = renderSspSvg(multiFmuSsdXml);
+  if (
+    !schematicSvg.includes("<svg") ||
+    !schematicSvg.includes("ssp-fmu-node") ||
+    !schematicSvg.includes("«FMU 3.0 CS»")
+  ) {
+    throw new Error("renderSspSvg failed to generate SSP 1.0 schematic SVG");
+  }
+  console.log("✓ SSP 1.0 Schematic SVG Renderer test passed");
 
   console.log("ALL TESTS PASSED SUCCESSFULLY! ✨");
 }

@@ -402,18 +402,36 @@ export const DetailValue = styled.span`
 
 export const DiagramWrap = styled.div`
   ${glassCard}
-  padding: 24px;
+  width: 100%;
+  aspect-ratio: 2.4 / 1;
+  max-height: 320px;
+  min-height: 180px;
+  padding: 16px 24px;
   margin-bottom: 24px;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 120px;
-  overflow: auto;
+  overflow: hidden;
 
-  > div > svg {
+  > div {
     width: 100%;
-    height: auto;
-    max-height: 400px;
+    height: 100%;
+    max-height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  div[role="img"] {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+  }
+
+  svg {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
     max-width: 100%;
   }
 `;

@@ -8,7 +8,7 @@ import rateLimit from "express-rate-limit";
  */
 export const defaultApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: Number(process.env["RATE_LIMIT_MAX"]) || (process.env["NODE_ENV"] === "test" ? 100000 : 1000),
+  max: Number(process.env["RATE_LIMIT_MAX"]) || (process.env["NODE_ENV"] === "test" ? 100000 : 10000),
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) =>
@@ -19,6 +19,9 @@ export const defaultApiLimiter = rateLimit({
     req.path.startsWith("/uploads") ||
     req.path.startsWith("/vscode-static") ||
     req.path.startsWith("/static") ||
-    req.path.startsWith("/api/models"),
+    req.path.startsWith("/api/models") ||
+    req.path.endsWith("/icon.svg") ||
+    req.path.endsWith("/diagram.svg") ||
+    req.path.endsWith("/icons"),
   message: { error: "Too many requests, please try again later." },
 });

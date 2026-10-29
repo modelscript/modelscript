@@ -9,6 +9,7 @@ import type { AdminAuditLog } from "../types";
 
 export interface AdminAuditLogsTabProps {
   auditLogs: AdminAuditLog[];
+  totalCount?: number | undefined;
   auditActionFilter: string;
   setAuditActionFilter: (filter: string) => void;
   auditResourceFilter?: string | undefined;
@@ -18,13 +19,24 @@ export interface AdminAuditLogsTabProps {
   auditPageSize?: number | undefined;
   chainVerification?: AdminAuditChainVerification | null | undefined;
   onVerifyChain?: (() => Promise<void>) | undefined;
+  onRedactExpiredLogs?: (() => Promise<void>) | undefined;
   loading?: boolean | undefined;
 }
 
-const RESOURCE_FILTERS = ["all", "report", "user", "post", "federation_domain", "dmca_notice", "database"];
+const RESOURCE_FILTERS = [
+  "all",
+  "report",
+  "user",
+  "post",
+  "federation_domain",
+  "dmca_notice",
+  "database",
+  "instance_settings",
+];
 
 export const AdminAuditLogsTab: React.FC<AdminAuditLogsTabProps> = ({
   auditLogs,
+  totalCount,
   auditActionFilter,
   setAuditActionFilter,
   auditResourceFilter = "all",
@@ -34,6 +46,7 @@ export const AdminAuditLogsTab: React.FC<AdminAuditLogsTabProps> = ({
   auditPageSize = 50,
   chainVerification,
   onVerifyChain,
+  onRedactExpiredLogs,
   loading = false,
 }) => {
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
@@ -70,7 +83,13 @@ export const AdminAuditLogsTab: React.FC<AdminAuditLogsTabProps> = ({
             ))}
         </Box>
 
-        <Box display="flex" gap={2} alignItems="center">
+        <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+          {onRedactExpiredLogs && (
+            <ActionButton $variant="secondary" onClick={() => void onRedactExpiredLogs()} disabled={loading}>
+              <ShieldCheckIcon size={13} />
+              <span>Redact Expired IPs (GDPR)</span>
+            </ActionButton>
+          )}
           {onVerifyChain && (
             <ActionButton $variant="secondary" onClick={() => void onVerifyChain()} disabled={loading}>
               <ShieldCheckIcon size={13} />
@@ -210,6 +229,7 @@ export const AdminAuditLogsTab: React.FC<AdminAuditLogsTabProps> = ({
         <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
           <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
             Showing offset {auditPageOffset} &ndash; {auditPageOffset + auditLogs.length}
+            {typeof totalCount === "number" ? ` of ${totalCount}` : ""}
           </span>
           <Box display="flex" gap={2}>
             <ActionButton

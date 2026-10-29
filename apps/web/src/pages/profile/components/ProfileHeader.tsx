@@ -3,6 +3,7 @@
 import {
   ArrowLeftIcon,
   CalendarIcon,
+  XIcon as CloseIcon,
   GlobeIcon,
   HubotIcon,
   InfoIcon,
@@ -70,12 +71,25 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   const parsed = parseFederatedHandle(profile.username);
   const { showToast } = useToast();
   const [confirmingBlock, setConfirmingBlock] = React.useState(false);
+  const [showAvatarModal, setShowAvatarModal] = React.useState(false);
+  const avatarBgImage = safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined));
 
   React.useEffect(() => {
     if (!showBlockMenu) {
       setConfirmingBlock(false);
     }
   }, [showBlockMenu]);
+
+  React.useEffect(() => {
+    if (!showAvatarModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowAvatarModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showAvatarModal]);
 
   return (
     <>
@@ -122,6 +136,16 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       <Box px={4} style={{ marginTop: "-65px" }}>
         <Box display="flex" justifyContent="space-between" alignItems="flex-end">
           <Box
+            role="button"
+            tabIndex={0}
+            aria-label={`View ${profile.display_name || profile.username}'s profile photo`}
+            onClick={() => setShowAvatarModal(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowAvatarModal(true);
+              }
+            }}
             style={{
               width: "134px",
               height: "134px",
@@ -134,13 +158,20 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               color: "white",
               fontSize: "48px",
               fontWeight: "bold",
-              backgroundImage:
-                safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined)) || "none",
+              backgroundImage: avatarBgImage || "none",
               backgroundSize: "cover",
+              backgroundPosition: "center",
+              cursor: "pointer",
+              transition: "filter 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.filter = "brightness(0.9)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.filter = "none";
             }}
           >
-            {!safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined)) &&
-              profile.username.charAt(0).toUpperCase()}
+            {!avatarBgImage && profile.username.charAt(0).toUpperCase()}
           </Box>
           <Box mb={2} display="flex" gap={2} alignItems="center">
             {isOwnProfile ? (
@@ -530,6 +561,71 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           </Box>
         )}
       </Box>
+
+      {showAvatarModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${profile.display_name || profile.username}'s profile photo`}
+          onClick={() => setShowAvatarModal(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1000,
+            backgroundColor: "rgba(0, 0, 0, 0.9)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+          }}
+        >
+          <CircleIconButton
+            aria-label="Close"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAvatarModal(false);
+            }}
+            style={{
+              position: "fixed",
+              top: "16px",
+              left: "16px",
+              width: "40px",
+              height: "40px",
+              backgroundColor: "rgba(0, 0, 0, 0.65)",
+              color: "#ffffff",
+            }}
+          >
+            <CloseIcon size={20} />
+          </CircleIconButton>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(368px, 85vw)",
+              height: "min(368px, 85vw)",
+              borderRadius: "50%",
+              backgroundColor: "var(--color-accent-purple)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontSize: "120px",
+              fontWeight: "bold",
+              backgroundImage: avatarBgImage || "none",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.6)",
+              overflow: "hidden",
+            }}
+          >
+            {!avatarBgImage && profile.username.charAt(0).toUpperCase()}
+          </div>
+        </div>
+      )}
     </>
   );
 };

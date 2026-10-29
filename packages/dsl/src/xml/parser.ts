@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { createWasmParserSync, type SyntaxNode } from "./src-gen/bindings.js";
 import type { XmlAttribute, XmlDocument, XmlElement } from "./types.js";
 
@@ -35,27 +32,54 @@ export function initXmlParser(wasm: string | Uint8Array): void {
 /** Node-only convenience: locates the packaged `parser.wasm` and initializes once. */
 export function ensureXmlParser(): void {
   if (cached) return;
-  if (typeof process === "undefined" || typeof existsSync !== "function") return;
+  if (typeof process === "undefined" || !process.versions?.node) return;
+
+  let fsModule: { existsSync: (p: string) => boolean } | undefined;
+  let pathModule: { dirname: (p: string) => string; resolve: (...p: string[]) => string } | undefined;
+  let urlModule: { fileURLToPath: (u: string) => string } | undefined;
+
   try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
+    const proc = process as { getBuiltinModule?: (m: string) => unknown };
+    if (typeof proc.getBuiltinModule === "function") {
+      fsModule = proc.getBuiltinModule("node:fs") as typeof fsModule;
+      pathModule = proc.getBuiltinModule("node:path") as typeof pathModule;
+      urlModule = proc.getBuiltinModule("node:url") as typeof urlModule;
+    }
+  } catch {}
+
+  if (!fsModule || !pathModule || !urlModule) {
+    try {
+      const req = typeof require !== "undefined" ? (require as (id: string) => unknown) : null;
+      if (req) {
+        fsModule = fsModule || (req("node:fs") as typeof fsModule);
+        pathModule = pathModule || (req("node:path") as typeof pathModule);
+        urlModule = urlModule || (req("node:url") as typeof urlModule);
+      }
+    } catch {}
+  }
+
+  if (!fsModule || !pathModule || !urlModule) return;
+
+  try {
+    const here = pathModule.dirname(urlModule.fileURLToPath(import.meta.url));
     const cwd = typeof process.cwd === "function" ? process.cwd() : "";
     const candidatePaths = [
-      path.resolve(here, "../dist/xml/parser.wasm"),
-      path.resolve(here, "./dist/xml/parser.wasm"),
-      path.resolve(here, "../dist/parser.wasm"),
-      path.resolve(here, "./parser.wasm"),
-      path.resolve(here, "./dist/parser.wasm"),
+      pathModule.resolve(here, "../dist/xml/parser.wasm"),
+      pathModule.resolve(here, "./dist/xml/parser.wasm"),
+      pathModule.resolve(here, "../dist/parser.wasm"),
+      pathModule.resolve(here, "./parser.wasm"),
+      pathModule.resolve(here, "./dist/parser.wasm"),
       ...(cwd
         ? [
-            path.resolve(cwd, "packages/dsl/dist/xml/parser.wasm"),
-            path.resolve(cwd, "packages/dsl/src/xml/parser.wasm"),
-            path.resolve(cwd, "dist/xml/parser.wasm"),
+            pathModule.resolve(cwd, "packages/dsl/dist/xml/parser.wasm"),
+            pathModule.resolve(cwd, "packages/dsl/src/xml/parser.wasm"),
+            pathModule.resolve(cwd, "dist/xml/parser.wasm"),
           ]
         : []),
     ];
 
     for (const p of candidatePaths) {
-      if (existsSync(p)) {
+      if (fsModule.existsSync(p)) {
         initXmlParser(p);
         return;
       }

@@ -140,9 +140,10 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   const inboxLimiter = defaultInboxLimiter.middleware();
   const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
 
-  // Check FEDERATION_MODE
+  // Check FEDERATION_MODE (env override or dynamic instance_settings)
   router.use((req: Request, res: Response, next) => {
-    const mode = process.env["FEDERATION_MODE"];
+    const settings = db.getInstanceSettings();
+    const mode = process.env["FEDERATION_MODE"] || settings.federationMode;
     if (mode === "disabled") {
       if (req.path.includes("/inbox")) {
         res.status(403).json({ error: "Federation is disabled on this node." });
@@ -212,6 +213,17 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   const handleNodeInfo = (_req: Request, res: Response) => {
     const totalUsers = db.getTotalUsersCount();
     const totalPosts = db.getTotalPostsCount();
+    const settings = db.getInstanceSettings();
+    const customName =
+      settings.instanceName && settings.instanceName !== "ModelScript Engineering Hub"
+        ? settings.instanceName
+        : "ModelScript Hub";
+    const customDesc =
+      settings.instanceDescription &&
+      settings.instanceDescription !==
+        "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform."
+        ? settings.instanceDescription
+        : "Collaborative Engineering and Physical Modeling Hub";
 
     res.type('application/json; profile="http://nodeinfo.diaspora.software/ns/schema/2.1#"').json({
       version: "2.1",
@@ -235,8 +247,11 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         localPosts: totalPosts,
       },
       metadata: {
-        nodeName: "ModelScript Hub",
-        nodeDescription: "Collaborative Engineering and Physical Modeling Hub",
+        nodeName: customName,
+        nodeDescription: customDesc,
+        contactEmail: settings.contactEmail,
+        federationMode: settings.federationMode,
+        registrationMode: settings.registrationMode,
       },
     });
   };
@@ -579,6 +594,10 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   // ── Remote Actor WebFinger Resolution Endpoint ────────────────────
 
   const resolveRemoteActor = async (req: Request, res: Response) => {
+    if (process.env["NODE_ENV"] === "production" && !req.user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
     const handleOrUrl = req.body?.handle || req.body?.url || req.query["resource"];
     if (!handleOrUrl || typeof handleOrUrl !== "string") {
       res.status(400).json({ error: "Missing handle or url in request" });
@@ -611,6 +630,11 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     const remoteActorUrl = (req as Request & { actorId?: string | undefined }).actorId;
     const verifiedKeyId = (req as Request & { activityPubVerifiedKeyId?: string | undefined }).activityPubVerifiedKeyId;
     const remoteActorProfile = (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile;
+
+    if (activity?.actor !== undefined && typeof activity.actor !== "string") {
+      res.status(400).json({ error: "Activity actor must be a string URI" });
+      return;
+    }
 
     if (activity?.actor && remoteActorUrl && typeof activity.actor === "string" && activity.actor !== remoteActorUrl) {
       res.status(403).json({ error: "Actor mismatch between HTTP signature and activity payload" });
@@ -806,7 +830,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           } catch {
             isHubDomain = false;
           }
-          if (mode === "curated-hub" || isHubDomain) {
+          if (mode === "curated-hub" || isHubDomain || (process.env["NODE_ENV"] === "production" && mode !== "open")) {
             if (!pkgName.startsWith("@")) {
               try {
                 const originHost = new URL(remoteActorUrl as string).hostname;
@@ -830,6 +854,17 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         }
       } else if (activity.type === "Create" && activity.object && activity.object.type === "Note") {
         const note = activity.object;
+        if (typeof note.id === "string" && note.id.startsWith("http") && remoteActorUrl.startsWith("http")) {
+          try {
+            if (new URL(note.id).origin !== new URL(remoteActorUrl).origin) {
+              res.status(403).json({ error: "Note origin does not match actor origin" });
+              return;
+            }
+          } catch {
+            res.status(400).json({ error: "Invalid Note id URL" });
+            return;
+          }
+        }
 
         // Check if post already exists
         const existing = db.getPostByApId(note.id);

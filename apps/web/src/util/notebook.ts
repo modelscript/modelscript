@@ -58,7 +58,7 @@ export function slugifyHeading(rawText: string): string {
 
 /**
  * Extracts H1/H2/H3 headings across all markdown cells (ignoring fenced code blocks)
- * to build an interactive Baeldung-style Table of Contents.
+ * to build an interactive Table of Contents.
  */
 export function extractNotebookHeadings(cells: NotebookCell[]): NotebookHeading[] {
   const headings: NotebookHeading[] = [];
@@ -125,7 +125,7 @@ export function estimateReadingTimeMinutes(cells: NotebookCell[]): number {
   return Math.max(1, Math.round(proseMinutes + interactiveMinutes));
 }
 
-export function createBaeldungStarterCells(): {
+export function createStarterNotebookCells(): {
   title: string;
   summary: string;
   difficulty: TutorialDifficulty;

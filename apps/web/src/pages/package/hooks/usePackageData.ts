@@ -119,10 +119,12 @@ export function usePackageData(
     const checkStatus = async () => {
       try {
         const status = await getJobStatus(name, version);
-        setJobInfo(status);
-        if (status.status === "completed") {
-          fetchData();
-        }
+        setJobInfo((prev) => {
+          if (status.status === "completed" && (prev?.status === "pending" || prev?.status === "processing")) {
+            fetchData();
+          }
+          return status;
+        });
       } catch (err: unknown) {
         const error = err as { response?: { status?: number | undefined } | undefined };
         if (error?.response?.status === 404) {

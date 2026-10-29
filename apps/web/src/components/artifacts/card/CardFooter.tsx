@@ -18,6 +18,7 @@ export interface CardFooterProps {
   viewConfig: any;
   isLoaded: boolean;
   onOpenFullScreen: () => void;
+  onRunOnHpc?: () => void;
 }
 
 export const CardFooter: React.FC<CardFooterProps> = ({
@@ -26,6 +27,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   viewConfig,
   isLoaded,
   onOpenFullScreen,
+  onRunOnHpc,
 }) => {
   const navigate = useNavigate();
 
@@ -142,6 +144,34 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             title="Inspect execution recipe and reproduction parameters"
           >
             ⚡ Fork &amp; Reproduce
+          </button>
+        )}
+        {onRunOnHpc && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRunOnHpc();
+            }}
+            style={{
+              background: "linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(6, 182, 212, 0.16))",
+              color: "#10b981",
+              border: "1px solid rgba(16, 185, 129, 0.38)",
+              borderRadius: "6px",
+              height: "28px",
+              padding: "0 10px",
+              fontSize: "12px",
+              lineHeight: "16px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              whiteSpace: "nowrap",
+            }}
+            title="Dispatch simulation job against this model artifact on Cloud HPC"
+          >
+            ☁️ Run on HPC
           </button>
         )}
         {!isMultiFile && (

@@ -8,14 +8,24 @@
  * SysML v2 and Modelica physical models.
  */
 
-import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
+import { language, tggComplement, tggDefaultVal, tggEq, tggRule, type TabularMutationRequest } from "@modelscript/dsl";
+import { buildReqIfDiagram, renderReqIfDiagramSvg, reqifDiagramConfig } from "./diagram.js";
 import { parseReqIf } from "./parser/reqif-parser.js";
 import { reqifToModelicaVerifier } from "./projections/modelica.js";
 import { reqifToSysml2 } from "./projections/sysml2.js";
+import {
+  applyReqIfTabularMutation,
+  completeReqIfTabularCell,
+  executeReqIfTabular,
+  reqifTabularConfig,
+  updateReqIfRequirementCell,
+  validateReqIfTabularCell,
+} from "./tabular.js";
 import { verifyReqIfEntailment } from "./verification/entailment.js";
 
 export const reqifLanguage = language({
   name: "reqif",
+  displayName: "OMG ReqIF 1.2",
   fileExtensions: [".reqif", ".reqifz"],
   maturity: "beta",
   lsp: {
@@ -24,9 +34,57 @@ export const reqifLanguage = language({
       light: "./assets/reqif/icon-light.png",
       dark: "./assets/reqif/icon-dark.png",
     },
+    handlers: {
+      "reqif/getTabularSheet": async (ctx, params: { sheetId?: string }) => {
+        const docText = String((ctx as Record<string, unknown>)["documentText"] ?? "");
+        return executeReqIfTabular(docText, params?.sheetId ?? "requirements");
+      },
+      "reqif/mutateTabularSheet": async (ctx, params: { mutation: TabularMutationRequest }) => {
+        const docText = String((ctx as Record<string, unknown>)["documentText"] ?? "");
+        return applyReqIfTabularMutation(docText, params.mutation);
+      },
+      "reqif/validateTabularCell": async (
+        ctx,
+        params: { sheetId: string; rowId: string; columnId: string; value: unknown },
+      ) => {
+        const docText = String((ctx as Record<string, unknown>)["documentText"] ?? "");
+        return validateReqIfTabularCell(docText, params.sheetId, params.rowId, params.columnId, params.value);
+      },
+      "reqif/completeTabularCell": async (
+        ctx,
+        params: { sheetId: string; rowId: string; columnId: string; prefix: string },
+      ) => {
+        const docText = String((ctx as Record<string, unknown>)["documentText"] ?? "");
+        return completeReqIfTabularCell(docText, params.sheetId, params.rowId, params.columnId, params.prefix);
+      },
+      "reqif/getDiagram": async (ctx, params?: { isDark?: boolean }) => {
+        const docText = String((ctx as Record<string, unknown>)["documentText"] ?? "");
+        const model = buildReqIfDiagram(docText);
+        return {
+          model,
+          svg: renderReqIfDiagramSvg(model, { isDark: params?.isDark ?? true }),
+        };
+      },
+    },
   },
   rules: {
     Root: () => "reqif",
+  },
+  diagram: reqifDiagramConfig,
+  tabular: reqifTabularConfig,
+  requirements: {
+    requirementRules: ["SPEC-OBJECT"],
+    matrixRules: ["SPEC-RELATION"],
+  },
+  writeback: (req) => {
+    const r = req as unknown as Record<string, unknown>;
+    const res = updateReqIfRequirementCell(
+      String(r["source"] ?? r["sourceText"] ?? ""),
+      String(r["targetId"] ?? r["symbolPath"] ?? ""),
+      String(r["field"] ?? r["property"] ?? "text"),
+      r["newValue"] ?? r["value"],
+    );
+    return res.success ? res.edits : null;
   },
 
   actions: [

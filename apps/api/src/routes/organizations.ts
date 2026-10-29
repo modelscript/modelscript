@@ -150,7 +150,7 @@ export function organizationsRouter(database: LibraryDatabase): Router {
       if (targetUser) targetUserId = targetUser.id;
     }
 
-    if (!targetUserId) {
+    if (!targetUserId || !database.getUserById(targetUserId)) {
       res.status(400).json({ error: "Valid userId or username is required" });
       return;
     }
@@ -176,8 +176,12 @@ export function organizationsRouter(database: LibraryDatabase): Router {
       }
     }
 
-    database.addOrganizationMember(org.id, targetUserId, role);
-    res.json({ success: true, message: `Member role set to '${role}'` });
+    try {
+      database.addOrganizationMember(org.id, targetUserId, role);
+      res.json({ success: true, message: `Member role set to '${role}'` });
+    } catch {
+      res.status(500).json({ error: "Failed to update organization member" });
+    }
   });
 
   /**

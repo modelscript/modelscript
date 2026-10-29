@@ -27,4 +27,6 @@ export interface MigrationStatus {
   applied: MigrationRecord[];
   pending: Migration[];
   currentVersion: string | null;
+  targetVersion: string | null;
+  pendingCount: number;
 }

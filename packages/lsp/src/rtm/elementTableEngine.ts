@@ -3,6 +3,13 @@
 // General-Purpose SysML v2 Element Table Extraction and Attribute Rewriting Engine.
 // Powers editable spreadsheet views for Parts, Actions, States, Ports, and Attributes.
 
+import {
+  applyTabularMutation,
+  executeTabularSheet,
+  type CompiledTabularPayload,
+  type TabularConfig,
+  type TabularMutationRequest,
+} from "@modelscript/dsl";
 import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
 
 export interface TableColumnDefinition {
@@ -19,6 +26,7 @@ export interface ElementsTablePayload {
   columns: TableColumnDefinition[];
   rows: Record<string, any>[];
   totalCount: number;
+  tabularPayload?: CompiledTabularPayload | undefined;
 }
 
 export interface TextEditLike {
@@ -37,10 +45,127 @@ export interface TableCellCompletionItem {
 
 export class ElementTableEngine {
   /**
-   * Column schemas for standard SysML v2 element metaclasses.
+   * Executes a declarative DSL `TabularConfig` and maps it into both a rich `CompiledTabularPayload`
+   * and a legacy-compatible `ElementsTablePayload`.
+   */
+  static buildFromTabularConfig(
+    config: TabularConfig,
+    documentText: string,
+    sheetId?: string,
+    uri = "",
+  ): ElementsTablePayload {
+    const payload = executeTabularSheet(config, documentText, sheetId);
+    const columns: TableColumnDefinition[] = payload.columns
+      .filter((c) => !c.hidden)
+      .map((col) => ({
+        id: col.id,
+        title: col.header,
+        type:
+          col.type === "enum"
+            ? "select"
+            : col.type === "number"
+              ? "number"
+              : col.type === "boolean"
+                ? "boolean"
+                : "string",
+        editable: col.editable,
+        options: col.options?.map((o) => (typeof o === "string" ? o : o.value)),
+        description: col.description,
+      }));
+
+    const rows = payload.rows.map((r) => ({
+      id: r.id,
+      name: r.cells["identifier"] ?? r.id,
+      qualifiedName: r.id,
+      uri,
+      startOffset: r.span?.startOffset ?? 0,
+      endOffset: r.span?.endOffset ?? 0,
+      attributes: r.cells,
+      ...r.cells,
+    }));
+
+    return {
+      metaclass: payload.sheetId,
+      columns,
+      rows,
+      totalCount: rows.length,
+      tabularPayload: payload,
+    };
+  }
+
+  /**
+   * Applies a `TabularMutationRequest` via a language's `TabularConfig` and converts
+   * the resulting `WritebackEdit[]` into LSP `TextEditLike[]`.
+   */
+  static updateFromTabularConfig(
+    config: TabularConfig,
+    documentText: string,
+    mutationOrSheetId: TabularMutationRequest | string,
+    rowId?: string,
+    columnId?: string,
+    newValue?: string,
+  ): TextEditLike[] {
+    const mutation: TabularMutationRequest =
+      typeof mutationOrSheetId === "string"
+        ? {
+            kind: "updateCell",
+            sheetId: mutationOrSheetId,
+            rowId: rowId ?? "",
+            columnId: columnId ?? "",
+            value: newValue ?? "",
+          }
+        : mutationOrSheetId;
+    const res = applyTabularMutation(config, documentText, mutation);
+    if (!res.success || res.edits.length === 0) return [];
+
+    const offsetToPosition = (offset: number): { line: number; character: number } => {
+      const clamped = Math.max(0, Math.min(offset, documentText.length));
+      const slice = documentText.slice(0, clamped);
+      const lines = slice.split("\n");
+      return {
+        line: Math.max(0, lines.length - 1),
+        character: (lines[lines.length - 1] ?? "").length,
+      };
+    };
+
+    return res.edits.map((edit) => ({
+      range: {
+        start: offsetToPosition(edit.startOffset),
+        end: offsetToPosition(edit.endOffset),
+      },
+      newText: edit.newText,
+    }));
+  }
+
+  /**
+   * Column schemas for standard SysML v2 and ReqIF element metaclasses.
    */
   static getColumnDefinitions(metaclass: string): TableColumnDefinition[] {
     const meta = metaclass.toLowerCase();
+
+    if (meta === "requirement" || meta === "reqif" || meta === "requirements") {
+      return [
+        { id: "identifier", title: "Req ID", type: "string", editable: false },
+        { id: "longName", title: "Title / Summary", type: "string", editable: true },
+        { id: "text", title: "Requirement Statement", type: "string", editable: true },
+        { id: "contract", title: "Formal Contract", type: "string", editable: true },
+        {
+          id: "asilLevel",
+          title: "Safety / ASIL",
+          type: "select",
+          editable: true,
+          options: ["QM", "ASIL-A", "ASIL-B", "ASIL-C", "ASIL-D"],
+        },
+        {
+          id: "status",
+          title: "Status",
+          type: "select",
+          editable: true,
+          options: ["Draft", "Review", "Approved", "Verified", "Violated"],
+        },
+        { id: "entailment", title: "Proof / Entailment", type: "string", editable: false },
+      ];
+    }
 
     if (meta === "part") {
       return [

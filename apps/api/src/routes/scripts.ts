@@ -144,8 +144,8 @@ export function scriptsRouter(db: LibraryDatabase) {
   // ── Job Instances ────────────────────────────────────────────────
   router.get("/", optionalAuth, (req, res) => {
     try {
-      const limit = parseInt(req.query["limit"] as string) || 50;
-      const offset = parseInt(req.query["offset"] as string) || 0;
+      const limit = Math.min(Math.max(1, parseInt(req.query["limit"] as string) || 50), 200);
+      const offset = Math.max(0, parseInt(req.query["offset"] as string) || 0);
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       if (!isAdmin && !reqUser?.id) {
@@ -219,6 +219,9 @@ export function scriptsRouter(db: LibraryDatabase) {
     try {
       const paramId = req.params["id"] as string;
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      if (process.env["NODE_ENV"] === "production" && !reqUser?.id) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
 
@@ -570,14 +573,14 @@ export function scriptsRouter(db: LibraryDatabase) {
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
       const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
-      if (process.env["NODE_ENV"] === "production" && job && !isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+      if (process.env["NODE_ENV"] !== "test" && job && !isAdmin && job.user_id && job.user_id !== reqUser?.id) {
         return res.status(403).json({ error: "Not authorized to download results for this job" });
       }
 
       // Check active cloud job
       const cloudJob = getActiveCloudJob(paramId);
       if (
-        process.env["NODE_ENV"] === "production" &&
+        process.env["NODE_ENV"] !== "test" &&
         cloudJob &&
         !isAdmin &&
         cloudJob.userId &&

@@ -5,8 +5,8 @@ import { describe, it } from "node:test";
 import { evaluateMacroExpression } from "../src/diagram/data.js";
 import { convertSmoothPath } from "../src/diagram/svg.js";
 
-describe("Modelica MSL Parity: Cubic Splines & Macro Evaluation", () => {
-  it("should convert smooth points to C1 continuous Catmull-Rom cubic Bezier curve commands", () => {
+describe("Modelica MSL Parity: Smooth Bezier Splines & Macro Evaluation", () => {
+  it("should convert smooth points to Modelica 18.6.5.1 midpoint quadratic Bezier curve commands", () => {
     const points: [number, number][] = [
       [0, 0],
       [50, 100],
@@ -15,22 +15,27 @@ describe("Modelica MSL Parity: Cubic Splines & Macro Evaluation", () => {
     ];
 
     const commands = convertSmoothPath(points);
-    assert.strictEqual(commands.length, 4); // M + 3 segments (C)
+    assert.strictEqual(commands.length, 5); // M + L(midpoint) + 2 Q(segments) + L(endpoint)
 
     assert.strictEqual(commands[0][0], "M");
     assert.strictEqual(commands[0][1], 0);
     assert.strictEqual(commands[0][2], -0); // svg.ts negates y
 
-    for (let i = 1; i < commands.length; i++) {
+    assert.strictEqual(commands[1][0], "L");
+    assert.strictEqual(commands[1][1], 25);
+    assert.strictEqual(commands[1][2], -50);
+
+    for (let i = 2; i < commands.length - 1; i++) {
       const cmd = commands[i];
-      assert.strictEqual(cmd[0], "C", `Segment ${i} should be a cubic Bezier command`);
-      assert.strictEqual(cmd.length, 7); // C, c1x, c1y, c2x, c2y, p2x, p2y
+      assert.strictEqual(cmd[0], "Q", `Segment ${i} should be a quadratic Bezier command`);
+      assert.strictEqual(cmd.length, 5); // Q, cx, cy, mx, my
     }
 
     // Verify endpoint of final segment matches last point
     const lastCmd = commands[commands.length - 1];
-    assert.strictEqual(lastCmd[5], 150);
-    assert.strictEqual(lastCmd[6], -150);
+    assert.strictEqual(lastCmd[0], "L");
+    assert.strictEqual(lastCmd[1], 150);
+    assert.strictEqual(lastCmd[2], -150);
   });
 
   it("should evaluate conditional ternary macros in text annotations", () => {

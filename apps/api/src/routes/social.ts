@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import path from "path";
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
-import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } from "../services/ai/composer-ai.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
 import type { FederationWorker } from "../services/federation-worker.js";
@@ -228,7 +228,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   /**
    * POST /api/v1/social/posts
    */
-  router.post("/posts", requireAuth, (req: Request, res: Response) => {
+  router.post("/posts", requireAuth, requireTokenScope("social:write"), (req: Request, res: Response) => {
     const authorId = req.user!.id;
     const {
       content: rawContent,
@@ -275,6 +275,32 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     }
 
     try {
+      if (artifact_view_id !== undefined && artifact_view_id !== null) {
+        const artifactRow = database.getArtifactView(Number(artifact_view_id));
+        if (artifactRow) {
+          const artifactOwnerId = artifactRow.creator_id ?? artifactRow.author_id;
+          let isPrivateArtifact = false;
+          try {
+            const cfg =
+              typeof artifactRow.view_config === "string"
+                ? (JSON.parse(artifactRow.view_config) as Record<string, unknown>)
+                : (artifactRow.view_config as Record<string, unknown> | undefined);
+            if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
+              isPrivateArtifact = true;
+            }
+          } catch {}
+          if (
+            artifactOwnerId &&
+            artifactOwnerId !== authorId &&
+            req.user?.role !== "admin" &&
+            (isPrivateArtifact || process.env["NODE_ENV"] === "production")
+          ) {
+            res.status(403).json({ error: "Forbidden: Cannot attach another user's artifact view" });
+            return;
+          }
+        }
+      }
+
       if (reply_to_id) {
         const parentPost = database.getPost(reply_to_id, authorId);
         if (!parentPost) {

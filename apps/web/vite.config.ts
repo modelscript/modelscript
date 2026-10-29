@@ -455,6 +455,9 @@ export default defineConfig({
             if (id.includes("@primer")) {
               return "vendor-primer";
             }
+            if (id.includes("@mlc-ai/web-llm")) {
+              return "vendor-webllm";
+            }
           }
           return undefined;
         },

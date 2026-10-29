@@ -10,9 +10,14 @@ import type {
   AdminFederationDeliveryItem,
   AdminFederationDomain,
   AdminFederationQueueStats,
+  AdminInstanceInvite,
+  AdminInstanceSettings,
   AdminModerationAction,
   AdminModerationReport,
   AdminOverviewCounts,
+  AdminQuarantinedResource,
+  AdminSystemDiagnosticsResponse,
+  AdminUsersStatusBreakdown,
   AdminUserSummary,
 } from "../../api";
 
@@ -26,10 +31,25 @@ export type {
   AdminFederationDeliveryItem,
   AdminFederationDomain,
   AdminFederationQueueStats,
+  AdminInstanceInvite,
+  AdminInstanceSettings,
   AdminModerationAction,
   AdminModerationReport,
   AdminOverviewCounts,
+  AdminQuarantinedResource,
+  AdminSystemDiagnosticsResponse,
+  AdminUsersStatusBreakdown,
   AdminUserSummary,
 };
 
-export type AdminTab = "moderation" | "users" | "federation" | "dmca" | "audit" | "database" | "flags" | "analytics";
+export type AdminTab =
+  | "moderation"
+  | "users"
+  | "federation"
+  | "dmca"
+  | "audit"
+  | "database"
+  | "flags"
+  | "analytics"
+  | "settings"
+  | "system";

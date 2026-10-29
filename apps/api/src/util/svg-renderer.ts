@@ -115,6 +115,7 @@ interface ClassAdapterConnectEq {
   lhs: string;
   rhs: string;
   cstNode: CstNodeLike | null;
+  annotation?: ((name: string) => unknown) | undefined;
 }
 
 interface ClassAdapter {
@@ -390,6 +391,8 @@ function buildClassAdapter(
               : rawVal;
         }
       }
+      const isPrimitiveExprText =
+        typeof exprText === "string" || typeof exprText === "number" || typeof exprText === "boolean";
       components.push({
         id: child.id,
         name: child.name,
@@ -399,7 +402,7 @@ function buildClassAdapter(
         classInstance: compCls,
         classKind: compCls?.classKind ?? classKindFromEntry(child),
         modification: {
-          expression: exprText !== undefined ? { text: String(exprText) } : undefined,
+          expression: isPrimitiveExprText ? { text: String(exprText) } : undefined,
           getModificationArgument: (argName: string) => {
             const foundArg = childMod?.args?.find((a) => a.name === argName);
             if (foundArg) {
@@ -408,7 +411,9 @@ function buildClassAdapter(
                 typeof rawVal === "object" && rawVal !== null && "text" in rawVal
                   ? (rawVal as { text?: string | undefined }).text
                   : rawVal;
-              return { expression: valText !== undefined ? { text: String(valText) } : undefined };
+              if (typeof valText === "string" || typeof valText === "number" || typeof valText === "boolean") {
+                return { expression: { text: String(valText) } };
+              }
             }
             return undefined;
           },
@@ -434,8 +439,24 @@ function buildClassAdapter(
       });
     } else if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
       let baseSym = queryDB.query("resolvedBaseClass", child.id) as { id?: number | undefined } | null | undefined;
-      if (!baseSym && child.name) {
-        const baseId = resolveSymbolId(context, child.name);
+      const baseName = (child.metadata?.["typeSpecifier"] as string | undefined) || child.name;
+      if (!baseSym && baseName) {
+        let baseId = resolveSymbolId(context, baseName);
+        if (!baseId) {
+          const scopeNames: string[] = [];
+          let currParentId: number | null | undefined = entry.parentId;
+          while (typeof currParentId === "number" && currParentId > 0) {
+            const parentSym = queryDB.symbol(currParentId);
+            if (!parentSym || (parentSym.id === currParentId && parentSym.parentId === currParentId)) break;
+            if (parentSym.name) scopeNames.unshift(parentSym.name);
+            if (parentSym.parentId === currParentId) break;
+            currParentId = parentSym.parentId;
+          }
+          for (let len = scopeNames.length; len >= 1 && !baseId; len--) {
+            const prefix = scopeNames.slice(0, len).join(".");
+            baseId = resolveSymbolId(context, `${prefix}.${baseName}`);
+          }
+        }
         if (baseId) baseSym = queryDB.symbol(baseId);
       }
       if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id)) {
@@ -484,6 +505,9 @@ function buildClassAdapter(
     const childCst = comp.cstNode ?? queryDB.cstNode(comp.id);
     comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
   }
+  for (const connEq of connectEquations) {
+    connEq.annotation = (name: string) => (connEq.cstNode ? evaluator.evaluate(connEq.cstNode, name) : null);
+  }
 
   adapter.annotation = (
     name: string,
@@ -520,7 +544,10 @@ export async function processLibrary(
   await ensureParser();
 
   const { renderIcon, renderDiagram, AnnotationEvaluator } = await import("@modelscript/modelica/diagram");
-  const formatXml = xmlFormat as unknown as (xml: string) => string;
+  const formatXml = (xml: string) =>
+    (xmlFormat as unknown as (input: string, opts?: { collapseContent?: boolean }) => string)(xml, {
+      collapseContent: true,
+    });
 
   const context = new Context(new NodeFileSystem());
 
@@ -739,14 +766,27 @@ export async function processLibrary(
   }
 
   // Find root classes for this library:
+  const BUILTIN_PRIMITIVES = new Set([
+    "Real",
+    "Integer",
+    "Boolean",
+    "String",
+    "StateSelect",
+    "ExternalObject",
+    "Clock",
+  ]);
   const rootSymbols: { id: number; name: string }[] = [];
   for (const [_id, sym] of symIndex.symbols.entries()) {
     if (
       sym.kind === "Class" &&
       (sym.parentId === null || sym.parentId === sym.id) &&
       !sym.metadata?.["isPredefined"] &&
+      !BUILTIN_PRIMITIVES.has(sym.name) &&
       sym.id > 0
     ) {
+      if (sym.resourceId && (sym.resourceId.includes("/Resources/") || sym.resourceId.includes("\\Resources\\"))) {
+        continue;
+      }
       if (sym.name === library.name || (sym.resourceId && sym.resourceId.startsWith(libraryPath))) {
         rootSymbols.push(sym);
       }
@@ -761,7 +801,9 @@ export async function processLibrary(
     }
   }
 
-  for (const rootSym of rootSymbols) {
+  const matchingLibraryRoots = rootSymbols.filter((s) => s.name === library.name);
+  const rootsToVisit = matchingLibraryRoots.length > 0 ? matchingLibraryRoots : rootSymbols;
+  for (const rootSym of rootsToVisit) {
     await visitClass(rootSym.id, rootSym.name);
   }
 

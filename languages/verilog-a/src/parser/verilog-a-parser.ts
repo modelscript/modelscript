@@ -812,12 +812,18 @@ export class VerilogAParser {
     if (this.peek().type === "IDENTIFIER") {
       const firstTok = this.peek();
 
-      // Check if this is a branch access V(...) or I(...)
+      // Check if this is a branch access V(...), I(...), Temp(...), Pwr(...), etc.
       if (
         (firstTok.value === "V" ||
           firstTok.value === "I" ||
           firstTok.value === "Potential" ||
-          firstTok.value === "Flow") &&
+          firstTok.value === "Flow" ||
+          firstTok.value === "Temp" ||
+          firstTok.value === "Pwr" ||
+          firstTok.value === "Phi" ||
+          firstTok.value === "MMF" ||
+          firstTok.value === "Omega" ||
+          firstTok.value === "Tau") &&
         this.tokens[this.current + 1]?.value === "("
       ) {
         const branch = this.parseBranchAccess();
@@ -871,7 +877,7 @@ export class VerilogAParser {
 
   private parseBranchAccess(): VerilogABranchAccess {
     const natTok = this.advance();
-    const nat = natTok.value as "V" | "I" | "Potential" | "Flow";
+    const nat = natTok.value as VerilogABranchAccess["nature"];
     this.consume("(");
     const n1Tok = this.consumeType("IDENTIFIER", "Expected node identifier in branch access");
     let n2: string | undefined;
@@ -1081,9 +1087,18 @@ export class VerilogAParser {
     }
 
     if (tok.type === "IDENTIFIER") {
-      // Check branch access V(...) or I(...)
+      // Check branch access V(...), I(...), Temp(...), Pwr(...), etc.
       if (
-        (tok.value === "V" || tok.value === "I" || tok.value === "Potential" || tok.value === "Flow") &&
+        (tok.value === "V" ||
+          tok.value === "I" ||
+          tok.value === "Potential" ||
+          tok.value === "Flow" ||
+          tok.value === "Temp" ||
+          tok.value === "Pwr" ||
+          tok.value === "Phi" ||
+          tok.value === "MMF" ||
+          tok.value === "Omega" ||
+          tok.value === "Tau") &&
         this.tokens[this.current + 1]?.value === "("
       ) {
         const branch = this.parseBranchAccess();

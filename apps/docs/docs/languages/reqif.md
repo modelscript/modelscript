@@ -26,6 +26,14 @@ ModelScript delivers first-class support for **ReqIF** (Requirements Interchange
   - Uses the SMT/Nelson-Oppen theory coordinator in `@modelscript/runtime` to prove whether child sub-requirements strictly entail parent system-level requirements:
     $$\bigwedge_{i} \text{SubReq}_i \models \text{ParentReq}$$
   - Generates concrete numeric counterexamples when an entailment gap exists (e.g. child requirements permit a state that violates the parent requirement).
+- **Bidirectional Tabular Editor & 2D Traceability Matrix (`@modelscript/reqif/tabular`):**
+  - Powered by `@modelscript/dsl`'s declarative `TabularConfig`, ReqIF specifications project into 4 synchronized, bidirectional sheets:
+    1. **Requirements Catalog Tree-Table:** Hierarchical WBS (`SPEC-HIERARCHY`) with collapsible sections, inline cell editing for titles, specification text, formal mathematical contracts (`<= 2.5 %`), ISO 26262 ASIL levels, lifecycle status, custom `SPEC-OBJECT-TYPE` attributes, and live Nelson-Oppen SMT entailment badges (`Certified`, `Gap`, `Leaf`).
+    2. **2D Requirements Traceability Matrix (RTM):** Interactive $N \times M$ cross-reference matrix where clicking any cell cycles `<SPEC-RELATION>` links (`satisfies`, `verifies`, `refines`, `allocates`, `derives`, `conflicts`) and writes back losslessly to the ReqIF XML.
+    3. **Spec Relations Table:** Editable table of all `<SPEC-RELATION>` links with inline source, target, and relation stereotype selectors.
+    4. **Types & Schema Explorer:** Inspects `<DATATYPES>`, enumeration values, and `<SPEC-TYPES>` attribute definitions.
+- **2D Requirement Architecture Diagram (`@modelscript/reqif/diagram`):**
+  - Renders hierarchical requirement cards color-coded by ISO 26262 ASIL level, formal contract compartments, SMT entailment badges, parent-child decomposition edges, and typed `SPEC-RELATION` dependency arrows.
 - **Automated Verification Projections:**
   - **OMG SysML v2:** Translates spec-objects into formal `requirement def` items with `doc` annotations, attribute definitions, and `satisfy` links.
   - **Modelica Verification Blocks:** Generates acausal Modelica monitor blocks with assertions that trigger simulation failure when requirement bounds are breached.

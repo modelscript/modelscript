@@ -37,11 +37,18 @@ export const unmuteUser = async (username: string): Promise<any> => {
   return data;
 };
 
+const notifyAdminReportCreated = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("modelscript:admin-overview-update"));
+  }
+};
+
 export const reportUser = async (username: string, reason?: string, details?: string): Promise<any> => {
   const { data } = await api.post(`/users/${encodeURIComponent(username)}/report`, {
     reason,
     ...(details !== undefined ? { details } : {}),
   });
+  notifyAdminReportCreated();
   return data;
 };
 
@@ -62,6 +69,7 @@ export const reportPost = async (
     ...(details !== undefined ? { details } : {}),
     ...(forwardFederatedFlag !== undefined ? { forwardFederatedFlag } : {}),
   });
+  notifyAdminReportCreated();
   return data;
 };
 
@@ -77,6 +85,7 @@ export const reportResource = async (
     reason,
     ...(details !== undefined ? { details } : {}),
   });
+  notifyAdminReportCreated();
   return data;
 };
 
@@ -90,6 +99,7 @@ export const submitModerationAppeal = async (
     ...(details !== undefined ? { details } : {}),
     ...(postId !== undefined ? { postId } : {}),
   });
+  notifyAdminReportCreated();
   return data;
 };
 

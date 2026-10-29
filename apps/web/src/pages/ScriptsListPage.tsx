@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BeakerIcon, CpuIcon, ServerIcon } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getClusterStatus, getDbJobs, getJobTemplates, getUnifiedUserJobs, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { BUILTIN_HPC_TEMPLATES } from "../components/cloud-sim/hpcTemplates";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 import {
@@ -18,6 +19,8 @@ import {
   type ScriptTemplate,
   type UnifiedJobItem,
 } from "./scripts";
+
+const CloudSimulationModal = React.lazy(() => import("../components/cloud-sim/CloudSimulationModal"));
 
 const ScriptsListPage: React.FC = () => {
   usePageTitle("Jobs & HPC");
@@ -35,6 +38,8 @@ const ScriptsListPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [domainFilter, setDomainFilter] = useState<string>("ALL");
+  const [wizardTemplateSlug, setWizardTemplateSlug] = useState<string | undefined>(undefined);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   const navigate = useNavigate();
 
@@ -184,7 +189,10 @@ const ScriptsListPage: React.FC = () => {
         setAutoRefresh={setAutoRefresh}
         isRefreshing={isRefreshing}
         onRefresh={() => void fetchData(false)}
-        onLaunchClick={() => setSearchParams({ tab: "templates" })}
+        onLaunchClick={() => {
+          setWizardTemplateSlug(undefined);
+          setIsWizardOpen(true);
+        }}
         onTopUpClick={() => navigate("/settings?tab=billing")}
         runningJobsCount={runningJobsCount}
         queuedJobsCount={queuedJobsCount}
@@ -242,7 +250,7 @@ const ScriptsListPage: React.FC = () => {
               fontFamily: "var(--font-mono)",
             }}
           >
-            {templates.length}
+            {Math.max(templates.length, BUILTIN_HPC_TEMPLATES.length)}
           </span>
         </TabButton>
 
@@ -277,11 +285,28 @@ const ScriptsListPage: React.FC = () => {
           <TemplatesTab
             groupedTemplates={groupedTemplates}
             onSelectTemplate={(id) => navigate(`/jobs/templates/${id}`)}
+            onLaunchWizard={(slug) => {
+              setWizardTemplateSlug(slug);
+              setIsWizardOpen(true);
+            }}
           />
         )}
 
         {activeTab === "cluster" && <ClusterTopologyTab clusterInfo={clusterInfo} />}
       </Box>
+
+      {isWizardOpen && (
+        <Suspense fallback={null}>
+          <CloudSimulationModal
+            isOpen={isWizardOpen}
+            onClose={() => {
+              setIsWizardOpen(false);
+              void fetchData(true);
+            }}
+            {...(wizardTemplateSlug ? { initialTemplateSlug: wizardTemplateSlug, initialStep: "artifact" } : {})}
+          />
+        </Suspense>
+      )}
     </Box>
   );
 };

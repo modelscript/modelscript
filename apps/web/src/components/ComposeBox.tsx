@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  ArrowLeftIcon,
+  BookIcon,
+  ColumnsIcon,
+  EyeIcon,
+  HistoryIcon,
+  PencilIcon,
+  SparklesFillIcon,
+} from "@primer/octicons-react";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AiPolishMode } from "../api";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -12,7 +22,7 @@ import {
   runComposerAiPolish,
   setPreferredAiEngine,
 } from "../util/composer-ai";
-import type { NotebookCell } from "../util/notebook";
+import { estimateReadingTimeMinutes, type NotebookCell } from "../util/notebook";
 import Box from "./Box";
 import {
   Backdrop,
@@ -26,12 +36,18 @@ import {
   ComposeToolbar,
   ComposeTutorialMetaEditor,
   ComposeVisibilityMenu,
-  NotebookContainer,
+  NotebookCanvasScroll,
+  NotebookDocumentColumn,
+  NotebookPageOverlay,
+  NotebookTopBar,
+  NotionGhostButton,
   OverlayWrapper,
+  TweetButton,
   useComposeAutocomplete,
   useComposeNotebookState,
   useComposeSubmit,
 } from "./compose";
+import { TutorialPreview } from "./compose-modal/TutorialPreview";
 import type { ComposeBoxProps } from "./compose/types";
 
 const HpcArtifactPickerModal = React.lazy(() => import("./HpcArtifactPickerModal"));
@@ -57,6 +73,10 @@ export default function ComposeBox(props: ComposeBoxProps) {
     setArtifactId: setControlledArtifactId,
     isModal,
     hideInput,
+    onCloseModal,
+    onOpenDrafts,
+    editorLayout: controlledEditorLayout,
+    setEditorLayout: setControlledEditorLayout,
   } = props;
 
   const { user, token } = useAuth();
@@ -68,6 +88,10 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [internalArtifactId, setInternalArtifactId] = useState<number | null>(null);
   const artifactId = controlledArtifactId !== undefined ? controlledArtifactId : internalArtifactId;
   const setArtifactId = setControlledArtifactId || setInternalArtifactId;
+
+  const [internalEditorLayout, setInternalEditorLayout] = useState<"write" | "split" | "preview">("write");
+  const activeEditorLayout = controlledEditorLayout !== undefined ? controlledEditorLayout : internalEditorLayout;
+  const setActiveEditorLayout = setControlledEditorLayout || setInternalEditorLayout;
 
   // Notebook state management
   const notebook = useComposeNotebookState({
@@ -389,6 +413,335 @@ export default function ComposeBox(props: ComposeBoxProps) {
     return autocomplete.allMentionedUsers.filter((u: string) => !excludedUsers.has(u));
   }, [autocomplete.allMentionedUsers, excludedUsers]);
 
+  const isEmptyNotebookDocument = useMemo(() => {
+    return (
+      !notebook.notebookTitle.trim() &&
+      notebook.notebookCells.length === 1 &&
+      notebook.notebookCells[0]?.type === "markdown" &&
+      !notebook.notebookCells[0].content.trim()
+    );
+  }, [notebook.notebookTitle, notebook.notebookCells]);
+
+  const readMins = useMemo(() => estimateReadingTimeMinutes(notebook.notebookCells), [notebook.notebookCells]);
+  const hasNotebookTextToPolish = useMemo(
+    () => notebook.notebookCells.some((c) => c.type === "markdown" && c.content.trim().length > 0),
+    [notebook.notebookCells],
+  );
+
+  // Full-height Notion-style dedicated page editor view
+  const fullPageNotebookEditor = notebook.isNotebookMode ? (
+    <NotebookPageOverlay $inline={Boolean(isModal)}>
+      <NotebookTopBar>
+        {/* Left: Back/Exit + Document Breadcrumb */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          <NotionGhostButton
+            type="button"
+            onClick={() => {
+              if (onCloseModal) {
+                onCloseModal();
+              } else {
+                notebook.handleToggleNotebookMode();
+              }
+            }}
+            title={isModal ? "Close editor" : "Return to feed"}
+          >
+            <ArrowLeftIcon size={14} />
+            <span>{isModal ? "Close" : "Back"}</span>
+          </NotionGhostButton>
+          <span style={{ color: "var(--ms-divider)", userSelect: "none" }}>/</span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "var(--ms-text-1)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: "260px",
+            }}
+          >
+            <BookIcon size={13} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {notebook.notebookTitle.trim() || "Untitled"}
+            </span>
+          </span>
+          <span
+            style={{
+              fontSize: "11.5px",
+              color: "var(--ms-text-3)",
+              whiteSpace: "nowrap",
+              paddingLeft: "4px",
+            }}
+          >
+            · {readMins} min read
+          </span>
+          {submitHandler.uploadingFile && (
+            <span style={{ fontSize: "12px", color: "var(--ms-brand)", fontWeight: 500 }}>Uploading...</span>
+          )}
+        </div>
+
+        {/* Center: Write / Split / Preview Mode Switcher */}
+        <div
+          style={{
+            display: "inline-flex",
+            gap: "2px",
+            padding: "3px",
+            borderRadius: "8px",
+            background: "var(--ms-surface-hover, rgba(15, 23, 42, 0.04))",
+            border: "1px solid var(--ms-divider)",
+          }}
+        >
+          {(
+            [
+              { id: "write", label: "Write", icon: PencilIcon },
+              { id: "split", label: "Split", icon: ColumnsIcon },
+              { id: "preview", label: "Preview", icon: EyeIcon },
+            ] as const
+          ).map((tab) => {
+            const TabIcon = tab.icon;
+            const active = activeEditorLayout === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveEditorLayout(tab.id)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: active ? "var(--color-canvas-inset, #ffffff)" : "transparent",
+                  boxShadow: active ? "0 1px 2px rgba(15, 23, 42, 0.08)" : "none",
+                  color: active ? "var(--ms-text-1)" : "var(--ms-text-3)",
+                  fontFamily: "inherit",
+                  fontSize: "12px",
+                  fontWeight: active ? 600 : 500,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <TabIcon size={12} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right: Actions & Publish */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <NotionGhostButton
+            type="button"
+            onClick={notebook.handleToggleNotebookMode}
+            title="Switch to standard short post composer"
+          >
+            Short post
+          </NotionGhostButton>
+
+          {onOpenDrafts && (
+            <NotionGhostButton type="button" onClick={onOpenDrafts}>
+              Drafts
+            </NotionGhostButton>
+          )}
+
+          <NotionGhostButton
+            type="button"
+            disabled={Boolean(aiBusy) || !hasNotebookTextToPolish}
+            onClick={() => void handleAiPolish("polish")}
+            title="Polish active section with AI"
+          >
+            <SparklesFillIcon size={12} />
+            <span>{aiBusy === "polishing" ? "Polishing..." : "Polish"}</span>
+          </NotionGhostButton>
+
+          {previousAiState !== null && (
+            <NotionGhostButton type="button" onClick={handleUndoAi} title="Undo last AI change">
+              <HistoryIcon size={12} />
+              <span>Undo</span>
+            </NotionGhostButton>
+          )}
+
+          <TweetButton
+            type="button"
+            onClick={submitHandler.handleSubmit}
+            disabled={(!content.trim() && !artifactId && !submitHandler.hasNotebookContent) || submitHandler.submitting}
+            style={{ height: "32px", padding: "0 16px", fontSize: "13.5px" }}
+          >
+            {editPostId ? "Save changes" : "Publish"}
+          </TweetButton>
+        </div>
+      </NotebookTopBar>
+
+      <NotebookCanvasScroll>
+        <NotebookDocumentColumn $wide={activeEditorLayout === "split"}>
+          {activeEditorLayout === "preview" ? (
+            <TutorialPreview
+              notebookMode={true}
+              notebookTitle={notebook.notebookTitle}
+              notebookSummary={notebook.notebookSummary}
+              notebookDifficulty={notebook.notebookDifficulty}
+              notebookSeries={notebook.notebookSeries}
+              notebookDialect={notebook.notebookDialect}
+              notebookCells={notebook.notebookCells}
+              content={content}
+            />
+          ) : activeEditorLayout === "split" ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: "40px",
+                alignItems: "start",
+                flex: 1,
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", minWidth: 0, position: "relative" }}>
+                <ComposeTutorialMetaEditor
+                  notebookTitle={notebook.notebookTitle}
+                  setNotebookTitle={notebook.setNotebookTitle}
+                  notebookSummary={notebook.notebookSummary}
+                  setNotebookSummary={notebook.setNotebookSummary}
+                  notebookDifficulty={notebook.notebookDifficulty}
+                  setNotebookDifficulty={notebook.setNotebookDifficulty}
+                  notebookSeries={notebook.notebookSeries}
+                  setNotebookSeries={notebook.setNotebookSeries}
+                  notebookDialect={notebook.notebookDialect}
+                  setNotebookDialect={notebook.setNotebookDialect}
+                  notebookCompanionRepo={notebook.notebookCompanionRepo}
+                  setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
+                  showTutorialMetaEditor={notebook.showTutorialMetaEditor}
+                  setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
+                  handleLoadStarterTemplate={notebook.handleLoadStarterTemplate}
+                  handleToggleNotebookMode={notebook.handleToggleNotebookMode}
+                  onTitleChange={(nextTitle) =>
+                    notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
+                  }
+                  onFocusFirstBlock={() => {
+                    const firstId = notebook.notebookCells[0]?.id;
+                    if (firstId) notebook.setActiveCellId(firstId);
+                  }}
+                  isEmptyDocument={isEmptyNotebookDocument}
+                />
+                <ComposeNotebookCellsEditor
+                  notebookCells={notebook.notebookCells}
+                  activeCellId={notebook.activeCellId}
+                  setActiveCellId={notebook.setActiveCellId}
+                  insertMarkdownSnippet={notebook.insertMarkdownSnippet}
+                  moveCell={notebook.moveCell}
+                  addMarkdownCellAfter={notebook.addMarkdownCellAfter}
+                  duplicateCell={notebook.duplicateCell}
+                  removeCell={notebook.removeCell}
+                  updateMarkdownCell={notebook.updateMarkdownCell}
+                  updateArtifactCellCaption={notebook.updateArtifactCellCaption}
+                  updateTokenState={autocomplete.updateTokenState}
+                  handleInteraction={handleInteraction}
+                  handleSubmit={submitHandler.handleSubmit}
+                  setMentionQuery={autocomplete.setMentionQuery}
+                  setHashtagQuery={autocomplete.setHashtagQuery}
+                  setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
+                  setShowCodeSnippetModal={setShowCodeSnippetModal}
+                  setShowMorselModal={setShowMorselModal}
+                  setShowPackageRepoPicker={setShowPackageRepoPicker}
+                  fileInputRef={fileInputRef}
+                  onPolishCell={(cellId) => void handleAiPolish("polish", cellId)}
+                  onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
+                  aiBusy={aiBusy}
+                />
+                <ComposeMentionHashtagPopups
+                  mentionQuery={autocomplete.mentionQuery}
+                  mentionSuggestions={autocomplete.mentionSuggestions}
+                  onSelectMention={autocomplete.insertMention}
+                  hashtagQuery={autocomplete.hashtagQuery}
+                  hashtagSuggestions={autocomplete.hashtagSuggestions}
+                  onSelectHashtag={autocomplete.insertHashtag}
+                />
+              </div>
+              <div style={{ minWidth: 0, position: "sticky", top: "24px" }}>
+                <TutorialPreview
+                  notebookMode={true}
+                  notebookTitle={notebook.notebookTitle}
+                  notebookSummary={notebook.notebookSummary}
+                  notebookDifficulty={notebook.notebookDifficulty}
+                  notebookSeries={notebook.notebookSeries}
+                  notebookDialect={notebook.notebookDialect}
+                  notebookCells={notebook.notebookCells}
+                  content={content}
+                />
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, position: "relative" }}>
+              <ComposeTutorialMetaEditor
+                notebookTitle={notebook.notebookTitle}
+                setNotebookTitle={notebook.setNotebookTitle}
+                notebookSummary={notebook.notebookSummary}
+                setNotebookSummary={notebook.setNotebookSummary}
+                notebookDifficulty={notebook.notebookDifficulty}
+                setNotebookDifficulty={notebook.setNotebookDifficulty}
+                notebookSeries={notebook.notebookSeries}
+                setNotebookSeries={notebook.setNotebookSeries}
+                notebookDialect={notebook.notebookDialect}
+                setNotebookDialect={notebook.setNotebookDialect}
+                notebookCompanionRepo={notebook.notebookCompanionRepo}
+                setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
+                showTutorialMetaEditor={notebook.showTutorialMetaEditor}
+                setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
+                handleLoadStarterTemplate={notebook.handleLoadStarterTemplate}
+                handleToggleNotebookMode={notebook.handleToggleNotebookMode}
+                onTitleChange={(nextTitle) =>
+                  notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
+                }
+                onFocusFirstBlock={() => {
+                  const firstId = notebook.notebookCells[0]?.id;
+                  if (firstId) notebook.setActiveCellId(firstId);
+                }}
+                isEmptyDocument={isEmptyNotebookDocument}
+              />
+
+              <ComposeNotebookCellsEditor
+                notebookCells={notebook.notebookCells}
+                activeCellId={notebook.activeCellId}
+                setActiveCellId={notebook.setActiveCellId}
+                insertMarkdownSnippet={notebook.insertMarkdownSnippet}
+                moveCell={notebook.moveCell}
+                addMarkdownCellAfter={notebook.addMarkdownCellAfter}
+                duplicateCell={notebook.duplicateCell}
+                removeCell={notebook.removeCell}
+                updateMarkdownCell={notebook.updateMarkdownCell}
+                updateArtifactCellCaption={notebook.updateArtifactCellCaption}
+                updateTokenState={autocomplete.updateTokenState}
+                handleInteraction={handleInteraction}
+                handleSubmit={submitHandler.handleSubmit}
+                setMentionQuery={autocomplete.setMentionQuery}
+                setHashtagQuery={autocomplete.setHashtagQuery}
+                setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
+                setShowCodeSnippetModal={setShowCodeSnippetModal}
+                setShowMorselModal={setShowMorselModal}
+                setShowPackageRepoPicker={setShowPackageRepoPicker}
+                fileInputRef={fileInputRef}
+                onPolishCell={(cellId) => void handleAiPolish("polish", cellId)}
+                onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
+                aiBusy={aiBusy}
+              />
+
+              <ComposeMentionHashtagPopups
+                mentionQuery={autocomplete.mentionQuery}
+                mentionSuggestions={autocomplete.mentionSuggestions}
+                onSelectMention={autocomplete.insertMention}
+                hashtagQuery={autocomplete.hashtagQuery}
+                hashtagSuggestions={autocomplete.hashtagSuggestions}
+                onSelectHashtag={autocomplete.insertHashtag}
+              />
+            </div>
+          )}
+        </NotebookDocumentColumn>
+      </NotebookCanvasScroll>
+    </NotebookPageOverlay>
+  ) : null;
+
   return (
     <>
       {showRecipientsModal && replyToPost && (
@@ -400,249 +753,226 @@ export default function ComposeBox(props: ComposeBoxProps) {
           onClose={() => setShowRecipientsModal(false)}
         />
       )}
-      <Box
-        width="100%"
-        display={isModal ? "flex" : "block"}
-        flexDirection={isModal ? "column" : undefined}
-        height={isModal ? "100%" : undefined}
-      >
-        {replyToPost && !hideInput && (
+
+      {/* When inside ComposeModal and in Notebook Mode, render the full-height Notion page directly */}
+      {notebook.isNotebookMode && isModal ? (
+        <>
+          {fullPageNotebookEditor}
+          <input
+            type="file"
+            style={{ display: "none" }}
+            ref={fileInputRef}
+            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
+            onChange={submitHandler.handleFileUpload}
+            disabled={submitHandler.uploadingFile}
+          />
+        </>
+      ) : (
+        <>
+          {/* When triggered from inline feed ComposeBox, portal the full-viewport Notion page editor */}
+          {notebook.isNotebookMode &&
+            !isModal &&
+            (typeof document !== "undefined"
+              ? createPortal(fullPageNotebookEditor, document.body)
+              : fullPageNotebookEditor)}
+
           <Box
-            mb={2}
-            ml={13}
-            display="flex"
-            gap={1}
-            fontSize="14px"
-            color="var(--color-text-muted)"
-            onClick={() => setShowRecipientsModal(true)}
-            style={{ cursor: "pointer" }}
+            width="100%"
+            display={isModal ? "flex" : "block"}
+            flexDirection={isModal ? "column" : undefined}
+            height={isModal ? "100%" : undefined}
           >
-            <span className="handle-text">Replying to</span>
-            <span style={{ color: "var(--color-accent-cyan)", fontWeight: "500" }}>
-              {includedUsers.map((u) => `@${u}`).join(", ")}
-            </span>
-          </Box>
-        )}
-        <Box display="flex" gap={3} width="100%" flex={isModal ? 1 : undefined}>
-          {!hideInput && (
-            <img
-              src={getAvatarUrl(user?.username || "?", user?.avatar_url)}
-              alt="avatar"
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: "50%",
-                flexShrink: 0,
-                objectFit: "cover",
-                backgroundColor: "rgba(255, 255, 255, 0.05)",
-              }}
-            />
-          )}
-          <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
-            <div style={{ display: hideInput ? "none" : "contents" }}>
-              {showContentWarning && (
-                <Box mb={2}>
-                  <input
-                    type="text"
-                    placeholder="Content warning / sensitive summary..."
-                    value={contentWarning}
-                    onChange={(e) => setContentWarning(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 12px",
-                      background: "rgba(210, 153, 34, 0.08)",
-                      border: "1px solid rgba(210, 153, 34, 0.3)",
-                      borderRadius: "8px",
-                      color: "var(--color-fg-default)",
-                      fontSize: "14px",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </Box>
-              )}
-              <div
-                style={{ position: "relative", width: "100%" }}
-                onFocusCapture={() => setIsInputFocused(true)}
-                onBlurCapture={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                    setIsInputFocused(false);
-                  }
-                }}
+            {replyToPost && !hideInput && (
+              <Box
+                mb={2}
+                ml={13}
+                display="flex"
+                gap={1}
+                fontSize="14px"
+                color="var(--color-text-muted)"
+                onClick={() => setShowRecipientsModal(true)}
+                style={{ cursor: "pointer" }}
               >
-                {notebook.isNotebookMode ? (
-                  <NotebookContainer>
-                    <ComposeTutorialMetaEditor
-                      notebookTitle={notebook.notebookTitle}
-                      setNotebookTitle={notebook.setNotebookTitle}
-                      notebookSummary={notebook.notebookSummary}
-                      setNotebookSummary={notebook.setNotebookSummary}
-                      notebookDifficulty={notebook.notebookDifficulty}
-                      setNotebookDifficulty={notebook.setNotebookDifficulty}
-                      notebookSeries={notebook.notebookSeries}
-                      setNotebookSeries={notebook.setNotebookSeries}
-                      notebookDialect={notebook.notebookDialect}
-                      setNotebookDialect={notebook.setNotebookDialect}
-                      notebookCompanionRepo={notebook.notebookCompanionRepo}
-                      setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
-                      showTutorialMetaEditor={notebook.showTutorialMetaEditor}
-                      setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
-                      handleLoadBaeldungTemplate={notebook.handleLoadBaeldungTemplate}
-                      handleToggleNotebookMode={notebook.handleToggleNotebookMode}
-                      onTitleChange={(nextTitle) =>
-                        notebook.syncNotebookToContentAndArtifact(notebook.notebookCells, nextTitle)
-                      }
-                    />
-
-                    <ComposeNotebookCellsEditor
-                      notebookCells={notebook.notebookCells}
-                      activeCellId={notebook.activeCellId}
-                      setActiveCellId={notebook.setActiveCellId}
-                      insertMarkdownSnippet={notebook.insertMarkdownSnippet}
-                      moveCell={notebook.moveCell}
-                      addMarkdownCellAfter={notebook.addMarkdownCellAfter}
-                      removeCell={notebook.removeCell}
-                      updateMarkdownCell={notebook.updateMarkdownCell}
-                      updateArtifactCellCaption={notebook.updateArtifactCellCaption}
-                      updateTokenState={autocomplete.updateTokenState}
-                      handleInteraction={handleInteraction}
-                      handleSubmit={submitHandler.handleSubmit}
-                      setMentionQuery={autocomplete.setMentionQuery}
-                      setHashtagQuery={autocomplete.setHashtagQuery}
-                      setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
-                      setShowCodeSnippetModal={setShowCodeSnippetModal}
-                      setShowMorselModal={setShowMorselModal}
-                      fileInputRef={fileInputRef}
-                      onPolishCell={(cellId) => void handleAiPolish("polish", cellId)}
-                      onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
-                      aiBusy={aiBusy}
-                    />
-                  </NotebookContainer>
-                ) : (
-                  <OverlayWrapper>
-                    <Backdrop ref={backdropRef}>
-                      {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
-                        part.startsWith("@") ? (
-                          <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
-                            {part}
-                          </span>
-                        ) : part.startsWith("#") ? (
-                          <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 600 }}>
-                            {part}
-                          </span>
-                        ) : (
-                          part
-                        ),
-                      )}
-                      {content.endsWith("\n") && <br />}
-                    </Backdrop>
-                    <ComposeInput
-                      ref={textareaRef}
-                      value={content}
-                      onChange={handleContentChange}
-                      onKeyUp={handleInteraction}
-                      onClick={handleInteraction}
-                      onScroll={(e) => {
-                        if (backdropRef.current) {
-                          backdropRef.current.scrollTop = e.currentTarget.scrollTop;
-                          backdropRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                        }
-                      }}
-                      placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
-                      rows={minRows}
-                      autoFocus={autoFocus}
-                      style={{ marginBottom: replyToPost ? "0px" : "12px" }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                          submitHandler.handleSubmit();
-                        }
-                      }}
-                      onFocus={() => {
-                        setIsInputFocused(true);
-                      }}
-                      onBlur={() => {
+                <span className="handle-text">Replying to</span>
+                <span style={{ color: "var(--color-accent-cyan)", fontWeight: "500" }}>
+                  {includedUsers.map((u) => `@${u}`).join(", ")}
+                </span>
+              </Box>
+            )}
+            <Box display="flex" gap={3} width="100%" flex={isModal ? 1 : undefined}>
+              {!hideInput && (
+                <img
+                  src={getAvatarUrl(user?.username || "?", user?.avatar_url)}
+                  alt="avatar"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "50%",
+                    flexShrink: 0,
+                    objectFit: "cover",
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  }}
+                />
+              )}
+              <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
+                <div style={{ display: hideInput ? "none" : "contents" }}>
+                  {showContentWarning && (
+                    <Box mb={2}>
+                      <input
+                        type="text"
+                        placeholder="Content warning / sensitive summary..."
+                        value={contentWarning}
+                        onChange={(e) => setContentWarning(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          background: "rgba(210, 153, 34, 0.08)",
+                          border: "1px solid rgba(210, 153, 34, 0.3)",
+                          borderRadius: "8px",
+                          color: "var(--color-fg-default)",
+                          fontSize: "14px",
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </Box>
+                  )}
+                  <div
+                    style={{ position: "relative", width: "100%" }}
+                    onFocusCapture={() => setIsInputFocused(true)}
+                    onBlurCapture={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
                         setIsInputFocused(false);
-                        setTimeout(() => {
-                          autocomplete.setMentionQuery(null);
-                          autocomplete.setHashtagQuery(null);
-                        }, 150);
-                      }}
+                      }
+                    }}
+                  >
+                    <OverlayWrapper>
+                      <Backdrop ref={backdropRef}>
+                        {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
+                          part.startsWith("@") ? (
+                            <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
+                              {part}
+                            </span>
+                          ) : part.startsWith("#") ? (
+                            <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)" }}>
+                              {part}
+                            </span>
+                          ) : (
+                            part
+                          ),
+                        )}
+                        {content.endsWith("\n") && <br />}
+                      </Backdrop>
+                      <ComposeInput
+                        ref={textareaRef}
+                        value={content}
+                        onChange={handleContentChange}
+                        onKeyUp={handleInteraction}
+                        onClick={handleInteraction}
+                        onScroll={(e) => {
+                          if (backdropRef.current) {
+                            backdropRef.current.scrollTop = e.currentTarget.scrollTop;
+                            backdropRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                          }
+                        }}
+                        placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
+                        rows={minRows}
+                        autoFocus={autoFocus}
+                        style={{ marginBottom: replyToPost ? "0px" : "12px" }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            submitHandler.handleSubmit();
+                          }
+                        }}
+                        onFocus={() => {
+                          setIsInputFocused(true);
+                        }}
+                        onBlur={() => {
+                          setIsInputFocused(false);
+                          setTimeout(() => {
+                            autocomplete.setMentionQuery(null);
+                            autocomplete.setHashtagQuery(null);
+                          }, 150);
+                        }}
+                      />
+                    </OverlayWrapper>
+
+                    {!notebook.isNotebookMode && (
+                      <ComposeMentionHashtagPopups
+                        mentionQuery={autocomplete.mentionQuery}
+                        mentionSuggestions={autocomplete.mentionSuggestions}
+                        onSelectMention={autocomplete.insertMention}
+                        hashtagQuery={autocomplete.hashtagQuery}
+                        hashtagSuggestions={autocomplete.hashtagSuggestions}
+                        onSelectHashtag={autocomplete.insertHashtag}
+                      />
+                    )}
+                  </div>
+
+                  {!notebook.isNotebookMode && (
+                    <ComposeAttachedArtifact
+                      artifactId={artifactId}
+                      editPostId={editPostId}
+                      onRemove={() => setArtifactId(null)}
+                      onDraftWithAi={(view) => void handleAiDraft(artifactId, view)}
+                      aiDrafting={aiBusy === "drafting"}
+                      onArtifactViewLoaded={setAttachedArtifactView}
                     />
-                  </OverlayWrapper>
-                )}
+                  )}
 
-                <ComposeMentionHashtagPopups
-                  mentionQuery={autocomplete.mentionQuery}
-                  mentionSuggestions={autocomplete.mentionSuggestions}
-                  onSelectMention={autocomplete.insertMention}
-                  hashtagQuery={autocomplete.hashtagQuery}
-                  hashtagSuggestions={autocomplete.hashtagSuggestions}
-                  onSelectHashtag={autocomplete.insertHashtag}
-                />
-              </div>
+                  <ComposeQuoteAndPin pendingPin={pendingPin} quotePost={quotePost} />
 
-              {!notebook.isNotebookMode && (
-                <ComposeAttachedArtifact
+                  {!replyToPost && (
+                    <ComposeVisibilityMenu
+                      replyVisibility={replyVisibility}
+                      setReplyVisibility={setReplyVisibility}
+                      showVisibilityMenu={showVisibilityMenu}
+                      setShowVisibilityMenu={setShowVisibilityMenu}
+                      visible={isInputFocused || showVisibilityMenu}
+                    />
+                  )}
+                </div>
+
+                <ComposeToolbar
+                  isModal={isModal}
+                  isNotebookMode={notebook.isNotebookMode}
+                  content={content}
+                  setContent={setContent}
+                  handleToggleNotebookMode={notebook.handleToggleNotebookMode}
+                  setShowMorselModal={setShowMorselModal}
+                  setShowPackageRepoPicker={setShowPackageRepoPicker}
+                  setShowCodeSnippetModal={setShowCodeSnippetModal}
+                  setShowHpcPicker={setShowHpcPicker}
+                  hasHpc={hasHpc}
+                  fileInputRef={fileInputRef}
+                  handleFileUpload={submitHandler.handleFileUpload}
+                  uploadingFile={submitHandler.uploadingFile}
+                  showContentWarning={showContentWarning}
+                  setShowContentWarning={setShowContentWarning}
+                  showEmojiPicker={showEmojiPicker}
+                  setShowEmojiPicker={setShowEmojiPicker}
+                  handleSubmit={submitHandler.handleSubmit}
+                  submitting={submitHandler.submitting}
                   artifactId={artifactId}
+                  hasNotebookContent={submitHandler.hasNotebookContent}
                   editPostId={editPostId}
-                  onRemove={() => setArtifactId(null)}
-                  onDraftWithAi={(view) => void handleAiDraft(artifactId, view)}
-                  aiDrafting={aiBusy === "drafting"}
-                  onArtifactViewLoaded={setAttachedArtifactView}
+                  replyToPost={replyToPost}
+                  textareaRef={textareaRef}
+                  onInsertEmoji={handleInsertEmoji}
+                  onAiDraft={() => void handleAiDraft(artifactId, attachedArtifactView)}
+                  onAiPolish={(mode) => void handleAiPolish(mode)}
+                  onUndoAi={handleUndoAi}
+                  canUndoAi={previousAiState !== null}
+                  aiBusy={aiBusy}
+                  aiEngine={aiEngine}
+                  onChangeAiEngine={handleChangeAiEngine}
+                  aiLastSourceLabel={aiLastSourceLabel}
                 />
-              )}
-
-              <ComposeQuoteAndPin pendingPin={pendingPin} quotePost={quotePost} />
-
-              {!replyToPost && (
-                <ComposeVisibilityMenu
-                  replyVisibility={replyVisibility}
-                  setReplyVisibility={setReplyVisibility}
-                  showVisibilityMenu={showVisibilityMenu}
-                  setShowVisibilityMenu={setShowVisibilityMenu}
-                  visible={isInputFocused || showVisibilityMenu}
-                />
-              )}
-            </div>
-
-            <ComposeToolbar
-              isModal={isModal}
-              isNotebookMode={notebook.isNotebookMode}
-              content={content}
-              setContent={setContent}
-              handleToggleNotebookMode={notebook.handleToggleNotebookMode}
-              setShowMorselModal={setShowMorselModal}
-              setShowPackageRepoPicker={setShowPackageRepoPicker}
-              setShowCodeSnippetModal={setShowCodeSnippetModal}
-              setShowHpcPicker={setShowHpcPicker}
-              hasHpc={hasHpc}
-              fileInputRef={fileInputRef}
-              handleFileUpload={submitHandler.handleFileUpload}
-              uploadingFile={submitHandler.uploadingFile}
-              showContentWarning={showContentWarning}
-              setShowContentWarning={setShowContentWarning}
-              showEmojiPicker={showEmojiPicker}
-              setShowEmojiPicker={setShowEmojiPicker}
-              handleSubmit={submitHandler.handleSubmit}
-              submitting={submitHandler.submitting}
-              artifactId={artifactId}
-              hasNotebookContent={submitHandler.hasNotebookContent}
-              editPostId={editPostId}
-              replyToPost={replyToPost}
-              textareaRef={textareaRef}
-              onInsertEmoji={handleInsertEmoji}
-              onAiDraft={() => void handleAiDraft(artifactId, attachedArtifactView)}
-              onAiPolish={(mode) => void handleAiPolish(mode)}
-              onUndoAi={handleUndoAi}
-              canUndoAi={previousAiState !== null}
-              aiBusy={aiBusy}
-              aiEngine={aiEngine}
-              onChangeAiEngine={handleChangeAiEngine}
-              aiLastSourceLabel={aiLastSourceLabel}
-            />
+              </Box>
+            </Box>
           </Box>
-        </Box>
-      </Box>
+        </>
+      )}
 
       <ComposeCodeSnippetModal
         isOpen={showCodeSnippetModal}
