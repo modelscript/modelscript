@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise
 
 import express, { type Request, type Response, type Router } from "express";
+import rateLimit from "express-rate-limit";
 import crypto from "node:crypto";
 import { requireEnterpriseFeature } from "../license/middleware.js";
 import { DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM, resolveActiveEnterpriseLicense } from "../license/verifier.js";
+
+const dhfLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env["RATE_LIMIT_MAX"]) || (process.env["NODE_ENV"] === "test" ? 100000 : 1000),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export type RegulatoryStandard =
   | "FDA-21-CFR-Part-11"
@@ -142,6 +150,7 @@ export function verifyComplianceAttestation(
  */
 export function createDhfAttestationRouter(): Router {
   const router = express.Router();
+  router.use(dhfLimiter);
 
   router.post(
     "/ee/compliance/attest",

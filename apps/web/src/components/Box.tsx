@@ -269,7 +269,9 @@ function normalizeSx(sx: any): any {
   return result;
 }
 
-const Box = styled.div.withConfig({
+const styledBase: typeof styled = (styled as any).default ?? styled;
+
+const Box = styledBase.div.withConfig({
   shouldForwardProp: (prop) => !styleProps.has(prop),
 })<BoxProps>`
   display: ${(props) => props.display};

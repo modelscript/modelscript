@@ -493,7 +493,8 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
         const defn = attr(el, "defn") || attr(el, "name") || attr(el, "type") || "Component";
         const idAttr = attrObj(el, "id");
         const id = idAttr?.value || String(autoIdCounter++);
-        const cmpLocOffset = idAttr ? idAttr.start : el.start;
+        const cmpLocOffset = idAttr ? (idAttr.valueStart ?? idAttr.start) : el.start + 1;
+        const cmpTokenLen = idAttr ? idAttr.value.length : el.name.length;
         const loc = offsetToLineCol(lineStarts, cmpLocOffset);
         const posX = parseFloat(attr(el, "x") || "0");
         const posY = parseFloat(attr(el, "y") || "0");
@@ -528,7 +529,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
             const pVal = attr(c, "value") ?? c.text.trim();
             if (pName && pVal !== undefined) {
               params[pName] = parseParamValue(pVal);
-              const nameOffsetInParam = pNameAttr ? (pNameAttr.valueStart ?? pNameAttr.start) : c.start;
+              const nameOffsetInParam = pNameAttr ? (pNameAttr.valueStart ?? pNameAttr.start) : c.start + 1;
               paramLocations[pName] = offsetToLineCol(lineStarts, nameOffsetInParam);
             }
           } else if (cTag === "port") {
@@ -606,6 +607,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
           ports,
           line: loc.line,
           column: loc.column,
+          endColumn: loc.column + Math.max(1, cmpTokenLen),
           sourceRange: { startOffset: el.start, endOffset: el.end },
         });
         return;
@@ -620,7 +622,12 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
           ? (busNameAttr.valueStart ?? busNameAttr.start)
           : busIdAttr
             ? (busIdAttr.valueStart ?? busIdAttr.start)
-            : el.start;
+            : el.start + 1;
+        const busTokenLen = busNameAttr
+          ? busNameAttr.value.length
+          : busIdAttr
+            ? busIdAttr.value.length
+            : el.name.length;
         const loc = offsetToLineCol(lineStarts, busLocOffset);
         const posX = parseFloat(attr(el, "x") || "0");
         const posY = parseFloat(attr(el, "y") || "0");
@@ -636,6 +643,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
           phaseCount: 3,
           line: loc.line,
           column: loc.column,
+          endColumn: loc.column + Math.max(1, busTokenLen),
           sourceRange: { startOffset: el.start, endOffset: el.end },
         });
         return;
@@ -662,18 +670,45 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
         }
         collectVertices(el);
 
+        if (vertices.length === 0) {
+          const x1Attr = attr(el, "x1") ?? attr(el, "x");
+          const y1Attr = attr(el, "y1") ?? attr(el, "y");
+          const x2Attr = attr(el, "x2");
+          const y2Attr = attr(el, "y2");
+          const wAttr = attr(el, "w");
+          const hAttr = attr(el, "h");
+          if (x2Attr !== undefined || y2Attr !== undefined) {
+            const x1 = parseFloat(x1Attr || "0");
+            const y1 = parseFloat(y1Attr || "0");
+            const x2 = parseFloat(x2Attr ?? x1Attr ?? "0");
+            const y2 = parseFloat(y2Attr ?? y1Attr ?? "0");
+            vertices.push({ x: isNaN(x1) ? 0 : x1, y: isNaN(y1) ? 0 : y1 });
+            vertices.push({ x: isNaN(x2) ? 0 : x2, y: isNaN(y2) ? 0 : y2 });
+          } else if (wAttr !== undefined || hAttr !== undefined) {
+            const dw = parseFloat(wAttr || "0");
+            const dh = parseFloat(hAttr || "0");
+            if ((dw !== 0 && !isNaN(dw)) || (dh !== 0 && !isNaN(dh))) {
+              vertices.push({ x: wireX, y: wireY });
+              vertices.push({ x: wireX + (isNaN(dw) ? 0 : dw), y: wireY + (isNaN(dh) ? 0 : dh) });
+            }
+          }
+        }
+
         if (classId.toLowerCase() === "bus") {
           let innerName: string | undefined;
           let innerNameOffset: number | undefined;
+          let innerNameLen: number | undefined;
           let vbaseStr = "0";
 
           function findWireBusParams(wel: XmlElement) {
             if (wel.name.toLowerCase() === "param") {
               const pname = attr(wel, "name");
-              const pval = attr(wel, "value") ?? wel.text.trim();
+              const pvalAttr = attrObj(wel, "value");
+              const pval = pvalAttr?.value ?? wel.text.trim();
               if (pname && pname.toLowerCase() === "name") {
                 innerName = pval;
-                innerNameOffset = wel.start;
+                innerNameOffset = pvalAttr ? (pvalAttr.valueStart ?? pvalAttr.start) : wel.start + 1;
+                innerNameLen = pval.length;
               } else if (pname && ["basekv", "vbase"].includes(pname.toLowerCase())) {
                 vbaseStr = pval;
               }
@@ -686,7 +721,12 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
           const attrIdAttr = attrObj(el, "id");
           const busName = innerName || attrNameAttr?.value || `Bus_${autoIdCounter++}`;
           const busId = attrIdAttr?.value || busName;
-          const busLocOffset = innerNameOffset ?? attrNameAttr?.start ?? el.start;
+          const busLocOffset =
+            innerNameOffset ??
+            (attrNameAttr ? (attrNameAttr.valueStart ?? attrNameAttr.start) : undefined) ??
+            (attrIdAttr ? (attrIdAttr.valueStart ?? attrIdAttr.start) : undefined) ??
+            el.start + 1;
+          const busTokenLen = innerNameLen ?? attrNameAttr?.value.length ?? attrIdAttr?.value.length ?? el.name.length;
           const loc = offsetToLineCol(lineStarts, busLocOffset);
           const vbase = parseFloat(vbaseStr);
           const startPt = vertices[0] ?? { x: wireX, y: wireY };
@@ -703,6 +743,7 @@ export function parsePscxCst(xmlContent: string, options?: { external?: External
             phaseCount: 3,
             line: loc.line,
             column: loc.column,
+            endColumn: loc.column + Math.max(1, busTokenLen),
             sourceRange: { startOffset: el.start, endOffset: el.end },
           });
           return;

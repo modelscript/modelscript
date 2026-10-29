@@ -2,14 +2,16 @@
 
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { defaultArchiveExportLimiter } from "../middleware/archive-limiter.js";
-import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, extractTokenFromRequest, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
 import { assertSafePublicUrl } from "../util/ssrf.js";
+import { normalizeSolutionBundleUrl } from "./solutions.js";
 
 export function usersRouter(
   database: LibraryDatabase,
@@ -305,6 +307,82 @@ export function usersRouter(
   });
 
   /**
+   * POST /api/v1/users/me/appeals
+   * Allows a user (including frozen or suspended accounts holding a signed JWT) to appeal a moderation decision.
+   */
+  router.post("/me/appeals", (req: Request, res: Response) => {
+    let appealingUserId: number | null = req.user?.id ?? null;
+
+    if (!appealingUserId) {
+      const token = extractTokenFromRequest(req);
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET) as { id?: number | undefined };
+          if (typeof decoded.id === "number" && Number.isFinite(decoded.id)) {
+            appealingUserId = decoded.id;
+          }
+        } catch {
+          // Invalid token
+        }
+      }
+    }
+
+    if (!appealingUserId) {
+      res.status(401).json({ error: "Authentication required to submit a moderation appeal" });
+      return;
+    }
+
+    const user = database.getUserById(appealingUserId);
+    if (!user || user.status === "deleted") {
+      res.status(404).json({ error: "User account not found" });
+      return;
+    }
+
+    const { reason, details, postId } = req.body || {};
+    const appealReason =
+      typeof reason === "string" && reason.trim()
+        ? reason.trim()
+        : `Appeal for ${user.status || "account"} moderation action`;
+
+    if (!details && !reason) {
+      res.status(400).json({ error: "Appeal reason or details are required" });
+      return;
+    }
+
+    const report = database.createContentReport(user.id, {
+      postId: typeof postId === "number" ? postId : undefined,
+      targetUserId: user.id,
+      targetType: "appeal",
+      targetResourceId: postId ? `post:${postId}` : `user:${user.id}`,
+      reason: appealReason,
+      details: typeof details === "string" ? details : undefined,
+    });
+
+    database.logAudit({
+      actorId: user.id,
+      action: "moderation_appeal_submitted",
+      resourceType: "user",
+      resourceId: String(user.id),
+      ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+      details: {
+        appealId: report.id,
+        userStatus: user.status,
+        reason: appealReason,
+        details,
+        postId,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      appealId: report.id,
+      reportId: report.id,
+      status: report.status,
+      message: "Your moderation appeal has been submitted for administrative review.",
+    });
+  });
+
+  /**
    * POST /api/v1/users/:username/follow
    */
   router.post("/:username/follow", requireAuth, (req: Request, res: Response) => {
@@ -497,6 +575,14 @@ export function usersRouter(
       reason,
       details,
     });
+    database.logAudit({
+      actorId: reporterId,
+      action: "user_reported",
+      resourceType: "user",
+      resourceId: String(targetUser.id),
+      ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+      details: { reason, details, targetUsername: targetUser.username, reportId: report.id },
+    });
     res.status(201).json({ success: true, reportId: report.id });
   });
 
@@ -662,7 +748,10 @@ export function usersRouter(
   router.get("/:username/solutions", optionalAuth, (req: Request, res: Response) => {
     const username = req.params["username"] as string;
     try {
-      const solutions = database.getUserSolutions(username);
+      const solutions = database.getUserSolutions(username).map((s) => ({
+        ...s,
+        bundle_url: normalizeSolutionBundleUrl(s.bundle_url, s.slug),
+      }));
       res.json({ solutions });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user solutions" });

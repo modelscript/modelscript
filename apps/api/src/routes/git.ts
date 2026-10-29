@@ -2,6 +2,7 @@
 
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { getGitProvider } from "../util/git-factory.js";
 import { GitLabProvider, GitlabError, gitlabRequest } from "../util/gitlab.js";
 
@@ -15,6 +16,7 @@ function requireGitWriteAuth(req: Request, res: Response, next: NextFunction): v
 
 export function gitRouter(): Router {
   const router = Router();
+  router.use(defaultApiLimiter);
 
   /**
    * Get project metadata

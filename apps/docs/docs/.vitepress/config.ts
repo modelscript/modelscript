@@ -291,6 +291,7 @@ export default defineConfig({
       { component: "LanguagesMegaMenu" },
       { component: "DocsMegaMenu" },
       ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
+      { text: "Hub", link: "/explore", target: "_self" },
       { text: "Playground", link: "/playground", target: "_self" },
     ],
     sidebar: (() => {

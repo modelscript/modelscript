@@ -8,6 +8,7 @@ import path from "path";
 import Parser from "rss-parser";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } from "../services/ai/composer-ai.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { locationService } from "../services/location.js";
@@ -1027,7 +1028,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.post("/posts/:id/report", requireAuth, (req: Request, res: Response) => {
     const reporterId = req.user!.id;
     const postId = Number(req.params["id"]);
-    const { reason, details } = req.body;
+    const { reason, details, forwardFederatedFlag } = req.body;
 
     if (!reason || typeof reason !== "string") {
       res.status(400).json({ error: "Report reason is required" });
@@ -1044,9 +1045,37 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       const report = database.createContentReport(reporterId, {
         postId,
         targetUserId: post.author_id,
+        targetType: "post",
+        targetResourceId: String(postId),
         reason,
         details,
       });
+
+      let federatedFlagQueued = false;
+      if (forwardFederatedFlag) {
+        const fedInfo = database.getUserFederationInfo(post.author_id);
+        const remoteDomain =
+          fedInfo?.remote_domain ||
+          (post.username && post.username.includes("@") ? post.username.split("@").pop() : undefined);
+        if (remoteDomain) {
+          const baseUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+          const flagId = `${baseUrl}/flags/${report.id}-${Date.now()}`;
+          const targetInbox = fedInfo?.inbox_url || `https://${remoteDomain}/inbox`;
+          const targetObjects: string[] = [];
+          if (fedInfo?.actor_url) targetObjects.push(fedInfo.actor_url);
+          if (post.ap_id) targetObjects.push(post.ap_id);
+          const flagActivity = {
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: flagId,
+            type: "Flag",
+            actor: `${baseUrl}/actor`,
+            object: targetObjects.length === 1 ? targetObjects[0] : targetObjects,
+            content: `${reason}${details ? `: ${details}` : ""}`,
+          };
+          database.enqueueFederationDelivery("Flag", flagId, flagActivity, targetInbox, remoteDomain);
+          federatedFlagQueued = true;
+        }
+      }
 
       database.logAudit({
         actorId: reporterId,
@@ -1054,18 +1083,66 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         resourceType: "post",
         resourceId: String(postId),
         ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: { reason, reportId: report.id },
+        details: { reason, details, reportId: report.id, federatedFlagQueued },
       });
 
       res.status(201).json({
         success: true,
         reportId: report.id,
         status: report.status,
+        federatedFlagQueued,
         message: "Report submitted successfully. Content will be reviewed by moderation.",
       });
     } catch (err: unknown) {
       console.error("POST /posts/:id/report error:", err);
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to submit report" });
+    }
+  });
+
+  /**
+   * POST /api/v1/social/reports
+   * Universal abuse/violation report intake for packages, repositories, posts, or users
+   */
+  router.post("/reports", requireAuth, (req: Request, res: Response) => {
+    const reporterId = req.user!.id;
+    const { targetType, targetResourceId, postId, targetUserId, reason, details } = req.body || {};
+
+    if (!reason || typeof reason !== "string") {
+      res.status(400).json({ error: "Report reason is required" });
+      return;
+    }
+
+    const allowedTargetTypes = new Set(["post", "user", "package", "repo"]);
+    const resolvedTargetType =
+      typeof targetType === "string" && allowedTargetTypes.has(targetType) ? targetType : "package";
+
+    try {
+      const report = database.createContentReport(reporterId, {
+        postId: typeof postId === "number" ? postId : undefined,
+        targetUserId: typeof targetUserId === "number" ? targetUserId : undefined,
+        targetType: resolvedTargetType,
+        targetResourceId: targetResourceId != null ? String(targetResourceId) : undefined,
+        reason,
+        details: typeof details === "string" ? details : undefined,
+      });
+
+      database.logAudit({
+        actorId: reporterId,
+        action: `${resolvedTargetType}_reported`,
+        resourceType: resolvedTargetType,
+        resourceId: targetResourceId != null ? String(targetResourceId) : String(postId ?? targetUserId ?? report.id),
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { reason, details, targetType: resolvedTargetType, targetResourceId, reportId: report.id },
+      });
+
+      res.status(201).json({
+        success: true,
+        reportId: report.id,
+        status: report.status,
+        targetType: resolvedTargetType,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to submit resource report" });
     }
   });
 
@@ -1250,9 +1327,16 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         fs.writeFileSync(tempPath, inlineCode, "utf-8");
         try {
           const parsedTitle = typeof parsed["title"] === "string" ? parsed["title"] : undefined;
+          const rawDialect = typeof parsed["dialect"] === "string" ? parsed["dialect"].toLowerCase().trim() : "";
+          const effectiveType =
+            artifactType === "morsel" || artifactType === "polyglot-morsel"
+              ? !rawDialect || rawDialect === "modelica"
+                ? "modelica-diagram"
+                : rawDialect
+              : artifactType;
           const preprocessed = await pregenerateServerSvgThumbnail(
             tempPath,
-            artifactType,
+            effectiveType,
             title || parsedTitle || "model",
             uploadDir,
           );
@@ -1272,6 +1356,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
           if (preprocessed.thumbnailUrl) {
             thumbnailUrl = preprocessed.thumbnailUrl;
             parsed["thumbnailUrl"] = preprocessed.thumbnailUrl;
+            parsed["thumbnail_url"] = preprocessed.thumbnailUrl;
           }
         } finally {
           try {
@@ -1637,6 +1722,129 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: "Failed to unsubscribe from feed" });
+    }
+  });
+
+  const composerAi = new ComposerAIService(database);
+
+  /**
+   * POST /api/v1/social/ai/draft
+   * Automatically drafts a post or tutorial section from an attached artifact using remote AI / domain classification.
+   */
+  router.post("/ai/draft", requireAuth, async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { artifactId, artifact_id, artifactIds, artifactMeta, artifact_view, existingText, tone, isNotebook } =
+      req.body as {
+        artifactId?: number | undefined;
+        artifact_id?: number | undefined;
+        artifactIds?: number[] | undefined;
+        artifactMeta?: {
+          viewType?: string | undefined;
+          title?: string | undefined;
+          viewConfig?: Record<string, unknown> | string | undefined;
+        };
+        artifact_view?: Record<string, unknown> | undefined;
+        existingText?: string | undefined;
+        tone?: string | undefined;
+        isNotebook?: boolean | undefined;
+      };
+
+    const resolvedArtifactId =
+      typeof artifactId === "number"
+        ? artifactId
+        : typeof artifact_id === "number"
+          ? artifact_id
+          : Number.isFinite(Number(artifactId ?? artifact_id)) && (artifactId ?? artifact_id) !== undefined
+            ? Number(artifactId ?? artifact_id)
+            : undefined;
+
+    const resolvedMeta =
+      artifactMeta ||
+      (artifact_view && typeof artifact_view === "object"
+        ? {
+            viewType: String(artifact_view["view_type"] || artifact_view["artifact_type"] || ""),
+            title: typeof artifact_view["title"] === "string" ? artifact_view["title"] : undefined,
+            viewConfig: (artifact_view["view_config"] as Record<string, unknown> | string | undefined) ?? artifact_view,
+          }
+        : undefined);
+
+    if (
+      resolvedArtifactId === undefined &&
+      (!Array.isArray(artifactIds) || artifactIds.length === 0) &&
+      !resolvedMeta
+    ) {
+      res.status(400).json({ error: "artifactId, artifactIds, or artifactMeta is required" });
+      return;
+    }
+
+    const mappedTone: ComposerDraftTone =
+      tone === "concise"
+        ? "concise"
+        : tone === "expand" || tone === "tutorial"
+          ? "expand"
+          : tone === "hashtags"
+            ? "hashtags"
+            : "technical";
+
+    try {
+      const result = await composerAi.draftFromArtifact({
+        userId,
+        artifactId: resolvedArtifactId,
+        artifactIds: Array.isArray(artifactIds) ? artifactIds.map(Number).filter(Number.isFinite) : undefined,
+        artifactMeta: resolvedMeta,
+        existingText: typeof existingText === "string" ? existingText : undefined,
+        tone: mappedTone,
+        isNotebook: Boolean(isNotebook || tone === "tutorial"),
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to draft post from artifact" });
+    }
+  });
+
+  /**
+   * POST /api/v1/social/ai/polish
+   * Polishes, condenses, expands, or tags existing composer text using remote AI / domain classification.
+   */
+  router.post("/ai/polish", requireAuth, async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { content, text, mode, artifactId, artifact_id } = req.body as {
+      content?: string | undefined;
+      text?: string | undefined;
+      mode?: ComposerPolishMode | undefined;
+      artifactId?: number | undefined;
+      artifact_id?: number | undefined;
+    };
+
+    const textContent = typeof content === "string" ? content : typeof text === "string" ? text : "";
+
+    if (!textContent.trim() && artifactId === undefined && artifact_id === undefined) {
+      res.status(400).json({ error: "Text content or attached artifactId is required to polish" });
+      return;
+    }
+
+    const resolvedArtifactId =
+      typeof artifactId === "number"
+        ? artifactId
+        : typeof artifact_id === "number"
+          ? artifact_id
+          : Number.isFinite(Number(artifactId ?? artifact_id)) && (artifactId ?? artifact_id) !== undefined
+            ? Number(artifactId ?? artifact_id)
+            : undefined;
+
+    const validMode: ComposerPolishMode =
+      mode === "concise" || mode === "expand" || mode === "hashtags" || mode === "polish" ? mode : "polish";
+
+    try {
+      const result = await composerAi.polishContent({
+        userId,
+        content: textContent,
+        mode: validMode,
+        artifactId: resolvedArtifactId,
+      });
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to polish post content" });
     }
   });
 

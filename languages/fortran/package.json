@@ -36,6 +36,14 @@
       "types": "./dist/src/dae/lowering.d.ts",
       "default": "./dist/src/dae/lowering.js"
     },
+    "./ide": {
+      "types": "./dist/src/ide/index.d.ts",
+      "default": "./dist/src/ide/index.js"
+    },
+    "./formal": {
+      "types": "./dist/src/formal/verifier.d.ts",
+      "default": "./dist/src/formal/verifier.js"
+    },
     "./parser.wasm": "./dist/parser.wasm",
     "./dist/parser.wasm": "./dist/parser.wasm"
   },

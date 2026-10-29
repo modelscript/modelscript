@@ -528,3 +528,168 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
   const qs = params.toString();
   return `/playground${qs ? `?${qs}` : ""}${hash}`;
 }
+
+/**
+ * Builds the standalone VS Code Web Workbench URL (`/vscode/workbench#...`) for an artifact.
+ */
+export function buildVsCodeWorkbenchUrlForArtifact(options: BuildEditorUrlOptions): string {
+  const parsedViewConfig =
+    typeof options.viewConfig === "string"
+      ? safeJsonParse(options.viewConfig, {})
+      : options.viewConfig && typeof options.viewConfig === "object"
+        ? options.viewConfig
+        : {};
+
+  const artifactId = options.artifactId ?? parsedViewConfig.artifactId ?? parsedViewConfig.id;
+  if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
+    return `/vscode/workbench#memfs:artifact-${artifactId}`;
+  }
+
+  const templateId = parsedViewConfig.templateId || parsedViewConfig.template;
+  if (typeof templateId === "string" && templateId.trim().length > 0) {
+    return `/vscode/workbench#memfs:${templateId.trim()}`;
+  }
+
+  return `/vscode/workbench#memfs:scratch`;
+}
+
+/**
+ * Opens an artifact or workspace directly in a new standalone VS Code window (`/vscode/workbench#...`)
+ * and synchronizes any inline artifact payload / theme / auth credentials over `BroadcastChannel`.
+ */
+export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void {
+  if (typeof window === "undefined") return;
+
+  const parsedViewConfig =
+    typeof options.viewConfig === "string"
+      ? safeJsonParse(options.viewConfig, {})
+      : options.viewConfig && typeof options.viewConfig === "object"
+        ? options.viewConfig
+        : {};
+
+  const artifactId = options.artifactId ?? parsedViewConfig.artifactId ?? parsedViewConfig.id;
+  const dialect =
+    options.dialect ||
+    inferDialectFromArtifact(
+      {
+        view_type: options.viewType || parsedViewConfig.view_type || parsedViewConfig.viewType,
+        view_config: parsedViewConfig,
+        title: options.title || parsedViewConfig.title,
+      },
+      options.title,
+    );
+  const ext = getExtensionForDialect(dialect);
+  const rawTitle =
+    options.title ||
+    parsedViewConfig.title ||
+    parsedViewConfig.modelName ||
+    parsedViewConfig.projectTitle ||
+    (artifactId ? `Artifact_${artifactId}${ext}` : `ScratchModel${ext}`);
+
+  const viewType =
+    options.viewType ||
+    parsedViewConfig.view_type ||
+    parsedViewConfig.viewType ||
+    (dialect === "sysml2" ? "sysml" : "modelica-code");
+
+  const code =
+    options.code ??
+    parsedViewConfig.code ??
+    parsedViewConfig.modelicaCode ??
+    parsedViewConfig.source ??
+    parsedViewConfig.content;
+
+  const enrichedConfig = {
+    ...parsedViewConfig,
+    ...(code !== undefined ? { code } : {}),
+    dialect,
+  };
+
+  try {
+    const scratchMeta = {
+      id: artifactId || "scratch",
+      title: rawTitle,
+      viewType,
+      viewConfig: enrichedConfig,
+    };
+    sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(scratchMeta));
+    localStorage.setItem("modelscript.artifact_scratch", JSON.stringify(scratchMeta));
+  } catch {
+    // ignore storage quota errors
+  }
+
+  const workbenchUrl = buildVsCodeWorkbenchUrlForArtifact(options);
+  window.open(workbenchUrl, "_blank", "noopener,noreferrer");
+
+  // Broadcast artifact mount + theme + auth to the newly opened VS Code window when it signals MODELSCRIPT_READY
+  try {
+    const channel = new BroadcastChannel("modelscript:host-bridge");
+    let resolvedPayload: {
+      artifactId: number | string;
+      title: string;
+      viewType: string;
+      viewConfig: any;
+    } | null =
+      Object.keys(parsedViewConfig).length > 0 || code !== undefined
+        ? {
+            artifactId: artifactId || "scratch",
+            title: rawTitle,
+            viewType,
+            viewConfig: enrichedConfig,
+          }
+        : null;
+
+    const broadcastState = () => {
+      try {
+        const themeAttr = document.documentElement.getAttribute("data-color-mode");
+        channel.postMessage({
+          type: "MODELSCRIPT_THEME_SYNC",
+          theme: themeAttr === "light" ? "day" : "night",
+        });
+        if (resolvedPayload) {
+          channel.postMessage({
+            type: "MODELSCRIPT_MOUNT_ARTIFACT",
+            ...resolvedPayload,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    // If we only have artifactId and no inline viewConfig, fetch it in the background so it is ready to broadcast
+    if (!resolvedPayload && artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
+      fetch(`/api/v1/artifacts/view/${encodeURIComponent(String(artifactId))}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const av = data?.artifactView || data;
+          if (!av) return;
+          const cfg = typeof av.view_config === "string" ? safeJsonParse(av.view_config, {}) : av.view_config || {};
+          resolvedPayload = {
+            artifactId: av.id ?? artifactId,
+            title: options.title || av.title || av.name || rawTitle,
+            viewType: av.view_type || viewType,
+            viewConfig: cfg,
+          };
+          broadcastState();
+        })
+        .catch(() => {});
+    }
+
+    channel.onmessage = (event) => {
+      if (event.data?.type === "MODELSCRIPT_READY") {
+        broadcastState();
+      }
+    };
+
+    const t1 = setTimeout(broadcastState, 700);
+    const t2 = setTimeout(broadcastState, 2000);
+    setTimeout(() => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      channel.close();
+    }, 15000);
+  } catch {
+    // BroadcastChannel unavailable
+  }
+}

@@ -25,7 +25,7 @@ export interface ZeroCopyWebGPUViewerProps {
     | undefined;
 }
 
-const CPU_FALLBACK_STATUS = "CPU Analytical Preview (No WebGPU Runner Attached)";
+const NO_RUNNER_STATUS = "No WebGPU simulation runner or field tensor attached.";
 
 const SHADER_CODE = `
 @group(0) @binding(0) var<storage, read> sim_state: array<f32>;
@@ -113,7 +113,9 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hasTransferredRef = useRef(false);
-  const [status, setStatus] = useState<string>(() => (runner ? "Initializing..." : CPU_FALLBACK_STATUS));
+  const [status, setStatus] = useState<string>(() =>
+    runner ? "Initializing..." : staticTensor ? "Recorded Tensor Field" : NO_RUNNER_STATUS,
+  );
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -202,7 +204,7 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
       setStatus("Running via OffscreenCanvas (LSP Worker)");
       try {
         if (!canvas.transferControlToOffscreen) {
-          setStatus(CPU_FALLBACK_STATUS);
+          setStatus("OffscreenCanvas is not supported in this browser.");
           return;
         }
         const offscreen = canvas.transferControlToOffscreen();
@@ -215,34 +217,15 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
       } catch (e: unknown) {
         setStatus("OffscreenCanvas initialization error: " + (e instanceof Error ? e.message : String(e)));
       }
-    } else {
-      // NO WEBGPU SIMULATION RUNNER ATTACHED: CPU ANALYTICAL PREVIEW OR RECORDED TENSOR FIELD
-      setStatus(CPU_FALLBACK_STATUS);
+    } else if (staticTensor) {
+      setStatus(`Recorded Tensor Field (${staticTensor.length} states)`);
 
-      const initFallbackPreview = async () => {
-        const numStates = staticTensor ? staticTensor.length : 256;
-        const stateArray = new Float32Array(numStates);
-        if (staticTensor) {
-          stateArray.set(staticTensor);
-        }
+      const initStaticTensorPreview = async () => {
+        const numStates = staticTensor.length;
+        const stateArray = new Float32Array(staticTensor);
 
         if (typeof navigator === "undefined" || !("gpu" in navigator) || !navigator.gpu) {
-          if (staticTensor) {
-            renderCanvas2DFallback(canvas, stateArray);
-            return;
-          }
-          let t = 0;
-          const renderCpu2D = () => {
-            if (cancelled) return;
-            t += 0.03;
-            for (let i = 0; i < numStates; i++) {
-              const x = (i / Math.max(numStates - 1, 1)) * Math.PI * 4;
-              stateArray[i] = Math.sin(x - t) * Math.cos(x * 0.35 + t * 0.5) * 6.0;
-            }
-            renderCanvas2DFallback(canvas, stateArray);
-            animationFrameId = requestAnimationFrame(renderCpu2D);
-          };
-          renderCpu2D();
+          renderCanvas2DFallback(canvas, stateArray);
           return;
         }
 
@@ -285,49 +268,31 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
             entries: [{ binding: 0, resource: { buffer: gpuBuffer } }],
           });
 
-          const drawFrame = () => {
-            device.queue.writeBuffer(gpuBuffer, 0, stateArray.buffer, stateArray.byteOffset, stateArray.byteLength);
-            const commandEncoder = device.createCommandEncoder();
-            const textureView = context.getCurrentTexture().createView();
-            const renderPass = commandEncoder.beginRenderPass({
-              colorAttachments: [
-                {
-                  view: textureView,
-                  clearValue: { r: 0.05, g: 0.05, b: 0.07, a: 1.0 },
-                  loadOp: "clear",
-                  storeOp: "store",
-                },
-              ],
-            });
-            renderPass.setPipeline(pipeline);
-            renderPass.setBindGroup(0, bindGroup);
-            renderPass.draw(numStates, 1, 0, 0);
-            renderPass.end();
-            device.queue.submit([commandEncoder.finish()]);
-          };
-
-          if (staticTensor) {
-            drawFrame();
-            return;
-          }
-
-          let t = 0;
-          const render = () => {
-            if (cancelled) return;
-            t += 0.03;
-            for (let i = 0; i < numStates; i++) {
-              const x = (i / Math.max(numStates - 1, 1)) * Math.PI * 4;
-              stateArray[i] = Math.sin(x - t) * Math.cos(x * 0.35 + t * 0.5) * 6.0;
-            }
-            drawFrame();
-            animationFrameId = requestAnimationFrame(render);
-          };
-          render();
+          device.queue.writeBuffer(gpuBuffer, 0, stateArray.buffer, stateArray.byteOffset, stateArray.byteLength);
+          const commandEncoder = device.createCommandEncoder();
+          const textureView = context.getCurrentTexture().createView();
+          const renderPass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+              {
+                view: textureView,
+                clearValue: { r: 0.05, g: 0.05, b: 0.07, a: 1.0 },
+                loadOp: "clear",
+                storeOp: "store",
+              },
+            ],
+          });
+          renderPass.setPipeline(pipeline);
+          renderPass.setBindGroup(0, bindGroup);
+          renderPass.draw(numStates, 1, 0, 0);
+          renderPass.end();
+          device.queue.submit([commandEncoder.finish()]);
         } catch {
           renderCanvas2DFallback(canvas, stateArray);
         }
       };
-      void initFallbackPreview();
+      void initStaticTensorPreview();
+    } else {
+      setStatus(NO_RUNNER_STATUS);
     }
 
     return () => {
@@ -361,9 +326,18 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
   }, []);
 
   const isZeroCopyActive = Boolean(runner || uri);
+  const hasVisualData = Boolean(runner || uri || staticTensor);
 
   return (
-    <Box width={width} height={height} borderRadius="8px" overflow="hidden" position="relative">
+    <Box
+      width={width}
+      height={height}
+      borderRadius="8px"
+      overflow="hidden"
+      position="relative"
+      backgroundColor="var(--color-canvas-default)"
+      border="1px solid var(--color-border-default)"
+    >
       <Box
         position="absolute"
         top={16}
@@ -375,24 +349,41 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
         display="flex"
         flexDirection="column"
         gap={1}
+        zIndex={2}
       >
         <Box display="flex" alignItems="center" gap={2}>
           <Text fontSize="12px" fontWeight="bold">
-            {isZeroCopyActive ? "Zero-Copy GPU Render" : CPU_FALLBACK_STATUS}
+            {isZeroCopyActive ? "Zero-Copy GPU Render" : staticTensor ? "Recorded Tensor Field" : "WebGPU Viewport"}
           </Text>
-          <Label variant={isZeroCopyActive ? "success" : "attention"}>
+          <Label variant={isZeroCopyActive ? "success" : staticTensor ? "accent" : "secondary"}>
             {isZeroCopyActive
               ? "Zero-Copy GPU"
               : staticTensor
                 ? `Recorded Tensor (${staticTensor.length} pts)`
-                : "CPU Analytical Fallback"}
+                : "No Runner Attached"}
           </Label>
         </Box>
         <Text fontSize="10px" display="block" color="var(--color-fg-muted)">
           {status}
         </Text>
       </Box>
-      <canvas ref={canvasRef} width={640} height={360} style={{ width: "100%", height: "100%", display: "block" }} />
+      {hasVisualData ? (
+        <canvas ref={canvasRef} width={640} height={360} style={{ width: "100%", height: "100%", display: "block" }} />
+      ) : (
+        <Box
+          width="100%"
+          height="100%"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          p={4}
+          textAlign="center"
+        >
+          <Text color="var(--color-fg-muted)" fontSize="13px">
+            {NO_RUNNER_STATUS}
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 };

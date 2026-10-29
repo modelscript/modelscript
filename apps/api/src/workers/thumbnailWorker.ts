@@ -63,7 +63,99 @@ export function generateThumbnail(artifactId: number, anchor?: string): Promise<
   });
 }
 
+import {
+  renderCfdAnimationIsometricSvg,
+  renderStepIsometricSvg,
+  renderVtuIsometricSvg,
+} from "../services/artifact-preprocessor.js";
+import { resolveLocalUploadBuffer } from "../util/cad-converter.js";
+
 async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
+  // Fast deterministic server-side 3D SVG thumbnail path for STEP, VTU, and CFD Animation artifacts
+  try {
+    const db = getDatabase();
+    const view = db.getArtifactView(artifactId);
+    if (view && view.view_config) {
+      const cfg = JSON.parse(view.view_config) as Record<string, unknown>;
+      const vType = (view.view_type || "").toLowerCase();
+      let svgContent: string | null = null;
+
+      if (vType === "cad-step" || vType === "step" || vType === "cad" || vType === "stp") {
+        let stepText =
+          typeof cfg["stepSource"] === "string"
+            ? cfg["stepSource"]
+            : typeof cfg["code"] === "string"
+              ? cfg["code"]
+              : null;
+        if (!stepText && typeof cfg["url"] === "string") {
+          const buf = resolveLocalUploadBuffer(cfg["url"]);
+          if (buf) {
+            stepText = new TextDecoder().decode(buf);
+          }
+        }
+        if (stepText && stepText.includes("CARTESIAN_POINT")) {
+          svgContent = renderStepIsometricSvg(stepText, view.title || "CAD Assembly").svg;
+        }
+      } else if (vType === "simulation-result" || vType === "fea-result" || vType === "cfd-result") {
+        let vtuText = typeof cfg["vtuInline"] === "string" ? cfg["vtuInline"] : null;
+        const vtuUrl =
+          typeof cfg["vtuUrl"] === "string" ? cfg["vtuUrl"] : typeof cfg["url"] === "string" ? cfg["url"] : null;
+        if (!vtuText && vtuUrl) {
+          const buf = resolveLocalUploadBuffer(vtuUrl);
+          if (buf) {
+            vtuText = new TextDecoder().decode(buf);
+          }
+        }
+        if (!vtuText) {
+          const isCfd =
+            vType === "cfd-result" ||
+            (view.title || "").toLowerCase().includes("cfd") ||
+            cfg["solver"] === "openfoam" ||
+            cfg["solver"] === "su2";
+          const exampleRel = isCfd
+            ? "../../../packages/examples/drone-chassis/drone_cfd.vtu"
+            : "../../../packages/examples/drone-chassis/drone_fea.vtu";
+          const examplePath = path.resolve(_dirname, "../", exampleRel);
+          if (fs.existsSync(examplePath)) {
+            vtuText = fs.readFileSync(examplePath, "utf-8");
+          }
+        }
+        if (vtuText && vtuText.includes("<VTKFile")) {
+          const fieldUnits =
+            cfg["fieldUnits"] && typeof cfg["fieldUnits"] === "object"
+              ? (cfg["fieldUnits"] as Record<string, string>)
+              : undefined;
+          svgContent = renderVtuIsometricSvg(vtuText, view.title || "Simulation Result", fieldUnits).svg;
+        }
+      } else if (vType === "cfd-animation" && Array.isArray(cfg["frames"])) {
+        const moldGeo =
+          cfg["moldGeometry"] && typeof cfg["moldGeometry"] === "object"
+            ? (cfg["moldGeometry"] as { length?: number; width?: number; height?: number })
+            : undefined;
+        svgContent = renderCfdAnimationIsometricSvg(
+          cfg["frames"] as Parameters<typeof renderCfdAnimationIsometricSvg>[0],
+          moldGeo,
+        ).svg;
+      }
+
+      if (svgContent) {
+        const outDir = path.join(_dirname, "../../public/thumbnails");
+        if (!fs.existsSync(outDir)) {
+          fs.mkdirSync(outDir, { recursive: true });
+        }
+        const thumbnailName = `artifact_${artifactId}_iso.svg`;
+        const outPath = path.join(outDir, thumbnailName);
+        fs.writeFileSync(outPath, svgContent, "utf-8");
+        const thumbnailUrl = `/thumbnails/${thumbnailName}`;
+        db.updateArtifactThumbnail(artifactId, thumbnailUrl, thumbnailUrl);
+        console.log(`[Thumbnail Worker] Generated deterministic 3D SVG thumbnail for artifact ${artifactId}`);
+        return thumbnailUrl;
+      }
+    }
+  } catch (fastErr) {
+    console.warn(`[Thumbnail Worker] Fast SVG generation skipped for ${artifactId}:`, fastErr);
+  }
+
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
     console.log(`[Thumbnail Worker] Launching headless browser for artifact ${artifactId}`);

@@ -1053,10 +1053,1047 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
     if ((!diagramData || !Array.isArray(diagramData.nodes) || diagramData.nodes.length === 0) && docText) {
       const plugin = globalLanguageRegistry.getPluginForUri(params.uri, docText);
+      const isScad = /\.scad($|\?|#)/i.test(params.uri) || plugin?.id === "scad";
+
+      const makeStyledPorts = () => ({
+        groups: {
+          in: {
+            position: "left",
+            attrs: {
+              circle: { r: 4, magnet: true, stroke: "#0284c7", fill: "#ffffff", strokeWidth: 1.5 },
+            },
+          },
+          out: {
+            position: "right",
+            attrs: {
+              circle: { r: 4, magnet: true, stroke: "#0284c7", fill: "#ffffff", strokeWidth: 1.5 },
+            },
+          },
+        },
+        items: [
+          { id: "in", group: "in" },
+          { id: "out", group: "out" },
+        ],
+      });
+
+      const makeStyledNode = (opts: {
+        id: string;
+        name: string;
+        kind: string;
+        stereotype: string;
+        subtitle?: string | undefined;
+        entries?: string[] | undefined;
+        stroke: string;
+        fill: string;
+        headerFill?: string | undefined;
+        x?: number | undefined;
+        y?: number | undefined;
+      }) => {
+        const entries = opts.entries ?? [];
+        const hasEntries = entries.length > 0;
+        const subtitle = opts.subtitle?.trim() || "";
+        const HEADER_H = subtitle ? 54 : 40;
+        const LINE_H = 16;
+        const maxTextLen = Math.max(
+          opts.name.length * 8.5 + 36,
+          opts.stereotype.length * 7.5 + 32,
+          subtitle.length * 6.8 + 32,
+          ...entries.map((e) => e.length * 7.2 + 36),
+        );
+        const width = Math.min(320, Math.max(185, Math.ceil(maxTextLen)));
+        const height = hasEntries ? HEADER_H + entries.length * LINE_H + 12 : subtitle ? 62 : 48;
+
+        const markup: { tagName: string; selector: string }[] = [
+          { tagName: "rect", selector: "body" },
+          ...(hasEntries
+            ? [
+                { tagName: "path", selector: "headerBody" },
+                { tagName: "line", selector: "headerSep" },
+              ]
+            : []),
+          { tagName: "text", selector: "stereotype" },
+          { tagName: "text", selector: "label" },
+          ...(subtitle ? [{ tagName: "text", selector: "subtitle" }] : []),
+        ];
+
+        const headerPath = `M 0 6 A 6 6 0 0 1 6 0 L ${width - 6} 0 A 6 6 0 0 1 ${width} 6 L ${width} ${HEADER_H} L 0 ${HEADER_H} Z`;
+        const attrs: Record<string, Record<string, unknown>> = {
+          body: {
+            fill: hasEntries ? "#ffffff" : opts.fill,
+            stroke: opts.stroke,
+            strokeWidth: 1.5,
+            rx: 6,
+            ry: 6,
+            refWidth: "100%",
+            refHeight: "100%",
+          },
+          ...(hasEntries
+            ? {
+                headerBody: {
+                  d: headerPath,
+                  fill: opts.headerFill ?? opts.fill,
+                  stroke: "none",
+                },
+                headerSep: {
+                  x1: 0,
+                  y1: HEADER_H,
+                  x2: width,
+                  y2: HEADER_H,
+                  stroke: opts.stroke,
+                  strokeWidth: 1,
+                },
+              }
+            : {}),
+          stereotype: {
+            text: `«${opts.stereotype}»`,
+            fill: opts.stroke,
+            fontSize: 10,
+            fontStyle: "italic",
+            textAnchor: "middle",
+            textVerticalAnchor: "top",
+            refX: 0.5,
+            refY: 6,
+          },
+          label: {
+            text: opts.name,
+            fill: "#0f172a",
+            fontSize: 12,
+            fontWeight: "bold",
+            textAnchor: "middle",
+            textVerticalAnchor: "top",
+            refX: 0.5,
+            refY: 21,
+          },
+          ...(subtitle
+            ? {
+                subtitle: {
+                  text: subtitle.length > 42 ? `${subtitle.slice(0, 39)}...` : subtitle,
+                  fill: "#475569",
+                  fontSize: 10,
+                  fontFamily: "monospace",
+                  textAnchor: "middle",
+                  textVerticalAnchor: "top",
+                  refX: 0.5,
+                  refY: 38,
+                },
+              }
+            : {}),
+        };
+
+        for (let i = 0; i < entries.length; i++) {
+          const sel = `entry_${i}`;
+          markup.push({ tagName: "text", selector: sel });
+          attrs[sel] = {
+            text: entries[i]!,
+            fill: "#1e293b",
+            fontSize: 11,
+            fontFamily: "monospace",
+            textAnchor: "start",
+            textVerticalAnchor: "top",
+            refX: 14,
+            refY: HEADER_H + 6 + i * LINE_H,
+          };
+        }
+
+        return {
+          id: opts.id,
+          name: opts.name,
+          label: subtitle ? `${opts.name}\n${subtitle}` : opts.name,
+          kind: opts.kind,
+          x: opts.x ?? 80,
+          y: opts.y ?? 80,
+          width,
+          height,
+          rotation: 0,
+          autoLayout: true,
+          shape: "rect",
+          markup,
+          attrs,
+          ports: makeStyledPorts(),
+          properties: {
+            className: opts.kind,
+            name: opts.name,
+            description: subtitle,
+          },
+        };
+      };
+
+      const makeStyledEdge = (id: string, source: string, target: string, dashed = false, labelText?: string) => ({
+        id,
+        source,
+        target,
+        sourcePort: "out",
+        targetPort: "in",
+        attrs: {
+          line: {
+            stroke: dashed ? "#0d9488" : "#64748b",
+            strokeWidth: 1.5,
+            ...(dashed ? { strokeDasharray: "5 3" } : {}),
+            targetMarker: {
+              name: "block",
+              width: 8,
+              height: 6,
+            },
+          },
+        },
+        ...(labelText
+          ? {
+              labels: [
+                {
+                  attrs: {
+                    label: {
+                      text: labelText,
+                      fill: "#475569",
+                      fontSize: 10,
+                    },
+                  },
+                },
+              ],
+            }
+          : {}),
+      });
+
       const nodes: any[] = [];
       const edges: any[] = [];
 
-      if (plugin?.customHandlers?.symbols) {
+      // Dedicated OpenSCAD (.scad) CSG Constructive Solid Geometry Tree & Parametric Diagram Builder
+      if (isScad) {
+        const paramEntries: string[] = [];
+        const moduleNodeIds = new Map<string, string>();
+        const topModuleCalls = new Map<string, string[]>();
+        const blockStack: { parentId: string | null; depth: number }[] = [];
+        let braceDepth = 0;
+        let pendingParentId: string | null = null;
+        let nodeCounter = 0;
+
+        const currentParent = (): string | null => {
+          if (pendingParentId) return pendingParentId;
+          for (let i = blockStack.length - 1; i >= 0; i--) {
+            if (blockStack[i]!.parentId) return blockStack[i]!.parentId;
+          }
+          return null;
+        };
+
+        const rawLines = docText.split(/\r?\n/);
+        for (const rawLine of rawLines) {
+          const stripped = rawLine.replace(/\/\/.*$/, "").trim();
+          if (!stripped) continue;
+
+          const openBraces = (stripped.match(/\{/g) || []).length;
+          const closeBraces = (stripped.match(/\}/g) || []).length;
+
+          // Pure closing brace line
+          if (/^\}+;?\s*$/.test(stripped)) {
+            braceDepth = Math.max(0, braceDepth - closeBraces);
+            while (blockStack.length > 0 && blockStack[blockStack.length - 1]!.depth > braceDepth) {
+              blockStack.pop();
+            }
+            pendingParentId = null;
+            continue;
+          }
+
+          // 1. Top-level or local variable declaration: name = expr;
+          const varMatch = /^(\$?[A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/.exec(stripped);
+          if (varMatch && braceDepth === 0) {
+            paramEntries.push(`${varMatch[1]} = ${varMatch[2]!.trim()}`);
+            continue;
+          }
+
+          // 2. Module declaration: module name(params) {
+          const modMatch = /^module\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/.exec(stripped);
+          if (modMatch) {
+            const modName = modMatch[1]!;
+            const modParams = modMatch[2]!.trim();
+            const nodeId = `module_${modName}`;
+            moduleNodeIds.set(modName, nodeId);
+            nodes.push(
+              makeStyledNode({
+                id: nodeId,
+                name: modName,
+                kind: "Module",
+                stereotype: "csg module",
+                subtitle: modParams ? `(${modParams})` : "()",
+                stroke: "#0d9488",
+                fill: "#f0fdfa",
+              }),
+            );
+            braceDepth += openBraces - closeBraces;
+            if (openBraces > closeBraces) {
+              blockStack.push({ parentId: nodeId, depth: braceDepth });
+            }
+            pendingParentId = null;
+            continue;
+          }
+
+          // 3. Tagged boundary/mechanical port: tag_port("name", "type")
+          const portMatch = /^tag_port\s*\(\s*"([^"]+)"(?:\s*,\s*"([^"]+)")?\s*\)/.exec(stripped);
+          if (portMatch) {
+            const portName = portMatch[1]!;
+            const portType = portMatch[2] || "port";
+            const nodeId = `port_${++nodeCounter}_${portName}`;
+            const pId = currentParent();
+            nodes.push(
+              makeStyledNode({
+                id: nodeId,
+                name: portName,
+                kind: "Port",
+                stereotype: `port: ${portType}`,
+                subtitle: `tag_port("${portName}", "${portType}")`,
+                stroke: "#d97706",
+                fill: "#fffbeb",
+              }),
+            );
+            if (pId) {
+              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
+            }
+            braceDepth += openBraces - closeBraces;
+            if (openBraces > closeBraces) {
+              blockStack.push({ parentId: nodeId, depth: braceDepth });
+              pendingParentId = null;
+            } else {
+              pendingParentId = nodeId;
+            }
+            continue;
+          }
+
+          // 4. CSG Boolean operation: difference(), union(), intersection(), hull(), minkowski()
+          const boolMatch = /^(difference|union|intersection|hull|minkowski)\s*\(\s*\)/.exec(stripped);
+          if (boolMatch) {
+            const opName = boolMatch[1]!;
+            const nodeId = `bool_${++nodeCounter}_${opName}`;
+            const pId = currentParent();
+            nodes.push(
+              makeStyledNode({
+                id: nodeId,
+                name: `${opName}()`,
+                kind: "BooleanOp",
+                stereotype: "csg boolean",
+                stroke: "#7c3aed",
+                fill: "#f5f3ff",
+              }),
+            );
+            if (pId) {
+              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
+            }
+            braceDepth += openBraces - closeBraces;
+            if (openBraces > closeBraces) {
+              blockStack.push({ parentId: nodeId, depth: braceDepth });
+              pendingParentId = null;
+            } else {
+              pendingParentId = nodeId;
+            }
+            continue;
+          }
+
+          // 5. Transform operation: translate(...), rotate(...), scale(...), mirror(...), color(...), linear_extrude(...)
+          const tfMatch = /^(translate|rotate|scale|mirror|color|linear_extrude)\s*\((.*)\)\s*(\{?)$/.exec(stripped);
+          if (tfMatch) {
+            const tfName = tfMatch[1]!;
+            const tfArgs = tfMatch[2]!.trim();
+            const nodeId = `tf_${++nodeCounter}_${tfName}`;
+            const pId = currentParent();
+            nodes.push(
+              makeStyledNode({
+                id: nodeId,
+                name: tfName,
+                kind: "Transform",
+                stereotype: "transform",
+                subtitle: tfArgs,
+                stroke: "#0284c7",
+                fill: "#f0f9ff",
+              }),
+            );
+            if (pId) {
+              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
+            }
+            braceDepth += openBraces - closeBraces;
+            if (openBraces > closeBraces) {
+              blockStack.push({ parentId: nodeId, depth: braceDepth });
+              pendingParentId = null;
+            } else {
+              pendingParentId = nodeId;
+            }
+            continue;
+          }
+
+          // 6. 3D/2D Solid primitive: cylinder(...), cube(...), sphere(...), polyhedron(...), polygon(...), circle(...), square(...)
+          const primMatch = /^(cylinder|cube|sphere|polyhedron|polygon|circle|square)\s*\((.*)\)\s*;/.exec(stripped);
+          if (primMatch) {
+            const primName = primMatch[1]!;
+            const primArgs = primMatch[2]!.replace(/,\s*center\s*=\s*(true|false)/, "").trim();
+            const nodeId = `prim_${++nodeCounter}_${primName}`;
+            const pId = currentParent();
+            nodes.push(
+              makeStyledNode({
+                id: nodeId,
+                name: primName,
+                kind: "Primitive",
+                stereotype: "3d solid",
+                subtitle: primArgs,
+                stroke: "#059669",
+                fill: "#ecfdf5",
+              }),
+            );
+            if (pId) {
+              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
+            }
+            pendingParentId = null;
+            braceDepth = Math.max(0, braceDepth + openBraces - closeBraces);
+            continue;
+          }
+
+          // 7. User module instantiation: modName(args);
+          const callMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;/.exec(stripped);
+          if (callMatch) {
+            const callee = callMatch[1]!;
+            const callArgs = callMatch[2]!.trim();
+            const pId = currentParent();
+            if (!pId && braceDepth === 0) {
+              const list = topModuleCalls.get(callee) ?? [];
+              list.push(callArgs || "default");
+              topModuleCalls.set(callee, list);
+            } else {
+              const targetModId = moduleNodeIds.get(callee);
+              if (targetModId && pId) {
+                edges.push(
+                  makeStyledEdge(
+                    `edge_call_${++nodeCounter}_${pId}_${targetModId}`,
+                    pId,
+                    targetModId,
+                    true,
+                    "instantiate",
+                  ),
+                );
+              } else {
+                const callId = `call_${++nodeCounter}_${callee}`;
+                nodes.push(
+                  makeStyledNode({
+                    id: callId,
+                    name: `${callee}(${callArgs})`,
+                    kind: "ModuleCall",
+                    stereotype: "instance",
+                    stroke: "#0d9488",
+                    fill: "#f0fdfa",
+                  }),
+                );
+                if (pId) {
+                  edges.push(makeStyledEdge(`edge_${pId}_${callId}`, pId, callId));
+                }
+              }
+            }
+            pendingParentId = null;
+            braceDepth = Math.max(0, braceDepth + openBraces - closeBraces);
+            continue;
+          }
+
+          braceDepth = Math.max(0, braceDepth + openBraces - closeBraces);
+          while (blockStack.length > 0 && blockStack[blockStack.length - 1]!.depth > braceDepth) {
+            blockStack.pop();
+          }
+        }
+
+        // Emit grouped top-level module instantiations (e.g., 4x arm_assembly(45, 135, 225, 315))
+        for (const [callee, argList] of topModuleCalls) {
+          const instId = `inst_${callee}`;
+          const summary =
+            argList.length > 1 ? `${argList.length}× instances (${argList.join(", ")})` : `(${argList[0] ?? ""})`;
+          nodes.push(
+            makeStyledNode({
+              id: instId,
+              name: `${callee} Assembly`,
+              kind: "AssemblyInstance",
+              stereotype: argList.length > 1 ? `csg pattern (${argList.length}×)` : "csg instance",
+              subtitle: summary,
+              stroke: "#0d9488",
+              fill: "#ccfbf1",
+            }),
+          );
+          const targetModId = moduleNodeIds.get(callee);
+          if (targetModId) {
+            edges.push(makeStyledEdge(`edge_${instId}_${targetModId}`, instId, targetModId, true, "instantiates"));
+          }
+        }
+
+        // Prepend consolidated Design Parameters compartment block
+        if (paramEntries.length > 0) {
+          nodes.unshift(
+            makeStyledNode({
+              id: "scad_parameters",
+              name: "Design Parameters",
+              kind: "Parameters",
+              stereotype: "parameters",
+              entries: paramEntries,
+              stroke: "#4f46e5",
+              fill: "#eef2ff",
+              headerFill: "#e0e7ff",
+            }),
+          );
+        }
+      }
+
+      // Dedicated Fortran (.f, .for, .f77, .f90, .f95, .f03, .f08) Dataflow & Block Schematic Builder
+      const isFortran = /\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(params.uri) || plugin?.id === "fortran";
+      if (nodes.length === 0 && isFortran) {
+        let routineName = "fortran_kernel";
+        let routineKind = "subroutine";
+        const dummyArgs: string[] = [];
+        const inputVars = new Map<string, string>(); // lowerName -> displayName
+        const outputVars = new Map<string, string>(); // lowerName -> displayName
+        const varTypes = new Map<string, string>(); // lowerName -> typeStr
+        const constants = new Map<string, { name: string; value: string }>(); // lowerName -> { name, value }
+        const equations: {
+          id: string;
+          lhs: string;
+          rhs: string;
+          isState: boolean;
+          lineIdx: number;
+          condGuard?: string | undefined;
+        }[] = [];
+        const callBlocks: {
+          id: string;
+          subroutine: string;
+          args: string[];
+          lineIdx: number;
+        }[] = [];
+
+        const rawLines = docText.split(/\r?\n/);
+
+        // Pre-scan all program units to identify the primary routine and helper subroutine signatures
+        const unitSummaries = new Map<
+          string,
+          {
+            name: string;
+            kind: string;
+            params: string[];
+            intents: Map<string, string>;
+            startLine: number;
+            endLine: number;
+          }
+        >();
+        let primaryUnitUpper: string | null = null;
+        {
+          let activeUnit: {
+            name: string;
+            kind: string;
+            params: string[];
+            intents: Map<string, string>;
+            startLine: number;
+            endLine: number;
+          } | null = null;
+          for (let i = 0; i < rawLines.length; i++) {
+            const clean = rawLines[i]!.replace(/!.*$/, "").trim();
+            if (!clean) continue;
+            const hdr =
+              /^(?:(?:pure|elemental|recursive|real(?:\s*\([^)]*\))?|integer(?:\s*\([^)]*\))?|double\s+precision|logical)\s+)*(subroutine|function|program)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?/i.exec(
+                clean,
+              );
+            if (hdr) {
+              const kind = hdr[1]!.toLowerCase();
+              const name = hdr[2]!;
+              const params = hdr[3]
+                ? hdr[3]
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                : [];
+              activeUnit = {
+                name,
+                kind,
+                params,
+                intents: new Map(),
+                startLine: i,
+                endLine: rawLines.length - 1,
+              };
+              unitSummaries.set(name.toUpperCase(), activeUnit);
+              if (kind === "program" || !primaryUnitUpper) {
+                primaryUnitUpper = name.toUpperCase();
+              }
+              continue;
+            }
+            if (activeUnit && /^end(?:\s+(?:subroutine|function|program))?\b/i.test(clean)) {
+              activeUnit.endLine = i;
+              activeUnit = null;
+              continue;
+            }
+            if (activeUnit && clean.includes("::")) {
+              const [attrPart, rhsPart] = clean.split("::");
+              const im = /\bintent\s*\(\s*(in\s*out|inout|in|out)\s*\)/i.exec(attrPart ?? "");
+              if (im && rhsPart) {
+                const intent = im[1]!.replace(/\s+/g, "").toLowerCase();
+                for (const tok of rhsPart.split(",")) {
+                  const idm = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(tok.trim());
+                  if (idm) activeUnit.intents.set(idm[1]!.toLowerCase(), intent);
+                }
+              }
+            }
+          }
+        }
+
+        const primaryUnit = primaryUnitUpper ? unitSummaries.get(primaryUnitUpper) : undefined;
+        const guardStack: string[] = [];
+        let insideHelperUnit = false;
+
+        for (let lineIdx = 0; lineIdx < rawLines.length; lineIdx++) {
+          const rawLine = rawLines[lineIdx]!;
+          if (/^[Cc*]\s/.test(rawLine) && !/^\s*call\b/i.test(rawLine)) continue;
+          const clean = rawLine.replace(/!.*$/, "").trim();
+          if (!clean || clean.startsWith("#")) continue;
+
+          // Subroutine / Function / Program / Module header
+          const headerMatch =
+            /^(?:(?:pure|elemental|recursive|real(?:\s*\([^)]*\))?|integer(?:\s*\([^)]*\))?|double\s+precision|logical)\s+)*(subroutine|function|program|module)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?/i.exec(
+              clean,
+            );
+          if (headerMatch) {
+            const hKind = headerMatch[1]!.toLowerCase();
+            const hName = headerMatch[2]!;
+            if (hKind === "module") {
+              if (!primaryUnit) {
+                routineKind = "module";
+                routineName = hName;
+              }
+              continue;
+            }
+            if (primaryUnit && hName.toUpperCase() !== primaryUnit.name.toUpperCase()) {
+              insideHelperUnit = true;
+              continue;
+            }
+            insideHelperUnit = false;
+            routineKind = hKind;
+            routineName = hName;
+            if (headerMatch[3]) {
+              for (const arg of headerMatch[3].split(",")) {
+                const a = arg.trim();
+                if (a) dummyArgs.push(a);
+              }
+            }
+            continue;
+          }
+
+          if (/^end\b/i.test(clean)) {
+            if (/^end\s*(?:if|do)\b/i.test(clean)) {
+              if (!insideHelperUnit && guardStack.length > 0) guardStack.pop();
+            } else if (/^end(?:\s+(?:subroutine|function|program))?\b/i.test(clean)) {
+              insideHelperUnit = false;
+            }
+            continue;
+          }
+
+          if (insideHelperUnit) continue;
+
+          if (
+            /^implicit\b/i.test(clean) ||
+            /^return\b/i.test(clean) ||
+            /^continue\b/i.test(clean) ||
+            /^contains\b/i.test(clean) ||
+            /^use\b/i.test(clean)
+          ) {
+            continue;
+          }
+
+          // IF / ELSEIF / ELSE / DO control headers
+          const ifMatch = /^if\s*\((.+)\)\s*then$/i.exec(clean);
+          if (ifMatch) {
+            guardStack.push(`IF (${ifMatch[1]!.trim()})`);
+            continue;
+          }
+          const elseIfMatch = /^else\s*if\s*\((.+)\)\s*then$/i.exec(clean);
+          if (elseIfMatch) {
+            if (guardStack.length > 0) guardStack.pop();
+            guardStack.push(`ELSE IF (${elseIfMatch[1]!.trim()})`);
+            continue;
+          }
+          if (/^else$/i.test(clean)) {
+            const prev = guardStack.pop() ?? "IF";
+            guardStack.push(`ELSE [${prev}]`);
+            continue;
+          }
+          const doMatch = /^do\s+(?:\d+\s+)?([A-Za-z_][A-Za-z0-9_]*\s*=\s*.+)$/i.exec(clean);
+          if (doMatch) {
+            guardStack.push(`DO ${doMatch[1]!.trim()}`);
+            continue;
+          }
+
+          // PARAMETER (NAME = VAL, ...)
+          const paramStmtMatch = /^parameter\s*\((.+)\)$/i.exec(clean);
+          if (paramStmtMatch) {
+            for (const item of paramStmtMatch[1]!.split(",")) {
+              const kv = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(item.trim());
+              if (kv) {
+                constants.set(kv[1]!.toLowerCase(), { name: kv[1]!, value: kv[2]!.trim() });
+              }
+            }
+            continue;
+          }
+
+          // Type declarations: REAL(8), INTENT(IN), DIMENSION(3,3) :: p_c, a_t
+          const declMatch =
+            /^((?:real|integer|double\s+precision|logical|complex|character)\s*(?:\([^)]*\)|\*\d+)?)\s*((?:,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)*)\s*(?:::)?\s*(.+)$/i.exec(
+              clean,
+            );
+          if (declMatch && (!clean.includes("=") || clean.includes("::"))) {
+            const baseType = declMatch[1]!.toUpperCase().replace(/\s+/g, " ");
+            const attrs = declMatch[2] ?? "";
+            const varPart = declMatch[3]!;
+            const intentMatch = /\bintent\s*\(\s*(in\s*out|inout|in|out)\s*\)/i.exec(attrs);
+            const intent = intentMatch ? intentMatch[1]!.replace(/\s+/g, "").toLowerCase() : null;
+            const attrDimMatch = /\bdimension\s*\(([^)]*)\)/i.exec(attrs);
+            const attrDimStr = attrDimMatch ? `[${attrDimMatch[1]!.replace(/\s*,\s*/g, "×")}]` : "";
+
+            const items: string[] = [];
+            let depth = 0;
+            let cur = "";
+            for (const ch of varPart) {
+              if (ch === "(" || ch === "[") depth++;
+              else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+              if (ch === "," && depth === 0) {
+                items.push(cur.trim());
+                cur = "";
+              } else {
+                cur += ch;
+              }
+            }
+            if (cur.trim()) items.push(cur.trim());
+
+            for (const item of items) {
+              const m = /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s*=\s*(.+))?$/.exec(item);
+              if (!m) continue;
+              const vName = m[1]!;
+              const lower = vName.toLowerCase();
+              const inlineDim = m[2] ? `[${m[2].replace(/\s*,\s*/g, "×")}]` : attrDimStr;
+              const initVal = m[3]?.trim();
+              varTypes.set(lower, inlineDim ? `${baseType} ${inlineDim}` : baseType);
+              if (intent === "in") {
+                inputVars.set(lower, vName);
+              } else if (intent === "out") {
+                outputVars.set(lower, vName);
+              } else if (intent === "inout") {
+                inputVars.set(lower, vName);
+                outputVars.set(lower, vName);
+              } else if (initVal !== undefined) {
+                constants.set(lower, { name: vName, value: initVal });
+              }
+            }
+            continue;
+          }
+
+          // CALL statement: CALL SUB(a, b, c)
+          const callMatch = /^call\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\((.*)\))?$/i.exec(clean);
+          if (callMatch) {
+            const subName = callMatch[1]!;
+            const args = callMatch[2]
+              ? callMatch[2]
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : [];
+            callBlocks.push({
+              id: `call_${lineIdx}_${subName}`,
+              subroutine: subName,
+              args,
+              lineIdx,
+            });
+            continue;
+          }
+
+          // Assignment statement: LHS = RHS
+          const assignMatch = /^(\$?[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]+\))?)\s*=\s*(.+)$/.exec(clean);
+          if (assignMatch && !assignMatch[2]!.startsWith("=")) {
+            const lhs = assignMatch[1]!.trim();
+            const rhs = assignMatch[2]!.trim();
+            const isState = /^(?:STORF|STORI|SD|S)\s*\(/i.test(lhs) || /^der_/i.test(lhs);
+            equations.push({
+              id: `eq_${lineIdx}_${lhs.replace(/[^A-Za-z0-9_]/g, "_")}`,
+              lhs,
+              rhs,
+              isState,
+              lineIdx,
+              condGuard: guardStack.length > 0 ? guardStack[guardStack.length - 1] : undefined,
+            });
+
+            // Discover $Port references on LHS/RHS
+            if (lhs.startsWith("$")) {
+              const pName = lhs.slice(1);
+              outputVars.set(pName.toLowerCase(), pName);
+            }
+            const portRegex = /\$([A-Za-z_][A-Za-z0-9_]*)/g;
+            let pm: RegExpExecArray | null;
+            while ((pm = portRegex.exec(rhs)) !== null) {
+              const pName = pm[1]!;
+              if (!outputVars.has(pName.toLowerCase())) {
+                inputVars.set(pName.toLowerCase(), pName);
+              }
+            }
+          }
+        }
+
+        // If dummyArgs were declared without explicit INTENT(IN/OUT), infer inputs vs outputs from assignments
+        const assignedLowers = new Set(
+          equations.map((e) =>
+            e.lhs
+              .replace(/\s*\([^)]*\)$/, "")
+              .replace(/^\$/, "")
+              .toLowerCase(),
+          ),
+        );
+        for (const arg of dummyArgs) {
+          const lower = arg.toLowerCase();
+          if (!inputVars.has(lower) && !outputVars.has(lower)) {
+            if (assignedLowers.has(lower)) outputVars.set(lower, arg);
+            else inputVars.set(lower, arg);
+          }
+        }
+
+        // Track producer node ID for each variable (lowerName -> nodeId)
+        const producerByVar = new Map<string, string>();
+
+        // Column 0 (Left): Input Port Nodes & Referenced Constants
+        let leftRow = 0;
+        for (const [lower, dispName] of inputVars.entries()) {
+          const nodeId = `in_${lower}`;
+          const tStr = varTypes.get(lower) ?? "REAL(8)";
+          nodes.push(
+            makeStyledNode({
+              id: nodeId,
+              name: dispName,
+              kind: "InputPort",
+              stereotype: "intent(in)",
+              subtitle: `${tStr} Input`,
+              stroke: "#0d9488",
+              fill: "#f0fdfa",
+              headerFill: "#ccfbf1",
+              x: 60,
+              y: 70 + leftRow * 110,
+            }),
+          );
+          producerByVar.set(lower, nodeId);
+          leftRow++;
+        }
+
+        for (const [lower, cInfo] of constants.entries()) {
+          const nodeId = `const_${lower}`;
+          const tStr = varTypes.get(lower) ?? "REAL(8)";
+          nodes.push(
+            makeStyledNode({
+              id: nodeId,
+              name: cInfo.name,
+              kind: "Constant",
+              stereotype: "constant",
+              subtitle: `${tStr} = ${cInfo.value}`,
+              stroke: "#4f46e5",
+              fill: "#eef2ff",
+              headerFill: "#e0e7ff",
+              x: 60,
+              y: 70 + leftRow * 110,
+            }),
+          );
+          producerByVar.set(lower, nodeId);
+          leftRow++;
+        }
+
+        // Column 1 (Center): Equation & Subroutine Call Blocks
+        let centerRow = 0;
+        const intrinsicSet = new Set([
+          "sqrt",
+          "abs",
+          "sin",
+          "cos",
+          "tan",
+          "asin",
+          "acos",
+          "atan",
+          "atan2",
+          "exp",
+          "log",
+          "log10",
+          "min",
+          "max",
+          "mod",
+          "sign",
+          "sum",
+          "maxval",
+          "minval",
+          "size",
+          "dot_product",
+          "matmul",
+          "storf",
+          "stori",
+          "sd",
+          "s",
+        ]);
+
+        for (const eq of equations) {
+          const baseLhs = eq.lhs.replace(/\s*\([^)]*\)$/, "").replace(/^\$/, "");
+          const lowerLhs = baseLhs.toLowerCase();
+          const isOutputTarget = outputVars.has(lowerLhs);
+          const entries = [`${eq.lhs} = ${eq.rhs}`];
+          if (eq.condGuard) {
+            entries.unshift(`[Guard] ${eq.condGuard}`);
+          }
+
+          nodes.push(
+            makeStyledNode({
+              id: eq.id,
+              name: eq.lhs,
+              kind: eq.isState ? "StateEquation" : "Equation",
+              stereotype: eq.isState ? "state derivative" : isOutputTarget ? "output equation" : "algebraic block",
+              subtitle: `${routineName} · line ${eq.lineIdx + 1}`,
+              entries,
+              stroke: eq.isState ? "#e11d48" : "#0284c7",
+              fill: eq.isState ? "#fff1f2" : "#f0f9ff",
+              headerFill: eq.isState ? "#ffe4e6" : "#e0f2fe",
+              x: 390,
+              y: 70 + centerRow * 135,
+            }),
+          );
+          centerRow++;
+
+          // Connect upstream producers referenced in RHS -> eq.id
+          const refRegex = /\$?([A-Za-z_][A-Za-z0-9_]*)/g;
+          const connectedSources = new Set<string>();
+          let rm: RegExpExecArray | null;
+          while ((rm = refRegex.exec(eq.rhs)) !== null) {
+            const refIdent = rm[1]!;
+            const refLower = refIdent.toLowerCase();
+            if (intrinsicSet.has(refLower)) continue;
+            const srcNodeId = producerByVar.get(refLower);
+            if (srcNodeId && srcNodeId !== eq.id && !connectedSources.has(srcNodeId)) {
+              connectedSources.add(srcNodeId);
+              edges.push(
+                makeStyledEdge(
+                  `edge_${srcNodeId}_${eq.id}`,
+                  srcNodeId,
+                  eq.id,
+                  srcNodeId.startsWith("const_"),
+                  refIdent,
+                ),
+              );
+            }
+          }
+
+          producerByVar.set(lowerLhs, eq.id);
+        }
+
+        for (const callBlk of callBlocks) {
+          const subUpper = callBlk.subroutine.toUpperCase();
+          const calleeSummary = unitSummaries.get(subUpper);
+          const callEntries: string[] = [];
+          if (calleeSummary) {
+            const inParams = calleeSummary.params.filter(
+              (p) => (calleeSummary.intents.get(p.toLowerCase()) ?? "in") !== "out",
+            );
+            const outParams = calleeSummary.params.filter((p) => {
+              const int = calleeSummary.intents.get(p.toLowerCase());
+              return int === "out" || int === "inout";
+            });
+            callEntries.push(`${inParams.join(", ") || "()"} → ${outParams.join(", ") || "void"}`);
+          }
+
+          nodes.push(
+            makeStyledNode({
+              id: callBlk.id,
+              name: `CALL ${callBlk.subroutine}`,
+              kind: "SubroutineCall",
+              stereotype: calleeSummary ? "module subroutine" : "subroutine call",
+              subtitle: `(${callBlk.args.join(", ")})`,
+              entries: callEntries.length > 0 ? callEntries : undefined,
+              stroke: "#7c3aed",
+              fill: "#f5f3ff",
+              headerFill: "#ede9fe",
+              x: 390,
+              y: 70 + centerRow * 135,
+            }),
+          );
+          centerRow++;
+
+          // Wire arguments: use callee signature intents if known, else EMTDC convention (last arg = output)
+          const defaultOutIdx =
+            ["REALPOLE", "DELAY1", "INTGRL", "LEADLAG", "DIFF", "LIMITER", "LIMIT", "HARDLIMIT"].includes(subUpper) &&
+            callBlk.args.length >= 2
+              ? callBlk.args.length - 1
+              : -1;
+
+          callBlk.args.forEach((argStr, idx) => {
+            const identMatch = /^\$?([A-Za-z_][A-Za-z0-9_]*)$/.exec(argStr);
+            if (!identMatch) return;
+            const vName = identMatch[1]!;
+            const vLower = vName.toLowerCase();
+
+            let isOutArg = idx === defaultOutIdx;
+            let isInArg = idx !== defaultOutIdx;
+            if (calleeSummary && calleeSummary.params[idx]) {
+              const formalIntent = calleeSummary.intents.get(calleeSummary.params[idx]!.toLowerCase());
+              if (formalIntent === "out") {
+                isOutArg = true;
+                isInArg = false;
+              } else if (formalIntent === "inout") {
+                isOutArg = true;
+                isInArg = true;
+              } else if (formalIntent === "in") {
+                isOutArg = false;
+                isInArg = true;
+              }
+            }
+
+            if (isInArg) {
+              const srcId = producerByVar.get(vLower);
+              if (srcId) {
+                edges.push(makeStyledEdge(`edge_${srcId}_${callBlk.id}`, srcId, callBlk.id, false, vName));
+              }
+            }
+            if (isOutArg) {
+              producerByVar.set(vLower, callBlk.id);
+            }
+          });
+        }
+
+        // Column 2 (Right): Output Port Terminal Nodes
+        let rightRow = 0;
+        for (const [lower, dispName] of outputVars.entries()) {
+          const outNodeId = `out_${lower}`;
+          const tStr = varTypes.get(lower) ?? "REAL(8)";
+          nodes.push(
+            makeStyledNode({
+              id: outNodeId,
+              name: dispName,
+              kind: "OutputPort",
+              stereotype: "intent(out)",
+              subtitle: `${tStr} Output`,
+              stroke: "#d97706",
+              fill: "#fffbeb",
+              headerFill: "#fef3c7",
+              x: 780,
+              y: 70 + rightRow * 120,
+            }),
+          );
+          rightRow++;
+
+          const srcId = producerByVar.get(lower);
+          if (srcId && srcId !== outNodeId) {
+            edges.push(makeStyledEdge(`edge_${srcId}_${outNodeId}`, srcId, outNodeId, false, dispName));
+          }
+        }
+
+        // If the file only had a subroutine header with no equations yet, emit a clean header node
+        if (nodes.length === 0) {
+          nodes.push(
+            makeStyledNode({
+              id: `sub_${routineName}`,
+              name: routineName,
+              kind: "Subroutine",
+              stereotype: routineKind,
+              subtitle: dummyArgs.length > 0 ? `(${dummyArgs.join(", ")})` : "()",
+              stroke: "#0284c7",
+              fill: "#f0f9ff",
+              headerFill: "#e0f2fe",
+              x: 120,
+              y: 80,
+            }),
+          );
+        }
+      }
+
+      if (nodes.length === 0 && plugin?.customHandlers?.symbols) {
         try {
           const syms = plugin.customHandlers.symbols(docText) ?? [];
           let idx = 0;
@@ -1067,36 +2104,23 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               const col = idx % 3;
               const row = Math.floor(idx / 3);
               idx++;
-              nodes.push({
-                id: nodeId,
-                name: sym.name,
-                label: sym.detail ? `${sym.name}\n(${sym.detail})` : sym.name,
-                kind: String(sym.kind ?? "component"),
-                x: 80 + col * 240,
-                y: 80 + row * 130,
-                width: 180,
-                height: 70,
-                rotation: 0,
-                autoLayout: true,
-                ports: [
-                  { id: "in", name: "in", direction: "in", x: 0, y: 35 },
-                  { id: "out", name: "out", direction: "out", x: 180, y: 35 },
-                ],
-                properties: {
-                  className: sym.detail || plugin.name || "Component",
+              const kindStr = String(sym.kind ?? "component");
+              nodes.push(
+                makeStyledNode({
+                  id: nodeId,
                   name: sym.name,
-                  description: sym.detail || "",
-                },
-              });
+                  kind: kindStr,
+                  stereotype: kindStr.toLowerCase(),
+                  subtitle: sym.detail ? String(sym.detail) : undefined,
+                  stroke: "#0284c7",
+                  fill: "#f0f9ff",
+                  x: 80 + col * 240,
+                  y: 80 + row * 130,
+                }),
+              );
             }
             if (parentId) {
-              edges.push({
-                id: `edge_${parentId}_${nodeId}`,
-                source: parentId,
-                target: nodeId,
-                sourcePort: "out",
-                targetPort: "in",
-              });
+              edges.push(makeStyledEdge(`edge_${parentId}_${nodeId}`, parentId, nodeId));
             }
             if (Array.isArray(sym.children)) {
               for (const child of sym.children) {
@@ -1109,13 +2133,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           }
           if (edges.length === 0 && nodes.length > 1) {
             for (let i = 0; i < nodes.length - 1; i++) {
-              edges.push({
-                id: `edge_${i}_${i + 1}`,
-                source: nodes[i]!.id,
-                target: nodes[i + 1]!.id,
-                sourcePort: "out",
-                targetPort: "in",
-              });
+              edges.push(makeStyledEdge(`edge_${i}_${i + 1}`, nodes[i]!.id, nodes[i + 1]!.id));
             }
           }
         } catch {
@@ -1133,27 +2151,26 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           const idx = nodes.length;
           const col = idx % 3;
           const row = Math.floor(idx / 3);
-          nodes.push({
-            id: cleanName,
-            name: cleanName,
-            label: detail ? `${cleanName}\n(${detail})` : cleanName,
-            kind,
-            x: 80 + col * 240,
-            y: 80 + row * 130,
-            width: 180,
-            height: 70,
-            rotation: 0,
-            autoLayout: true,
-            ports: [
-              { id: "in", name: "in", direction: "in", x: 0, y: 35 },
-              { id: "out", name: "out", direction: "out", x: 180, y: 35 },
-            ],
-            properties: {
-              className: kind,
+          const palette: Record<string, { stroke: string; fill: string }> = {
+            Section: { stroke: "#4f46e5", fill: "#eef2ff" },
+            Block: { stroke: "#0d9488", fill: "#f0fdfa" },
+            Parameter: { stroke: "#0284c7", fill: "#f0f9ff" },
+            Channel: { stroke: "#059669", fill: "#ecfdf5" },
+          };
+          const colors = palette[kind] ?? { stroke: "#0284c7", fill: "#f8fafc" };
+          nodes.push(
+            makeStyledNode({
+              id: cleanName,
               name: cleanName,
-              description: detail,
-            },
-          });
+              kind,
+              stereotype: kind.toLowerCase(),
+              subtitle: detail || undefined,
+              stroke: colors.stroke,
+              fill: colors.fill,
+              x: 80 + col * 240,
+              y: 80 + row * 130,
+            }),
+          );
         };
 
         for (const rawLine of lines) {
@@ -1209,13 +2226,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
 
         for (let i = 0; i < nodes.length - 1; i++) {
-          edges.push({
-            id: `edge_${i}_${i + 1}`,
-            source: nodes[i]!.id,
-            target: nodes[i + 1]!.id,
-            sourcePort: "out",
-            targetPort: "in",
-          });
+          edges.push(makeStyledEdge(`edge_${i}_${i + 1}`, nodes[i]!.id, nodes[i + 1]!.id));
         }
       }
 
@@ -1927,7 +2938,11 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     if (uri.endsWith(".mo") && backends.modelica) return backends.modelica;
     if (
       backends.owl2 &&
-      (uri.endsWith(".owl") || uri.endsWith(".ofn") || uri.endsWith(".owx") || uri.endsWith(".ttl"))
+      (uri.endsWith(".owl") ||
+        uri.endsWith(".owl2") ||
+        uri.endsWith(".ofn") ||
+        uri.endsWith(".owx") ||
+        uri.endsWith(".ttl"))
     ) {
       return backends.owl2;
     }
@@ -3988,9 +5003,42 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
 
     if (plugin?.id === "psse" || uri.endsWith(".raw") || uri.endsWith(".dyr")) {
       return createDomainBuilderBackend(async (text) => {
-        const { parseRaw } = await import("@modelscript/psse");
+        const { parseRaw, solvePowerFlow, isLikelyDyrContent, parseDyr } = await import("@modelscript/psse");
         const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
-        return buildPsseDiagram(parseRaw(text) as any);
+        if (uri.endsWith(".dyr") || isLikelyDyrContent(text)) {
+          const dyr = parseDyr(text);
+          if (dyr.records.length > 0) {
+            const buses = new Map<number, any>();
+            const generators: any[] = [];
+            for (const rec of dyr.records) {
+              if (!buses.has(rec.ibus)) {
+                buses.set(rec.ibus, {
+                  i: rec.ibus,
+                  name: `GEN BUS ${rec.ibus}`,
+                  baseKv: 138,
+                  ide: 2,
+                  vm: 1.0,
+                });
+              }
+              generators.push({
+                i: rec.ibus,
+                id: `${rec.model}_${rec.id}`,
+                pg: rec.con[0] ?? 0,
+                qg: 0,
+                stat: 1,
+              });
+            }
+            return buildPsseDiagram({
+              title1: "PSS/E Dynamic Equipment Models (.dyr)",
+              buses,
+              branches: [],
+              generators,
+            });
+          }
+        }
+        const parsed = parseRaw(text);
+        const pf = parsed.buses.size > 0 ? solvePowerFlow(parsed) : undefined;
+        return buildPsseDiagram(parsed as any, pf as any);
       });
     }
 

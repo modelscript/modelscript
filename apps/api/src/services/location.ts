@@ -181,6 +181,17 @@ class LocationService {
       }
     }
 
+    // 4. Local development loopback fallback: infer ISO country subtag from browser Accept-Language (e.g., en-US -> US)
+    if (process.env["NODE_ENV"] !== "test" && (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1")) {
+      const acceptLang = req.headers["accept-language"];
+      if (typeof acceptLang === "string") {
+        const match = /\b[a-z]{2,3}-([A-Z]{2})\b/.exec(acceptLang);
+        if (match?.[1] && ISO_COUNTRY_RE.test(match[1])) {
+          return { countryCode: match[1] };
+        }
+      }
+    }
+
     return {};
   }
 

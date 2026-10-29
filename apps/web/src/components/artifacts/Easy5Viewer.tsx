@@ -9,7 +9,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface Easy5ViewerProps {
   viewConfig: {
@@ -36,9 +36,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -49,7 +49,7 @@ const Toolbar = styled.div`
   height: 44px;
   min-height: 44px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -69,7 +69,7 @@ const HeaderLeft = styled.div`
 const ModelTitle = styled.div`
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--color-text-heading, #f0f6fc);
+  color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -86,7 +86,7 @@ const PillBadge = styled.span`
   font-weight: 600;
   white-space: nowrap;
   background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
+  color: var(--color-attention-fg, var(--color-fg-default));
   border: 1px solid rgba(245, 158, 11, 0.35);
 `;
 
@@ -104,7 +104,7 @@ const SvgCanvas = styled.div`
   justify-content: center;
   overflow: auto;
   padding: 16px;
-  background: var(--color-canvas-inset, #010409);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 
   svg {
     max-width: 100%;
@@ -116,13 +116,13 @@ const SvgCanvas = styled.div`
 const ChartCanvas = styled.div`
   flex: 1;
   padding: 16px;
-  background: var(--color-canvas-inset, #010409);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 `;
 
 const InspectorSidebar = styled.div`
   width: 250px;
-  border-left: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  border-left: 1px solid var(--color-border-default);
+  background: var(--color-canvas-subtle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -134,10 +134,10 @@ const StatItem = styled.div`
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
+  color: var(--color-fg-muted);
 
   strong {
-    color: var(--color-fg-default, #c9d1d9);
+    color: var(--color-fg-default);
   }
 `;
 
@@ -146,7 +146,9 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
   const [loading, setLoading] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
-  const [viewMode, setViewMode] = useState<"diagram" | "bode" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<"diagram" | "bode" | "code">(() =>
+    viewConfig.svg ? "diagram" : Array.isArray(viewConfig.bodeData) && viewConfig.bodeData.length > 0 ? "bode" : "code",
+  );
   const title = viewConfig.title || viewConfig.modelName || "EASY5 Control Model (.ez5)";
 
   useEffect(() => {
@@ -173,9 +175,6 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
     let compCount = 0;
     let connCount = 0;
     let stateCount = 0;
-    let wn = 0;
-    let zeta = 0.7;
-    let gain = 1.0;
     for (const rawLine of rawText.split(/\r?\n/)) {
       const line = rawLine.trim();
       if (/^(COMPONENT|BLOCK|SUBMODEL)\b/i.test(line)) {
@@ -184,14 +183,6 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
       } else if (/^CONNECT\b/i.test(line) || line.includes("->") || line.includes("-->")) {
         connCount++;
       }
-      const wnMatch = line.match(/\b(?:WN|OMEGA_N|FREQ_N|NATURAL_FREQ)\s*[=:]\s*([0-9.eE+-]+)/i);
-      if (wnMatch) wn = Number(wnMatch[1]) || wn;
-      const tauMatch = line.match(/\b(?:TAU|TIME_CONSTANT)\s*[=:]\s*([0-9.eE+-]+)/i);
-      if (tauMatch && Number(tauMatch[1]) > 0) wn = 1 / Number(tauMatch[1]);
-      const zetaMatch = line.match(/\b(?:ZETA|DAMPING|DAMPING_RATIO)\s*[=:]\s*([0-9.eE+-]+)/i);
-      if (zetaMatch) zeta = Number(zetaMatch[1]) || zeta;
-      const gainMatch = line.match(/\b(?:GAIN|KP|K_GAIN|STATIC_GAIN)\s*[=:]\s*([0-9.eE+-]+)/i);
-      if (gainMatch && Number(gainMatch[1]) > 0) gain = Number(gainMatch[1]);
     }
     return {
       componentCount: viewConfig.componentCount ?? compCount,
@@ -199,46 +190,25 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
       stateCount: viewConfig.stateCount ?? stateCount,
       inputCount: viewConfig.inputCount,
       outputCount: viewConfig.outputCount,
-      wn: wn > 0 ? wn : compCount > 0 ? 5.0 : 0,
-      zeta,
-      gain,
     };
   }, [rawText, viewConfig]);
 
   const sanitizedSvg = useMemo(() => {
-    if (viewConfig.svg) {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (rawText.trim()) {
-      return renderSourceToDiagramSvg(rawText, "easy5", title, true).svg;
-    }
     return "";
-  }, [viewConfig.svg, rawText, title]);
-
-  const isAnalyticalPreview = !(viewConfig.bodeData && Array.isArray(viewConfig.bodeData));
+  }, [viewConfig.svg]);
 
   const bodeData = useMemo(() => {
-    if (viewConfig.bodeData && Array.isArray(viewConfig.bodeData)) {
+    if (Array.isArray(viewConfig.bodeData) && viewConfig.bodeData.length > 0) {
       return viewConfig.bodeData;
     }
-    if (parsedModel.wn <= 0) return [];
-    const points = [];
-    const wn = parsedModel.wn;
-    const zeta = parsedModel.zeta;
-    const gain = parsedModel.gain;
-    for (let f = 0.1; f <= 100; f *= 1.25) {
-      const w = 2 * Math.PI * f;
-      const mag = gain / Math.sqrt(Math.pow(1 - Math.pow(w / wn, 2), 2) + Math.pow(2 * zeta * (w / wn), 2));
-      const magDb = 20 * Math.log10(Math.max(1e-9, mag));
-      const phase = (-Math.atan2(2 * zeta * (w / wn), 1 - Math.pow(w / wn, 2)) * 180) / Math.PI;
-      points.push({
-        freq: Number(f.toFixed(2)),
-        magnitudeDb: Number(magDb.toFixed(1)),
-        phaseDeg: Number((phase < -180 ? phase + 360 : phase).toFixed(1)),
-      });
-    }
-    return points;
-  }, [viewConfig.bodeData, parsedModel.wn, parsedModel.zeta, parsedModel.gain]);
+    return [];
+  }, [viewConfig.bodeData]);
+
+  const effectiveViewMode: "diagram" | "bode" | "code" =
+    viewMode === "diagram" && sanitizedSvg ? "diagram" : viewMode === "bode" && bodeData.length > 0 ? "bode" : "code";
 
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
@@ -246,23 +216,32 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <PulseIcon size={16} fill="#fbbf24" />
+          <PulseIcon size={16} fill="var(--color-attention-fg, currentColor)" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>EASY5 Dynamic Control</PillBadge>
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <SegmentedControl size="small" aria-label="Easy5 View Selector">
-            <SegmentedControl.Button selected={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
-              Block Diagram
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={viewMode === "bode"} onClick={() => setViewMode("bode")}>
-              Bode Response
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={viewMode === "code"} onClick={() => setViewMode("code")}>
-              Source
-            </SegmentedControl.Button>
-          </SegmentedControl>
+          {(sanitizedSvg || bodeData.length > 0) && (
+            <SegmentedControl size="small" aria-label="Easy5 View Selector">
+              {sanitizedSvg && (
+                <SegmentedControl.Button
+                  selected={effectiveViewMode === "diagram"}
+                  onClick={() => setViewMode("diagram")}
+                >
+                  Block Diagram
+                </SegmentedControl.Button>
+              )}
+              {bodeData.length > 0 && (
+                <SegmentedControl.Button selected={effectiveViewMode === "bode"} onClick={() => setViewMode("bode")}>
+                  Bode Response
+                </SegmentedControl.Button>
+              )}
+              <SegmentedControl.Button selected={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+                Source
+              </SegmentedControl.Button>
+            </SegmentedControl>
+          )}
 
           {Boolean(viewConfig?.standalone) && (
             <Button
@@ -291,19 +270,10 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "diagram" && sanitizedSvg ? (
+        ) : effectiveViewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
-        ) : viewMode === "bode" && bodeData.length > 0 ? (
+        ) : effectiveViewMode === "bode" && bodeData.length > 0 ? (
           <ChartCanvas style={{ display: "flex", flexDirection: "column" }}>
-            {isAnalyticalPreview && (
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Text style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>
-                  ω_n = {parsedModel.wn.toFixed(2)} rad/s, ζ = {parsedModel.zeta.toFixed(2)}, K ={" "}
-                  {parsedModel.gain.toFixed(2)}
-                </Text>
-                <PillBadge>Analytical Model Preview</PillBadge>
-              </Box>
-            )}
             <Box flex={1} style={{ minHeight: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={bodeData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>

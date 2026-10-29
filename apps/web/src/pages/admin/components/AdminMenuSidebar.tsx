@@ -6,21 +6,23 @@ import {
   GraphIcon,
   HistoryIcon,
   LawIcon,
+  PeopleIcon,
   ReportIcon,
   ShieldLockIcon,
   SlidersIcon,
 } from "@primer/octicons-react";
 import React from "react";
 import Box from "../../../components/Box";
-import { Header, MenuColumn, TabButton } from "../styles";
-import type { AdminTab } from "../types";
+import { Badge, Header, MenuColumn, TabButton } from "../styles";
+import type { AdminOverviewCounts, AdminTab } from "../types";
 
 export interface AdminMenuSidebarProps {
   activeTab: AdminTab;
   onSelectTab: (tab: AdminTab) => void;
+  overviewCounts?: AdminOverviewCounts | null | undefined;
 }
 
-export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, onSelectTab }) => {
+export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, onSelectTab, overviewCounts }) => {
   return (
     <MenuColumn $hideOnMobile={false}>
       <Header>
@@ -42,7 +44,17 @@ export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, o
       >
         <TabButton $active={activeTab === "moderation"} onClick={() => onSelectTab("moderation")}>
           <ReportIcon size={16} />
-          <span>Moderation Queue</span>
+          <span style={{ flex: 1 }}>Moderation Queue</span>
+          {overviewCounts && overviewCounts.pendingReports > 0 && (
+            <Badge $variant="warning">{overviewCounts.pendingReports}</Badge>
+          )}
+        </TabButton>
+        <TabButton $active={activeTab === "users"} onClick={() => onSelectTab("users")}>
+          <PeopleIcon size={16} />
+          <span style={{ flex: 1 }}>Users &amp; Governance</span>
+          {overviewCounts && overviewCounts.restrictedUsers > 0 && (
+            <Badge $variant="danger">{overviewCounts.restrictedUsers}</Badge>
+          )}
         </TabButton>
         <TabButton $active={activeTab === "analytics"} onClick={() => onSelectTab("analytics")}>
           <GraphIcon size={16} />
@@ -50,11 +62,17 @@ export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, o
         </TabButton>
         <TabButton $active={activeTab === "federation"} onClick={() => onSelectTab("federation")}>
           <GlobeIcon size={16} />
-          <span>Federation Domains</span>
+          <span style={{ flex: 1 }}>Federation Domains</span>
+          {overviewCounts && overviewCounts.failedDeliveries > 0 && (
+            <Badge $variant="danger">{overviewCounts.failedDeliveries}</Badge>
+          )}
         </TabButton>
         <TabButton $active={activeTab === "dmca"} onClick={() => onSelectTab("dmca")}>
           <LawIcon size={16} />
-          <span>DMCA Notices</span>
+          <span style={{ flex: 1 }}>DMCA Notices</span>
+          {overviewCounts && overviewCounts.pendingDmca > 0 && (
+            <Badge $variant="warning">{overviewCounts.pendingDmca}</Badge>
+          )}
         </TabButton>
         <TabButton $active={activeTab === "audit"} onClick={() => onSelectTab("audit")}>
           <HistoryIcon size={16} />

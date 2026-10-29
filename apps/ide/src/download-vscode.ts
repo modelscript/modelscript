@@ -142,13 +142,8 @@ async function main() {
   if (existsSync(iframeHtmlPath)) {
     let html = readFileSync(iframeHtmlPath, "utf8");
     html = html.replace(
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' 'sha256-cl8ijlOzEe+0GRCQNJQu2k6nUQ0fAYNYIuuKEm72JDs='",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-    );
-    // Also handle the case where it hasn't been patched with unsafe-inline yet
-    html = html.replace(
-      "script-src 'self' 'unsafe-eval' 'sha256-cl8ijlOzEe+0GRCQNJQu2k6nUQ0fAYNYIuuKEm72JDs='",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+      /script-src 'self' 'unsafe-eval'(?: 'unsafe-inline')?(?: 'sha256-[A-Za-z0-9+/=]+')? https: http:\/\/localhost:\*(?: http:\/\/127\.0\.0\.1:\*)? blob:;/g,
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http://localhost:* http://127.0.0.1:* blob:;",
     );
     writeFileSync(iframeHtmlPath, html);
     console.log("  Patched webWorkerExtensionHostIframe.html CSP");

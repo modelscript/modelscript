@@ -21,6 +21,18 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
   showSortMenu,
   setShowSortMenu,
 }) => {
+  const [isScrolled, setIsScrolled] = React.useState(() => typeof window !== "undefined" && window.scrollY > 4);
+
+  React.useEffect(() => {
+    const onScroll = () => {
+      const next = window.scrollY > 4;
+      setIsScrolled((prev) => (prev === next ? prev : next));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   const handleKeyDownTab = (e: React.KeyboardEvent, currentTab: "forYou" | "following" | "federated") => {
     const tabs: ("forYou" | "following" | "federated")[] = ["forYou", "following", "federated"];
     const idx = tabs.indexOf(currentTab);
@@ -38,7 +50,7 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
   };
 
   return (
-    <TabBar role="tablist" aria-label="Feed sections">
+    <TabBar role="tablist" aria-label="Feed sections" $scrolled={isScrolled}>
       <Tab
         id="feed-tab-forYou"
         role="tab"

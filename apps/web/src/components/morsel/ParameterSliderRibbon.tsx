@@ -19,38 +19,49 @@ interface ParameterSliderRibbonProps {
   isSimulating?: boolean | undefined;
   dark?: boolean | undefined;
   hasFloatingDock?: boolean | undefined;
+  defaultExpanded?: boolean | undefined;
+  fullWidth?: boolean | undefined;
 }
 
-const RibbonContainer = styled.div<{ $dark: boolean; $expanded: boolean; $hasFloatingDock: boolean }>`
+const RibbonContainer = styled.div<{
+  $dark: boolean;
+  $expanded: boolean;
+  $hasFloatingDock: boolean;
+  $fullWidth: boolean;
+}>`
   position: absolute;
-  bottom: ${(props) => (props.$hasFloatingDock ? "68px" : "16px")};
+  bottom: ${(props) => (props.$hasFloatingDock ? "68px" : "12px")};
   left: 12px;
-  max-width: calc(100% - 190px);
+  max-width: ${(props) => (props.$fullWidth ? "calc(100% - 24px)" : "calc(100% - 190px)")};
+  width: ${(props) => (props.$expanded ? "auto" : "max-content")};
   z-index: 90;
   display: flex;
   flex-direction: column;
   background: ${(props) => (props.$dark ? "rgba(13, 17, 23, 0.92)" : "rgba(255, 255, 255, 0.92)")};
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid ${(props) => (props.$dark ? "rgba(48, 54, 61, 0.8)" : "rgba(208, 215, 222, 0.8)")};
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, ${(props) => (props.$dark ? "0.4" : "0.15")});
+  border: 1px solid ${(props) => (props.$dark ? "rgba(48, 54, 61, 0.85)" : "rgba(208, 215, 222, 0.85)")};
+  border-radius: ${(props) => (props.$expanded ? "10px" : "999px")};
+  box-shadow: 0 6px 24px rgba(0, 0, 0, ${(props) => (props.$dark ? "0.4" : "0.14")});
   overflow: hidden;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   @media (max-width: 768px) {
-    bottom: 16px;
+    bottom: 12px;
+    max-width: calc(100% - 24px);
   }
 `;
 
-const RibbonHeader = styled.div<{ $dark: boolean }>`
+const RibbonHeader = styled.div<{ $dark: boolean; $expanded: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  gap: 12px;
+  padding: ${(props) => (props.$expanded ? "6px 12px" : "5px 10px 5px 12px")};
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid ${(props) => (props.$dark ? "rgba(48, 54, 61, 0.6)" : "rgba(208, 215, 222, 0.6)")};
+  border-bottom: ${(props) =>
+    props.$expanded ? `1px solid ${props.$dark ? "rgba(48, 54, 61, 0.6)" : "rgba(208, 215, 222, 0.6)"}` : "none"};
   background: ${(props) => (props.$dark ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.6)")};
   font-size: 11px;
   font-weight: 600;
@@ -67,14 +78,14 @@ const Badge = styled.span<{ $dark: boolean }>`
   padding: 1px 6px;
   border-radius: 10px;
   font-size: 10px;
-  margin-left: 6px;
+  margin-left: 4px;
 `;
 
 const SlidersTrack = styled.div`
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 14px;
+  gap: 12px;
+  padding: 8px 12px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -92,7 +103,7 @@ const SliderCard = styled.div<{ $dark: boolean }>`
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 140px;
+  min-width: 136px;
   flex-shrink: 0;
   padding: 6px 10px;
   border-radius: 8px;
@@ -163,8 +174,10 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
   isSimulating = false,
   dark = true,
   hasFloatingDock = false,
+  defaultExpanded = true,
+  fullWidth = false,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const handleSliderChange = useCallback(
     (name: string, value: number) => {
@@ -179,11 +192,27 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
   const effectiveHasFloatingDock = Boolean(hasFloatingDock && !isPlaygroundRoute);
 
   return (
-    <RibbonContainer $dark={dark} $expanded={isExpanded} $hasFloatingDock={effectiveHasFloatingDock}>
-      <RibbonHeader $dark={dark} onClick={() => setIsExpanded(!isExpanded)}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <RibbonContainer
+      $dark={dark}
+      $expanded={isExpanded}
+      $hasFloatingDock={effectiveHasFloatingDock}
+      $fullWidth={fullWidth}
+    >
+      <RibbonHeader $dark={dark} $expanded={isExpanded} onClick={() => setIsExpanded(!isExpanded)}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span>🎛️ Parameters</span>
           <Badge $dark={dark}>{parameters.length}</Badge>
+          {overrides.size > 0 && (
+            <span
+              style={{
+                fontSize: "10px",
+                color: dark ? "#22d3ee" : "#0891b2",
+                marginLeft: 4,
+              }}
+            >
+              • {overrides.size} edited
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {onSimulate && (
@@ -202,7 +231,7 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
                 background: "#0969da",
                 color: "#ffffff",
                 border: "none",
-                borderRadius: "4px",
+                borderRadius: "999px",
                 fontSize: "10px",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -213,7 +242,7 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
               <span>{isSimulating ? "Simulating…" : "Run"}</span>
             </button>
           )}
-          <span>{isExpanded ? "▼" : "▲"}</span>
+          <span style={{ fontSize: "10px", opacity: 0.75 }}>{isExpanded ? "▼" : "▲"}</span>
         </div>
       </RibbonHeader>
 

@@ -79,7 +79,10 @@ export class ModelScriptEmbed {
     };
 
     const rawOrigin = options.embedOrigin ?? (typeof window !== "undefined" ? window.location.origin : "");
-    const origin = rawOrigin.replace(/\/+$/, "");
+    let origin = rawOrigin;
+    while (origin.endsWith("/")) {
+      origin = origin.slice(0, -1);
+    }
     try {
       this.targetOrigin = origin ? new URL(origin).origin : "*";
     } catch {

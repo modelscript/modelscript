@@ -356,4 +356,277 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
     assert.ok(actions.includes("dmca_notice_resolved"));
     assert.ok(actions.includes("analytics_pruned"));
   });
+
+  await t.test("Consolidated IDE workbench & user language registry routes on API server", async () => {
+    const langRes = await request(app).get("/api/languages/user").expect(200);
+    assert.ok(langRes.body.version);
+    assert.strictEqual(typeof langRes.body.languages, "object");
+
+    const wbRes = await request(app).get("/vscode/workbench?folder=memfs:empty&vscode-coi=3");
+    assert.ok(wbRes.status === 200 || wbRes.status === 503);
+    assert.strictEqual(wbRes.headers["cross-origin-opener-policy"], "same-origin");
+    assert.strictEqual(wbRes.headers["cross-origin-embedder-policy"], "credentialless");
+    assert.ok(wbRes.text.includes("ModelScript"));
+
+    const wrapperRes = await request(app).get("/github.com/modelscript/modelscript").expect(200);
+    assert.ok(wrapperRes.text.includes("/vscode/workbench?folder="));
+  });
+
+  await t.test(
+    "Enriched moderation forensics, graduated actions, bulk triage, user governance, S2S queue, and DMCA rejection",
+    async () => {
+      // 1. Create a remote-attributed user and post, then file multiple reports
+      const remoteAuthor = db.createUser("remote_spammer", "spammer@bad-instance.social", "hash789", {
+        accountType: "user",
+        emailVerified: true,
+      });
+      db.db.prepare("UPDATE users SET remote_domain = ? WHERE id = ?").run("bad-instance.social", remoteAuthor.id);
+
+      const post1 = db.createPost(remoteAuthor.id, "Crypto pump spam message #1");
+      const post2 = db.createPost(remoteAuthor.id, "Crypto pump spam message #2");
+
+      const rep1 = db.createContentReport(regularUser.id, {
+        postId: post1.id,
+        reason: "Spam",
+        details: "Automated bot spam links",
+      });
+      const rep2 = db.createContentReport(adminUser.id, {
+        postId: post1.id,
+        reason: "Spam",
+        details: "Duplicate report on same post",
+      });
+      const rep3 = db.createContentReport(regularUser.id, {
+        postId: post2.id,
+        reason: "Spam",
+      });
+
+      // Check overview counts
+      const overviewRes = await request(app)
+        .get("/api/v1/admin/overview")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(overviewRes.body.pendingReports >= 3);
+
+      // Check enriched moderation queue
+      const queueRes = await request(app)
+        .get("/api/v1/admin/moderation/queue?status=pending")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+
+      const enrichedRep1 = queueRes.body.reports.find((r: any) => r.id === rep1.id);
+      assert.ok(enrichedRep1);
+      assert.strictEqual(enrichedRep1.target_type, "post");
+      assert.strictEqual(enrichedRep1.author_username, "remote_spammer");
+      assert.strictEqual(enrichedRep1.author_domain, "bad-instance.social");
+      assert.strictEqual(enrichedRep1.target_report_count, 2);
+
+      // Resolve rep1 with silence_domain and resolveAllForTarget=true -> should also resolve rep2 and silence bad-instance.social
+      const resolveDomainRes = await request(app)
+        .post(`/api/v1/admin/moderation/reports/${rep1.id}/resolve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          status: "resolved",
+          action: "silence_domain",
+          resolutionNotes: "Silencing origin domain for repeated spam",
+          resolveAllForTarget: true,
+        })
+        .expect(200);
+      assert.strictEqual(resolveDomainRes.body.actionExecuted, "silence_domain");
+      assert.strictEqual(db.getDomainTier("bad-instance.social").tier, "silence");
+
+      // Verify rep2 was automatically resolved along with rep1
+      const rep2After = db.getContentReport(rep2.id);
+      assert.strictEqual(rep2After?.status, "resolved");
+
+      // Delete post1 and verify forensic snapshot is still preserved on rep1 in the queue
+      db.deletePost(post1.id);
+      const resolvedQueueRes = await request(app)
+        .get("/api/v1/admin/moderation/queue?status=resolved")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      const preservedRep1 = resolvedQueueRes.body.reports.find((r: any) => r.id === rep1.id);
+      assert.ok(preservedRep1);
+      assert.strictEqual(preservedRep1.post_content, "Crypto pump spam message #1");
+
+      // Bulk resolve remaining report (rep3) with freeze_user
+      const bulkRes = await request(app)
+        .post("/api/v1/admin/moderation/bulk-resolve")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          reportIds: [rep3.id],
+          status: "resolved",
+          action: "freeze_user",
+          resolutionNotes: "Bulk freezing spammer account",
+        })
+        .expect(200);
+      assert.strictEqual(bulkRes.body.resolvedCount, 1);
+
+      // Verify user governance list and status
+      const usersRes = await request(app)
+        .get("/api/v1/admin/users?q=remote_spammer")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(usersRes.body.users.length, 1);
+      assert.strictEqual(usersRes.body.users[0].status, "frozen");
+
+      // Restore user via PATCH /api/v1/admin/users/:id
+      const patchUserRes = await request(app)
+        .patch(`/api/v1/admin/users/${remoteAuthor.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          status: "active",
+          reason: "Appeal accepted",
+        })
+        .expect(200);
+      assert.strictEqual(patchUserRes.body.status, "active");
+
+      // Federation S2S delivery queue inspection, retry, and purge
+      const delivery = db.enqueueFederationDelivery(
+        "Create",
+        "https://hub.modelscript.org/activities/101",
+        { type: "Create" },
+        "https://bad-instance.social/inbox",
+        "bad-instance.social",
+      );
+      db.updateFederationDeliveryStatus(delivery.id, "failed", "HTTP 502 Bad Gateway");
+
+      const fedQueueRes = await request(app)
+        .get("/api/v1/admin/federation/queue?status=failed")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(fedQueueRes.body.stats.failed >= 1);
+      assert.ok(fedQueueRes.body.deliveries.some((d: any) => d.id === delivery.id));
+
+      const retryRes = await request(app)
+        .post("/api/v1/admin/federation/queue/retry")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({})
+        .expect(200);
+      assert.ok(retryRes.body.retriedCount >= 1);
+
+      // Mark failed again and test purge
+      db.updateFederationDeliveryStatus(delivery.id, "failed", "HTTP 504 Gateway Timeout");
+      const purgeRes = await request(app)
+        .delete("/api/v1/admin/federation/queue?status=failed")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(purgeRes.body.deletedCount >= 1);
+
+      // DMCA rejection workflow
+      const dmcaNoticeRes = await request(app)
+        .post("/api/v1/admin/dmca/notices")
+        .send({
+          claimantName: "Bogus Claimant",
+          claimantEmail: "bogus@example.com",
+          copyrightOwner: "Bogus LLC",
+          workDescription: "Public domain equations",
+          infringingUrl: "https://hub.modelscript.org/posts/999999",
+        })
+        .expect(201);
+
+      const rejectDmcaRes = await request(app)
+        .post(`/api/v1/admin/dmca/notices/${dmcaNoticeRes.body.noticeId}/resolve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          status: "rejected",
+          actionTaken: "Rejected: Mathematical equations are not subject to copyright.",
+          quarantineResource: false,
+        })
+        .expect(200);
+      assert.strictEqual(rejectDmcaRes.body.status, "rejected");
+
+      // 6. Content Warning (mark_sensitive), Automated security_alert Notification, Outbound ActivityPub Flag, Appeals & SHA-256 Audit Chain
+      const cwPost = db.createPost(remoteAuthor.id, "Sensitive simulation output without CW");
+      const cwReportRes = await request(app)
+        .post(`/api/v1/social/posts/${cwPost.id}/report`)
+        .set("Authorization", `Bearer ${regularToken}`)
+        .send({ reason: "Sensitive Content", details: "Needs a content warning banner" })
+        .expect(201);
+
+      const markSensitiveRes = await request(app)
+        .post(`/api/v1/admin/moderation/reports/${cwReportRes.body.reportId}/resolve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          status: "resolved",
+          action: "mark_sensitive",
+          contentWarning: "Graphic thermal runaway simulation",
+          resolutionNotes: "Applied content warning blur",
+          forwardFederatedFlag: true,
+          domain: "remote.DiagnosticLab.example",
+        })
+        .expect(200);
+
+      assert.strictEqual(markSensitiveRes.body.actionExecuted, "mark_sensitive");
+      assert.strictEqual(markSensitiveRes.body.federatedFlagQueued, true);
+      assert.strictEqual(markSensitiveRes.body.flagActivity?.type, "Flag");
+
+      const updatedCwPost = db.getPost(cwPost.id);
+      assert.ok(updatedCwPost);
+      assert.strictEqual(Number(updatedCwPost.is_sensitive), 1);
+      assert.strictEqual(updatedCwPost.content_warning, "Graphic thermal runaway simulation");
+
+      // Verify offender received a security_alert notification
+      const offenderNotifs = db.getNotifications(remoteAuthor.id, 20, "system");
+      assert.ok(offenderNotifs.some((n) => n.type === "security_alert"));
+
+      // Universal resource report (package)
+      const pkgReportRes = await request(app)
+        .post("/api/v1/social/reports")
+        .set("Authorization", `Bearer ${regularToken}`)
+        .send({
+          targetType: "package",
+          targetResourceId: "@malicious/ThermalPkg",
+          reason: "Malicious Model / Payload",
+          details: "Contains unauthorized external FFI call",
+        })
+        .expect(201);
+      assert.strictEqual(pkgReportRes.body.targetType, "package");
+
+      // Freeze offender, then offender submits a moderation appeal using their JWT, and admin restores account
+      await request(app)
+        .patch(`/api/v1/admin/users/${remoteAuthor.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ status: "frozen", reason: "Frozen pending review" })
+        .expect(200);
+
+      const offenderToken = jwt.sign(
+        { id: remoteAuthor.id, username: remoteAuthor.username, email: remoteAuthor.email, accountType: "user" },
+        JWT_SECRET,
+        { expiresIn: "1h" },
+      );
+
+      const appealRes = await request(app)
+        .post("/api/v1/users/me/appeals")
+        .set("Authorization", `Bearer ${offenderToken}`)
+        .send({
+          reason: "False positive spam flag",
+          details: "My scripts were legitimate parameter sweeps.",
+        })
+        .expect(201);
+      assert.ok(appealRes.body.appealId);
+
+      // Admin resolves the appeal with restore_user
+      const approveAppealRes = await request(app)
+        .post(`/api/v1/admin/moderation/reports/${appealRes.body.appealId}/resolve`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          status: "resolved",
+          action: "restore_user",
+          resolutionNotes: "Appeal verified and approved.",
+        })
+        .expect(200);
+      assert.strictEqual(approveAppealRes.body.actionExecuted, "restore_user");
+      assert.strictEqual(db.getUserById(remoteAuthor.id)?.status, "active");
+
+      // Verify cryptographic SHA-256 hash chain across all audit logs
+      const verifyChainRes = await request(app)
+        .get("/api/v1/admin/audit-logs/verify")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.strictEqual(verifyChainRes.body.valid, true);
+      assert.ok(verifyChainRes.body.verifiedEntries > 0);
+      assert.strictEqual(verifyChainRes.body.verifiedEntries, verifyChainRes.body.totalEntries);
+      assert.ok(typeof verifyChainRes.body.headHash === "string" && verifyChainRes.body.headHash.length === 64);
+    },
+  );
 });

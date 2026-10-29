@@ -106,10 +106,14 @@ export function childrenNamed(el: XmlElement, name: string): XmlElement[] {
 
 export function readParamList(el: XmlElement): Map<string, string> {
   const out = new Map<string, string>();
+  for (const p of childrenNamed(el, "param")) {
+    const name = attr(p, "name");
+    if (name !== undefined) out.set(name, attr(p, "value") ?? p.text.trim());
+  }
   for (const pl of childrenNamed(el, "paramlist")) {
     for (const p of childrenNamed(pl, "param")) {
       const name = attr(p, "name");
-      if (name !== undefined) out.set(name, attr(p, "value") ?? "");
+      if (name !== undefined) out.set(name, attr(p, "value") ?? p.text.trim());
     }
   }
   return out;
@@ -138,7 +142,8 @@ function collectSchematic(
   catalogPorts?: (defn: string) => ModelPort[] | undefined,
 ): void {
   for (const c of el.children) {
-    if (c.name === "User" && attr(c, "classid") === "UserCmp") {
+    const clsAttr = attr(c, "classid");
+    if (c.name === "User" && (!clsAttr || clsAttr === "UserCmp")) {
       const defn = attr(c, "defn") ?? attr(c, "name") ?? "";
       const colon = defn.indexOf(":");
       instances.push({
@@ -160,17 +165,37 @@ function collectSchematic(
       void catalogPorts;
     } else if (c.name === "Wire") {
       const cls = attr(c, "classid");
-      if (cls === "WireOrthogonal" || cls === "WireDiagonal") {
-        const ox = num(attr(c, "x"));
-        const oy = num(attr(c, "y"));
-        wires.push({
-          id: attr(c, "id") ?? "",
-          vertices: childrenNamed(c, "vertex").map((v) => ({ x: ox + num(attr(v, "x")), y: oy + num(attr(v, "y")) })),
-          element: c,
-        });
-      } else {
+      if (cls === "Branch") {
         // `Branch` wires wrap nested components; descend.
         collectSchematic(c, instances, wires, catalogPorts);
+      } else if (cls !== "Bus") {
+        const ox = num(attr(c, "x"));
+        const oy = num(attr(c, "y"));
+        const verts = childrenNamed(c, "vertex").map((v) => ({ x: ox + num(attr(v, "x")), y: oy + num(attr(v, "y")) }));
+        if (verts.length === 0) {
+          const x1Raw = attr(c, "x1") ?? attr(c, "x");
+          const y1Raw = attr(c, "y1") ?? attr(c, "y");
+          const x2Raw = attr(c, "x2");
+          const y2Raw = attr(c, "y2");
+          const wRaw = attr(c, "w");
+          const hRaw = attr(c, "h");
+          if (x2Raw !== undefined || y2Raw !== undefined) {
+            const x1 = num(x1Raw);
+            const y1 = num(y1Raw);
+            verts.push({ x: x1, y: y1 }, { x: num(x2Raw, x1), y: num(y2Raw, y1) });
+          } else if (wRaw !== undefined || hRaw !== undefined) {
+            verts.push({ x: ox, y: oy }, { x: ox + num(wRaw), y: oy + num(hRaw) });
+          }
+        }
+        if (verts.length >= 2) {
+          wires.push({
+            id: attr(c, "id") ?? "",
+            vertices: verts,
+            element: c,
+          });
+        } else {
+          collectSchematic(c, instances, wires, catalogPorts);
+        }
       }
     }
   }

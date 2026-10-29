@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { renderSourceToDiagramSvg, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 interface ModelicaCodeViewerProps {
   viewConfig: any;
@@ -18,8 +18,8 @@ interface ModelicaCodeViewerProps {
 const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "360px")};
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-default);
+  border: 1px solid var(--color-border-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   display: flex;
   flex-direction: column;
@@ -29,8 +29,8 @@ const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -69,11 +69,10 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
     if (pregenSvg) {
       return sanitizeSvgMarkup(pregenSvg);
     }
-    if (code.trim()) {
-      return renderSourceToDiagramSvg(code, dialect, title, resolvedColorMode === "dark").svg;
-    }
     return "";
-  }, [pregenSvg, code, dialect, title, resolvedColorMode]);
+  }, [pregenSvg]);
+
+  const effectiveViewMode: "code" | "diagram" = viewMode === "diagram" && svgMarkup ? "diagram" : "code";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -85,56 +84,58 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
     <Wrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <Box display="flex" alignItems="center" gap={2}>
-          <CodeIcon size={16} fill="var(--color-accent-purple, #a855f7)" />
+          <CodeIcon size={16} fill="var(--color-accent-fg)" />
           <Text style={{ fontWeight: "bold", fontSize: "13px", color: "var(--color-text-primary)" }}>{title}</Text>
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
-          <Box
-            display="flex"
-            bg="rgba(0,0,0,0.2)"
-            borderRadius="6px"
-            p="2px"
-            border="1px solid var(--color-border-default)"
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode("diagram")}
-              style={{
-                background: viewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+          {svgMarkup && (
+            <Box
+              display="flex"
+              bg="rgba(0,0,0,0.2)"
+              borderRadius="6px"
+              p="2px"
+              border="1px solid var(--color-border-default)"
             >
-              <WorkflowIcon size={12} /> Diagram
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("code")}
-              style={{
-                background: viewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <CodeIcon size={12} /> Code
-            </button>
-          </Box>
+              <button
+                type="button"
+                onClick={() => setViewMode("diagram")}
+                style={{
+                  background: effectiveViewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: effectiveViewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <WorkflowIcon size={12} /> Diagram
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("code")}
+                style={{
+                  background: effectiveViewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: effectiveViewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <CodeIcon size={12} /> Code
+              </button>
+            </Box>
+          )}
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
@@ -161,7 +162,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
       </Toolbar>
 
       <Box flex={1} style={{ minHeight: "220px", height: "100%", overflow: "auto" }}>
-        {viewMode === "diagram" && svgMarkup ? (
+        {effectiveViewMode === "diagram" && svgMarkup ? (
           <Box
             p={3}
             display="flex"

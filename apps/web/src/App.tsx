@@ -268,7 +268,7 @@ function App() {
   const hasCae = useFeatureFlag("cae_cloud_solver");
 
   if (isLoading || isFlagsLoading) {
-    return <div style={{ minHeight: "100vh", backgroundColor: "var(--color-canvas-default)" }} />;
+    return <div style={{ minHeight: "100vh", backgroundColor: "transparent" }} />;
   }
 
   return (

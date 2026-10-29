@@ -4,6 +4,7 @@ import type { CosimMqttClient } from "@modelscript/exchange/cosim";
 import { HistorianReplayer } from "@modelscript/exchange/cosim";
 import express from "express";
 import type { Pool } from "pg";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { getCosimSessionForHistorian, listCosimSessionsForHistorian } from "./cosim.js";
 
 /** Historian query parameters. */
@@ -28,6 +29,7 @@ const activeReplayers = new Map<string, HistorianReplayer>();
  */
 export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient | null): express.Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
 
   // GET /api/v1/historian/sessions — List recorded sessions
   router.get("/sessions", async (_req, res) => {

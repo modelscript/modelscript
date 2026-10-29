@@ -5,11 +5,12 @@
  */
 
 export const PsseErrorCode = {
-  GENERATOR_BUS_NOT_FOUND: {
+  BUS_NOT_FOUND: {
     code: "P1001",
-    rule: "generator-bus-not-found",
+    rule: "bus-not-found",
     severity: "error" as const,
-    message: (genId: string, busId: number) => `Generator '${genId}' references non-existent bus ${busId}.`,
+    message: (entityKind: string, id: string, busRole: string, busId: number) =>
+      `${entityKind} '${id}' references non-existent ${busRole}bus ${busId}.`,
   },
   GENERATOR_NEGATIVE_POWER: {
     code: "P1002",
@@ -18,32 +19,20 @@ export const PsseErrorCode = {
     message: (genId: string, busId: number, pg: number) =>
       `Generator '${genId}' at bus ${busId} has negative active power output (${pg} MW).`,
   },
-  DUPLICATE_GENERATOR_ID: {
+  DUPLICATE_EQUIPMENT_ID: {
     code: "P1003",
-    rule: "duplicate-generator-id",
+    rule: "duplicate-equipment-id",
     severity: "error" as const,
     message: (genId: string, busId: number) => `Duplicate generator ID '${genId}' at bus ${busId}.`,
-  },
-  GENERATOR_REACTIVE_LIMITS_INVERTED: {
-    code: "P1004",
-    rule: "generator-reactive-limits-inverted",
-    severity: "error" as const,
-    message: (genId: string, busId: number, qMin: number, qMax: number) =>
-      `Generator '${genId}' at bus ${busId} has inverted reactive limits (QB = ${qMin} > QT = ${qMax} Mvar).`,
-  },
-  GENERATOR_POWER_LIMITS_INVERTED: {
-    code: "P1005",
-    rule: "generator-power-limits-inverted",
-    severity: "error" as const,
-    message: (genId: string, busId: number, pMin: number, pMax: number) =>
-      `Generator '${genId}' at bus ${busId} has inverted active power limits (PB = ${pMin} > PT = ${pMax} MW).`,
+    branchMessage: (fromBus: number, toBus: number, ckt: string) =>
+      `Duplicate transmission branch between bus ${fromBus} and ${toBus} with circuit ID '${ckt}'.`,
   },
   ISOLATED_BUS: {
     code: "P2001",
     rule: "isolated-bus",
     severity: "warning" as const,
     message: (busId: number, busName: string) =>
-      `Bus ${busId} ('${busName}') has no connected branches or transformers (isolated bus).`,
+      `Bus ${busId} ('${busName}') is isolated with 0 in-service connecting branches or transformers.`,
   },
   MISSING_SLACK_BUS: {
     code: "P2002",
@@ -66,46 +55,47 @@ export const PsseErrorCode = {
     message: (busId: number, vm: number) =>
       `Initial voltage magnitude at bus ${busId} (${vm.toFixed(3)} pu) is outside standard operational limits [0.8, 1.2 pu].`,
   },
-  BRANCH_FROM_BUS_NOT_FOUND: {
+  GENERATOR_REACTIVE_LIMITS_INVERTED: {
     code: "P3001",
-    rule: "branch-from-bus-not-found",
+    rule: "generator-reactive-limits-inverted",
     severity: "error" as const,
-    message: (fromBus: number, toBus: number) =>
-      `Branch from bus ${fromBus} to bus ${toBus} references non-existent FROM-bus ${fromBus}.`,
+    message: (genId: string, busId: number, qMin: number, qMax: number) =>
+      `Generator '${genId}' at bus ${busId} has inverted reactive limits: Qmin (${qMin} MVAR) > Qmax (${qMax} MVAR).`,
   },
-  BRANCH_TO_BUS_NOT_FOUND: {
+  GENERATOR_POWER_LIMITS_INVERTED: {
     code: "P3002",
-    rule: "branch-to-bus-not-found",
+    rule: "generator-power-limits-inverted",
     severity: "error" as const,
-    message: (fromBus: number, toBus: number) =>
-      `Branch from bus ${fromBus} to bus ${toBus} references non-existent TO-bus ${toBus}.`,
+    message: (genId: string, busId: number, pMin: number, pMax: number) =>
+      `Generator '${genId}' at bus ${busId} has inverted active power limits: Pmin (${pMin} MW) > Pmax (${pMax} MW).`,
   },
-  BRANCH_ZERO_IMPEDANCE: {
+  GENERATOR_SCHEDULED_VOLTAGE_BOUNDS: {
     code: "P3003",
-    rule: "branch-zero-impedance",
-    severity: "error" as const,
-    message: (fromBus: number, toBus: number) =>
-      `Branch between bus ${fromBus} and bus ${toBus} has zero impedance (R = 0, X = 0).`,
-  },
-  BRANCH_NEGATIVE_RESISTANCE: {
-    code: "P3004",
-    rule: "branch-negative-resistance",
+    rule: "generator-scheduled-voltage-bounds",
     severity: "warning" as const,
-    message: (fromBus: number, toBus: number, r: number) =>
-      `Branch between bus ${fromBus} and bus ${toBus} defines negative resistance (${r} pu).`,
+    message: (genId: string, vs: number) =>
+      `Generator '${genId}' scheduled voltage Vs = ${vs} p.u. is outside the typical operating band [0.8, 1.2].`,
   },
-  TRANSFORMER_INVALID_RATIO: {
-    code: "P3005",
-    rule: "transformer-invalid-ratio",
-    severity: "error" as const,
-    message: (fromBus: number, toBus: number, ratio: number) =>
-      `Transformer between bus ${fromBus} and bus ${toBus} has non-positive turns ratio (${ratio}).`,
-  },
-  LOAD_BUS_NOT_FOUND: {
+  BRANCH_INVALID_REACTANCE: {
     code: "P4001",
-    rule: "load-bus-not-found",
+    rule: "branch-invalid-reactance",
     severity: "error" as const,
-    message: (loadId: string, busId: number) => `Load '${loadId}' references non-existent bus ${busId}.`,
+    message: (ckt: string, fromBus: number, toBus: number, x: number) =>
+      `Transmission branch '${ckt}' between bus ${fromBus} and ${toBus} has zero or negative reactance X = ${x} p.u.`,
+  },
+  BRANCH_BASE_KV_MISMATCH: {
+    code: "P4002",
+    rule: "branch-base-kv-mismatch",
+    severity: "warning" as const,
+    message: (ckt: string, fromBus: number, fromKv: number, toBus: number, toKv: number) =>
+      `Branch '${ckt}' connects bus ${fromBus} (${fromKv} kV) to bus ${toBus} (${toKv} kV) without a transformer.`,
+  },
+  TRANSFORMER_TAP_OUT_OF_BOUNDS: {
+    code: "P4003",
+    rule: "transformer-tap-out-of-bounds",
+    severity: "warning" as const,
+    message: (ckt: string, fromBus: number, toBus: number, ratio: number) =>
+      `Transformer '${ckt}' between bus ${fromBus} and ${toBus} has off-nominal tap ratio ${ratio} outside typical limits [0.7, 1.3].`,
   },
 } as const;
 

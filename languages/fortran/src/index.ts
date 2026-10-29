@@ -4,16 +4,51 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
-import { FortranAstParser, parseFortranScript, tokenizeFortran, type FortranExpr, type FortranStmt } from "./ast.js";
+import {
+  extractFortranSignature,
+  FortranAstParser,
+  parseFortranModule,
+  parseFortranScript,
+  tokenizeFortran,
+  type FortranArraySpec,
+  type FortranExpr,
+  type FortranModuleAst,
+  type FortranRoutineSignature,
+  type FortranStmt,
+  type FortranSubscript,
+  type FortranUnitAst,
+} from "./ast.js";
 import {
   buildStepFunction,
   compileFortranSegment,
   compileFortranStep,
+  simulateFortranRoutine,
   type CompiledFortranComponent,
   type FortranExecutionContext,
+  type FortranSimulationOptions,
+  type FortranSimulationResult,
   type FortranStepFunction,
+  type RuntimeFortranArray,
 } from "./codegen/step-compiler.js";
 import { lowerFortranToDae, type FortranDaeLoweringResult } from "./dae/lowering.js";
+import {
+  createFortranZipArchive,
+  exportFortranFmu,
+  type FortranFmuOptions,
+  type FortranFmuResult,
+  type FortranFmuVariable,
+} from "./fmu/exporter.js";
+import {
+  buildFortranCFG,
+  verifyFortranSource,
+  type FortranVerificationOptions,
+  type FortranVerificationReport,
+} from "./formal/verifier.js";
+import {
+  getFortranLanguageConfiguration,
+  getFortranMonarchDefinition,
+  getFortranTextMateGrammar,
+} from "./ide/index.js";
 import { fortranLanguage } from "./language.js";
 import { FortranErrorCode, lintFortran, lintFortranSource, type FortranDiagnostic } from "./lints/index.js";
 import {
@@ -24,31 +59,54 @@ import {
 } from "./preprocessor.js";
 
 export {
+  buildFortranCFG,
   buildStepFunction,
   compileFortranSegment,
   compileFortranStep,
+  createFortranZipArchive,
   evaluateCondition,
+  exportFortranFmu,
+  extractFortranSignature,
   FortranAstParser,
   FortranErrorCode,
   fortranLanguage,
+  getFortranLanguageConfiguration,
+  getFortranMonarchDefinition,
+  getFortranTextMateGrammar,
   lintFortran,
   lintFortranSource,
   lowerFortranToDae,
+  parseFortranModule,
   parseFortranScript,
   preprocessFortran,
   preprocessFortranSegment,
+  simulateFortranRoutine,
   tokenizeFortran,
+  verifyFortranSource,
 };
 
 export type {
   CompiledFortranComponent,
+  FortranArraySpec,
   FortranDaeLoweringResult,
   FortranDiagnostic,
   FortranExecutionContext,
   FortranExpr,
+  FortranFmuOptions,
+  FortranFmuResult,
+  FortranFmuVariable,
+  FortranModuleAst,
+  FortranRoutineSignature,
+  FortranSimulationOptions,
+  FortranSimulationResult,
   FortranStepFunction,
   FortranStmt,
+  FortranSubscript,
+  FortranUnitAst,
+  FortranVerificationOptions,
+  FortranVerificationReport,
   PreprocessedFortran,
+  RuntimeFortranArray,
   SyntaxNode,
   TreeSitterParser,
 };

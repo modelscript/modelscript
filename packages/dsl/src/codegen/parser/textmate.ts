@@ -182,10 +182,29 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
               },
             ],
           },
+          {
+            begin: "'",
+            end: "'",
+            name: `string.quoted.single.${langName}`,
+            patterns: [
+              {
+                match: "''|\\\\.",
+                name: `constant.character.escape.${langName}`,
+              },
+            ],
+          },
         ],
       },
       comments: {
         patterns: [
+          ...(langConfig.primitives?.lineComment && langConfig.primitives.lineComment !== "//"
+            ? [
+                {
+                  match: `${escapeRegExp(langConfig.primitives.lineComment)}.*$`,
+                  name: `comment.line.${langName}`,
+                },
+              ]
+            : []),
           {
             begin: "/\\*",
             end: "\\*/",
@@ -221,6 +240,7 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
         [/[;,.]/, "delimiter"],
         [/"([^"\\\\]|\\\\.)*$/, "string.invalid"],
         [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
+        [/'([^'\\\\]|\\\\.)*'/, "string"],
       ],
       comment: [
         [/[^/*]+/, "comment"],
@@ -236,6 +256,9 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
       ],
       whitespace: [
         [/[ \\t\\r\\n]+/, "white"],
+        ...(langConfig.primitives?.lineComment && langConfig.primitives.lineComment !== "//"
+          ? [[new RegExp(`${escapeRegExp(langConfig.primitives.lineComment)}.*$`), "comment"]]
+          : []),
         [/\/\*/, "comment", "@comment"],
         [/\/\/.*$/, "comment"],
       ],

@@ -67,7 +67,8 @@ export async function getScadParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | 
       const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
       wasmInput = fs.readFileSync(wasmPath);
     } else {
-      wasmInput = "scad.wasm";
+      const serverBase = (globalThis as { serverDistBase?: string | undefined }).serverDistBase;
+      wasmInput = serverBase ? `${serverBase.replace(/\/$/, "")}/scad.wasm` : "scad.wasm";
     }
   }
 
@@ -151,15 +152,37 @@ export async function extractScadCadComponents(
       shiftedVerts[v + 2] = mesh.vertices[v + 2]! - userPos[2];
     }
 
-    const ports = mesh.tags.map((t) => {
+    const ports = mesh.tags.map((t, tagIdx) => {
       const rawOrigin = (t as { origin?: unknown }).origin;
+      let offsetPosition: [number, number, number] = [0, 0, 0];
+      if (Array.isArray(rawOrigin) && rawOrigin.length >= 3) {
+        offsetPosition = [Number(rawOrigin[0]), Number(rawOrigin[1]), Number(rawOrigin[2])];
+      } else if (mesh.faceTagIndices && mesh.faceTagIndices.length > 0) {
+        const targetTagId = tagIdx + 1;
+        let sx = 0;
+        let sy = 0;
+        let sz = 0;
+        let count = 0;
+        for (let f = 0; f < mesh.faceTagIndices.length; f++) {
+          if (mesh.faceTagIndices[f] === targetTagId) {
+            const i0 = mesh.indices[f * 3]! * 3;
+            const i1 = mesh.indices[f * 3 + 1]! * 3;
+            const i2 = mesh.indices[f * 3 + 2]! * 3;
+            sx += (shiftedVerts[i0]! + shiftedVerts[i1]! + shiftedVerts[i2]!) / 3;
+            sy += (shiftedVerts[i0 + 1]! + shiftedVerts[i1 + 1]! + shiftedVerts[i2 + 1]!) / 3;
+            sz += (shiftedVerts[i0 + 2]! + shiftedVerts[i1 + 2]! + shiftedVerts[i2 + 2]!) / 3;
+            count++;
+          }
+        }
+        if (count > 0) {
+          offsetPosition = [sx / count, sy / count, sz / count];
+        }
+      }
       return {
         name: t.portName,
         port: {
           feature: t.portType,
-          offsetPosition: (Array.isArray(rawOrigin) && rawOrigin.length >= 3
-            ? [Number(rawOrigin[0]), Number(rawOrigin[1]), Number(rawOrigin[2])]
-            : [0, 0, 0]) as [number, number, number],
+          offsetPosition,
         },
       };
     });

@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise
 
 import { Router, type Request, type Response } from "express";
+import rateLimit from "express-rate-limit";
 import { requireEnterpriseFeature } from "../license/middleware.js";
 import { resolveActiveEnterpriseLicense } from "../license/verifier.js";
+
+const desktopComplianceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env["RATE_LIMIT_MAX"]) || (process.env["NODE_ENV"] === "test" ? 100000 : 1000),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export interface EnterpriseDesktopAirgapReport {
   edition: "ee";
@@ -114,6 +122,7 @@ export function verifyBlackboxFmuEntitlement(): BlackboxFmuEntitlementResult {
  */
 export function createEnterpriseDesktopRouter(): Router {
   const router = Router();
+  router.use(desktopComplianceLimiter);
 
   router.get(
     "/ee/desktop/compliance",

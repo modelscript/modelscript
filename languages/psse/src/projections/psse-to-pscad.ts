@@ -122,13 +122,14 @@ export function psseToEmtNetlist(psseCase: PsseCase): PsseEmtNetlist {
     const xOhm = gen.zx > 0 ? gen.zx * zBase : 0.15 * zBase;
     const lHenry = xOhm / omega;
 
+    const phaseRad = ((bus?.va ?? 0) * Math.PI) / 180;
     sources.push({
       id: `SRC_${gen.i}_${gen.id.trim() || genIdx}`,
       name: `Generator ${gen.i} [${gen.id.trim()}]`,
       bus: busId,
       vPeakKv,
       frequencyHz: freq,
-      phaseRad: 0,
+      phaseRad,
       mvaRating: mbase,
       rSourceOhm: rOhm,
       lSourceH: lHenry,
@@ -180,7 +181,7 @@ export function psseToEmtNetlist(psseCase: PsseCase): PsseEmtNetlist {
     buses.get(toBusId)?.connectedBranchIds.push(branchId);
   }
 
-  // 4. Transformers
+  // 4. Two-Winding & Three-Winding Transformers
   let xfmrIdx = 0;
   for (const xfmr of psseCase.transformers) {
     if (xfmr.stat === 0) continue;
@@ -207,9 +208,29 @@ export function psseToEmtNetlist(psseCase: PsseCase): PsseEmtNetlist {
 
     buses.get(fromBusId)?.connectedBranchIds.push(xfmrId);
     buses.get(toBusId)?.connectedBranchIds.push(xfmrId);
+
+    if (xfmr.k !== 0 && psseCase.buses.has(xfmr.k)) {
+      const tertBusId = String(xfmr.k);
+      const tertBus = psseCase.buses.get(xfmr.k);
+      const baseKv3 = tertBus && tertBus.baseKv > 0 ? tertBus.baseKv : 13.8;
+      const w3Id = `XFMR_${xfmr.i}_${xfmr.k}_${xfmr.ckt.trim() || xfmrIdx}_W3`;
+      transformers.push({
+        id: w3Id,
+        fromBus: fromBusId,
+        toBus: tertBusId,
+        mvaRating: xfmr.sbase31 && xfmr.sbase31 > 0 ? xfmr.sbase31 : sbase,
+        primaryKv: baseKv1,
+        secondaryKv: baseKv3,
+        leakageReactancePu: xfmr.x31 ?? xfmr.x12,
+        noLoadLossesPu: 0,
+        windingConnection: "Yg-D",
+      });
+      buses.get(fromBusId)?.connectedBranchIds.push(w3Id);
+      buses.get(tertBusId)?.connectedBranchIds.push(w3Id);
+    }
   }
 
-  // 5. Loads -> R-L Shunt Branches to Ground
+  // 5. Loads & Shunts -> R-L-C Shunt Branches to Ground
   let loadIdx = 0;
   for (const load of psseCase.loads) {
     if (load.status === 0) continue;

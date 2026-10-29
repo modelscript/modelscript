@@ -47,6 +47,7 @@ export const EngineeringCard = styled.div<{ $status: "completed" | "failed" | "p
 export const ModelBadge = styled.span`
   font-family: var(--font-mono, monospace);
   font-size: 13px;
+  line-height: 16px;
   font-weight: 600;
   color: var(--color-fg-default);
   background: var(--color-canvas-subtle);
@@ -60,7 +61,8 @@ export const MetricChip = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 16px;
   color: var(--color-fg-muted);
   background: var(--color-canvas-subtle);
   padding: 2px 8px;
@@ -97,14 +99,16 @@ export const AvatarsRow = styled.div`
 export const TabButton = styled.button<{ $active: boolean }>`
   flex: 1;
   min-width: 90px;
-  padding: 12px 10px;
+  height: 53px;
+  padding: 0 10px;
   background: none;
   border: none;
   border-bottom: 2px solid ${(props) => (props.$active ? "var(--color-accent-fg)" : "transparent")};
   color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? 600 : 500)};
+  font-weight: ${(props) => (props.$active ? 700 : 500)};
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
+  line-height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;

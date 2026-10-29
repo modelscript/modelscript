@@ -18,6 +18,7 @@ import {
   AiSearchHeader,
   AuthPromptCard,
   ClusterQueueCard,
+  EngineeringDomainsCard,
   LegalModal,
   PanelContainer,
   PopularReposCard,
@@ -46,6 +47,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   const [legalModal, setLegalModal] = useState<"terms" | "privacy" | "cookies" | null>(null);
   const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
   const location = useLocation();
+  const isExplore = location.pathname.startsWith("/explore");
 
   const panelRef = useRef<HTMLElement>(null);
   const [panelTop, setPanelTop] = useState(0);
@@ -153,7 +155,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
         top: panelTop < 0 ? `calc(${panelTop}px + var(--dev-header-height, 0px))` : "var(--dev-header-height, 0px)",
       }}
     >
-      <AiSearchHeader onOpenCommandPalette={onOpenCommandPalette} />
+      {!isExplore && <AiSearchHeader onOpenCommandPalette={onOpenCommandPalette} />}
 
       {!user && <AuthPromptCard />}
 
@@ -169,17 +171,19 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
         />
       )}
 
-      {location.pathname !== "/explore" && (
-        <TrendingTopicsCard
-          trending={trending}
-          activeTrendMenu={activeTrendMenu}
-          setActiveTrendMenu={setActiveTrendMenu}
-        />
+      {isExplore && <EngineeringDomainsCard />}
+
+      <TrendingTopicsCard
+        trending={trending}
+        activeTrendMenu={activeTrendMenu}
+        setActiveTrendMenu={setActiveTrendMenu}
+      />
+
+      {(user || (isExplore && suggestions.length > 0)) && (
+        <SuggestedUsersCard suggestions={suggestions} currentUsername={user?.username} />
       )}
 
-      {user && <SuggestedUsersCard suggestions={suggestions} currentUsername={user.username} />}
-
-      {location.pathname.startsWith("/repos") && <PopularReposCard popularRepos={popularRepos} />}
+      {(location.pathname.startsWith("/repos") || isExplore) && <PopularReposCard popularRepos={popularRepos} />}
 
       <div
         style={{

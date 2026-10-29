@@ -11,6 +11,7 @@ export interface AasPackageViewerProps {
   viewConfig: {
     packageName: string;
     version: string;
+    assetKind?: string | undefined;
     manifest?: any;
     cadUrl?: string | undefined;
     variants?: string[] | undefined;
@@ -182,7 +183,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
               <DataGrid>
                 <DataRow label="Product Designation" value={manifest.title || viewConfig.packageName} />
                 <DataRow label="Global Asset ID" value={manifest.globalAssetId || "N/A"} mono />
-                <DataRow label="Asset Kind" value="Type (Design Blueprint)" />
+                <DataRow label="Asset Kind" value={viewConfig.assetKind || manifest.assetKind || "Not specified"} />
                 <DataRow label="Package Scope" value={manifest.scope || "Global"} />
                 <DataRow label="License" value={manifest.license || "UNLICENSED"} />
                 <DataRow

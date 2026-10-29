@@ -224,98 +224,106 @@ const HomeFeedPage: React.FC = () => {
   const isFiltering = activeFilter !== "all" || activeTag !== null;
 
   return (
-    <Box style={{ paddingBottom: "200px" }}>
-      <div ref={headerRef}>
-        <FeedTabBar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          followingSort={followingSort}
-          setFollowingSort={setFollowingSort}
-          showSortMenu={showSortMenu}
-          setShowSortMenu={setShowSortMenu}
-        />
+    <Box style={{ display: "flex", flexDirection: "column", flex: 1, marginBottom: "-80px" }}>
+      <FeedTabBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        followingSort={followingSort}
+        setFollowingSort={setFollowingSort}
+        showSortMenu={showSortMenu}
+        setShowSortMenu={setShowSortMenu}
+      />
 
-        <FeedFilterToolbar
-          activeFilter={activeFilter}
-          setActiveFilter={setActiveFilter}
-          activeTag={activeTag}
-          setActiveTag={setActiveTag}
-          trendingTopics={trendingTopics}
-          postsCount={posts.length}
-        />
+      <FeedFilterToolbar
+        activeFilter={activeFilter}
+        setActiveFilter={setActiveFilter}
+        activeTag={activeTag}
+        setActiveTag={setActiveTag}
+        trendingTopics={trendingTopics}
+        postsCount={posts.length}
+      />
 
-        {user && (
-          <ComposePrompt>
-            <ComposeBox
-              onPostCreated={(post) =>
-                setPosts((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]))
-              }
-            />
-          </ComposePrompt>
-        )}
-      </div>
-
-      <div id="feed-tabpanel" role="tabpanel" aria-labelledby={`feed-tab-${activeTab}`}>
-        {loading ? (
-          <Box>
-            <PostSkeleton />
-            <PostSkeleton hasArtifact />
-            <PostSkeleton />
-          </Box>
-        ) : (
-          <Box ref={listRef}>
-            {posts.length > 0 && (
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  height: `${rowVirtualizer.getTotalSize()}px`,
-                }}
-              >
-                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-                  const post = posts[virtualItem.index];
-                  return (
-                    <div
-                      key={post.id || virtualItem.key}
-                      data-index={virtualItem.index}
-                      ref={rowVirtualizer.measureElement}
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        transform: `translateY(${virtualItem.start - (rowVirtualizer.options.scrollMargin ?? 0)}px)`,
-                      }}
-                    >
-                      <Post post={post} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {posts.length > 0 && hasMore && (
-              <Box ref={loadMoreSentinelRef} p={3} display="flex" justifyContent="center">
-                <SecondaryActionButton onClick={handleLoadMore} disabled={loadingMore}>
-                  {loadingMore ? <Spinner size="small" /> : "Load more posts"}
-                </SecondaryActionButton>
-              </Box>
-            )}
-            {posts.length === 0 && (
-              <FeedEmptyState
-                isFiltering={isFiltering}
-                activeFilter={activeFilter}
-                activeTag={activeTag}
-                onClearFilters={() => {
-                  setActiveFilter("all");
-                  setActiveTag(null);
-                }}
-                openCompose={openCompose}
-                followedHandles={followedHandles}
-                onToggleFollow={handleToggleFollow}
+      <div
+        style={{
+          background: "var(--color-bg-primary)",
+          flex: 1,
+          minHeight: "100vh",
+          paddingBottom: "200px",
+        }}
+      >
+        <div ref={headerRef}>
+          {user && (
+            <ComposePrompt>
+              <ComposeBox
+                onPostCreated={(post) =>
+                  setPosts((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]))
+                }
               />
-            )}
-          </Box>
-        )}
+            </ComposePrompt>
+          )}
+        </div>
+
+        <div id="feed-tabpanel" role="tabpanel" aria-labelledby={`feed-tab-${activeTab}`}>
+          {loading ? (
+            <Box>
+              <PostSkeleton />
+              <PostSkeleton hasArtifact />
+              <PostSkeleton />
+            </Box>
+          ) : (
+            <Box ref={listRef}>
+              {posts.length > 0 && (
+                <div
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                  }}
+                >
+                  {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                    const post = posts[virtualItem.index];
+                    return (
+                      <div
+                        key={post.id || virtualItem.key}
+                        data-index={virtualItem.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: `${virtualItem.start - (rowVirtualizer.options.scrollMargin ?? 0)}px`,
+                          left: 0,
+                          width: "100%",
+                        }}
+                      >
+                        <Post post={post} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {posts.length > 0 && hasMore && (
+                <Box ref={loadMoreSentinelRef} p={3} display="flex" justifyContent="center">
+                  <SecondaryActionButton onClick={handleLoadMore} disabled={loadingMore}>
+                    {loadingMore ? <Spinner size="small" /> : "Load more posts"}
+                  </SecondaryActionButton>
+                </Box>
+              )}
+              {posts.length === 0 && (
+                <FeedEmptyState
+                  isFiltering={isFiltering}
+                  activeFilter={activeFilter}
+                  activeTag={activeTag}
+                  onClearFilters={() => {
+                    setActiveFilter("all");
+                    setActiveTag(null);
+                  }}
+                  openCompose={openCompose}
+                  followedHandles={followedHandles}
+                  onToggleFollow={handleToggleFollow}
+                />
+              )}
+            </Box>
+          )}
+        </div>
       </div>
     </Box>
   );

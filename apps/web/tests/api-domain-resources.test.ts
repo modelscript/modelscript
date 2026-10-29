@@ -8,8 +8,10 @@ import {
   api,
   blockUser,
   bookmarkPost,
+  bulkResolveAdminModerationReports,
   cancelPackageTransfer,
   changeAccountCredentials,
+  createAdminHotBackup,
   createApiToken,
   // artifacts
   createArtifactView,
@@ -20,11 +22,15 @@ import {
   deleteAccount,
   deleteBot,
   getAdminAuditLogs,
+  getAdminBackups,
   getAdminDbStatus,
   getAdminFeatureFlags,
   getAdminFederationDomains,
+  getAdminFederationQueue,
   // admin
   getAdminModerationQueue,
+  getAdminOverview,
+  getAdminUsers,
   getApiTokens,
   getArtifactView,
   // bots
@@ -66,17 +72,24 @@ import {
   // billing
   getUserWallet,
   likePost,
+  moderateAdminUser,
   muteUser,
   patchAdminFeatureFlag,
+  purgeAdminFederationQueue,
   removePackageCollaborator,
+  reportPost,
+  reportResource,
+  reportUser,
   repostPost,
   requestUserDataArchiveJob,
   resolveAdminModerationReport,
+  retryAdminFederationQueue,
   reviewThreadProposal,
   revokeApiToken,
   setAdminFederationDomainTier,
   setup2FA,
   submitCloudSimulation,
+  submitModerationAppeal,
   topUpCredits,
   transferPackageOwnership,
   unblockUser,
@@ -89,6 +102,7 @@ import {
   updateUserProfile,
   uploadArtifactThumbnail,
   verify2FA,
+  verifyAdminAuditLogsChain,
 } from "../src/api";
 
 describe("Modular API Domain Resources Client Suite", () => {
@@ -362,6 +376,94 @@ describe("Modular API Domain Resources Client Suite", () => {
       await patchAdminFeatureFlag("ENABLE_WASM", false);
       assert.equal(lastRequest?.url, "/admin/flags/ENABLE_WASM");
       assert.deepEqual(lastRequest?.data, { isEnabled: false, allowedRoles: undefined, rolloutPercentage: undefined });
+
+      mockApiCall("get", {
+        pendingReports: 2,
+        pendingDmca: 1,
+        failedDeliveries: 3,
+        pendingDeliveries: 0,
+        restrictedUsers: 1,
+      });
+      const overview = await getAdminOverview();
+      assert.equal(lastRequest?.url, "/admin/overview");
+      assert.equal(overview.pendingReports, 2);
+
+      mockApiCall("post", { success: true, resolvedCount: 2, status: "resolved", actionExecuted: "delete_post" });
+      const bulkRes = await bulkResolveAdminModerationReports({
+        reportIds: [1, 2],
+        status: "resolved",
+        action: "delete_post",
+      });
+      assert.equal(lastRequest?.url, "/admin/moderation/bulk-resolve");
+      assert.equal(bulkRes.resolvedCount, 2);
+
+      mockApiCall("get", { users: [{ id: 7, username: "alice", status: "active", role: "user" }], count: 1 });
+      const users = await getAdminUsers({ q: "alice", status: "active" });
+      assert.equal(lastRequest?.url, "/admin/users");
+      assert.equal(users.users[0]!.username, "alice");
+
+      mockApiCall("patch", {
+        success: true,
+        userId: 7,
+        status: "frozen",
+        role: "user",
+        sessionsRevoked: true,
+        purgedPostCount: 0,
+      });
+      const modUser = await moderateAdminUser(7, { status: "frozen", reason: "Cooling off" });
+      assert.equal(lastRequest?.url, "/admin/users/7");
+      assert.equal(modUser.status, "frozen");
+
+      mockApiCall("get", {
+        stats: { pending: 0, processing: 0, completed: 5, failed: 1, total: 6 },
+        deliveries: [],
+        count: 0,
+      });
+      const fedQ = await getAdminFederationQueue("failed");
+      assert.equal(lastRequest?.url, "/admin/federation/queue");
+      assert.equal(fedQ.stats.failed, 1);
+
+      mockApiCall("post", { success: true, retriedCount: 1 });
+      const retried = await retryAdminFederationQueue("bad-actor.org");
+      assert.equal(lastRequest?.url, "/admin/federation/queue/retry");
+      assert.equal(retried.retriedCount, 1);
+
+      mockApiCall("delete", { success: true, deletedCount: 1 });
+      const purged = await purgeAdminFederationQueue("failed");
+      assert.equal(lastRequest?.url, "/admin/federation/queue");
+      assert.equal(purged.deletedCount, 1);
+
+      mockApiCall("get", {
+        backups: [{ fileName: "backup-1.sqlite", sizeBytes: 4096, createdAt: "2026-10-28" }],
+        count: 1,
+      });
+      const backups = await getAdminBackups();
+      assert.equal(lastRequest?.url, "/admin/backups");
+      assert.equal(backups.backups.length, 1);
+
+      mockApiCall("post", {
+        success: true,
+        backup: {
+          fileName: "backup-2.sqlite",
+          filePath: "/tmp/backup-2.sqlite",
+          sizeBytes: 4096,
+          createdAt: "2026-10-28",
+        },
+      });
+      const createdBackup = await createAdminHotBackup("pre-upgrade");
+      assert.equal(lastRequest?.url, "/admin/backup");
+      assert.equal(createdBackup.backup.fileName, "backup-2.sqlite");
+
+      mockApiCall("get", {
+        valid: true,
+        totalEntries: 42,
+        verifiedEntries: 42,
+        headHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      });
+      const chainRes = await verifyAdminAuditLogsChain();
+      assert.equal(lastRequest?.url, "/admin/audit-logs/verify");
+      assert.equal(chainRes.valid, true);
+      assert.equal(chainRes.verifiedEntries, 42);
     });
   });
 
@@ -395,6 +497,41 @@ describe("Modular API Domain Resources Client Suite", () => {
       mockApiCall("delete", { unmuted: true });
       await unmuteUser("noisy_bot");
       assert.equal(lastRequest?.url, "/users/noisy_bot/mute");
+
+      mockApiCall("post", { reported: true, reportId: 55 });
+      await reportUser("spammer", "Spam or automated bot abuse", "Posting phishing links");
+      assert.equal(lastRequest?.url, "/users/spammer/report");
+      assert.deepEqual(lastRequest?.data, {
+        reason: "Spam or automated bot abuse",
+        details: "Posting phishing links",
+      });
+
+      mockApiCall("post", { report: { id: 56 } });
+      await reportPost(42, "Malicious model / code payload", "Contains infinite loop", true);
+      assert.equal(lastRequest?.url, "/social/posts/42/report");
+      assert.deepEqual(lastRequest?.data, {
+        reason: "Malicious model / code payload",
+        details: "Contains infinite loop",
+        forwardFederatedFlag: true,
+      });
+
+      mockApiCall("post", { success: true, reportId: 57, targetType: "package" });
+      const resReport = await reportResource({
+        targetType: "package",
+        targetResourceId: "@malicious/ThermalPkg",
+        reason: "Malicious model / code payload",
+        details: "Unauthorized FFI",
+      });
+      assert.equal(lastRequest?.url, "/social/reports");
+      assert.equal(resReport.reportId, 57);
+
+      mockApiCall("post", { success: true, appealId: 58, message: "Appeal submitted" });
+      const appealRes = await submitModerationAppeal({
+        reason: "False positive spam classification",
+        details: "Automated CI benchmark posts",
+      });
+      assert.equal(lastRequest?.url, "/users/me/appeals");
+      assert.equal(appealRes.appealId, 58);
     });
 
     it("manages posts, replies, likes, reposts, and bookmarks", async () => {

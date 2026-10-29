@@ -50,6 +50,7 @@ const Owl2Viewer = React.lazy(() => import("../Owl2Viewer"));
 const GensysViewer = React.lazy(() => import("../GensysViewer"));
 const SimpackViewer = React.lazy(() => import("../SimpackViewer"));
 const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
+const FortranViewer = React.lazy(() => import("../FortranViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 
 export interface ViewerDispatcherProps {
@@ -67,7 +68,7 @@ export interface ViewerDispatcherProps {
 export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   artifact,
   artifactId,
-  viewConfig,
+  viewConfig: rawViewConfig,
   isFullScreen,
   resolvedThumbnailUrl,
   resolvedThumbnailUrlLight,
@@ -75,6 +76,10 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   onPinCreated,
   onThreadNodeSelected,
 }) => {
+  const viewConfig = React.useMemo(
+    () => (rawViewConfig ? { ...rawViewConfig, standalone: false } : { standalone: false }),
+    [rawViewConfig],
+  );
   const renderViewer = () => {
     switch (artifact.view_type) {
       case "cad":
@@ -316,6 +321,12 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "engineering-app":
       case "app":
         return <SolutionViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "fortran":
+      case "f90":
+      case "f95":
+      case "f08":
+      case "f18":
+        return <FortranViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "aspen":
       case "swmm":
       case "touchstone":
@@ -329,7 +340,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "scad":
       case "csg":
       case "c":
-      case "fortran":
       case "adams":
       case "autosar":
       case "ccsds":
@@ -343,9 +353,23 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "urdf":
       case "verilog-a":
       case "other":
-        return <PolyglotArtifactViewer viewConfig={viewConfig} viewType={artifact.view_type} artifactId={artifactId} />;
+        return (
+          <PolyglotArtifactViewer
+            viewConfig={viewConfig}
+            viewType={artifact.view_type}
+            artifactId={artifactId}
+            isFullScreen={isFullScreen}
+          />
+        );
       default:
-        return <PolyglotArtifactViewer viewConfig={viewConfig} viewType={artifact.view_type} artifactId={artifactId} />;
+        return (
+          <PolyglotArtifactViewer
+            viewConfig={viewConfig}
+            viewType={artifact.view_type}
+            artifactId={artifactId}
+            isFullScreen={isFullScreen}
+          />
+        );
     }
   };
 

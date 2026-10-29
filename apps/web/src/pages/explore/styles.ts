@@ -10,10 +10,10 @@ export const SearchHeader = styled.div`
   padding: 16px;
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 10;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: var(--surface-hud);
+  z-index: 50;
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
   border-bottom: 1px solid var(--color-border);
 `;
 
@@ -21,12 +21,12 @@ export const MobileSearchWrapper = styled.div`
   display: block;
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--surface-hud);
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 10;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  z-index: 50;
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
 `;
 
 export const SearchInputWrapper = styled.div`
@@ -47,7 +47,8 @@ export const SearchInputWrapper = styled.div`
     border-radius: 9999px;
     background-color: var(--color-search-bg);
     border: 1px solid var(--color-search-border);
-    font-size: 14px;
+    font-size: var(--text-md, 15px);
+    line-height: var(--leading-md, 20px);
     outline: none;
     box-sizing: border-box;
     color: var(--color-text-primary);
@@ -82,10 +83,15 @@ export const TabContainer = styled.div`
 export const TabButton = styled.button<{ $active?: boolean | undefined }>`
   flex: 1;
   min-width: 80px;
+  height: 53px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
-  padding: 14px 16px;
-  font-size: 15px;
+  padding: 0 16px;
+  font-size: var(--text-md, 15px);
+  line-height: var(--leading-md, 20px);
   font-weight: ${(props) => (props.$active ? "700" : "500")};
   color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
   cursor: pointer;

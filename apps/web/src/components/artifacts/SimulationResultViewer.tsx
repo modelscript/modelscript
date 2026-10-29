@@ -215,7 +215,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
         alignItems="center"
         height="300px"
         bg="var(--color-canvas-subtle)"
-        borderRadius="8px"
+        borderRadius="0"
       >
         <Spinner size="medium" />
         <Text ml={3}>Parsing simulation results...</Text>
@@ -229,10 +229,10 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
     <Box
       width="100%"
       height={isFullScreen ? "100%" : "450px"}
-      bg="var(--color-canvas-default)"
-      borderRadius={isFullScreen ? "0" : "8px"}
+      borderRadius="0"
       overflow="hidden"
       position="relative"
+      style={{ background: "transparent" }}
     >
       {/* Header info bar */}
       {!isThumbnail && (

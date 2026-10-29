@@ -18,6 +18,13 @@ export function registerChatParticipant(context: vscode.ExtensionContext): void 
     return;
   }
 
+  const contributedParticipants = context.extension?.packageJSON?.contributes?.chatParticipants as
+    | { id?: string | undefined }[]
+    | undefined;
+  if (!Array.isArray(contributedParticipants) || !contributedParticipants.some((p) => p?.id === "modelscript.chat")) {
+    return;
+  }
+
   const participant = vscode.chat.createChatParticipant(
     "modelscript.chat",
     async (request, chatContext, stream, token) => {

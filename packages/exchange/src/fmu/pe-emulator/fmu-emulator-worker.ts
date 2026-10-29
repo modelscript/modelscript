@@ -103,11 +103,16 @@ let workerRunner: UniversalBinaryRunner | null = null;
 interface WorkerGlobalScopeLike {
   postMessage: (message: unknown, transfer?: Transferable[]) => void;
   importScripts?: (...urls: string[]) => void;
+  __MODELSCRIPT_FMU_EMULATOR_WORKER__?: boolean | undefined;
 }
 
 const workerSelf = typeof self !== "undefined" ? (self as unknown as WorkerGlobalScopeLike) : undefined;
 
-if (workerSelf && typeof workerSelf.postMessage === "function" && typeof workerSelf.importScripts === "function") {
+if (
+  workerSelf &&
+  workerSelf.__MODELSCRIPT_FMU_EMULATOR_WORKER__ === true &&
+  typeof workerSelf.postMessage === "function"
+) {
   self.addEventListener("message", (evt: MessageEvent<EmulatorWorkerRequest>) => {
     const msg = evt.data;
     try {
@@ -267,6 +272,7 @@ export class EmulatorWorkerClient implements WasmFmuRunner {
 
     // In browser: Spawn WebWorker
     const workerScript = `
+      self.__MODELSCRIPT_FMU_EMULATOR_WORKER__ = true;
       importScripts("${typeof location !== "undefined" ? location.origin : ""}/workers/fmu-emulator-worker.js");
     `;
     const blob = new Blob([workerScript], { type: "application/javascript" });

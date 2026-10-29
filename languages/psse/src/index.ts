@@ -7,6 +7,7 @@ export * from "./lints/index.js";
 
 export * from "./lsp.js";
 export * from "./netlist/powerflow-netlist.js";
+export * from "./parser/dyr-parser.js";
 export * from "./parser/raw-parser.js";
 export * from "./parser/wasm-loader.js";
 export * from "./projections/fmu-to-psse.js";

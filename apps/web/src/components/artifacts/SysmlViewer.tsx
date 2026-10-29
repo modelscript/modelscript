@@ -18,7 +18,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, renderSourceToDiagramSvg, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SysmlPart {
   name: string;
@@ -381,12 +381,6 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return sanitizeSvgMarkup(viewConfig.svg);
     }
-    if (sourceCode.trim()) {
-      const rendered = renderSourceToDiagramSvg(sourceCode, "sysml2", systemName, true);
-      if (rendered.svg) {
-        return rendered.svg;
-      }
-    }
     if (parts.length === 0) return "";
     const width = 680;
     const cols = Math.min(3, Math.max(1, parts.length));
@@ -422,7 +416,16 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       ${edgesSvg.join("\n")}
       ${nodesSvg.join("\n")}
     </svg>`);
-  }, [viewConfig.svg, sourceCode, parts, connections, systemName]);
+  }, [viewConfig.svg, parts, connections, systemName]);
+
+  const effectiveTab =
+    activeTab === "diagram" && !svgMarkup
+      ? parts.length > 0
+        ? "architecture"
+        : requirements.length > 0
+          ? "requirements"
+          : "source"
+      : activeTab;
 
   const satisfiedCount = requirements.filter((r) => r.status === "satisfied" || r.status === "verified").length;
 
@@ -458,68 +461,74 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
-      <Toolbar>
-        <HeaderLeft>
-          <CpuIcon size={16} fill="var(--color-accent-blue, #60a5fa)" />
-          <SystemTitle title={systemName}>{systemName}</SystemTitle>
-          <Badge $variant={format === "KerML" ? "kerml" : "sysml"}>{format}</Badge>
-          {requirements.length > 0 && (
-            <Badge $variant={satisfiedCount === requirements.length ? "req-pass" : "req-warn"}>
-              <ShieldCheckIcon size={12} /> {satisfiedCount}/{requirements.length} Reqs Satisfied
-            </Badge>
-          )}
-        </HeaderLeft>
+      {!isFullScreen && (
+        <Toolbar>
+          <HeaderLeft>
+            <CpuIcon size={16} fill="var(--color-accent-blue, #60a5fa)" />
+            <SystemTitle title={systemName}>{systemName}</SystemTitle>
+            <Badge $variant={format === "KerML" ? "kerml" : "sysml"}>{format}</Badge>
+            {requirements.length > 0 && (
+              <Badge $variant={satisfiedCount === requirements.length ? "req-pass" : "req-warn"}>
+                <ShieldCheckIcon size={12} /> {satisfiedCount}/{requirements.length} Reqs Satisfied
+              </Badge>
+            )}
+          </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={2}>
-          {sourceCode && (
-            <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
-              {copiedCode ? <CheckIcon size={14} fill="var(--color-accent-cyan)" /> : <CopyIcon size={14} />}
-              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
-            </Button>
-          )}
-          {Boolean(viewConfig?.standalone) && (
-            <Button
-              size="small"
-              variant="primary"
-              onClick={handleOpenPlayground}
-              title="Open SysML v2 model in Playground"
-            >
-              <CodeIcon size={14} />
-              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
-            </Button>
-          )}
-        </Box>
-      </Toolbar>
+          <Box display="flex" alignItems="center" gap={2}>
+            {sourceCode && (
+              <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
+                {copiedCode ? <CheckIcon size={14} fill="var(--color-accent-cyan)" /> : <CopyIcon size={14} />}
+                <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
+              </Button>
+            )}
+            {Boolean(viewConfig?.standalone) && (
+              <Button
+                size="small"
+                variant="primary"
+                onClick={handleOpenPlayground}
+                title="Open SysML v2 model in Playground"
+              >
+                <CodeIcon size={14} />
+                <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
+              </Button>
+            )}
+          </Box>
+        </Toolbar>
+      )}
 
       <TabNav>
-        <TabButton $active={activeTab === "diagram"} onClick={() => setActiveTab("diagram")}>
-          <WorkflowIcon size={12} /> BDD / IBD Diagram
-        </TabButton>
-        <TabButton $active={activeTab === "architecture"} onClick={() => setActiveTab("architecture")}>
+        {svgMarkup && (
+          <TabButton $active={effectiveTab === "diagram"} onClick={() => setActiveTab("diagram")}>
+            <WorkflowIcon size={12} /> BDD / IBD Diagram
+          </TabButton>
+        )}
+        <TabButton $active={effectiveTab === "architecture"} onClick={() => setActiveTab("architecture")}>
           System Architecture ({parts.length})
         </TabButton>
-        <TabButton $active={activeTab === "requirements"} onClick={() => setActiveTab("requirements")}>
+        <TabButton $active={effectiveTab === "requirements"} onClick={() => setActiveTab("requirements")}>
           Requirements Matrix ({requirements.length})
         </TabButton>
-        <TabButton $active={activeTab === "source"} onClick={() => setActiveTab("source")}>
+        <TabButton $active={effectiveTab === "source"} onClick={() => setActiveTab("source")}>
           SysML v2 Source
         </TabButton>
       </TabNav>
 
       <ContentBody>
-        {activeTab === "diagram" && (
-          <Box display="flex" justifyContent="center" alignItems="center" style={{ minHeight: "260px" }}>
-            {svgMarkup ? (
-              <div style={{ width: "100%" }} dangerouslySetInnerHTML={{ __html: svgMarkup }} />
-            ) : (
-              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                No diagram elements found in this SysML v2 artifact. Switch to the Source tab to inspect the code.
-              </Text>
-            )}
+        {effectiveTab === "diagram" && svgMarkup && (
+          <Box
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            style={{ minHeight: "260px", height: "100%", overflow: "hidden" }}
+          >
+            <div
+              style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}
+              dangerouslySetInnerHTML={{ __html: svgMarkup }}
+            />
           </Box>
         )}
 
-        {activeTab === "architecture" && (
+        {effectiveTab === "architecture" && (
           <Box display="flex" flexDirection="column" gap={2}>
             <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
               <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
@@ -627,7 +636,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
           </Box>
         )}
 
-        {activeTab === "requirements" && (
+        {effectiveTab === "requirements" && (
           <Box display="flex" flexDirection="column" gap={2}>
             {requirements.length > 0 ? (
               requirements.map((req) => {
@@ -674,7 +683,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
           </Box>
         )}
 
-        {activeTab === "source" && (
+        {effectiveTab === "source" && (
           <CodeEditor>
             {codeLines.length > 0 ? (
               codeLines.map((line, i) => (

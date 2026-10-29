@@ -1068,6 +1068,31 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         required: ["name"],
       },
     },
+    {
+      name: "modelscript_closed_loop_synthesize",
+      displayName: "Closed-Loop Compiler Synthesis & STL Certification",
+      modelDescription:
+        "Synthesizes and verifies a Modelica or SysML v2 candidate against syntax, QUDV units, DAE balance, and STL robustness gates.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Synthesis objective or specification" },
+          code: { type: "string", description: "Candidate source code" },
+        },
+      },
+    },
+    {
+      name: "tgg_reconcile_slot",
+      displayName: "Reconcile Triple Graph Grammar (TGG) Slot Conflict",
+      modelDescription: "Reconciles a divergent cross-domain parameter or port slot across SysML v2 and Modelica.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          slotId: { type: "string", description: "Divergent correspondence slot identifier" },
+          strategy: { type: "string", description: "Reconciliation strategy" },
+        },
+      },
+    },
   ];
 
   for (const stdTool of standardLmTools) {
@@ -1123,6 +1148,19 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       ...(commandPaletteMenus.length > 0 ? { commandPalette: commandPaletteMenus } : {}),
     },
     languageModelTools,
+    ...(options?.features?.chatParticipant !== false
+      ? {
+          chatParticipants: [
+            {
+              id: "modelscript.chat",
+              name: "modelscript",
+              fullName: "ModelScript AI",
+              description: "Polyglot systems engineering, Modelica simulation, and formal verification assistant.",
+              isSticky: true,
+            },
+          ],
+        }
+      : {}),
     semanticTokenScopes: [
       {
         language: "modelica",
@@ -2245,6 +2283,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     ],
     [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
     [path.join(repoRoot, "languages/modelica/assets"), "assets"],
+    [path.join(repoRoot, "apps/web/public/ms-logo.png"), "images/icon.png"],
   ];
 
   for (const [src, dest] of candidateAssets) {

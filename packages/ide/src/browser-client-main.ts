@@ -259,7 +259,6 @@ export async function activate(context: vscode.ExtensionContext) {
   try {
     await lspManager.start();
     languageWorker = lspManager.languageWorker;
-    console.log("ModelScript language server is ready");
   } catch (e) {
     console.error("ModelScript language server failed to start:", e);
   }

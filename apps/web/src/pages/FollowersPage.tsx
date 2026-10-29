@@ -60,8 +60,14 @@ const TabBar = styled.div`
 
 const TabButton = styled(Link)<{ $active?: boolean | undefined }>`
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 14px 16px;
+  height: 53px;
+  padding: 0 16px;
+  font-size: 15px;
+  line-height: 20px;
   font-weight: ${(props) => (props.$active ? "700" : "500")};
   color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
   text-decoration: none;
@@ -134,7 +140,7 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
         </Box>
       ) : users.length === 0 ? (
         <Box p={6} textAlign="center">
-          <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px" }}>{emptyMessage}</Text>
+          <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px", lineHeight: "20px" }}>{emptyMessage}</Text>
         </Box>
       ) : (
         <Box display="flex" flexDirection="column">
@@ -156,18 +162,34 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
                   <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
                   <Box display="flex" flexDirection="column" flex={1} style={{ minWidth: 0 }}>
                     <Box display="flex" flexDirection="column">
-                      <Text style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
+                      <Text
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          color: "var(--color-fg-default)",
+                        }}
+                      >
                         {u.display_name || u.username}
                       </Text>
                       <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
-                        <Text className="handle-text">@{parsed.localUsername}</Text>
+                        <Text className="handle-text" style={{ fontSize: "15px", lineHeight: "20px" }}>
+                          @{parsed.localUsername}
+                        </Text>
                         {parsed.isFederated && parsed.remoteDomain && (
                           <FederatedDomainPill domain={parsed.remoteDomain} />
                         )}
                       </Box>
                     </Box>
                     {u.bio && (
-                      <Text style={{ fontSize: "15px", marginTop: "4px", color: "var(--color-fg-default)" }}>
+                      <Text
+                        style={{
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          marginTop: "4px",
+                          color: "var(--color-fg-default)",
+                        }}
+                      >
                         {u.bio}
                       </Text>
                     )}

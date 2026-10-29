@@ -1048,18 +1048,52 @@ export const stepLanguage = language({
               arr.push(p);
             };
 
+            const dist3 = (a: [number, number, number], b: [number, number, number]): number =>
+              Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
             const loopRegex = /(#\d+)\s*=\s*(?:POLY_LOOP|EDGE_LOOP)\s*\(\s*'[^']*'\s*,\s*\(([^)]+)\)\s*\)/gi;
             while ((m = loopRegex.exec(srcText)) !== null) {
               const refs = m[2]!.match(/#\d+/g) || [];
               const loopPts: [number, number, number][] = [];
+              const chains: [number, number, number][][] = [];
               for (const r of refs) {
-                const oeChain = oeChainMap.get(r);
-                if (oeChain) {
-                  for (const p of oeChain) pushUniquePt(loopPts, p);
+                const oeChain = oeChainMap.get(r) ?? edgeChainMap.get(r);
+                if (oeChain && oeChain.length > 0) {
+                  chains.push(oeChain);
                   continue;
                 }
                 const pt = ptMap.get(r) ?? vpMap.get(r);
-                if (pt) pushUniquePt(loopPts, pt);
+                if (pt) chains.push([pt]);
+              }
+              if (chains.length === 1) {
+                for (const p of chains[0]!) pushUniquePt(loopPts, p);
+              } else if (chains.length >= 2) {
+                let first = chains[0]!;
+                const second = chains[1]!;
+                if (first.length >= 2 && second.length >= 1) {
+                  const fStart = first[0]!;
+                  const fEnd = first[first.length - 1]!;
+                  const sStart = second[0]!;
+                  const sEnd = second[second.length - 1]!;
+                  const dEnd = Math.min(dist3(fEnd, sStart), dist3(fEnd, sEnd));
+                  const dStart = Math.min(dist3(fStart, sStart), dist3(fStart, sEnd));
+                  if (dStart + 1e-6 < dEnd) {
+                    first = [...first].reverse();
+                  }
+                }
+                for (const p of first) pushUniquePt(loopPts, p);
+                for (let i = 1; i < chains.length; i++) {
+                  let ch = chains[i]!;
+                  if (ch.length >= 2 && loopPts.length > 0) {
+                    const lastPt = loopPts[loopPts.length - 1]!;
+                    const cStart = ch[0]!;
+                    const cEnd = ch[ch.length - 1]!;
+                    if (dist3(lastPt, cEnd) + 1e-6 < dist3(lastPt, cStart)) {
+                      ch = [...ch].reverse();
+                    }
+                  }
+                  for (const p of ch) pushUniquePt(loopPts, p);
+                }
               }
               if (
                 loopPts.length >= 2 &&

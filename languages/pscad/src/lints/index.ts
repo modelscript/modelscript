@@ -208,31 +208,40 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
 
   const allModules = [project.rootModule, ...Array.from(project.subModules?.values() ?? [])];
 
-  const busLocationMap = new Map<string, { line?: number | undefined; column?: number | undefined }>();
-  const cmpLocationMap = new Map<string, { line?: number | undefined; column?: number | undefined }>();
+  const busLocationMap = new Map<
+    string,
+    { line?: number | undefined; column?: number | undefined; endColumn?: number | undefined }
+  >();
+  const cmpLocationMap = new Map<
+    string,
+    { line?: number | undefined; column?: number | undefined; endColumn?: number | undefined }
+  >();
   for (const mod of allModules) {
     for (const b of mod.buses) {
-      busLocationMap.set(b.id, { line: b.line, column: b.column });
+      busLocationMap.set(b.id, { line: b.line, column: b.column, endColumn: b.endColumn });
     }
     for (const c of mod.components) {
-      cmpLocationMap.set(c.id, { line: c.line, column: c.column });
+      cmpLocationMap.set(c.id, { line: c.line, column: c.column, endColumn: c.endColumn });
     }
   }
 
   // 1. M6001: Check for isolated/floating buses
   for (const [busId, bus] of netlist.buses) {
     if (bus.connectedBranchIds.length === 0) {
-      const loc = busLocationMap.get(busId);
+      const busLoc = busLocationMap.get(busId);
+      const cmpLoc = !busLoc && bus.sourceComponentId ? cmpLocationMap.get(bus.sourceComponentId) : undefined;
+      const loc = busLoc ?? cmpLoc;
       diagnostics.push({
         code: PscadErrorCode.FLOATING_NODE.code,
         rule: PscadErrorCode.FLOATING_NODE.rule,
         severity: PscadErrorCode.FLOATING_NODE.severity,
         message: PscadErrorCode.FLOATING_NODE.message(bus.name),
         busId,
+        componentId: bus.sourceComponentId,
         line: loc?.line,
         column: loc?.column,
         endLine: loc?.line,
-        endColumn: loc?.column !== undefined ? loc.column + (bus.name || busId).length : undefined,
+        endColumn: loc?.endColumn ?? (loc?.column !== undefined ? loc.column + (bus.name || busId).length : undefined),
       });
     }
   }
@@ -243,7 +252,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     const bus2 = netlist.buses.get(xfmr.toBus);
     const loc = cmpLocationMap.get(xfmr.id);
 
-    if (bus1 && bus1.baseKv > 0 && Math.abs(bus1.baseKv - xfmr.primaryKv) > 0.05 * bus1.baseKv) {
+    if (bus1 && bus1.explicitBaseKv && bus1.baseKv > 0 && Math.abs(bus1.baseKv - xfmr.primaryKv) > 0.05 * bus1.baseKv) {
       diagnostics.push({
         code: PscadErrorCode.TRANSFORMER_MISMATCH.code,
         rule: PscadErrorCode.TRANSFORMER_MISMATCH.rule,
@@ -253,11 +262,16 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         line: loc?.line,
         column: loc?.column,
         endLine: loc?.line,
-        endColumn: loc?.column !== undefined ? loc.column + xfmr.id.length : undefined,
+        endColumn: loc?.endColumn ?? (loc?.column !== undefined ? loc.column + xfmr.id.length : undefined),
       });
     }
 
-    if (bus2 && bus2.baseKv > 0 && Math.abs(bus2.baseKv - xfmr.secondaryKv) > 0.05 * bus2.baseKv) {
+    if (
+      bus2 &&
+      bus2.explicitBaseKv &&
+      bus2.baseKv > 0 &&
+      Math.abs(bus2.baseKv - xfmr.secondaryKv) > 0.05 * bus2.baseKv
+    ) {
       diagnostics.push({
         code: PscadErrorCode.TRANSFORMER_MISMATCH.code,
         rule: PscadErrorCode.TRANSFORMER_MISMATCH.rule,
@@ -267,7 +281,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         line: loc?.line,
         column: loc?.column,
         endLine: loc?.line,
-        endColumn: loc?.column !== undefined ? loc.column + xfmr.id.length : undefined,
+        endColumn: loc?.endColumn ?? (loc?.column !== undefined ? loc.column + xfmr.id.length : undefined),
       });
     }
   }

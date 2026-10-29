@@ -1269,20 +1269,15 @@ export declare enum SyntaxKind {
   DataRecord = 8,
   START = 9,
   _START = 9,
-  NumberNode = 15,
-  Number = 15,
-  QuotedString = 16,
-  Identifier = 17,
-  Newline = 18,
-  _newline = 18,
+  NumberNode = 12,
+  Number = 12,
+  QuotedString = 13,
+  Identifier = 14,
+  SymbolPunct = 15,
   EOF = 1023,
 }
 
 export declare enum FieldId {
-  FirstVal = 1,
-  firstVal = 1,
-  Values = 2,
-  values = 2,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1310,6 +1305,10 @@ export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
 export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface SymbolPunctNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SymbolPunct;
+}
+export declare function isSymbolPunct(node: SyntaxNode | null | undefined): node is SymbolPunctNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
@@ -1322,10 +1321,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DataRecordNode;
-    firstVal(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    firstValList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    values(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    valuesList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const NumberNode: {
     readonly typeId: number;
@@ -1341,5 +1336,10 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const SymbolPunct: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SymbolPunctNode;
   };
 }

@@ -8,15 +8,80 @@
  */
 
 import { BinOp, Causality, EqKind, IDaeBuilder, UnaryOp, VarType, Variability } from "@modelscript/runtime";
+import { extractFortranSignature } from "../ast.js";
 
 export interface FortranDaeLoweringResult {
   stateVarIndices: number[];
+  inputVarIndices: number[];
+  outputVarIndices: number[];
+  parameterVarIndices: number[];
   equationCount: number;
+}
+
+function unrollConstantDoLoops(lines: string[], constants: Record<string, number>): string[] {
+  const result: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const raw = lines[i]!;
+    const trimmed = raw.trim();
+    const doMatch = /^DO\b(?:\s+[0-9]+)?\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^,]+),\s*([^,]+)(?:,\s*(.+))?$/i.exec(
+      trimmed,
+    );
+    if (doMatch) {
+      const loopVar = doMatch[1]!;
+      const parseBound = (s: string): number | null => {
+        const clean = s.trim();
+        const n = Number(clean);
+        if (!isNaN(n)) return Math.round(n);
+        const c = constants[clean] ?? constants[clean.toLowerCase()] ?? constants[clean.toUpperCase()];
+        return typeof c === "number" ? Math.round(c) : null;
+      };
+      const startVal = parseBound(doMatch[2]!);
+      const endVal = parseBound(doMatch[3]!);
+      const stepVal = doMatch[4] ? parseBound(doMatch[4]) : 1;
+
+      // Find matching END DO
+      let depth = 1;
+      let j = i + 1;
+      const bodyLines: string[] = [];
+      while (j < lines.length && depth > 0) {
+        const inner = lines[j]!.trim();
+        if (/^DO\b/i.test(inner)) depth++;
+        else if (/^(?:END\s+DO|ENDDO)\b/i.test(inner)) {
+          depth--;
+          if (depth === 0) break;
+        }
+        bodyLines.push(lines[j]!);
+        j++;
+      }
+
+      if (
+        depth === 0 &&
+        startVal !== null &&
+        endVal !== null &&
+        stepVal !== null &&
+        stepVal !== 0 &&
+        Math.abs((endVal - startVal) / stepVal) <= 32
+      ) {
+        const varRegex = new RegExp(`\\b${loopVar}\\b`, "gi");
+        for (let k = startVal; stepVal > 0 ? k <= endVal : k >= endVal; k += stepVal) {
+          for (const bLine of unrollConstantDoLoops(bodyLines, constants)) {
+            result.push(bLine.replace(varRegex, String(k)));
+          }
+        }
+        i = j + 1;
+        continue;
+      }
+    }
+    result.push(raw);
+    i++;
+  }
+  return result;
 }
 
 /**
  * Lowers Fortran statements (such as EASY5 state derivatives SD(i) = ... and algebraic assignments)
- * directly into the DAEBuilder arena.
+ * directly into the DAEBuilder arena, preserving Input/Output/Parameter causality and scalarizing fixed arrays.
  */
 export function lowerFortranToDae(
   builder: IDaeBuilder,
@@ -24,31 +89,93 @@ export function lowerFortranToDae(
   prefix: string = "fortran",
 ): FortranDaeLoweringResult {
   const stateVarIndices: number[] = [];
+  const inputVarIndices: number[] = [];
+  const outputVarIndices: number[] = [];
+  const parameterVarIndices: number[] = [];
   let equationCount = 0;
   const varMap = new Map<string, number>();
+
+  const sig = extractFortranSignature(lines.join("\n"));
+  const inputSet = new Set(sig.inputs.map((s) => s.toUpperCase()));
+  const outputSet = new Set(sig.outputs.map((s) => s.toUpperCase()));
+  const constMap = new Map<string, number>();
+  for (const [k, v] of Object.entries(sig.constants)) {
+    constMap.set(k.toUpperCase(), v);
+  }
 
   function getOrAddVar(name: string, isContinuousState: boolean = false): number {
     const key = name.toUpperCase();
     if (varMap.has(key)) return varMap.get(key)!;
 
-    const varName = `${prefix}_${name}`;
-    const idx = builder.addVariable(
-      varName,
-      VarType.Real,
-      isContinuousState ? Variability.Continuous : Variability.Discrete,
-      Causality.Local,
-      0.0,
-    );
+    const varName = prefix ? `${prefix}_${name}` : name;
+    let variability = Variability.Continuous;
+    let causality = Causality.Local;
+    let startVal = 0.0;
+
+    if (isContinuousState) {
+      variability = Variability.Continuous;
+      causality = Causality.Local;
+    } else if (constMap.has(key)) {
+      variability = Variability.Parameter;
+      causality = Causality.Local;
+      startVal = constMap.get(key)!;
+    } else if (outputSet.has(key)) {
+      variability = Variability.Continuous;
+      causality = Causality.Output;
+    } else if (inputSet.has(key)) {
+      variability = Variability.Continuous;
+      causality = Causality.Input;
+      startVal = 1.0;
+    }
+
+    const idx = builder.addVariable(varName, VarType.Real, variability, causality, startVal);
     varMap.set(key, idx);
     if (isContinuousState) {
       stateVarIndices.push(idx);
+    } else if (causality === Causality.Input) {
+      inputVarIndices.push(idx);
+    } else if (causality === Causality.Output) {
+      outputVarIndices.push(idx);
+    } else if (variability === Variability.Parameter) {
+      parameterVarIndices.push(idx);
+      const bSetter = (builder as unknown as { setVariableBinding?: (v: number, e: number) => void })
+        .setVariableBinding;
+      if (typeof bSetter === "function") {
+        bSetter.call(builder, idx, builder.addRealLiteral(startVal));
+      }
     }
     return idx;
   }
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  // Pre-register signature parameters, inputs, outputs
+  for (const [cName] of Object.entries(sig.constants)) {
+    getOrAddVar(cName, false);
+  }
+  for (const inp of sig.inputs) {
+    getOrAddVar(inp, false);
+  }
+  for (const out of sig.outputs) {
+    getOrAddVar(out, false);
+  }
+
+  const expandedLines = unrollConstantDoLoops(lines, sig.constants);
+
+  for (const rawLine of expandedLines) {
+    let line = rawLine.trim();
     if (!line || line.startsWith("!")) continue;
+    const ex = line.indexOf("!");
+    if (ex >= 0) line = line.slice(0, ex).trim();
+    if (!line) continue;
+
+    // Skip declaration headers and structural statements
+    if (
+      /^(?:SUBROUTINE|FUNCTION|MODULE|PROGRAM|CONTAINS|USE|IMPLICIT|REAL|INTEGER|DOUBLE\s+PRECISION|LOGICAL|DIMENSION|PARAMETER|COMMON|ALLOCATE|DEALLOCATE|END|RETURN|CONTINUE)\b/i.test(
+        line,
+      ) &&
+      (!line.includes("=") || line.includes("::") || /^PARAMETER\s*\(/i.test(line))
+    ) {
+      continue;
+    }
 
     // Check for assignment: Target = Value
     const eqIdx = line.indexOf("=");
@@ -86,10 +213,29 @@ export function lowerFortranToDae(
       continue;
     }
 
-    // 2. Algebraic Assignment: Var = expr
+    // 2. Scalarized Array Element Assignment: A(1) = expr or M(1, 2) = expr
+    const arrTargetMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([0-9]+(?:\s*,\s*[0-9]+)*)\s*\)$/.exec(target);
+    if (arrTargetMatch && !/^(?:SD|S|X)$/i.test(arrTargetMatch[1]!)) {
+      const base = arrTargetMatch[1]!;
+      const indices = arrTargetMatch[2]!
+        .split(",")
+        .map((s) => s.trim())
+        .join("_");
+      const scalarName = `${base}_${indices}`;
+      const varIdx = getOrAddVar(scalarName, false);
+      const lhsExprId = builder.addName(varIdx);
+      const rhsExprId = lowerExprToArena(builder, rhs, getOrAddVar);
+
+      builder.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
+      equationCount++;
+      continue;
+    }
+
+    // 3. Algebraic Assignment: Var = expr
     const varMatch = /^([A-Za-z_][A-Za-z0-9_]*)$/.exec(target);
     if (varMatch) {
       const varName = varMatch[1]!;
+      if (constMap.has(varName.toUpperCase())) continue;
       const varIdx = getOrAddVar(varName, false);
       const lhsExprId = builder.addName(varIdx);
       const rhsExprId = lowerExprToArena(builder, rhs, getOrAddVar);
@@ -102,6 +248,9 @@ export function lowerFortranToDae(
 
   return {
     stateVarIndices,
+    inputVarIndices,
+    outputVarIndices,
+    parameterVarIndices,
     equationCount,
   };
 }
@@ -198,6 +347,29 @@ function tokenizeFortranExpr(expr: string): FortranExprToken[] {
           if (/^\d+$/.test(inner)) {
             i = parenClose + 1;
             tokens.push({ type: "state", value: inner });
+            continue;
+          }
+        }
+      }
+
+      // Check for scalarized constant-index array access: A(1) or M(1, 2)
+      if (
+        !/^(?:SQRT|SIN|COS|TAN|ASIN|ACOS|ATAN|ATAN2|EXP|LOG|LOG10|ALOG|ABS|MAX|MIN|MOD|SIGN|POW|REAL|INT|DBLE)$/i.test(
+          ident,
+        ) &&
+        i < n &&
+        expr[i] === "("
+      ) {
+        const parenClose = expr.indexOf(")", i);
+        if (parenClose > i) {
+          const inner = expr.slice(i + 1, parenClose).trim();
+          if (/^[0-9]+(?:\s*,\s*[0-9]+)*$/.test(inner)) {
+            const idxSuffix = inner
+              .split(",")
+              .map((s) => s.trim())
+              .join("_");
+            i = parenClose + 1;
+            tokens.push({ type: "ident", value: `${ident}_${idxSuffix}` });
             continue;
           }
         }

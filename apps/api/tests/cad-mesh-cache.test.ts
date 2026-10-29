@@ -228,4 +228,21 @@ test("Server-Side CAD Mesh Caching and Version Compare API", async (t) => {
 
     await request(app).get(`/api/v1/libraries/${pkgName}/compare?base=1.0.0&head=9.9.9`).expect(404);
   });
+
+  await t.test("5. /api/v1/cad/convert tessellates B-Rep STEP loops and recovers from empty-mesh cache", async () => {
+    const stepUrl = "/uploads/Gimbal_TVC_Actuator_Assembly.step";
+    // Simulate a stale cache entry that had no meshes
+    db.setCachedCadGeometry(stepUrl, JSON.stringify({ success: false, meshes: [], assembly: {} }));
+
+    const res = await request(app).get("/api/v1/cad/convert").query({ url: stepUrl }).expect(200);
+    assert.ok(Array.isArray(res.body.meshes), "Expected meshes array");
+    assert.strictEqual(res.body.meshes.length, 3);
+    const names = res.body.meshes.map((m: { name?: string }) => m.name);
+    assert.deepStrictEqual(names, ["FLANGE", "BARREL", "CLEVIS"]);
+    for (const mesh of res.body.meshes) {
+      assert.ok(mesh.attributes?.position?.array?.length >= 36);
+      assert.ok(mesh.attributes?.normal?.array?.length >= 36);
+      assert.ok(mesh.index?.array?.length >= 12);
+    }
+  });
 });

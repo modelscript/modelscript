@@ -210,6 +210,17 @@ function parseCalculixDeckClient(text: string) {
   };
 }
 
+function computeDeterministicHex64(input: string): string {
+  const seeds = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35, 0x27d4eb2f, 0x165667b1, 0xd3a2646c];
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    for (let j = 0; j < 8; j++) {
+      seeds[j] = Math.imul((seeds[j]! ^ code) + j, 0x01000193) >>> 0;
+    }
+  }
+  return seeds.map((s) => s.toString(16).padStart(8, "0")).join("");
+}
+
 export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -294,14 +305,15 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
     `);
   }, [viewConfig.svg, parsedDeck, title]);
 
+  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
+
   const [simError, setSimError] = useState<string | null>(null);
 
   const handleRunSimulationLocally = async () => {
     setRunningSim(true);
     setSimError(null);
     try {
-      const geoHash =
-        (viewConfig.geometryHash as string) || "0000000000000000000000000000000000000000000000000000000000000000";
+      const geoHash = (viewConfig.geometryHash as string) || computeDeterministicHex64(rawText || title);
       const studyConfig = {
         type: "FEA",
         workflowClass: "StaticStructuralFEA",
@@ -346,58 +358,66 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <ZapIcon size={16} fill="#38bdf8" />
+          <ZapIcon size={16} fill="var(--color-accent-fg, currentColor)" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>CalculiX FEA Deck</PillBadge>
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <Box
-            display="flex"
-            bg="rgba(0,0,0,0.25)"
-            borderRadius="6px"
-            p="2px"
-            border="1px solid var(--color-border-default)"
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode("diagram")}
-              style={{
-                background: viewMode === "diagram" ? "rgba(14, 165, 233, 0.25)" : "transparent",
-                color: viewMode === "diagram" ? "#38bdf8" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+          {sanitizedSvg && (
+            <Box
+              display="flex"
+              bg="rgba(0,0,0,0.25)"
+              borderRadius="6px"
+              p="2px"
+              border="1px solid var(--color-border-default)"
             >
-              <WorkflowIcon size={12} /> Mesh
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("code")}
-              style={{
-                background: viewMode === "code" ? "rgba(14, 165, 233, 0.25)" : "transparent",
-                color: viewMode === "code" ? "#38bdf8" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <CodeIcon size={12} /> Deck
-            </button>
-          </Box>
+              <button
+                type="button"
+                onClick={() => setViewMode("diagram")}
+                style={{
+                  background: effectiveViewMode === "diagram" ? "rgba(14, 165, 233, 0.25)" : "transparent",
+                  color:
+                    effectiveViewMode === "diagram"
+                      ? "var(--color-accent-fg, var(--color-fg-default))"
+                      : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <WorkflowIcon size={12} /> Mesh
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("code")}
+                style={{
+                  background: effectiveViewMode === "code" ? "rgba(14, 165, 233, 0.25)" : "transparent",
+                  color:
+                    effectiveViewMode === "code"
+                      ? "var(--color-accent-fg, var(--color-fg-default))"
+                      : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <CodeIcon size={12} /> Deck
+              </button>
+            </Box>
+          )}
           <Button
             size="small"
             leadingVisual={runningSim ? Spinner : PlayIcon}
@@ -441,7 +461,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "diagram" && sanitizedSvg ? (
+        ) : effectiveViewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         ) : (
           <Box

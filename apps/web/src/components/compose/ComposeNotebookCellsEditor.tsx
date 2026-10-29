@@ -41,6 +41,9 @@ export interface ComposeNotebookCellsEditorProps {
   setShowCodeSnippetModal: (show: boolean) => void;
   setShowMorselModal: (show: boolean) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onPolishCell?: ((cellId: string) => void) | undefined;
+  onDraftFromArtifactCell?: ((artifactId: number, cellId: string) => void) | undefined;
+  aiBusy?: "drafting" | "polishing" | null | undefined;
 }
 
 export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProps> = ({
@@ -62,6 +65,9 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   setShowCodeSnippetModal,
   setShowMorselModal,
   fileInputRef,
+  onPolishCell,
+  onDraftFromArtifactCell,
+  aiBusy,
 }) => {
   return (
     <>
@@ -177,7 +183,33 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                     >
                       ⊞ Table
                     </CellActionBtn>
+                    {onPolishCell && (
+                      <CellActionBtn
+                        type="button"
+                        disabled={Boolean(aiBusy) || !cell.content.trim()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPolishCell(cell.id);
+                        }}
+                        title="Polish this Markdown cell using AI"
+                      >
+                        ✨ Polish
+                      </CellActionBtn>
+                    )}
                   </>
+                )}
+                {cell.type === "artifact" && onDraftFromArtifactCell && (
+                  <CellActionBtn
+                    type="button"
+                    disabled={Boolean(aiBusy)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDraftFromArtifactCell(cell.artifactId, cell.id);
+                    }}
+                    title="Draft a Markdown analysis section for this artifact using AI"
+                  >
+                    ✨ Draft Section
+                  </CellActionBtn>
                 )}
                 <CellActionBtn
                   type="button"

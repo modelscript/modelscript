@@ -323,7 +323,8 @@ export const ScriptsHeaderHud: React.FC<ScriptsHeaderHudProps> = ({
             </span>
           </div>
           <div style={{ fontSize: "11px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
-            Backend: {clusterInfo?.backend || "local-process"} · {clusterInfo?.latencyMs || 8}ms ping
+            Backend: {clusterInfo?.connected ? clusterInfo.backend || "Offline" : "Offline"} ·{" "}
+            {clusterInfo?.connected && clusterInfo.latencyMs != null ? `${clusterInfo.latencyMs}ms ping` : "N/A"}
           </div>
         </MetricCard>
 

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { FmuStorage, type CosimMqttClient, type HistorianRecorder } from "@modelscript/exchange/cosim";
-import bcrypt from "bcryptjs";
 import express from "express";
-import rateLimit from "express-rate-limit";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +20,7 @@ import {
 import { JobQueue } from "./jobs.js";
 import { optionalAuth, setAuthDatabase } from "./middleware/auth-middleware.js";
 import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
+import { defaultApiLimiter } from "./middleware/rate-limiter.js";
 import { adminRouter } from "./routes/admin.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
@@ -35,6 +34,7 @@ import { gitServerRouter } from "./routes/git-server.js";
 import { gitRouter } from "./routes/git.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
+import { ideWorkbenchRouter } from "./routes/ide-workbench.js";
 import { instancesRouter } from "./routes/instances.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
@@ -50,7 +50,7 @@ import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
 import { simulateRouter } from "./routes/simulate.js";
 import { socialRouter } from "./routes/social.js";
-import { solutionsRouter } from "./routes/solutions.js";
+import { renderSolutionBundleHtml, solutionsRouter } from "./routes/solutions.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
@@ -58,11 +58,8 @@ import { threadRouter } from "./routes/thread.js";
 import { twinsRouter } from "./routes/twins.js";
 import { usersRouter } from "./routes/users.js";
 import { webhooksRouter } from "./routes/webhooks.js";
-import { seedCadAssembly } from "./seed-cad-assembly.js";
-import { seedCfdAnimation } from "./seed-cfd-animation.js";
-import { seedDroneCfd } from "./seed-drone-cfd.js";
-import { seedDroneFea } from "./seed-drone-fea.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
+import { seedPolyglotSocialData, seedPolyglotUsers } from "./seed/index.js";
 import { defaultArchiveQueue } from "./services/archive-queue.js";
 import { FeatureFlagService } from "./services/feature-flag-service.js";
 import { FederationWorker } from "./services/federation-worker.js";
@@ -163,45 +160,19 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     });
   }
 
-  const isNpmDev =
-    process.env["SEED_POSTS"] === "true" ||
-    process.env["npm_lifecycle_event"] === "dev" ||
-    process.env["npm_lifecycle_event"] === "dev:api";
-
   if (
     (process.env["NODE_ENV"] !== "production" && process.env["NODE_ENV"] !== "test") ||
     process.env["SEED_EXAMPLES"] === "true"
   ) {
     console.log("[DevServer] Development mode detected. Running auto-seeding...");
 
-    // Seed dev users
-    const devUsers = [
-      { username: "dev", email: "dev@modelscript.org", location: "Syria" },
-      { username: "alice", email: "alice@modelscript.org", location: "United States" },
-      { username: "bob", email: "bob@modelscript.org", location: "China" },
-    ];
-    for (const u of devUsers) {
-      if (!database.getUserByUsername(u.username)) {
-        const hash = bcrypt.hashSync("password", 10);
-        const { id } = database.createUser(u.username, u.email, hash);
-        database.updateProfile(id, { location: u.location });
-      }
-    }
-
-    // Post seeding is strictly disabled for everything except when running npm run dev
-    if (isNpmDev) {
-      console.log("[DevServer] npm run dev detected: seeding example posts...");
-      seedDroneFea(database);
-      seedCadAssembly(database);
-      seedDroneCfd(database);
-      seedCfdAnimation(database).catch(console.error);
-    } else {
-      console.log("[DevServer] Post seeding skipped (only enabled during npm run dev).");
-    }
-
     seedScriptsAndTemplates(database);
+    seedPolyglotUsers(database);
 
     // Run asynchronously in the background
+    void seedPolyglotSocialData(database).catch((err) => {
+      console.error("[DevServer] Failed to seed 44-language polyglot social catalog:", err);
+    });
     void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
       console.error("[DevServer] Failed to seed example packages:", err);
     });
@@ -215,189 +186,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         try {
           jobQueue.clear();
           database.resetDevData();
-          for (const u of devUsers) {
-            if (!database.getUserByUsername(u.username)) {
-              const hash = bcrypt.hashSync("password", 10);
-              const { id } = database.createUser(u.username, u.email, hash);
-              database.updateProfile(id, { location: u.location });
-            }
-          }
+          seedScriptsAndTemplates(database);
 
-          // Seed some dummy posts (only when running npm run dev)
-          const devUser = database.getUserByUsername("dev");
-          const alice = database.getUserByUsername("alice");
-          if (devUser && alice && isNpmDev) {
-            const devPost = database.createPost(
-              devUser.id,
-              "Welcome to the new ModelScript social platform! We're excited to see what you build. #welcome",
-            );
-            database.createPost(alice.id, "Just testing out the new federated features. Very smooth so far! 🚀");
-            database.createPost(
-              devUser.id,
-              "Has anyone played with the new Modelica parser yet? The AST is looking really clean.",
-              undefined,
-              devPost.id,
-            );
-
-            const cadViewId = database.createArtifactView(
-              alice.id,
-              "cad_step",
-              "url",
-              JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/cad/drone.step" }),
-              "Drone Chassis CAD Model",
-            );
-
-            database.createPost(
-              alice.id,
-              "Just finished the initial 3D design for the drone chassis! The STEP file is attached below. Let me know what you think of the rotor placement. 🚁 #cad",
-              cadViewId,
-            );
-
-            // Vega-Lite trajectory plot
-            const vegaSpec = {
-              $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-              description: "Simulation Trajectory of a Pendulum",
-              mark: "line",
-              encoding: {
-                x: { field: "time", type: "quantitative", title: "Time (s)" },
-                y: { field: "angle", type: "quantitative", title: "Angle (rad)" },
-              },
-            };
-            const vegaData = [
-              { time: 0, angle: 0.5 },
-              { time: 0.1, angle: 0.48 },
-              { time: 0.2, angle: 0.42 },
-              { time: 0.3, angle: 0.34 },
-              { time: 0.4, angle: 0.24 },
-              { time: 0.5, angle: 0.12 },
-              { time: 0.6, angle: 0 },
-              { time: 0.7, angle: -0.12 },
-              { time: 0.8, angle: -0.24 },
-              { time: 0.9, angle: -0.34 },
-              { time: 1.0, angle: -0.42 },
-            ];
-
-            const vegaViewId = database.createArtifactView(
-              devUser.id,
-              "vega-plot",
-              "inline",
-              JSON.stringify({ spec: vegaSpec, data: vegaData }),
-              "Pendulum Simulation Trajectory",
-            );
-            database.createPost(
-              devUser.id,
-              "Here is the simulation trajectory for the pendulum model over 1 second. Vega-Lite makes it so easy to visualize this! 📉",
-              vegaViewId,
-            );
-
-            // Mermaid diagram
-            const mermaidCode = `
-graph TD
-    A[Start] --> B{Is it working?}
-    B -- Yes --> C[Great!]
-    B -- No --> D[Debug]
-    D --> B
-`;
-            const mermaidViewId = database.createArtifactView(
-              devUser.id,
-              "mermaid-diagram",
-              "inline",
-              JSON.stringify({ code: mermaidCode }),
-              "Flowchart Diagram",
-            );
-            database.createPost(
-              devUser.id,
-              "I've also mapped out the debugging process using a Mermaid diagram. What do you think? 🧜‍♀️",
-              mermaidViewId,
-            );
-
-            // PDF Document
-            const pdfViewId = database.createArtifactView(
-              devUser.id,
-              "pdf",
-              "inline",
-              JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/docs/drone-manual.pdf" }),
-              "Dummy PDF Document",
-            );
-            database.createPost(
-              devUser.id,
-              "Just reading through this interesting document. The PDF viewer embeds it perfectly! 📄",
-              pdfViewId,
-            );
-
-            // CSV Table
-            const csvData = `Name,Age,Role,Score\nAlice,28,Engineer,95\nBob,34,Designer,88\nCharlie,22,Intern,91`;
-            const csvViewId = database.createArtifactView(
-              devUser.id,
-              "csv",
-              "inline",
-              JSON.stringify({ data: csvData }),
-              "Team Statistics",
-            );
-            database.createPost(
-              devUser.id,
-              "Check out these team statistics! The CSV table viewer renders the data cleanly. 📊",
-              csvViewId,
-            );
-
-            // GCode Toolpath
-            const gcodeViewId = database.createArtifactView(
-              alice.id,
-              "gcode",
-              "upload",
-              JSON.stringify({
-                url: "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gcode/benchy.gcode",
-                thumbnail_url:
-                  "https://images.unsplash.com/photo-1620917670359-4781498b0ed1?auto=format&fit=crop&q=80&w=600",
-              }),
-              "3DBenchy Toolpath",
-            );
-            database.createPost(
-              alice.id,
-              "Check out the sliced GCode for the 3DBenchy benchmark test. Ready for the machine!",
-              gcodeViewId,
-            );
-
-            // Engineering Solution Post (Simulink Pre-Flight Linter)
-            const solutionViewId = database.createArtifactView(
-              devUser.id,
-              "solution",
-              "inline",
-              JSON.stringify({
-                author: devUser.username,
-                slug: "simulink-linter",
-                name: "Simulink Pre-Flight Linter",
-                version: "1.0.0",
-                description:
-                  "Pre-flight static analyzer detecting algebraic loops, unconnected ports, and sample-time conflicts in Simulink models.",
-                category: "Control Systems & Aeronautics",
-                supported_formats: [".slx", ".mdl"],
-                bundle_url: "https://cdn.modelscript.org/solutions/simulink-linter/index.html",
-                tauri_windows_url:
-                  "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter-x64.exe",
-                tauri_linux_url:
-                  "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter.AppImage",
-                tauri_darwin_url:
-                  "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter.dmg",
-              }),
-              "Simulink Pre-Flight Linter Solution",
-            );
-            database.createPost(
-              devUser.id,
-              "🚀 Just released the Simulink Pre-Flight Linter app! You can test it live in the post below or download the standalone offline Windows binary. #simulink #verification",
-              solutionViewId,
-            );
-
-            // FEA Simulation
-            if (isNpmDev) {
-              seedDroneFea(database);
-              seedCadAssembly(database);
-              seedDroneCfd(database);
-              await seedCfdAnimation(database);
-            }
-            seedScriptsAndTemplates(database);
-          }
-
+          await seedPolyglotSocialData(database, { force: true });
           await seedExamplePackages(libraryStorage, database, jobQueue);
           await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
           res.json({ success: true });
@@ -507,22 +298,8 @@ graph TD
     app.set("trust proxy", 1);
   }
 
-  // Rate Limiting
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: Number(process.env["RATE_LIMIT_MAX"]) || 1000, // Per-IP budget suitable for SPA + API polling
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: (req) =>
-      req.path === "/health" ||
-      req.path.startsWith("/thumbnails") ||
-      req.path.startsWith("/api/thumbnails") ||
-      req.path.startsWith("/uploads"),
-    message: { error: "Too many requests, please try again later." },
-  });
-  if (process.env["NODE_ENV"] === "production") {
-    app.use(limiter);
-  }
+  // Rate Limiting (OWASP, DoS & Brute-force defense)
+  app.use(defaultApiLimiter);
 
   // CORS & Security Defensive Headers (OWASP, SOC 2, ISO 27001, GDPR Art. 32)
   const allowedOrigins = new Set(
@@ -538,6 +315,7 @@ graph TD
       req.path.startsWith("/morsel") ||
       req.path.startsWith("/api/v1/oembed") ||
       req.path.startsWith("/api/v1/morsels") ||
+      req.path.startsWith("/static/solutions/") ||
       req.path === "/static/embed.js" ||
       req.path === "/api/v1/embed.js";
     const isPublicFederationPath =
@@ -690,12 +468,26 @@ graph TD
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.send(renderStandaloneEmbedBundle(origin));
   });
+  app.get("/static/solutions/:slug/index.html", (req, res) => {
+    const slug = String(req.params["slug"] || "simulink-linter");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(renderSolutionBundleHtml(slug));
+  });
+  app.get("/embed/solution/:slug", (req, res) => {
+    const slug = String(req.params["slug"] || "simulink-linter");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(renderSolutionBundleHtml(slug));
+  });
 
   app.use("/api/v1/fmus", optionalAuth, fmuRouter(fmuStorage));
   app.use("/git", gitServerRouter(database));
   app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
   app.use("/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
+  app.use("/api/avatars", express.static(path.resolve(API_ROOT, "public/avatars")));
+  app.use("/avatars", express.static(path.resolve(API_ROOT, "public/avatars")));
+  app.use("/api/banners", express.static(path.resolve(API_ROOT, "public/banners")));
+  app.use("/banners", express.static(path.resolve(API_ROOT, "public/banners")));
   app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 
   if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
@@ -754,6 +546,9 @@ graph TD
   app.use("/api/v1/npm", npmAuthRouter(database));
   app.use("/api/v1/npm", npmRegistryRouter(database, libraryStorage));
 
+  // ── Integrated VS Code Web IDE Workbench, Extensions, Models & User Languages ──
+  app.use(ideWorkbenchRouter());
+
   // ── Enterprise Intranet Appliance & Unified Static Web, Docs & IDE Serving ──
   const staticWebDir =
     process.env["STATIC_WEB_DIR"] ||
@@ -796,6 +591,13 @@ graph TD
         next();
         return;
       }
+      if (req.path === "/") {
+        const rootDocIndex = path.join(resolvedDocsRoot, "index.html");
+        if (fs.existsSync(rootDocIndex)) {
+          res.sendFile(rootDocIndex);
+          return;
+        }
+      }
       const matchesDocRoute = docsPrefixes.some((p) => req.path === p || req.path.startsWith(p + "/"));
       const isDocAsset = req.path.startsWith("/assets/") || req.path.startsWith("/vp-icons/");
       if (!matchesDocRoute && !isDocAsset) {
@@ -803,18 +605,21 @@ graph TD
         return;
       }
 
-      const relReq = req.path.replace(/^\/+/, "");
+      const relReq = path
+        .normalize(req.path)
+        .replace(/^(\.\.[/\\])+/, "")
+        .replace(/^[/\\]+/, "");
       const candidates = [
         path.resolve(resolvedDocsRoot, relReq),
         path.resolve(resolvedDocsRoot, `${relReq}.html`),
         path.resolve(resolvedDocsRoot, relReq, "index.html"),
       ];
       for (const candidate of candidates) {
-        if (
-          (candidate === resolvedDocsRoot || candidate.startsWith(resolvedDocsRoot + path.sep)) &&
-          fs.existsSync(candidate) &&
-          fs.statSync(candidate).isFile()
-        ) {
+        const rel = path.relative(resolvedDocsRoot, candidate);
+        if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+          continue;
+        }
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
           res.sendFile(candidate);
           return;
         }
@@ -837,6 +642,8 @@ graph TD
         req.path.startsWith("/.well-known") ||
         req.path.startsWith("/git") ||
         req.path.startsWith("/thumbnails") ||
+        req.path.startsWith("/avatars") ||
+        req.path.startsWith("/banners") ||
         req.path.startsWith("/uploads") ||
         req.path.startsWith("/health") ||
         req.path.startsWith("/legal") ||
@@ -844,7 +651,8 @@ graph TD
         req.path.startsWith("/nodeinfo") ||
         req.path.startsWith("/actor") ||
         req.path.startsWith("/users/") ||
-        req.path.startsWith("/ide") ||
+        req.path.startsWith("/vscode") ||
+        req.path.startsWith("/static/") ||
         req.path.startsWith("/docs") ||
         req.path.startsWith("/-/") ||
         req.path.includes("/-/") ||

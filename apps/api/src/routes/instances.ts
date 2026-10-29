@@ -5,9 +5,11 @@ import { Router as createRouter } from "express";
 import type { Pool } from "pg";
 import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 export function instancesRouter(database: LibraryDatabase, pool: Pool | null): Router {
   const router = createRouter();
+  router.use(defaultApiLimiter);
 
   /**
    * POST /api/v1/instances

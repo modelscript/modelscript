@@ -176,6 +176,11 @@ Ontology(<http://example.org/engineering>
     supportsDiagram: true,
     supportsSimulation: false,
     supports3d: false,
+    diagramTypes: [
+      { id: "All", label: "All Entities" },
+      { id: "Taxonomy", label: "Class Taxonomy" },
+      { id: "Properties", label: "Properties & Domains" },
+    ],
   },
   {
     id: "scad",
@@ -294,12 +299,28 @@ endmodule
     ext: "pscx",
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     family: "xml",
-    defaultCode: `<project name="SimpleGrid" version="5.0">
+    defaultCode: `<project name="SimpleGrid" version="5.0.1">
   <definitions>
     <definition name="Main">
       <schematic>
-        <component id="Vsrc" type="Source3Ph" Vbase="230.0" freq="60.0" />
-        <component id="Load1" type="RLCLoad" P="50.0" Q="15.0" />
+        <User classid="UserCmp" id="u1" name="master:source_3" x="126" y="180">
+          <paramlist>
+            <param name="Name" value="Vsrc" />
+            <param name="Vm" value="230.0 [kV]" />
+            <param name="F0" value="60.0 [Hz]" />
+          </paramlist>
+        </User>
+        <User classid="UserCmp" id="u2" name="master:rlc" x="288" y="180">
+          <paramlist>
+            <param name="Name" value="Load1" />
+            <param name="R" value="50.0 [ohm]" />
+            <param name="L" value="0.15 [H]" />
+          </paramlist>
+        </User>
+        <Wire classid="WireOrthogonal" id="w1" x="162" y="180">
+          <vertex x="0" y="0" />
+          <vertex x="108" y="0" />
+        </Wire>
       </schematic>
     </definition>
   </definitions>

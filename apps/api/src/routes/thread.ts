@@ -20,6 +20,7 @@ import {
 import { Router, type Response } from "express";
 import crypto from "node:crypto";
 import type { Database, ThreadAuditLogEntry, ThreadProposal } from "../database.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 export interface ThreadMetadata {
   name?: string | undefined;
@@ -56,6 +57,7 @@ export function threadRouter(
   arg3?: ThreadRouterOptions,
 ): Router {
   const router = Router();
+  router.use(defaultApiLimiter);
   let hypergraph: DigitalThreadHypergraph;
   let db: Database | undefined;
   let options: ThreadRouterOptions | undefined;

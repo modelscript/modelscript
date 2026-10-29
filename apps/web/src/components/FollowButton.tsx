@@ -16,10 +16,11 @@ interface FollowButtonProps {
 
 const StyledFollowBtn = styled.button<{ $isFollowing: boolean; $size?: string | undefined }>`
   border-radius: 9999px;
-  font-weight: 600;
-  font-size: ${(props) => (props.$size === "small" ? "12px" : "13.5px")};
-  height: ${(props) => (props.$size === "small" ? "30px" : "36px")};
-  padding: ${(props) => (props.$size === "small" ? "0 14px" : "0 20px")};
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 16px;
+  height: ${(props) => (props.$size === "small" ? "32px" : "36px")};
+  padding: ${(props) => (props.$size === "small" ? "0 16px" : "0 20px")};
   cursor: pointer;
   display: inline-flex;
   align-items: center;

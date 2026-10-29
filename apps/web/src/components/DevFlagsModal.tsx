@@ -150,7 +150,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.75)",
+        backgroundColor: "var(--color-overlay-backdrop, rgba(15, 23, 42, 0.55))",
         backdropFilter: "blur(6px)",
         zIndex: 10000,
         display: "flex",
@@ -165,14 +165,14 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
           width: "100%",
           maxWidth: "760px",
           maxHeight: "88vh",
-          backgroundColor: "var(--color-bg-canvas, #0d1117)",
-          border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15))",
+          backgroundColor: "var(--surface-overlay, var(--ms-bg-elv))",
+          border: "1px solid var(--color-border-default)",
           borderRadius: "14px",
-          boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(111, 66, 193, 0.2)",
+          boxShadow: "var(--ms-shadow-pop)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          color: "var(--color-text-primary, #e6edf3)",
+          color: "var(--color-text-primary)",
           fontFamily: "var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
         }}
         onClick={(e) => e.stopPropagation()}
@@ -181,11 +181,11 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
         <div
           style={{
             padding: "16px 20px",
-            borderBottom: "1px solid var(--color-border, rgba(255, 255, 255, 0.1))",
+            borderBottom: "1px solid var(--color-border)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            background: "linear-gradient(180deg, rgba(111, 66, 193, 0.15) 0%, transparent 100%)",
+            background: "linear-gradient(180deg, var(--color-accent-purple-bg) 0%, transparent 100%)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -198,9 +198,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                     style={{
                       fontSize: "11px",
                       fontWeight: 600,
-                      backgroundColor: "rgba(245, 158, 11, 0.2)",
-                      color: "#fbbf24",
-                      border: "1px solid rgba(245, 158, 11, 0.4)",
+                      backgroundColor: "var(--status-warning-bg)",
+                      color: "var(--color-warning)",
+                      border: "1px solid var(--status-warning-border)",
                       padding: "2px 7px",
                       borderRadius: "9999px",
                       fontFamily: "var(--font-mono, monospace)",
@@ -210,7 +210,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: "12px", color: "var(--color-text-muted, #8b949e)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
                 Instant real-time toggles persisted in localStorage with zero page reload
               </div>
             </div>
@@ -225,9 +225,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "5px",
-                  background: "rgba(239, 68, 68, 0.12)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  color: "#f87171",
+                  background: "var(--color-danger-subtle)",
+                  border: "1px solid var(--color-danger-muted)",
+                  color: "var(--color-danger-fg)",
                   borderRadius: "6px",
                   padding: "5px 10px",
                   fontSize: "12px",
@@ -247,7 +247,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
               style={{
                 background: "transparent",
                 border: "none",
-                color: "var(--color-text-muted, #8b949e)",
+                color: "var(--color-text-muted)",
                 cursor: "pointer",
                 padding: "6px",
                 display: "flex",
@@ -265,11 +265,11 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
         <div
           style={{
             padding: "12px 20px",
-            borderBottom: "1px solid var(--color-border, rgba(255, 255, 255, 0.08))",
+            borderBottom: "1px solid var(--color-border)",
             display: "flex",
             flexDirection: "column",
             gap: "10px",
-            backgroundColor: "rgba(255, 255, 255, 0.02)",
+            backgroundColor: "var(--color-canvas-subtle)",
           }}
         >
           <div
@@ -277,13 +277,13 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
               display: "flex",
               alignItems: "center",
               gap: "8px",
-              background: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
+              background: "var(--color-search-bg)",
+              border: "1px solid var(--color-search-border)",
               borderRadius: "8px",
               padding: "6px 12px",
             }}
           >
-            <SearchIcon size={14} style={{ color: "var(--color-text-muted, #8b949e)" }} />
+            <SearchIcon size={14} style={{ color: "var(--color-text-muted)" }} />
             <input
               type="text"
               value={search}
@@ -305,7 +305,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                 style={{
                   background: "none",
                   border: "none",
-                  color: "var(--color-text-muted, #8b949e)",
+                  color: "var(--color-text-muted)",
                   cursor: "pointer",
                   padding: "2px",
                 }}
@@ -325,9 +325,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
                   style={{
-                    background: isSelected ? "var(--color-accent-purple, #6f42c1)" : "rgba(255, 255, 255, 0.05)",
-                    border: `1px solid ${isSelected ? "var(--color-accent-purple, #6f42c1)" : "var(--color-border-glass, rgba(255, 255, 255, 0.1))"}`,
-                    color: isSelected ? "#ffffff" : "var(--color-text-muted, #8b949e)",
+                    background: isSelected ? "var(--color-accent-purple)" : "var(--ms-surface-hover)",
+                    border: `1px solid ${isSelected ? "var(--color-accent-purple)" : "var(--color-border-default)"}`,
+                    color: isSelected ? "#ffffff" : "var(--color-text-muted)",
                     borderRadius: "6px",
                     padding: "3px 10px",
                     fontSize: "11px",
@@ -356,7 +356,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
           }}
         >
           {filteredKeys.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--color-text-muted, #8b949e)" }}>
+            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--color-text-muted)" }}>
               No feature flags found matching "{search}"
             </div>
           ) : (
@@ -375,20 +375,20 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                     justifyContent: "space-between",
                     padding: "12px 16px",
                     borderRadius: "10px",
-                    backgroundColor: effective ? "rgba(111, 66, 193, 0.08)" : "rgba(255, 255, 255, 0.02)",
+                    backgroundColor: effective ? "var(--color-accent-purple-bg)" : "var(--color-canvas-subtle)",
                     border: `1px solid ${
                       hasOverride
-                        ? "rgba(245, 158, 11, 0.4)"
+                        ? "var(--status-warning-border)"
                         : effective
-                          ? "rgba(111, 66, 193, 0.3)"
-                          : "var(--color-border, rgba(255, 255, 255, 0.08))"
+                          ? "var(--color-accent-purple-border)"
+                          : "var(--color-border)"
                     }`,
                     transition: "all 0.15s ease",
                   }}
                 >
                   <div style={{ flex: 1, marginRight: "16px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-text-primary, #fff)" }}>
+                      <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-text-primary)" }}>
                         {meta?.title || key}
                       </span>
                       <code
@@ -397,8 +397,8 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                           fontFamily: "var(--font-mono, monospace)",
                           padding: "1px 6px",
                           borderRadius: "4px",
-                          backgroundColor: "rgba(255, 255, 255, 0.08)",
-                          color: "var(--color-accent-cyan, #06b6d4)",
+                          backgroundColor: "var(--color-code-bg)",
+                          color: "var(--color-accent-cyan)",
                         }}
                       >
                         {key}
@@ -410,9 +410,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                             fontWeight: 700,
                             padding: "1px 6px",
                             borderRadius: "4px",
-                            backgroundColor: "rgba(245, 158, 11, 0.2)",
-                            color: "#fbbf24",
-                            border: "1px solid rgba(245, 158, 11, 0.4)",
+                            backgroundColor: "var(--status-warning-bg)",
+                            color: "var(--color-warning)",
+                            border: "1px solid var(--status-warning-border)",
                             letterSpacing: "0.5px",
                           }}
                         >
@@ -423,7 +423,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                     <div
                       style={{
                         fontSize: "12px",
-                        color: "var(--color-text-muted, #8b949e)",
+                        color: "var(--color-text-muted)",
                         marginTop: "3px",
                         lineHeight: 1.4,
                       }}
@@ -439,9 +439,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                       type="button"
                       onClick={() => setFlagOverride(key, false)}
                       style={{
-                        background: !effective ? "rgba(239, 68, 68, 0.25)" : "rgba(255, 255, 255, 0.05)",
-                        border: `1px solid ${!effective ? "rgba(239, 68, 68, 0.5)" : "rgba(255, 255, 255, 0.1)"}`,
-                        color: !effective ? "#fca5a5" : "var(--color-text-muted, #8b949e)",
+                        background: !effective ? "var(--color-danger-subtle)" : "var(--ms-surface-hover)",
+                        border: `1px solid ${!effective ? "var(--color-danger-muted)" : "var(--color-border-default)"}`,
+                        color: !effective ? "var(--color-danger-fg)" : "var(--color-text-muted)",
                         borderRadius: "6px",
                         padding: "5px 10px",
                         fontSize: "11px",
@@ -458,9 +458,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                       type="button"
                       onClick={() => setFlagOverride(key, true)}
                       style={{
-                        background: effective ? "rgba(16, 185, 129, 0.25)" : "rgba(255, 255, 255, 0.05)",
-                        border: `1px solid ${effective ? "rgba(16, 185, 129, 0.5)" : "rgba(255, 255, 255, 0.1)"}`,
-                        color: effective ? "#6ee7b7" : "var(--color-text-muted, #8b949e)",
+                        background: effective ? "var(--status-verified-bg)" : "var(--ms-surface-hover)",
+                        border: `1px solid ${effective ? "var(--status-verified-border)" : "var(--color-border-default)"}`,
+                        color: effective ? "var(--color-success)" : "var(--color-text-muted)",
                         borderRadius: "6px",
                         padding: "5px 10px",
                         fontSize: "11px",
@@ -483,8 +483,8 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
                         onClick={() => setFlagOverride(key, null)}
                         style={{
                           background: "transparent",
-                          border: "1px dashed var(--color-border-glass, rgba(255, 255, 255, 0.2))",
-                          color: "var(--color-text-muted, #8b949e)",
+                          border: "1px dashed var(--color-border-default)",
+                          color: "var(--color-text-muted)",
                           borderRadius: "6px",
                           padding: "5px 8px",
                           fontSize: "11px",
@@ -507,24 +507,24 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
         <div
           style={{
             padding: "12px 20px",
-            borderTop: "1px solid var(--color-border, rgba(255, 255, 255, 0.08))",
+            borderTop: "1px solid var(--color-border)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             fontSize: "12px",
-            color: "var(--color-text-muted, #8b949e)",
-            backgroundColor: "rgba(0, 0, 0, 0.2)",
+            color: "var(--color-text-muted)",
+            backgroundColor: "var(--color-canvas-subtle)",
           }}
         >
           <div>
             Tip: You can also override flags via URL query parameters:{" "}
-            <code style={{ color: "var(--color-accent-cyan, #06b6d4)" }}>?ff_cae_cloud_solver=1</code>
+            <code style={{ color: "var(--color-accent-cyan)" }}>?ff_cae_cloud_solver=1</code>
           </div>
           <button
             type="button"
             onClick={onClose}
             style={{
-              background: "var(--color-accent-purple, #6f42c1)",
+              background: "var(--color-accent-purple)",
               border: "none",
               color: "#ffffff",
               borderRadius: "6px",

@@ -198,14 +198,48 @@ Ontology(<http://modelscript.org/ontologies/propulsion>
     title: "IEEE 2800 Grid-Forming Inverter",
     category: "PSCAD EMT",
     lang: "pscad",
-    code: `<project name="IEEE2800_IBR_Benchmark" version="5.0">
+    code: `<project name="IEEE2800_IBR_Benchmark" version="5.0.1">
   <definitions>
     <definition name="Main">
       <schematic>
-        <comp id="src1" name="VSC_Inverter" type="source" bus1="1" kv="34.5" mva="100.0" />
-        <comp id="xfmr1" name="GSU_Transformer" type="transformer" bus1="1" bus2="2" mva="120.0" xpu="0.08" />
-        <comp id="line1" name="Collector_Line" type="branch" bus1="2" bus2="3" r="0.005" x="0.045" b="0.02" />
-        <comp id="grid1" name="Infinite_Bus" type="source" bus1="3" kv="230.0" mva="2500.0" />
+        <User classid="UserCmp" id="u1" name="master:source_3" x="126" y="180">
+          <paramlist>
+            <param name="Name" value="Grid230kV_Thevenin" />
+            <param name="Vm" value="230.0 [kV]" />
+            <param name="F0" value="60.0 [Hz]" />
+          </paramlist>
+        </User>
+        <User classid="UserCmp" id="u2" name="master:tline" x="252" y="180">
+          <paramlist>
+            <param name="Name" value="Collector_Line" />
+            <param name="Length" value="42.0 [km]" />
+          </paramlist>
+        </User>
+        <User classid="UserCmp" id="u3" name="master:xfmr-3p2w" x="396" y="180">
+          <paramlist>
+            <param name="Name" value="GSU_Transformer" />
+            <param name="Tmva" value="120.0 [MVA]" />
+            <param name="Xl" value="0.08 [pu]" />
+          </paramlist>
+        </User>
+        <User classid="UserCmp" id="u4" name="master:inverter_fmu" x="540" y="180">
+          <paramlist>
+            <param name="Name" value="VSC_Inverter" />
+            <param name="H_virt" value="4.5 [s]" />
+          </paramlist>
+        </User>
+        <Wire classid="WireOrthogonal" id="w1" x="162" y="180">
+          <vertex x="0" y="0" />
+          <vertex x="54" y="0" />
+        </Wire>
+        <Wire classid="WireOrthogonal" id="w2" x="288" y="180">
+          <vertex x="0" y="0" />
+          <vertex x="54" y="0" />
+        </Wire>
+        <Wire classid="WireOrthogonal" id="w3" x="432" y="180">
+          <vertex x="0" y="0" />
+          <vertex x="88" y="0" />
+        </Wire>
       </schematic>
     </definition>
   </definitions>
@@ -280,5 +314,93 @@ CFL_NUMBER= 10.0
 ITER= 250
 MESH_FILENAME= mesh_RAE2822_turb.su2
 CONV_FILENAME= history`,
+  },
+  {
+    id: "step-aerospace-bracket",
+    title: "Aerospace Actuator Housing STEP",
+    category: "STEP ISO 10303",
+    lang: "step",
+    code: `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Aerospace Ti-6Al-4V Bracket','AP242 Manifold B-Rep'),'2;1');
+FILE_NAME('Aerospace_Bracket.step','2026-01-01T00:00:00',('ModelScript'),(''),'','','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('AEROSPACE_BRACKET','Aerospace Actuator Bracket','',());
+#101 = CARTESIAN_POINT('P1',(-50.0,-30.0,0.0));
+#102 = CARTESIAN_POINT('P2',( 50.0,-30.0,0.0));
+#103 = CARTESIAN_POINT('P3',( 50.0, 30.0,0.0));
+#104 = CARTESIAN_POINT('P4',(-50.0, 30.0,0.0));
+#105 = CARTESIAN_POINT('P5',(-50.0,-30.0,15.0));
+#106 = CARTESIAN_POINT('P6',( 50.0,-30.0,15.0));
+#107 = CARTESIAN_POINT('P7',( 50.0, 30.0,15.0));
+#108 = CARTESIAN_POINT('P8',(-50.0, 30.0,15.0));
+#201 = POLY_LOOP('BOT',(#101,#104,#103,#102));
+#202 = POLY_LOOP('TOP',(#105,#106,#107,#108));
+#203 = POLY_LOOP('FRONT',(#101,#102,#106,#105));
+#204 = POLY_LOOP('RIGHT',(#102,#103,#107,#106));
+#205 = POLY_LOOP('BACK',(#103,#104,#108,#107));
+#206 = POLY_LOOP('LEFT',(#104,#101,#105,#108));
+#301 = FACE_OUTER_BOUND('',#201,.T.);
+#302 = FACE_OUTER_BOUND('',#202,.T.);
+#303 = FACE_OUTER_BOUND('',#203,.T.);
+#304 = FACE_OUTER_BOUND('',#204,.T.);
+#305 = FACE_OUTER_BOUND('',#205,.T.);
+#306 = FACE_OUTER_BOUND('',#206,.T.);
+#401 = ADVANCED_FACE('Bottom',(#301),#1,.T.);
+#402 = ADVANCED_FACE('Top',(#302),#1,.T.);
+#403 = ADVANCED_FACE('Front',(#303),#1,.T.);
+#404 = ADVANCED_FACE('Right',(#304),#1,.T.);
+#405 = ADVANCED_FACE('Back',(#305),#1,.T.);
+#406 = ADVANCED_FACE('Left',(#306),#1,.T.);
+#501 = CLOSED_SHELL('Shell',(#401,#402,#403,#404,#405,#406));
+#601 = MANIFOLD_SOLID_BREP('AerospaceBracket',#501);
+ENDSEC;
+END-ISO-10303-21;`,
+  },
+  {
+    id: "simpack-pendulum",
+    title: "Wind Turbine Planetary Drivetrain",
+    category: "SIMPACK MBS",
+    lang: "simpack",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<SimpackModel name="Planetary_Drivetrain_MBS" version="2026.1">
+  <Body id="bedplate" name="Nacelle_Bedplate" mass="42000.0" ixx="180000.0" iyy="220000.0" izz="250000.0">
+    <Marker id="m_bed_brg" name="MainBearing_Seat" x="0.0" y="0.0" z="1.5" />
+  </Body>
+  <Body id="rotor_shaft" name="Rotor_LowSpeed_Shaft" mass="68000.0" ixx="8500000.0" iyy="4200000.0" izz="4200000.0">
+    <Marker id="m_lss_brg" name="LSS_Journal" x="0.0" y="0.0" z="1.5" />
+    <Marker id="m_lss_end" name="LSS_Carrier_Spline" x="-2.4" y="0.0" z="1.5" />
+  </Body>
+  <Body id="sun_gear" name="Helical_Sun_Gear" mass="2400.0" ixx="1420.0" iyy="980.0" izz="980.0">
+    <Marker id="m_sun_center" name="Sun_Center" x="-2.4" y="0.0" z="1.5" />
+  </Body>
+  <Joint id="j_lss_rev" name="Main_LSS_Revolute" type="revolute" from="m_bed_brg" to="m_lss_brg" />
+  <Joint id="j_sun_rev" name="Sun_Gear_Revolute" type="revolute" from="m_lss_end" to="m_sun_center" />
+  <Force id="f_mesh" name="Tooth_Mesh_Stiffness" from="m_lss_end" to="m_sun_center" kx="8.5e8" ky="1.2e9" kz="6.4e8" cx="2.5e5" cy="3.2e5" cz="1.8e5" />
+</SimpackModel>`,
+  },
+  {
+    id: "gensys-bogie",
+    title: "High-Speed Rail Vehicle Bogie",
+    category: "GENSYS Railway",
+    lang: "gensys",
+    code: `# GENSYS High-Speed Rail Bogie & EN 14363 Stability Model
+set v_kmh = 250.0
+set v_ms  = v_kmh / 3.6
+speed v_ms
+tstart 0.0
+tstop  8.0
+dt     0.001
+
+body carbody  36000.0  58000.0  1650000.0  1620000.0   0.0  0.0  1.80
+body bogie_f   2600.0   1750.0     3100.0     4100.0   9.0  0.0  0.60
+wheelset axle_1  1550.0  840.0  110.0  840.0  1.435  0.460  0.15  "S1002_UIC60.whe"
+wheelset axle_2  1550.0  840.0  110.0  840.0  1.435  0.460  0.15  "S1002_UIC60.whe"
+
+spring k_prim_1  bogie_f  axle_1   15.0e6  5.5e6  1.1e6  10000.0  8000.0  16000.0
+spring k_prim_2  bogie_f  axle_2   15.0e6  5.5e6  1.1e6  10000.0  8000.0  16000.0
+spring k_sec_f   carbody  bogie_f   0.16e6  0.16e6 0.40e6 900000.0 25000.0 30000.0`,
   },
 ];

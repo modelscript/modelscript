@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { CaeSolverRunner, getValidatedGeometryPath, type CaeJobSpec } from "../services/cae-solver-runner.js";
 import {
   CaeTelemetryStreamer,
@@ -99,6 +100,7 @@ export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
 
 export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
   const hpcEngine = new HpcEngine();
   const caeRunner = new CaeSolverRunner(hpcEngine);
 

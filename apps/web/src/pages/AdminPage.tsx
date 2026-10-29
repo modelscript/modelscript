@@ -4,29 +4,46 @@ import { AlertIcon, CheckCircleIcon, SyncIcon } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  bulkResolveAdminModerationReports,
+  createAdminHotBackup,
   deleteAdminFederationDomainTier,
   deleteAdminPost,
   getAdminAnalytics,
   getAdminAuditLogs,
+  getAdminBackups,
   getAdminDbStatus,
   getAdminDmcaNotices,
   getAdminFeatureFlags,
   getAdminFederationDomains,
+  getAdminFederationQueue,
   getAdminModerationQueue,
+  getAdminOverview,
+  getAdminUsers,
+  moderateAdminUser,
   patchAdminFeatureFlag,
   pruneAdminAnalytics,
+  purgeAdminFederationQueue,
   resolveAdminDmcaNotice,
   resolveAdminModerationReport,
+  retryAdminFederationQueue,
   runAdminDbUpgrade,
   setAdminFederationDomainTier,
+  verifyAdminAuditLogsChain,
   verifyAdminDbIntegrity,
   type AdminAnalyticsSummary,
+  type AdminAuditChainVerification,
   type AdminAuditLog,
+  type AdminBackupInfo,
   type AdminDbStatus,
   type AdminDmcaNotice,
   type AdminFeatureFlag,
+  type AdminFederationDeliveryItem,
   type AdminFederationDomain,
+  type AdminFederationQueueStats,
+  type AdminModerationAction,
   type AdminModerationReport,
+  type AdminOverviewCounts,
+  type AdminUserSummary,
 } from "../api";
 import Box from "../components/Box";
 import { usePageTitle } from "../util/title";
@@ -41,6 +58,7 @@ import {
   AdminFederationTab,
   AdminMenuSidebar,
   AdminModerationTab,
+  AdminUsersTab,
   DetailColumn,
   Header,
   ModalBox,
@@ -55,6 +73,7 @@ export const AdminPage: React.FC = () => {
   const activeTab: AdminTab = useMemo(() => {
     const raw = (subRoute || "").split("/")[0]?.toLowerCase();
     if (
+      raw === "users" ||
       raw === "federation" ||
       raw === "dmca" ||
       raw === "audit" ||
@@ -76,6 +95,7 @@ export const AdminPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [overviewCounts, setOverviewCounts] = useState<AdminOverviewCounts | null>(null);
 
   // Feature flags state
   const [featureFlags, setFeatureFlags] = useState<AdminFeatureFlag[]>([]);
@@ -85,6 +105,12 @@ export const AdminPage: React.FC = () => {
   const [reports, setReports] = useState<AdminModerationReport[]>([]);
   const [modFilter, setModFilter] = useState<string>("all");
 
+  // Users state
+  const [users, setUsers] = useState<AdminUserSummary[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState<string>("");
+  const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
+  const [userRoleFilter, setUserRoleFilter] = useState<string>("all");
+
   // Analytics state
   const [analyticsSummary, setAnalyticsSummary] = useState<AdminAnalyticsSummary | null>(null);
   const [analyticsDays, setAnalyticsDays] = useState<number>(30);
@@ -92,6 +118,9 @@ export const AdminPage: React.FC = () => {
 
   // Federation state
   const [domains, setDomains] = useState<AdminFederationDomain[]>([]);
+  const [federationQueueStats, setFederationQueueStats] = useState<AdminFederationQueueStats | null>(null);
+  const [federationDeliveries, setFederationDeliveries] = useState<AdminFederationDeliveryItem[]>([]);
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>("all");
 
   // DMCA state
   const [dmcaNotices, setDmcaNotices] = useState<AdminDmcaNotice[]>([]);
@@ -100,9 +129,13 @@ export const AdminPage: React.FC = () => {
   // Audit state
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [auditActionFilter, setAuditActionFilter] = useState<string>("");
+  const [auditResourceFilter, setAuditResourceFilter] = useState<string>("all");
+  const [auditPageOffset, setAuditPageOffset] = useState<number>(0);
+  const [auditChainVerification, setAuditChainVerification] = useState<AdminAuditChainVerification | null>(null);
 
   // Database state
   const [dbStatus, setDbStatus] = useState<AdminDbStatus | null>(null);
+  const [dbBackups, setDbBackups] = useState<AdminBackupInfo[]>([]);
   const [dbVerifyResult, setDbVerifyResult] = useState<{
     valid?: boolean | undefined;
     foreignKeysOk?: boolean | undefined;
@@ -115,6 +148,15 @@ export const AdminPage: React.FC = () => {
   const clearMessages = () => {
     setError(null);
     setSuccess(null);
+  };
+
+  const refreshOverviewCounts = async () => {
+    try {
+      const counts = await getAdminOverview();
+      setOverviewCounts(counts);
+    } catch {
+      // Non-fatal if overview endpoint is unavailable in older mocks
+    }
   };
 
   // ── Loaders ──
@@ -150,8 +192,27 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await getAdminModerationQueue(modFilter === "all" ? undefined : modFilter);
       setReports(res.reports || []);
+      void refreshOverviewCounts();
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load moderation queue");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadUsers = async () => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await getAdminUsers({
+        q: userSearchQuery.trim() || undefined,
+        status: userStatusFilter === "all" ? undefined : userStatusFilter,
+        role: userRoleFilter === "all" ? undefined : userRoleFilter,
+      });
+      setUsers(res.users || []);
+      void refreshOverviewCounts();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -163,6 +224,14 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await getAdminFederationDomains();
       setDomains(res.domains || []);
+      try {
+        const qRes = await getAdminFederationQueue(deliveryStatusFilter === "all" ? undefined : deliveryStatusFilter);
+        setFederationQueueStats(qRes.stats || null);
+        setFederationDeliveries(qRes.deliveries || []);
+      } catch {
+        // Ignore if queue endpoint is not mocked in unit tests
+      }
+      void refreshOverviewCounts();
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load federation domains");
     } finally {
@@ -176,6 +245,7 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await getAdminDmcaNotices(dmcaFilter === "all" ? undefined : dmcaFilter);
       setDmcaNotices(res.notices || []);
+      void refreshOverviewCounts();
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load DMCA notices");
     } finally {
@@ -187,7 +257,12 @@ export const AdminPage: React.FC = () => {
     setLoading(true);
     clearMessages();
     try {
-      const res = await getAdminAuditLogs(50, 0, auditActionFilter || undefined);
+      const res = await getAdminAuditLogs(
+        50,
+        auditPageOffset,
+        auditActionFilter || undefined,
+        auditResourceFilter === "all" ? undefined : auditResourceFilter,
+      );
       setAuditLogs(res.logs || []);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load audit logs");
@@ -202,6 +277,12 @@ export const AdminPage: React.FC = () => {
     try {
       const status = await getAdminDbStatus();
       setDbStatus(status);
+      try {
+        const bRes = await getAdminBackups();
+        setDbBackups(bRes.backups || []);
+      } catch {
+        // Ignore if backups endpoint is not mocked
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to load database status");
     } finally {
@@ -211,6 +292,7 @@ export const AdminPage: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === "moderation") void loadModerationQueue();
+    else if (activeTab === "users") void loadUsers();
     else if (activeTab === "analytics") void loadAnalytics();
     else if (activeTab === "federation") void loadFederationDomains();
     else if (activeTab === "dmca") void loadDmcaNotices();
@@ -218,7 +300,20 @@ export const AdminPage: React.FC = () => {
     else if (activeTab === "database") void loadDbStatus();
     else if (activeTab === "flags") void loadFeatureFlags();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, modFilter, dmcaFilter, auditActionFilter, analyticsDays, analyticsSurface]);
+  }, [
+    activeTab,
+    modFilter,
+    userSearchQuery,
+    userStatusFilter,
+    userRoleFilter,
+    deliveryStatusFilter,
+    dmcaFilter,
+    auditActionFilter,
+    auditResourceFilter,
+    auditPageOffset,
+    analyticsDays,
+    analyticsSurface,
+  ]);
 
   // ── Action Handlers ──
   const handlePruneAnalytics = async (retainDays: number) => {
@@ -257,22 +352,87 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const handleUpdateFlagConfig = async (flag: AdminFeatureFlag, allowedRoles: string, rolloutPercentage: number) => {
+    setTogglingFlagKey(flag.key);
+    clearMessages();
+    try {
+      await patchAdminFeatureFlag(flag.key, flag.currentEnabled, allowedRoles, rolloutPercentage);
+      setSuccess(`Feature flag '${flag.name}' rollout updated to ${rolloutPercentage}%.`);
+      await loadFeatureFlags();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update feature flag rollout");
+    } finally {
+      setTogglingFlagKey(null);
+    }
+  };
+
   const handleResolveReport = async (
     reportId: number,
     resolution: {
       status: "resolved" | "dismissed";
-      action: "none" | "delete_post" | "silence_domain" | "suspend_domain";
+      action: AdminModerationAction;
       resolutionNotes: string;
+      resolveAllForTarget?: boolean | undefined;
+      contentWarning?: string | undefined;
+      forwardFederatedFlag?: boolean | undefined;
     },
   ) => {
     setLoading(true);
     clearMessages();
     try {
-      await resolveAdminModerationReport(reportId, resolution);
-      setSuccess(`Report #${reportId} marked as ${resolution.status}.`);
+      const res = await resolveAdminModerationReport(reportId, resolution);
+      setSuccess(
+        `Report #${reportId} marked as ${resolution.status}.${
+          res.federatedFlagQueued ? " Outbound ActivityPub Flag queued." : ""
+        }`,
+      );
       void loadModerationQueue();
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to resolve report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBulkResolveReports = async (payload: {
+    reportIds: number[];
+    status: "resolved" | "dismissed";
+    action?: AdminModerationAction | undefined;
+    resolutionNotes?: string | undefined;
+  }) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await bulkResolveAdminModerationReports(payload);
+      setSuccess(`Bulk updated ${res.resolvedCount} moderation report(s).`);
+      void loadModerationQueue();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to bulk resolve reports");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleModerateUser = async (
+    userId: number,
+    payload: {
+      status?: "active" | "frozen" | "suspended" | undefined;
+      role?: "user" | "admin" | undefined;
+      reason?: string | undefined;
+      revokeSessions?: boolean | undefined;
+      purgePosts?: boolean | undefined;
+    },
+  ) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await moderateAdminUser(userId, payload);
+      setSuccess(
+        `Updated user #${res.userId} (status: ${res.status || "unchanged"}, role: ${res.role || "unchanged"}).`,
+      );
+      void loadUsers();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to update user governance state");
     } finally {
       setLoading(false);
     }
@@ -354,12 +514,44 @@ export const AdminPage: React.FC = () => {
     });
   };
 
-  const handleResolveDmca = async (noticeId: number, actionTaken: string) => {
+  const handleRetryFailedDeliveries = async (domain?: string) => {
     setLoading(true);
     clearMessages();
     try {
-      await resolveAdminDmcaNotice(noticeId, actionTaken);
-      setSuccess(`DMCA notice #${noticeId} resolved.`);
+      const res = await retryAdminFederationQueue(domain);
+      setSuccess(`Re-queued ${res.retriedCount} failed ActivityPub S2S delivery item(s).`);
+      void loadFederationDomains();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to retry S2S deliveries");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePurgeDeliveries = async (status: "failed" | "completed") => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await purgeAdminFederationQueue(status);
+      setSuccess(`Purged ${res.deletedCount} ${status} S2S delivery record(s).`);
+      void loadFederationDomains();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to purge S2S delivery queue");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResolveDmca = async (
+    noticeId: number,
+    actionTaken: string,
+    options?: { status?: "resolved" | "rejected" | undefined; quarantineResource?: boolean | undefined },
+  ) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      await resolveAdminDmcaNotice(noticeId, actionTaken, options);
+      setSuccess(`DMCA notice #${noticeId} ${options?.status || "resolved"}.`);
       void loadDmcaNotices();
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to resolve DMCA notice");
@@ -402,8 +594,23 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const handleCreateHotBackup = async (label?: string) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await createAdminHotBackup(label);
+      setSuccess(`Hot SQLite backup created: ${res.backup?.fileName || "snapshot"}.`);
+      void loadDbStatus();
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Failed to create hot backup");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRefreshCurrentTab = () => {
     if (activeTab === "moderation") void loadModerationQueue();
+    else if (activeTab === "users") void loadUsers();
     else if (activeTab === "analytics") void loadAnalytics();
     else if (activeTab === "federation") void loadFederationDomains();
     else if (activeTab === "dmca") void loadDmcaNotices();
@@ -414,12 +621,13 @@ export const AdminPage: React.FC = () => {
 
   return (
     <AdminContainer>
-      <AdminMenuSidebar activeTab={activeTab} onSelectTab={setActiveTab} />
+      <AdminMenuSidebar activeTab={activeTab} onSelectTab={setActiveTab} overviewCounts={overviewCounts} />
 
       <DetailColumn $hideOnMobile={false}>
         <Header>
           <span>
             {activeTab === "moderation" && "Moderation Queue"}
+            {activeTab === "users" && "Users & Account Governance"}
             {activeTab === "analytics" && "Unified Analytics & Traffic"}
             {activeTab === "federation" && "Federation Domain Management"}
             {activeTab === "dmca" && "DMCA Takedown Notices"}
@@ -483,7 +691,22 @@ export const AdminPage: React.FC = () => {
               modFilter={modFilter}
               setModFilter={setModFilter}
               onResolveReport={handleResolveReport}
+              onBulkResolveReports={handleBulkResolveReports}
               onDeletePost={handleDeletePostDirectly}
+              loading={loading}
+            />
+          )}
+
+          {activeTab === "users" && (
+            <AdminUsersTab
+              users={users}
+              userSearchQuery={userSearchQuery}
+              setUserSearchQuery={setUserSearchQuery}
+              userStatusFilter={userStatusFilter}
+              setUserStatusFilter={setUserStatusFilter}
+              userRoleFilter={userRoleFilter}
+              setUserRoleFilter={setUserRoleFilter}
+              onModerateUser={handleModerateUser}
               loading={loading}
             />
           )}
@@ -505,6 +728,12 @@ export const AdminPage: React.FC = () => {
               domains={domains}
               onSaveDomainTier={handleSaveDomainTier}
               onDeleteDomainRule={handleDeleteDomainRule}
+              queueStats={federationQueueStats}
+              deliveries={federationDeliveries}
+              deliveryStatusFilter={deliveryStatusFilter}
+              setDeliveryStatusFilter={setDeliveryStatusFilter}
+              onRetryFailedDeliveries={handleRetryFailedDeliveries}
+              onPurgeDeliveries={handlePurgeDeliveries}
               loading={loading}
             />
           )}
@@ -523,7 +752,36 @@ export const AdminPage: React.FC = () => {
             <AdminAuditLogsTab
               auditLogs={auditLogs}
               auditActionFilter={auditActionFilter}
-              setAuditActionFilter={setAuditActionFilter}
+              setAuditActionFilter={(f) => {
+                setAuditPageOffset(0);
+                setAuditActionFilter(f);
+              }}
+              auditResourceFilter={auditResourceFilter}
+              setAuditResourceFilter={(r) => {
+                setAuditPageOffset(0);
+                setAuditResourceFilter(r);
+              }}
+              auditPageOffset={auditPageOffset}
+              setAuditPageOffset={setAuditPageOffset}
+              chainVerification={auditChainVerification}
+              onVerifyChain={async () => {
+                setLoading(true);
+                clearMessages();
+                try {
+                  const res = await verifyAdminAuditLogsChain();
+                  setAuditChainVerification(res);
+                  setSuccess(
+                    res.valid
+                      ? `Cryptographic SHA-256 audit log chain verified (${res.verifiedEntries}/${res.totalEntries} entries).`
+                      : `Audit log chain integrity failure detected at entry #${res.brokenAtId ?? "unknown"}!`,
+                  );
+                } catch (err: any) {
+                  setError(err.response?.data?.error || "Failed to verify audit log hash chain");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              loading={loading}
             />
           )}
 
@@ -536,6 +794,8 @@ export const AdminPage: React.FC = () => {
               setDbDryRun={setDbDryRun}
               onVerifyDb={handleVerifyDb}
               onUpgradeDb={handleUpgradeDb}
+              backups={dbBackups}
+              onCreateHotBackup={handleCreateHotBackup}
               loading={loading}
             />
           )}
@@ -545,6 +805,7 @@ export const AdminPage: React.FC = () => {
               featureFlags={featureFlags}
               togglingFlagKey={togglingFlagKey}
               onToggleFlag={handleToggleFlag}
+              onUpdateFlagConfig={handleUpdateFlagConfig}
             />
           )}
         </Box>

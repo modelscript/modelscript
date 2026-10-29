@@ -362,7 +362,7 @@ export function seedScriptsAndTemplates(db: LibraryDatabase): void {
       db.createSolutionRelease(s1, {
         version: "1.0.0",
         changelog: "Initial production release with M7201-M7210 control linter rules.",
-        bundle_url: "https://cdn.modelscript.org/solutions/simulink-linter/index.html",
+        bundle_url: "/static/solutions/simulink-linter/index.html",
         tauri_windows_url:
           "https://github.com/modelscript/simulink-linter/releases/download/v1.0.0/simulink-linter-x64.exe",
         tauri_linux_url:
@@ -382,7 +382,7 @@ export function seedScriptsAndTemplates(db: LibraryDatabase): void {
       db.createSolutionRelease(s2, {
         version: "1.2.0",
         changelog: "Added automated dynamic impedance scan and PRC-024 curve overlay.",
-        bundle_url: "https://cdn.modelscript.org/solutions/ieee-2800-auditor/index.html",
+        bundle_url: "/static/solutions/ieee-2800-auditor/index.html",
         tauri_windows_url:
           "https://github.com/modelscript/ieee-2800-auditor/releases/download/v1.2.0/ieee-2800-auditor-x64.exe",
       });

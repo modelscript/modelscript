@@ -2,15 +2,17 @@
 
 import styled from "styled-components";
 
-export const TabBar = styled.div`
+export const TabBar = styled.div<{ $scrolled?: boolean | undefined }>`
   display: flex;
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 20;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: var(--surface-hud);
+  z-index: 50;
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  background: ${(props) =>
+    props.$scrolled ? "color-mix(in srgb, var(--color-bg-primary) 92%, transparent)" : "transparent"};
+  transition: background-color 0.15s ease;
 `;
 
 export const Tab = styled.button<{ $active?: boolean | undefined }>`
@@ -21,6 +23,8 @@ export const Tab = styled.button<{ $active?: boolean | undefined }>`
   height: 53px;
   background: none;
   border: none;
+  font-size: var(--text-md, 15px);
+  line-height: var(--leading-md, 20px);
   color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
   font-weight: ${(props) => (props.$active ? "700" : "500")};
   cursor: pointer;
@@ -114,19 +118,22 @@ export const ComposePrompt = styled.div`
   display: flex;
   gap: 12px;
   padding: 16px;
+  background: var(--color-bg-primary);
   border-bottom: 1px solid var(--color-border);
   cursor: text;
 `;
 
-export const FilterSection = styled.div`
-  background: var(--surface-hud, rgba(14, 20, 36, 0.65));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+export const FilterSection = styled.div<{ $scrolled?: boolean | undefined }>`
+  background: ${(props) =>
+    props.$scrolled ? "color-mix(in srgb, var(--color-bg-primary) 92%, transparent)" : "transparent"};
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
   border-bottom: 1px solid var(--color-border);
   padding: 8px 16px;
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  z-index: 15;
+  z-index: 45;
+  transition: background-color 0.15s ease;
 `;
 
 export const FilterChipsScroll = styled.div`

@@ -20,6 +20,12 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
   /** Active LSP language client used to request CAD component meshes and listen for AST updates. */
   private readonly _client: LanguageClient;
+  /** Last known target CAD/modeling document URI (persisted when focus moves to webview/diagram tabs). */
+  private _targetDocumentUri: string | undefined;
+  /** Optional pre-evaluated CAD components provided on panel creation. */
+  private _initialComponents:
+    | { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
+    | undefined;
 
   /**
    * Creates a new 3D CAD Viewer webview panel beside the active editor, or reveals
@@ -27,13 +33,39 @@ export class CadViewerPanel extends BaseWebviewPanel {
    *
    * @param extensionUri - Base URI of the IDE extension.
    * @param client - Active LSP `LanguageClient`.
+   * @param initialFocusPart - Optional part identifier to focus on open.
+   * @param targetUri - Optional document URI to bind the viewer to before focus shifts to the webview.
+   * @param initialComponents - Optional pre-evaluated CAD component list.
    */
-  public static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, initialFocusPart?: string) {
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    client: LanguageClient,
+    initialFocusPart?: string,
+    targetUri?: string,
+    initialComponents?: unknown[],
+  ) {
+    const activeEditorDoc = vscode.window.activeTextEditor?.document;
+    const resolvedUri =
+      targetUri ??
+      (activeEditorDoc && activeEditorDoc.uri.scheme !== "output" ? activeEditorDoc.uri.toString() : undefined);
     const column = vscode.window.activeTextEditor ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
 
     if (CadViewerPanel.currentPanel) {
+      if (resolvedUri) {
+        CadViewerPanel.currentPanel._targetDocumentUri = resolvedUri;
+      }
+      if (Array.isArray(initialComponents) && initialComponents.length > 0) {
+        CadViewerPanel.currentPanel._initialComponents = initialComponents as {
+          proceduralMesh?: unknown;
+          cad?: string | Record<string, unknown> | undefined;
+        }[];
+        CadViewerPanel.currentPanel._panel.webview.postMessage({
+          type: "cadComponents",
+          data: initialComponents,
+        });
+      }
       CadViewerPanel.currentPanel._panel.reveal(column);
-      CadViewerPanel.currentPanel.update();
+      void CadViewerPanel.currentPanel.update();
       if (initialFocusPart) {
         CadViewerPanel.currentPanel.focusPart(initialFocusPart);
       }
@@ -46,7 +78,15 @@ export class CadViewerPanel extends BaseWebviewPanel {
       localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist"), vscode.Uri.joinPath(extensionUri, "images")],
     });
 
-    CadViewerPanel.currentPanel = new CadViewerPanel(panel, extensionUri, client);
+    CadViewerPanel.currentPanel = new CadViewerPanel(
+      panel,
+      extensionUri,
+      client,
+      resolvedUri,
+      initialComponents as
+        | { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
+        | undefined,
+    );
     if (initialFocusPart) {
       CadViewerPanel.currentPanel.focusPart(initialFocusPart);
     }
@@ -56,23 +96,34 @@ export class CadViewerPanel extends BaseWebviewPanel {
    * Initializes the CAD viewer panel, wires up webview message handlers for gizmo and binding
    * writebacks, and subscribes to editor and workspace change events.
    */
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    client: LanguageClient,
+    targetDocumentUri?: string,
+    initialComponents?: { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[],
+  ) {
     super(panel, extensionUri);
     this._client = client;
+    this._targetDocumentUri = targetDocumentUri;
+    this._initialComponents = initialComponents;
 
     this._panel.webview.onDidReceiveMessage(
       (message) => {
         switch (message.type) {
           case "ready":
-            this.update();
+            if (this._initialComponents && this._initialComponents.length > 0) {
+              this._panel.webview.postMessage({ type: "cadComponents", data: this._initialComponents });
+            }
+            void this.update();
             break;
           case "select":
             break;
           case "commitGizmoDelta":
-            this.handleCommitGizmoDelta(message.payload);
+            void this.handleCommitGizmoDelta(message.payload);
             break;
           case "commitCadBinding":
-            this.handleCommitCadBinding(message.payload);
+            void this.handleCommitCadBinding(message.payload);
             break;
         }
       },
@@ -91,9 +142,10 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
     // Watch for active editor changes to auto-update CAD viewer
     vscode.window.onDidChangeActiveTextEditor(
-      () => {
-        if (vscode.window.activeTextEditor?.document) {
-          this.update();
+      (editor) => {
+        if (editor?.document && editor.document.uri.scheme !== "output") {
+          this._targetDocumentUri = editor.document.uri.toString();
+          void this.update();
         }
       },
       null,
@@ -105,7 +157,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
       if (cadUpdateTimer) clearTimeout(cadUpdateTimer);
       cadUpdateTimer = setTimeout(() => {
         cadUpdateTimer = null;
-        this.update();
+        void this.update();
       }, 250);
     };
     this._disposables.push({
@@ -119,7 +171,11 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
     vscode.workspace.onDidChangeTextDocument(
       (e) => {
-        if (e.document === vscode.window.activeTextEditor?.document) {
+        const targetDoc = this._resolveTargetDocument();
+        if (
+          e.document === vscode.window.activeTextEditor?.document ||
+          (targetDoc && e.document.uri.toString() === targetDoc.uri.toString())
+        ) {
           debouncedUpdate();
         }
       },
@@ -137,25 +193,118 @@ export class CadViewerPanel extends BaseWebviewPanel {
   }
 
   /**
+   * Resolves the target text document for CAD extraction and writeback, falling back to
+   * `_targetDocumentUri`, visible editors, or open `.scad`/`.mo` workspace documents when
+   * the webview or a custom diagram editor currently holds focus.
+   */
+  private _resolveTargetDocument(): vscode.TextDocument | undefined {
+    const activeDoc = vscode.window.activeTextEditor?.document;
+    if (activeDoc && activeDoc.uri.scheme !== "output") {
+      this._targetDocumentUri = activeDoc.uri.toString();
+      return activeDoc;
+    }
+
+    if (this._targetDocumentUri) {
+      const matched = vscode.workspace.textDocuments.find((d) => d.uri.toString() === this._targetDocumentUri);
+      if (matched && matched.uri.scheme !== "output") {
+        return matched;
+      }
+    }
+
+    const activeTabInput = vscode.window.tabGroups?.activeTabGroup?.activeTab?.input as
+      | { uri?: vscode.Uri | undefined }
+      | undefined;
+    if (activeTabInput?.uri) {
+      const tabUriStr = activeTabInput.uri.toString();
+      const matched = vscode.workspace.textDocuments.find((d) => d.uri.toString() === tabUriStr);
+      if (matched && matched.uri.scheme !== "output") {
+        this._targetDocumentUri = tabUriStr;
+        return matched;
+      }
+    }
+
+    for (const ed of vscode.window.visibleTextEditors) {
+      if (ed.document.uri.scheme !== "output" && /\.(scad|mo|sysml|sysml2)$/i.test(ed.document.uri.path)) {
+        this._targetDocumentUri = ed.document.uri.toString();
+        return ed.document;
+      }
+    }
+
+    const openCadDoc =
+      vscode.workspace.textDocuments.find(
+        (d) => d.uri.scheme !== "output" && (d.languageId === "scad" || /\.scad$/i.test(d.uri.path)),
+      ) ??
+      vscode.workspace.textDocuments.find(
+        (d) => d.uri.scheme !== "output" && (d.languageId === "modelica" || /\.mo$/i.test(d.uri.path)),
+      );
+    if (openCadDoc) {
+      this._targetDocumentUri = openCadDoc.uri.toString();
+      return openCadDoc;
+    }
+
+    return undefined;
+  }
+
+  /**
    * Queries the LSP server for CAD components in the active document, resolves relative
    * binary glTF asset URIs into base64 data URIs, and posts the component list to the webview.
    */
   public async update() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.uri.scheme === "output") {
+    const doc = this._resolveTargetDocument();
+    if (!doc || doc.uri.scheme === "output") {
+      if (this._initialComponents && this._initialComponents.length > 0) {
+        this._panel.webview.postMessage({ type: "cadComponents", data: this._initialComponents });
+      }
       return;
     }
 
-    const uri = editor.document.uri.toString();
-    try {
-      if (!this._client || typeof this._client.sendRequest !== "function") {
-        return;
-      }
-      // Send a custom request to the language server to get the cad components
+    const uri = doc.uri.toString();
+    const documentText = doc.getText();
+    const isScad = doc.languageId === "scad" || /\.scad$/i.test(doc.uri.path);
 
-      const cadComponents = await this._client.sendRequest<
-        { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
-      >("modelscript/getCadComponents", { uri });
+    try {
+      let cadComponents: { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[] = [];
+
+      if (this._client && typeof this._client.sendRequest === "function") {
+        try {
+          const lspComps = await this._client.sendRequest<
+            { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
+          >("modelscript/getCadComponents", { uri, documentText });
+          if (Array.isArray(lspComps)) {
+            cadComponents = lspComps;
+          }
+        } catch (err) {
+          console.warn("[CAD Viewer] LSP getCadComponents failed, trying local fallback:", err);
+        }
+      }
+
+      // Direct in-extension fallback for OpenSCAD (.scad) documents if LSP parser was still warming up
+      if (isScad && cadComponents.length === 0 && documentText.trim().length > 0) {
+        try {
+          const { getScadParser, extractScadCadComponents } = await import("@modelscript/scad");
+          let wasmBytes: Uint8Array | undefined;
+          try {
+            const wasmUri = vscode.Uri.joinPath(this._extensionUri, "dist", "scad.wasm");
+            wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+          } catch {
+            // Node fallback
+          }
+          await getScadParser(wasmBytes);
+          const localComps = await extractScadCadComponents(documentText, undefined, uri);
+          if (Array.isArray(localComps) && localComps.length > 0) {
+            cadComponents = localComps as unknown as {
+              proceduralMesh?: unknown;
+              cad?: string | Record<string, unknown> | undefined;
+            }[];
+          }
+        } catch (scadErr) {
+          console.warn("[CAD Viewer] Direct SCAD component evaluation failed:", scadErr);
+        }
+      }
+
+      if (cadComponents.length === 0 && this._initialComponents && this._initialComponents.length > 0) {
+        cadComponents = this._initialComponents;
+      }
 
       const documentUri = vscode.Uri.parse(uri);
       for (const comp of cadComponents) {
@@ -265,10 +414,9 @@ export class CadViewerPanel extends BaseWebviewPanel {
       | undefined;
   }): Promise<void> {
     if (!payload) return;
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
 
-    const doc = editor.document;
     const source = doc.getText();
     const { componentName, mode = "translate", newPosition, newRotation, newScale, sourceMetadata } = payload;
 
@@ -276,7 +424,14 @@ export class CadViewerPanel extends BaseWebviewPanel {
     if (doc.languageId === "scad" || doc.fileName.endsWith(".scad")) {
       try {
         const { getScadParser, ScadPatcher } = await import("@modelscript/scad");
-        const parser = await getScadParser();
+        let wasmBytes: Uint8Array | undefined;
+        try {
+          const wasmUri = vscode.Uri.joinPath(this._extensionUri, "dist", "scad.wasm");
+          wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+        } catch {
+          // Node fallback
+        }
+        const parser = await getScadParser(wasmBytes);
         const tree = parser.parse(source);
         if (!tree) return;
 
@@ -394,10 +549,9 @@ export class CadViewerPanel extends BaseWebviewPanel {
     uri?: string | undefined;
   }): Promise<void> {
     if (!payload) return;
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
 
-    const doc = editor.document;
     const source = doc.getText();
     const { componentName, bindings, uri } = payload;
 

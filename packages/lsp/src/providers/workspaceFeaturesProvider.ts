@@ -76,11 +76,18 @@ export function registerWorkspaceFeaturesProvider(
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
 
-    const isSysML2 = params.textDocument.uri.endsWith(".sysml");
-    const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
-
     const offset = document.offsetAt(params.position);
     const text = document.getText();
+
+    const { globalLanguageRegistry } = await import("../registry/LanguageRegistry.js");
+    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
+    if (plugin?.customHandlers?.references) {
+      const refs = plugin.customHandlers.references(offset, text, params.textDocument.uri);
+      if (refs && refs.length > 0) return refs;
+    }
+
+    const isSysML2 = params.textDocument.uri.endsWith(".sysml");
+    const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
     let ws = offset;
     if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
     while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;

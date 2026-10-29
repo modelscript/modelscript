@@ -169,6 +169,14 @@ const PostDetailPage: React.FC = () => {
   const mainPostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const active = Boolean(isNotebook && notebookData);
+    window.dispatchEvent(new CustomEvent("modelscript:notebook-inspector", { detail: { active } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent("modelscript:notebook-inspector", { detail: { active: false } }));
+    };
+  }, [isNotebook, notebookData]);
+
+  useEffect(() => {
     if (!loading && post && parents.length > 0 && mainPostRef.current) {
       setTimeout(() => {
         if (mainPostRef.current) {

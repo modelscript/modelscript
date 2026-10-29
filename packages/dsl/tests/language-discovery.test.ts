@@ -77,7 +77,7 @@ describe("Workspace Language Discovery & Extension Generator", () => {
     assert.ok(customEditorTypes.has("modelscript.lpsEditor"));
     assert.ok(customEditorTypes.has("modelscript.simaEditor"));
     assert.ok(customEditorTypes.has("modelscript.gtsuiteEditor"));
-    assert.ok(!customEditorTypes.has("touchstone.diagramEditor"));
+    assert.ok(customEditorTypes.has("touchstone.diagramEditor"));
     assert.ok(!customEditorTypes.has("smv.diagramEditor"));
 
     // 4. Categorized configuration with per-language maturity labels and toggles

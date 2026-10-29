@@ -9,14 +9,14 @@ import { CircleIconButton } from "./SharedStyles";
 const Root = styled.header<{ $divider: boolean }>`
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 10;
+  z-index: 50;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 0 16px;
-  background: var(--surface-hud);
-  backdrop-filter: saturate(160%) blur(14px);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
   border-bottom: ${(p) => (p.$divider ? "1px solid var(--color-border)" : "none")};
 `;
 
@@ -45,7 +45,7 @@ const Title = styled.h2`
   margin: 0;
   font-size: var(--text-xl, 20px);
   font-weight: 700;
-  line-height: 1.25;
+  line-height: var(--leading-xl, 24px);
   letter-spacing: -0.01em;
   color: var(--color-text-heading);
   white-space: nowrap;
@@ -54,7 +54,8 @@ const Title = styled.h2`
 `;
 
 const Subtitle = styled.span`
-  font-size: 13px;
+  font-size: var(--text-sm, 13px);
+  line-height: var(--leading-sm, 16px);
   color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;

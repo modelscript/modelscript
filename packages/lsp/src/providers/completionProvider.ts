@@ -26,14 +26,18 @@ export function registerCompletionProvider(
       return getPscadCompletions(text, offset) as unknown as CompletionItem[];
     }
 
+    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
+    if (plugin?.customHandlers?.complete) {
+      const customItems = plugin.customHandlers.complete(offset, text);
+      if (customItems && customItems.length > 0) {
+        return customItems;
+      }
+    }
+
     const bridge = documentLSPBridges.get(params.textDocument.uri);
 
     if (!bridge) {
-      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
       if (plugin) {
-        if (plugin.customHandlers?.complete) {
-          return plugin.customHandlers.complete(offset, text);
-        }
         if (plugin.facade?.getCompletions) {
           try {
             const comps = plugin.facade.getCompletions(offset, text);
@@ -57,7 +61,6 @@ export function registerCompletionProvider(
     }
 
     // Fallback: keyword completions dynamically from language definition or monarch
-    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
     const kws: string[] =
       (plugin?.languageDef?.keywords as string[]) ??
       (plugin?.monarch?.keywords as string[]) ??

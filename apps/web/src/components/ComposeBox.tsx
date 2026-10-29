@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AiPolishMode } from "../api";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { getAvatarUrl } from "../util/avatar";
+import {
+  type ComposerAiEngineMode,
+  getPreferredAiEngine,
+  runComposerAiDraft,
+  runComposerAiPolish,
+  setPreferredAiEngine,
+} from "../util/composer-ai";
+import type { NotebookCell } from "../util/notebook";
 import Box from "./Box";
 import {
   Backdrop,
@@ -84,6 +93,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const hasHpc = useFeatureFlag("cae_cloud_solver");
 
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(Boolean(autoFocus));
   const [showRecipientsModal, setShowRecipientsModal] = useState(false);
   const [excludedUsers, setExcludedUsers] = useState<Set<string>>(new Set());
 
@@ -166,6 +176,198 @@ export default function ComposeBox(props: ComposeBoxProps) {
       setContent(content + emoji);
     }
   };
+
+  // Composer AI (Local Browser AI + Remote AI) state & handlers
+  const [aiBusy, setAiBusy] = useState<"drafting" | "polishing" | null>(null);
+  const [aiEngine, setAiEngine] = useState<ComposerAiEngineMode>(() => getPreferredAiEngine());
+  const [previousAiState, setPreviousAiState] = useState<{
+    content: string;
+    isNotebookMode: boolean;
+    notebookCellsJson?: string | undefined;
+  } | null>(null);
+  const [attachedArtifactView, setAttachedArtifactView] = useState<Record<string, unknown> | null>(null);
+  const [aiLastSourceLabel, setAiLastSourceLabel] = useState<string | null>(null);
+  const lastAutoDraftedArtifactIdRef = useRef<number | null>(editPostId && artifactId ? artifactId : null);
+
+  const formatAiSourceLabel = (provider: string): string => {
+    if (provider === "local-window-ai") return "Local Browser LLM";
+    if (provider.startsWith("local")) return "Local AI";
+    return "Remote AI";
+  };
+
+  const handleChangeAiEngine = useCallback((mode: ComposerAiEngineMode) => {
+    setAiEngine(mode);
+    setPreferredAiEngine(mode);
+  }, []);
+
+  const saveUndoSnapshot = useCallback(() => {
+    setPreviousAiState({
+      content,
+      isNotebookMode: notebook.isNotebookMode,
+      notebookCellsJson: notebook.isNotebookMode ? JSON.stringify(notebook.notebookCells) : undefined,
+    });
+  }, [content, notebook.isNotebookMode, notebook.notebookCells]);
+
+  const handleUndoAi = useCallback(() => {
+    if (!previousAiState) return;
+    if (previousAiState.isNotebookMode && previousAiState.notebookCellsJson) {
+      try {
+        const restored = JSON.parse(previousAiState.notebookCellsJson) as NotebookCell[];
+        notebook.setNotebookCells(restored);
+        notebook.syncNotebookToContentAndArtifact(restored, notebook.notebookTitle);
+      } catch {
+        setContent(previousAiState.content);
+      }
+    } else {
+      setContent(previousAiState.content);
+    }
+    setPreviousAiState(null);
+    setAiLastSourceLabel(null);
+  }, [previousAiState, notebook, setContent]);
+
+  const handleAiDraft = useCallback(
+    async (
+      overrideArtifactId?: number | null,
+      overrideView?: Record<string, unknown> | null,
+      targetArtifactCellId?: string,
+    ) => {
+      const targetArtifactId = overrideArtifactId !== undefined ? overrideArtifactId : artifactId;
+      if (targetArtifactId === null) return;
+      saveUndoSnapshot();
+      setAiBusy("drafting");
+      try {
+        const viewForDraft =
+          overrideView !== undefined ? overrideView : targetArtifactId === artifactId ? attachedArtifactView : null;
+        const result = await runComposerAiDraft({
+          artifactId: targetArtifactId,
+          artifactView: viewForDraft,
+          existingText: content,
+          isNotebook: notebook.isNotebookMode,
+          engine: aiEngine,
+        });
+        setAiLastSourceLabel(formatAiSourceLabel(result.provider));
+
+        if (notebook.isNotebookMode) {
+          if (!notebook.notebookTitle.trim() && result.notebookTitle) {
+            notebook.setNotebookTitle(result.notebookTitle);
+          }
+          if (!notebook.notebookSummary.trim() && result.notebookSummary) {
+            notebook.setNotebookSummary(result.notebookSummary);
+          }
+
+          if (targetArtifactCellId) {
+            const cellIdx = notebook.notebookCells.findIndex((c) => c.id === targetArtifactCellId);
+            const nextCell = cellIdx >= 0 ? notebook.notebookCells[cellIdx + 1] : undefined;
+            if (nextCell && nextCell.type === "markdown" && !nextCell.content.trim()) {
+              notebook.updateMarkdownCell(nextCell.id, result.draft);
+            } else {
+              const newCells = [...notebook.notebookCells];
+              const insertAt = cellIdx >= 0 ? cellIdx + 1 : newCells.length;
+              newCells.splice(insertAt, 0, {
+                id: `cell-ai-${Date.now()}`,
+                type: "markdown",
+                content: result.draft,
+              });
+              notebook.setNotebookCells(newCells);
+              notebook.syncNotebookToContentAndArtifact(newCells, notebook.notebookTitle || result.notebookTitle);
+            }
+          } else {
+            const emptyMdCell =
+              notebook.notebookCells.find(
+                (c) => c.id === notebook.activeCellId && c.type === "markdown" && !c.content.trim(),
+              ) ||
+              notebook.notebookCells.find((c) => c.type === "markdown" && !c.content.trim()) ||
+              notebook.notebookCells.find((c) => c.id === notebook.activeCellId && c.type === "markdown") ||
+              notebook.notebookCells.find((c) => c.type === "markdown");
+            if (emptyMdCell && emptyMdCell.type === "markdown") {
+              notebook.updateMarkdownCell(emptyMdCell.id, result.draft);
+            } else {
+              setContent(result.draft);
+            }
+          }
+        } else {
+          setContent(result.draft);
+        }
+      } catch {
+        // Fallback already handled inside runComposerAiDraft
+      } finally {
+        setAiBusy(null);
+      }
+    },
+    [artifactId, attachedArtifactView, content, aiEngine, notebook, saveUndoSnapshot, setContent],
+  );
+
+  const handleAiPolish = useCallback(
+    async (mode: AiPolishMode = "polish", targetCellId?: string) => {
+      if (notebook.isNotebookMode) {
+        const mdCell = targetCellId
+          ? notebook.notebookCells.find((c) => c.id === targetCellId && c.type === "markdown")
+          : notebook.notebookCells.find(
+              (c) => c.id === notebook.activeCellId && c.type === "markdown" && c.content.trim(),
+            ) || notebook.notebookCells.find((c) => c.type === "markdown" && c.content.trim());
+        if (!mdCell || mdCell.type !== "markdown" || !mdCell.content.trim()) return;
+        saveUndoSnapshot();
+        setAiBusy("polishing");
+        try {
+          const res = await runComposerAiPolish({
+            content: mdCell.content,
+            mode,
+            artifactId,
+            artifactView: attachedArtifactView,
+            engine: aiEngine,
+          });
+          notebook.updateMarkdownCell(mdCell.id, res.polished);
+          setAiLastSourceLabel(formatAiSourceLabel(res.provider));
+        } finally {
+          setAiBusy(null);
+        }
+        return;
+      }
+
+      if (!content.trim()) return;
+      saveUndoSnapshot();
+      setAiBusy("polishing");
+      try {
+        const res = await runComposerAiPolish({
+          content,
+          mode,
+          artifactId,
+          artifactView: attachedArtifactView,
+          engine: aiEngine,
+        });
+        setContent(res.polished);
+        setAiLastSourceLabel(formatAiSourceLabel(res.provider));
+      } finally {
+        setAiBusy(null);
+      }
+    },
+    [notebook, artifactId, attachedArtifactView, aiEngine, content, saveUndoSnapshot, setContent],
+  );
+
+  // Automatically draft a post when a user attaches an artifact and the composer text is empty
+  useEffect(() => {
+    if (artifactId === null) {
+      lastAutoDraftedArtifactIdRef.current = null;
+      setAttachedArtifactView(null);
+      return;
+    }
+    if (editPostId) {
+      lastAutoDraftedArtifactIdRef.current = artifactId;
+      return;
+    }
+    if (lastAutoDraftedArtifactIdRef.current === artifactId) {
+      return;
+    }
+    lastAutoDraftedArtifactIdRef.current = artifactId;
+
+    const isTextEmpty = notebook.isNotebookMode
+      ? !notebook.notebookCells.some((c) => c.type === "markdown" && c.content.trim().length > 0)
+      : !content.trim();
+
+    if (isTextEmpty) {
+      void handleAiDraft(artifactId, null);
+    }
+  }, [artifactId, editPostId, notebook.isNotebookMode, notebook.notebookCells, content, handleAiDraft]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -259,7 +461,15 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   />
                 </Box>
               )}
-              <div style={{ position: "relative", width: "100%" }}>
+              <div
+                style={{ position: "relative", width: "100%" }}
+                onFocusCapture={() => setIsInputFocused(true)}
+                onBlurCapture={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                    setIsInputFocused(false);
+                  }
+                }}
+              >
                 {notebook.isNotebookMode ? (
                   <NotebookContainer>
                     <ComposeTutorialMetaEditor
@@ -303,6 +513,9 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       setShowCodeSnippetModal={setShowCodeSnippetModal}
                       setShowMorselModal={setShowMorselModal}
                       fileInputRef={fileInputRef}
+                      onPolishCell={(cellId) => void handleAiPolish("polish", cellId)}
+                      onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
+                      aiBusy={aiBusy}
                     />
                   </NotebookContainer>
                 ) : (
@@ -344,7 +557,11 @@ export default function ComposeBox(props: ComposeBoxProps) {
                           submitHandler.handleSubmit();
                         }
                       }}
+                      onFocus={() => {
+                        setIsInputFocused(true);
+                      }}
                       onBlur={() => {
+                        setIsInputFocused(false);
                         setTimeout(() => {
                           autocomplete.setMentionQuery(null);
                           autocomplete.setHashtagQuery(null);
@@ -369,6 +586,9 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   artifactId={artifactId}
                   editPostId={editPostId}
                   onRemove={() => setArtifactId(null)}
+                  onDraftWithAi={(view) => void handleAiDraft(artifactId, view)}
+                  aiDrafting={aiBusy === "drafting"}
+                  onArtifactViewLoaded={setAttachedArtifactView}
                 />
               )}
 
@@ -380,6 +600,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   setReplyVisibility={setReplyVisibility}
                   showVisibilityMenu={showVisibilityMenu}
                   setShowVisibilityMenu={setShowVisibilityMenu}
+                  visible={isInputFocused || showVisibilityMenu}
                 />
               )}
             </div>
@@ -410,6 +631,14 @@ export default function ComposeBox(props: ComposeBoxProps) {
               replyToPost={replyToPost}
               textareaRef={textareaRef}
               onInsertEmoji={handleInsertEmoji}
+              onAiDraft={() => void handleAiDraft(artifactId, attachedArtifactView)}
+              onAiPolish={(mode) => void handleAiPolish(mode)}
+              onUndoAi={handleUndoAi}
+              canUndoAi={previousAiState !== null}
+              aiBusy={aiBusy}
+              aiEngine={aiEngine}
+              onChangeAiEngine={handleChangeAiEngine}
+              aiLastSourceLabel={aiLastSourceLabel}
             />
           </Box>
         </Box>

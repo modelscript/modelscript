@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { CaeResultProcessor } from "../services/cae-result-processor.js";
 import { CaeSolverRunner, type CaeJobSpec } from "../services/cae-solver-runner.js";
 import { CaeSweepOrchestrator, type CaeSweepSpec } from "../services/cae-sweep-orchestrator.js";
@@ -44,6 +45,7 @@ const upload = multer({
 
 export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
   const runner = new CaeSolverRunner();
   const activeStreamers = new Map<string, CaeTelemetryStreamer>();
   const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);
@@ -168,7 +170,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
         // Create DB job
         const deckHash = sha256(deckContent);
-        const resultDir = path.join(CAE_CACHE_DIR, "results", `${solverType}_${deckHash.slice(0, 16)}`);
+        const safeDeckHash = deckHash.replace(/[^a-f0-9]/g, "").slice(0, 16);
+        const safeSolver = ["calculix", "su2", "openfoam"].includes(solverType) ? solverType : "calculix";
+        const resultDir = path.resolve(CAE_CACHE_DIR, "results", `${safeSolver}_${safeDeckHash}`);
         const dbJobId = database.createJob(
           `CAE ${solverType.toUpperCase()}: ${title || "Simulation"}`,
           "RUNNING",
@@ -647,16 +651,32 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
     const resultDir = metadata.resultDir;
-    if (!resultDir) return res.status(404).json({ error: "No result directory recorded." });
-
-    const vtuPath = path.join(resultDir, "result.vtu");
-    if (!fs.existsSync(vtuPath)) {
+    if (resultDir) {
+      const vtuPath = path.join(resultDir, "result.vtu");
+      if (fs.existsSync(vtuPath)) {
+        res.setHeader("Content-Type", "application/xml");
+        res.sendFile(vtuPath);
+        return;
+      }
       return res.status(404).json({ error: "Result .vtu file not yet ready." });
     }
 
-    res.setHeader("Content-Type", "application/xml");
-    res.sendFile(vtuPath);
-    return;
+    // Fallback for seeded demonstration jobs without an HPC scratch directory
+    if (dbJob.status === "SUCCESS") {
+      const isCfd = (dbJob.type || "").toUpperCase() === "CFD" || (dbJob.name || "").toLowerCase().includes("cfd");
+      const relFile = isCfd
+        ? "packages/examples/drone-chassis/drone_cfd.vtu"
+        : "packages/examples/drone-chassis/drone_fea.vtu";
+      const candidates = [path.resolve(process.cwd(), relFile), path.resolve(process.cwd(), "../../", relFile)];
+      const fallbackPath = candidates.find((p) => fs.existsSync(p));
+      if (fallbackPath) {
+        res.setHeader("Content-Type", "application/xml");
+        res.sendFile(fallbackPath);
+        return;
+      }
+    }
+
+    return res.status(404).json({ error: "No result directory recorded." });
   });
 
   // 7. Get Scalar Summary JSON (KPIs)

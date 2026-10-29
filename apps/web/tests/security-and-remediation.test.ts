@@ -191,6 +191,11 @@ describe("Web App Security Hardening & Remediation Verification", () => {
         appShellSrc.includes('React.lazy(() => import("./ComposeModal"))'),
         "AppShell must lazy load ComposeModal",
       );
+      assert.ok(
+        appShellSrc.includes('localStorage.getItem("modelscript:dev_header") !== "false"'),
+        "AppShell must default DevModeBar visibility to true unless explicitly minimized",
+      );
+      assert.ok(appShellSrc.includes("<DevModeBar"), "AppShell must render DevModeBar in development mode");
     });
   });
 });

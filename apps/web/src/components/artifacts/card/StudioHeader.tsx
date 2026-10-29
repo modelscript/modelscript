@@ -2,7 +2,6 @@
 
 import {
   CheckIcon,
-  CodeIcon,
   DownloadIcon,
   GitCompareIcon,
   InfoIcon,
@@ -14,9 +13,14 @@ import {
 import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
+import {
+  buildEditorUrlForArtifact,
+  isMultiFileArtifact,
+  openArtifactInVsCodeWindow,
+} from "../../../util/editor-routing";
 import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
+import { VsCodeIcon } from "../../icons/VsCodeIcon";
 
 export interface StudioHeaderProps {
   artifact: any;
@@ -56,8 +60,22 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
     view_config: viewConfig,
   });
 
+  const handleOpenVsCode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    openArtifactInVsCodeWindow({
+      artifactId,
+      viewType: artifact?.view_type,
+      viewConfig,
+      title: artifact?.title || artifact?.name || viewConfig?.title,
+    });
+  };
+
   const handleOpenEditor = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isMultiFile) {
+      handleOpenVsCode(e);
+      return;
+    }
     navigate(
       buildEditorUrlForArtifact({
         artifactId,
@@ -285,12 +303,33 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 ⚡ Fork &amp; Reproduce
               </button>
             )}
+            {!isMultiFile && (
+              <button
+                onClick={handleOpenEditor}
+                style={{
+                  background: "linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2))",
+                  color: "#38bdf8",
+                  border: "1px solid rgba(6, 182, 212, 0.4)",
+                  borderRadius: "6px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                title="Open model in interactive Playground"
+              >
+                <PlayIcon size={14} /> Open in Playground
+              </button>
+            )}
             <button
-              onClick={handleOpenEditor}
+              onClick={handleOpenVsCode}
               style={{
-                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2))",
+                background: "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.18))",
                 color: "#38bdf8",
-                border: "1px solid rgba(6, 182, 212, 0.4)",
+                border: "1px solid rgba(56, 189, 248, 0.4)",
                 borderRadius: "6px",
                 padding: "5px 10px",
                 fontSize: "12px",
@@ -300,10 +339,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 alignItems: "center",
                 gap: "6px",
               }}
-              title={isMultiFile ? "Open project workspace in VS Code IDE" : "Open model in interactive Playground"}
+              title="Open in VS Code (New Window)"
             >
-              {isMultiFile ? <CodeIcon size={14} /> : <PlayIcon size={14} />}{" "}
-              {isMultiFile ? "Open in VS Code" : "Open in Playground"}
+              <VsCodeIcon size={14} color="#38bdf8" /> VS Code ↗
             </button>
           </>
         )}

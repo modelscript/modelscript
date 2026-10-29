@@ -8,6 +8,7 @@ import { Router as createRouter } from "express";
 import jwt from "jsonwebtoken";
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 
 const MAX_MCP_SESSIONS = 200;
@@ -21,6 +22,7 @@ interface ActiveSession {
 
 export function mcpRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+  router.use(defaultApiLimiter);
   const sessions = new Map<string, ActiveSession>();
 
   function resolveAuth(req: Request): number | null {

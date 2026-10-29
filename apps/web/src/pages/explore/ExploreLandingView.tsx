@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronLeftIcon, ChevronRightIcon, CodeIcon, RocketIcon, SearchIcon, TagIcon } from "@primer/octicons-react";
-import { Heading, Spinner, Text } from "@primer/react";
+import { ChevronLeftIcon, ChevronRightIcon, CodeIcon, RocketIcon, SearchIcon } from "@primer/octicons-react";
+import { Heading, Spinner } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import Box from "../../components/Box";
@@ -24,7 +24,6 @@ export interface ExploreLandingViewProps {
 export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
   loading,
   posts,
-  trending,
   scrollTemplates,
   templatesScrollRef,
   localQuery = "",
@@ -89,9 +88,10 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
         </Box>
       ) : (
         <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-          {/* Starter Engineering Workspaces */}
+          {/* Compact Starter Engineering Workspaces Strip */}
           <Box
-            p={3}
+            px={3}
+            py="12px"
             borderBottom="1px solid var(--color-border)"
             style={{
               background: "var(--surface-hud, rgba(14, 20, 36, 0.4))",
@@ -101,26 +101,36 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
               boxSizing: "border-box",
             }}
           >
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Box>
-                <Heading
-                  as="h3"
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb="10px">
+              <Heading
+                as="h3"
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: "var(--color-text-heading)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  margin: 0,
+                }}
+              >
+                <RocketIcon size={15} /> Engineering Workspaces
+              </Heading>
+              <Box display="flex" alignItems="center" gap="8px">
+                <Link
+                  to="/ide"
                   style={{
-                    fontSize: "16px",
-                    fontWeight: 800,
-                    color: "var(--color-text-heading)",
+                    fontSize: "12px",
+                    color: "var(--color-accent-cyan)",
+                    fontWeight: 600,
+                    textDecoration: "none",
                     display: "flex",
                     alignItems: "center",
-                    gap: "8px",
+                    gap: "4px",
                   }}
                 >
-                  <RocketIcon size={18} /> Engineering Workspaces
-                </Heading>
-                <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                  Start clean with the recommended blank workspace or launch an interactive physical simulation.
-                </Text>
-              </Box>
-              <Box display="flex" alignItems="center" gap="10px">
+                  <CodeIcon size={13} /> Blank Workspace
+                </Link>
                 <Box display="flex" alignItems="center" gap="4px">
                   <button
                     type="button"
@@ -131,8 +141,8 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                       border: "1px solid var(--color-border-glass)",
                       color: "var(--color-text-muted)",
                       borderRadius: "6px",
-                      width: "26px",
-                      height: "26px",
+                      width: "24px",
+                      height: "24px",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -148,7 +158,7 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                       e.currentTarget.style.borderColor = "var(--color-border-glass)";
                     }}
                   >
-                    <ChevronLeftIcon size={16} />
+                    <ChevronLeftIcon size={14} />
                   </button>
                   <button
                     type="button"
@@ -159,8 +169,8 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                       border: "1px solid var(--color-border-glass)",
                       color: "var(--color-text-muted)",
                       borderRadius: "6px",
-                      width: "26px",
-                      height: "26px",
+                      width: "24px",
+                      height: "24px",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -176,359 +186,239 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                       e.currentTarget.style.borderColor = "var(--color-border-glass)";
                     }}
                   >
-                    <ChevronRightIcon size={16} />
+                    <ChevronRightIcon size={14} />
                   </button>
                 </Box>
-                <Link
-                  to="/ide"
-                  style={{
-                    fontSize: "13px",
-                    color: "var(--color-accent-cyan)",
-                    fontWeight: 600,
-                    textDecoration: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                  }}
-                >
-                  <CodeIcon size={14} /> Open Blank Workspace (Recommended)
-                </Link>
               </Box>
             </Box>
 
             <Box
               ref={templatesScrollRef}
               display="flex"
-              gap="12px"
+              gap="10px"
               overflowX="auto"
               style={{
                 width: "100%",
                 maxWidth: "100%",
                 minWidth: 0,
                 boxSizing: "border-box",
-                paddingBottom: "8px",
+                paddingBottom: "2px",
                 scrollSnapType: "x mandatory",
                 WebkitOverflowScrolling: "touch",
                 scrollbarWidth: "none",
               }}
             >
               {/* Blank Project Workspace Card */}
-              <Box
+              <Link
                 key="blank-project-carousel"
-                bg="var(--color-bg-card)"
-                borderRadius="10px"
-                p="14px"
-                minWidth="240px"
-                maxWidth="260px"
-                display="flex"
-                flexDirection="column"
-                justifyContent="space-between"
-                style={{
-                  flexShrink: 0,
-                  scrollSnapAlign: "start",
-                  background: "var(--color-bg-card)",
-                  border: "1px solid var(--ms-border)",
-                }}
-                sx={{
-                  flexShrink: 0,
-                  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
-                  "&:hover": {
-                    borderColor: "var(--ms-brand)",
-                    transform: "translateY(-2px)",
-                    boxShadow: "var(--glow-card)",
-                  },
-                }}
+                to="/ide"
+                style={{ textDecoration: "none", flexShrink: 0, scrollSnapAlign: "start" }}
               >
-                <Box>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                    <span style={{ fontSize: "20px" }}>📁</span>
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontFamily: "var(--font-mono)",
-                        padding: "2px 6px",
-                        borderRadius: "4px",
-                        backgroundColor: "var(--ms-brand-soft)",
-                        color: "var(--ms-brand)",
-                        border: "1px solid color-mix(in srgb, var(--ms-brand) 35%, transparent)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Clean Slate
-                    </span>
-                  </Box>
-                  <div
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "14px",
-                      color: "var(--color-text-heading)",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Blank Project
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--color-text-muted)",
-                      lineHeight: 1.4,
-                      marginBottom: "12px",
-                    }}
-                  >
-                    Clean slate in-browser workspace. Start fresh with Modelica, SysML v2, or 3D CAD modeling.
-                  </div>
-                </Box>
-                <Link to="/ide" className="ms-btn ms-btn-primary ms-btn-sm ms-btn-block">
-                  <CodeIcon size={14} /> Launch blank workspace
-                </Link>
-              </Box>
-
-              {STARTER_TEMPLATES.map((tpl) => (
                 <Box
-                  key={`${tpl.id}-carousel`}
                   bg="var(--color-bg-card)"
                   borderRadius="10px"
-                  p="14px"
-                  minWidth="240px"
-                  maxWidth="260px"
+                  p="10px 12px"
+                  minWidth="200px"
+                  maxWidth="215px"
                   display="flex"
                   flexDirection="column"
                   justifyContent="space-between"
                   style={{
-                    flexShrink: 0,
-                    scrollSnapAlign: "start",
+                    height: "100%",
+                    boxSizing: "border-box",
                     background: "var(--color-bg-card)",
                     border: "1px solid var(--ms-border)",
                   }}
                   sx={{
-                    flexShrink: 0,
                     transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                     "&:hover": {
                       borderColor: "var(--ms-brand)",
-                      transform: "translateY(-2px)",
+                      transform: "translateY(-1px)",
                       boxShadow: "var(--glow-card)",
                     },
                   }}
                 >
                   <Box>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <span style={{ fontSize: "20px" }}>{tpl.icon}</span>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                      <span style={{ fontSize: "16px" }}>📁</span>
                       <span
                         style={{
                           fontSize: "10px",
                           fontFamily: "var(--font-mono)",
-                          padding: "2px 6px",
+                          padding: "1px 5px",
                           borderRadius: "4px",
-                          backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
-                          color: "var(--hue-indigo)",
-                          border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
+                          backgroundColor: "var(--ms-brand-soft)",
+                          color: "var(--ms-brand)",
+                          border: "1px solid color-mix(in srgb, var(--ms-brand) 35%, transparent)",
                           fontWeight: 600,
                         }}
                       >
-                        {tpl.badge}
+                        Clean Slate
                       </span>
                     </Box>
                     <div
                       style={{
-                        fontWeight: "bold",
-                        fontSize: "14px",
+                        fontWeight: 700,
+                        fontSize: "13px",
                         color: "var(--color-text-heading)",
-                        marginBottom: "4px",
+                        marginBottom: "2px",
                       }}
                     >
-                      {tpl.title}
+                      Blank Project
                     </div>
                     <div
                       style={{
-                        fontSize: "12px",
+                        fontSize: "11.5px",
                         color: "var(--color-text-muted)",
-                        lineHeight: 1.4,
-                        marginBottom: "12px",
+                        lineHeight: 1.35,
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
                       }}
                     >
-                      {tpl.description}
+                      Start fresh with Modelica, SysML v2, or 3D CAD modeling.
                     </div>
                   </Box>
-                  <Link to={`/ide/${tpl.id}`} className="ms-btn ms-btn-secondary ms-btn-sm ms-btn-block">
-                    <CodeIcon size={14} /> Launch {tpl.title}
-                  </Link>
                 </Box>
-              ))}
-            </Box>
-          </Box>
+              </Link>
 
-          {/* Curated Engineering Domains & Hashtags */}
-          <Box
-            p={3}
-            borderBottom="1px solid var(--color-border)"
-            style={{ background: "var(--surface-hud, rgba(14, 20, 36, 0.35))" }}
-          >
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-              <Box>
-                <Heading
-                  as="h3"
-                  style={{
-                    fontSize: "16px",
-                    fontWeight: 800,
-                    color: "var(--color-text-heading)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  <TagIcon size={16} /> Engineering Domains &amp; Hashtags
-                </Heading>
-                <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                  Discover specialized simulation models, CAD geometries, and physical twin discussions by engineering
-                  discipline.
-                </Text>
-              </Box>
-            </Box>
-            <Box
-              display="flex"
-              gap="12px"
-              sx={{
-                overflowX: "auto",
-                paddingBottom: "8px",
-                "&::-webkit-scrollbar": { display: "none" },
-                scrollbarWidth: "none",
-              }}
-            >
-              {CURATED_ENGINEERING_DOMAINS.map((dom) => (
+              {STARTER_TEMPLATES.map((tpl) => (
                 <Link
-                  key={dom.tag}
-                  to={`/explore?topic=${encodeURIComponent(dom.tag)}`}
-                  style={{ textDecoration: "none", flexShrink: 0 }}
+                  key={`${tpl.id}-carousel`}
+                  to={`/ide/${tpl.id}`}
+                  style={{ textDecoration: "none", flexShrink: 0, scrollSnapAlign: "start" }}
                 >
                   <Box
                     bg="var(--color-bg-card)"
-                    border="1px solid var(--color-border-glass)"
                     borderRadius="10px"
-                    p="14px"
+                    p="10px 12px"
                     minWidth="200px"
-                    maxWidth="220px"
+                    maxWidth="215px"
+                    display="flex"
+                    flexDirection="column"
+                    justifyContent="space-between"
+                    style={{
+                      height: "100%",
+                      boxSizing: "border-box",
+                      background: "var(--color-bg-card)",
+                      border: "1px solid var(--ms-border)",
+                    }}
                     sx={{
                       transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
                       "&:hover": {
-                        backgroundColor: "rgba(255, 255, 255, 0.05)",
-                        borderColor: "var(--color-accent-purple)",
-                        transform: "translateY(-2px)",
-                        boxShadow: "0 0 16px rgba(139, 92, 246, 0.15)",
+                        borderColor: "var(--ms-brand)",
+                        transform: "translateY(-1px)",
+                        boxShadow: "var(--glow-card)",
                       },
                     }}
                   >
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Box>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                        <span style={{ fontSize: "16px" }}>{tpl.icon}</span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontFamily: "var(--font-mono)",
+                            padding: "1px 5px",
+                            borderRadius: "4px",
+                            backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
+                            color: "var(--hue-indigo)",
+                            border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {tpl.badge}
+                        </span>
+                      </Box>
                       <div
                         style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: "8px",
-                          background: "var(--color-canvas-subtle)",
-                          border: "1px solid var(--color-border-subtle)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "var(--color-accent-cyan)",
+                          fontWeight: 700,
+                          fontSize: "13px",
+                          color: "var(--color-text-heading)",
+                          marginBottom: "2px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                         }}
                       >
-                        {(() => {
-                          const IconComp = dom.icon;
-                          return IconComp ? <IconComp size={16} /> : null;
-                        })()}
+                        {tpl.title}
                       </div>
-                      <span
+                      <div
                         style={{
-                          fontSize: "10px",
-                          fontFamily: "var(--font-mono)",
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          backgroundColor: "rgba(139, 92, 246, 0.15)",
-                          color: "var(--color-accent-purple)",
-                          border: "1px solid rgba(139, 92, 246, 0.3)",
-                          fontWeight: 600,
+                          fontSize: "11.5px",
+                          color: "var(--color-text-muted)",
+                          lineHeight: 1.35,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
                         }}
                       >
-                        #{dom.tag}
-                      </span>
+                        {tpl.description}
+                      </div>
                     </Box>
-                    <div
-                      style={{
-                        fontWeight: "bold",
-                        fontSize: "14px",
-                        color: "var(--color-text-heading)",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {dom.name}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
-                      {dom.desc}
-                    </div>
                   </Box>
                 </Link>
               ))}
             </Box>
           </Box>
 
-          {trending.length > 0 && (
-            <Box
-              p={3}
-              borderBottom="1px solid var(--color-border)"
-              style={{ background: "var(--surface-hud, rgba(14, 20, 36, 0.2))" }}
+          {/* Feed Header with Inline Quick-Topic Pills */}
+          <Box
+            px={3}
+            py="10px"
+            borderBottom="1px solid var(--color-border)"
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            gap={2}
+            style={{ overflow: "hidden" }}
+          >
+            <Heading
+              as="h3"
+              style={{
+                fontSize: "15px",
+                fontWeight: 800,
+                color: "var(--color-text-heading)",
+                margin: 0,
+                flexShrink: 0,
+              }}
             >
-              <Heading
-                as="h3"
-                style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px", color: "var(--color-text-heading)" }}
-              >
-                Trending Topics
-              </Heading>
-              <Box
-                display="flex"
-                gap="12px"
-                sx={{
-                  overflowX: "auto",
-                  paddingBottom: "8px",
-                  "&::-webkit-scrollbar": { display: "none" },
-                  scrollbarWidth: "none",
-                }}
-              >
-                {trending.map((t, index) => (
-                  <Link
-                    key={t.id || t.name}
-                    to={`/explore?topic=${encodeURIComponent(t.concept || t.name)}`}
-                    style={{ textDecoration: "none" }}
-                  >
-                    <Box
-                      bg="var(--color-bg-card)"
-                      border="1px solid var(--color-border-glass)"
-                      borderRadius="8px"
-                      p="12px 16px"
-                      minWidth="140px"
-                      sx={{
-                        transition: "all 0.2s ease",
-                        "&:hover": {
-                          backgroundColor: "var(--ms-surface-hover)",
-                          borderColor: "var(--ms-brand)",
-                        },
-                      }}
-                    >
-                      <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "4px" }}>
-                        {index + 1} · Trending
-                      </div>
-                      <div style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-text-primary)" }}>
-                        {t.display_name || t.name}
-                      </div>
-                    </Box>
-                  </Link>
-                ))}
-              </Box>
-            </Box>
-          )}
-
-          <Box p={3} borderBottom="1px solid var(--color-border)">
-            <Heading as="h3" style={{ fontSize: "16px", fontWeight: 800, color: "var(--color-text-heading)" }}>
               Suggested Posts
             </Heading>
+            <Box
+              display="flex"
+              alignItems="center"
+              gap="6px"
+              sx={{
+                overflowX: "auto",
+                "&::-webkit-scrollbar": { display: "none" },
+                scrollbarWidth: "none",
+              }}
+            >
+              {CURATED_ENGINEERING_DOMAINS.slice(0, 5).map((dom) => (
+                <Link
+                  key={dom.tag}
+                  to={`/explore?topic=${encodeURIComponent(dom.tag)}`}
+                  style={{
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono)",
+                    padding: "3px 8px",
+                    borderRadius: "9999px",
+                    backgroundColor: "rgba(139, 92, 246, 0.1)",
+                    color: "var(--color-accent-purple)",
+                    border: "1px solid rgba(139, 92, 246, 0.25)",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  #{dom.tag}
+                </Link>
+              ))}
+            </Box>
           </Box>
 
           {posts.map((post) => (

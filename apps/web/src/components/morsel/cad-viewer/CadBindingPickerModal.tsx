@@ -162,16 +162,16 @@ export function CadBindingPickerModal({
 
   return (
     <Dialog
-      isOpen={isOpen}
-      onDismiss={onClose}
+      onClose={onClose}
       aria-labelledby="cad-binding-title"
-      sx={{
-        width: ["95vw", "800px"],
+      width="xlarge"
+      style={{
+        width: "min(95vw, 800px)",
         maxWidth: "850px",
         maxHeight: "90vh",
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "var(--color-canvas-default)",
+        backgroundColor: "var(--surface-overlay)",
         color: "var(--color-fg-default)",
         border: "1px solid var(--color-border-default)",
         borderRadius: "12px",
@@ -181,13 +181,13 @@ export function CadBindingPickerModal({
     >
       <Dialog.Header
         id="cad-binding-title"
-        sx={{
+        style={{
           backgroundColor: "var(--color-canvas-subtle)",
           borderBottom: "1px solid var(--color-border-default)",
           padding: "16px 20px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <span style={{ fontSize: "20px" }}>🧵</span>
             <div>
@@ -206,7 +206,7 @@ export function CadBindingPickerModal({
             variant="invisible"
             size="small"
             onClick={onClose}
-            sx={{ color: dark ? "#8b949e" : "#57606a" }}
+            style={{ color: dark ? "#8b949e" : "#57606a" }}
           />
         </div>
       </Dialog.Header>
@@ -447,7 +447,7 @@ export function CadBindingPickerModal({
       </div>
 
       <Dialog.Footer
-        sx={{
+        style={{
           backgroundColor: "var(--color-canvas-subtle)",
           borderTop: "1px solid var(--color-border-default)",
           padding: "12px 20px",

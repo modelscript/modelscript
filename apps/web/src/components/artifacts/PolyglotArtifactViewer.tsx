@@ -10,26 +10,35 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import FortranViewer from "./FortranViewer";
 
 export interface PolyglotArtifactViewerProps {
   viewConfig: any;
   viewType?: string;
   artifactId?: string | number;
+  isFullScreen?: boolean | undefined;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function sanitizeSvgMarkup(rawSvg: string): string {
   if (!rawSvg) return "";
-  return DOMPurify.sanitize(rawSvg, {
+  const sanitized = DOMPurify.sanitize(rawSvg, {
     USE_PROFILES: { svg: true, svgFilters: true },
     ADD_TAGS: ["use", "foreignObject"],
-    ADD_ATTR: ["target", "xlink:href", "viewBox", "preserveAspectRatio", "marker-end", "marker-start"],
+    ADD_ATTR: ["target", "xlink:href", "viewBox", "preserveAspectRatio", "marker-end", "marker-start", "style"],
   });
+  return sanitized.replace(
+    /<svg\b([^>]*)>/i,
+    (_match, attrs: string) =>
+      `<svg${attrs} style="width:100%;max-width:100%;height:auto;max-height:340px;display:block;margin:0 auto;">`,
+  );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function renderSourceToDiagramSvg(
   content: string,
   dslLang: string,
-  fallbackTitle = "Artifact",
+  _fallbackTitle = "Artifact",
   isDark = true,
 ): { svg: string; nodeCount: number; edgeCount: number } {
   if (!content || !content.trim()) {
@@ -74,9 +83,11 @@ export function renderSourceToDiagramSvg(
     });
   };
 
+  const PRIMITIVE_TYPES = new Set(["Real", "Integer", "Boolean", "String", "StateSelect", "ExternalObject"]);
+
   const declPatterns = [
     /\b(?:part|item|port|action|state|requirement|attribute|package|block|model|class|connector|record|function|module|subroutine|entity|coupl|body|joint|force|vessel|line|pipe|node|compressor|branch|cylinder|chamber|subcircuit)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_.-]*)/gi,
-    /^\s*(?:parameter\s+|constant\s+|discrete\s+)?([A-Z][A-Za-z0-9_.]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(|=|;)/gm,
+    /^\s*(?!parameter\b|constant\b|discrete\b)([A-Z][A-Za-z0-9_.]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(|=|;)/gm,
     /<(?:ssd:Component|Component|SubSystem|SW-COMPONENT-PROTOTYPE|SPEC-OBJECT|link|joint|road|junction|species|reaction|Entity|Part)\b[^>]*\b(?:name|id|SHORT-NAME)=["']([^"']+)["']/gi,
     /^\s*([RLCVGQMXJ]\w+)\s+(\w+)\s+(\w+)/gm,
   ];
@@ -111,7 +122,9 @@ export function renderSourceToDiagramSvg(
           });
         }
       } else if (m[2]) {
-        addNode(m[2], m[1] || dslLang, `${m[2]} : ${m[1]}`);
+        if (!PRIMITIVE_TYPES.has(m[1] || "")) {
+          addNode(m[2], m[1] || dslLang, `${m[2]} : ${m[1]}`);
+        }
       } else if (m[1]) {
         addNode(m[1], dslLang, m[1]);
       }
@@ -228,23 +241,8 @@ export function renderSourceToDiagramSvg(
     }
   }
 
-  if (nodes.length === 0) {
-    addNode(fallbackTitle || dslLang, dslLang, `${fallbackTitle || dslLang} (${dslLang.toUpperCase()})`);
-  }
-
-  // Fallback to sequential links only when multiple nodes exist without explicit edges
-  if (nodes.length > 1 && edges.length === 0) {
-    for (let i = 0; i < nodes.length - 1; i++) {
-      const src = nodes[i]!.id;
-      const tgt = nodes[i + 1]!.id;
-      edges.push({
-        id: `e-${edges.length + 1}`,
-        source: src,
-        sourcePort: `${src}.out`,
-        target: tgt,
-        targetPort: `${tgt}.in`,
-      });
-    }
+  if (nodes.length === 0 || (edges.length === 0 && nodes.length <= 1)) {
+    return { svg: "", nodeCount: 0, edgeCount: 0 };
   }
 
   try {
@@ -263,23 +261,26 @@ export function renderSourceToDiagramSvg(
   }
 }
 
-const Container = styled(Box)`
+const Container = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: ${(p) => (p.$isFullScreen ? "100%" : "auto")};
   background-color: var(--color-canvas-subtle);
-  border-radius: 6px;
+  border-radius: ${(p) => (p.$isFullScreen ? "0" : "6px")};
   overflow: hidden;
-  border: 1px solid var(--color-border-default);
+  border: ${(p) => (p.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
 `;
 
 const Toolbar = styled(Box)`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
   background-color: var(--color-canvas-default);
   border-bottom: 1px solid var(--color-border-muted);
-  flex-wrap: wrap;
   gap: 8px;
 `;
 
@@ -298,10 +299,12 @@ const ToggleBtn = styled.button<{ $active: boolean }>`
   gap: 5px;
   border: none;
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   font-size: 11px;
+  line-height: 16px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   background: ${(p) => (p.$active ? "var(--color-accent-subtle)" : "transparent")};
   color: ${(p) => (p.$active ? "var(--color-accent-fg)" : "var(--color-fg-muted)")};
   transition: all 0.15s ease;
@@ -311,17 +314,19 @@ const ToggleBtn = styled.button<{ $active: boolean }>`
   }
 `;
 
-const ContentGrid = styled(Box)`
+const ContentGrid = styled(Box)<{ $isFullScreen?: boolean | undefined; $hasSidebar?: boolean | undefined }>`
   display: grid;
-  grid-template-columns: 1fr 270px;
-  min-height: 360px;
+  flex: 1;
+  grid-template-columns: ${(p) => (p.$isFullScreen || !p.$hasSidebar ? "1fr" : "1fr 220px")};
+  min-height: ${(p) => (p.$isFullScreen ? "0" : "360px")};
+  height: ${(p) => (p.$isFullScreen ? "calc(100% - 36px)" : "auto")};
 
   @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
 `;
 
-const DiagramPane = styled(Box)`
+const DiagramPane = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -329,15 +334,15 @@ const DiagramPane = styled(Box)`
   align-items: center;
   background: radial-gradient(circle at center, var(--color-canvas-default) 0%, var(--color-canvas-subtle) 100%);
   position: relative;
-  overflow: hidden;
-  min-height: 340px;
+  overflow: auto;
+  min-height: ${(p) => (p.$isFullScreen ? "100%" : "340px")};
 `;
 
-const CodePane = styled.div`
+const CodePane = styled.div<{ $isFullScreen?: boolean | undefined }>`
   background: var(--color-canvas-default);
   overflow: auto;
-  max-height: 460px;
-  min-height: 340px;
+  max-height: ${(p) => (p.$isFullScreen ? "100%" : "460px")};
+  min-height: ${(p) => (p.$isFullScreen ? "100%" : "340px")};
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
@@ -437,6 +442,7 @@ const DOMAIN_META: Record<string, { badge: string; accent: string; commentPrefix
   sysml2: { badge: "OMG SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function highlightPolyglotLine(line: string, dialect: string): React.ReactNode {
   const meta = DOMAIN_META[dialect];
   if (meta?.commentPrefix.test(line) || /^\s*(#|\/\/|!|;|--|\*)/.test(line)) {
@@ -473,12 +479,45 @@ export function highlightPolyglotLine(line: string, dialect: string): React.Reac
   });
 }
 
-export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ viewConfig, viewType, artifactId }) => {
+const CODE_ONLY_DIALECTS = new Set([
+  "fortran",
+  "f90",
+  "f95",
+  "f08",
+  "f18",
+  "c",
+  "plcopen",
+  "verilog-a",
+  "scad",
+  "csg",
+  "ccsds",
+  "energyplus",
+  "reqif",
+  "autosar",
+]);
+
+function stripSyntheticDiagramComments(raw: string): string {
+  if (!raw) return "";
+  return raw
+    .split(/\r?\n/)
+    .filter(
+      (line) => !/^\s*(?:!|\/\/|#|--|\*)?\s*(?:block\s+[A-Za-z0-9_]+\s*;|connect\s*\([^)]+\)\s*;)\s*$/i.test(line),
+    )
+    .join("\n");
+}
+
+export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
+  viewConfig,
+  viewType,
+  artifactId,
+  isFullScreen = false,
+}) => {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
   const dialect = (viewType || viewConfig?.dialect || "modelica").toLowerCase();
+  const isCodeOnlyDialect = CODE_ONLY_DIALECTS.has(dialect);
   const meta = DOMAIN_META[dialect] || {
     badge: `${dialect.toUpperCase()} ARTIFACT`,
     accent: "#06b6d4",
@@ -487,7 +526,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
 
   const [fetchedText, setFetchedText] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(false);
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (isCodeOnlyDialect ? "code" : "diagram"));
   const [copied, setCopied] = useState(false);
 
   const inlineCode: string =
@@ -510,7 +549,10 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
     }
   }, [inlineCode, viewConfig?.url]);
 
-  const rawCode = inlineCode || fetchedText || "";
+  const rawCode = useMemo(
+    () => stripSyntheticDiagramComments(inlineCode || fetchedText || ""),
+    [inlineCode, fetchedText],
+  );
   const title = viewConfig?.title || viewConfig?.filename || `${dialect.toUpperCase()} Artifact`;
   const isMultiFile = Boolean(viewConfig?.files && Object.keys(viewConfig.files).length > 1);
 
@@ -546,10 +588,11 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
     addStat("Elements", viewConfig?.elementCount);
     addStat("Subcircuits", viewConfig?.subcircuitCount);
 
+    if (isCodeOnlyDialect) {
+      return { svgMarkup: "", parsedStats: stats };
+    }
+
     if (viewConfig?.svg && typeof viewConfig.svg === "string") {
-      if (rawCode && stats.length === 0) {
-        stats.push({ label: "Source Lines", value: rawCode.split(/\r?\n/).length });
-      }
       return { svgMarkup: sanitizeSvgMarkup(viewConfig.svg), parsedStats: stats };
     }
 
@@ -558,13 +601,16 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
     }
 
     const built = renderSourceToDiagramSvg(rawCode, dialect, title, isDark);
-    if (stats.length === 0) {
-      stats.push({ label: "Diagram Nodes", value: built.nodeCount });
-      stats.push({ label: "Connections", value: built.edgeCount });
-      stats.push({ label: "Source Lines", value: rawCode.split(/\r?\n/).length });
-    }
     return { svgMarkup: built.svg, parsedStats: stats };
-  }, [viewConfig, rawCode, dialect, title, isDark]);
+  }, [viewConfig, rawCode, dialect, title, isDark, isCodeOnlyDialect]);
+
+  const codeLines = useMemo(() => (rawCode ? rawCode.split(/\r?\n/) : []), [rawCode]);
+  const hasSidebar = !isFullScreen && !isCodeOnlyDialect && parsedStats.length > 0;
+  const effectiveViewMode = isCodeOnlyDialect || !svgMarkup ? "code" : viewMode;
+
+  if (dialect === "fortran" || dialect === "f90" || dialect === "f95" || dialect === "f08" || dialect === "f18") {
+    return <FortranViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+  }
 
   const handleCopy = () => {
     if (!rawCode) return;
@@ -606,38 +652,56 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
     navigate(`/playground?fromArtifact=${resolvedId}#m=${hash}`);
   };
 
-  const codeLines = useMemo(() => (rawCode ? rawCode.split(/\r?\n/) : []), [rawCode]);
-
   return (
-    <Container>
+    <Container $isFullScreen={isFullScreen}>
       <Toolbar>
-        <Box style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <WorkflowIcon size={16} fill={meta.accent} />
-          <Text style={{ fontWeight: 600, fontSize: 13 }}>{title}</Text>
-          <Label size="small" variant="accent">
+        <Box style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+          {isCodeOnlyDialect ? (
+            <CodeIcon size={14} fill={meta.accent} />
+          ) : (
+            <WorkflowIcon size={14} fill={meta.accent} />
+          )}
+          <Label size="small" variant="accent" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
             {meta.badge}
           </Label>
+          {!isFullScreen && (
+            <Text
+              style={{
+                fontWeight: 600,
+                fontSize: "13px",
+                lineHeight: "16px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={title}
+            >
+              {title}
+            </Text>
+          )}
         </Box>
-        <Box style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ToggleGroup>
-            <ToggleBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
-              <WorkflowIcon size={12} /> Diagram
-            </ToggleBtn>
-            <ToggleBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
-              <CodeIcon size={12} /> Code
-            </ToggleBtn>
-          </ToggleGroup>
+        <Box style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          {!isCodeOnlyDialect && svgMarkup && (
+            <ToggleGroup>
+              <ToggleBtn type="button" $active={effectiveViewMode === "diagram"} onClick={() => setViewMode("diagram")}>
+                <WorkflowIcon size={12} /> Diagram
+              </ToggleBtn>
+              <ToggleBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+                <CodeIcon size={12} /> Code{codeLines.length > 0 ? ` (${codeLines.length}L)` : ""}
+              </ToggleBtn>
+            </ToggleGroup>
+          )}
           {rawCode && (
             <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
               {copied ? "Copied" : "Copy"}
             </Button>
           )}
-          {svgMarkup && viewMode === "diagram" && (
+          {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadSvg}>
               SVG
             </Button>
           )}
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={handleOpenAction}>
               {isMultiFile ? "Open in VS Code" : "Open in Playground"}
             </Button>
@@ -645,21 +709,21 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
         </Box>
       </Toolbar>
 
-      <ContentGrid>
+      <ContentGrid $isFullScreen={isFullScreen} $hasSidebar={hasSidebar}>
         {loadingText ? (
-          <DiagramPane>
+          <DiagramPane $isFullScreen={isFullScreen}>
             <Spinner size="medium" />
             <Text style={{ fontSize: 12, color: "var(--color-fg-muted)", marginTop: 8 }}>Loading artifact…</Text>
           </DiagramPane>
-        ) : viewMode === "diagram" && svgMarkup ? (
-          <DiagramPane>
+        ) : effectiveViewMode === "diagram" && svgMarkup ? (
+          <DiagramPane $isFullScreen={isFullScreen}>
             <div
               style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}
               dangerouslySetInnerHTML={{ __html: svgMarkup }}
             />
           </DiagramPane>
         ) : (
-          <CodePane>
+          <CodePane $isFullScreen={isFullScreen}>
             {codeLines.length > 0 ? (
               codeLines.map((line, i) => (
                 <CodeLine key={i}>
@@ -675,33 +739,28 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({ 
           </CodePane>
         )}
 
-        <Sidebar>
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-              color: "var(--color-fg-muted)",
-            }}
-          >
-            Artifact Telemetry
-          </Text>
+        {hasSidebar && (
+          <Sidebar>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+                color: "var(--color-fg-muted)",
+              }}
+            >
+              Artifact Telemetry
+            </Text>
 
-          {parsedStats.length > 0 ? (
-            parsedStats.map((st, idx) => (
+            {parsedStats.map((st, idx) => (
               <StatBox key={idx}>
                 <Text style={{ fontSize: 11, color: "var(--color-fg-muted)", display: "block" }}>{st.label}</Text>
                 <Text style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{st.value}</Text>
               </StatBox>
-            ))
-          ) : (
-            <StatBox>
-              <Text style={{ fontSize: 11, color: "var(--color-fg-muted)", display: "block" }}>Dialect</Text>
-              <Text style={{ fontSize: 14, fontWeight: 600, fontFamily: "monospace" }}>{dialect.toUpperCase()}</Text>
-            </StatBox>
-          )}
-        </Sidebar>
+            ))}
+          </Sidebar>
+        )}
       </ContentGrid>
     </Container>
   );

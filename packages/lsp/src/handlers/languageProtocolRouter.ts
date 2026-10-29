@@ -25,6 +25,7 @@ export async function dispatchLanguageRequest<T = any>(
     connection: context.connection,
     workspaceManager: context.workspaceManager,
     documentManager: context.documentManager,
+    documents: context.documentManager.documents,
     validationService: context.validationService,
     parserService: context.parserService,
     diagramService: context.diagramService,

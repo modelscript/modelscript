@@ -4,6 +4,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase, OrgRole } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 function isValidSlug(slug: string): boolean {
   return /^[a-zA-Z0-9_-]{2,50}$/.test(slug);
@@ -11,6 +12,7 @@ function isValidSlug(slug: string): boolean {
 
 export function organizationsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+  router.use(defaultApiLimiter);
 
   /**
    * GET /api/v1/organizations/my

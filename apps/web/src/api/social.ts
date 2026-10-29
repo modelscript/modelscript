@@ -37,8 +37,59 @@ export const unmuteUser = async (username: string): Promise<any> => {
   return data;
 };
 
-export const reportUser = async (username: string, reason?: string): Promise<any> => {
-  const { data } = await api.post(`/users/${encodeURIComponent(username)}/report`, { reason });
+export const reportUser = async (username: string, reason?: string, details?: string): Promise<any> => {
+  const { data } = await api.post(`/users/${encodeURIComponent(username)}/report`, {
+    reason,
+    ...(details !== undefined ? { details } : {}),
+  });
+  return data;
+};
+
+export const reportPost = async (
+  postId: string | number,
+  reason: string,
+  details?: string,
+  forwardFederatedFlag?: boolean,
+): Promise<{
+  success: boolean;
+  reportId: number;
+  status: string;
+  federatedFlagQueued?: boolean | undefined;
+  message?: string | undefined;
+}> => {
+  const { data } = await api.post(`/social/posts/${postId}/report`, {
+    reason,
+    ...(details !== undefined ? { details } : {}),
+    ...(forwardFederatedFlag !== undefined ? { forwardFederatedFlag } : {}),
+  });
+  return data;
+};
+
+export const reportResource = async (
+  targetType: "package" | "repo" | "post" | "user",
+  targetResourceId: string,
+  reason: string,
+  details?: string,
+): Promise<{ success: boolean; reportId: number; status: string; targetType: string }> => {
+  const { data } = await api.post("/social/reports", {
+    targetType,
+    targetResourceId,
+    reason,
+    ...(details !== undefined ? { details } : {}),
+  });
+  return data;
+};
+
+export const submitModerationAppeal = async (
+  reason: string,
+  details?: string,
+  postId?: number,
+): Promise<{ success: boolean; appealId: number; reportId: number; status: string; message?: string | undefined }> => {
+  const { data } = await api.post("/users/me/appeals", {
+    reason,
+    ...(details !== undefined ? { details } : {}),
+    ...(postId !== undefined ? { postId } : {}),
+  });
   return data;
 };
 
@@ -125,8 +176,11 @@ export const getPostReposts = async (
   return data;
 };
 
-export const recordPostView = async (id: string | number): Promise<void> => {
-  await api.post(`/social/posts/${id}/view`).catch(() => {});
+export const recordPostView = async (
+  id: string | number,
+): Promise<{ success?: boolean; counted?: boolean } | undefined> => {
+  const res = await api.post(`/social/posts/${id}/view`).catch(() => null);
+  return res?.data;
 };
 
 export const getPostAnalytics = async (id: string | number): Promise<any> => {
@@ -310,5 +364,58 @@ export const resolveFederatedActor = async (handle: string): Promise<any> => {
 
 export const deletePost = async (id: number | string): Promise<any> => {
   const { data } = await api.delete(`/social/posts/${id}`);
+  return data;
+};
+
+export type AiDraftTone = "technical" | "concise" | "expand" | "hashtags";
+export type AiPolishMode = "polish" | "concise" | "expand" | "hashtags";
+
+export interface AiDraftRequest {
+  artifactId?: number | undefined;
+  artifactIds?: number[] | undefined;
+  artifactMeta?:
+    | {
+        viewType?: string | undefined;
+        title?: string | undefined;
+        viewConfig?: Record<string, unknown> | string | undefined;
+      }
+    | undefined;
+  existingText?: string | undefined;
+  tone?: AiDraftTone | undefined;
+  isNotebook?: boolean | undefined;
+}
+
+export interface AiDraftResponse {
+  draft: string;
+  notebookTitle: string;
+  notebookSummary: string;
+  domain: string;
+  suggestedHashtags: string[];
+  provider: string;
+  model: string;
+}
+
+export interface AiPolishRequest {
+  content: string;
+  mode?: AiPolishMode | undefined;
+  artifactId?: number | undefined;
+}
+
+export interface AiPolishResponse {
+  polished: string;
+  mode: AiPolishMode;
+  domain: string;
+  suggestedHashtags: string[];
+  provider: string;
+  model: string;
+}
+
+export const draftPostWithAi = async (payload: AiDraftRequest): Promise<AiDraftResponse> => {
+  const { data } = await api.post<AiDraftResponse>("/social/ai/draft", payload);
+  return data;
+};
+
+export const polishPostWithAi = async (payload: AiPolishRequest): Promise<AiPolishResponse> => {
+  const { data } = await api.post<AiPolishResponse>("/social/ai/polish", payload);
   return data;
 };

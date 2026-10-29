@@ -59,13 +59,12 @@ CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) and Release ([`.g
 
 | Image                           | Target           |      `/app/ee` Included?       | Default Environment                                                                               | Use Case                                                            |
 | :------------------------------ | :--------------- | :----------------------------: | :------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------ |
-| `ghcr.io/modelscript/api-ce`    | `api-ce`         | **No** _(physically stripped)_ | `MSX_EDITION=ce`                                                                                  | Self-hosted AGPL-3.0 Community Edition API                          |
+| `ghcr.io/modelscript/api-ce`    | `api-ce`         | **No** _(physically stripped)_ | `MSX_EDITION=ce` + integrated VS Code Web IDE host                                                | Self-hosted AGPL-3.0 Community Edition API & Web IDE                |
 | `ghcr.io/modelscript/cli-ce`    | `cli-ce`         | **No** _(physically stripped)_ | `MSX_EDITION=ce`                                                                                  | Open-core AGPL-3.0 CI/CD CLI runner                                 |
-| `ghcr.io/modelscript/api`       | `api` (`api-ee`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | `modelscript.org` Cloud & Corporate EE multi-container self-hosting |
+| `ghcr.io/modelscript/api`       | `api` (`api-ee`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true` + integrated VS Code Web IDE host                    | `modelscript.org` Cloud & Corporate EE multi-container self-hosting |
 | `ghcr.io/modelscript/cli`       | `cli` (`cli-ee`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner                      |
 | `ghcr.io/modelscript/appliance` | `appliance`      |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`, `ENTERPRISE_APPLIANCE=true`, `AIRGAP_ENFORCED=true` | Single-container air-gapped Enterprise Intranet Appliance (`:8080`) |
-| `ghcr.io/modelscript/web`       | `web`            |              N/A               | Nginx SPA (`/`) + VitePress Docs (`/docs`)                                                        | Unified Web UI & Documentation Portal                               |
-| `ghcr.io/modelscript/ide`       | `ide`            |              N/A               | `PORT=3003` + local WebLLM weights                                                                | Browser WebAssembly & WebGPU IDE Workbench                          |
+| `ghcr.io/modelscript/web`       | `web`            |              N/A               | Nginx SPA (`/`) + VitePress Docs (`/docs`) + IDE Reverse Proxy (`/vscode`)                        | Unified Web UI, IDE Shell & Documentation Portal                    |
 
 ### 1. Self-Hosted Community Edition (`MSX_EDITION=ce`)
 

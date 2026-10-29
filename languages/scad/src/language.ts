@@ -25,6 +25,12 @@ interface ScadLspActionContext {
   documents?: { get(uri: string): { getText(): string } | undefined } | undefined;
   documentManager?:
     | {
+        documents?:
+          | {
+              get(uri: string): { getText(): string } | undefined;
+              all?(): { uri: string; getText(): string }[];
+            }
+          | undefined;
         documentTrees?:
           | Map<string, { text?: string | undefined; tree?: { rootNode?: ScadCstNode | undefined } | undefined }>
           | undefined;
@@ -33,11 +39,77 @@ interface ScadLspActionContext {
   sharedFs?: { read(uri: string): Promise<string> } | undefined;
   parserService?:
     | {
+        ensureLanguageParserLoaded?(lang: string): Promise<unknown>;
         getParser(
           lang: string,
         ): Promise<{ parse(source: string): { rootNode?: ScadCstNode | undefined } | null } | null>;
       }
     | undefined;
+}
+
+async function resolveScadSourceAndRoot(
+  ctx: ScadLspActionContext,
+  params?: { uri?: string | undefined; documentText?: string | undefined },
+): Promise<{ uri: string | undefined; source: string | undefined; rootNode: ScadCstNode | undefined }> {
+  const uri = params?.uri ?? ctx.uri;
+  let source = params?.documentText ?? ctx.documentText;
+
+  if (!source && uri && ctx.documents) {
+    source = ctx.documents.get(uri)?.getText();
+  }
+  if (!source && uri && ctx.documentManager?.documents) {
+    source = ctx.documentManager.documents.get(uri)?.getText();
+    if (!source && typeof ctx.documentManager.documents.all === "function") {
+      const targetName = uri.split("/").pop();
+      for (const doc of ctx.documentManager.documents.all()) {
+        if (doc.uri === uri || (targetName && doc.uri.endsWith(`/${targetName}`))) {
+          source = doc.getText();
+          if (source) break;
+        }
+      }
+    }
+  }
+  if (!source && uri && ctx.documentManager?.documentTrees) {
+    source = ctx.documentManager.documentTrees.get(uri)?.text;
+    if (!source) {
+      const targetName = uri.split("/").pop();
+      for (const [k, entry] of ctx.documentManager.documentTrees) {
+        if (k === uri || (targetName && k.endsWith(`/${targetName}`))) {
+          source = entry.text;
+          if (source) break;
+        }
+      }
+    }
+  }
+  if (!source && uri && ctx.sharedFs) {
+    try {
+      source = await ctx.sharedFs.read(uri);
+    } catch {}
+  }
+
+  let rootNode: ScadCstNode | undefined = uri
+    ? ctx.documentManager?.documentTrees?.get(uri)?.tree?.rootNode
+    : undefined;
+  if (!rootNode && source && ctx.parserService) {
+    try {
+      await ctx.parserService.ensureLanguageParserLoaded?.("scad");
+      const parser = await ctx.parserService.getParser("scad");
+      if (parser) {
+        const tree = parser.parse(source);
+        rootNode = tree?.rootNode;
+      }
+    } catch {}
+  }
+  if (!rootNode && source) {
+    try {
+      const { getScadParser } = await import("./index.js");
+      const parser = await getScadParser();
+      const tree = parser.parse(source);
+      rootNode = tree?.rootNode;
+    } catch {}
+  }
+
+  return { uri, source, rootNode };
 }
 
 interface ScadLintSymbol {
@@ -96,33 +168,8 @@ export const scadLanguage = language({
         ctx: ScadLspActionContext,
         params: { uri: string; documentText?: string | undefined },
       ) => {
-        const uri = params?.uri ?? ctx.uri;
-        let source = params?.documentText ?? ctx.documentText;
-        if (!source && uri && ctx.documents) {
-          source = ctx.documents.get(uri)?.getText();
-        }
-        if (!source && uri && ctx.documentManager) {
-          source = ctx.documentManager.documentTrees?.get(uri)?.text;
-        }
-        if (!source && uri && ctx.sharedFs) {
-          try {
-            source = await ctx.sharedFs.read(uri);
-          } catch {}
-        }
+        const { uri, source, rootNode } = await resolveScadSourceAndRoot(ctx, params);
         if (!source) return [];
-
-        let rootNode: ScadCstNode | undefined = uri
-          ? ctx.documentManager?.documentTrees?.get(uri)?.tree?.rootNode
-          : undefined;
-        if (!rootNode && ctx.parserService) {
-          try {
-            const parser = await ctx.parserService.getParser("scad");
-            if (parser) {
-              const tree = parser.parse(source);
-              rootNode = tree?.rootNode;
-            }
-          } catch {}
-        }
 
         const { extractScadCadComponents } = await import("./index.js");
         return extractScadCadComponents(source, rootNode, uri);
@@ -144,43 +191,9 @@ export const scadLanguage = language({
         ctx: ScadLspActionContext,
         params?: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
-        // Resolve document text from request parameters, open editor buffers, or virtual filesystem
-        let source = params?.documentText ?? ctx.documentText;
-        if (!source && ctx.uri && ctx.documents) {
-          source = ctx.documents.get(ctx.uri)?.getText();
-        }
-        if (!source && ctx.uri && ctx.documentManager) {
-          source = ctx.documentManager.documentTrees?.get(ctx.uri)?.text;
-        }
-        if (!source && ctx.uri && ctx.sharedFs) {
-          try {
-            source = await ctx.sharedFs.read(ctx.uri);
-          } catch {}
-        }
+        const { uri, source, rootNode } = await resolveScadSourceAndRoot(ctx, params);
         if (!source) {
           throw new Error("No OpenSCAD source code found to evaluate.");
-        }
-
-        // Reuse cached CST root node when available, or parse on-demand via WASM GLR parser
-        let rootNode: ScadCstNode | undefined = ctx.uri
-          ? ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode
-          : undefined;
-        if (!rootNode && ctx.parserService) {
-          try {
-            const parser = await ctx.parserService.getParser("scad");
-            if (parser) {
-              const tree = parser.parse(source);
-              rootNode = tree?.rootNode;
-            }
-          } catch {}
-        }
-        if (!rootNode) {
-          try {
-            const { getScadParser } = await import("./index.js");
-            const parser = await getScadParser();
-            const tree = parser.parse(source);
-            rootNode = tree?.rootNode;
-          } catch {}
         }
 
         // Evaluate the CST into a normalized CSG Solid tree
@@ -201,8 +214,8 @@ export const scadLanguage = language({
         const { compileToStep } = await import("@modelscript/cad");
         const { extractScadCadComponents } = await import("./index.js");
         const step = compileToStep(solid);
-        const components = await extractScadCadComponents(source, rootNode, ctx.uri);
-        const filename = ctx.uri ? ctx.uri.split("/").pop() || "model" : "model";
+        const components = await extractScadCadComponents(source, rootNode, uri);
+        const filename = uri ? uri.split("/").pop() || "model" : "model";
         const name = filename.replace(/\.[^/.]+$/, "");
 
         return {
@@ -211,7 +224,7 @@ export const scadLanguage = language({
           step,
           solid,
           components,
-          uri: ctx.uri,
+          uri,
         };
       },
       ui: {
@@ -238,41 +251,9 @@ export const scadLanguage = language({
         ctx: ScadLspActionContext,
         params?: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
-        let source = params?.documentText ?? ctx.documentText;
-        if (!source && ctx.uri && ctx.documents) {
-          source = ctx.documents.get(ctx.uri)?.getText();
-        }
-        if (!source && ctx.uri && ctx.documentManager) {
-          source = ctx.documentManager.documentTrees?.get(ctx.uri)?.text;
-        }
-        if (!source && ctx.uri && ctx.sharedFs) {
-          try {
-            source = await ctx.sharedFs.read(ctx.uri);
-          } catch {}
-        }
+        const { rootNode, source } = await resolveScadSourceAndRoot(ctx, params);
         if (!source) {
           throw new Error("No OpenSCAD source code found to export.");
-        }
-
-        let rootNode: ScadCstNode | undefined = ctx.uri
-          ? ctx.documentManager?.documentTrees?.get(ctx.uri)?.tree?.rootNode
-          : undefined;
-        if (!rootNode && ctx.parserService) {
-          try {
-            const parser = await ctx.parserService.getParser("scad");
-            if (parser) {
-              const tree = parser.parse(source);
-              rootNode = tree?.rootNode;
-            }
-          } catch {}
-        }
-        if (!rootNode) {
-          try {
-            const { getScadParser } = await import("./index.js");
-            const parser = await getScadParser();
-            const tree = parser.parse(source);
-            rootNode = tree?.rootNode;
-          } catch {}
         }
 
         let solid: Solid | null = null;

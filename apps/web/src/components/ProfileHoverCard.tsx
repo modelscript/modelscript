@@ -7,6 +7,7 @@ import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { blockUser, followUser, getUserProfile, unblockUser, unfollowUser } from "../api";
+import { getAvatarUrl, getBannerUrl } from "../util/avatar";
 import { parseFederatedHandle } from "../util/federation";
 import { safeCssImageUrl } from "../util/url";
 import Box from "./Box";
@@ -19,11 +20,20 @@ const PopoverContainer = styled.div`
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border-default);
   border-radius: 16px;
-  padding: 16px;
+  overflow: hidden;
   width: 300px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: default;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+`;
+
+const BannerHeader = styled.div<{ $url?: string | undefined }>`
+  width: 100%;
+  height: 76px;
+  background-color: var(--color-canvas-subtle);
+  background-image: ${(props) => safeCssImageUrl(props.$url) || "none"};
+  background-size: cover;
+  background-position: center;
 `;
 
 interface AvatarProps {
@@ -34,6 +44,7 @@ const Avatar = styled.div<AvatarProps>`
   width: 64px;
   height: 64px;
   border-radius: 50%;
+  border: 3px solid var(--color-bg-primary);
   background-color: var(--color-done-emphasis);
   background-image: ${(props) => safeCssImageUrl(props.$url) || "none"};
   background-size: cover;
@@ -56,8 +67,10 @@ interface FollowButtonProps {
 }
 const FollowButton = styled.button<FollowButtonProps>`
   border-radius: 9999px;
-  font-weight: bold;
-  padding: 6px 16px;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 16px;
+  padding: 8px 16px;
   border: none;
   cursor: pointer;
   background-color: ${(props) =>
@@ -81,17 +94,18 @@ const FollowButton = styled.button<FollowButtonProps>`
 `;
 
 const BioText = styled.div`
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 20px;
   color: var(--color-fg-default);
   margin-top: 12px;
   margin-bottom: 12px;
-  line-height: 1.4;
 `;
 
 const StatLink = styled(Link)`
   color: var(--color-fg-muted);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 20px;
   &:hover {
     text-decoration: underline;
   }
@@ -99,7 +113,7 @@ const StatLink = styled(Link)`
 
 const StatCount = styled.span`
   color: var(--color-fg-default);
-  font-weight: bold;
+  font-weight: 700;
 `;
 
 const ModalOverlay = styled.div`
@@ -259,7 +273,7 @@ export default function ProfileHoverCard({
   return (
     <div
       ref={wrapperRef}
-      style={{ position: "relative", display: "inline-block" }}
+      style={{ position: "relative", display: "inline-block", maxWidth: "100%", minWidth: 0 }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -285,68 +299,83 @@ export default function ProfileHoverCard({
               </Box>
             ) : (
               <>
-                <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                  <Avatar $url={data.avatar_url} $letter={data.username?.charAt(0).toUpperCase()} />
-                  {user?.username !== data.username && (
-                    <FollowButton
-                      $following={isFollowing}
-                      $blocked={isBlocked}
-                      onClick={isBlocked ? handleBlockClick : handleFollowToggle}
+                <BannerHeader $url={getBannerUrl(data.username, data.banner_url)} />
+                <Box style={{ padding: "0 16px 16px 16px", marginTop: "-28px" }}>
+                  <Box display="flex" justifyContent="space-between" alignItems="flex-end">
+                    <Avatar
+                      $url={getAvatarUrl(data.username, data.avatar_url || undefined)}
+                      $letter={data.username?.charAt(0).toUpperCase()}
+                    />
+                    {user?.username !== data.username && (
+                      <FollowButton
+                        $following={isFollowing}
+                        $blocked={isBlocked}
+                        onClick={isBlocked ? handleBlockClick : handleFollowToggle}
+                      >
+                        {isBlocked ? "Blocked" : isFollowing ? "Following" : "Follow"}
+                      </FollowButton>
+                    )}
+                  </Box>
+                  <Box mt={2}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        lineHeight: "20px",
+                        color: "var(--color-fg-default)",
+                      }}
                     >
-                      {isBlocked ? "Blocked" : isFollowing ? "Following" : "Follow"}
-                    </FollowButton>
+                      {data.display_name || data.username}
+                    </div>
+                    {(() => {
+                      const parsed = parseFederatedHandle(data.username);
+                      return (
+                        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt="2px">
+                          <div className="handle-text" style={{ fontSize: "15px", lineHeight: "20px" }}>
+                            @{parsed.localUsername}
+                          </div>
+                          {parsed.isFederated && parsed.remoteDomain && (
+                            <FederatedDomainPill domain={parsed.remoteDomain} />
+                          )}
+                        </Box>
+                      );
+                    })()}
+                  </Box>
+
+                  {data.bio && <BioText>{data.bio}</BioText>}
+
+                  <Box display="flex" gap={3} mt={2}>
+                    <StatLink to={`/${data.username}/following`}>
+                      <StatCount>{data.following_count}</StatCount>{" "}
+                      <span style={{ color: "var(--color-fg-muted)" }}>Following</span>
+                    </StatLink>
+                    <StatLink to={`/${data.username}/followers`}>
+                      <StatCount>{data.follower_count}</StatCount>{" "}
+                      <span style={{ color: "var(--color-fg-muted)" }}>Followers</span>
+                    </StatLink>
+                  </Box>
+
+                  {showProfileSummaryBtn && (
+                    <Box mt={3} pt={3} borderTop="1px solid var(--color-border-default)">
+                      <Link to={`/${data.username}`} style={{ textDecoration: "none" }}>
+                        <button
+                          style={{
+                            width: "100%",
+                            padding: "8px",
+                            borderRadius: "9999px",
+                            backgroundColor: "transparent",
+                            border: "1px solid var(--color-border-default)",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            color: "var(--color-fg-default)",
+                          }}
+                        >
+                          Profile Summary
+                        </button>
+                      </Link>
+                    </Box>
                   )}
                 </Box>
-                <Box mt={2}>
-                  <div style={{ fontWeight: "bold", fontSize: "17px", color: "var(--color-fg-default)" }}>
-                    {data.display_name || data.username}
-                  </div>
-                  {(() => {
-                    const parsed = parseFederatedHandle(data.username);
-                    return (
-                      <Box display="flex" alignItems="center" gap={1} flexWrap="wrap" mt="2px">
-                        <div className="handle-text">@{parsed.localUsername}</div>
-                        {parsed.isFederated && parsed.remoteDomain && (
-                          <FederatedDomainPill domain={parsed.remoteDomain} />
-                        )}
-                      </Box>
-                    );
-                  })()}
-                </Box>
-
-                {data.bio && <BioText>{data.bio}</BioText>}
-
-                <Box display="flex" gap={3} mt={2}>
-                  <StatLink to={`/${data.username}/following`}>
-                    <StatCount>{data.following_count}</StatCount>{" "}
-                    <span style={{ color: "var(--color-fg-muted)" }}>Following</span>
-                  </StatLink>
-                  <StatLink to={`/${data.username}/followers`}>
-                    <StatCount>{data.follower_count}</StatCount>{" "}
-                    <span style={{ color: "var(--color-fg-muted)" }}>Followers</span>
-                  </StatLink>
-                </Box>
-
-                {showProfileSummaryBtn && (
-                  <Box mt={3} pt={3} borderTop="1px solid var(--color-border-default)">
-                    <Link to={`/${data.username}`} style={{ textDecoration: "none" }}>
-                      <button
-                        style={{
-                          width: "100%",
-                          padding: "8px",
-                          borderRadius: "9999px",
-                          backgroundColor: "transparent",
-                          border: "1px solid var(--color-border-default)",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                          color: "var(--color-fg-default)",
-                        }}
-                      >
-                        Profile Summary
-                      </button>
-                    </Link>
-                  </Box>
-                )}
               </>
             )}
           </PopoverContainer>,

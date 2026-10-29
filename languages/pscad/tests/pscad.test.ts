@@ -1125,6 +1125,106 @@ async function main() {
     throw new Error(`Expected at least 5 XML folding ranges in phase11Pscx, got ${folds.length}`);
   }
 
+  // ── 18. Regression Test: Shorthand <Wire x="..." y="..." x2="..." y2="..."/>, BESS_250MW_GridForming_IEEE2800, RLC Glyph & Exact Token Spans ──
+  console.log("18. Testing Shorthand <Wire> Parsing, BESS 250MW IEEE 2800 Schematic & Diagnostic Token Spans...");
+  const bess250Pscx = `<project name="BESS_250MW_GridForming_IEEE2800" version="5.0.2">
+  <paramlist name="Settings">
+    <param name="time_step" value="20.0"/>
+    <param name="duration" value="2.0"/>
+    <param name="frequency" value="60.0"/>
+  </paramlist>
+  <definitions>
+    <Definition name="Main" type="module" id="main_bess_250">
+      <schematic>
+        <User id="u1" name="master:source_3" x="126" y="180">
+          <param name="Name" value="Transmission_Grid_345kV"/>
+          <param name="Vm" value="345.0 [kV]"/>
+          <param name="f" value="60.0 [Hz]"/>
+        </User>
+        <User id="u2" name="master:tline" x="252" y="180">
+          <param name="Name" value="POI_345kV_Corridor_85km"/>
+          <param name="Length" value="85.0 [km]"/>
+        </User>
+        <User id="u3" name="master:tpflt" x="450" y="252">
+          <param name="Name" value="IEEE2800_3PH_Bolted_Fault"/>
+          <param name="TF" value="0.20 [s]"/>
+          <param name="DF" value="0.15 [s]"/>
+        </User>
+        <User id="u4" name="master:breaker" x="486" y="180">
+          <param name="Name" value="BRK_POI_345kV"/>
+        </User>
+        <User id="u5" name="master:xfmr-3p2w" x="558" y="180">
+          <param name="Name" value="GSU_345_34kV_280MVA"/>
+          <param name="Tmva" value="280.0 [MVA]"/>
+          <param name="Xl" value="0.105 [pu]"/>
+        </User>
+        <User id="u6" name="master:rlc" x="666" y="180">
+          <param name="Name" value="LCL_Harmonic_Filter"/>
+          <param name="L" value="0.45 [mH]"/>
+          <param name="C" value="185.0 [uF]"/>
+        </User>
+        <User id="u7" name="master:inverter_fmu" x="756" y="180">
+          <param name="Name" value="GFM_BESS_250MW_VSC"/>
+          <param name="fmu_path" value="GFM_Droop_VSC_250MW.fmu"/>
+          <param name="rated_mva" value="250.0"/>
+          <param name="rated_kv" value="34.5"/>
+          <param name="control_mode" value="grid_forming"/>
+        </User>
+        <Wire id="w1" x="162" y="180" x2="216" y2="180"/>
+        <Wire id="w2" x="288" y="180" x2="468" y2="180"/>
+        <Wire id="w3" x="450" y="180" x2="450" y2="234"/>
+        <Wire id="w4" x="504" y="180" x2="504" y2="180"/>
+        <Wire id="w5" x="594" y="180" x2="648" y2="180"/>
+        <Wire id="w6" x="684" y="180" x2="736" y2="180"/>
+      </schematic>
+    </Definition>
+  </definitions>
+</project>`;
+
+  const bessProj = parsePscx(bess250Pscx);
+  if (bessProj.rootModule.wires.length !== 6) {
+    throw new Error(
+      `Expected 6 shorthand <Wire> elements parsed in BESS 250MW project, got ${bessProj.rootModule.wires.length}`,
+    );
+  }
+  const bessDiags = lintPscx(bessProj);
+  if (bessDiags.length !== 0) {
+    throw new Error(
+      `Expected 0 lint errors on BESS_250MW_GridForming_IEEE2800.pscx, got: ${bessDiags.map((d) => `${d.code}: ${d.message}`).join(" | ")}`,
+    );
+  }
+  const bessDiagGraph = buildPscadDiagram(bessProj);
+  const bessEdges = bessDiagGraph.cells.filter((c) => c.shape === "edge");
+  if (bessEdges.length !== 6) {
+    throw new Error(`Expected 6 rendered wire edges in BESS diagram, got ${bessEdges.length}`);
+  }
+  const rlcNode = bessDiagGraph.cells.find((c) => c.id === "u6");
+  if (!rlcNode?.markup?.some((m: any) => m.selector === "passiveBody")) {
+    throw new Error("Expected u6 (master:rlc) to render passiveBranchGlyph with passiveBody selector");
+  }
+  const bessSolder = bessDiagGraph.cells.find((c) => c.id.startsWith("solder_dot_450_180"));
+  if (!bessSolder) {
+    throw new Error("Expected T-junction solder dot at (450, 180) where fault tap wire w3 meets w2");
+  }
+
+  // Verify that an unconnected component virtual bus produces an M6001 diagnostic pointing to the exact <User id="..."> token (not line 1)
+  const unwiredBessPscx = bess250Pscx.replace(
+    "</schematic>",
+    '        <User id="vm_float" name="master:voltmeter" x="820" y="180"/>\n      </schematic>',
+  );
+  const unwiredDiags = lintPscx(parsePscx(unwiredBessPscx));
+  const m6001 = unwiredDiags.find((d) => d.code === "M6001" && d.componentId === "vm_float");
+  if (!m6001 || !m6001.line || m6001.line <= 1 || !m6001.column || !m6001.endColumn) {
+    throw new Error(
+      `Expected M6001 on unwired component to have exact component line/column/endColumn (> line 1), got ${JSON.stringify(m6001)}`,
+    );
+  }
+  const unwiredLineText = unwiredBessPscx.split(/\r?\n/)[m6001.line - 1] ?? "";
+  const highlightedSlice = unwiredLineText.slice(m6001.column - 1, m6001.endColumn - 1);
+  if (highlightedSlice !== "vm_float") {
+    throw new Error(`Expected M6001 squiggle to highlight exact component ID 'vm_float', got '${highlightedSlice}'`);
+  }
+
   console.log("ALL TESTS PASSED SUCCESSFULLY! Milestones 1-5 + Phases 1-11 + SOTA Core Editing Suite verified.");
 }
 

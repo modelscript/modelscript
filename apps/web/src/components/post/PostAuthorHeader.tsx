@@ -57,10 +57,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
       <Box display="flex" alignItems="center" gap={3}>
         <ProfileHoverCard username={displayPost.username}>
           <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
-            <HoverAvatar
-              $url={displayPost.avatar_url}
-              style={{ width: "48px", height: "48px", fontSize: "20px", marginLeft: "-4px" }}
-            >
+            <HoverAvatar $url={displayPost.avatar_url} style={{ width: "40px", height: "40px", fontSize: "17px" }}>
               {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
             </HoverAvatar>
           </ProfileNameLink>
@@ -75,8 +72,9 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
               >
                 <Text
                   style={{
-                    fontWeight: "bold",
+                    fontWeight: 700,
                     fontSize: "15px",
+                    lineHeight: "20px",
                     display: "flex",
                     alignItems: "center",
                     gap: "4px",
@@ -102,10 +100,12 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
               </ProfileNameLink>
             </ProfileHoverCard>
           </div>
-          <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap" mt={0.5}>
+          <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
             <Text
               className="handle-text"
               style={{
+                fontSize: "15px",
+                lineHeight: "20px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -134,19 +134,22 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
           </Box>
         </Box>
-        <Box position="relative" mr={1}>
-          <ActionButton
-            $noHoverColor
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setShowPostMenu(!showPostMenu);
-            }}
-          >
-            <div className="icon-wrapper">
-              <KebabHorizontalIcon size={16} />
-            </div>
-          </ActionButton>
+        <Box position="relative" mr={1} style={{ zIndex: showPostMenu ? 200 : undefined }}>
+          <Tooltip text="More" direction="s">
+            <ActionButton
+              aria-label="More"
+              $noHoverColor
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setShowPostMenu(!showPostMenu);
+              }}
+            >
+              <div className="icon-wrapper">
+                <KebabHorizontalIcon size={16} />
+              </div>
+            </ActionButton>
+          </Tooltip>
           <PostActionMenu
             isOpen={showPostMenu}
             onClose={() => setShowPostMenu(false)}
@@ -164,29 +167,39 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
     );
   }
 
-  // Standard Feed View Header
+  // Standard Feed View Header (X/Twitter 15px / 20px single-line cadence)
   return (
-    <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap" style={{ minWidth: 0 }}>
+    <Box
+      display="flex"
+      alignItems="center"
+      gap={1}
+      flexWrap="nowrap"
+      style={{ minWidth: 0, lineHeight: "20px", marginBottom: "2px" }}
+    >
       <ProfileHoverCard username={displayPost.username}>
-        <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
+        <ProfileNameLink
+          to={`/${displayPost.username}`}
+          onClick={(e) => e.stopPropagation()}
+          style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
           <Text
             style={{
-              fontWeight: "bold",
+              fontWeight: 700,
               fontSize: "15px",
-              display: "flex",
+              lineHeight: "20px",
+              display: "inline-flex",
               alignItems: "center",
               gap: "4px",
-              flexShrink: 0,
             }}
           >
-            {displayPost.display_name || displayPost.username}
+            <span>{displayPost.display_name || displayPost.username}</span>
             {displayPost.account_type === "rss" && (
-              <span style={{ display: "inline-flex", color: "var(--color-fg-muted)" }}>
+              <span style={{ display: "inline-flex", color: "var(--color-fg-muted)", flexShrink: 0 }}>
                 <RssIcon size={14} />
               </span>
             )}
             {displayPost.account_type === "bot" && (
-              <span style={{ display: "inline-flex", color: "var(--color-fg-muted)" }}>
+              <span style={{ display: "inline-flex", color: "var(--color-fg-muted)", flexShrink: 0 }}>
                 <HubotIcon size={14} />
               </span>
             )}
@@ -198,6 +211,8 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
         to={`/${displayPost.username}`}
         className="handle-text"
         style={{
+          fontSize: "15px",
+          lineHeight: "20px",
           textDecoration: "none",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -225,7 +240,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           </SignatureBadge>
         </Tooltip>
       )}
-      <Text className="handle-text" style={{ flexShrink: 0 }}>
+      <Text className="handle-text" style={{ fontSize: "15px", lineHeight: "20px", flexShrink: 0 }}>
         ·
       </Text>
       <Tooltip
@@ -240,27 +255,37 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             padding: 0,
             color: "inherit",
             cursor: "pointer",
+            fontSize: "15px",
+            lineHeight: "20px",
+            display: "inline-flex",
+            alignItems: "center",
           }}
         >
-          <Text className="handle-text" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+          <Text
+            className="handle-text"
+            style={{ fontSize: "15px", lineHeight: "20px", flexShrink: 0, whiteSpace: "nowrap" }}
+          >
             {formatRelativeTime(displayPost.created_at)}
           </Text>
         </button>
       </Tooltip>
       <Box flex={1} />
-      <Box position="relative" mr={1}>
-        <ActionButton
-          $noHoverColor
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            setShowPostMenu(!showPostMenu);
-          }}
-        >
-          <div className="icon-wrapper">
-            <KebabHorizontalIcon size={16} />
-          </div>
-        </ActionButton>
+      <Box position="relative" mr={1} style={{ zIndex: showPostMenu ? 200 : undefined, flexShrink: 0 }}>
+        <Tooltip text="More" direction="s">
+          <ActionButton
+            aria-label="More"
+            $noHoverColor
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setShowPostMenu(!showPostMenu);
+            }}
+          >
+            <div className="icon-wrapper">
+              <KebabHorizontalIcon size={16} />
+            </div>
+          </ActionButton>
+        </Tooltip>
         <PostActionMenu
           isOpen={showPostMenu}
           onClose={() => setShowPostMenu(false)}

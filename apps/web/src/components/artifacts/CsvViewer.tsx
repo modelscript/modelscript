@@ -234,16 +234,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
       return;
     }
 
-    // Fallback sample data if empty
-    setCsvData([
-      ["timestamp_s", "angular_velocity_rad_s", "motor_current_a", "temperature_c", "state"],
-      ["0.00", "0.000", "0.12", "22.4", "IDLE"],
-      ["0.05", "12.450", "2.84", "22.6", "ACCEL"],
-      ["0.10", "48.210", "4.15", "23.1", "ACCEL"],
-      ["0.15", "96.500", "3.90", "23.8", "CRUISE"],
-      ["0.20", "96.480", "2.10", "24.2", "CRUISE"],
-      ["0.25", "96.510", "2.12", "24.5", "CRUISE"],
-    ]);
+    setCsvData([]);
   }, [viewConfig]);
 
   const headers = useMemo(() => csvData[0] || [], [csvData]);
@@ -455,7 +446,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
                   colSpan={headers.length || 1}
                   style={{ textAlign: "center", padding: "24px", color: "var(--color-text-muted)" }}
                 >
-                  No matching records found.
+                  {csvData.length === 0 ? "No CSV dataset rows available." : "No matching records found."}
                 </td>
               </tr>
             )}

@@ -164,25 +164,40 @@ export function buildBinaryStlBuffer(mesh: TriangulatedMesh): Uint8Array {
 /** Build a VTK XML PolyData Uint8Array buffer understood by VtkRenderer. */
 export function buildVtkXmlBuffer(mesh: TriangulatedMesh): Uint8Array {
   const ptCount = Math.floor(mesh.positions.length / 3);
+  const triCount = Math.floor(ptCount / 3);
   const coordStrs: string[] = [];
   const scalarStrs: string[] = [];
+  const connStrs: string[] = [];
+  const offsetStrs: string[] = [];
   for (let i = 0; i < ptCount; i++) {
     const x = mesh.positions[i * 3] ?? 0;
     const y = mesh.positions[i * 3 + 1] ?? 0;
     const z = mesh.positions[i * 3 + 2] ?? 0;
     coordStrs.push(`${x.toFixed(4)} ${y.toFixed(4)} ${z.toFixed(4)}`);
-    scalarStrs.push((50 + y * 25).toFixed(2));
+    scalarStrs.push(Math.hypot(x, y, z).toFixed(4));
+  }
+  for (let t = 0; t < triCount; t++) {
+    connStrs.push(`${t * 3} ${t * 3 + 1} ${t * 3 + 2}`);
+    offsetStrs.push(String((t + 1) * 3));
   }
   const xml = `<VTKFile type="PolyData" version="1.0">
   <PolyData>
-    <Piece NumberOfPoints="${ptCount}">
+    <Piece NumberOfPoints="${ptCount}" NumberOfPolys="${triCount}">
       <Points>
         <DataArray type="Float32" NumberOfComponents="3" format="ascii">
           ${coordStrs.join(" ")}
         </DataArray>
       </Points>
+      <Polys>
+        <DataArray type="Int32" Name="connectivity" format="ascii">
+          ${connStrs.join(" ")}
+        </DataArray>
+        <DataArray type="Int32" Name="offsets" format="ascii">
+          ${offsetStrs.join(" ")}
+        </DataArray>
+      </Polys>
       <PointData>
-        <DataArray type="Float32" Name="Temperature" format="ascii">
+        <DataArray type="Float32" Name="Coordinate_Norm" format="ascii">
           ${scalarStrs.join(" ")}
         </DataArray>
       </PointData>
@@ -425,10 +440,62 @@ export function tessellateStepSource(stepCode: string): {
 
   const mesh: TriangulatedMesh = { positions: [], normals: [] };
 
+  const dist3 = (a: [number, number, number], b: [number, number, number]): number =>
+    Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  const pushUniquePt = (arr: [number, number, number][], p: [number, number, number]) => {
+    if (arr.length > 0) {
+      const last = arr[arr.length - 1]!;
+      if (dist3(last, p) < 1e-6) return;
+    }
+    arr.push(p);
+  };
+
+  const resolveEdgeLoopPts = (oEdges: number[]): [number, number, number][] => {
+    const segs: [[number, number, number], [number, number, number]][] = [];
+    for (const oeId of oEdges) {
+      const oe = orientedEdges.get(oeId);
+      const ecId = oe ? oe.edge : oeId;
+      const ec = edgeCurves.get(ecId);
+      if (ec) {
+        const p0 = getPoint(oe && !oe.sense ? ec[1] : ec[0]);
+        const p1 = getPoint(oe && !oe.sense ? ec[0] : ec[1]);
+        if (p0 && p1) segs.push([p0, p1]);
+      }
+    }
+    if (segs.length < 2) return [];
+    const pts: [number, number, number][] = [];
+    let firstSeg = segs[0]!;
+    const secondSeg = segs[1]!;
+    const dEnd = Math.min(dist3(firstSeg[1], secondSeg[0]), dist3(firstSeg[1], secondSeg[1]));
+    const dStart = Math.min(dist3(firstSeg[0], secondSeg[0]), dist3(firstSeg[0], secondSeg[1]));
+    if (dStart + 1e-6 < dEnd) {
+      firstSeg = [firstSeg[1], firstSeg[0]];
+    }
+    pushUniquePt(pts, firstSeg[0]);
+    pushUniquePt(pts, firstSeg[1]);
+    for (let i = 1; i < segs.length; i++) {
+      let seg = segs[i]!;
+      const lastPt = pts[pts.length - 1]!;
+      if (dist3(lastPt, seg[1]) + 1e-6 < dist3(lastPt, seg[0])) {
+        seg = [seg[1], seg[0]];
+      }
+      pushUniquePt(pts, seg[0]);
+      pushUniquePt(pts, seg[1]);
+    }
+    if (pts.length >= 2 && dist3(pts[0]!, pts[pts.length - 1]!) < 1e-5) {
+      pts.pop();
+    }
+    return pts;
+  };
+
+  const triangulatedLoopIds = new Set<number>();
+
   // 1. Triangulate explicit ADVANCED_FACE / FACE_SURFACE loops if present
   for (const face of advancedFaces) {
     for (const boundId of face.bounds) {
       const loopId = faceBounds.get(boundId) ?? boundId;
+      triangulatedLoopIds.add(loopId);
       const polyPts = polyLoops.get(loopId);
       if (polyPts && polyPts.length >= 3) {
         const pts = polyPts.map(getPoint).filter((p): p is [number, number, number] => p !== null);
@@ -439,17 +506,7 @@ export function tessellateStepSource(stepCode: string): {
       }
       const oEdges = edgeLoops.get(loopId);
       if (oEdges && oEdges.length >= 3) {
-        const pts: [number, number, number][] = [];
-        for (const oeId of oEdges) {
-          const oe = orientedEdges.get(oeId);
-          const ecId = oe ? oe.edge : oeId;
-          const ec = edgeCurves.get(ecId);
-          if (ec) {
-            const vId = oe && !oe.sense ? ec[1] : ec[0];
-            const pt = getPoint(vId);
-            if (pt) pts.push(pt);
-          }
-        }
+        const pts = resolveEdgeLoopPts(oEdges);
         for (let i = 1; i + 1 < pts.length; i++) {
           pushTriangle(mesh, pts[0]!, pts[i]!, pts[i + 1]!);
         }
@@ -457,37 +514,19 @@ export function tessellateStepSource(stepCode: string): {
     }
   }
 
-  // 2. Fallback: if no explicit ADVANCED_FACE triangles, build solid from CARTESIAN_POINT cloud or placements
-  if (mesh.positions.length === 0) {
-    const allPts = Array.from(cartesianPoints.values()).map((p): [number, number, number] => [
-      p[0] * scaleFactor,
-      p[1] * scaleFactor,
-      p[2] * scaleFactor,
-    ]);
-    if (allPts.length >= 4) {
-      let minX = Infinity,
-        minY = Infinity,
-        minZ = Infinity;
-      let maxX = -Infinity,
-        maxY = -Infinity,
-        maxZ = -Infinity;
-      for (const [x, y, z] of allPts) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (z < minZ) minZ = z;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        if (z > maxZ) maxZ = z;
-      }
-      const sx = Math.max(0.4, maxX - minX);
-      const sy = Math.max(0.4, maxY - minY);
-      const sz = Math.max(0.4, maxZ - minZ);
-      appendBoxTriangles(mesh, (minX + maxX) / 2, (minY + maxY) / 2 + sy / 2, (minZ + maxZ) / 2, sx, sy, sz);
-    } else {
-      // Procedural CAD solid (machined flange base + cylindrical boss) at origin / placement
-      const origin = allPts[0] ?? [0, 0, 0];
-      appendBoxTriangles(mesh, origin[0], origin[1] + 0.15, origin[2], 1.2, 0.3, 0.9);
-      appendCylinderTriangles(mesh, origin[0], origin[1] + 0.5, origin[2], 0.32, 0.4, 24);
+  // 1b. Also triangulate any remaining POLY_LOOP / EDGE_LOOP entities not referenced by ADVANCED_FACE
+  for (const [loopId, polyPts] of polyLoops.entries()) {
+    if (triangulatedLoopIds.has(loopId) || polyPts.length < 3) continue;
+    const pts = polyPts.map(getPoint).filter((p): p is [number, number, number] => p !== null);
+    for (let i = 1; i + 1 < pts.length; i++) {
+      pushTriangle(mesh, pts[0]!, pts[i]!, pts[i + 1]!);
+    }
+  }
+  for (const [loopId, oEdges] of edgeLoops.entries()) {
+    if (triangulatedLoopIds.has(loopId) || oEdges.length < 3) continue;
+    const pts = resolveEdgeLoopPts(oEdges);
+    for (let i = 1; i + 1 < pts.length; i++) {
+      pushTriangle(mesh, pts[0]!, pts[i]!, pts[i + 1]!);
     }
   }
 
@@ -556,9 +595,6 @@ export function tessellateScadSource(scadCode: string): {
     const h = Math.max(0.2, parseFloat(hMatch?.[1] || "12") / 25);
     const r = Math.max(0.1, parseFloat(rMatch?.[1] || "6") / 25);
     appendCylinderTriangles(mesh, 0, h / 2, 0, r, h, 24);
-  }
-  if (mesh.positions.length === 0) {
-    appendBoxTriangles(mesh, 0, 0.25, 0, 1.2, 0.5, 0.9);
   }
   const vtkBuffer = buildVtkXmlBuffer(mesh);
   const glbUri = buildGlbDataUri(mesh, "OpenSCAD_Solid", [0.25, 0.78, 0.52, 1.0]);

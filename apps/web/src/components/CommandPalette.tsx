@@ -433,6 +433,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               },
             },
             {
+              id: "nav-admin-users",
+              category: "Navigation" as const,
+              title: "Admin: Users & Account Governance",
+              subtitle: "Search accounts, manage roles, freeze or suspend violators",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/users");
+                onClose();
+              },
+            },
+            {
               id: "nav-admin-federation",
               category: "Navigation" as const,
               title: "Admin: Federation Domains",
@@ -469,48 +480,89 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         : []),
     ];
 
-    const defaultActionItems: CommandItem[] = user
+    const devActionItems: CommandItem[] = import.meta.env.DEV
       ? [
           {
-            id: "action-compose",
+            id: "action-dev-toggle-bar",
             category: "Actions",
-            title: "Create New Post",
-            subtitle: "Share models, simulation results, or engineering queries",
-            icon: <PlusCircleIcon size={16} />,
+            title: "Dev: Toggle Dev Mode Toolbar",
+            subtitle: "Expand or collapse the top purple developer bar (Ctrl+Shift+D)",
+            icon: <ZapIcon size={16} />,
             action: () => {
               onClose();
-              if (onOpenCompose) {
-                onOpenCompose();
-              } else {
-                window.dispatchEvent(new CustomEvent("modelscript:open-compose"));
-              }
+              window.dispatchEvent(new CustomEvent("modelscript:toggle-dev-header"));
+            },
+          },
+          {
+            id: "action-dev-flags",
+            category: "Actions",
+            title: "Dev: Configure Feature Flags",
+            subtitle: "Toggle runtime feature flags and local overrides",
+            icon: <GearIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(new CustomEvent("modelscript:open-dev-flags"));
+            },
+          },
+          {
+            id: "action-dev-reset-db",
+            category: "Actions",
+            title: "Dev: Reload & Seed Database",
+            subtitle: "Reset development database and re-seed example data",
+            icon: <CpuIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(new CustomEvent("modelscript:open-reset-db"));
             },
           },
         ]
-      : [
-          {
-            id: "action-login",
-            category: "Actions",
-            title: "Sign in",
-            subtitle: "Log in to post, follow, and save models",
-            icon: <SignInIcon size={16} />,
-            action: () => {
-              navigate("/login");
-              onClose();
+      : [];
+
+    const defaultActionItems: CommandItem[] = [
+      ...(user
+        ? [
+            {
+              id: "action-compose",
+              category: "Actions" as const,
+              title: "Create New Post",
+              subtitle: "Share models, simulation results, or engineering queries",
+              icon: <PlusCircleIcon size={16} />,
+              action: () => {
+                onClose();
+                if (onOpenCompose) {
+                  onOpenCompose();
+                } else {
+                  window.dispatchEvent(new CustomEvent("modelscript:open-compose"));
+                }
+              },
             },
-          },
-          {
-            id: "action-signup",
-            category: "Actions",
-            title: "Create account",
-            subtitle: "Join the ModelScript community for free",
-            icon: <PersonAddIcon size={16} />,
-            action: () => {
-              navigate("/signup");
-              onClose();
+          ]
+        : [
+            {
+              id: "action-login",
+              category: "Actions" as const,
+              title: "Sign in",
+              subtitle: "Log in to post, follow, and save models",
+              icon: <SignInIcon size={16} />,
+              action: () => {
+                navigate("/login");
+                onClose();
+              },
             },
-          },
-        ];
+            {
+              id: "action-signup",
+              category: "Actions" as const,
+              title: "Create account",
+              subtitle: "Join the ModelScript community for free",
+              icon: <PersonAddIcon size={16} />,
+              action: () => {
+                navigate("/signup");
+                onClose();
+              },
+            },
+          ]),
+      ...devActionItems,
+    ];
 
     if (!query.trim()) {
       return [...defaultActionItems, ...defaultNavItems];

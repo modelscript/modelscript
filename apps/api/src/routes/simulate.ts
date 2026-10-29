@@ -273,9 +273,14 @@ getErrorString();
           }
 
           // Persist the CSV result outside tmpDir so tmpDir can be cleaned up in finally
-          const resultDir = path.join(os.tmpdir(), "modelscript-simulate-results");
+          const resultDir = path.resolve(os.tmpdir(), "modelscript-simulate-results");
           fs.mkdirSync(resultDir, { recursive: true });
-          const persistedCsvPath = path.join(resultDir, `${jobId}_res.csv`);
+          const safeJobFileName = `${path.basename(jobId).replace(/[^a-zA-Z0-9_.-]/g, "_")}_res.csv`;
+          const persistedCsvPath = path.resolve(resultDir, safeJobFileName);
+          const relPersisted = path.relative(resultDir, persistedCsvPath);
+          if (!relPersisted || relPersisted.startsWith("..") || path.isAbsolute(relPersisted)) {
+            throw new Error("Invalid CSV destination path");
+          }
           fs.copyFileSync(csvFilePath, persistedCsvPath);
 
           // Store the result path on the job so the GET route can stream it back

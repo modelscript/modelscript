@@ -445,4 +445,117 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     assert.ok(returnedIds.includes(nbPost.id));
     assert.ok(returnedIds.includes(dirPost.id));
   });
+
+  await t.test("AI Composer Drafting & Text Polishing: POST /api/v1/social/ai/draft & /polish", async () => {
+    // 1. Create a rich Modelica artifact view
+    const modelicaArtRes = await request(app)
+      .post("/api/v1/social/artifact-views")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        artifact_type: "modelica",
+        title: "RLC Damped Oscillator",
+        view_config: JSON.stringify({
+          modelName: "RLCDampedOscillator",
+          code: "model RLCDampedOscillator\n  parameter Real R = 10.0;\n  parameter Real L = 0.5;\n  parameter Real C = 0.01;\n  Real v(start=5.0);\n  Real i(start=0.0);\nequation\n  L * der(i) + R * i + v = 0;\n  C * der(v) = i;\nend RLCDampedOscillator;",
+          series: [
+            { name: "v", values: [5.0, 2.1, -0.8, 0.1] },
+            { name: "i", values: [0.0, -0.35, 0.12, -0.02] },
+          ],
+          stopTime: 2.0,
+        }),
+      });
+    assert.strictEqual(modelicaArtRes.status, 201);
+    const modelicaArtId = modelicaArtRes.body.id;
+
+    // 2. Draft post from attached Modelica artifact
+    const draftRes = await request(app)
+      .post("/api/v1/social/ai/draft")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        artifact_id: modelicaArtId,
+        tone: "technical",
+      });
+
+    assert.strictEqual(draftRes.status, 200);
+    assert.ok(typeof draftRes.body.draft === "string" && draftRes.body.draft.length > 20);
+    assert.ok(draftRes.body.draft.includes("RLC Damped Oscillator"));
+    assert.strictEqual(draftRes.body.domain, "Modelica & Physical Modeling");
+    assert.ok(Array.isArray(draftRes.body.hashtags) && draftRes.body.hashtags.includes("#Modelica"));
+    assert.ok(Array.isArray(draftRes.body.highlights) && draftRes.body.highlights.length > 0);
+    assert.ok(["remote-llm", "remote-deterministic"].includes(draftRes.body.source));
+
+    // 3. Draft post in tutorial tone
+    const tutorialDraftRes = await request(app)
+      .post("/api/v1/social/ai/draft")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        artifact_id: modelicaArtId,
+        tone: "tutorial",
+      });
+    assert.strictEqual(tutorialDraftRes.status, 200);
+    assert.ok(tutorialDraftRes.body.draft.includes("##"));
+
+    // 4. Draft from inline CFD artifact_view payload
+    const cfdDraftRes = await request(app)
+      .post("/api/v1/social/ai/draft")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        artifact_view: {
+          artifact_type: "cfd",
+          title: "RAE2822 Transonic Airfoil",
+          view_config: {
+            solver: "SU2 RANS",
+            mach: 0.73,
+            reynolds: "6.5e6",
+          },
+        },
+        tone: "concise",
+      });
+    assert.strictEqual(cfdDraftRes.status, 200);
+    assert.strictEqual(cfdDraftRes.body.domain, "Computational Fluid Dynamics");
+    assert.ok(cfdDraftRes.body.hashtags.includes("#CFD"));
+    assert.ok(cfdDraftRes.body.draft.includes("RAE2822 Transonic Airfoil"));
+
+    // 5. Polish existing text (technical polish, concise, expand, hashtags) while preserving @mentions & ::artifact directives
+    const rawInput =
+      "hey @reviewer i simulated the rlc oscillator circuit with L=0.5 and C=0.01 and the voltage damps out nicely\n\n::artifact[RLC Damped Oscillator]{id=42}";
+
+    const polishRes = await request(app)
+      .post("/api/v1/social/ai/polish")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        text: rawInput,
+        mode: "polish",
+        artifact_id: modelicaArtId,
+      });
+    assert.strictEqual(polishRes.status, 200);
+    assert.ok(typeof polishRes.body.polished === "string" && polishRes.body.polished.length > 10);
+    // Mentions and ::artifact directives must be preserved
+    assert.ok(polishRes.body.polished.includes("@reviewer"));
+    assert.ok(polishRes.body.polished.includes("::artifact[RLC Damped Oscillator]{id=42}"));
+
+    // 6. Polish mode: hashtags
+    const hashtagsRes = await request(app)
+      .post("/api/v1/social/ai/polish")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        text: "Analyzed transient fault recovery on the IEEE 39-bus HVDC EMT power grid.",
+        mode: "hashtags",
+      });
+    assert.strictEqual(hashtagsRes.status, 200);
+    assert.ok(hashtagsRes.body.polished.includes("#"));
+    assert.ok(Array.isArray(hashtagsRes.body.hashtags) && hashtagsRes.body.hashtags.length > 0);
+
+    // 7. Polish mode: expand with attached artifact context
+    const expandRes = await request(app)
+      .post("/api/v1/social/ai/polish")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({
+        text: "Sharing the RLC circuit transient run.",
+        mode: "expand",
+        artifact_id: modelicaArtId,
+      });
+    assert.strictEqual(expandRes.status, 200);
+    assert.ok(expandRes.body.polished.length > "Sharing the RLC circuit transient run.".length);
+  });
 });

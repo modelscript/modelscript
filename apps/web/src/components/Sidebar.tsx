@@ -2,6 +2,7 @@
 
 import {
   BellIcon,
+  BookIcon,
   BookmarkIcon,
   CodeIcon,
   GearIcon,
@@ -79,6 +80,9 @@ const SidebarContainer = styled.header`
   }
 
   .post-btn {
+    font-size: 17px;
+    font-weight: 700;
+
     @media (max-width: 1280px) {
       width: 50px !important;
       height: 50px !important;
@@ -123,14 +127,22 @@ const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-secondary, #334155)")};
+  color: var(--color-text-heading, #0f1419);
   font-size: 15px;
+  line-height: 20px;
   font-weight: ${(props) => (props.$active ? "600" : "500")};
   width: 100%;
   box-sizing: border-box;
 
+  .nav-label {
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: inherit;
+    color: inherit;
+  }
+
   svg {
-    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-muted, #475569)")};
+    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-heading, #0f1419)")};
     transition:
       transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
       color 0.2s ease;
@@ -138,7 +150,7 @@ const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
 
   &:hover {
     text-decoration: none;
-    color: var(--color-text-heading);
+    color: var(--color-text-heading, #0f1419);
   }
 
   &:hover svg {
@@ -156,68 +168,27 @@ const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
   }
 `;
 
-const SectionHeader = styled.div`
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-text-muted, #475569);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 10px 14px 4px;
-  user-select: none;
-
-  @media (max-width: 1280px) {
-    display: none;
-  }
-`;
-
 const SectionDivider = styled.div`
   height: 1px;
   background-color: var(--color-border-default);
-  margin: 6px 8px;
+  margin: 8px 10px;
 
   @media (max-width: 1280px) {
-    margin: 4px 2px;
-  }
-`;
-
-const ShortcutBadge = styled.span`
-  margin-left: auto;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.04));
-  border: 1px solid var(--color-border-default);
-  padding: 2px 6px;
-  border-radius: 4px;
-  opacity: 0;
-  transform: translateX(-4px);
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
-  pointer-events: none;
-
-  @media (max-width: 1280px) {
-    display: none;
+    margin: 6px 2px;
   }
 `;
 
 const NavPill = styled.div<{ $active?: boolean | undefined }>`
   display: inline-flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 14px;
+  gap: 14px;
+  padding: 8px 12px;
   border-radius: 10px;
   width: 100%;
   border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
   background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
   box-shadow: ${(props) => (props.$active ? "0 1px 3px rgba(0, 0, 0, 0.04)" : "none")};
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-  &:hover .shortcut-badge {
-    opacity: 1;
-    transform: translateX(0);
-  }
 
   @media (max-width: 1280px) {
     width: 44px;
@@ -284,7 +255,7 @@ const BrandTitle = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-text-heading);
@@ -458,22 +429,28 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const hasCae = useFeatureFlag("cae_cloud_solver");
 
   const communityLinks = [];
-  if (user) communityLinks.push({ to: "/home", icon: HomeIcon, label: "Home", shortcut: "g h" });
-  communityLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore", shortcut: "g e" });
+  if (user) communityLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
+  communityLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore" });
   if (user) {
-    communityLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications", shortcut: "g n" });
+    communityLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications" });
     communityLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
     communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
     communityLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
   }
 
-  const studioLinks: { to: string; icon: any; label: string; shortcut?: string }[] = [
-    { to: "/playground", icon: PlayIcon, label: "Playground", shortcut: "g p" },
-    { to: "/packages", icon: PackageIcon, label: "Packages", shortcut: "g k" },
-    { to: "/repos", icon: RepoIcon, label: "Repositories", shortcut: "g r" },
+  const studioLinks: {
+    to: string;
+    icon: any;
+    label: string;
+    reloadDocument?: boolean;
+  }[] = [
+    { to: "/playground", icon: PlayIcon, label: "Playground" },
+    { to: "/packages", icon: PackageIcon, label: "Packages" },
+    { to: "/repos", icon: RepoIcon, label: "Repositories" },
+    { to: "/guide/introduction", icon: BookIcon, label: "Docs", reloadDocument: true },
   ];
   if (hasIde) {
-    studioLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE", shortcut: "g i" });
+    studioLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
   }
   if (hasCae) {
     studioLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
@@ -484,10 +461,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     systemLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
   }
 
-  const renderLinkItem = (link: { to: string; icon: any; label: string; shortcut?: string | undefined }) => {
+  const renderLinkItem = (link: { to: string; icon: any; label: string; reloadDocument?: boolean | undefined }) => {
     const isActive = location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
     return (
-      <NavItem key={link.to} to={link.to} title={link.label} aria-label={link.label} $active={isActive}>
+      <NavItem
+        key={link.to}
+        to={link.to}
+        reloadDocument={Boolean(link.reloadDocument)}
+        title={link.label}
+        aria-label={link.label}
+        $active={isActive}
+      >
         <NavPill $active={isActive}>
           <div
             style={{
@@ -495,11 +479,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 28,
-              height: 28,
+              width: 22,
+              height: 22,
             }}
           >
-            <link.icon size={24} />
+            <link.icon size={18} />
             {link.to === "/notifications" && unreadCount > 0 && (
               <div
                 style={{
@@ -509,12 +493,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                   backgroundColor: "var(--color-accent-cyan)",
                   color: "white",
                   borderRadius: "50%",
-                  minWidth: "20px",
-                  height: "20px",
+                  minWidth: "18px",
+                  height: "18px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: "11px",
+                  fontSize: "10px",
                   fontWeight: "bold",
                   padding: "0 4px",
                   boxShadow: "0 0 0 2px var(--color-bg-primary)",
@@ -525,7 +509,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
             )}
           </div>
           <Text className="nav-label">{link.label}</Text>
-          {link.shortcut && <ShortcutBadge className="shortcut-badge">{link.shortcut}</ShortcutBadge>}
         </NavPill>
       </NavItem>
     );
@@ -553,13 +536,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
         {communityLinks.map(renderLinkItem)}
 
         <SectionDivider />
-        <SectionHeader>Modeling Studio</SectionHeader>
         {studioLinks.map(renderLinkItem)}
 
         {systemLinks.length > 0 && (
           <>
             <SectionDivider />
-            <SectionHeader>System</SectionHeader>
             {systemLinks.map(renderLinkItem)}
           </>
         )}
@@ -631,10 +612,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                 {user.avatar_url ? null : user.username.charAt(0).toUpperCase()}
               </SidebarAvatar>
               <Box display="flex" flexDirection="column" className="profile-details">
-                <Text style={{ fontWeight: "bold", fontSize: "15px", display: "block" }}>
+                <Text style={{ fontWeight: 700, fontSize: "13.5px", lineHeight: "18px", display: "block" }}>
                   {user.display_name || (user.username === "dev" ? "Dev User" : user.username)}
                 </Text>
-                <Text className="handle-text" style={{ display: "block", marginTop: "-2px" }}>
+                <Text className="handle-text" style={{ fontSize: "12.5px", lineHeight: "16px", display: "block" }}>
                   @{user.username}
                 </Text>
               </Box>

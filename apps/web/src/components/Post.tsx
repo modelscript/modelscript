@@ -3,6 +3,7 @@
 import { SyncIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { bookmarkPost, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
@@ -33,7 +34,32 @@ export type { PostProps } from "./post/styles";
 
 const ComposeModal = React.lazy(() => import("./ComposeModal"));
 
-const viewedPostIds = new Set<number>();
+const VIEWED_POSTS_SESSION_KEY = "modelscript:viewed_post_ids";
+
+const viewedPostIds: Set<number> = (() => {
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const raw = window.sessionStorage.getItem(VIEWED_POSTS_SESSION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return new Set<number>(parsed.filter((id): id is number => typeof id === "number"));
+        }
+      }
+    }
+  } catch {}
+  return new Set<number>();
+})();
+
+function markPostViewedInSession(postId: number): void {
+  viewedPostIds.add(postId);
+  try {
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      const arr = Array.from(viewedPostIds).slice(-500);
+      window.sessionStorage.setItem(VIEWED_POSTS_SESSION_KEY, JSON.stringify(arr));
+    }
+  } catch {}
+}
 
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
@@ -55,6 +81,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [repostCount, setRepostCount] = useState(displayPost.repost_count);
   const [bookmarked, setBookmarked] = useState(Boolean(displayPost.bookmarked));
   const [bookmarkCount, setBookmarkCount] = useState(displayPost.bookmark_count || 0);
+  const [impressions, setImpressions] = useState<number>(
+    displayPost.view_count ?? (displayPost as any).views_count ?? 0,
+  );
   const [isDeleted, setIsDeleted] = useState(false);
 
   useEffect(() => {
@@ -64,6 +93,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     setRepostCount(displayPost.repost_count);
     setBookmarked(Boolean(displayPost.bookmarked));
     setBookmarkCount(displayPost.bookmark_count || 0);
+    setImpressions(displayPost.view_count ?? (displayPost as any).views_count ?? 0);
   }, [
     displayPost.id,
     displayPost.liked,
@@ -72,6 +102,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     displayPost.repost_count,
     displayPost.bookmarked,
     displayPost.bookmark_count,
+    displayPost.view_count,
   ]);
 
   const [showPostMenu, setShowPostMenu] = useState(false);
@@ -135,9 +166,17 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     const postId = displayPost?.id;
     if (!postId || viewedPostIds.has(postId)) return;
 
+    const triggerView = () => {
+      markPostViewedInSession(postId);
+      void recordPostView(postId).then((res) => {
+        if (res?.counted) {
+          setImpressions((prev) => prev + 1);
+        }
+      });
+    };
+
     if (isDetail || typeof IntersectionObserver === "undefined" || !postContainerRef.current) {
-      viewedPostIds.add(postId);
-      recordPostView(postId);
+      triggerView();
       return;
     }
 
@@ -145,8 +184,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && !viewedPostIds.has(postId)) {
-            viewedPostIds.add(postId);
-            recordPostView(postId);
+            triggerView();
             observer.disconnect();
             break;
           }
@@ -159,7 +197,6 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     return () => observer.disconnect();
   }, [displayPost?.id, isDetail, token]);
 
-  const impressions = displayPost.view_count ?? 0;
   const isNotebook = isNotebookPost(displayPost);
   const notebookData = useMemo(
     () =>
@@ -331,7 +368,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     return null;
   }
 
-  const modals = (
+  const hasActiveModal =
+    showLoginModal || showQuoteModal || showReplyModal || showEditModal || showAnalyticsModal || showSignatureModal;
+
+  const modalsContent = hasActiveModal ? (
     <Suspense fallback={null}>
       {showLoginModal && <LoginPromptModal onClose={() => setShowLoginModal(false)} />}
       {showQuoteModal && (
@@ -384,7 +424,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       {showAnalyticsModal && (
         <PostAnalyticsModal
           postId={displayPost.id}
-          displayPost={displayPost}
+          displayPost={{ ...displayPost, view_count: impressions }}
           liked={liked}
           likeCount={likeCount}
           reposted={reposted}
@@ -403,7 +443,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
         />
       )}
     </Suspense>
-  );
+  ) : null;
+
+  const modals =
+    modalsContent && typeof document !== "undefined" ? createPortal(modalsContent, document.body) : modalsContent;
 
   if (isDetail) {
     return (
@@ -443,20 +486,28 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               <Box
                 display="flex"
                 alignItems="center"
-                gap={2}
-                style={{ color: "var(--color-fg-muted)" }}
+                gap={3}
+                style={{ color: "var(--color-fg-muted)", lineHeight: "16px", fontWeight: 700 }}
                 fontSize="13px"
-                mb={1}
-                ml={5}
+                mb={0.5}
               >
-                <SyncIcon size={12} />
-                <Link
-                  to={`/${post.username}`}
-                  style={{ color: "inherit", textDecoration: "none" }}
-                  onClick={(e) => e.stopPropagation()}
+                <Box
+                  display="flex"
+                  justifyContent="flex-end"
+                  alignItems="center"
+                  style={{ width: "40px", flexShrink: 0 }}
                 >
-                  {post.display_name || post.username} reposted
-                </Link>
+                  <SyncIcon size={15} />
+                </Box>
+                <Box flex={1} style={{ minWidth: 0 }}>
+                  <Link
+                    to={`/${post.username}`}
+                    style={{ color: "inherit", textDecoration: "none", fontWeight: 700 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {post.display_name || post.username} reposted
+                  </Link>
+                </Box>
               </Box>
             )}
             <Box display="flex" gap={3} style={{ minWidth: 0, maxWidth: "100%", width: "100%" }}>

@@ -53,12 +53,15 @@ export interface MorselEditorProps {
     | undefined;
   showParameterRibbon?: boolean | undefined;
   hideFloatingDock?: boolean | undefined;
+  hideCenterFloatingToolbar?: boolean | undefined;
+  defaultRibbonExpanded?: boolean | undefined;
   simulateTriggerCount?: number | undefined;
   externalParams?: Record<string, string | number | boolean> | undefined;
   onCodeChange?: ((code: string) => void) | undefined;
   onDialectChange?: ((dialect: string) => void) | undefined;
   onAnchorClick?: ((anchor: { elementId: string; kind: "component" }) => void) | undefined;
   onSimulationStatus?: ((status: string, data?: unknown) => void) | undefined;
+  onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code") => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
 }
 
@@ -92,12 +95,19 @@ export default function MorselEditor(props: MorselEditorProps) {
   const initialIsCad =
     props.initialView === "cad-only" ||
     props.initialView === "cad" ||
+    props.initialView === "3d" ||
     (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
-  const initialIsPlot = props.initialView === "plot-only" || props.initialView === "plot";
+  const initialIsPlot =
+    props.initialView === "plot-only" || props.initialView === "plot" || props.initialView === "simulation";
+  const initialIsInspector = props.initialView === "inspector";
   const initialViewMode =
     props.initialView === "code-only" || props.initialView === "code"
       ? View.CODE
-      : props.initialView === "diagram-only" || props.initialView === "diagram" || initialIsCad || initialIsPlot
+      : props.initialView === "diagram-only" ||
+          props.initialView === "diagram" ||
+          initialIsCad ||
+          initialIsPlot ||
+          initialIsInspector
         ? View.DIAGRAM
         : props.initialView === "split-rows"
           ? View.SPLIT_ROWS
@@ -106,6 +116,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [view, setView] = useState<View>(initialViewMode);
   const [showResultsView, setShowResultsView] = useState(initialIsPlot);
   const [showCadView, setShowCadView] = useState(initialIsCad);
+  const [showAnalysisView, setShowAnalysisView] = useState(initialIsInspector);
   const [mobileTab, setMobileTab] = useState<MobileTab>(
     initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
   );
@@ -136,18 +147,31 @@ export default function MorselEditor(props: MorselEditorProps) {
       setView(View.CODE);
       setShowCadView(false);
       setShowResultsView(false);
+      setShowAnalysisView(false);
     } else if (props.initialView === "diagram-only" || props.initialView === "diagram") {
       setView(View.DIAGRAM);
       setShowCadView(false);
       setShowResultsView(false);
-    } else if (props.initialView === "cad-only" || props.initialView === "cad") {
+      setShowAnalysisView(false);
+    } else if (props.initialView === "cad-only" || props.initialView === "cad" || props.initialView === "3d") {
       setView(View.DIAGRAM);
       setShowCadView(true);
       setShowResultsView(false);
-    } else if (props.initialView === "plot-only" || props.initialView === "plot") {
+      setShowAnalysisView(false);
+    } else if (
+      props.initialView === "plot-only" ||
+      props.initialView === "plot" ||
+      props.initialView === "simulation"
+    ) {
       setView(View.DIAGRAM);
       setShowCadView(false);
       setShowResultsView(true);
+      setShowAnalysisView(false);
+    } else if (props.initialView === "inspector") {
+      setView(View.DIAGRAM);
+      setShowCadView(false);
+      setShowResultsView(false);
+      setShowAnalysisView(true);
     } else if (props.initialView === "split-rows") {
       setView(View.SPLIT_ROWS);
     } else if (props.initialView === "split-columns") {
@@ -266,11 +290,17 @@ export default function MorselEditor(props: MorselEditorProps) {
     viewDiagramEnum: View.DIAGRAM,
   });
 
+  const lastSimulatedTriggerRef = useRef(0);
   useEffect(() => {
-    if (props.simulateTriggerCount && props.simulateTriggerCount > 0) {
+    if (
+      props.simulateTriggerCount &&
+      props.simulateTriggerCount > lastSimulatedTriggerRef.current &&
+      contextVersion > 0
+    ) {
+      lastSimulatedTriggerRef.current = props.simulateTriggerCount;
       void handleSimulate();
     }
-  }, [props.simulateTriggerCount, handleSimulate]);
+  }, [props.simulateTriggerCount, contextVersion, handleSimulate]);
 
   useEffect(() => {
     if (!props.externalParams) return;
@@ -641,11 +671,22 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (!props.embed) {
         setTreeVisible(true);
       }
-      if (props.initialView !== "code" && props.initialView !== "code-only") {
+      if (!props.initialView || props.initialView === "split-columns" || props.initialView === "split-rows") {
         setView((prev) => (prev === View.CODE ? View.SPLIT_COLUMNS : prev));
       }
     }
   }, [isNarrow, mobileTab, props.embed, props.initialView]);
+
+  useEffect(() => {
+    if (showResultsView) {
+      setShowAnalysisView(false);
+      setShowCadView(false);
+      if (props.hideCenterFloatingToolbar && view === View.CODE) {
+        setView(View.DIAGRAM);
+      }
+      props.onActiveViewChange?.("simulation");
+    }
+  }, [showResultsView, props.hideCenterFloatingToolbar, props.onActiveViewChange, view]);
 
   useEffect(() => {
     if (content) {
@@ -737,10 +778,10 @@ export default function MorselEditor(props: MorselEditorProps) {
         codeEditorRef.current?.sync();
         setContextVersion((v) => v + 1);
       } else if (error) {
-        console.warn(`Failed to fetch source for ${className}:`, error);
+        console.warn("Failed to fetch source for %s:", className, error);
       }
     } catch (e) {
-      console.error(`Error loading source for ${className}:`, e);
+      console.error("Error loading source for %s:", className, e);
     }
   };
 
@@ -991,6 +1032,9 @@ export default function MorselEditor(props: MorselEditorProps) {
               onSimulate={handleSimulate}
               onOpenCloudModal={() => setIsCloudModalOpen(true)}
               onFlatten={handleFlatten}
+              hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
+              showAnalysisView={showAnalysisView}
+              setShowAnalysisView={setShowAnalysisView}
             />
 
             {/* Split Resizer */}
@@ -1224,23 +1268,28 @@ export default function MorselEditor(props: MorselEditorProps) {
           }}
         />
 
-        {(props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && (
-          <ParameterSliderRibbon
-            parameters={ribbonParams as any}
-            overrides={parameterOverrides}
-            onChange={handleRibbonParamChange}
-            onReset={handleRibbonParamReset}
-            onSimulate={handleSimulate}
-            isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
-            dark={colorMode === "dark"}
-            hasFloatingDock={
-              !props.embed &&
-              !props.hideFloatingDock &&
-              !isNarrow &&
-              !(typeof window !== "undefined" && window.location.pathname.startsWith("/playground"))
-            }
-          />
-        )}
+        {(props.embed || props.showParameterRibbon) &&
+          ribbonParams.length > 0 &&
+          view !== View.CODE &&
+          !showAnalysisView && (
+            <ParameterSliderRibbon
+              parameters={ribbonParams as any}
+              overrides={parameterOverrides}
+              onChange={handleRibbonParamChange}
+              onReset={handleRibbonParamReset}
+              onSimulate={handleSimulate}
+              isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+              dark={colorMode === "dark"}
+              defaultExpanded={props.defaultRibbonExpanded ?? !props.hideCenterFloatingToolbar}
+              fullWidth={Boolean(props.hideCenterFloatingToolbar)}
+              hasFloatingDock={
+                !props.embed &&
+                !props.hideFloatingDock &&
+                !isNarrow &&
+                !(typeof window !== "undefined" && window.location.pathname.startsWith("/playground"))
+              }
+            />
+          )}
       </div>
     </>
   );

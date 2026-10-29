@@ -269,10 +269,10 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
     <Box
       width="100%"
       height={isFullScreen ? "100%" : "400px"}
-      bg="var(--color-canvas-subtle)"
-      borderRadius={isFullScreen ? "0" : "8px"}
+      borderRadius="0"
       overflow="hidden"
       position="relative"
+      style={{ background: "transparent" }}
     >
       <ViewportCameraControls onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })} />
 
@@ -284,8 +284,10 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
         <ambientLight intensity={0.5} />
         <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.5} />
 
-        <Suspense fallback={<Loader />}>
+        <Suspense fallback={null}>
           <Environment files="/hdri/studio.hdr" />
+        </Suspense>
+        <Suspense fallback={<Loader />}>
           <AnimatedGCode
             object={object}
             isPlaying={isPlaying}

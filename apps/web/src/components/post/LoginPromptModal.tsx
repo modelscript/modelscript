@@ -3,6 +3,7 @@
 import { MarkGithubIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton, Text } from "@primer/react";
 import React from "react";
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 import Box from "../Box";
 
@@ -14,7 +15,7 @@ const AnalyticsModalOverlay = styled.div`
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(6px);
-  z-index: 1000;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -34,7 +35,7 @@ const AnalyticsModalContainer = styled.div`
 
 const GitLabIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
+    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.43 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
   </svg>
 );
 
@@ -74,7 +75,7 @@ export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) =
     window.location.href = `/api/v1/auth/login/${provider}`;
   };
 
-  return (
+  const modal = (
     <AnalyticsModalOverlay
       onClick={(e) => {
         e.stopPropagation();
@@ -110,4 +111,6 @@ export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) =
       </AnalyticsModalContainer>
     </AnalyticsModalOverlay>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };

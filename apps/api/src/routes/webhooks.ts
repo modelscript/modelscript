@@ -5,6 +5,7 @@ import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
 import type { LibraryStorage } from "../storage.js";
 
@@ -22,6 +23,7 @@ function verifyGitHubSignature(secret: string, signature: string | undefined, pa
 
 export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, storage?: LibraryStorage): Router {
   const router = createRouter();
+  router.use(defaultApiLimiter);
 
   /**
    * POST /api/v1/webhooks/incoming/:provider
@@ -217,7 +219,7 @@ export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, s
           database.updateJobStatus(jobIdToComplete, "SUCCESS");
         }
       } catch (err) {
-        console.error(`[Webhook] Failed to enqueue auto-publish job for ${namespace}/${project}:`, err);
+        console.error("[Webhook] Failed to enqueue auto-publish job for %s/%s:", namespace, project, err);
       }
     }
 

@@ -342,13 +342,21 @@ export function registerSimulationCommands(
         const candidate = vscode.workspace.textDocuments.find(
           (d) =>
             d.uri.scheme !== "output" &&
-            (d.uri.path.endsWith(".pscx") || d.uri.path.endsWith(".pslx") || d.uri.path.endsWith(".mo")),
+            (d.uri.path.endsWith(".pscx") ||
+              d.uri.path.endsWith(".pslx") ||
+              d.uri.path.endsWith(".raw") ||
+              d.uri.path.endsWith(".dyr") ||
+              d.uri.path.endsWith(".mo")),
         );
         if (candidate) uri = candidate.uri.toString();
       }
       if (!uri) {
         vscode.window.showWarningMessage("No active model or diagram document found to simulate.");
         return;
+      }
+
+      if (uri.endsWith(".raw") || uri.endsWith(".dyr")) {
+        return await vscode.commands.executeCommand("modelscript.psse.simulate_psse_transient", uri);
       }
 
       const isPscad = uri.endsWith(".pscx") || uri.endsWith(".pslx");

@@ -12,7 +12,7 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
   const { user, isAdmin, isLoading } = useAuth();
 
   if (isLoading) {
-    return <div style={{ minHeight: "100vh", backgroundColor: "var(--color-canvas-default)" }} />;
+    return <div style={{ minHeight: "100vh", backgroundColor: "transparent" }} />;
   }
 
   if (!user || !isAdmin) {

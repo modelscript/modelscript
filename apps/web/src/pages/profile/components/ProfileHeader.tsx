@@ -23,6 +23,7 @@ import FederatedDomainPill from "../../../components/FederatedDomainPill";
 import FollowButton from "../../../components/FollowButton";
 import { CircleIconButton, StickyHeader } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
+import { getAvatarUrl, getBannerUrl } from "../../../util/avatar";
 import { parseFederatedHandle } from "../../../util/federation";
 import { safeCssImageUrl, sanitizeHttpUrl } from "../../../util/url";
 import type { LinkedAccount, ProfileData } from "../types";
@@ -85,14 +86,22 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         <Box display="flex" flexDirection="column">
           <Heading
             as="h2"
-            style={{ fontSize: "20px", margin: 0, lineHeight: 1.2, display: "flex", alignItems: "center", gap: "6px" }}
+            style={{
+              fontSize: "20px",
+              lineHeight: "24px",
+              fontWeight: 700,
+              margin: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
           >
             {profile.display_name || profile.username}
             {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
             {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
             {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
           </Heading>
-          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
+          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: "16px" }}>
             {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
               profile.post_count || 0,
             )}{" "}
@@ -105,7 +114,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         style={{
           height: "200px",
           backgroundColor: "var(--color-canvas-subtle)",
-          backgroundImage: safeCssImageUrl(profile.banner_url) || "none",
+          backgroundImage: safeCssImageUrl(getBannerUrl(profile.username, profile.banner_url)) || "none",
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
@@ -125,11 +134,13 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               color: "white",
               fontSize: "48px",
               fontWeight: "bold",
-              backgroundImage: safeCssImageUrl(profile.avatar_url) || "none",
+              backgroundImage:
+                safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined)) || "none",
               backgroundSize: "cover",
             }}
           >
-            {!safeCssImageUrl(profile.avatar_url) && profile.username.charAt(0).toUpperCase()}
+            {!safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined)) &&
+              profile.username.charAt(0).toUpperCase()}
           </Box>
           <Box mb={2} display="flex" gap={2} alignItems="center">
             {isOwnProfile ? (
@@ -201,7 +212,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             border: "none",
                             textAlign: "left",
                             cursor: "pointer",
-                            fontWeight: "bold",
+                            fontSize: "15px",
+                            lineHeight: "20px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             gap: "12px",
@@ -225,7 +238,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             border: "none",
                             textAlign: "left",
                             cursor: "pointer",
-                            fontWeight: "bold",
+                            fontSize: "15px",
+                            lineHeight: "20px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             gap: "12px",
@@ -245,7 +260,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             border: "none",
                             textAlign: "left",
                             cursor: "pointer",
-                            fontWeight: "bold",
+                            fontSize: "15px",
+                            lineHeight: "20px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             gap: "12px",
@@ -272,7 +289,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             border: "none",
                             textAlign: "left",
                             cursor: "pointer",
-                            fontWeight: "bold",
+                            fontSize: "15px",
+                            lineHeight: "20px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             gap: "12px",
@@ -304,7 +323,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                             border: "none",
                             textAlign: "left",
                             cursor: "pointer",
-                            fontWeight: "bold",
+                            fontSize: "15px",
+                            lineHeight: "20px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             gap: "12px",
@@ -344,7 +365,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           as="h1"
           style={{
             marginTop: "16px",
-            fontSize: "24px",
+            marginBottom: "2px",
+            fontSize: "20px",
+            lineHeight: "24px",
             fontWeight: 800,
             display: "flex",
             alignItems: "center",
@@ -352,13 +375,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           }}
         >
           {profile.display_name || profile.username}
-          {profile.account_type === "rss" && <RssIcon size={24} color="var(--color-fg-muted)" />}
-          {profile.account_type === "bot" && <HubotIcon size={24} color="var(--color-fg-muted)" />}
-          {profile.account_type === "remote" && <GlobeIcon size={24} color="var(--color-accent-cyan)" />}
+          {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
+          {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
+          {profile.account_type === "remote" && <GlobeIcon size={20} color="var(--color-accent-cyan)" />}
           {linkedAccounts.some((acc) => acc.provider === "twitter") && (
             <span
               style={{
-                fontSize: "12px",
+                fontSize: "13px",
+                lineHeight: "16px",
                 padding: "2px 8px",
                 backgroundColor: "var(--color-neutral-muted, rgba(128, 128, 128, 0.2))",
                 color: "var(--color-fg-default)",
@@ -375,7 +399,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         </Heading>
 
         <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
-          <Text color="var(--color-fg-muted)">@{parsed.localUsername}</Text>
+          <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
+            @{parsed.localUsername}
+          </Text>
           {parsed.isFederated && parsed.remoteDomain && <FederatedDomainPill domain={parsed.remoteDomain} />}
         </Box>
 
@@ -383,7 +409,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           <Box mt={2} mb={1} display="flex" alignItems="center" gap={2} flexWrap="wrap">
             <span
               style={{
-                fontSize: "12px",
+                fontSize: "13px",
+                lineHeight: "16px",
                 padding: "2px 8px",
                 backgroundColor: "rgba(6, 182, 212, 0.1)",
                 color: "var(--color-accent-cyan)",
@@ -403,7 +430,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  fontSize: "12px",
+                  fontSize: "13px",
+                  lineHeight: "16px",
                   color: "var(--color-text-muted)",
                   display: "inline-flex",
                   alignItems: "center",
@@ -421,7 +449,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
         {profile.account_type === "bot" && profile.owner_username && (
           <Box mt={1} mb={2}>
-            <Text color="var(--color-fg-muted)" fontSize="14px">
+            <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
               <HubotIcon size={14} style={{ marginRight: "4px" }} />
               Managed by <Link to={`/${profile.owner_username}`}>@{profile.owner_username}</Link>
             </Text>
@@ -430,14 +458,15 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
         {profile.bio && (
           <Box mt={3}>
-            <Text>{profile.bio}</Text>
+            <Text style={{ fontSize: "15px", lineHeight: "20px", display: "block" }}>{profile.bio}</Text>
           </Box>
         )}
 
         <Box mt={3} display="flex" gap={3} flexWrap="wrap">
           {profile.location && (
             <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
-              <LocationIcon size={16} /> <Text style={{ fontSize: "14px" }}>{profile.location}</Text>
+              <LocationIcon size={16} />{" "}
+              <Text style={{ fontSize: "15px", lineHeight: "20px" }}>{profile.location}</Text>
             </Box>
           )}
           {sanitizeHttpUrl(profile.website, { allowRelative: false, prependHttpsIfMissingScheme: true }) && (
@@ -447,7 +476,12 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 href={sanitizeHttpUrl(profile.website, { allowRelative: false, prependHttpsIfMissingScheme: true })}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}
+                style={{
+                  color: "var(--color-accent-emphasis)",
+                  textDecoration: "none",
+                  fontSize: "15px",
+                  lineHeight: "20px",
+                }}
               >
                 {profile.website}
               </a>
@@ -456,7 +490,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           {profile.account_type !== "rss" && (
             <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
               <CalendarIcon size={16} />{" "}
-              <Text style={{ fontSize: "14px" }}>Joined {new Date(profile.created_at).toLocaleDateString()}</Text>
+              <Text style={{ fontSize: "15px", lineHeight: "20px" }}>
+                Joined {new Date(profile.created_at).toLocaleDateString()}
+              </Text>
             </Box>
           )}
         </Box>
@@ -465,17 +501,31 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           <Box mt={3} display="flex" gap={4}>
             <Link
               to={`/${profile.username}/following`}
-              style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
+              style={{
+                textDecoration: "none",
+                color: "var(--color-fg-default)",
+                fontSize: "15px",
+                lineHeight: "20px",
+              }}
             >
-              <Text style={{ fontWeight: "bold" }}>{profile.following_count}</Text>{" "}
-              <Text color="var(--color-fg-muted)">Following</Text>
+              <Text style={{ fontWeight: 700, fontSize: "15px", lineHeight: "20px" }}>{profile.following_count}</Text>{" "}
+              <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
+                Following
+              </Text>
             </Link>
             <Link
               to={`/${profile.username}/followers`}
-              style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
+              style={{
+                textDecoration: "none",
+                color: "var(--color-fg-default)",
+                fontSize: "15px",
+                lineHeight: "20px",
+              }}
             >
-              <Text style={{ fontWeight: "bold" }}>{profile.follower_count}</Text>{" "}
-              <Text color="var(--color-fg-muted)">Followers</Text>
+              <Text style={{ fontWeight: 700, fontSize: "15px", lineHeight: "20px" }}>{profile.follower_count}</Text>{" "}
+              <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
+                Followers
+              </Text>
             </Link>
           </Box>
         )}

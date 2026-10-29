@@ -24,9 +24,17 @@ export function registerCadAndMeshingCommands(
   registerCadMeshingCommands(context, client);
 
   return [
-    vscode.commands.registerCommand("modelscript.openCadViewer", () => {
+    vscode.commands.registerCommand("modelscript.openCadViewer", (arg?: UriCommandArg) => {
       if (client) {
-        CadViewerPanel.createOrShow(context.extensionUri, client);
+        let targetUri: string | undefined;
+        if (arg instanceof vscode.Uri) {
+          targetUri = arg.toString();
+        } else if (arg?.uri) {
+          targetUri = typeof arg.uri === "string" ? arg.uri : arg.uri.toString();
+        } else if (vscode.window.activeTextEditor?.document) {
+          targetUri = vscode.window.activeTextEditor.document.uri.toString();
+        }
+        CadViewerPanel.createOrShow(context.extensionUri, client, undefined, targetUri);
       }
     }),
 
@@ -65,6 +73,22 @@ export function registerCadAndMeshingCommands(
         }
       }
       if (!targetUri) {
+        const activeTabInput = vscode.window.tabGroups?.activeTabGroup?.activeTab?.input as
+          | { uri?: vscode.Uri | undefined }
+          | undefined;
+        if (activeTabInput?.uri && /\.scad$/i.test(activeTabInput.uri.path)) {
+          targetUri = activeTabInput.uri;
+        }
+      }
+      if (!targetUri) {
+        const openScadDoc = vscode.workspace.textDocuments.find(
+          (d) => d.languageId === "scad" || /\.scad$/i.test(d.uri.path),
+        );
+        if (openScadDoc) {
+          targetUri = openScadDoc.uri;
+        }
+      }
+      if (!targetUri) {
         const scadFiles = await vscode.workspace.findFiles("**/*.scad", undefined, 1);
         if (scadFiles.length > 0) {
           targetUri = scadFiles[0];
@@ -99,7 +123,7 @@ export function registerCadAndMeshingCommands(
           const stepUri = targetUri.with({ path: targetUri.path.replace(/\.scad$/i, ".step") });
           await vscode.workspace.fs.writeFile(stepUri, new TextEncoder().encode(res.step));
           if (client && Array.isArray(res.components) && res.components.length > 0) {
-            CadViewerPanel.createOrShow(context.extensionUri, client);
+            CadViewerPanel.createOrShow(context.extensionUri, client, undefined, targetUri.toString(), res.components);
           } else {
             await vscode.commands.executeCommand(
               "vscode.openWith",
@@ -108,6 +132,8 @@ export function registerCadAndMeshingCommands(
               vscode.ViewColumn.Beside,
             );
           }
+        } else if (client) {
+          CadViewerPanel.createOrShow(context.extensionUri, client, undefined, targetUri.toString());
         } else {
           vscode.window.showWarningMessage("OpenSCAD model evaluated, but produced no 3D solid geometry.");
         }

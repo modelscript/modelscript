@@ -386,7 +386,10 @@ export default function SolutionPage() {
           </div>
         )}
         <iframe
-          src={release?.bundle_url || `/embed/solution/${solution.id}`}
+          src={(release?.bundle_url || `/static/solutions/${encodeURIComponent(solution.slug)}/index.html`).replace(
+            /^https?:\/\/cdn\.modelscript\.org\/solutions\//i,
+            "/static/solutions/",
+          )}
           title={solution.name}
           sandbox="allow-scripts allow-downloads allow-forms allow-same-origin"
           onLoad={() => setIframeLoaded(true)}

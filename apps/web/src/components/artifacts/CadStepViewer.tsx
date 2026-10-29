@@ -49,34 +49,6 @@ const CORE_STEP_ENTITY_TYPES = [
   "AXIS2_PLACEMENT_3D",
 ] as const;
 
-function buildDefaultStepSource(title: string): string {
-  const safeName = (title || "CAD_Assembly").replace(/'/g, "");
-  return [
-    "ISO-10303-21;",
-    "HEADER;",
-    `FILE_DESCRIPTION(('ModelScript AP242 CAD Assembly: ${safeName}'), '2;1');`,
-    `FILE_NAME('${safeName}.step', '2026-10-27T00:00:00', ('ModelScript CAD'), ('ModelScript'), 'OCCT 7.8', 'ModelScript STEP Kernel', '');`,
-    "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
-    "ENDSEC;",
-    "DATA;",
-    `#10 = PRODUCT('${safeName}', '${safeName}', 'Primary CAD Product', (#12));`,
-    "#12 = PRODUCT_CONTEXT('', #14, 'mechanical');",
-    "#14 = APPLICATION_CONTEXT('core data for automotive mechanical design processes');",
-    `#20 = NEXT_ASSEMBLY_USAGE_OCCURRENCE('NAUO_1', 'Assembly Instance', 'Primary Component Placement', #10, #30, $);`,
-    `#30 = ADVANCED_BREP_SHAPE_REPRESENTATION('${safeName}_BRep', (#40, #50), #60);`,
-    `#40 = MANIFOLD_SOLID_BREP('${safeName}_Solid', #42);`,
-    "#42 = CLOSED_SHELL('', (#44));",
-    "#44 = ADVANCED_FACE('', (#46), #48, .T.);",
-    "#50 = AXIS2_PLACEMENT_3D('Origin_CSYS', #52, #54, #56);",
-    "#52 = CARTESIAN_POINT('Origin', (0.0, 0.0, 0.0));",
-    "#54 = DIRECTION('Z_Axis', (0.0, 0.0, 1.0));",
-    "#56 = DIRECTION('X_Axis', (1.0, 0.0, 0.0));",
-    "#60 = ( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#62)) GLOBAL_UNIT_ASSIGNED_CONTEXT((#64, #66, #68)) REPRESENTATION_CONTEXT('3D', '3D Context') );",
-    "ENDSEC;",
-    "END-ISO-10303-21;",
-  ].join("\n");
-}
-
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -100,10 +72,7 @@ function getEntityTier(entityType: string): 0 | 1 | 2 {
   return 2;
 }
 
-function parseStepExpressDiagram(
-  stepText: string,
-  fallbackTitle: string,
-): {
+function parseStepExpressDiagram(stepText: string): {
   svg: string;
   entityCounts: Record<string, number>;
   totalEntities: number;
@@ -161,54 +130,6 @@ function parseStepExpressDiagram(
     for (const n of otherNodes) {
       if (allNodes.length >= 12) break;
       allNodes.push(n);
-    }
-  }
-
-  // Only inject default placeholder entities when the STEP source itself is empty / has no parsed entities
-  if (allNodes.length === 0 && !stepText.trim()) {
-    const syntheticDefaults: StepEntityNode[] = [
-      {
-        id: "#10",
-        entityType: "PRODUCT",
-        label: fallbackTitle || "CAD_Product",
-        refs: ["#12"],
-        tier: 0,
-      },
-      {
-        id: "#20",
-        entityType: "NEXT_ASSEMBLY_USAGE_OCCURRENCE",
-        label: "NAUO_Assembly_Link",
-        refs: ["#10", "#30"],
-        tier: 0,
-      },
-      {
-        id: "#30",
-        entityType: "ADVANCED_BREP_SHAPE_REPRESENTATION",
-        label: "BRep_Surface_Topology",
-        refs: ["#40", "#50"],
-        tier: 1,
-      },
-      {
-        id: "#40",
-        entityType: "MANIFOLD_SOLID_BREP",
-        label: "Closed_Shell_Solid",
-        refs: ["#50"],
-        tier: 2,
-      },
-      {
-        id: "#50",
-        entityType: "AXIS2_PLACEMENT_3D",
-        label: "Local_CSYS_Placement",
-        refs: [],
-        tier: 2,
-      },
-    ];
-
-    for (const defNode of syntheticDefaults) {
-      allNodes.push(defNode);
-      if (!entityCounts[defNode.entityType]) {
-        entityCounts[defNode.entityType] = 1;
-      }
     }
   }
 
@@ -282,22 +203,6 @@ function parseStepExpressDiagram(
         }
       }
     }
-  }
-
-  // Only fall back to logical tier links when no #id reference edges exist between visible nodes
-  if (edgePaths.length === 0) {
-    const tier0First = tiers[0][0];
-    const tier0Second = tiers[0][1];
-    const tier1First = tiers[1][0];
-    const tier2First = tiers[2][0];
-    const tier2Second = tiers[2][1];
-
-    if (tier0First && tier0Second) addEdge(tier0Second.id, tier0First.id, "relating_product");
-    if (tier0Second && tier1First) addEdge(tier0Second.id, tier1First.id, "related_shape");
-    else if (tier0First && tier1First) addEdge(tier0First.id, tier1First.id, "shape_rep");
-    if (tier1First && tier2First) addEdge(tier1First.id, tier2First.id, "items[solid]");
-    if (tier1First && tier2Second) addEdge(tier1First.id, tier2Second.id, "items[axis2]");
-    if (tier2First && tier2Second) addEdge(tier2First.id, tier2Second.id, "placement");
   }
 
   const tierColors: { stroke: string; badgeBg: string; badgeFg: string; title: string }[] = [
@@ -489,11 +394,373 @@ function CameraController({
   return null;
 }
 
+interface RawStepMeshData {
+  name?: string | undefined;
+  color?: [number, number, number] | undefined;
+  attributes: {
+    position: { array: number[] };
+    normal?: { array: number[] } | undefined;
+  };
+  index?: { array: number[] } | undefined;
+}
+
+function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
+  const ptMap = new Map<string, [number, number, number]>();
+  const cpRegex =
+    /(#\d+)\s*=\s*CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = cpRegex.exec(srcText)) !== null) {
+    const pt: [number, number, number] = [parseFloat(m[2]!), parseFloat(m[3]!), parseFloat(m[4]!)];
+    if (Number.isFinite(pt[0]) && Number.isFinite(pt[1]) && Number.isFinite(pt[2])) {
+      ptMap.set(m[1]!, pt);
+    }
+  }
+
+  const dirMap = new Map<string, [number, number, number]>();
+  const dirRegex =
+    /(#\d+)\s*=\s*DIRECTION\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
+  while ((m = dirRegex.exec(srcText)) !== null) {
+    dirMap.set(m[1]!, [parseFloat(m[2]!), parseFloat(m[3]!), parseFloat(m[4]!)]);
+  }
+
+  const axis2Map = new Map<
+    string,
+    { loc: [number, number, number]; axis: [number, number, number]; refDir: [number, number, number] }
+  >();
+  const axRegex =
+    /(#\d+)\s*=\s*AXIS2_PLACEMENT_3D\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*(?:,\s*(#\d+|\$)\s*(?:,\s*(#\d+|\$))?)?\s*\)/gi;
+  while ((m = axRegex.exec(srcText)) !== null) {
+    const loc = ptMap.get(m[2]!) ?? [0, 0, 0];
+    const axis = (m[3] ? dirMap.get(m[3]) : undefined) ?? [0, 0, 1];
+    const refDir = (m[4] ? dirMap.get(m[4]) : undefined) ?? [1, 0, 0];
+    axis2Map.set(m[1]!, { loc, axis, refDir });
+  }
+
+  const circleMap = new Map<string, { axis2Ref: string; radius: number }>();
+  const circRegex = /(#\d+)\s*=\s*CIRCLE\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
+  while ((m = circRegex.exec(srcText)) !== null) {
+    circleMap.set(m[1]!, { axis2Ref: m[2]!, radius: Math.abs(parseFloat(m[3]!)) || 1.0 });
+  }
+
+  const bsplineMap = new Map<string, [number, number, number][]>();
+  const bsRegex = /(#\d+)\s*=\s*B_SPLINE_CURVE_WITH_KNOTS\s*\(\s*'[^']*'\s*,\s*\d+\s*,\s*\(([^)]+)\)/gi;
+  while ((m = bsRegex.exec(srcText)) !== null) {
+    const ctrlRefs = m[2]!.match(/#\d+/g) || [];
+    const ctrlPts: [number, number, number][] = [];
+    for (const r of ctrlRefs) {
+      const p = ptMap.get(r);
+      if (p) ctrlPts.push(p);
+    }
+    if (ctrlPts.length >= 2) bsplineMap.set(m[1]!, ctrlPts);
+  }
+
+  const vpMap = new Map<string, [number, number, number]>();
+  const vpRegex = /(#\d+)\s*=\s*VERTEX_POINT\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*\)/gi;
+  while ((m = vpRegex.exec(srcText)) !== null) {
+    const cp = ptMap.get(m[2]!);
+    if (cp) vpMap.set(m[1]!, cp);
+  }
+
+  const edgeChainMap = new Map<string, [number, number, number][]>();
+  const ecRegex =
+    /(#\d+)\s*=\s*EDGE_CURVE\s*\(\s*'[^']*'\s*,\s*(#\d+)\s*,\s*(#\d+)\s*(?:,\s*(#\d+))?(?:\s*,\s*(\.[TF]\.))?\s*\)/gi;
+  while ((m = ecRegex.exec(srcText)) !== null) {
+    const pA = vpMap.get(m[2]!) ?? ptMap.get(m[2]!);
+    const pB = vpMap.get(m[3]!) ?? ptMap.get(m[3]!);
+    const curveRef = m[4];
+    if (pA && pB) {
+      const circ = curveRef ? circleMap.get(curveRef) : undefined;
+      const bspline = curveRef ? bsplineMap.get(curveRef) : undefined;
+      if (circ) {
+        const ax = axis2Map.get(circ.axis2Ref) ?? {
+          loc: [0, 0, 0] as [number, number, number],
+          axis: [0, 0, 1] as [number, number, number],
+          refDir: [1, 0, 0] as [number, number, number],
+        };
+        const r = circ.radius;
+        const c = ax.loc;
+        const u = ax.refDir;
+        const z = ax.axis;
+        const v: [number, number, number] = [
+          z[1] * u[2] - z[2] * u[1],
+          z[2] * u[0] - z[0] * u[2],
+          z[0] * u[1] - z[1] * u[0],
+        ];
+        const distAB = Math.hypot(pA[0] - pB[0], pA[1] - pB[1], pA[2] - pB[2]);
+        const segs = 16;
+        const chain: [number, number, number][] = [];
+        if (distAB < 1e-6) {
+          for (let s = 0; s < segs; s++) {
+            const th = (s / segs) * 2 * Math.PI;
+            const cs = Math.cos(th);
+            const sn = Math.sin(th);
+            const pt: [number, number, number] = [
+              c[0] + r * (cs * u[0] + sn * v[0]),
+              c[1] + r * (cs * u[1] + sn * v[1]),
+              c[2] + r * (cs * u[2] + sn * v[2]),
+            ];
+            chain.push(pt);
+          }
+        } else {
+          const dA = [pA[0] - c[0], pA[1] - c[1], pA[2] - c[2]];
+          const dB = [pB[0] - c[0], pB[1] - c[1], pB[2] - c[2]];
+          const thA = Math.atan2(
+            dA[0]! * v[0] + dA[1]! * v[1] + dA[2]! * v[2],
+            dA[0]! * u[0] + dA[1]! * u[1] + dA[2]! * u[2],
+          );
+          let thB = Math.atan2(
+            dB[0]! * v[0] + dB[1]! * v[1] + dB[2]! * v[2],
+            dB[0]! * u[0] + dB[1]! * u[1] + dB[2]! * u[2],
+          );
+          while (thB <= thA + 1e-6) thB += 2 * Math.PI;
+          const arcSegs = Math.max(4, Math.round(((thB - thA) / (2 * Math.PI)) * segs));
+          for (let s = 0; s <= arcSegs; s++) {
+            const th = thA + (s / arcSegs) * (thB - thA);
+            const cs = Math.cos(th);
+            const sn = Math.sin(th);
+            const pt: [number, number, number] = [
+              c[0] + r * (cs * u[0] + sn * v[0]),
+              c[1] + r * (cs * u[1] + sn * v[1]),
+              c[2] + r * (cs * u[2] + sn * v[2]),
+            ];
+            chain.push(pt);
+          }
+        }
+        edgeChainMap.set(m[1]!, chain);
+      } else if (bspline) {
+        edgeChainMap.set(m[1]!, bspline);
+      } else {
+        edgeChainMap.set(m[1]!, [pA, pB]);
+      }
+    }
+  }
+
+  const oeChainMap = new Map<string, [number, number, number][]>();
+  const oeRegex = /(#\d+)\s*=\s*ORIENTED_EDGE\s*\([^,]*,[^,]*,[^,]*,\s*(#\d+)\s*,\s*(\.[TF]\.)\s*\)/gi;
+  while ((m = oeRegex.exec(srcText)) !== null) {
+    const chain = edgeChainMap.get(m[2]!);
+    if (chain && chain.length > 0) {
+      const forward = m[3]!.toUpperCase() === ".T.";
+      oeChainMap.set(m[1]!, forward ? chain : [...chain].reverse());
+    }
+  }
+
+  const dist3 = (a: [number, number, number], b: [number, number, number]): number =>
+    Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  const pushUniquePt = (arr: [number, number, number][], p: [number, number, number]) => {
+    if (arr.length > 0) {
+      const last = arr[arr.length - 1]!;
+      if (dist3(last, p) < 1e-6) return;
+    }
+    arr.push(p);
+  };
+
+  interface ParsedFaceLoop {
+    id: string;
+    name: string;
+    group: string;
+    points: [number, number, number][];
+  }
+
+  const faceLoops: ParsedFaceLoop[] = [];
+  const loopRegex = /(#\d+)\s*=\s*(POLY_LOOP|EDGE_LOOP)\s*\(\s*'([^']*)'\s*,\s*\(([^)]+)\)\s*\)/gi;
+  while ((m = loopRegex.exec(srcText)) !== null) {
+    const id = m[1]!;
+    const kind = m[2]!.toUpperCase();
+    const rawName = m[3]!.trim();
+    const refs = m[4]!.match(/#\d+/g) || [];
+    const loopPts: [number, number, number][] = [];
+
+    if (kind === "POLY_LOOP") {
+      for (const r of refs) {
+        const pt = ptMap.get(r) ?? vpMap.get(r);
+        if (pt) pushUniquePt(loopPts, pt);
+      }
+    } else {
+      const chains: [number, number, number][][] = [];
+      for (const r of refs) {
+        const ch = oeChainMap.get(r) ?? edgeChainMap.get(r);
+        if (ch && ch.length > 0) {
+          chains.push(ch);
+        } else {
+          const pt = ptMap.get(r) ?? vpMap.get(r);
+          if (pt) chains.push([pt]);
+        }
+      }
+
+      if (chains.length === 1) {
+        for (const p of chains[0]!) pushUniquePt(loopPts, p);
+      } else if (chains.length >= 2) {
+        let first = chains[0]!;
+        const second = chains[1]!;
+        if (first.length >= 2 && second.length >= 1) {
+          const fStart = first[0]!;
+          const fEnd = first[first.length - 1]!;
+          const sStart = second[0]!;
+          const sEnd = second[second.length - 1]!;
+          const dEnd = Math.min(dist3(fEnd, sStart), dist3(fEnd, sEnd));
+          const dStart = Math.min(dist3(fStart, sStart), dist3(fStart, sEnd));
+          if (dStart + 1e-6 < dEnd) {
+            first = [...first].reverse();
+          }
+        }
+        for (const p of first) pushUniquePt(loopPts, p);
+
+        for (let i = 1; i < chains.length; i++) {
+          let ch = chains[i]!;
+          if (ch.length >= 2 && loopPts.length > 0) {
+            const lastPt = loopPts[loopPts.length - 1]!;
+            const cStart = ch[0]!;
+            const cEnd = ch[ch.length - 1]!;
+            if (dist3(lastPt, cEnd) + 1e-6 < dist3(lastPt, cStart)) {
+              ch = [...ch].reverse();
+            }
+          }
+          for (const p of ch) pushUniquePt(loopPts, p);
+        }
+      }
+    }
+
+    if (loopPts.length >= 2 && dist3(loopPts[0]!, loopPts[loopPts.length - 1]!) < 1e-5) {
+      loopPts.pop();
+    }
+    if (loopPts.length >= 3) {
+      const groupPrefix = rawName.includes("_") ? rawName.split("_")[0]! : "SolidBody";
+      faceLoops.push({
+        id,
+        name: rawName || id,
+        group: groupPrefix || "SolidBody",
+        points: loopPts,
+      });
+    }
+  }
+
+  const palette: [number, number, number][] = [
+    [0.23, 0.32, 0.42],
+    [0.28, 0.42, 0.56],
+    [0.34, 0.48, 0.62],
+    [0.22, 0.38, 0.52],
+  ];
+
+  const buildMeshFromPolygonGroup = (
+    groupName: string,
+    polygons: [number, number, number][][],
+    colorIdx: number,
+  ): RawStepMeshData | null => {
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    let totalPts = 0;
+    for (const poly of polygons) {
+      for (const p of poly) {
+        cx += p[0];
+        cy += p[1];
+        cz += p[2];
+        totalPts++;
+      }
+    }
+    if (totalPts > 0) {
+      cx /= totalPts;
+      cy /= totalPts;
+      cz /= totalPts;
+    }
+
+    const vertices: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+
+    for (const poly of polygons) {
+      if (poly.length < 3) continue;
+      let fcx = 0;
+      let fcy = 0;
+      let fcz = 0;
+      for (const p of poly) {
+        fcx += p[0];
+        fcy += p[1];
+        fcz += p[2];
+      }
+      fcx /= poly.length;
+      fcy /= poly.length;
+      fcz /= poly.length;
+
+      for (let i = 1; i < poly.length - 1; i++) {
+        const a = poly[0]!;
+        let b = poly[i]!;
+        let c = poly[i + 1]!;
+        const ux = b[0] - a[0];
+        const uy = b[1] - a[1];
+        const uz = b[2] - a[2];
+        const vx = c[0] - a[0];
+        const vy = c[1] - a[1];
+        const vz = c[2] - a[2];
+        let nx = uy * vz - uz * vy;
+        let ny = uz * vx - ux * vz;
+        let nz = ux * vy - uy * vx;
+        const len = Math.hypot(nx, ny, nz);
+        if (len <= 1e-12) continue;
+        nx /= len;
+        ny /= len;
+        nz /= len;
+
+        const outDot = nx * (fcx - cx) + ny * (fcy - cy) + nz * (fcz - cz);
+        if (outDot < 0) {
+          const tmp = b;
+          b = c;
+          c = tmp;
+          nx = -nx;
+          ny = -ny;
+          nz = -nz;
+        }
+
+        const baseIdx = vertices.length / 3;
+        vertices.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+        normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+      }
+    }
+
+    if (indices.length === 0) return null;
+    return {
+      name: groupName,
+      color: palette[colorIdx % palette.length],
+      attributes: {
+        position: { array: vertices },
+        normal: { array: normals },
+      },
+      index: { array: indices },
+    };
+  };
+
+  const meshes: RawStepMeshData[] = [];
+  if (faceLoops.length > 0) {
+    const grouped = new Map<string, [number, number, number][][]>();
+    for (const fl of faceLoops) {
+      const list = grouped.get(fl.group) ?? [];
+      list.push(fl.points);
+      grouped.set(fl.group, list);
+    }
+    let idx = 0;
+    for (const [groupName, polys] of grouped.entries()) {
+      const mesh = buildMeshFromPolygonGroup(groupName, polys, idx++);
+      if (mesh) meshes.push(mesh);
+    }
+  }
+
+  return meshes;
+}
+
 const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, isFullScreen, onPinCreated }) => {
   const toast = useToast();
   const [viewTab, setViewTab] = useState<StepViewTab>("3d");
   const [stepSource, setStepSource] = useState<string>(
-    () => viewConfig?.code || viewConfig?.stepCode || viewConfig?.source || viewConfig?.content || "",
+    () =>
+      viewConfig?.code ||
+      viewConfig?.stepCode ||
+      viewConfig?.stepSource ||
+      viewConfig?.source ||
+      viewConfig?.content ||
+      "",
   );
   const [isLoadingSource, setIsLoadingSource] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
@@ -529,7 +796,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     "STEP CAD Assembly";
 
   useEffect(() => {
-    const inlineCode = viewConfig?.code || viewConfig?.stepCode || viewConfig?.source || viewConfig?.content;
+    const inlineCode =
+      viewConfig?.code || viewConfig?.stepCode || viewConfig?.stepSource || viewConfig?.source || viewConfig?.content;
     if (typeof inlineCode === "string" && inlineCode.trim().length > 0) {
       setStepSource(inlineCode);
     }
@@ -538,7 +806,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   // Lazily fetch raw STEP source when user switches to "code" or "diagram"
   useEffect(() => {
     if (viewTab !== "code" && viewTab !== "diagram") return;
-    const inlineCode = viewConfig?.code || viewConfig?.stepCode || viewConfig?.source || viewConfig?.content;
+    const inlineCode =
+      viewConfig?.code || viewConfig?.stepCode || viewConfig?.stepSource || viewConfig?.source || viewConfig?.content;
     if (typeof inlineCode === "string" && inlineCode.trim().length > 0) {
       setStepSource(inlineCode);
       return;
@@ -546,7 +815,6 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     if (stepSource.trim().length > 0) return;
 
     if (!stepUrl) {
-      setStepSource(buildDefaultStepSource(modelTitle));
       return;
     }
 
@@ -573,13 +841,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
             }
           }
         }
-        if (!cancelled) {
-          setStepSource(buildDefaultStepSource(modelTitle));
-        }
       } catch {
-        if (!cancelled) {
-          setStepSource(buildDefaultStepSource(modelTitle));
-        }
+        // Ignore fetch error
       } finally {
         if (!cancelled) {
           setIsLoadingSource(false);
@@ -591,32 +854,29 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     return () => {
       cancelled = true;
     };
-  }, [viewTab, stepUrl, stepSource, viewConfig, modelTitle]);
+  }, [viewTab, stepUrl, stepSource, viewConfig]);
 
-  const effectiveStepSource = useMemo(
-    () => (stepSource.trim().length > 0 ? stepSource : buildDefaultStepSource(modelTitle)),
-    [stepSource, modelTitle],
-  );
+  const effectiveStepSource = stepSource;
 
-  const pregenSvg = typeof viewConfig?.svg === "string" ? viewConfig.svg : "";
+  const pregenExpressSvg = typeof viewConfig?.expressSvg === "string" ? viewConfig.expressSvg : "";
 
   const expressDiagram = useMemo(() => {
-    if (pregenSvg.trim().length > 0) {
-      const parsed = parseStepExpressDiagram(effectiveStepSource, modelTitle);
+    if (pregenExpressSvg.trim().length > 0) {
+      const parsed = parseStepExpressDiagram(effectiveStepSource);
       return {
         ...parsed,
-        svg: DOMPurify.sanitize(pregenSvg),
+        svg: DOMPurify.sanitize(pregenExpressSvg),
       };
     }
-    return parseStepExpressDiagram(effectiveStepSource, modelTitle);
-  }, [pregenSvg, effectiveStepSource, modelTitle]);
+    return parseStepExpressDiagram(effectiveStepSource);
+  }, [pregenExpressSvg, effectiveStepSource]);
 
   const handleOpenInPlayground = () => {
     const targetUrl = buildEditorUrlForArtifact({
       artifactId: artifactId ?? viewConfig?.artifactId ?? viewConfig?.id,
       viewType: "cad-step",
       viewConfig,
-      code: stepSource.trim().length > 0 ? stepSource : viewConfig?.code || undefined,
+      code: stepSource.trim().length > 0 ? stepSource : viewConfig?.code || viewConfig?.stepSource || undefined,
       title: modelTitle,
       dialect: "step",
     });
@@ -681,7 +941,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
       // 1. Fetch step file blob or construct from inline STEP code / stepSource state
       let stepBlob: Blob;
       if (!stepUrl) {
-        const inlineStep = viewConfig?.code || stepSource || effectiveStepSource;
+        const inlineStep = viewConfig?.code || viewConfig?.stepSource || stepSource || effectiveStepSource;
         stepBlob = new Blob([String(inlineStep)], { type: "text/plain" });
       } else {
         const stepRes = await fetch(stepUrl);
@@ -710,6 +970,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
 
     async function loadStep() {
       try {
+        setError(null);
         let rawMeshes: any[] | null = null;
 
         // 1. Direct meshes array already supplied in viewConfig
@@ -739,9 +1000,49 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
 
           // Fallback: Fetch converted CAD geometry from backend converter
           if (!rawMeshes) {
-            const result = await convertCadGeometry(stepUrl);
-            if (result && Array.isArray(result.meshes) && result.meshes.length > 0) {
-              rawMeshes = result.meshes;
+            try {
+              const result = await convertCadGeometry(stepUrl);
+              if (result && Array.isArray(result.meshes) && result.meshes.length > 0) {
+                rawMeshes = result.meshes;
+              }
+            } catch {
+              // Fall back to client-side STEP B-Rep tessellation below
+            }
+          }
+        }
+
+        // 2. Client-side STEP B-Rep tessellation fallback from inline source or fetched STEP text
+        if (!rawMeshes || rawMeshes.length === 0) {
+          let sourceText: string =
+            viewConfig?.code ||
+            viewConfig?.stepCode ||
+            viewConfig?.stepSource ||
+            viewConfig?.source ||
+            viewConfig?.content ||
+            stepSource ||
+            "";
+          if (!sourceText.trim() && stepUrl) {
+            try {
+              const res = await fetch(stepUrl);
+              if (res.ok) {
+                sourceText = await res.text();
+              } else if (!stepUrl.startsWith("http") && !stepUrl.startsWith("/api")) {
+                const fallbackRes = await fetch(`/api${stepUrl.startsWith("/") ? "" : "/"}${stepUrl}`);
+                if (fallbackRes.ok) {
+                  sourceText = await fallbackRes.text();
+                }
+              }
+            } catch {
+              // Ignore fetch errors
+            }
+          }
+          if (active && sourceText.trim().length > 0 && !stepSource.trim()) {
+            setStepSource(sourceText);
+          }
+          if (sourceText.trim().length > 0) {
+            const clientMeshes = tessellateStepBRepClient(sourceText);
+            if (clientMeshes.length > 0) {
+              rawMeshes = clientMeshes;
             }
           }
         }
@@ -761,6 +1062,10 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
             if (meshData.index) {
               geo.setIndex(new THREE.Uint32BufferAttribute(meshData.index.array, 1));
             }
+            geo.userData = {
+              name: meshData.name,
+              color: meshData.color,
+            };
             geo.computeBoundingSphere();
             geo.computeBoundingBox();
             if (geo.boundingBox) {
@@ -785,15 +1090,11 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
           }, 1500);
         } else if (active) {
           setError("No CAD geometry meshes available for this STEP model.");
-          setTimeout(() => {
-            (window as any).__ARTIFACT_READY = true;
-          }, 500);
         }
       } catch (err: unknown) {
         if (active) {
           setError(err instanceof Error ? err.message : "Error parsing STEP file");
         }
-        (window as any).__ARTIFACT_READY = true;
       }
     }
 
@@ -802,7 +1103,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     return () => {
       active = false;
     };
-  }, [viewConfig, stepUrl]);
+  }, [viewConfig, stepUrl, modelTitle, stepSource]);
 
   useEffect(() => {
     return () => {
@@ -816,13 +1117,13 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     <Box
       width="100%"
       height={isFullScreen ? "100%" : "440px"}
-      bg="var(--color-canvas-subtle)"
-      borderRadius={isFullScreen ? "0" : "8px"}
+      borderRadius="0"
       overflow="hidden"
       position="relative"
       display="flex"
       flexDirection="column"
-      border={isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)"}
+      border="none"
+      style={{ background: "transparent" }}
     >
       {/* Top Toolbar with Segmented View Toggle (3D CAD / 2D EXPRESS / Source) */}
       <Box
@@ -917,7 +1218,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
       {/* Main Content Area */}
       <Box flex={1} position="relative" overflow="hidden" display="flex" flexDirection="column">
         {viewTab === "3d" && (
-          <Box flex={1} position="relative" width="100%" height="100%">
+          <Box flex={1} position="relative" width="100%" height="100%" style={{ background: "transparent" }}>
             {error ? (
               <Box
                 p={4}
@@ -926,9 +1227,18 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                 flexDirection="column"
                 justifyContent="center"
                 alignItems="center"
+                gap={3}
                 backgroundColor="var(--color-danger-subtle)"
               >
-                <Text style={{ color: "var(--color-danger-fg)" }}>{error}</Text>
+                <Text style={{ color: "var(--color-danger-fg)", fontWeight: 500 }}>{error}</Text>
+                <Box display="flex" gap={2}>
+                  <Button size="small" onClick={() => setViewTab("diagram")}>
+                    Switch to 2D EXPRESS Diagram
+                  </Button>
+                  <Button size="small" onClick={() => setViewTab("code")}>
+                    View STEP Source
+                  </Button>
+                </Box>
               </Box>
             ) : !geometries ? (
               <Box
@@ -937,7 +1247,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                 justifyContent="center"
                 alignItems="center"
                 height="100%"
-                bg="var(--color-canvas-subtle)"
+                style={{ background: "transparent" }}
               >
                 <Spinner size="medium" />
                 <Text style={{ marginLeft: "12px" }}>Parsing CAD model...</Text>
@@ -957,12 +1267,16 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                     artifactId={artifactId}
                     hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
                   />
-                  <ambientLight intensity={0.3} />
-                  <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.3} castShadow />
+                  <ambientLight intensity={0.45} />
+                  <directionalLight position={[20, 30, 25]} intensity={0.9} />
+                  <directionalLight position={[-20, -15, -10]} intensity={0.35} />
+                  <spotLight position={[10, 10, 10]} angle={0.25} penumbra={1} intensity={0.35} castShadow />
 
-                  <Suspense fallback={<Loader />}>
+                  <Suspense fallback={null}>
                     {/* Local HDRI Texture */}
-                    <Environment files="/hdri/studio.hdr" />
+                    <Environment files="/hdri/studio.hdr" environmentIntensity={0.35} />
+                  </Suspense>
+                  <Suspense fallback={<Loader />}>
                     <group
                       scale={[assemblyScale, assemblyScale, assemblyScale]}
                       position={
@@ -981,6 +1295,15 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                           assemblyCenter && explosionFactor > 0
                             ? meshCenter.clone().sub(assemblyCenter).multiplyScalar(explosionFactor)
                             : new THREE.Vector3();
+                        const compName =
+                          typeof geo.userData?.name === "string" && geo.userData.name.trim().length > 0
+                            ? geo.userData.name
+                            : `CAD Component #${idx + 1}`;
+                        const rgb = Array.isArray(geo.userData?.color) ? geo.userData.color : null;
+                        const matColor =
+                          rgb && rgb.length >= 3
+                            ? new THREE.Color(Number(rgb[0]), Number(rgb[1]), Number(rgb[2]))
+                            : "#3b526b";
 
                         return (
                           <mesh
@@ -994,7 +1317,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                                   worldPosition: [e.point.x, e.point.y, e.point.z],
                                   cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
                                   cameraTarget: [e.point.x, e.point.y, e.point.z],
-                                  fieldName: `CAD Component #${idx + 1}`,
+                                  fieldName: compName,
                                   scalarValue: idx + 1,
                                 });
                                 setIsPinMode(false);
@@ -1002,13 +1325,13 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                             }}
                           >
                             <meshPhysicalMaterial
-                              color="#8a929a"
-                              metalness={0.15}
-                              roughness={0.65}
+                              color={matColor}
+                              metalness={0.28}
+                              roughness={0.48}
                               wireframe={renderMode === "wireframe"}
                               transparent={renderMode === "xray"}
                               opacity={renderMode === "xray" ? 0.35 : 1.0}
-                              clearcoat={0.0}
+                              clearcoat={0.1}
                               side={THREE.DoubleSide}
                             />
                           </mesh>
@@ -1047,11 +1370,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
               </>
             )}
 
-            {/* 3D Toolbar Actions: Open in Playground + Create Simulation */}
+            {/* 3D Toolbar Actions: Create Simulation */}
             <Box position="absolute" bottom={16} right={16} display="flex" alignItems="center" gap={2} zIndex={15}>
-              <Button size="small" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-                Open in Playground
-              </Button>
               <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={() => setIsConfigOpen(true)}>
                 Create Simulation
               </Button>
@@ -1088,9 +1408,11 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                   </span>
                 ))}
               </Box>
-              <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-                Open in Playground
-              </Button>
+              {Boolean(viewConfig?.standalone) && (
+                <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
+                  Open in Playground
+                </Button>
+              )}
             </Box>
 
             {isLoadingSource ? (
@@ -1150,9 +1472,11 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                 >
                   {copied ? "Copied" : "Copy"}
                 </Button>
-                <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-                  Open in Playground
-                </Button>
+                {Boolean(viewConfig?.standalone) && (
+                  <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
+                    Open in Playground
+                  </Button>
+                )}
               </Box>
             </Box>
 

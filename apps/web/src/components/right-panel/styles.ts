@@ -17,7 +17,7 @@ export const PanelContainer = styled.aside`
   }
 `;
 
-export const SearchContainer = styled.div`
+export const SearchContainer = styled.div<{ $scrolled?: boolean | undefined }>`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 100;
@@ -29,34 +29,26 @@ export const SearchContainer = styled.div`
   padding-left: 24px;
   padding-right: 24px;
   margin-bottom: 4px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--color-bg-primary);
-    opacity: 0.85;
-    z-index: -1;
-  }
+  background: ${(props) =>
+    props.$scrolled ? "color-mix(in srgb, var(--color-bg-primary) 92%, transparent)" : "transparent"};
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  transition: background-color 0.15s ease;
 `;
 
 export const AiSearchBar = styled.div`
   width: 100%;
-  height: 42px;
-  background: var(--color-search-bg, rgba(255, 255, 255, 0.04));
+  height: 38px;
+  background: color-mix(in srgb, var(--color-bg-primary) 85%, var(--color-search-bg, rgba(255, 255, 255, 0.04)));
   border: 1px solid var(--color-search-border, var(--color-border-glass));
   border-radius: 9999px;
   display: flex;
   align-items: center;
-  padding: 0 16px;
-  gap: 10px;
+  padding: 0 14px;
+  gap: 8px;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: 13.5px;
+  line-height: 18px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
@@ -65,7 +57,7 @@ export const AiSearchBar = styled.div`
   &:hover,
   &:focus-visible {
     border-color: rgba(139, 92, 246, 0.55);
-    background: rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--color-bg-primary) 92%, var(--color-search-bg, rgba(255, 255, 255, 0.07)));
     box-shadow:
       0 0 16px rgba(139, 92, 246, 0.22),
       0 0 0 1px rgba(139, 92, 246, 0.3);
@@ -201,8 +193,8 @@ export const SpinSyncIcon = styled(SyncIcon)<{ $isSpinning: boolean }>`
 `;
 
 export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string | undefined }>`
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--gradient-icon-box, linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2)));
   border: 1px solid var(--color-border-default);
@@ -214,7 +206,7 @@ export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string |
   align-items: center;
   justify-content: center;
   color: var(--color-text-heading);
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 700;
   flex-shrink: 0;
   transition: all 0.2s ease;
@@ -246,12 +238,12 @@ export const ProviderButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 40px;
+  height: 36px;
   background: var(--color-btn-secondary-bg);
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-glass);
   border-radius: 9999px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -266,7 +258,7 @@ export const ProviderButton = styled.button`
 export const TrendingItem = styled.div`
   display: flex;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: 6px 16px;
   margin: 0 -16px;
   cursor: pointer;
   position: relative;
@@ -281,8 +273,9 @@ export const TrendingItem = styled.div`
 export const ShowMoreLink = styled(Link)`
   color: var(--color-accent-cyan);
   text-decoration: none;
-  font-size: 14px;
-  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 10px 16px;
   margin: 4px -16px -16px -16px;
   border-radius: 0 0 16px 16px;
   display: block;

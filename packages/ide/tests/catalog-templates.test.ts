@@ -7,6 +7,7 @@ import {
   EXAMPLE_TEMPLATES,
   LANGUAGE_GROUPS,
   LANGUAGE_TILES,
+  TEMPLATE_ALIASES,
   getTemplatePrimaryFile,
   mountArtifactToMemFs,
   scaffoldTemplateFiles,
@@ -40,7 +41,14 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     }
   });
 
-  const allTemplates = ["empty", "blank", "stress-test", ...EXAMPLE_TEMPLATES.map((ex) => ex.id)];
+  const allTemplates = [
+    "empty",
+    "blank",
+    "stress-test",
+    "unknown-fallback-template",
+    ...Object.keys(TEMPLATE_ALIASES),
+    ...EXAMPLE_TEMPLATES.map((ex) => ex.id),
+  ];
 
   for (const tpl of allTemplates) {
     it(`scaffolds template '${tpl}' and resolves an existing non-empty primary file`, () => {

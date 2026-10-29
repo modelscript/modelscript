@@ -28,7 +28,9 @@ export function registerActionRouter(context: LspContext): void {
           seenPluginDefs.add(plugin.languageDef);
         }
         const actions: LanguageAction[] = plugin.languageDef?.actions || [];
+        const listedActionIds = new Set<string>();
         for (const action of actions) {
+          listedActionIds.add(action.id);
           results.push({
             id: action.id,
             languageId: plugin.id,
@@ -40,6 +42,20 @@ export function registerActionRouter(context: LspContext): void {
             output: action.output,
             ui: action.ui,
           });
+        }
+        if (plugin.actionHandlers) {
+          for (const actionId of Object.keys(plugin.actionHandlers)) {
+            if (listedActionIds.has(actionId)) continue;
+            listedActionIds.add(actionId);
+            results.push({
+              id: actionId,
+              languageId: plugin.id,
+              command: `modelscript.${plugin.id}.${actionId}`,
+              title: actionId.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
+              description: `Execute ${actionId} on ${plugin.name || plugin.id}`,
+              category: "Verification",
+            });
+          }
         }
       }
       return results;
@@ -66,7 +82,10 @@ export function registerActionRouter(context: LspContext): void {
         // Fallback: search all plugins for one providing this action ID
         for (const p of globalLanguageRegistry.getAllPlugins()) {
           const actions: LanguageAction[] = p.languageDef?.actions || [];
-          if (actions.some((a) => a.id === params.actionId)) {
+          if (
+            actions.some((a) => a.id === params.actionId) ||
+            (p.actionHandlers && typeof p.actionHandlers[params.actionId] === "function")
+          ) {
             plugin = p;
             break;
           }
@@ -81,11 +100,8 @@ export function registerActionRouter(context: LspContext): void {
 
       const actions: LanguageAction[] = plugin.languageDef?.actions || [];
       const action = actions.find((a) => a.id === params.actionId);
-      if (!action) {
-        throw new Error(`[lsp] Action '${params.actionId}' not found on language '${plugin.id}'`);
-      }
 
-      let executeFn = action.execute;
+      let executeFn = action?.execute;
       if (typeof executeFn !== "function" && plugin.actionHandlers) {
         executeFn = plugin.actionHandlers[params.actionId];
       }

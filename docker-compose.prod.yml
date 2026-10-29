@@ -47,12 +47,3 @@ services:
     image: ghcr.io/modelscript/web:${IMAGE_TAG:-latest}
     pull_policy: always
     restart: always
-
-  ide:
-    image: ghcr.io/modelscript/ide:${IMAGE_TAG:-latest}
-    pull_policy: always
-    environment:
-      - NODE_ENV=production
-      - PORT=3003
-      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=1024}
-    restart: always

@@ -3,6 +3,7 @@
 import { XIcon } from "@primer/octicons-react";
 import { Heading, IconButton } from "@primer/react";
 import React from "react";
+import { createPortal } from "react-dom";
 import { getAvatarUrl } from "../../util/avatar";
 import Box from "../Box";
 import { TweetButton } from "./styles";
@@ -22,7 +23,7 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
   setExcludedUsers,
   onClose,
 }) => {
-  return (
+  const modal = (
     <>
       <div
         style={{
@@ -153,4 +154,6 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
       </Box>
     </>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };

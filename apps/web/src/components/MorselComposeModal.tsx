@@ -3,6 +3,7 @@
 import { ScreenFullIcon, ScreenNormalIcon, XIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text } from "@primer/react";
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView } from "../api";
 import { MORSEL_LANGUAGES, getLanguageInfo } from "./morsel/constants";
@@ -16,7 +17,7 @@ const ModalBackdrop = styled.div`
   bottom: 0;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
-  z-index: 2000;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,7 +192,7 @@ end MySystem;`,
     }
   };
 
-  return (
+  const modal = (
     <ModalBackdrop onClick={onClose}>
       <ModalContent $isFullScreen={isFullScreen} onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
@@ -254,6 +255,8 @@ end MySystem;`,
       </ModalContent>
     </ModalBackdrop>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default MorselComposeModal;

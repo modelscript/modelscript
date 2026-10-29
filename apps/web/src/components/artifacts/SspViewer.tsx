@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface SspViewerProps {
   viewConfig: {
@@ -32,9 +32,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -45,7 +45,7 @@ const Toolbar = styled.div`
   height: 44px;
   min-height: 44px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -65,7 +65,7 @@ const HeaderLeft = styled.div`
 const ModelTitle = styled.div`
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--color-text-heading, #f0f6fc);
+  color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -82,7 +82,7 @@ const PillBadge = styled.span`
   font-weight: 600;
   white-space: nowrap;
   background: rgba(139, 92, 246, 0.15);
-  color: #a78bfa;
+  color: var(--color-done-fg, var(--color-fg-default));
   border: 1px solid rgba(139, 92, 246, 0.35);
 `;
 
@@ -100,7 +100,7 @@ const SvgCanvas = styled.div`
   justify-content: center;
   overflow: auto;
   padding: 16px;
-  background: var(--color-canvas-inset, #010409);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 
   svg {
     max-width: 100%;
@@ -111,8 +111,8 @@ const SvgCanvas = styled.div`
 
 const InspectorSidebar = styled.div`
   width: 250px;
-  border-left: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  border-left: 1px solid var(--color-border-default);
+  background: var(--color-canvas-subtle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -124,10 +124,10 @@ const StatItem = styled.div`
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
+  color: var(--color-fg-muted);
 
   strong {
-    color: var(--color-fg-default, #c9d1d9);
+    color: var(--color-fg-default);
   }
 `;
 
@@ -135,7 +135,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (viewConfig.svg ? "diagram" : "code"));
   const title = viewConfig.title || viewConfig.systemName || "System Structure Package (.ssp)";
 
   useEffect(() => {
@@ -169,14 +169,13 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   }, [rawText, viewConfig]);
 
   const sanitizedSvg = useMemo(() => {
-    if (viewConfig.svg) {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (rawText.trim()) {
-      return renderSourceToDiagramSvg(rawText, "ssp", title, true).svg;
-    }
     return "";
-  }, [viewConfig.svg, rawText, title]);
+  }, [viewConfig.svg]);
+
+  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
@@ -184,58 +183,66 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <PackageIcon size={16} fill="#a78bfa" />
+          <PackageIcon size={16} fill="var(--color-done-fg, currentColor)" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>SSP Archive</PillBadge>
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <Box
-            display="flex"
-            bg="rgba(0,0,0,0.25)"
-            borderRadius="6px"
-            p="2px"
-            border="1px solid var(--color-border-default)"
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode("diagram")}
-              style={{
-                background: viewMode === "diagram" ? "rgba(139, 92, 246, 0.25)" : "transparent",
-                color: viewMode === "diagram" ? "#c4b5fd" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+          {sanitizedSvg && (
+            <Box
+              display="flex"
+              bg="rgba(0,0,0,0.25)"
+              borderRadius="6px"
+              p="2px"
+              border="1px solid var(--color-border-default)"
             >
-              <WorkflowIcon size={12} /> Topology
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("code")}
-              style={{
-                background: viewMode === "code" ? "rgba(139, 92, 246, 0.25)" : "transparent",
-                color: viewMode === "code" ? "#c4b5fd" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <CodeIcon size={12} /> Source
-            </button>
-          </Box>
+              <button
+                type="button"
+                onClick={() => setViewMode("diagram")}
+                style={{
+                  background: effectiveViewMode === "diagram" ? "rgba(139, 92, 246, 0.25)" : "transparent",
+                  color:
+                    effectiveViewMode === "diagram"
+                      ? "var(--color-done-fg, var(--color-fg-default))"
+                      : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <WorkflowIcon size={12} /> Topology
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("code")}
+                style={{
+                  background: effectiveViewMode === "code" ? "rgba(139, 92, 246, 0.25)" : "transparent",
+                  color:
+                    effectiveViewMode === "code"
+                      ? "var(--color-done-fg, var(--color-fg-default))"
+                      : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <CodeIcon size={12} /> Source
+              </button>
+            </Box>
+          )}
           {Boolean(viewConfig?.standalone) && (
             <Button
               size="small"
@@ -263,7 +270,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "diagram" && sanitizedSvg ? (
+        ) : effectiveViewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         ) : (
           <Box

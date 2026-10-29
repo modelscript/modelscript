@@ -32,15 +32,21 @@ import {
 const TEMPLATE_ALIASES: Record<string, string> = {
   rlc: "rlc-circuit",
   "rlc-circuit": "rlc-circuit",
+  "rlc-filter": "rlc-circuit",
   "bouncing-ball": "bouncing-ball",
-  sysml2: "rover-sysml",
-  "drone-chassis": "hex-bolt-cad",
-  scad: "hex-bolt-cad",
+  "chua-circuit": "lorenz-attractor",
+  "lorenz-attractor": "lorenz-attractor",
+  sysml2: "sysml-satellite",
+  "sysml2-powertrain": "sysml-satellite",
+  "drone-chassis": "scad-flanged-hub",
+  cad: "scad-flanged-hub",
+  scad: "scad-flanged-hub",
+  step: "step-aerospace-bracket",
   simpack: "simpack-pendulum",
   gensys: "gensys-bogie",
-  pscad: "pscad-fault",
-  fea: "fea-bracket",
-  cfd: "cfd-airfoil",
+  pscad: "pscad-ieee2800-inverter",
+  fea: "fea-bracket-deck",
+  cfd: "cfd-rae2822-su2",
 };
 
 export const PlaygroundPage: React.FC = () => {
@@ -411,12 +417,13 @@ export const PlaygroundPage: React.FC = () => {
     const effectiveModelOrTemplate = templateParam || memfsTemplateId || modelParam;
     if (effectiveModelOrTemplate) {
       const normalizedKey = TEMPLATE_ALIASES[effectiveModelOrTemplate.toLowerCase()] || effectiveModelOrTemplate;
-      const match = HERO_EXAMPLES.find(
-        (ex) =>
-          ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
-          ex.id.toLowerCase() === effectiveModelOrTemplate.toLowerCase() ||
-          ex.title.toLowerCase().includes(effectiveModelOrTemplate.toLowerCase()),
-      );
+      const match =
+        HERO_EXAMPLES.find(
+          (ex) =>
+            ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
+            ex.id.toLowerCase() === effectiveModelOrTemplate.toLowerCase() ||
+            ex.title.toLowerCase().includes(effectiveModelOrTemplate.toLowerCase()),
+        ) ?? HERO_EXAMPLES[0];
       if (match) {
         baselineCodeRef.current = match.code;
         setIsDirty(false);
@@ -434,29 +441,6 @@ export const PlaygroundPage: React.FC = () => {
           lang: match.lang,
           code: match.code,
           title: match.title,
-        });
-        window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
-      } else {
-        const rawIdent = effectiveModelOrTemplate.split(".").pop() || effectiveModelOrTemplate;
-        const safeIdent = rawIdent.replace(/[^A-Za-z0-9_]/g, "_") || "UntitledModel";
-        const detectedLang = langParam || "modelica";
-        const code = `model ${safeIdent}\n  // ${effectiveModelOrTemplate}\nend ${safeIdent};\n`;
-        baselineCodeRef.current = code;
-        setIsDirty(false);
-        setCurrentCode(code);
-        setCurrentTitle(safeIdent);
-        setCurrentLang(detectedLang);
-        setPayload({
-          v: 1,
-          lang: detectedLang,
-          code,
-          title: safeIdent,
-        });
-        const hash = compressMorselPayload({
-          v: 1,
-          lang: detectedLang,
-          code,
-          title: safeIdent,
         });
         window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
       }

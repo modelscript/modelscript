@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlusIcon, TrashIcon } from "@primer/octicons-react";
+import { PlusIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Card, Input, Select, Table } from "../styles";
-import type { AdminFederationDomain } from "../types";
+import { ActionButton, Badge, Card, FilterPill, Input, Select, StatGrid, Table } from "../styles";
+import type { AdminFederationDeliveryItem, AdminFederationDomain, AdminFederationQueueStats } from "../types";
 
 export interface AdminFederationTabProps {
   domains: AdminFederationDomain[];
   onSaveDomainTier: (domain: string, tier: "allow" | "silence" | "suspend", reason?: string) => Promise<void>;
   onDeleteDomainRule: (domain: string) => Promise<void>;
+  queueStats?: AdminFederationQueueStats | null | undefined;
+  deliveries?: AdminFederationDeliveryItem[] | undefined;
+  deliveryStatusFilter?: string | undefined;
+  setDeliveryStatusFilter?: ((status: string) => void) | undefined;
+  onRetryFailedDeliveries?: ((domain?: string) => Promise<void>) | undefined;
+  onPurgeDeliveries?: ((status: "failed" | "completed") => Promise<void>) | undefined;
   loading: boolean;
 }
 
@@ -17,6 +23,12 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
   domains,
   onSaveDomainTier,
   onDeleteDomainRule,
+  queueStats,
+  deliveries = [],
+  deliveryStatusFilter = "all",
+  setDeliveryStatusFilter,
+  onRetryFailedDeliveries,
+  onPurgeDeliveries,
   loading,
 }) => {
   const [newDomain, setNewDomain] = useState("");
@@ -38,6 +50,39 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
 
   return (
     <div>
+      {queueStats && (
+        <StatGrid>
+          <Card>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Pending S2S Deliveries</span>
+            <span style={{ fontSize: "22px", fontWeight: 800 }}>{queueStats.pending}</span>
+          </Card>
+          <Card>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>In-Flight Processing</span>
+            <span style={{ fontSize: "22px", fontWeight: 800, color: "var(--color-accent-cyan)" }}>
+              {queueStats.processing}
+            </span>
+          </Card>
+          <Card>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Completed Deliveries</span>
+            <span style={{ fontSize: "22px", fontWeight: 800, color: "var(--ms-success)" }}>
+              {queueStats.completed}
+            </span>
+          </Card>
+          <Card>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Dead-Letter / Failed</span>
+            <span
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                color: queueStats.failed > 0 ? "var(--ms-danger)" : "var(--color-text-primary)",
+              }}
+            >
+              {queueStats.failed}
+            </span>
+          </Card>
+        </StatGrid>
+      )}
+
       <Card>
         <span style={{ fontWeight: 700, fontSize: "14px" }}>Configure Federation Domain Rule</span>
         <form
@@ -124,6 +169,98 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
           )}
         </tbody>
       </Table>
+
+      {/* ── S2S DELIVERY QUEUE & DEAD-LETTER INSPECTOR ── */}
+      {(queueStats || deliveries.length > 0 || onRetryFailedDeliveries) && (
+        <Box mt={4}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+            <span style={{ fontWeight: 700, fontSize: "14px" }}>
+              ActivityPub S2S Delivery Queue &amp; Dead-Letter Inspector
+            </span>
+            <Box display="flex" gap={2} flexWrap="wrap">
+              {onRetryFailedDeliveries && (
+                <ActionButton
+                  $variant="secondary"
+                  disabled={loading || (queueStats ? queueStats.failed === 0 : false)}
+                  onClick={() => void onRetryFailedDeliveries()}
+                >
+                  <SyncIcon size={13} />
+                  <span>Retry Failed Deliveries</span>
+                </ActionButton>
+              )}
+              {onPurgeDeliveries && (
+                <ActionButton
+                  $variant="danger"
+                  disabled={loading || (queueStats ? queueStats.failed === 0 : false)}
+                  onClick={() => void onPurgeDeliveries("failed")}
+                >
+                  <TrashIcon size={13} />
+                  <span>Purge Dead-Letter Queue</span>
+                </ActionButton>
+              )}
+            </Box>
+          </Box>
+
+          {setDeliveryStatusFilter && (
+            <Box display="flex" gap={2} mb={2}>
+              {(["all", "pending", "failed", "completed"] as const).map((st) => (
+                <FilterPill key={st} $active={deliveryStatusFilter === st} onClick={() => setDeliveryStatusFilter(st)}>
+                  {st === "all" ? "All Deliveries" : st.charAt(0).toUpperCase() + st.slice(1)}
+                </FilterPill>
+              ))}
+            </Box>
+          )}
+
+          <Table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Target Inbox</th>
+                <th>Status</th>
+                <th>Attempts</th>
+                <th>Last Error</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deliveries.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "20px" }}>
+                    No S2S delivery records in this state.
+                  </td>
+                </tr>
+              ) : (
+                deliveries.map((item) => (
+                  <tr key={item.id}>
+                    <td>#{item.id}</td>
+                    <td style={{ fontFamily: "monospace", fontSize: "12px", wordBreak: "break-all" }}>
+                      {item.target_inbox_url}
+                    </td>
+                    <td>
+                      <Badge
+                        $variant={
+                          item.status === "completed" ? "success" : item.status === "failed" ? "danger" : "warning"
+                        }
+                      >
+                        {item.status}
+                      </Badge>
+                    </td>
+                    <td>
+                      {item.attempts}/{item.max_attempts}
+                    </td>
+                    <td style={{ fontSize: "12px", color: "var(--ms-danger)", maxWidth: "260px" }}>
+                      {item.last_error || "—"}
+                    </td>
+                    <td style={{ fontSize: "12px", color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>
+                      {new Date(item.updated_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </Table>
+        </Box>
+      )}
     </div>
   );
 };

@@ -9,7 +9,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface GtSuiteViewerProps {
   viewConfig: {
@@ -35,9 +35,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -48,7 +48,7 @@ const Toolbar = styled.div`
   height: 44px;
   min-height: 44px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -68,7 +68,7 @@ const HeaderLeft = styled.div`
 const ModelTitle = styled.div`
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--color-text-heading, #f0f6fc);
+  color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -85,7 +85,7 @@ const PillBadge = styled.span`
   font-weight: 600;
   white-space: nowrap;
   background: rgba(249, 115, 22, 0.15);
-  color: #fb923c;
+  color: var(--color-attention-fg, var(--color-fg-default));
   border: 1px solid rgba(249, 115, 22, 0.35);
 `;
 
@@ -103,7 +103,7 @@ const SvgCanvas = styled.div`
   justify-content: center;
   overflow: auto;
   padding: 16px;
-  background: var(--color-canvas-inset, #010409);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 
   svg {
     max-width: 100%;
@@ -115,13 +115,13 @@ const SvgCanvas = styled.div`
 const ChartCanvas = styled.div`
   flex: 1;
   padding: 16px;
-  background: var(--color-canvas-inset, #010409);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 `;
 
 const InspectorSidebar = styled.div`
   width: 250px;
-  border-left: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  border-left: 1px solid var(--color-border-default);
+  background: var(--color-canvas-subtle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -133,10 +133,10 @@ const StatItem = styled.div`
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
+  color: var(--color-fg-muted);
 
   strong {
-    color: var(--color-fg-default, #c9d1d9);
+    color: var(--color-fg-default);
   }
 `;
 
@@ -145,7 +145,9 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
   const [loading, setLoading] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
-  const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">("schematic");
+  const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">(() =>
+    viewConfig.svg ? "schematic" : Array.isArray(viewConfig.pvData) && viewConfig.pvData.length > 0 ? "pv" : "code",
+  );
   const title = viewConfig.title || viewConfig.engineModel || "GT-SUITE Powertrain (.gtm)";
 
   useEffect(() => {
@@ -179,15 +181,9 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       : [];
     const boreMatch = rawText.match(/\bbore\s*[=:]\s*([0-9.]+)/i);
     const strokeMatch = rawText.match(/\bstroke\s*[=:]\s*([0-9.]+)/i);
-    const crMatch = rawText.match(/\b(?:compression_ratio|cr)\s*[=:]\s*([0-9.]+)/i);
-    const rpmMatch = rawText.match(/\b(?:rpm|engine_speed|speed)\s*[=:]\s*([0-9.]+)/i);
-    const boostMatch = rawText.match(/\b(?:boost_bar|intake_pressure|p_intake)\s*[=:]\s*([0-9.]+)/i);
     const cylCount = viewConfig.cylinderCount ?? cylMatches.length;
     const boreMm = boreMatch ? Number(boreMatch[1]) : undefined;
     const strokeMm = strokeMatch ? Number(strokeMatch[1]) : undefined;
-    const cr = crMatch ? Number(crMatch[1]) : 10.5;
-    const rpm = rpmMatch ? Number(rpmMatch[1]) : 3000;
-    const intakeBar = boostMatch ? Math.max(0.5, Number(boostMatch[1])) : 1.0;
     let dispL = viewConfig.displacementLiters;
     if (dispL === undefined && boreMm && strokeMm && Math.max(1, cylCount) > 0) {
       const bMm = boreMm < 1 ? boreMm * 1000 : boreMm;
@@ -200,57 +196,25 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       displacementLiters: dispL,
       boreMm,
       strokeMm,
-      cr,
-      rpm,
-      intakeBar,
     };
   }, [rawText, viewConfig]);
 
   const sanitizedSvg = useMemo(() => {
-    if (viewConfig.svg) {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (rawText.trim()) {
-      return renderSourceToDiagramSvg(rawText, "gtsuite", title, true).svg;
-    }
     return "";
-  }, [viewConfig.svg, rawText, title]);
-
-  const isAnalyticalPreview = !(viewConfig.pvData && Array.isArray(viewConfig.pvData));
+  }, [viewConfig.svg]);
 
   const pvData = useMemo(() => {
-    if (viewConfig.pvData && Array.isArray(viewConfig.pvData)) {
+    if (Array.isArray(viewConfig.pvData) && viewConfig.pvData.length > 0) {
       return viewConfig.pvData;
     }
-    if (
-      parsedEngine.cylinderCount === 0 &&
-      !viewConfig.peakPressureBar &&
-      parsedEngine.boreMm === undefined &&
-      parsedEngine.strokeMm === undefined
-    ) {
-      return [];
-    }
-    const points = [];
-    const cylSweptCc = parsedEngine.displacementLiters
-      ? (parsedEngine.displacementLiters * 1000) / Math.max(1, parsedEngine.cylinderCount)
-      : 450;
-    const vClearance = cylSweptCc / Math.max(2, parsedEngine.cr - 1);
-    const gamma = 1.35;
-    const volumetricEff = Math.max(0.78, Math.min(1.05, 1.0 - Math.abs(parsedEngine.rpm - 3200) / 18000));
-    const pIntake = parsedEngine.intakeBar * volumetricEff;
-    const step = Math.max(5, Math.round(cylSweptCc / 20));
-    for (let v = vClearance + cylSweptCc; v >= vClearance; v -= step) {
-      const p = pIntake * Math.pow((vClearance + cylSweptCc) / v, gamma);
-      points.push({ volumeCc: Math.round(v), pressureBar: Number(p.toFixed(1)) });
-    }
-    const peakP = viewConfig.peakPressureBar ?? Number((pIntake * Math.pow(parsedEngine.cr, gamma) * 2.8).toFixed(1));
-    points.push({ volumeCc: Math.round(vClearance), pressureBar: peakP });
-    for (let v = vClearance; v <= vClearance + cylSweptCc; v += step) {
-      const p = peakP * Math.pow(vClearance / v, gamma);
-      points.push({ volumeCc: Math.round(v), pressureBar: Number(p.toFixed(1)) });
-    }
-    return points;
-  }, [viewConfig.pvData, viewConfig.peakPressureBar, parsedEngine]);
+    return [];
+  }, [viewConfig.pvData]);
+
+  const effectiveViewMode: "schematic" | "pv" | "code" =
+    viewMode === "schematic" && sanitizedSvg ? "schematic" : viewMode === "pv" && pvData.length > 0 ? "pv" : "code";
 
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
@@ -258,23 +222,32 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <FlameIcon size={16} fill="#fb923c" />
+          <FlameIcon size={16} fill="var(--color-attention-fg, currentColor)" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>GT-SUITE Powertrain</PillBadge>
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <SegmentedControl size="small" aria-label="GT-SUITE View Selector">
-            <SegmentedControl.Button selected={viewMode === "schematic"} onClick={() => setViewMode("schematic")}>
-              Schematic
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={viewMode === "pv"} onClick={() => setViewMode("pv")}>
-              P-V Diagram
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={viewMode === "code"} onClick={() => setViewMode("code")}>
-              Source
-            </SegmentedControl.Button>
-          </SegmentedControl>
+          {(sanitizedSvg || pvData.length > 0) && (
+            <SegmentedControl size="small" aria-label="GT-SUITE View Selector">
+              {sanitizedSvg && (
+                <SegmentedControl.Button
+                  selected={effectiveViewMode === "schematic"}
+                  onClick={() => setViewMode("schematic")}
+                >
+                  Schematic
+                </SegmentedControl.Button>
+              )}
+              {pvData.length > 0 && (
+                <SegmentedControl.Button selected={effectiveViewMode === "pv"} onClick={() => setViewMode("pv")}>
+                  P-V Diagram
+                </SegmentedControl.Button>
+              )}
+              <SegmentedControl.Button selected={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+                Source
+              </SegmentedControl.Button>
+            </SegmentedControl>
+          )}
 
           {Boolean(viewConfig?.standalone) && (
             <Button
@@ -303,19 +276,10 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "schematic" && sanitizedSvg ? (
+        ) : effectiveViewMode === "schematic" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
-        ) : viewMode === "pv" && pvData.length > 0 ? (
+        ) : effectiveViewMode === "pv" && pvData.length > 0 ? (
           <ChartCanvas style={{ display: "flex", flexDirection: "column" }}>
-            {isAnalyticalPreview && (
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Text style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>
-                  CR = {parsedEngine.cr.toFixed(1)}:1, Speed = {parsedEngine.rpm} RPM
-                  {parsedEngine.displacementLiters ? `, V_d = ${parsedEngine.displacementLiters} L` : ""}
-                </Text>
-                <PillBadge>Analytical Model Preview</PillBadge>
-              </Box>
-            )}
             <Box flex={1} style={{ minHeight: 0 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={pvData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>

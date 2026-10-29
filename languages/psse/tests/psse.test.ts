@@ -5,14 +5,20 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  analyzeN1Contingencies,
+  applyPsseDiagramWriteback,
+  calculateShortCircuit,
   createPsseWasmParser,
   extractPowerFlowNetlist,
   lintPsse,
+  parseDyr,
   parseRaw,
   psseToEmtNetlist,
   psseToModelica,
   PsseWorkspaceIndex,
+  simulatePsseTransient,
   solvePowerFlow,
+  writeDyr,
   writeRaw,
 } from "../src/index.js";
 
@@ -308,7 +314,7 @@ test("PSS/E Projection: Translates to PSCAD / EMT Netlist structure", () => {
   assert.ok(bus1.connectedBranchIds.length > 0);
 });
 
-test("PSS/E WebAssembly Parser: Loads parser.wasm and parses IEEE 14-bus case", async () => {
+test("PSS/E WebAssembly Parser: Loads parser.wasm and parses IEEE 14-bus case without syntax errors", async () => {
   const { parser } = await createPsseWasmParser();
   assert.ok(parser);
 
@@ -316,5 +322,191 @@ test("PSS/E WebAssembly Parser: Loads parser.wasm and parses IEEE 14-bus case", 
   assert.ok(tree);
   assert.ok(tree.rootNode);
   assert.equal(tree.rootNode.type, "SourceFile");
+  assert.equal(tree.rootNode.hasError(), false, "WASM CST should have zero syntax errors on valid .raw files");
   assert.ok(tree.rootNode.children.length > 0);
+});
+
+test("PSS/E Raw Parser: Preserves Bus 1 and Bus 2 in headerless .raw files and parses 0.000 transformer lines", () => {
+  const headerlessRaw = `@! Headerless PSS/E case with comments
+0, 100.0, 33, 0, 0, 60.0 / PSS/E-33.0
+1, 'BUS 1       ', 138.0, 3, 1, 1, 1, 1.060, 0.0
+2, 'BUS 2       ', 138.0, 2, 1, 1, 1, 1.045, -4.98
+3, 'BUS 3       ',  69.0, 1, 1, 1, 1, 1.010, -12.72
+0 / END OF BUS DATA, BEGIN LOAD DATA
+3, '1 ', 1, 1, 1, 94.2, 19.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
+0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA
+1, '1 ', 232.4, -16.9, 10.0, 0.0, 1.060, 0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1, 100.0, 332.4, 0.0, 1, 1.0
+2, '1 ', 40.0, 42.4, 50.0, -40.0, 1.045, 0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1, 100.0, 140.0, 0.0, 1, 1.0
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA
+1, 2, '1 ', 0.01938, 0.05917, 0.0528, 250.0, 250.0, 250.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0.0, 1, 1.0
+0 / END OF BRANCH DATA, BEGIN TRANSFORMER DATA
+2, 3, 0, '1 ', 1, 1, 1, 0.0, 0.0, 2, 'T2-3        ', 1, 1, 1.0
+0.000, 0.19797, 100.0
+1.000, 138.0, 0.0, 100.0, 100.0, 100.0, 0, 0, 1.1, 0.9, 1.1, 0.9, 33, 0, 0.0, 0.0
+1.000, 69.0
+0 / END OF TRANSFORMER DATA
+Q
+`;
+  const parsed = parseRaw(headerlessRaw);
+  assert.equal(parsed.buses.size, 3, "All 3 buses (including Bus 1 and Bus 2) must be preserved");
+  assert.equal(parsed.buses.get(1)?.i, 1);
+  assert.equal(parsed.buses.get(2)?.i, 2);
+  assert.equal(parsed.buses.get(3)?.i, 3);
+  assert.equal(
+    parsed.transformers.length,
+    1,
+    "Transformer with 0.000 r12 line must be parsed without prematurely ending section",
+  );
+  assert.equal(parsed.transformers[0]?.i, 2);
+  assert.equal(parsed.transformers[0]?.j, 3);
+  assert.ok(Math.abs((parsed.transformers[0]?.x12 ?? 0) - 0.19797) < 1e-6);
+});
+
+test("PSS/E DYR Parser: Parses GENROU, EXST1, and TGOV1 dynamic records and couples with transient simulation", () => {
+  const sampleDyr = `// IEEE 14 Dynamic Equipment Models
+1 'GENROU' '1' 6.50 0.05 0.50 0.06 5.14 2.00 1.80 1.70 0.60 0.80 0.20 0.13 0.09 0.35 /
+1 'EXST1'  '1' 0.02 1.15 -1.15 1.00 10.0 200.0 0.05 5.00 -5.00 0.10 0.03 0.0 /
+1 'TGOV1'  '1' 0.05 0.15 1.05 0.00 0.30 1.00 0.0 /
+2 'GENROU' '1' 5.60 0.05 0.50 0.06 6.54 1.50 1.75 1.65 0.55 0.75 0.22 0.14 0.10 0.32 /
+`;
+  const dyr = parseDyr(sampleDyr);
+  assert.equal(dyr.records.length, 4);
+  assert.equal(dyr.records[0]?.model, "GENROU");
+  assert.equal(dyr.records[0]?.category, "generator");
+  assert.equal(dyr.records[0]?.namedParams["H"], 5.14);
+  assert.equal(dyr.records[0]?.namedParams["D"], 2.0);
+  assert.equal(dyr.records[0]?.namedParams["Xdp"], 0.6);
+
+  assert.equal(dyr.records[1]?.model, "EXST1");
+  assert.equal(dyr.records[1]?.category, "exciter");
+  assert.equal(dyr.records[1]?.namedParams["KA"], 200.0);
+
+  assert.equal(dyr.records[2]?.model, "TGOV1");
+  assert.equal(dyr.records[2]?.category, "governor");
+  assert.equal(dyr.records[2]?.namedParams["R"], 0.05);
+
+  const roundTrip = parseDyr(writeDyr(dyr));
+  assert.equal(roundTrip.records.length, 4);
+  assert.equal(roundTrip.records[0]?.namedParams["H"], 5.14);
+
+  const parsedCase = parseRaw(IEEE_14_RAW);
+  parsedCase.dyr = dyr;
+  const sim = simulatePsseTransient(parsedCase, { stopTime: 1.0 });
+  assert.equal(sim.summary.convergedPowerFlow, true);
+  assert.equal(sim.summary.stable, true);
+});
+
+test("PSS/E 3-Winding Transformer: Parses 5-line 3-winding transformer and stamps Kron-reduced delta admittances", () => {
+  const raw3W = `0, 100.0, 33, 0, 0, 60.0 / 3-Winding Transformer Test
+3-WINDING TEST CASE
+REV 33
+1, 'PRIMARY 230 ', 230.0, 3, 1, 1, 1, 1.040, 0.0
+2, 'SECONDARY 69',  69.0, 1, 1, 1, 1, 1.000, -3.5
+3, 'TERTIARY 13 ',  13.8, 1, 1, 1, 1, 1.000, -2.1
+0 / END OF BUS DATA, BEGIN LOAD DATA
+2, '1 ', 1, 1, 1, 45.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1
+3, '1 ', 1, 1, 1, 12.0,  4.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1
+0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA
+1, '1 ', 60.0, 20.0, 100.0, -50.0, 1.040, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 150.0, 0.0
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA
+0 / END OF BRANCH DATA, BEGIN TRANSFORMER DATA
+1, 2, 3, '1 ', 1, 1, 1, 0.0, 0.0, 2, 'T3W_MAIN    ', 1, 1, 1.0
+0.0020, 0.0800, 100.0, 0.0030, 0.1200, 100.0, 0.0025, 0.1000, 100.0, 1.0000, 0.00
+1.0200, 230.0, 0.0, 100.0, 100.0, 100.0, 0, 0, 1.1, 0.9, 1.1, 0.9, 33, 0, 0.0, 0.0
+1.0000, 69.0, 0.0, 60.0, 60.0, 60.0
+1.0000, 13.8, 0.0, 30.0, 30.0, 30.0
+0 / END OF TRANSFORMER DATA
+Q
+`;
+  const parsed = parseRaw(raw3W);
+  assert.equal(parsed.transformers.length, 1);
+  const t = parsed.transformers[0]!;
+  assert.equal(t.i, 1);
+  assert.equal(t.j, 2);
+  assert.equal(t.k, 3);
+  assert.equal(t.x12, 0.08);
+  assert.equal(t.x23, 0.12);
+  assert.equal(t.x31, 0.1);
+  assert.equal(t.windv3, 1.0);
+  assert.equal(t.nomv3, 13.8);
+
+  const netlist = extractPowerFlowNetlist(parsed);
+  assert.equal(netlist.nBuses, 3);
+  // All 3 buses should be coupled in Ybus via wye-delta Kron reduction
+  assert.ok((netlist.ybus.b.get(0)?.get(1) ?? 0) !== 0, "Expected non-zero Ybus coupling between winding 1 and 2");
+  assert.ok((netlist.ybus.b.get(1)?.get(2) ?? 0) !== 0, "Expected non-zero Ybus coupling between winding 2 and 3");
+  assert.ok((netlist.ybus.b.get(0)?.get(2) ?? 0) !== 0, "Expected non-zero Ybus coupling between winding 1 and 3");
+
+  const pf = solvePowerFlow(parsed);
+  assert.equal(pf.converged, true);
+});
+
+test("PSS/E N-1 Contingency Screening: Evaluates single-element outages and formats security report", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const report = analyzeN1Contingencies(parsed, "IEEE 14-Bus Test");
+  assert.equal(report.baseCaseConverged, true);
+  // 7 branches + 2 non-slack generators = 9 contingencies
+  assert.equal(report.totalContingencies, 9);
+  assert.equal(report.contingencies.length, 9);
+  assert.ok(report.reportText.includes("N-1 CONTINGENCY SECURITY SCREENING REPORT"));
+});
+
+test("PSS/E IEC 60909 / ANSI C37 Short-Circuit Analysis: Computes 3-phase, 1LG, 2L, and 2LG fault currents", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const sc = calculateShortCircuit(parsed, "IEEE 14-Bus Test");
+  assert.equal(sc.buses.length, 5);
+  assert.ok(sc.maxFaultCurrentKa > 0);
+  assert.ok(sc.maxFaultBus > 0);
+  for (const b of sc.buses) {
+    assert.ok(b.ik3PhaseKa > 0);
+    assert.ok(b.ik1LineGroundKa > 0);
+    assert.ok(b.ikLineToLineKa > 0);
+    assert.ok(b.ik2LineGroundKa > 0);
+    assert.ok(b.sk3PhaseMva > 0);
+  }
+  assert.ok(sc.reportText.includes("SHORT-CIRCUIT FAULT DUTY REPORT"));
+});
+
+test("PSS/E Multi-State Subtransient + AVR + Governor Simulation: Emits Efd and Pm traces with .dyr models", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const dyrText = [
+    "1 'GENROU' 1 6.50 0.05 0.50 0.06 5.14 2.00 1.80 1.70 0.60 0.80 0.20 0.13 0.09 0.35 /",
+    "1 'EXST1'  1 0.02 1.15 -1.15 1.00 10.0 150.0 0.05 5.00 -5.00 0.10 0.03 0.0 /",
+    "1 'TGOV1'  1 0.05 0.10 1.05 0.00 1.00 2.10 0.50 /",
+    "1 'IEEEST' 1 1 0 0.02 0.02 1.50 1.50 0.15 0.03 0.15 0.03 5.00 0.10 -0.10 0.0 0.0 /",
+  ].join("\n");
+  parsed.dyr = parseDyr(dyrText);
+
+  const res = simulatePsseTransient(parsed, { stopTime: 1.5, timeStep: 0.01 });
+  assert.ok(res.states.includes("Efd_Bus1_pu"));
+  assert.ok(res.states.includes("Pm_Bus1_MW"));
+  const efdIdx = res.states.indexOf("Efd_Bus1_pu");
+  const pmIdx = res.states.indexOf("Pm_Bus1_MW");
+  assert.ok(efdIdx >= 0);
+  assert.ok(pmIdx >= 0);
+  const efdTrace = res.y[efdIdx]!;
+  const pmTrace = res.y[pmIdx]!;
+  assert.ok(efdTrace.length > 50);
+  assert.ok(pmTrace.length > 50);
+  // During the fault, AVR boosts Efd above its initial steady-state value
+  const maxEfd = Math.max(...efdTrace);
+  assert.ok(maxEfd > efdTrace[0]!);
+});
+
+test("PSS/E Diagram Bi-Directional Writeback: Mutates Bus, Generator, Load, and Branch parameters cleanly", () => {
+  const updatedGen = applyPsseDiagramWriteback(IEEE_14_RAW, "gen_2_1", { pg: 55.5, vs: 1.05 });
+  const reparsed1 = parseRaw(updatedGen);
+  const gen2 = reparsed1.generators.find((g) => g.i === 2);
+  assert.ok(gen2);
+  assert.ok(Math.abs(gen2.pg - 55.5) < 1e-3);
+  assert.ok(Math.abs(gen2.vs - 1.05) < 1e-3);
+
+  const updatedBus = applyPsseDiagramWriteback(updatedGen, "bus_4", { baseKv: 138.0, vm: 1.025 });
+  const reparsed2 = parseRaw(updatedBus);
+  const bus4 = reparsed2.buses.get(4);
+  assert.ok(bus4);
+  assert.equal(bus4.baseKv, 138.0);
+  assert.ok(Math.abs(bus4.vm - 1.025) < 1e-3);
 });

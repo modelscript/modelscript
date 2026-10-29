@@ -37,9 +37,10 @@ export interface LanguagePlugin {
     | {
         validate?: ((doc: any) => Promise<any[]> | any[]) | undefined;
         postValidate?: ((doc: any, context: any, diagnostics: any[]) => Promise<void> | void) | undefined;
-        complete?: ((offset: number, text: string) => any[]) | undefined;
-        hover?: ((offset: number, text: string) => any | null) | undefined;
-        definition?: ((offset: number, text: string) => any | null) | undefined;
+        complete?: ((offset: number, text: string, uri?: string) => any[]) | undefined;
+        hover?: ((offset: number, text: string, uri?: string) => any | null) | undefined;
+        definition?: ((offset: number, text: string, uri?: string) => any | null) | undefined;
+        references?: ((offset: number, text: string, uri?: string) => any[]) | undefined;
         symbols?: ((tree: any) => any[]) | undefined;
         folding?: ((tree: any) => any[]) | undefined;
       }
@@ -76,6 +77,7 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   owl2: "stable",
   csv: "stable",
   pscad: "stable",
+  psse: "stable",
   ssp: "stable",
 
   // Beta (Tier 2)

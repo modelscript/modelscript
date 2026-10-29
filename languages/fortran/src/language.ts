@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, field, language, optional, prec, repeat, seq, tggEq, tggRule } from "@modelscript/dsl";
+import { choice, def, field, language, optional, prec, repeat, seq, tggEq, tggRule, token } from "@modelscript/dsl";
 
 /**
  * Precedence levels for Fortran arithmetic, relational, and logical expressions.
@@ -20,20 +20,131 @@ export const FORTRAN_PREC = {
   PRIMARY: 12,
 } as const;
 
+const FORTRAN_KEYWORD_TOKENS = [
+  "subroutine",
+  "function",
+  "program",
+  "module",
+  "end",
+  "endif",
+  "enddo",
+  "if",
+  "then",
+  "else",
+  "elseif",
+  "do",
+  "while",
+  "call",
+  "return",
+  "continue",
+  "stop",
+  "common",
+  "parameter",
+  "dimension",
+  "implicit",
+  "none",
+  "intent",
+  "in",
+  "out",
+  "inout",
+  "save",
+  "allocatable",
+  "allocate",
+  "deallocate",
+  "optional",
+  "value",
+  "use",
+  "only",
+  "contains",
+  "interface",
+  "pure",
+  "elemental",
+  "recursive",
+  "result",
+  "select",
+  "case",
+  "default",
+  "exit",
+  "cycle",
+  "TIME",
+  "DELT",
+  "FIRSTSTEP",
+];
+
+const FORTRAN_TYPE_TOKENS = [
+  "real",
+  "integer",
+  "double",
+  "precision",
+  "logical",
+  "complex",
+  "character",
+  "storf",
+  "stori",
+];
+
 /**
- * WebAssembly GLR Language definition for Fortran 77/90 engineering subroutines and scripts.
+ * WebAssembly GLR Language definition for Fortran 77/90/95/2003 engineering subroutines and scripts.
  */
 export const fortranLanguage = language({
   name: "fortran",
-  fileExtensions: [".f", ".for", ".f77", ".f90"],
+  fileExtensions: [".f", ".for", ".f77", ".f90", ".f95", ".f03", ".f08"],
   maturity: "beta",
   lsp: {
-    fileExtensions: [".f", ".for", ".f77", ".f90"],
+    fileExtensions: [".f", ".for", ".f77", ".f90", ".f95", ".f03", ".f08"],
     icons: {
       light: "./assets/fortran/icon-light.png",
       dark: "./assets/fortran/icon-dark.png",
     },
   },
+
+  symbols: {
+    SubroutineDeclaration: { name: "name", kind: "Function", scope: true, icon: "symbol-function" },
+    FunctionDeclaration: { name: "name", kind: "Function", scope: true, icon: "symbol-function" },
+    ModuleDeclaration: { name: "name", kind: "Module", scope: true, icon: "symbol-module" },
+    ProgramDeclaration: { name: "name", kind: "Module", scope: true, icon: "symbol-module" },
+    Declarator: { name: "name", kind: "Variable", scope: false, icon: "symbol-variable" },
+  },
+
+  actions: [
+    {
+      id: "simulate_fortran",
+      title: "Simulate Fortran Subroutine",
+      description: "Executes the Fortran subroutine or time-stepping kernel in-browser and plots output trajectories.",
+      category: "simulate",
+      output: { type: "timeseries" },
+    },
+    {
+      id: "verify_fortran",
+      title: "Verify Formal Safety (CFG & Bounds)",
+      description: "Runs static abstract interpretation and DAE reachability verification on the Fortran routine.",
+      category: "verify",
+      output: { type: "json" },
+    },
+    {
+      id: "lint_fortran_file",
+      title: "Lint Fortran File",
+      description:
+        "Runs Fortran static analysis rules (M4070–M4084) for declarations, bounds, control flow, and intents.",
+      category: "verify",
+      output: { type: "json" },
+    },
+    {
+      id: "lower_fortran_to_dae",
+      title: "Lower Fortran to DAE Arena",
+      description: "Lowers Fortran procedural equations and state derivatives directly into the WebAssembly DAE arena.",
+      category: "transform",
+      output: { type: "json" },
+    },
+    {
+      id: "export_fortran_fmu",
+      title: "Export FMU 2.0/3.0",
+      description:
+        "Compiles the Fortran subroutine and equations into a standalone FMI 2.0/3.0 FMU archive with C and WASM sources.",
+      category: "export",
+      output: { type: "json" },
+    },
+  ],
 
   polyglot: {
     languages: ["modelica"],
@@ -63,12 +174,65 @@ export const fortranLanguage = language({
     lineComment: "!",
   },
 
+  reserved: {
+    keyword: () =>
+      Array.from(new Set([...FORTRAN_KEYWORD_TOKENS, ...FORTRAN_KEYWORD_TOKENS.map((k) => k.toUpperCase())])).map((k) =>
+        token(k),
+      ),
+    type: () =>
+      Array.from(new Set([...FORTRAN_TYPE_TOKENS, ...FORTRAN_TYPE_TOKENS.map((t) => t.toUpperCase())])).map((t) =>
+        token(t),
+      ),
+    operator: () =>
+      [
+        "+",
+        "-",
+        "*",
+        "/",
+        "**",
+        "^",
+        "=",
+        "==",
+        "/=",
+        "!=",
+        "<",
+        "<=",
+        ">",
+        ">=",
+        "::",
+        "&&",
+        "||",
+        ".AND.",
+        ".OR.",
+        ".NOT.",
+        ".EQ.",
+        ".NE.",
+        ".LT.",
+        ".LE.",
+        ".GT.",
+        ".GE.",
+        ".and.",
+        ".or.",
+        ".not.",
+        ".eq.",
+        ".ne.",
+        ".lt.",
+        ".le.",
+        ".gt.",
+        ".ge.",
+      ].map((o) => token(o)),
+  },
+
   conflicts: ($) => [
     [$["BlockIfStatement"]!, $["InlineIfStatement"]!],
     [$["ArrayOrCallRef"]!, $["Target"]!],
+    [$["SubroutineDeclaration"]!, $["Target"]!],
+    [$["FunctionDeclaration"]!, $["Target"]!],
+    [$["ModuleDeclaration"]!, $["Target"]!],
+    [$["ProgramDeclaration"]!, $["Target"]!],
   ],
 
-  extras: () => [/[ \t\r\n]+/],
+  extras: () => [/[ \t\r\n]+/, /![^\n]*/],
 
   rules: {
     SourceFile: ($) => repeat(choice($["ProgramUnit"]!, $["Statement"]!, $["_EmptyStatement"]!)),
@@ -77,7 +241,23 @@ export const fortranLanguage = language({
 
     // ── Program Units ────────────────────────────────────────────────────────
 
-    ProgramUnit: ($) => choice($["SubroutineDeclaration"]!, $["FunctionDeclaration"]!, $["ModuleDeclaration"]!),
+    ProgramUnit: ($) =>
+      choice($["ProgramDeclaration"]!, $["SubroutineDeclaration"]!, $["FunctionDeclaration"]!, $["ModuleDeclaration"]!),
+
+    ProgramDeclaration: ($) =>
+      def({
+        syntax: seq(
+          $["PROGRAM_KEYWORD"]!,
+          field("name", $["IDENTIFIER"]!),
+          repeat($["Statement"]!),
+          optional(seq($["CONTAINS_KEYWORD"]!, repeat(choice($["SubroutineDeclaration"]!, $["FunctionDeclaration"]!)))),
+          $["END_PROGRAM"]!,
+        ),
+        symbol: (self: Record<string, string>) => ({
+          kind: "Program",
+          name: self["name"] ?? "",
+        }),
+      }),
 
     SubroutineDeclaration: ($) =>
       def({
@@ -112,7 +292,13 @@ export const fortranLanguage = language({
 
     ModuleDeclaration: ($) =>
       def({
-        syntax: seq($["MODULE_KEYWORD"]!, field("name", $["IDENTIFIER"]!), repeat($["Statement"]!), $["END_MODULE"]!),
+        syntax: seq(
+          $["MODULE_KEYWORD"]!,
+          field("name", $["IDENTIFIER"]!),
+          repeat($["Statement"]!),
+          optional(seq($["CONTAINS_KEYWORD"]!, repeat(choice($["SubroutineDeclaration"]!, $["FunctionDeclaration"]!)))),
+          $["END_MODULE"]!,
+        ),
         symbol: (self: Record<string, string>) => ({
           kind: "Module",
           name: self["name"] ?? "",
@@ -125,7 +311,10 @@ export const fortranLanguage = language({
 
     Statement: ($) =>
       choice(
+        $["UseStatement"]!,
         $["DeclarationStatement"]!,
+        $["AllocateStatement"]!,
+        $["DeallocateStatement"]!,
         $["CommonStatement"]!,
         $["ParameterStatement"]!,
         $["DimensionStatement"]!,
@@ -139,12 +328,35 @@ export const fortranLanguage = language({
         $["ContinueStatement"]!,
       ),
 
+    UseStatement: ($) => seq($["USE_KEYWORD"]!, field("module", $["IDENTIFIER"]!)),
+
+    AllocateStatement: ($) => seq($["ALLOCATE_KEYWORD"]!, "(", field("items", $["ArgumentList"]!), ")"),
+
+    DeallocateStatement: ($) => seq($["DEALLOCATE_KEYWORD"]!, "(", field("items", $["IdentifierList"]!), ")"),
+
     DeclarationStatement: ($) =>
       seq(
         field("type", $["TYPE_SPECIFIER"]!),
-        optional(seq("(", field("kind", $["Expression"]!), ")")),
+        optional(
+          choice(
+            seq("*", field("len", $["NUMBER"]!)),
+            seq("(", optional($["KIND_PREFIX"]!), field("kind", $["Expression"]!), ")"),
+          ),
+        ),
+        repeat(seq(",", $["AttributeSpec"]!)),
         optional("::"),
         field("declarators", $["DeclaratorList"]!),
+      ),
+
+    AttributeSpec: ($) =>
+      choice(
+        seq($["INTENT_KEYWORD"]!, "(", field("intent", $["INTENT_SPEC"]!), ")"),
+        $["PARAMETER_KEYWORD"]!,
+        seq($["DIMENSION_KEYWORD"]!, "(", $["DimensionList"]!, ")"),
+        $["SAVE_KEYWORD"]!,
+        $["ALLOCATABLE_KEYWORD"]!,
+        $["OPTIONAL_KEYWORD"]!,
+        $["VALUE_KEYWORD"]!,
       ),
 
     DeclaratorList: ($) => seq($["Declarator"]!, repeat(seq(",", $["Declarator"]!))),
@@ -156,7 +368,13 @@ export const fortranLanguage = language({
         optional(seq("=", field("init", $["Expression"]!))),
       ),
 
-    DimensionList: ($) => seq($["Expression"]!, repeat(seq(",", $["Expression"]!))),
+    SubscriptItem: ($) =>
+      choice(
+        ":",
+        seq($["Expression"]!, optional(seq(":", optional($["Expression"]!), optional(seq(":", $["Expression"]!))))),
+      ),
+
+    DimensionList: ($) => seq($["SubscriptItem"]!, repeat(seq(",", $["SubscriptItem"]!))),
 
     DimensionStatement: ($) => seq($["DIMENSION_KEYWORD"]!, $["DeclaratorList"]!),
 
@@ -252,7 +470,7 @@ export const fortranLanguage = language({
 
     ContinueStatement: ($) => seq(optional(field("label", $["NUMBER"]!)), $["CONTINUE_KEYWORD"]!),
 
-    ArgumentList: ($) => seq($["Expression"]!, repeat(seq(",", $["Expression"]!))),
+    ArgumentList: ($) => seq($["SubscriptItem"]!, repeat(seq(",", $["SubscriptItem"]!))),
 
     // ── Expressions ──────────────────────────────────────────────────────────
 
@@ -314,12 +532,20 @@ export const fortranLanguage = language({
 
     // ── Lexical Terminals ────────────────────────────────────────────────────
 
+    PROGRAM_KEYWORD: () => /[Pp][Rr][Oo][Gg][Rr][Aa][Mm]/,
     SUBROUTINE_KEYWORD: () => /[Ss][Uu][Bb][Rr][Oo][Uu][Tt][Ii][Nn][Ee]/,
     FUNCTION_KEYWORD: () => /[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn]/,
     MODULE_KEYWORD: () => /[Mm][Oo][Dd][Uu][Ll][Ee]/,
-    END_SUBROUTINE: () => /[Ee][Nn][Dd](?:\s+[Ss][Uu][Bb][Rr][Oo][Uu][Tt][Ii][Nn][Ee])?/,
-    END_FUNCTION: () => /[Ee][Nn][Dd](?:\s+[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn])?/,
-    END_MODULE: () => /[Ee][Nn][Dd](?:\s+[Mm][Oo][Dd][Uu][Ll][Ee])?/,
+    CONTAINS_KEYWORD: () => /[Cc][Oo][Nn][Tt][Aa][Ii][Nn][Ss]/,
+    USE_KEYWORD: () => /[Uu][Ss][Ee]/,
+    ALLOCATE_KEYWORD: () => /[Aa][Ll][Ll][Oo][Cc][Aa][Tt][Ee]/,
+    DEALLOCATE_KEYWORD: () => /[Dd][Ee][Aa][Ll][Ll][Oo][Cc][Aa][Tt][Ee]/,
+    END_PROGRAM: () => /[Ee][Nn][Dd](?:[ \t]+[Pp][Rr][Oo][Gg][Rr][Aa][Mm](?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)?)?/,
+    END_SUBROUTINE: () =>
+      /[Ee][Nn][Dd](?:[ \t]+[Ss][Uu][Bb][Rr][Oo][Uu][Tt][Ii][Nn][Ee](?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)?)?/,
+    END_FUNCTION: () => /[Ee][Nn][Dd](?:[ \t]+[Ff][Uu][Nn][Cc][Tt][Ii][Oo][Nn](?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)?)?/,
+    END_MODULE: () => /[Ee][Nn][Dd](?:[ \t]+[Mm][Oo][Dd][Uu][Ll][Ee](?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)?)?/,
+    KIND_PREFIX: () => /(?:[Kk][Ii][Nn][Dd]|[Ll][Ee][Nn])\s*=/,
     IF_KEYWORD: () => /[Ii][Ff]/,
     THEN_KEYWORD: () => /[Tt][Hh][Ee][Nn]/,
     END_IF: () => /[Ee][Nn][Dd]\s*[Ii][Ff]/,
@@ -335,6 +561,12 @@ export const fortranLanguage = language({
     DIMENSION_KEYWORD: () => /[Dd][Ii][Mm][Ee][Nn][Ss][Ii][Oo][Nn]/,
     IMPLICIT_KEYWORD: () => /[Ii][Mm][Pp][Ll][Ii][Cc][Ii][Tt]/,
     NONE_KEYWORD: () => /[Nn][Oo][Nn][Ee]/,
+    INTENT_KEYWORD: () => /[Ii][Nn][Tt][Ee][Nn][Tt]/,
+    INTENT_SPEC: () => /(?:[Ii][Nn]\s*[Oo][Uu][Tt]|[Ii][Nn]|[Oo][Uu][Tt])/,
+    SAVE_KEYWORD: () => /[Ss][Aa][Vv][Ee]/,
+    ALLOCATABLE_KEYWORD: () => /[Aa][Ll][Ll][Oo][Cc][Aa][Tt][Aa][Bb][Ll][Ee]/,
+    OPTIONAL_KEYWORD: () => /[Oo][Pp][Tt][Ii][Oo][Nn][Aa][Ll]/,
+    VALUE_KEYWORD: () => /[Vv][Aa][Ll][Uu][Ee]/,
 
     TYPE_SPECIFIER: () =>
       /(?:[Rr][Ee][Aa][Ll]|[Ii][Nn][Tt][Ee][Gg][Ee][Rr]|[Dd][Oo][Uu][Bb][Ll][Ee]\s+[Pp][Rr][Ee][Cc][Ii][Ss][Ii][Oo][Nn]|[Ll][Oo][Gg][Ii][Cc][Aa][Ll]|[Cc][Oo][Mm][Pp][Ll][Ee][Xx]|[Cc][Hh][Aa][Rr][Aa][Cc][Tt][Ee][Rr])/,

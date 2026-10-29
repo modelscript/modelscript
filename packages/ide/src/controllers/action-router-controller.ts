@@ -398,6 +398,24 @@ export async function registerDynamicActions(
               }
 
               const resObj = typeof res === "object" && !Array.isArray(res) ? (res as ActionExecutionResult) : null;
+              if (resObj && typeof resObj["reportText"] === "string" && resObj["reportText"].trim().length > 0) {
+                const doc = await vscode.workspace.openTextDocument({
+                  content: resObj["reportText"],
+                  language: "plaintext",
+                });
+                await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+                if (typeof resObj["converged"] === "boolean") {
+                  vscode.window.showInformationMessage(
+                    `${action.title ?? action.id}: ${resObj["converged"] ? "✓ Converged" : "⚠ Did Not Converge"} in ${resObj["iterations"] ?? 0} iterations (Losses: ${Number(resObj["totalLossMw"] ?? 0).toFixed(2)} MW).`,
+                  );
+                } else if (typeof resObj["nBuses"] === "number") {
+                  vscode.window.showInformationMessage(
+                    `${action.title ?? action.id}: Extracted ${resObj["nBuses"]}-bus network (${resObj["ybusNonZeros"] ?? 0} non-zero Ybus entries).`,
+                  );
+                }
+                return res;
+              }
+
               if (resObj?.complianceReport) {
                 vscode.window.showInformationMessage(
                   `IEEE 2800 Verification: ${resObj.complianceReport.overallCompliance ? "PASS" : "NON-COMPLIANT"} (${resObj.complianceReport.clauses?.length ?? 0} clauses evaluated).`,
@@ -407,13 +425,35 @@ export async function registerDynamicActions(
                   `${action.title ?? action.id}: ${res.length === 0 ? "✓ 0 issues found (Verified Clean)" : `${res.length} diagnostic(s) reported`}.`,
                 );
               } else if (resObj) {
-                if (typeof resObj.variableCount === "number" && typeof resObj.equationCount === "number") {
+                if (typeof resObj["formattedSummary"] === "string") {
+                  vscode.window.showInformationMessage(resObj["formattedSummary"]);
+                  if (action.id.includes("export") && typeof resObj["modelDescription2Xml"] === "string") {
+                    const doc = await vscode.workspace.openTextDocument({
+                      content: resObj["modelDescription2Xml"] as string,
+                      language: "xml",
+                    });
+                    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+                  }
+                } else if (typeof resObj["count"] === "number" && Array.isArray(resObj["diagnostics"])) {
+                  const count = resObj["count"];
+                  vscode.window.showInformationMessage(
+                    `${action.title ?? action.id}: ${count === 0 ? "✓ 0 issues found (Verified Clean)" : `${count} diagnostic(s) reported`}.`,
+                  );
+                } else if (typeof resObj.variableCount === "number" && typeof resObj.equationCount === "number") {
                   vscode.window.showInformationMessage(
                     `${action.title ?? action.id}: Lowered to DAE (${resObj.variableCount} variables, ${resObj.equationCount} equations).`,
                   );
                 } else if (typeof resObj.compliant === "boolean" || typeof resObj.passed === "boolean") {
                   const ok = resObj.compliant ?? resObj.passed;
                   vscode.window.showInformationMessage(`${action.title ?? action.id}: ${ok ? "✓ PASS" : "✗ FAIL"}`);
+                } else if (action.id.includes("export") || action.id.includes("netlist")) {
+                  const jsonText = JSON.stringify(
+                    resObj,
+                    (_key, val) => (val instanceof Map ? Object.fromEntries(val) : val),
+                    2,
+                  );
+                  const doc = await vscode.workspace.openTextDocument({ content: jsonText, language: "json" });
+                  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
                 }
               }
 

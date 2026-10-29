@@ -94,16 +94,71 @@ describe("OWL2 Diagram Data Generator", () => {
     assert.strictEqual(inferredEdge?.source.cell, ":Sedan");
     assert.strictEqual(inferredEdge?.target.cell, ":Transport");
 
-    const domEdge = data.edges.find(
-      (e) => (e as any).style?.type === "domain" && e.source.cell === ":hasPowertrain" && e.target.cell === ":Vehicle",
+    const objPropEdge = data.edges.find(
+      (e) => (e as any).style?.type === "objectProperty" && e.source.cell === ":Vehicle" && e.target.cell === ":Engine",
     );
-    const rngEdge = data.edges.find(
-      (e) => (e as any).style?.type === "range" && e.source.cell === ":hasPowertrain" && e.target.cell === ":Engine",
-    );
-    assert.ok(domEdge && rngEdge, "Expected domain and range edges for :hasPowertrain");
+    assert.ok(objPropEdge, "Expected folded direct objectProperty edge :Vehicle -> :Engine in All view");
 
     const propsView = buildOWL2DiagramData(axioms, undefined, "Properties");
     assert.ok(propsView.edges.every((e) => (e as any).style?.type !== "subClassOf"));
+    const domEdge = propsView.edges.find(
+      (e) => (e as any).style?.type === "domain" && e.source.cell === ":hasPowertrain" && e.target.cell === ":Vehicle",
+    );
+    const rngEdge = propsView.edges.find(
+      (e) => (e as any).style?.type === "range" && e.source.cell === ":hasPowertrain" && e.target.cell === ":Engine",
+    );
+    assert.ok(domEdge && rngEdge, "Expected explicit domain and range edges for :hasPowertrain in Properties view");
+  });
+
+  it("uses selector-based markup, multi-compartment cards, datatype nodes, upward hierarchy ports, and null coordinateSystem", () => {
+    const axioms = [
+      { type: "ClassDeclaration", iri: ":CyberPhysicalAsset" },
+      { type: "ClassDeclaration", iri: ":IndustrialRobot" },
+      { type: "DataPropertyDeclaration", iri: ":payloadCapacityKg" },
+      { type: "IndividualDeclaration", iri: ":robot_arm_01" },
+      { type: "SubClassOf", subClassIri: ":IndustrialRobot", superClassIri: ":CyberPhysicalAsset" },
+      { type: "DataPropertyDomain", propertyIri: ":payloadCapacityKg", domainIri: ":IndustrialRobot" },
+      { type: "DataPropertyRange", propertyIri: ":payloadCapacityKg", rangeIri: "xsd:double" },
+      { type: "ClassAssertion", classIri: ":IndustrialRobot", individualIri: ":robot_arm_01" },
+    ];
+
+    const data = buildOWL2DiagramData(axioms, undefined, "All");
+    assert.strictEqual(data.coordinateSystem, null);
+
+    const robotClassNode = data.nodes.find((n) => n.id === ":IndustrialRobot");
+    assert.ok(robotClassNode, "Expected :IndustrialRobot node");
+    assert.strictEqual(
+      robotClassNode?.attrs?.entry_0?.text,
+      "payloadCapacityKg : xsd:double",
+      "Expected DataProperty folded into class compartment in All view",
+    );
+
+    const robotIndNode = data.nodes.find((n) => n.id === ":robot_arm_01");
+    assert.ok(robotIndNode, "Expected :robot_arm_01 individual node");
+    assert.strictEqual(robotIndNode?.attrs?.subtitle?.text, ": IndustrialRobot");
+
+    const propsData = buildOWL2DiagramData(axioms, undefined, "Properties");
+    const datatypeNode = propsData.nodes.find((n) => n.id === "xsd:double");
+    assert.ok(datatypeNode, "Expected xsd:double node in Properties view");
+    assert.strictEqual(datatypeNode?.data?.type, "datatype");
+    assert.strictEqual(datatypeNode?.attrs?.header?.text, "«rdfs:Datatype»");
+    assert.strictEqual(datatypeNode?.attrs?.label?.text, "xsd:double");
+
+    const assetNode = data.nodes.find((n) => n.id === ":CyberPhysicalAsset");
+    assert.ok(assetNode);
+    assert.ok((assetNode?.width ?? 0) >= 176);
+    assert.strictEqual(assetNode?.height, 52);
+    assert.ok((robotClassNode?.height ?? 0) > 52);
+    assert.ok(Array.isArray(assetNode?.markup) && assetNode.markup.every((m: any) => m.tagName !== "g"));
+    assert.strictEqual((assetNode?.ports as any)?.groups?.top?.attrs?.circle?.r, 0);
+
+    const subEdge = data.edges.find((e) => (e as any).data?.type === "subClassOf");
+    assert.strictEqual(subEdge?.source.port, "top");
+    assert.strictEqual(subEdge?.target.port, "bottom");
+
+    const instEdge = data.edges.find((e) => (e as any).data?.type === "classAssertion");
+    assert.strictEqual(instEdge?.source.port, "top");
+    assert.strictEqual(instEdge?.target.port, "bottom");
   });
 });
 

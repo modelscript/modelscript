@@ -49,7 +49,7 @@ test("Engineering Solutions Platform & Multi-Target Publishing", async (t) => {
         supported_formats: [".slx", ".mdl"],
         version: "1.0.0",
         changelog: "Initial release",
-        bundle_url: "https://cdn.modelscript.org/solutions/simulink-linter/index.html",
+        bundle_url: "/static/solutions/simulink-linter/index.html",
         tauri_windows_url: "https://github.com/org/repo/releases/download/v1.0.0/linter.exe",
         tauri_linux_url: "https://github.com/org/repo/releases/download/v1.0.0/linter.AppImage",
         tauri_darwin_url: "https://github.com/org/repo/releases/download/v1.0.0/linter.dmg",

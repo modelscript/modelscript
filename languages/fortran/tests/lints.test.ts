@@ -104,4 +104,87 @@ IF (X - Y) 10, 20, 30
     const m4079 = diags.find((d) => d.code === 4079);
     assert.ok(m4079, "Should report M4079 for obsolete arithmetic IF");
   });
+
+  test("M4080 & M4082: flags subroutine begin/end identifier mismatch and trailing tokens after IMPLICIT NONE", () => {
+    const src = `! Nozzle Thrust & Specific Impulse Calculation (Fortran 90)
+subroutine nozzle_thrust1(p_c, a_t, c_f, f_thrust)
+  implicit none sd
+  real(8), intent(in)  :: p_c, a_t, c_f
+  real(8), intent(out) :: f_thrust
+  real(8) :: g0 = 9.80665, r_gas = 287.05
+  real(8) :: i_sp
+
+  f_thrust = p_c * a_t * c_f
+  i_sp = c_f * sqrt(r_gas * 3500.0) / g0
+end subroutine nozzle_thrust
+`;
+    const diags = lintFortran(src);
+    const m4082 = diags.find((d) => d.code === 4082);
+    assert.ok(m4082, "Should report M4082 for 'implicit none sd'");
+    assert.equal(m4082.line, 3);
+
+    const m4080 = diags.find((d) => d.code === 4080);
+    assert.ok(m4080, "Should report M4080 for 'nozzle_thrust1' vs 'nozzle_thrust'");
+    assert.ok(m4080.message.includes("'nozzle_thrust1'"));
+    assert.ok(m4080.message.includes("'nozzle_thrust'"));
+
+    // Should NOT produce false-positive M4070 or M4071 for intent(in) / intent(out) variables
+    assert.equal(diags.filter((d) => d.code === 4070 || d.code === 4071).length, 0);
+  });
+
+  test("M4081, M4083, M4084: flags intent(in) mutation, unclosed block, and math domain violation", () => {
+    const src = `
+subroutine bad_math(u_in, y_out)
+  implicit none
+  real(8), intent(in) :: u_in
+  real(8), intent(out) :: y_out
+  u_in = 5.0
+  y_out = sqrt(-4.0)
+`;
+    const diags = lintFortran(src);
+    assert.ok(
+      diags.some((d) => d.code === 4081),
+      "Should report M4081 for mutating intent(in) 'u_in'",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 4084),
+      "Should report M4084 for sqrt(-4.0)",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 4083),
+      "Should report M4083 for unclosed subroutine",
+    );
+  });
+
+  test("Multi-unit scoping & inter-procedural INTENT(IN) violation across CALLs", () => {
+    const src = `module test_mod
+  implicit none
+contains
+  subroutine caller(x_in, y_out)
+    implicit none
+    real(8), intent(in) :: x_in
+    real(8), intent(out) :: y_out
+    real(8), allocatable :: buf(:)
+    allocate(buf(4))
+    buf(1) = x_in
+    call mutator(x_in)
+    y_out = sum(buf)
+    deallocate(buf)
+  end subroutine caller
+
+  subroutine mutator(target_out)
+    implicit none
+    real(8), intent(out) :: target_out
+    target_out = 42.0
+  end subroutine mutator
+end module test_mod
+`;
+    const diags = lintFortran(src);
+    // Passing caller's INTENT(IN) 'x_in' to mutator's INTENT(OUT) 'target_out' must trigger M4081
+    const m4081 = diags.find((d) => d.code === 4081);
+    assert.ok(m4081, "Should report M4081 when passing INTENT(IN) variable to INTENT(OUT) dummy argument");
+    assert.ok(m4081.message.includes("'x_in'"));
+    // No false M4082 on MODULE, CONTAINS, ALLOCATE, DEALLOCATE, or array element assignment
+    assert.equal(diags.filter((d) => d.code === 4082).length, 0);
+  });
 });

@@ -38,7 +38,7 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
         globalThis.location.origin) ||
       (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
       "http://localhost";
-    worker = new Worker(new URL("/lsp/server/dist/browserServerMain.js", origin), {
+    worker = new Worker(new URL(`/lsp/server/dist/browserServerMain.js?v=${Date.now()}`, origin), {
       name: "modelscript-lsp",
     });
 

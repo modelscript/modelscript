@@ -9,7 +9,7 @@ import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
-import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface SimpackViewerProps {
   viewConfig: {
@@ -19,7 +19,9 @@ export interface SimpackViewerProps {
     svg?: string | undefined;
     title?: string | undefined;
     modelName?: string | undefined;
-    bodies?: { name: string; mass?: number }[] | undefined;
+    bodies?:
+      | { name: string; mass?: number; position?: [number, number, number]; cg?: [number, number, number] }[]
+      | undefined;
     joints?: { name: string; type?: string; from?: string; to?: string }[] | undefined;
     forces?: { name: string; type?: string; from?: string; to?: string }[] | undefined;
     bodyCount?: number | undefined;
@@ -160,7 +162,7 @@ const SvgContainer = styled.div`
 
 const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
-  const [tabIndex, setTabIndex] = useState<number>(0);
+  const [tabIndex, setTabIndex] = useState<number>(() => (viewConfig.svg ? 0 : 2));
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -206,70 +208,53 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     return Math.max(xmlMatches, simMatches);
   }, [viewConfig.forceCount, viewConfig.forces, rawDeck]);
 
-  const mobilityDof = viewConfig.calculatedMobility ?? Math.max(0, bodyCount * 6 - jointCount * 5);
-  const isOverconstrained = viewConfig.isOverconstrained ?? mobilityDof < 0;
+  const mobilityDof = viewConfig.calculatedMobility;
+  const isOverconstrained = viewConfig.isOverconstrained ?? (mobilityDof !== undefined ? mobilityDof < 0 : false);
 
   const svgMarkup = useMemo(() => {
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (rawDeck.trim()) {
-      return renderSourceToDiagramSvg(rawDeck, "simpack", modelName, true).svg;
-    }
     return "";
-  }, [viewConfig.svg, rawDeck, modelName]);
+  }, [viewConfig.svg]);
 
   const { nodes3D, links3D } = useMemo(() => {
     const nodes: MultibodyNode3D[] = [];
     const links: MultibodyLink3D[] = [];
+    const posMap = new Map<string, [number, number, number]>();
 
-    if (Array.isArray(viewConfig.bodies) && viewConfig.bodies.length > 0) {
-      viewConfig.bodies.forEach((b, idx) => {
+    if (Array.isArray(viewConfig.bodies)) {
+      viewConfig.bodies.forEach((b) => {
+        const coords = b.position || b.cg;
+        if (!Array.isArray(coords) || coords.length !== 3) return;
+        posMap.set(b.name, coords);
         nodes.push({
           id: b.name,
           name: b.name,
           type: "body",
-          position: [idx * 1.8 - 1.2, 0, 0.5],
+          position: coords,
         });
       });
-    } else {
-      const bodyRegex = /<body\s+[^>]*id="([^"]+)"[^>]*>/gi;
-      let bMatch;
-      let bIdx = 0;
-      while ((bMatch = bodyRegex.exec(rawDeck)) !== null) {
-        const id = bMatch[1]!;
-        nodes.push({
-          id,
-          name: id,
-          type: "body",
-          position: [bIdx * 1.6 - 1.2, 0, 0.5],
-        });
-        bIdx++;
-      }
-      if (nodes.length === 0) {
-        for (let i = 0; i < bodyCount; i++) {
-          nodes.push({
-            id: `body_${i + 1}`,
-            name: `Body ${i + 1}`,
-            type: "body",
-            position: [i * 1.8 - 0.9, 0, 0.5],
-          });
-        }
-      }
     }
 
-    for (let j = 0; j < Math.min(jointCount, Math.max(0, nodes.length - 1)); j++) {
-      links.push({
-        id: `joint_${j + 1}`,
-        name: `Joint ${j + 1}`,
-        type: "joint",
-        from: nodes[j]!.position,
-        to: nodes[j + 1]!.position,
+    if (Array.isArray(viewConfig.joints)) {
+      viewConfig.joints.forEach((j, idx) => {
+        const p1 = posMap.get(j.from || "");
+        const p2 = posMap.get(j.to || "");
+        if (p1 && p2) {
+          links.push({
+            id: j.name || `joint_${idx + 1}`,
+            name: j.name || `Joint ${idx + 1}`,
+            type: "joint",
+            from: p1,
+            to: p2,
+          });
+        }
       });
     }
 
     return { nodes3D: nodes, links3D: links };
-  }, [rawDeck, viewConfig.bodies, bodyCount, jointCount]);
+  }, [viewConfig.bodies, viewConfig.joints]);
 
   const handleOpenPlayground = () => {
     const hash = compressMorselPayload({
@@ -290,16 +275,15 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
         <HeaderLeft>
           <Title>{modelName}</Title>
           <Badge $variant="info">SIMPACK MBS</Badge>
-          {!isOverconstrained ? (
+          {mobilityDof !== undefined && !isOverconstrained && (
             <Badge $variant="success">
               <span style={{ verticalAlign: "middle", marginRight: 4, display: "inline-flex" }}>
                 <CheckCircleIcon size={12} />
               </span>
               {mobilityDof} DOF KINEMATIC
             </Badge>
-          ) : (
-            <Badge $variant="warning">OVERCONSTRAINED (M &lt; 0)</Badge>
           )}
+          {isOverconstrained && <Badge $variant="warning">OVERCONSTRAINED (M &lt; 0)</Badge>}
         </HeaderLeft>
         <Box display="flex" alignItems="center" gap={2}>
           <SegmentedControl size="small" aria-label="SIMPACK Views">
@@ -349,7 +333,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               </MetricCard>
               <MetricCard>
                 <MetricLabel>Calculated Mobility</MetricLabel>
-                <MetricValue>{mobilityDof} DOF</MetricValue>
+                <MetricValue>{mobilityDof !== undefined ? `${mobilityDof} DOF` : "—"}</MetricValue>
               </MetricCard>
             </MetricGrid>
 

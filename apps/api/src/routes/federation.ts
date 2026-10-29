@@ -751,6 +751,42 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         if (note.id && note.content) {
           db.updatePostContentByApId(note.id, note.content, remoteUser.id);
         }
+      } else if (activity.type === "Flag") {
+        const rawObjects = Array.isArray(activity.object) ? activity.object : [activity.object];
+        const flagReason =
+          typeof activity.content === "string" && activity.content.trim()
+            ? activity.content.trim()
+            : "Federated ActivityPub Flag report";
+        let reportedPostId: number | undefined;
+        let reportedUserId: number | undefined;
+
+        for (const obj of rawObjects) {
+          const objUri = typeof obj === "string" ? obj : obj?.id;
+          if (!objUri || typeof objUri !== "string") continue;
+          const matchedPost = db.getPostByApId(objUri);
+          if (matchedPost) {
+            reportedPostId = matchedPost.id;
+            reportedUserId = matchedPost.author_id;
+          } else if (fullLocalUser && !reportedUserId) {
+            reportedUserId = fullLocalUser.id as number;
+          }
+        }
+
+        const report = db.createContentReport(remoteUser.id, {
+          postId: reportedPostId,
+          targetUserId: reportedUserId ?? (fullLocalUser?.id as number | undefined),
+          reason: flagReason,
+          details: `Federated Flag from ${remoteActorUrl}`,
+        });
+
+        db.logAudit({
+          actorId: remoteUser.id,
+          action: "federated_flag_received",
+          resourceType: reportedPostId ? "post" : "user",
+          resourceId: String(reportedPostId ?? reportedUserId ?? "unknown"),
+          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          details: { reportId: report.id, remoteActor: remoteActorUrl, reason: flagReason },
+        });
       } else if (
         activity.type === "Create" &&
         activity.object &&

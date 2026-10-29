@@ -8,10 +8,10 @@ export const TabBar = styled.div`
   margin-top: 24px;
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  background: var(--surface-hud);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  z-index: 9;
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  z-index: 45;
 `;
 
 export const Tab = styled.button<{ $active?: boolean | undefined }>`
@@ -19,11 +19,14 @@ export const Tab = styled.button<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  height: 53px;
+  padding: 0 16px;
   background: none;
   border: none;
+  font-size: 15px;
+  line-height: 20px;
   color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
-  font-weight: ${(props) => (props.$active ? "bold" : "normal")};
+  font-weight: ${(props) => (props.$active ? 700 : 500)};
   cursor: pointer;
   transition: background-color 0.2s;
   position: relative;

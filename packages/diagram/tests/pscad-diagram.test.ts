@@ -560,4 +560,55 @@ const projA: PscadProjectLike = {
   console.log("   Test 7 passed: Sub-module drill-down, module-link metadata & SVG rendering verified.");
 }
 
+// ── Test 8: PSCAD v5 <Gfx classid="Graphics.*"> Rendering & Exact Port Coordinates ──
+{
+  console.log("Test 8: PSCAD v5 <Gfx> Graphics & Exact Port Coordinates");
+  const projG: PscadProjectLike = {
+    name: "GfxAndPortTest",
+    definitions: new Map([
+      [
+        "CustomVsc",
+        {
+          name: "CustomVsc",
+          graphicsXml: `<graphics>
+            <Gfx classid="Graphics.Rectangle" x="-28" y="-20" w="56" h="40"/>
+            <Gfx classid="Graphics.Line" x1="-28" y1="20" x2="28" y2="-20"/>
+            <Gfx classid="Graphics.Text" x="0" y="4"><param name="text" value="VSC"/></Gfx>
+          </graphics>`,
+        },
+      ],
+    ]),
+    rootModule: {
+      name: "Main",
+      buses: [],
+      wires: [],
+      components: [
+        {
+          id: "vsc_gfx",
+          definitionName: "CustomLib:CustomVsc",
+          position: { x: 200, y: 180 },
+          width: 60,
+          height: 44,
+          parameters: {},
+          ports: [
+            { id: "vsc_gfx_AC", name: "AC", position: { x: -28, y: 0 } },
+            { id: "vsc_gfx_DC", name: "DC", position: { x: 28, y: 0 } },
+          ],
+        },
+      ],
+    },
+  };
+
+  const diagG = buildPscadDiagram(projG);
+  const gfxCell = diagG.cells.find((c) => c.id === "vsc_gfx");
+  assert.ok(gfxCell, "vsc_gfx cell must exist");
+  assert.strictEqual(gfxCell.markup?.length, 3, "vsc_gfx must render rect, line, and text from <Gfx> elements");
+  const portItems = gfxCell.ports?.items ?? [];
+  assert.strictEqual(portItems.length, 2, "vsc_gfx must have 2 ports");
+  assert.strictEqual(portItems[0]?.group, "exact", "Port with non-zero local offset must use 'exact' absolute group");
+  assert.deepStrictEqual(portItems[0]?.["args"], { x: 2, y: 22 }, "Left port must be at (width/2 - 28, height/2)");
+  assert.deepStrictEqual(portItems[1]?.["args"], { x: 58, y: 22 }, "Right port must be at (width/2 + 28, height/2)");
+  console.log("   Test 8 passed: <Gfx> graphics and exact port coordinates verified.");
+}
+
 console.log("ALL PSCAD DIAGRAM & DIFF TESTS PASSED SUCCESSFULLY! Milestone 2 verified.");

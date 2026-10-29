@@ -138,7 +138,10 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
   const category = solution?.category || viewConfig.category || "Engineering Application";
   const description = solution?.description || viewConfig.description || "";
   const supportedFormats = solution?.supported_formats || viewConfig.supported_formats || [];
-  const bundleUrl = release?.bundle_url || solution?.bundle_url || viewConfig.bundle_url;
+  const rawBundleUrl = release?.bundle_url || solution?.bundle_url || viewConfig.bundle_url;
+  const bundleUrl = rawBundleUrl
+    ? rawBundleUrl.replace(/^https?:\/\/cdn\.modelscript\.org\/solutions\//i, "/static/solutions/")
+    : `/static/solutions/${encodeURIComponent(slug)}/index.html`;
   const tauriWindows = release?.tauri_windows_url || solution?.tauri_windows_url || viewConfig.tauri_windows_url;
   const tauriLinux = release?.tauri_linux_url || solution?.tauri_linux_url || viewConfig.tauri_linux_url;
   const tauriDarwin = release?.tauri_darwin_url || solution?.tauri_darwin_url || viewConfig.tauri_darwin_url;

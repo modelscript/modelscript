@@ -95,6 +95,16 @@ export function parseRaw(text: string): PsseCase {
     return { line: l, lineNum: lineIdx, startOffset: start, endOffset: end };
   }
 
+  // Skip any leading comment lines (@! or /) before the Case Identification header
+  while (lineIdx < lines.length) {
+    const peek = lines[lineIdx]!.trim();
+    if (peek === "" || peek.startsWith("@!") || peek.startsWith("/")) {
+      nextLine();
+    } else {
+      break;
+    }
+  }
+
   // 1. Header (Case Identification)
   const headerLineInfo = nextLine();
   const headerTokens = headerLineInfo ? tokenizeRawLine(headerLineInfo.line) : [];
@@ -115,13 +125,36 @@ export function parseRaw(text: string): PsseCase {
       : undefined,
   };
 
-  // 2. Title Line 1
-  const t1 = nextLine();
-  const title1 = t1 ? t1.line.trim() : "";
+  function isLikelyBusRecord(line: string): boolean {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("@!")) return false;
+    const toks = tokenizeRawLine(trimmed);
+    if (toks.length < 7) return false;
+    const busNum = Number(toks[0]);
+    const baseKv = Number(toks[2]);
+    const ide = Number(toks[3]);
+    return (
+      Number.isInteger(busNum) &&
+      busNum > 0 &&
+      Number.isFinite(baseKv) &&
+      baseKv >= 0 &&
+      (ide === 1 || ide === 2 || ide === 3 || ide === 4)
+    );
+  }
 
-  // 3. Title Line 2
-  const t2 = nextLine();
-  const title2 = t2 ? t2.line.trim() : "";
+  // 2. Title Line 1 (unless the file omits title lines and starts Bus Data immediately)
+  let title1 = "";
+  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
+    const t1 = nextLine();
+    title1 = t1 ? t1.line.trim() : "";
+  }
+
+  // 3. Title Line 2 (unless Bus Data starts on line 3)
+  let title2 = "";
+  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
+    const t2 = nextLine();
+    title2 = t2 ? t2.line.trim() : "";
+  }
 
   const buses = new Map<number, BusRecord>();
   const loads: LoadRecord[] = [];
@@ -134,17 +167,44 @@ export function parseRaw(text: string): PsseCase {
   const vscDc: VscDcRecord[] = [];
   const switchedShunts: SwitchedShuntRecord[] = [];
 
-  let section = 0; // 0=Bus, 1=Load, 2=FixedShunt, 3=Gen, 4=Branch, 5=Xfmr, 6=Area, 7=2TermDC, 8=VscDC, 9=SwitchedShunt
+  // Section codes:
+  // 0=Bus, 1=Load, 2=FixedShunt, 3=Gen, 4=Branch, 5=Xfmr, 6=Area, 7=2TermDC, 8=VscDC,
+  // 9=SwitchedShunt (or ImpedanceCorrection in full v33), 10..15=Intermediate v33 sections, 16=SwitchedShunt
+  let section = 0;
+
+  function resolveSectionFromComment(commentLine: string, currentSec: number): number {
+    const upper = commentLine.toUpperCase();
+    if (/^Q(?:\s*,|\s*\/|\s*$)/i.test(commentLine.trim())) return 99;
+    if (upper.includes("BEGIN LOAD")) return 1;
+    if (upper.includes("BEGIN FIXED SHUNT")) return 2;
+    if (upper.includes("BEGIN GENERATOR")) return 3;
+    if (upper.includes("BEGIN BRANCH") || upper.includes("BEGIN NON-TRANSFORMER")) return 4;
+    if (upper.includes("BEGIN TRANSFORMER")) return 5;
+    if (upper.includes("BEGIN AREA")) return 6;
+    if (upper.includes("BEGIN TWO-TERMINAL DC")) return 7;
+    if (upper.includes("BEGIN VSC DC")) return 8;
+    if (upper.includes("BEGIN IMPEDANCE CORRECTION")) return 10;
+    if (upper.includes("BEGIN MULTI-TERMINAL DC")) return 11;
+    if (upper.includes("BEGIN MULTI-SECTION LINE")) return 12;
+    if (upper.includes("BEGIN ZONE")) return 13;
+    if (upper.includes("BEGIN INTER-AREA TRANSFER")) return 14;
+    if (upper.includes("BEGIN OWNER")) return 15;
+    if (upper.includes("BEGIN FACTS")) return 15;
+    if (upper.includes("BEGIN SWITCHED SHUNT")) return 9;
+    if (upper.includes("END OF SWITCHED SHUNT")) return 17;
+    return currentSec + 1;
+  }
 
   while (lineIdx < lines.length) {
     const info = nextLine();
     if (!info) break;
     const trimmed = info.line.trim();
-    if (trimmed === "" || trimmed.startsWith("/")) continue;
+    if (trimmed === "" || trimmed.startsWith("/") || trimmed.startsWith("@!")) continue;
 
-    // Check for section terminator
-    if (trimmed.startsWith("0") || trimmed.toUpperCase().startsWith("Q")) {
-      section++;
+    // Check for section terminator ('0', '0 / ...', '0, ...', 'Q', 'Q / ...') without matching '0.000'
+    if (/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(trimmed)) {
+      section = resolveSectionFromComment(trimmed, section);
+      if (section >= 99) break;
       continue;
     }
 
@@ -285,21 +345,21 @@ export function parseRaw(text: string): PsseCase {
       }
 
       case 5: {
-        // Transformer Data (line 1 of 4 or 5)
+        // Transformer Data (line 1 of 4 for 2-winding, or line 1 of 5 for 3-winding)
         const iBus = parseNum(toks[0], 0);
         const jBus = parseNum(toks[1], 0);
         const kBus = parseNum(toks[2], 0);
         if (iBus > 0 && jBus > 0) {
-          // Read subsequent transformer data lines
           const l2 = nextLine();
           const toks2 = l2 ? tokenizeRawLine(l2.line) : [];
           const l3 = nextLine();
           const toks3 = l3 ? tokenizeRawLine(l3.line) : [];
           const l4 = nextLine();
           const toks4 = l4 ? tokenizeRawLine(l4.line) : [];
+          let toks5: string[] = [];
           if (kBus !== 0) {
-            // 3-winding transformer has a 5th line
-            nextLine();
+            const l5 = nextLine();
+            toks5 = l5 ? tokenizeRawLine(l5.line) : [];
           }
 
           transformers.push({
@@ -319,6 +379,14 @@ export function parseRaw(text: string): PsseCase {
             r12: parseNum(toks2[0], 0.0),
             x12: parseNum(toks2[1], 0.0001),
             sbase12: parseNum(toks2[2], header.sbase),
+            r23: kBus !== 0 ? parseNum(toks2[3], 0.0) : undefined,
+            x23: kBus !== 0 ? parseNum(toks2[4], 0.0001) : undefined,
+            sbase23: kBus !== 0 ? parseNum(toks2[5], header.sbase) : undefined,
+            r31: kBus !== 0 ? parseNum(toks2[6], 0.0) : undefined,
+            x31: kBus !== 0 ? parseNum(toks2[7], 0.0001) : undefined,
+            sbase31: kBus !== 0 ? parseNum(toks2[8], header.sbase) : undefined,
+            vmstar: kBus !== 0 ? parseNum(toks2[9], 1.0) : undefined,
+            anstar: kBus !== 0 ? parseNum(toks2[10], 0.0) : undefined,
             windv1: parseNum(toks3[0], 1.0),
             nomv1: parseNum(toks3[1], 0.0),
             ang1: parseNum(toks3[2], 0.0),
@@ -338,6 +406,16 @@ export function parseRaw(text: string): PsseCase {
             cnxa1: parseNum(toks3[16], 0.0),
             windv2: parseNum(toks4[0], 1.0),
             nomv2: parseNum(toks4[1], 0.0),
+            ang2: toks4[2] !== undefined ? parseNum(toks4[2], 0.0) : undefined,
+            rata2: toks4[3] !== undefined ? parseNum(toks4[3], 0.0) : undefined,
+            ratb2: toks4[4] !== undefined ? parseNum(toks4[4], 0.0) : undefined,
+            ratc2: toks4[5] !== undefined ? parseNum(toks4[5], 0.0) : undefined,
+            windv3: kBus !== 0 ? parseNum(toks5[0], 1.0) : undefined,
+            nomv3: kBus !== 0 ? parseNum(toks5[1], 0.0) : undefined,
+            ang3: kBus !== 0 ? parseNum(toks5[2], 0.0) : undefined,
+            rata3: kBus !== 0 ? parseNum(toks5[3], 0.0) : undefined,
+            ratb3: kBus !== 0 ? parseNum(toks5[4], 0.0) : undefined,
+            ratc3: kBus !== 0 ? parseNum(toks5[5], 0.0) : undefined,
             span,
           });
         }
@@ -363,9 +441,27 @@ export function parseRaw(text: string): PsseCase {
       case 7: {
         // Two-Terminal DC
         const dcNum = parseNum(toks[0], 0);
-        if (dcNum > 0) {
+        if (dcNum > 0 || toks[0]?.startsWith("'")) {
+          const idNum = dcNum > 0 ? dcNum : twoTerminalDc.length + 1;
+          let ipr: number | undefined;
+          let ipi: number | undefined;
+          // Consume optional rectifier/inverter continuation lines if present in 3-line v33 format
+          const peek1 = lines[lineIdx]?.trim() ?? "";
+          if (peek1 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek1)) {
+            const p1Toks = tokenizeRawLine(peek1);
+            if (p1Toks.length >= 10 && !peek1.startsWith("'")) {
+              nextLine();
+              ipr = parseNum(p1Toks[0], 0);
+              const peek2 = lines[lineIdx]?.trim() ?? "";
+              if (peek2 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek2)) {
+                const p2Toks = tokenizeRawLine(peek2);
+                nextLine();
+                ipi = parseNum(p2Toks[0], 0);
+              }
+            }
+          }
           twoTerminalDc.push({
-            i: dcNum,
+            i: idNum,
             mdc: parseNum(toks[1], 0),
             rdc: parseNum(toks[2], 0.0),
             setvl: parseNum(toks[3], 0.0),
@@ -373,6 +469,8 @@ export function parseRaw(text: string): PsseCase {
             vcmod: parseNum(toks[5], 0.0),
             rcomp: parseNum(toks[6], 0.0),
             deltm: parseNum(toks[7], 0.0),
+            ipr,
+            ipi,
             span,
           });
         }
@@ -383,10 +481,26 @@ export function parseRaw(text: string): PsseCase {
         // VSC DC
         const name = parseStr(toks[0], "");
         if (name) {
+          let ibus1: number | undefined;
+          let ibus2: number | undefined;
+          const peek1 = lines[lineIdx]?.trim() ?? "";
+          if (peek1 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek1) && !peek1.startsWith("'")) {
+            const p1Toks = tokenizeRawLine(peek1);
+            nextLine();
+            ibus1 = parseNum(p1Toks[0], 0);
+            const peek2 = lines[lineIdx]?.trim() ?? "";
+            if (peek2 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek2) && !peek2.startsWith("'")) {
+              const p2Toks = tokenizeRawLine(peek2);
+              nextLine();
+              ibus2 = parseNum(p2Toks[0], 0);
+            }
+          }
           vscDc.push({
             name,
             mdc: parseNum(toks[1], 1),
             rdc: parseNum(toks[2], 0.0),
+            ibus1,
+            ibus2,
             o1: parseNum(toks[3], 1),
             f1: parseNum(toks[4], 1.0),
             span,
@@ -395,10 +509,11 @@ export function parseRaw(text: string): PsseCase {
         break;
       }
 
-      case 9: {
+      case 9:
+      case 16: {
         // Switched Shunts
         const busNum = parseNum(toks[0], 0);
-        if (busNum > 0) {
+        if (busNum > 0 && toks.length >= 10) {
           switchedShunts.push({
             i: busNum,
             modsw: parseNum(toks[1], 1),
@@ -417,6 +532,9 @@ export function parseRaw(text: string): PsseCase {
         }
         break;
       }
+
+      default:
+        break;
     }
   }
 

@@ -18,6 +18,7 @@ import { applySspParameters, importSsp, wireSspCouplings } from "@modelscript/ex
 import express from "express";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { calculateCostCredits, getComputeProfile } from "../services/hpc/compute-profiles.js";
 import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 
@@ -74,6 +75,7 @@ export function cosimRouter(
   historianRecorder?: HistorianRecorder | null,
 ): express.Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
 
   // ── Session Management ──
 

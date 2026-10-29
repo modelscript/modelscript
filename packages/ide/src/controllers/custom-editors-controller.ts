@@ -143,6 +143,25 @@ export function registerCustomEditors(
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(RawEditorProvider.viewType, rawEditor, {
       webviewOptions: { retainContextWhenHidden: true },
+      supportsMultipleEditorsPerDocument: true,
+    }),
+    vscode.commands.registerCommand("modelscript.openRawWorkbench", async (uriArg?: string | vscode.Uri) => {
+      const targetUri =
+        typeof uriArg === "string"
+          ? vscode.Uri.parse(uriArg)
+          : uriArg instanceof vscode.Uri
+            ? uriArg
+            : vscode.window.activeTextEditor?.document.uri;
+      if (!targetUri) {
+        vscode.window.showWarningMessage("No active PSS/E (.raw) document found to open in Grid Workbench.");
+        return;
+      }
+      await vscode.commands.executeCommand(
+        "vscode.openWith",
+        targetUri,
+        RawEditorProvider.viewType,
+        vscode.ViewColumn.Beside,
+      );
     }),
   );
 

@@ -12,24 +12,39 @@ export interface ComposeAttachedArtifactProps {
   artifactId: number | null;
   editPostId?: string | number | null | undefined;
   onRemove: () => void;
+  onDraftWithAi?: ((artifactView?: Record<string, unknown> | null) => void) | undefined;
+  aiDrafting?: boolean | undefined;
+  onArtifactViewLoaded?: ((view: Record<string, unknown> | null) => void) | undefined;
 }
 
 export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = ({
   artifactId,
   editPostId,
   onRemove,
+  onDraftWithAi,
+  aiDrafting,
+  onArtifactViewLoaded,
 }) => {
   const navigate = useNavigate();
-  const [artifactView, setArtifactView] = useState<any>(null);
+  const [artifactView, setArtifactView] = useState<Record<string, unknown> | null>(null);
   const [isMultiFile, setIsMultiFile] = useState(false);
 
   useEffect(() => {
-    if (artifactId === null) return;
+    if (artifactId === null) {
+      setArtifactView(null);
+      onArtifactViewLoaded?.(null);
+      return;
+    }
     getArtifactView(artifactId)
-      .then((res) => {
-        const view = (res as any)?.artifactView || (res as any)?.artifact_view || res;
-        const viewType = view?.view_type || view?.artifact_type || "";
+      .then((res: unknown) => {
+        const record = res && typeof res === "object" ? (res as Record<string, unknown>) : {};
+        const view =
+          (record.artifactView as Record<string, unknown> | undefined) ||
+          (record.artifact_view as Record<string, unknown> | undefined) ||
+          record;
+        const viewType = String(view?.view_type || view?.artifact_type || "");
         setArtifactView(view);
+        onArtifactViewLoaded?.(view);
         setIsMultiFile(
           isMultiFileArtifact({
             ...view,
@@ -39,9 +54,10 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
       })
       .catch(() => {
         setArtifactView(null);
+        onArtifactViewLoaded?.(null);
         setIsMultiFile(false);
       });
-  }, [artifactId]);
+  }, [artifactId, onArtifactViewLoaded]);
 
   if (artifactId === null) return null;
 
@@ -52,9 +68,9 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
 
   const targetUrl = buildEditorUrlForArtifact({
     artifactId,
-    viewType: artifactView?.view_type || artifactView?.artifact_type,
+    viewType: String(artifactView?.view_type || artifactView?.artifact_type || ""),
     viewConfig: artifactView?.view_config,
-    title: artifactView?.title,
+    title: typeof artifactView?.title === "string" ? artifactView.title : undefined,
     mode: numericEditPostId !== undefined ? "edit" : "open",
     editPostId: numericEditPostId,
   });
@@ -82,6 +98,35 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
           gap: "6px",
         }}
       >
+        {onDraftWithAi && (
+          <button
+            type="button"
+            disabled={Boolean(aiDrafting)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDraftWithAi(artifactView);
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              backgroundColor: "rgba(0, 0, 0, 0.82)",
+              color: "#c084fc",
+              border: "1px solid rgba(168, 85, 247, 0.45)",
+              borderRadius: "999px",
+              padding: "5px 11px",
+              fontSize: "11.5px",
+              fontFamily: "var(--font-mono, monospace)",
+              fontWeight: 600,
+              cursor: aiDrafting ? "wait" : "pointer",
+              opacity: aiDrafting ? 0.7 : 1,
+            }}
+            title="Generate or regenerate post draft from this engineering artifact using AI"
+          >
+            <span>✨</span>
+            <span>{aiDrafting ? "Drafting..." : "Draft Post"}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={(e) => {

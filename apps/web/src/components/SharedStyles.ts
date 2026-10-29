@@ -68,14 +68,15 @@ export const PageTab = styled.button<{ $active?: boolean | undefined }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 52px;
+  height: 53px;
   padding: 0 16px;
   background: none;
   border: none;
   font: inherit;
-  font-size: var(--text-md);
+  font-size: var(--text-md, 15px);
+  line-height: var(--leading-md, 20px);
   color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-muted)")};
-  font-weight: ${(props) => (props.$active ? 650 : 500)};
+  font-weight: ${(props) => (props.$active ? 700 : 500)};
   cursor: pointer;
   transition:
     background-color 0.2s,

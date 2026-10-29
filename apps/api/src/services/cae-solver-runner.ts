@@ -74,6 +74,17 @@ export function getValidatedGeometryPath(rawPath: string): string {
  * Executes CalculiX (ccx), SU2 (SU2_CFD), and OpenFOAM solvers via the unified HPC engine
  * supporting local process execution and Slurm supercomputing clusters.
  */
+function safeResultPath(resultDir: string, fileName: string): string {
+  const safeFile = path.basename(fileName);
+  const resolvedDir = path.resolve(resultDir);
+  const target = path.resolve(resolvedDir, safeFile);
+  const rel = path.relative(resolvedDir, target);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`Path traversal detected: ${fileName} escapes result directory`);
+  }
+  return target;
+}
+
 export class CaeSolverRunner {
   private readonly hpcEngine: HpcEngine;
   private readonly activeNativeJobIds = new Map<string, string>();
@@ -88,13 +99,19 @@ export class CaeSolverRunner {
    */
   public async executeJob(spec: CaeJobSpec, telemetryStreamer: CaeTelemetryStreamer): Promise<CaeExecutionResult> {
     const startTime = Date.now();
+    const safeResultDir = path.resolve(spec.resultDir);
+    const relResult = path.relative(path.resolve("/"), safeResultDir);
+    if (!relResult || relResult.startsWith("..") || path.isAbsolute(relResult)) {
+      throw new Error("Invalid result directory");
+    }
+
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-cae-${spec.solver}-${spec.jobId}-`));
-    fs.mkdirSync(spec.resultDir, { recursive: true });
+    fs.mkdirSync(safeResultDir, { recursive: true });
     try {
-      fs.writeFileSync(path.join(spec.resultDir, "job_spec.json"), JSON.stringify(spec, null, 2), "utf8");
+      fs.writeFileSync(safeResultPath(safeResultDir, "job_spec.json"), JSON.stringify(spec, null, 2), "utf8");
     } catch {}
 
-    const logPath = path.join(spec.resultDir, "solver.log");
+    const logPath = safeResultPath(safeResultDir, "solver.log");
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
 
     try {
@@ -184,8 +201,8 @@ export class CaeSolverRunner {
       }
 
       // 5. Post-process solver results into result.vtu
-      const vtuPath = path.join(spec.resultDir, "result.vtu");
-      const scalarsPath = path.join(spec.resultDir, "scalars.json");
+      const vtuPath = safeResultPath(safeResultDir, "result.vtu");
+      const scalarsPath = safeResultPath(safeResultDir, "scalars.json");
 
       await this.processResults(spec, tmpDir, vtuPath, scalarsPath, simulatedFallback);
 
@@ -306,6 +323,9 @@ export class CaeSolverRunner {
     scalarsPath: string,
     simulatedFallback?: boolean,
   ): Promise<void> {
+    const safeResultDir = path.resolve(spec.resultDir);
+    const meshPayloadPath = safeResultPath(safeResultDir, "mesh_payload.json");
+
     if (spec.solver === "calculix") {
       const frdPath = path.join(tmpDir, "job.frd");
       if (fs.existsSync(frdPath)) {
@@ -321,7 +341,6 @@ export class CaeSolverRunner {
         fs.writeFileSync(scalarsPath, JSON.stringify(scalars, null, 2), "utf8");
 
         const meshPayload = CaeResultProcessor.extractFeaMeshPayload(parsedFrd);
-        const meshPayloadPath = path.join(spec.resultDir, "mesh_payload.json");
         fs.writeFileSync(meshPayloadPath, JSON.stringify(meshPayload), "utf8");
         return;
       }
@@ -332,16 +351,15 @@ export class CaeSolverRunner {
       const vtkFiles = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".vtk") || f.endsWith(".vtu"));
       const firstVtk = vtkFiles[0];
       if (firstVtk) {
-        fs.copyFileSync(path.join(tmpDir, firstVtk), vtuPath);
+        const rawContent = fs.readFileSync(path.join(tmpDir, firstVtk), "utf8");
+        fs.writeFileSync(vtuPath, rawContent, "utf8");
         const scalars = {
-          ...CaeResultProcessor.extractScalarSummary(vtuPath, "SU2"),
+          ...CaeResultProcessor.extractScalarSummary(rawContent, "SU2"),
           ...(simulatedFallback ? { simulatedFallback: true } : {}),
         };
         fs.writeFileSync(scalarsPath, JSON.stringify(scalars, null, 2), "utf8");
 
-        const vtuXml = fs.readFileSync(vtuPath, "utf8");
-        const meshPayload = CaeResultProcessor.parseVtuToMeshPayload(vtuXml);
-        const meshPayloadPath = path.join(spec.resultDir, "mesh_payload.json");
+        const meshPayload = CaeResultProcessor.parseVtuToMeshPayload(rawContent);
         fs.writeFileSync(meshPayloadPath, JSON.stringify(meshPayload), "utf8");
         return;
       }
@@ -351,16 +369,15 @@ export class CaeSolverRunner {
     const vtuCandidates = fs.readdirSync(tmpDir).filter((f) => f.endsWith(".vtu"));
     const firstVtu = vtuCandidates[0];
     if (firstVtu) {
-      fs.copyFileSync(path.join(tmpDir, firstVtu), vtuPath);
+      const rawContent = fs.readFileSync(path.join(tmpDir, firstVtu), "utf8");
+      fs.writeFileSync(vtuPath, rawContent, "utf8");
       const scalars = {
-        ...CaeResultProcessor.extractScalarSummary(vtuPath, spec.solver),
+        ...CaeResultProcessor.extractScalarSummary(rawContent, spec.solver),
         ...(simulatedFallback ? { simulatedFallback: true } : {}),
       };
       fs.writeFileSync(scalarsPath, JSON.stringify(scalars, null, 2), "utf8");
 
-      const vtuXml = fs.readFileSync(vtuPath, "utf8");
-      const meshPayload = CaeResultProcessor.parseVtuToMeshPayload(vtuXml);
-      const meshPayloadPath = path.join(spec.resultDir, "mesh_payload.json");
+      const meshPayload = CaeResultProcessor.parseVtuToMeshPayload(rawContent);
       fs.writeFileSync(meshPayloadPath, JSON.stringify(meshPayload), "utf8");
       return;
     }

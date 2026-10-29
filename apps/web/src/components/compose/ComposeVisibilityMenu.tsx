@@ -10,6 +10,7 @@ export interface ComposeVisibilityMenuProps {
   setReplyVisibility: (v: "everyone" | "following" | "mentioned") => void;
   showVisibilityMenu: boolean;
   setShowVisibilityMenu: (show: boolean) => void;
+  visible?: boolean;
 }
 
 export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
@@ -17,39 +18,72 @@ export const ComposeVisibilityMenu: React.FC<ComposeVisibilityMenuProps> = ({
   setReplyVisibility,
   showVisibilityMenu,
   setShowVisibilityMenu,
+  visible = true,
 }) => {
+  const isVisible = visible || showVisibilityMenu;
+
   return (
-    <Box style={{ position: "relative", width: "fit-content" }}>
-      <Box
-        mt={2}
-        mb={2}
-        display="flex"
-        alignItems="center"
-        gap={2}
-        style={{ cursor: "pointer", width: "fit-content" }}
-        onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
+    <Box
+      style={{
+        position: "relative",
+        width: "fit-content",
+        pointerEvents: isVisible ? "auto" : "none",
+      }}
+      aria-hidden={!isVisible}
+      onMouseDown={(e) => {
+        // Prevent blurring the compose textarea when interacting with visibility controls
+        e.preventDefault();
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateRows: isVisible ? "1fr" : "0fr",
+          maxHeight: isVisible ? "40px" : "0px",
+          opacity: isVisible ? 1 : 0,
+          overflow: "hidden",
+          transition:
+            "grid-template-rows 0.2s cubic-bezier(0.2, 0, 0, 1), max-height 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.18s ease",
+        }}
       >
-        {replyVisibility === "everyone" && (
-          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
-            <GlobeIcon size={16} />
-          </span>
-        )}
-        {replyVisibility === "following" && (
-          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
-            <PersonIcon size={16} />
-          </span>
-        )}
-        {replyVisibility === "mentioned" && (
-          <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
-            <MentionIcon size={16} />
-          </span>
-        )}
-        <span style={{ color: "var(--color-accent-cyan)", fontWeight: "bold", fontSize: "14px" }}>
-          {replyVisibility === "everyone" && "Everyone can reply"}
-          {replyVisibility === "following" && "Accounts you follow can reply"}
-          {replyVisibility === "mentioned" && "Only accounts you mention can reply"}
-        </span>
-      </Box>
+        <div style={{ overflow: "hidden", minHeight: 0 }}>
+          <Box
+            mt={2}
+            mb={2}
+            display="flex"
+            alignItems="center"
+            gap={2}
+            style={{
+              cursor: "pointer",
+              width: "fit-content",
+              transform: isVisible ? "translateY(0)" : "translateY(-4px)",
+              transition: "transform 0.2s cubic-bezier(0.2, 0, 0, 1)",
+            }}
+            onClick={() => setShowVisibilityMenu(!showVisibilityMenu)}
+          >
+            {replyVisibility === "everyone" && (
+              <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+                <GlobeIcon size={16} />
+              </span>
+            )}
+            {replyVisibility === "following" && (
+              <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+                <PersonIcon size={16} />
+              </span>
+            )}
+            {replyVisibility === "mentioned" && (
+              <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
+                <MentionIcon size={16} />
+              </span>
+            )}
+            <span style={{ color: "var(--color-accent-cyan)", fontWeight: "bold", fontSize: "14px" }}>
+              {replyVisibility === "everyone" && "Everyone can reply"}
+              {replyVisibility === "following" && "Accounts you follow can reply"}
+              {replyVisibility === "mentioned" && "Only accounts you mention can reply"}
+            </span>
+          </Box>
+        </div>
+      </div>
       {showVisibilityMenu && (
         <>
           <div

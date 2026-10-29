@@ -2,6 +2,7 @@
 
 import { CheckCircleIcon, CpuIcon, FlameIcon, SearchIcon, ServerIcon, XIcon, ZapIcon } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 import {
   createArtifactViewFromHpcJob,
@@ -19,7 +20,7 @@ const ModalOverlay = styled.div`
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
-  z-index: 1200;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -239,7 +240,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
 
   if (!isOpen) return null;
 
-  return (
+  const modal = (
     <ModalOverlay onClick={onClose}>
       <ModalContent onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
@@ -436,6 +437,8 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
       </ModalContent>
     </ModalOverlay>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default HpcArtifactPickerModal;

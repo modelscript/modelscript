@@ -34,6 +34,16 @@ function reducer(_state: State, action: Action): State {
   }
 }
 
+function stripAllHtmlTags(input: string): string {
+  let prev = "";
+  let curr = input;
+  while (curr !== prev) {
+    prev = curr;
+    curr = curr.replace(/<[^>]*>/g, "");
+  }
+  return curr;
+}
+
 function hasDistinctGraphics(svg: string): boolean {
   if (
     svg.includes('viewBox="0 0 120 80"') ||
@@ -45,7 +55,7 @@ function hasDistinctGraphics(svg: string): boolean {
   if (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(svg)) return true;
   if (/url\(#/i.test(svg)) return true;
   const textMatches = svg.match(/<text\b[^>]*>([\s\S]*?)<\/text>/gi);
-  if (textMatches && textMatches.some((t) => t.replace(/<[^>]+>/g, "").trim().length > 0)) return true;
+  if (textMatches && textMatches.some((t) => stripAllHtmlTags(t).trim().length > 0)) return true;
   const rectMatches = svg.match(/<rect\b[^>]*>/gi);
   if (rectMatches) {
     const hasVisualRect = rectMatches.some(

@@ -1265,115 +1265,147 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 49,
-  ProgramUnit = 50,
-  SubroutineDeclaration = 51,
-  FunctionDeclaration = 52,
-  ModuleDeclaration = 53,
-  ParameterList = 54,
-  Statement = 55,
-  DeclarationStatement = 56,
-  DeclaratorList = 57,
-  Declarator = 58,
-  DimensionList = 59,
-  DimensionStatement = 60,
-  CommonStatement = 61,
-  ParameterStatement = 62,
-  ParameterAssignmentList = 63,
-  ParameterAssignment = 64,
-  ImplicitStatement = 65,
-  IdentifierList = 66,
-  AssignmentStatement = 67,
-  Target = 68,
-  StateRef = 69,
-  PortRef = 70,
-  BlockIfStatement = 71,
-  ElseIfClause = 72,
-  ElseClause = 73,
-  InlineIfStatement = 74,
-  InlineAction = 75,
-  DoStatement = 76,
-  CallStatement = 77,
-  ReturnStatement = 78,
-  ContinueStatement = 79,
-  ArgumentList = 80,
-  Expression = 81,
-  BinaryExpression = 82,
-  UnaryExpression = 83,
-  PrimaryExpression = 84,
-  ArrayOrCallRef = 85,
-  START = 86,
-  _START = 86,
-  EmptyStatement = 89,
-  _EmptyStatement = 89,
-  SUBROUTINEKEYWORD = 131,
-  SUBROUTINE_KEYWORD = 131,
-  FUNCTIONKEYWORD = 132,
-  FUNCTION_KEYWORD = 132,
-  MODULEKEYWORD = 133,
-  MODULE_KEYWORD = 133,
-  ENDSUBROUTINE = 134,
-  END_SUBROUTINE = 134,
-  ENDFUNCTION = 135,
-  END_FUNCTION = 135,
-  ENDMODULE = 136,
-  END_MODULE = 136,
-  IFKEYWORD = 137,
-  IF_KEYWORD = 137,
-  THENKEYWORD = 138,
-  THEN_KEYWORD = 138,
-  ENDIF = 139,
-  END_IF = 139,
-  ELSEIF = 140,
-  ELSE_IF = 140,
-  ELSEKEYWORD = 141,
-  ELSE_KEYWORD = 141,
-  DOKEYWORD = 142,
-  DO_KEYWORD = 142,
-  ENDDO = 143,
-  END_DO = 143,
-  CALLKEYWORD = 144,
-  CALL_KEYWORD = 144,
-  RETURNKEYWORD = 145,
-  RETURN_KEYWORD = 145,
-  CONTINUEKEYWORD = 146,
-  CONTINUE_KEYWORD = 146,
-  COMMONKEYWORD = 147,
-  COMMON_KEYWORD = 147,
-  PARAMETERKEYWORD = 148,
-  PARAMETER_KEYWORD = 148,
-  DIMENSIONKEYWORD = 149,
-  DIMENSION_KEYWORD = 149,
-  IMPLICITKEYWORD = 150,
-  IMPLICIT_KEYWORD = 150,
-  NONEKEYWORD = 151,
-  NONE_KEYWORD = 151,
-  TYPESPECIFIER = 152,
-  TYPE_SPECIFIER = 152,
-  STATEARRAY = 153,
-  STATE_ARRAY = 153,
-  SPECIALCONSTANT = 154,
-  SPECIAL_CONSTANT = 154,
-  LOGICALOR = 155,
-  LOGICAL_OR = 155,
-  LOGICALAND = 156,
-  LOGICAL_AND = 156,
-  EQUALITYOP = 157,
-  EQUALITY_OP = 157,
-  RELATIONALOP = 158,
-  RELATIONAL_OP = 158,
-  LOGICALNOT = 159,
-  LOGICAL_NOT = 159,
-  POWEROP = 160,
-  POWER_OP = 160,
-  IDENTIFIER = 161,
-  PORTIDENTIFIER = 162,
-  PORT_IDENTIFIER = 162,
-  DIMDIRECTIVE = 163,
-  DIM_DIRECTIVE = 163,
-  NUMBER = 164,
-  STRING = 165,
-  BOOLEAN = 166,
+  SourceFile = 64,
+  ProgramUnit = 65,
+  ProgramDeclaration = 66,
+  SubroutineDeclaration = 67,
+  FunctionDeclaration = 68,
+  ModuleDeclaration = 69,
+  ParameterList = 70,
+  Statement = 71,
+  UseStatement = 72,
+  AllocateStatement = 73,
+  DeallocateStatement = 74,
+  DeclarationStatement = 75,
+  AttributeSpec = 76,
+  DeclaratorList = 77,
+  Declarator = 78,
+  SubscriptItem = 79,
+  DimensionList = 80,
+  DimensionStatement = 81,
+  CommonStatement = 82,
+  ParameterStatement = 83,
+  ParameterAssignmentList = 84,
+  ParameterAssignment = 85,
+  ImplicitStatement = 86,
+  IdentifierList = 87,
+  AssignmentStatement = 88,
+  Target = 89,
+  StateRef = 90,
+  PortRef = 91,
+  BlockIfStatement = 92,
+  ElseIfClause = 93,
+  ElseClause = 94,
+  InlineIfStatement = 95,
+  InlineAction = 96,
+  DoStatement = 97,
+  CallStatement = 98,
+  ReturnStatement = 99,
+  ContinueStatement = 100,
+  ArgumentList = 101,
+  Expression = 102,
+  BinaryExpression = 103,
+  UnaryExpression = 104,
+  PrimaryExpression = 105,
+  ArrayOrCallRef = 106,
+  START = 107,
+  _START = 107,
+  EmptyStatement = 110,
+  _EmptyStatement = 110,
+  PROGRAMKEYWORD = 163,
+  PROGRAM_KEYWORD = 163,
+  SUBROUTINEKEYWORD = 164,
+  SUBROUTINE_KEYWORD = 164,
+  FUNCTIONKEYWORD = 165,
+  FUNCTION_KEYWORD = 165,
+  MODULEKEYWORD = 166,
+  MODULE_KEYWORD = 166,
+  CONTAINSKEYWORD = 167,
+  CONTAINS_KEYWORD = 167,
+  USEKEYWORD = 168,
+  USE_KEYWORD = 168,
+  ALLOCATEKEYWORD = 169,
+  ALLOCATE_KEYWORD = 169,
+  DEALLOCATEKEYWORD = 170,
+  DEALLOCATE_KEYWORD = 170,
+  ENDPROGRAM = 171,
+  END_PROGRAM = 171,
+  ENDSUBROUTINE = 172,
+  END_SUBROUTINE = 172,
+  ENDFUNCTION = 173,
+  END_FUNCTION = 173,
+  ENDMODULE = 174,
+  END_MODULE = 174,
+  KINDPREFIX = 175,
+  KIND_PREFIX = 175,
+  IFKEYWORD = 176,
+  IF_KEYWORD = 176,
+  THENKEYWORD = 177,
+  THEN_KEYWORD = 177,
+  ENDIF = 178,
+  END_IF = 178,
+  ELSEIF = 179,
+  ELSE_IF = 179,
+  ELSEKEYWORD = 180,
+  ELSE_KEYWORD = 180,
+  DOKEYWORD = 181,
+  DO_KEYWORD = 181,
+  ENDDO = 182,
+  END_DO = 182,
+  CALLKEYWORD = 183,
+  CALL_KEYWORD = 183,
+  RETURNKEYWORD = 184,
+  RETURN_KEYWORD = 184,
+  CONTINUEKEYWORD = 185,
+  CONTINUE_KEYWORD = 185,
+  COMMONKEYWORD = 186,
+  COMMON_KEYWORD = 186,
+  PARAMETERKEYWORD = 187,
+  PARAMETER_KEYWORD = 187,
+  DIMENSIONKEYWORD = 188,
+  DIMENSION_KEYWORD = 188,
+  IMPLICITKEYWORD = 189,
+  IMPLICIT_KEYWORD = 189,
+  NONEKEYWORD = 190,
+  NONE_KEYWORD = 190,
+  INTENTKEYWORD = 191,
+  INTENT_KEYWORD = 191,
+  INTENTSPEC = 192,
+  INTENT_SPEC = 192,
+  SAVEKEYWORD = 193,
+  SAVE_KEYWORD = 193,
+  ALLOCATABLEKEYWORD = 194,
+  ALLOCATABLE_KEYWORD = 194,
+  OPTIONALKEYWORD = 195,
+  OPTIONAL_KEYWORD = 195,
+  VALUEKEYWORD = 196,
+  VALUE_KEYWORD = 196,
+  TYPESPECIFIER = 197,
+  TYPE_SPECIFIER = 197,
+  STATEARRAY = 198,
+  STATE_ARRAY = 198,
+  SPECIALCONSTANT = 199,
+  SPECIAL_CONSTANT = 199,
+  LOGICALOR = 200,
+  LOGICAL_OR = 200,
+  LOGICALAND = 201,
+  LOGICAL_AND = 201,
+  EQUALITYOP = 202,
+  EQUALITY_OP = 202,
+  RELATIONALOP = 203,
+  RELATIONAL_OP = 203,
+  LOGICALNOT = 204,
+  LOGICAL_NOT = 204,
+  POWEROP = 205,
+  POWER_OP = 205,
+  IDENTIFIER = 206,
+  PORTIDENTIFIER = 207,
+  PORT_IDENTIFIER = 207,
+  DIMDIRECTIVE = 208,
+  DIM_DIRECTIVE = 208,
+  NUMBER = 209,
+  STRING = 210,
+  BOOLEAN = 211,
   EOF = 1023,
 }
 
@@ -1384,58 +1416,66 @@ export declare enum FieldId {
   parameters = 2,
   ReturnType = 3,
   returnType = 3,
-  Type = 4,
-  type = 4,
-  Kind = 5,
-  kind = 5,
-  Declarators = 6,
-  declarators = 6,
-  Dimensions = 7,
-  dimensions = 7,
-  Init = 8,
-  init = 8,
-  Variables = 9,
-  variables = 9,
-  Assignments = 10,
-  assignments = 10,
-  Value = 11,
-  value = 11,
-  Target = 12,
-  target = 12,
-  Array = 13,
-  array = 13,
-  Index = 14,
-  index = 14,
-  Dim = 15,
-  dim = 15,
-  Condition = 16,
-  condition = 16,
-  Action = 17,
-  action = 17,
-  Label = 18,
-  label = 18,
-  Variable = 19,
-  variable = 19,
-  Start = 20,
-  start = 20,
-  End = 21,
-  end = 21,
-  Step = 22,
-  step = 22,
-  Subroutine = 23,
-  subroutine = 23,
-  Arguments = 24,
-  arguments = 24,
-  Left = 25,
-  left = 25,
-  Right = 26,
-  right = 26,
-  Operand = 27,
-  operand = 27,
-  Expr = 28,
-  expr = 28,
-  Callee = 29,
-  callee = 29,
+  Module = 4,
+  module = 4,
+  Items = 5,
+  items = 5,
+  Type = 6,
+  type = 6,
+  Len = 7,
+  len = 7,
+  Kind = 8,
+  kind = 8,
+  Declarators = 9,
+  declarators = 9,
+  Intent = 10,
+  intent = 10,
+  Dimensions = 11,
+  dimensions = 11,
+  Init = 12,
+  init = 12,
+  Variables = 13,
+  variables = 13,
+  Assignments = 14,
+  assignments = 14,
+  Value = 15,
+  value = 15,
+  Target = 16,
+  target = 16,
+  Array = 17,
+  array = 17,
+  Index = 18,
+  index = 18,
+  Dim = 19,
+  dim = 19,
+  Condition = 20,
+  condition = 20,
+  Action = 21,
+  action = 21,
+  Label = 22,
+  label = 22,
+  Variable = 23,
+  variable = 23,
+  Start = 24,
+  start = 24,
+  End = 25,
+  end = 25,
+  Step = 26,
+  step = 26,
+  Subroutine = 27,
+  subroutine = 27,
+  Arguments = 28,
+  arguments = 28,
+  Left = 29,
+  left = 29,
+  Right = 30,
+  right = 30,
+  Operand = 31,
+  operand = 31,
+  Expr = 32,
+  expr = 32,
+  Callee = 33,
+  callee = 33,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1451,6 +1491,10 @@ export interface ProgramUnitNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ProgramUnit;
 }
 export declare function isProgramUnit(node: SyntaxNode | null | undefined): node is ProgramUnitNode;
+export interface ProgramDeclarationNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ProgramDeclaration;
+}
+export declare function isProgramDeclaration(node: SyntaxNode | null | undefined): node is ProgramDeclarationNode;
 export interface SubroutineDeclarationNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SubroutineDeclaration;
 }
@@ -1471,10 +1515,26 @@ export interface StatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Statement;
 }
 export declare function isStatement(node: SyntaxNode | null | undefined): node is StatementNode;
+export interface UseStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UseStatement;
+}
+export declare function isUseStatement(node: SyntaxNode | null | undefined): node is UseStatementNode;
+export interface AllocateStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AllocateStatement;
+}
+export declare function isAllocateStatement(node: SyntaxNode | null | undefined): node is AllocateStatementNode;
+export interface DeallocateStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DeallocateStatement;
+}
+export declare function isDeallocateStatement(node: SyntaxNode | null | undefined): node is DeallocateStatementNode;
 export interface DeclarationStatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DeclarationStatement;
 }
 export declare function isDeclarationStatement(node: SyntaxNode | null | undefined): node is DeclarationStatementNode;
+export interface AttributeSpecNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AttributeSpec;
+}
+export declare function isAttributeSpec(node: SyntaxNode | null | undefined): node is AttributeSpecNode;
 export interface DeclaratorListNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DeclaratorList;
 }
@@ -1483,6 +1543,10 @@ export interface DeclaratorNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Declarator;
 }
 export declare function isDeclarator(node: SyntaxNode | null | undefined): node is DeclaratorNode;
+export interface SubscriptItemNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SubscriptItem;
+}
+export declare function isSubscriptItem(node: SyntaxNode | null | undefined): node is SubscriptItemNode;
 export interface DimensionListNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DimensionList;
 }
@@ -1591,6 +1655,10 @@ export interface ArrayOrCallRefNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ArrayOrCallRef;
 }
 export declare function isArrayOrCallRef(node: SyntaxNode | null | undefined): node is ArrayOrCallRefNode;
+export interface PROGRAMKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PROGRAMKEYWORD;
+}
+export declare function isPROGRAMKEYWORD(node: SyntaxNode | null | undefined): node is PROGRAMKEYWORDNode;
 export interface SUBROUTINEKEYWORDNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SUBROUTINEKEYWORD;
 }
@@ -1603,6 +1671,26 @@ export interface MODULEKEYWORDNode extends SyntaxNode {
   readonly typeId: SyntaxKind.MODULEKEYWORD;
 }
 export declare function isMODULEKEYWORD(node: SyntaxNode | null | undefined): node is MODULEKEYWORDNode;
+export interface CONTAINSKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CONTAINSKEYWORD;
+}
+export declare function isCONTAINSKEYWORD(node: SyntaxNode | null | undefined): node is CONTAINSKEYWORDNode;
+export interface USEKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.USEKEYWORD;
+}
+export declare function isUSEKEYWORD(node: SyntaxNode | null | undefined): node is USEKEYWORDNode;
+export interface ALLOCATEKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ALLOCATEKEYWORD;
+}
+export declare function isALLOCATEKEYWORD(node: SyntaxNode | null | undefined): node is ALLOCATEKEYWORDNode;
+export interface DEALLOCATEKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DEALLOCATEKEYWORD;
+}
+export declare function isDEALLOCATEKEYWORD(node: SyntaxNode | null | undefined): node is DEALLOCATEKEYWORDNode;
+export interface ENDPROGRAMNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ENDPROGRAM;
+}
+export declare function isENDPROGRAM(node: SyntaxNode | null | undefined): node is ENDPROGRAMNode;
 export interface ENDSUBROUTINENode extends SyntaxNode {
   readonly typeId: SyntaxKind.ENDSUBROUTINE;
 }
@@ -1615,6 +1703,10 @@ export interface ENDMODULENode extends SyntaxNode {
   readonly typeId: SyntaxKind.ENDMODULE;
 }
 export declare function isENDMODULE(node: SyntaxNode | null | undefined): node is ENDMODULENode;
+export interface KINDPREFIXNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.KINDPREFIX;
+}
+export declare function isKINDPREFIX(node: SyntaxNode | null | undefined): node is KINDPREFIXNode;
 export interface IFKEYWORDNode extends SyntaxNode {
   readonly typeId: SyntaxKind.IFKEYWORD;
 }
@@ -1675,6 +1767,30 @@ export interface NONEKEYWORDNode extends SyntaxNode {
   readonly typeId: SyntaxKind.NONEKEYWORD;
 }
 export declare function isNONEKEYWORD(node: SyntaxNode | null | undefined): node is NONEKEYWORDNode;
+export interface INTENTKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.INTENTKEYWORD;
+}
+export declare function isINTENTKEYWORD(node: SyntaxNode | null | undefined): node is INTENTKEYWORDNode;
+export interface INTENTSPECNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.INTENTSPEC;
+}
+export declare function isINTENTSPEC(node: SyntaxNode | null | undefined): node is INTENTSPECNode;
+export interface SAVEKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SAVEKEYWORD;
+}
+export declare function isSAVEKEYWORD(node: SyntaxNode | null | undefined): node is SAVEKEYWORDNode;
+export interface ALLOCATABLEKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ALLOCATABLEKEYWORD;
+}
+export declare function isALLOCATABLEKEYWORD(node: SyntaxNode | null | undefined): node is ALLOCATABLEKEYWORDNode;
+export interface OPTIONALKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OPTIONALKEYWORD;
+}
+export declare function isOPTIONALKEYWORD(node: SyntaxNode | null | undefined): node is OPTIONALKEYWORDNode;
+export interface VALUEKEYWORDNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.VALUEKEYWORD;
+}
+export declare function isVALUEKEYWORD(node: SyntaxNode | null | undefined): node is VALUEKEYWORDNode;
 export interface TYPESPECIFIERNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TYPESPECIFIER;
 }
@@ -1748,6 +1864,13 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ProgramUnitNode;
   };
+  export const ProgramDeclaration: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ProgramDeclarationNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const SubroutineDeclaration: {
     readonly typeId: number;
     readonly type: string;
@@ -1785,6 +1908,27 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is StatementNode;
   };
+  export const UseStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UseStatementNode;
+    module(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    moduleList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const AllocateStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AllocateStatementNode;
+    items(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    itemsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DeallocateStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DeallocateStatementNode;
+    items(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    itemsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const DeclarationStatement: {
     readonly typeId: number;
     readonly type: string;
@@ -1793,8 +1937,17 @@ export declare namespace Cst {
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarators(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    len(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    lenList(node: SyntaxNode | null | undefined): SyntaxNode[];
     kind(node: SyntaxNode | null | undefined): SyntaxNode | null;
     kindList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const AttributeSpec: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AttributeSpecNode;
+    intent(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    intentList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const DeclaratorList: {
     readonly typeId: number;
@@ -1811,6 +1964,11 @@ export declare namespace Cst {
     dimensionsList(node: SyntaxNode | null | undefined): SyntaxNode[];
     init(node: SyntaxNode | null | undefined): SyntaxNode | null;
     initList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const SubscriptItem: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SubscriptItemNode;
   };
   export const DimensionList: {
     readonly typeId: number;
@@ -2005,6 +2163,11 @@ export declare namespace Cst {
     arguments(node: SyntaxNode | null | undefined): SyntaxNode | null;
     argumentsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const PROGRAMKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PROGRAMKEYWORDNode;
+  };
   export const SUBROUTINEKEYWORD: {
     readonly typeId: number;
     readonly type: string;
@@ -2020,6 +2183,31 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is MODULEKEYWORDNode;
   };
+  export const CONTAINSKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CONTAINSKEYWORDNode;
+  };
+  export const USEKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is USEKEYWORDNode;
+  };
+  export const ALLOCATEKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ALLOCATEKEYWORDNode;
+  };
+  export const DEALLOCATEKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DEALLOCATEKEYWORDNode;
+  };
+  export const ENDPROGRAM: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ENDPROGRAMNode;
+  };
   export const ENDSUBROUTINE: {
     readonly typeId: number;
     readonly type: string;
@@ -2034,6 +2222,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ENDMODULENode;
+  };
+  export const KINDPREFIX: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is KINDPREFIXNode;
   };
   export const IFKEYWORD: {
     readonly typeId: number;
@@ -2109,6 +2302,36 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is NONEKEYWORDNode;
+  };
+  export const INTENTKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is INTENTKEYWORDNode;
+  };
+  export const INTENTSPEC: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is INTENTSPECNode;
+  };
+  export const SAVEKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SAVEKEYWORDNode;
+  };
+  export const ALLOCATABLEKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ALLOCATABLEKEYWORDNode;
+  };
+  export const OPTIONALKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OPTIONALKEYWORDNode;
+  };
+  export const VALUEKEYWORD: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is VALUEKEYWORDNode;
   };
   export const TYPESPECIFIER: {
     readonly typeId: number;

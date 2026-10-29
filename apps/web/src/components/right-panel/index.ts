@@ -5,6 +5,7 @@ export type { AiSearchHeaderProps } from "./components/AiSearchHeader";
 export { AuthPromptCard } from "./components/AuthPromptCard";
 export { ClusterQueueCard } from "./components/ClusterQueueCard";
 export type { ClusterQueueCardProps } from "./components/ClusterQueueCard";
+export { EngineeringDomainsCard } from "./components/EngineeringDomainsCard";
 export { LegalModal } from "./components/LegalModal";
 export type { LegalModalProps } from "./components/LegalModal";
 export { PopularReposCard } from "./components/PopularReposCard";

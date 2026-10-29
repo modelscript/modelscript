@@ -146,8 +146,11 @@ import {
 } from "@modelscript/plcopen";
 import { pscadLanguage, PscadWorkspaceIndex } from "@modelscript/pscad";
 import {
+  getPsseCompletions,
+  getPsseDefinition,
   getPsseDocumentSymbols,
   getPsseHover,
+  getPsseReferences,
   psseLanguage,
   PsseWorkspaceIndex,
   validatePsse,
@@ -1070,29 +1073,72 @@ export function startNodeServer(input?: any, output?: any) {
 
   // Register PSS/E RAW Language Plugin
   try {
+    const psseWsIndex = (workspaceManager.getWorkspaceIndex("psse") as PsseWorkspaceIndex) ?? new PsseWorkspaceIndex();
     globalLanguageRegistry.register({
       id: "psse",
       name: "PSSE",
       extensions: [".raw", ".dyr", ".sav"],
       languageDef: psseLanguage,
-      workspaceIndex: new PsseWorkspaceIndex(),
+      workspaceIndex: psseWsIndex,
       customHandlers: {
         symbols: (treeWrapper: any) => {
           const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
           return getPsseDocumentSymbols(text);
         },
-        hover: (offset: number, text: string) => {
+        hover: (offset: number, text: string, uri?: string) => {
           const lines = text.slice(0, offset).split("\n");
           const line = lines.length - 1;
           const character = lines[lines.length - 1]!.length;
-          return getPsseHover(text, { line, character });
+          return getPsseHover(text, { line, character }, uri ?? "", psseWsIndex);
         },
         validate: (doc: any) => {
           const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-          return validatePsse(text);
+          const uri = typeof doc?.uri === "string" ? doc.uri : "model.raw";
+          return validatePsse(text, uri);
+        },
+        definition: (offset: number, text: string, uri?: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getPsseDefinition(text, { line, character }, uri ?? "", psseWsIndex);
+        },
+        references: (offset: number, text: string, uri?: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getPsseReferences(text, { line, character }, uri ?? "");
+        },
+        complete: (offset: number, text: string, uri?: string) => {
+          const lines = text.slice(0, offset).split("\n");
+          const line = lines.length - 1;
+          const character = lines[lines.length - 1]!.length;
+          return getPsseCompletions(text, { line, character }, uri ?? "");
         },
       },
       actionHandlers: {
+        simulate_psse_transient: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { simulatePsseTransient } = await import("@modelscript/psse");
+          const parsed = psseWsIndex.getMergedCase(ctx.uri ?? "", text);
+          return simulatePsseTransient(parsed, params);
+        },
+        analyze_n1_contingencies: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { parseRaw, analyzeN1Contingencies } = await import("@modelscript/psse");
+          const parsed = parseRaw(text);
+          const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
+          return analyzeN1Contingencies(parsed, caseTitle);
+        },
+        solve_short_circuit: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { calculateShortCircuit } = await import("@modelscript/psse");
+          const parsed = psseWsIndex.getMergedCase(ctx.uri ?? "", text);
+          const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
+          return calculateShortCircuit(parsed, caseTitle);
+        },
         lint_psse_case: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return [];
@@ -1103,9 +1149,11 @@ export function startNodeServer(input?: any, output?: any) {
         extract_powerflow_netlist: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return null;
-          const { parseRaw, extractPowerFlowNetlist } = await import("@modelscript/psse");
+          const { parseRaw, extractPowerFlowNetlist, serializePowerFlowNetlist } = await import("@modelscript/psse");
           const parsed = parseRaw(text);
-          return extractPowerFlowNetlist(parsed);
+          const netlist = extractPowerFlowNetlist(parsed);
+          const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
+          return serializePowerFlowNetlist(netlist, caseTitle);
         },
         export_psse_modelica: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
@@ -1124,8 +1172,8 @@ export function startNodeServer(input?: any, output?: any) {
         export_psse_dae: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return null;
-          const { parseRaw, lowerPsseToDae } = await import("@modelscript/psse");
-          const parsed = parseRaw(text);
+          const { lowerPsseToDae } = await import("@modelscript/psse");
+          const parsed = psseWsIndex.getMergedCase(ctx.uri ?? "", text);
           const dae = lowerPsseToDae(parsed);
           return {
             varCount: dae.varCount,
@@ -1135,9 +1183,14 @@ export function startNodeServer(input?: any, output?: any) {
         solve_powerflow: async (ctx: any, params: any) => {
           const text = params?.documentText ?? ctx.documentText;
           if (!text) return null;
-          const { parseRaw, solvePowerFlow } = await import("@modelscript/psse");
+          const { parseRaw, solvePowerFlow, formatPowerFlowReport } = await import("@modelscript/psse");
           const parsed = parseRaw(text);
-          return solvePowerFlow(parsed, params);
+          const sol = solvePowerFlow(parsed, params);
+          const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
+          return {
+            ...sol,
+            reportText: formatPowerFlowReport(sol, caseTitle),
+          };
         },
       },
       disposables: [],
@@ -2975,7 +3028,7 @@ export function startNodeServer(input?: any, output?: any) {
     globalLanguageRegistry.register({
       id: "fortran",
       name: "Fortran",
-      extensions: [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
+      extensions: [".f", ".for", ".f77", ".f90", ".f95", ".f03", ".f08"],
       languageDef: fortranLanguage,
       actionHandlers: {
         lint_fortran_file: async (ctx: any, params: any) => {
@@ -2983,6 +3036,60 @@ export function startNodeServer(input?: any, output?: any) {
           if (!text) return [];
           const { lintFortran } = await import("@modelscript/fortran");
           return lintFortran(text);
+        },
+        simulate_fortran: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { simulateFortranRoutine } = await import("@modelscript/fortran");
+          return simulateFortranRoutine(text, {
+            startTime: params?.startTime ?? 0,
+            stopTime: params?.stopTime ?? 1.0,
+            dt: params?.dt ?? 0.01,
+          });
+        },
+        verify_fortran: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { verifyFortranSource } = await import("@modelscript/fortran");
+          return verifyFortranSource(text, params?.options);
+        },
+        lower_fortran_to_dae: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { lowerFortranToDae, preprocessFortranSegment, extractFortranSignature } =
+            await import("@modelscript/fortran");
+          const { DAEBuilder } = await import("@modelscript/runtime");
+          const prep = preprocessFortranSegment(text);
+          const sig = extractFortranSignature(text);
+          const builder = new DAEBuilder();
+          const lowered = lowerFortranToDae(builder, prep.lines, sig.name);
+          return {
+            routineName: sig.name,
+            equationCount: lowered.equationCount,
+            stateCount: lowered.stateVarIndices.length,
+            inputs: sig.inputs,
+            outputs: sig.outputs,
+            locals: sig.locals,
+          };
+        },
+        export_fortran_fmu: async (ctx: any, params: any) => {
+          const text = params?.documentText ?? ctx.documentText;
+          if (!text) return null;
+          const { exportFortranFmu } = await import("@modelscript/fortran");
+          const fmu = exportFortranFmu(text, params?.options);
+          return {
+            modelIdentifier: fmu.modelIdentifier,
+            guid: fmu.guid,
+            files: fmu.files,
+            variableCount: fmu.variables.length,
+            equationCount: fmu.daeSummary.equationCount,
+            archiveByteLength: fmu.archive.byteLength,
+            modelDescription2Xml: fmu.modelDescription2Xml,
+            modelDescription3Xml: fmu.modelDescription3Xml,
+            cSources: fmu.cSources,
+            daeSummary: fmu.daeSummary,
+            formattedSummary: `Exported Fortran FMU '${fmu.modelIdentifier}.fmu' (${fmu.archive.byteLength} bytes, ${fmu.variables.length} FMI variables, ${fmu.files.length} bundled files).`,
+          };
         },
       },
       disposables: [],

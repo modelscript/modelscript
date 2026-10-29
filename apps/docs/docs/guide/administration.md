@@ -160,8 +160,7 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 | `ghcr.io/modelscript/api`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Corporate EE Cluster & `modelscript.org` Cloud           |
 | `ghcr.io/modelscript/cli`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner           |
 | `ghcr.io/modelscript/appliance` | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`, `ENTERPRISE_APPLIANCE=true`, `AIRGAP_ENFORCED=true` | Single-container Air-Gapped Intranet Appliance (`:8080`) |
-| `ghcr.io/modelscript/web`       |                    Shared                    |              N/A              | Nginx SPA (`/`) + VitePress Docs (`/docs`)                                                        | Web UI & Unified Documentation Portal                    |
-| `ghcr.io/modelscript/ide`       |                    Shared                    |              N/A              | `PORT=3003` + local WebLLM weights                                                                | Browser WebAssembly & WebGPU IDE Workbench               |
+| `ghcr.io/modelscript/web`       |                    Shared                    |              N/A              | Nginx SPA (`/`) + VitePress Docs (`/docs`) + IDE (`/ide`)                                         | Web UI, IDE Launcher & Unified Documentation Portal      |
 
 ---
 
@@ -182,7 +181,7 @@ docker run -d \
   -v modelscript-data:/app/apps/api/data \
   ghcr.io/modelscript/api-ce:latest
 
-# Option 2: Run the full multi-container stack (Caddy + API + Web + IDE) in Community Edition mode
+# Option 2: Run the full multi-container stack (Caddy + API + Web) in Community Edition mode
 export MSX_EDITION=ce
 export JWT_SECRET="$(openssl rand -hex 32)"
 export PUBLIC_DOMAIN=localhost

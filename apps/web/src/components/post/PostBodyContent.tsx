@@ -46,7 +46,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   const contentWarning =
     (typeof displayPost?.content_warning === "string" && displayPost.content_warning.trim()) ||
     (typeof parsedMeta?.contentWarning === "string" && parsedMeta.contentWarning.trim()) ||
-    "";
+    (displayPost?.is_sensitive ? "Sensitive content" : "");
   const [cwRevealed, setCwRevealed] = useState(false);
 
   const wasUpdated =
@@ -152,8 +152,8 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               <Box
                 key={cell.id}
                 style={{
-                  fontSize: isDetailView ? "16.5px" : "15px",
-                  lineHeight: isDetailView ? 1.65 : 1.55,
+                  fontSize: isDetailView ? "17px" : "15px",
+                  lineHeight: isDetailView ? "24px" : "20px",
                   wordBreak: "break-word",
                 }}
               >
@@ -430,7 +430,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
         mt={0}
         style={{
           wordBreak: "break-word",
-          lineHeight: isDetailView ? 1.5 : undefined,
+          lineHeight: isDetailView ? "24px" : "20px",
           fontSize: isDetailView ? "17px" : "15px",
         }}
       >

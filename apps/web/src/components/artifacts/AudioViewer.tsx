@@ -2,7 +2,7 @@
 
 import { DownloadIcon, MuteIcon, PlayIcon, PulseIcon, SquareFillIcon, UnmuteIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text } from "@primer/react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
 
@@ -111,26 +111,81 @@ const AudioViewer: React.FC<AudioViewerProps> = ({ viewConfig, isFullScreen }) =
   const [duration, setDuration] = useState(0);
   const [speedIndex, setSpeedIndex] = useState(1); // default 1.0x
   const [isMuted, setIsMuted] = useState(false);
+  const [waveformBars, setWaveformBars] = useState<number[] | null>(null);
+  const [audioMeta, setAudioMeta] = useState<{ sampleRate?: number; channels?: number } | null>(null);
 
   const speed = SPEED_OPTIONS[speedIndex]!;
 
-  // Generate deterministic acoustic waveform bars
-  const waveformBars = useMemo(() => {
-    const barsCount = 80;
-    const bars: number[] = [];
-    let seed = 0;
-    for (let i = 0; i < (url || "").length; i++) {
-      seed = (seed * 31 + url.charCodeAt(i)) & 0xffffff;
+  useEffect(() => {
+    if (!url) {
+      setWaveformBars(null);
+      setAudioMeta(null);
+      return;
     }
-    for (let i = 0; i < barsCount; i++) {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      const rand = (seed % 100) / 100;
-      // Envelope shape: tapered at start and end
-      const envelope = Math.sin((i / (barsCount - 1)) * Math.PI);
-      const val = 0.2 + 0.8 * rand * envelope;
-      bars.push(Math.max(0.1, val));
-    }
-    return bars;
+
+    let cancelled = false;
+    let audioCtx: AudioContext | null = null;
+
+    const decodeWaveform = async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arrayBuf = await res.arrayBuffer();
+        if (cancelled) return;
+        const AudioCtx =
+          window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioCtx) return;
+        audioCtx = new AudioCtx();
+        const decoded = await audioCtx.decodeAudioData(arrayBuf);
+        if (cancelled) return;
+
+        const channelData = decoded.getChannelData(0);
+        const barsCount = 80;
+        const blockSize = Math.max(1, Math.floor(channelData.length / barsCount));
+        const peaks: number[] = [];
+        let maxPeak = 0;
+
+        for (let i = 0; i < barsCount; i++) {
+          const start = i * blockSize;
+          let peak = 0;
+          const end = Math.min(channelData.length, start + blockSize);
+          for (let j = start; j < end; j++) {
+            const abs = Math.abs(channelData[j] ?? 0);
+            if (abs > peak) peak = abs;
+          }
+          peaks.push(peak);
+          if (peak > maxPeak) maxPeak = peak;
+        }
+
+        const normalized = peaks.map((p) => (maxPeak > 0 ? Math.max(0.05, p / maxPeak) : 0.05));
+        setWaveformBars(normalized);
+        setAudioMeta({
+          sampleRate: decoded.sampleRate,
+          channels: decoded.numberOfChannels,
+        });
+        if (decoded.duration > 0) {
+          setDuration((prev) => (prev > 0 ? prev : decoded.duration));
+        }
+      } catch {
+        if (!cancelled) {
+          setWaveformBars(null);
+          setAudioMeta(null);
+        }
+      } finally {
+        if (audioCtx && audioCtx.state !== "closed") {
+          void audioCtx.close().catch(() => undefined);
+        }
+      }
+    };
+
+    void decodeWaveform();
+
+    return () => {
+      cancelled = true;
+      if (audioCtx && audioCtx.state !== "closed") {
+        void audioCtx.close().catch(() => undefined);
+      }
+    };
   }, [url]);
 
   useEffect(() => {
@@ -139,7 +194,7 @@ const AudioViewer: React.FC<AudioViewerProps> = ({ viewConfig, isFullScreen }) =
     }
   }, [speed]);
 
-  // Render waveform to canvas
+  // Render waveform or linear progress bar to canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -155,27 +210,44 @@ const AudioViewer: React.FC<AudioViewerProps> = ({ viewConfig, isFullScreen }) =
     ctx.clearRect(0, 0, rect.width, rect.height);
 
     const progress = duration > 0 ? currentTime / duration : 0;
-    const barWidth = rect.width / waveformBars.length;
-    const gap = 2;
-    const maxHeight = rect.height * 0.85;
 
-    waveformBars.forEach((barHeightFraction, index) => {
-      const x = index * barWidth;
-      const h = barHeightFraction * maxHeight;
-      const y = (rect.height - h) / 2;
+    if (waveformBars && waveformBars.length > 0) {
+      const barWidth = rect.width / waveformBars.length;
+      const gap = 2;
+      const maxHeight = rect.height * 0.85;
 
-      const isPlayed = index / waveformBars.length <= progress;
+      waveformBars.forEach((barHeightFraction, index) => {
+        const x = index * barWidth;
+        const h = barHeightFraction * maxHeight;
+        const y = (rect.height - h) / 2;
 
-      if (isPlayed) {
-        ctx.fillStyle = "#a855f7"; // purple played
-      } else {
-        ctx.fillStyle = "rgba(168, 85, 247, 0.25)"; // muted unplayed
-      }
+        const isPlayed = index / waveformBars.length <= progress;
 
+        if (isPlayed) {
+          ctx.fillStyle = "#a855f7"; // purple played
+        } else {
+          ctx.fillStyle = "rgba(168, 85, 247, 0.25)"; // muted unplayed
+        }
+
+        ctx.beginPath();
+        ctx.roundRect(x, y, Math.max(1, barWidth - gap), h, 2);
+        ctx.fill();
+      });
+    } else {
+      const trackHeight = 6;
+      const trackY = (rect.height - trackHeight) / 2;
+      ctx.fillStyle = "rgba(168, 85, 247, 0.25)";
       ctx.beginPath();
-      ctx.roundRect(x, y, Math.max(1, barWidth - gap), h, 2);
+      ctx.roundRect(0, trackY, rect.width, trackHeight, 3);
       ctx.fill();
-    });
+
+      if (progress > 0) {
+        ctx.fillStyle = "#a855f7";
+        ctx.beginPath();
+        ctx.roundRect(0, trackY, Math.max(4, rect.width * Math.min(1, progress)), trackHeight, 3);
+        ctx.fill();
+      }
+    }
   }, [waveformBars, currentTime, duration]);
 
   const togglePlay = () => {
@@ -225,6 +297,25 @@ const AudioViewer: React.FC<AudioViewerProps> = ({ viewConfig, isFullScreen }) =
       <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="8px">
         <Text color="var(--color-danger-fg)">No audio URL provided in artifact configuration.</Text>
       </Box>
+    );
+  }
+
+  const resolvedSampleRate =
+    audioMeta?.sampleRate ?? (typeof viewConfig?.sampleRate === "number" ? viewConfig.sampleRate : undefined);
+  const resolvedChannels =
+    audioMeta?.channels ??
+    (typeof viewConfig?.channels === "number"
+      ? viewConfig.channels
+      : typeof viewConfig?.numberOfChannels === "number"
+        ? viewConfig.numberOfChannels
+        : undefined);
+  const metadataParts: string[] = [];
+  if (resolvedSampleRate) {
+    metadataParts.push(`${(resolvedSampleRate / 1000).toFixed(1).replace(/\.0$/, "")} kHz`);
+  }
+  if (resolvedChannels) {
+    metadataParts.push(
+      resolvedChannels === 1 ? "Mono" : resolvedChannels === 2 ? "Stereo" : `${resolvedChannels} Channels`,
     );
   }
 
@@ -288,9 +379,11 @@ const AudioViewer: React.FC<AudioViewerProps> = ({ viewConfig, isFullScreen }) =
             {isPlaying ? "Pause" : "Play"}
           </Button>
 
-          <Text fontSize="12px" color="var(--color-fg-muted)">
-            44.1 kHz • Single-Axis Sensor Stream
-          </Text>
+          {metadataParts.length > 0 && (
+            <Text fontSize="12px" color="var(--color-fg-muted)">
+              {metadataParts.join(" • ")}
+            </Text>
+          )}
         </ControlsRow>
 
         <audio

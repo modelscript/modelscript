@@ -10,7 +10,7 @@ export const fadeIn = keyframes`
 `;
 
 export const PageWrap = styled.div`
-  background-color: var(--color-bg-primary);
+  background-color: transparent;
   color: var(--color-text-primary);
   min-height: 100%;
   display: flex;

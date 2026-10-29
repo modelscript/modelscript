@@ -153,78 +153,88 @@ const PlaybackController: React.FC<{
 
 // ── Color Legend ────────────────────────────────────────────────
 
-const colorLegendStops = [
-  { t: 1.0, color: "rgb(127, 0, 0)", label: "513 K (Melt)" },
-  { t: 0.875, color: "rgb(255, 0, 0)" },
-  { t: 0.625, color: "rgb(255, 255, 0)", label: "400 K" },
-  { t: 0.375, color: "rgb(0, 255, 255)" },
-  { t: 0.125, color: "rgb(0, 0, 255)" },
-  { t: 0.0, color: "rgb(25, 25, 51)", label: "300 K (Mold)" },
+const colorLegendColors = [
+  "rgb(127, 0, 0)",
+  "rgb(255, 0, 0)",
+  "rgb(255, 255, 0)",
+  "rgb(0, 255, 255)",
+  "rgb(0, 0, 255)",
+  "rgb(25, 25, 51)",
 ];
 
-const ColorLegend: React.FC = () => (
-  <div
-    style={{
-      position: "absolute",
-      right: 16,
-      top: 16,
-      bottom: 60,
-      width: 48,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      pointerEvents: "none",
-      zIndex: 5,
-    }}
-  >
+const ColorLegend: React.FC<{
+  title?: string | undefined;
+  maxLabel?: string | undefined;
+  midLabel?: string | undefined;
+  minLabel?: string | undefined;
+}> = ({ title, maxLabel, midLabel, minLabel }) => {
+  const labels = [maxLabel, midLabel, minLabel].filter((l): l is string => Boolean(l));
+  return (
     <div
       style={{
-        fontSize: 9,
-        fontWeight: 600,
-        color: "var(--color-fg-default)",
-        textTransform: "uppercase",
-        letterSpacing: "0.5px",
-        marginBottom: 4,
-        textAlign: "center",
-        lineHeight: 1.2,
-      }}
-    >
-      Temperature
-    </div>
-    <div
-      style={{
-        flex: 1,
-        width: 16,
-        borderRadius: 4,
-        border: "1px solid var(--color-border)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        background: `linear-gradient(to bottom, ${colorLegendStops.map((s) => s.color).join(", ")})`,
-      }}
-    />
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        height: "100%",
         position: "absolute",
-        right: 52,
-        top: 20,
-        bottom: 8,
+        right: 16,
+        top: 16,
+        bottom: 60,
+        width: 48,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        pointerEvents: "none",
+        zIndex: 5,
       }}
     >
-      {colorLegendStops
-        .filter((s) => s.label)
-        .map((s) => (
-          <span key={s.t} style={{ fontSize: 9, color: "var(--color-fg-muted)", whiteSpace: "nowrap" }}>
-            {s.label}
-          </span>
-        ))}
+      {title && (
+        <div
+          style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: "var(--color-fg-default)",
+            textTransform: "uppercase",
+            letterSpacing: "0.5px",
+            marginBottom: 4,
+            textAlign: "center",
+            lineHeight: 1.2,
+          }}
+        >
+          {title}
+        </div>
+      )}
+      <div
+        style={{
+          flex: 1,
+          width: 16,
+          borderRadius: 4,
+          border: "1px solid var(--color-border)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          background: `linear-gradient(to bottom, ${colorLegendColors.join(", ")})`,
+        }}
+      />
+      {labels.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            height: "100%",
+            position: "absolute",
+            right: 52,
+            top: 20,
+            bottom: 8,
+          }}
+        >
+          {labels.map((label, idx) => (
+            <span key={idx} style={{ fontSize: 9, color: "var(--color-fg-muted)", whiteSpace: "nowrap" }}>
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 // ── Control Bar Styles ──────────────────────────────────────────
 
@@ -271,7 +281,10 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(true);
-  const [frameIndex, setFrameIndex] = useState(0);
+  const [frameIndex, setFrameIndex] = useState(() => {
+    const len = Array.isArray(viewConfig?.frames) ? viewConfig.frames.length : 0;
+    return len > 1 ? Math.floor(len * 0.35) : 0;
+  });
   const [speed, setSpeed] = useState(1);
   const [loop, setLoop] = useState(true);
 
@@ -420,10 +433,10 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
     <Box
       width="100%"
       height={isFullScreen ? "100%" : "450px"}
-      bg="var(--color-canvas-default)"
-      borderRadius={isFullScreen ? "0" : "8px"}
+      borderRadius="0"
       overflow="hidden"
       position="relative"
+      style={{ background: "transparent" }}
     >
       {/* Header info bar */}
       {!isThumbnail && (
@@ -467,7 +480,14 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
       )}
 
       {/* Color legend */}
-      {!isThumbnail && <ColorLegend />}
+      {!isThumbnail && (
+        <ColorLegend
+          title={viewConfig?.legendTitle}
+          maxLabel={viewConfig?.maxTempLabel}
+          midLabel={viewConfig?.midTempLabel}
+          minLabel={viewConfig?.minTempLabel}
+        />
+      )}
 
       {/* 3D Canvas */}
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 0.35], fov: 50 }}>
@@ -488,7 +508,9 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
           center={new THREE.Vector3(0, 0, 0)}
         />
 
-        <GateInlet position={[-moldGeo.length / 2, 0, 0]} />
+        {Boolean(viewConfig?.moldDimensions || viewConfig?.moldGeometry || viewConfig?.showGateInlet) && (
+          <GateInlet position={[-moldGeo.length / 2, 0, 0]} />
+        )}
 
         <PlaybackController
           playing={playing}

@@ -174,7 +174,7 @@ jobs:
         with:
           source: .
           files: docker-compose.yml
-          targets: api,api-ce,web,ide,cli,cli-ce,appliance
+          targets: api,api-ce,web,cli,cli-ce,appliance
           push: true
           set: |
             *.cache-from=type=gha
@@ -186,8 +186,6 @@ jobs:
             api-ce.tags=ghcr.io/modelscript/api-ce:${{ steps.version.outputs.version }}
             web.tags=ghcr.io/modelscript/web:latest
             web.tags=ghcr.io/modelscript/web:${{ steps.version.outputs.version }}
-            ide.tags=ghcr.io/modelscript/ide:latest
-            ide.tags=ghcr.io/modelscript/ide:${{ steps.version.outputs.version }}
             cli.tags=ghcr.io/modelscript/cli:latest
             cli.tags=ghcr.io/modelscript/cli:${{ steps.version.outputs.version }}
             cli-ce.tags=ghcr.io/modelscript/cli-ce:latest

@@ -91,7 +91,30 @@ COPY languages/verilog-a/package.json languages/verilog-a/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild better-sqlite3
 
 # ==============================================================================
-# API (Enterprise Edition & Community Edition targets)
+# IDE Assets & WebLLM Weights (bundled into API & Appliance images)
+# ==============================================================================
+FROM node:24-alpine AS download-model
+RUN apk add --no-cache curl bash
+WORKDIR /app/apps/ide
+COPY apps/ide/scripts/download-model.sh scripts/download-model.sh
+RUN bash scripts/download-model.sh
+
+FROM deps AS build-ide-false
+COPY scripts scripts
+COPY packages packages
+COPY languages languages
+COPY apps/ide apps/ide
+RUN npx nx build @modelscript/ide
+
+FROM deps AS build-ide-true
+COPY apps/ide/dist apps/ide/dist
+COPY apps/ide/vscode-web apps/ide/vscode-web
+COPY apps/ide/github-fs apps/ide/github-fs
+
+FROM build-ide-${PREBUILT} AS build-ide
+
+# ==============================================================================
+# API (Enterprise Edition & Community Edition targets with integrated IDE host)
 # ==============================================================================
 FROM deps AS build-api-false
 COPY scripts scripts
@@ -121,6 +144,10 @@ COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
+COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
+COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
+COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs apps/ide/github-fs
+COPY --from=download-model --chown=node:node /app/apps/ide/models apps/ide/models
 RUN rm -rf /app/ee /app/node_modules/@modelscript/ee
 USER node
 EXPOSE 3000
@@ -145,6 +172,10 @@ COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/ee ee
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
+COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
+COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
+COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs apps/ide/github-fs
+COPY --from=download-model --chown=node:node /app/apps/ide/models apps/ide/models
 USER node
 EXPOSE 3000
 ENV NODE_ENV=production \
@@ -184,51 +215,6 @@ COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost/healthz || exit 1
-
-# ==============================================================================
-# IDE
-# ==============================================================================
-
-# Download WebLLM model weights (cached layer)
-FROM node:24-alpine AS download-model
-RUN apk add --no-cache curl bash
-WORKDIR /app/apps/ide
-COPY apps/ide/scripts/download-model.sh scripts/download-model.sh
-RUN bash scripts/download-model.sh
-
-FROM deps AS build-ide-false
-COPY scripts scripts
-COPY packages packages
-COPY languages languages
-COPY apps/ide apps/ide
-RUN npx nx build @modelscript/ide
-
-
-FROM deps AS build-ide-true
-COPY apps/ide/dist apps/ide/dist
-COPY apps/ide/vscode-web apps/ide/vscode-web
-COPY apps/ide/github-fs/dist apps/ide/github-fs/dist
-
-FROM build-ide-${PREBUILT} AS build-ide
-
-FROM node:24-alpine AS ide
-WORKDIR /app
-RUN chown -R node:node /app
-COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
-COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=build-ide --chown=node:node /app/packages packages
-COPY --from=build-ide --chown=node:node /app/languages languages
-COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
-COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
-COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs/dist apps/ide/github-fs/dist
-COPY --from=download-model --chown=node:node /app/apps/ide/models apps/ide/models
-USER node
-EXPOSE 3003
-ENV NODE_ENV=production
-ENV PORT=3003
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3003/health || exit 1
-CMD ["node", "apps/ide/dist/server.js"]
 
 # ==============================================================================
 # CLI / GitLab CI Runner (Enterprise Edition & Community Edition targets)
@@ -304,6 +290,8 @@ COPY --from=build-web --chown=node:node /app/apps/web/dist apps/web/dist
 COPY --from=build-web --chown=node:node /app/apps/docs/docs/.vitepress/dist apps/docs/docs/.vitepress/dist
 COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
+COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs apps/ide/github-fs
+COPY --from=download-model --chown=node:node /app/apps/ide/models apps/ide/models
 
 USER node
 EXPOSE 8080

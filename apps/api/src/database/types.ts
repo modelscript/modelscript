@@ -110,6 +110,8 @@ export interface PostRow {
   metadata?: PostMetadata | null | undefined;
   reply_visibility?: string | undefined;
   is_silenced?: number | undefined;
+  is_sensitive?: number | boolean | undefined;
+  content_warning?: string | null | undefined;
   created_at: string;
   updated_at?: string | undefined;
   username?: string | undefined;
@@ -174,15 +176,41 @@ export interface ContentReportRow {
   reporter_id: number;
   post_id: number | null;
   target_user_id: number | null;
+  target_type?: "post" | "user" | "package" | "repo" | "appeal" | string | undefined;
+  target_resource_id?: string | null | undefined;
   reason: string;
   details: string | null;
   status: string;
   resolution_notes: string | null;
+  action_taken?: string | null | undefined;
+  content_snapshot?: string | null | undefined;
   created_at: string;
   resolved_at: string | null;
   reporter_username?: string | null | undefined;
   post_content?: string | null | undefined;
   post_author_id?: number | null | undefined;
+  author_username?: string | null | undefined;
+  target_username?: string | null | undefined;
+  author_domain?: string | null | undefined;
+  target_report_count?: number | undefined;
+  author_prior_violations?: number | undefined;
+}
+
+export interface AdminUserSummaryRow {
+  id: number;
+  username: string;
+  email: string;
+  display_name: string | null;
+  account_type: string;
+  status: string;
+  email_verified: number;
+  totp_enabled: number;
+  credit_balance: number;
+  remote_domain: string | null;
+  created_at: string;
+  post_count: number;
+  report_count: number;
+  resolved_violation_count: number;
 }
 
 export interface DmcaNoticeRow {
@@ -208,6 +236,8 @@ export interface AuditLogRow {
   resource_id: string | null;
   ip_address: string | null;
   details: string | null;
+  prev_hash?: string | null | undefined;
+  entry_hash?: string | null | undefined;
   created_at: string;
   actor_username?: string | null | undefined;
 }

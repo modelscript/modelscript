@@ -9,7 +9,7 @@ import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
-import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface GensysViewerProps {
   viewConfig: {
@@ -160,7 +160,7 @@ const SvgContainer = styled.div`
 `;
 
 function parseGensysDeckClient(deck: string) {
-  const bodies: { name: string; mass: number; cg: [number, number, number] }[] = [];
+  const bodies: { name: string; mass: number; cg?: [number, number, number] }[] = [];
   const couplings: { name: string; type: string; from: string; to: string; stiffness?: number }[] = [];
   let wheelsetCount = 0;
 
@@ -174,11 +174,17 @@ function parseGensysDeckClient(deck: string) {
       const hasSubtype = bType.startsWith("m_") || bType === "rigid" || bType === "whe_set_m";
       const name = (hasSubtype ? tokens[2] : tokens[1]) || `body_${bodies.length + 1}`;
       const numStart = hasSubtype ? 3 : 2;
-      const x = Number(tokens[numStart]) || 0;
-      const y = Number(tokens[numStart + 1]) || 0;
-      const z = Number(tokens[numStart + 2]) || 0;
+      const rawX = Number(tokens[numStart]);
+      const rawY = Number(tokens[numStart + 1]);
+      const rawZ = Number(tokens[numStart + 2]);
+      const hasCoords =
+        tokens.length >= numStart + 3 && Number.isFinite(rawX) && Number.isFinite(rawY) && Number.isFinite(rawZ);
       const m = Number(tokens[numStart + 3] ?? tokens[numStart]) || 0;
-      bodies.push({ name, mass: Number.isFinite(m) ? m : 0, cg: [x, y, z] });
+      bodies.push({
+        name,
+        mass: Number.isFinite(m) ? m : 0,
+        ...(hasCoords ? { cg: [rawX, rawY, rawZ] } : {}),
+      });
       if (bType.includes("whe") || /axl|wheel|ws/i.test(name)) wheelsetCount++;
     } else if (cmd === "coupl" && tokens.length >= 5) {
       const cType = tokens[1]!;
@@ -202,7 +208,7 @@ function parseGensysDeckClient(deck: string) {
 
 const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
-  const [tabIndex, setTabIndex] = useState<number>(0);
+  const [tabIndex, setTabIndex] = useState<number>(() => (viewConfig.svg ? 0 : 2));
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -238,23 +244,18 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
     if (viewConfig.svg) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (rawDeck.trim()) {
-      return renderSourceToDiagramSvg(rawDeck, "gensys", modelName, true).svg;
-    }
     return "";
-  }, [viewConfig.svg, rawDeck, modelName]);
+  }, [viewConfig.svg]);
 
   const { nodes3D, links3D } = useMemo(() => {
     const nodes: MultibodyNode3D[] = [];
     const links: MultibodyLink3D[] = [];
     const posMap = new Map<string, [number, number, number]>();
 
-    bodies.forEach((b, idx) => {
+    bodies.forEach((b) => {
+      if (!Array.isArray(b.cg) || b.cg.length !== 3) return;
       const isWheel = /axl|wheel|ws/i.test(b.name);
-      const pos: [number, number, number] =
-        b.cg && (b.cg[0] !== 0 || b.cg[1] !== 0 || b.cg[2] !== 0)
-          ? b.cg
-          : [idx * 2.5 - bodies.length * 1.25, 0, isWheel ? 0.45 : 1.2];
+      const pos: [number, number, number] = b.cg;
       posMap.set(b.name, pos);
       nodes.push({
         id: b.name,

@@ -4,6 +4,7 @@ import { DiffEditor } from "@monaco-editor/react";
 import { GitCompareIcon, XIcon } from "@primer/octicons-react";
 import { Button, IconButton, Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { getArtifactView } from "../../api";
 import { useTheme } from "../../theme";
@@ -297,7 +298,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  const modal = (
     <Overlay onClick={onClose}>
       <ModalContainer onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
@@ -487,6 +488,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
       </ModalContainer>
     </Overlay>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default ArtifactDiffModal;

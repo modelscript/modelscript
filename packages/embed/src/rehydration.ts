@@ -177,7 +177,11 @@ export class PackageRehydrationCache {
       return cached;
     }
 
-    const url = `${cdnBaseUrl.replace(/\/+$/, "")}/${pkgName}/${version}/symbols.bin`;
+    let cleanBaseUrl = cdnBaseUrl;
+    while (cleanBaseUrl.endsWith("/")) {
+      cleanBaseUrl = cleanBaseUrl.slice(0, -1);
+    }
+    const url = `${cleanBaseUrl}/${pkgName}/${version}/symbols.bin`;
     const resp = await fetch(url);
     if (!resp.ok) {
       throw new Error(`Failed to fetch package ${pkgName}@${version} from ${url} (status: ${resp.status})`);

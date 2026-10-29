@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleIcon, DatabaseIcon } from "@primer/octicons-react";
-import React from "react";
+import { ArchiveIcon, CheckCircleIcon, DatabaseIcon } from "@primer/octicons-react";
+import React, { useState } from "react";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Card, StatGrid, Table } from "../styles";
-import type { AdminDbStatus } from "../types";
+import { ActionButton, Badge, Card, Input, StatGrid, Table } from "../styles";
+import type { AdminBackupInfo, AdminDbStatus } from "../types";
 
 export interface AdminDatabaseTabProps {
   dbStatus: AdminDbStatus | null;
@@ -19,6 +19,8 @@ export interface AdminDatabaseTabProps {
   setDbDryRun: (dryRun: boolean) => void;
   onVerifyDb: () => Promise<void>;
   onUpgradeDb: () => Promise<void>;
+  backups?: AdminBackupInfo[] | undefined;
+  onCreateHotBackup?: ((label?: string) => Promise<void>) | undefined;
   loading: boolean;
 }
 
@@ -30,8 +32,12 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
   setDbDryRun,
   onVerifyDb,
   onUpgradeDb,
+  backups = [],
+  onCreateHotBackup,
   loading,
 }) => {
+  const [backupLabel, setBackupLabel] = useState("");
+
   const appliedList = dbStatus?.applied || dbStatus?.appliedMigrations || [];
   const pendingList = dbStatus?.pending || dbStatus?.pendingMigrations || [];
   const currentVer = dbStatus?.currentVersion
@@ -41,6 +47,12 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
       : "Baseline";
   const latestVer = pendingList.length > 0 ? pendingList[pendingList.length - 1]!.name : currentVer;
   const pendingCount = dbStatus?.pendingCount ?? pendingList.length;
+
+  const handleCreateBackup = async () => {
+    if (!onCreateHotBackup) return;
+    await onCreateHotBackup(backupLabel.trim() || undefined);
+    setBackupLabel("");
+  };
 
   return (
     <div>
@@ -95,6 +107,48 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
           </Box>
         </Box>
       </Card>
+
+      {onCreateHotBackup && (
+        <Card>
+          <span style={{ fontWeight: 700, fontSize: "14px" }}>Hot SQLite WAL Backups</span>
+          <Box display="flex" alignItems="center" gap={2} mt={1} flexWrap="wrap">
+            <Input
+              style={{ width: "260px" }}
+              placeholder="Backup label (e.g. pre-migration)..."
+              value={backupLabel}
+              onChange={(e) => setBackupLabel(e.target.value)}
+            />
+            <ActionButton $variant="primary" onClick={() => void handleCreateBackup()} disabled={loading}>
+              <ArchiveIcon size={14} />
+              <span>Create Hot Snapshot</span>
+            </ActionButton>
+          </Box>
+          {backups.length > 0 && (
+            <Box mt={2}>
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Snapshot File</th>
+                    <th>Size</th>
+                    <th>Created At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backups.map((b) => (
+                    <tr key={b.fileName}>
+                      <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{b.fileName}</td>
+                      <td>{(b.sizeBytes / 1024).toFixed(1)} KB</td>
+                      <td style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>
+                        {new Date(b.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </Box>
+          )}
+        </Card>
+      )}
 
       {dbVerifyResult &&
         (() => {

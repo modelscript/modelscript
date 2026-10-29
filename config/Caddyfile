@@ -6,15 +6,6 @@
     encode gzip zstd
 
     # Route ActivityPub & API traffic to backend API
-    handle /api/models/* {
-        reverse_proxy ide:3003
-    }
-    handle /api/languages/* {
-        reverse_proxy ide:3003
-    }
-    handle /api/github/* {
-        reverse_proxy ide:3003
-    }
     handle /api/* {
         reverse_proxy api:3000
     }
@@ -46,24 +37,18 @@
         reverse_proxy api:3000
     }
 
-    # Route Web IDE Workbench & Assets
+    # Route Web IDE Workbench & Assets to unified API service
     handle /vscode/* {
-        reverse_proxy ide:3003
+        reverse_proxy api:3000
     }
     handle /vscode-static/* {
-        reverse_proxy ide:3003
+        reverse_proxy api:3000
     }
-    handle /static/devextensions/* {
-        reverse_proxy ide:3003
-    }
-    handle /static/extensions/* {
-        reverse_proxy ide:3003
-    }
-    handle /ide/* {
-        reverse_proxy ide:3003
+    handle /static/* {
+        reverse_proxy api:3000
     }
 
-    # Route Web UI Portal (all other requests)
+    # Route Unified Web SPA, IDE Shell & Documentation Portal (all other requests)
     handle {
         reverse_proxy web:80
     }

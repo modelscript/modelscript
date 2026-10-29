@@ -15,7 +15,10 @@ import {
   faultGlyph,
   generatorGlyph,
   inverterIbrGlyph,
+  loadGlyph,
   meterProbeGlyph,
+  passiveBranchGlyph,
+  pscadGroundGlyph,
   surgeArresterGlyph,
   transformerGlyph,
   transmissionLineGlyph,
@@ -416,14 +419,14 @@ function parseSvgXmlToMarkup(
   let elemCounter = 1;
   let isCondActive = true;
 
-  // Support cond, rect, line, circle, ellipse, text, path, polygon
-  const tagRegex = /<(cond|rect|line|circle|ellipse|text|path|polygon)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+  // Support cond, rect, line, circle, ellipse, text, path, polygon, and PSCAD v5 <Gfx classid="Graphics.*">
+  const tagRegex = /<(cond|rect|line|circle|ellipse|text|path|polygon|gfx)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
   let match: RegExpExecArray | null;
 
   while ((match = tagRegex.exec(svgXml)) !== null) {
-    const tagName = match[1]!.toLowerCase();
+    let tagName = match[1]!.toLowerCase();
     const attrsStr = match[2]!;
-    const bodyText = match[3] ?? "";
+    let bodyText = match[3] ?? "";
 
     if (tagName === "cond") {
       const condExpr = bodyText.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
@@ -442,6 +445,41 @@ function parseSvgXmlToMarkup(
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRe.exec(attrsStr)) !== null) {
       attrMap.set(aMatch[1]!.toLowerCase(), aMatch[2]!);
+    }
+    if (tagName === "gfx") {
+      // Also extract child <param name="..." value="..."/> inside <Gfx>
+      const paramRe = /<param\b[^>]*?\bname=["']([^"']+)["'][^>]*?\bvalue=["']([^"']*)["'][^>]*?\/?>/gi;
+      let pMatch: RegExpExecArray | null;
+      while ((pMatch = paramRe.exec(bodyText)) !== null) {
+        attrMap.set(pMatch[1]!.toLowerCase(), pMatch[2]!);
+      }
+      const clsId = (attrMap.get("classid") ?? "").toLowerCase();
+      if (clsId.includes("rectangle")) {
+        tagName = "rect";
+        if (!attrMap.has("width") && attrMap.has("w")) attrMap.set("width", attrMap.get("w")!);
+        if (!attrMap.has("height") && attrMap.has("h")) attrMap.set("height", attrMap.get("h")!);
+      } else if (clsId.includes("line")) {
+        tagName = "line";
+        const gx = parseFloat(attrMap.get("x1") ?? attrMap.get("x") ?? "0");
+        const gy = parseFloat(attrMap.get("y1") ?? attrMap.get("y") ?? "0");
+        const gx2 = attrMap.get("x2") ?? (attrMap.has("w") ? String(gx + parseFloat(attrMap.get("w")!)) : String(gx));
+        const gy2 = attrMap.get("y2") ?? (attrMap.has("h") ? String(gy + parseFloat(attrMap.get("h")!)) : String(gy));
+        attrMap.set("x1", String(gx));
+        attrMap.set("y1", String(gy));
+        attrMap.set("x2", gx2);
+        attrMap.set("y2", gy2);
+      } else if (clsId.includes("ellipse") || clsId.includes("circle")) {
+        tagName = "ellipse";
+        if (!attrMap.has("cx") && attrMap.has("x")) attrMap.set("cx", attrMap.get("x")!);
+        if (!attrMap.has("cy") && attrMap.has("y")) attrMap.set("cy", attrMap.get("y")!);
+        if (!attrMap.has("rx") && attrMap.has("w"))
+          attrMap.set("rx", String(Math.abs(parseFloat(attrMap.get("w")!)) / 2));
+        if (!attrMap.has("ry") && attrMap.has("h"))
+          attrMap.set("ry", String(Math.abs(parseFloat(attrMap.get("h")!)) / 2));
+      } else if (clsId.includes("text")) {
+        tagName = "text";
+        bodyText = attrMap.get("text") ?? attrMap.get("value") ?? "";
+      }
     }
     const getAttr = (name: string): string | undefined => attrMap.get(name.toLowerCase());
 
@@ -1104,16 +1142,36 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         width = 116;
         height = 120;
       }
-      const parsedDef = defGraphic?.svgXml
-        ? parseSvgXmlToMarkup(defGraphic.svgXml, effParams, width, height, cellAngle, cmp.mirror ?? false, cleanDefn)
+      const graphicXml = defGraphic?.svgXml || defGraphic?.graphicsXml;
+      const parsedDef = graphicXml
+        ? parseSvgXmlToMarkup(graphicXml, effParams, width, height, cellAngle, cmp.mirror ?? false, cleanDefn)
         : undefined;
       if (parsedDef) {
         markup = parsedDef.markup;
         attrs = parsedDef.attrs;
       } else if (defn.includes("xfmr") || defn.includes("transformer")) {
-        markup = transformerGlyph({ label: displayLabel });
-        width = 72;
-        height = 60;
+        const defaultLeft = defn.includes("3p2w") ? -54 : -36;
+        const defaultRight = 36;
+        const p0x = cmp.ports?.[0]?.position?.x ?? defaultLeft;
+        const p1x = cmp.ports?.[1]?.position?.x ?? defaultRight;
+        const leftPortX = Math.min(p0x, p1x);
+        const rightPortX = Math.max(p0x, p1x);
+        const halfW = Math.max(36, Math.abs(leftPortX), Math.abs(rightPortX));
+        width = halfW * 2;
+        height = 52;
+        const yd1 = String(cmp.parameters["YD1"] ?? "0").toLowerCase();
+        const yd2 = String(cmp.parameters["YD2"] ?? "1").toLowerCase();
+        const priGroup = yd1 === "1" || yd1.startsWith("d") ? "Δ" : "Y";
+        const secGroup = yd2 === "0" || yd2.startsWith("y") ? "Y" : "Δ";
+        markup = transformerGlyph({
+          width,
+          height,
+          leftPortX,
+          rightPortX,
+          primaryGroup: priGroup,
+          secondaryGroup: secGroup,
+          label: displayLabel,
+        });
       } else if (
         defn.includes("gen") ||
         defn.includes("source") ||
@@ -1121,35 +1179,77 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         defn.includes("ind_machine") ||
         defn.includes("dfig")
       ) {
-        markup = generatorGlyph({ label: displayLabel });
-        width = 60;
-        height = 60;
+        const portOffsetX = cmp.ports?.[0]?.position?.x ?? 36;
+        const halfW = Math.max(36, Math.abs(portOffsetX));
+        width = halfW * 2;
+        height = 48;
+        markup = generatorGlyph({ width, height, portOffsetX, label: displayLabel });
       } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
-        markup = inverterIbrGlyph({ label: displayLabel });
-        width = 60;
-        height = 60;
+        const portOffsetX = cmp.ports?.[0]?.position?.x ?? -20;
+        const modeRaw = String(cmp.parameters["control_mode"] ?? cmp.parameters["controlMode"] ?? "").toLowerCase();
+        const badge = modeRaw === "grid_forming" ? "GFM" : defn.includes("bess") ? "BESS" : "IBR";
+        width = 64;
+        height = 48;
+        markup = inverterIbrGlyph({ width, height, portOffsetX, badge, label: displayLabel });
       } else if (defn.includes("breaker") || defn.includes("switch")) {
         const statusStr = String(cmp.parameters["Status"] ?? cmp.parameters["status"] ?? "closed").toLowerCase();
-        markup = breakerGlyph({ isOpen: statusStr === "open" || statusStr === "0", label: displayLabel });
-        width = 48;
-        height = 44;
+        const p0x = Math.abs(cmp.ports?.[0]?.position?.x ?? 18);
+        const halfW = Math.max(18, p0x);
+        width = halfW * 2;
+        height = 36;
+        markup = breakerGlyph({
+          width,
+          height,
+          isOpen: statusStr === "open" || statusStr === "0",
+          label: displayLabel,
+        });
+      } else if (
+        defn.includes("rlc") ||
+        defn.includes("resistor") ||
+        defn.includes("inductor") ||
+        defn.includes("capacitor") ||
+        defn.endsWith(":current_scaler")
+      ) {
+        const p0x = Math.abs(cmp.ports?.[0]?.position?.x ?? 18);
+        const halfW = Math.max(18, p0x);
+        width = halfW * 2;
+        height = 36;
+        const pKind = defn.includes("capacitor")
+          ? "capacitor"
+          : defn.includes("inductor")
+            ? "inductor"
+            : defn.includes("resistor") || defn.endsWith(":current_scaler")
+              ? "resistor"
+              : "rlc";
+        const hasShuntC = cmp.parameters["C"] !== undefined || cmp.parameters["c"] !== undefined;
+        markup = passiveBranchGlyph({ width, height, kind: pKind, hasShuntC, label: displayLabel });
+      } else if (defn.includes("ground") || defn === "gnd" || defn.endsWith(":ground")) {
+        width = 24;
+        height = 36;
+        markup = pscadGroundGlyph({ width, height, label: "" });
+      } else if (defn.includes("fixed_load") || defn.endsWith(":load") || defn === "load") {
+        width = 32;
+        height = 36;
+        markup = loadGlyph({ width, height, label: displayLabel });
       } else if (defn.includes("arrester") || defn.includes("mov")) {
-        markup = surgeArresterGlyph({ label: displayLabel });
-        width = 40;
-        height = 54;
+        width = 36;
+        height = 36;
+        markup = surgeArresterGlyph({ width, height, label: displayLabel });
       } else if (defn.includes("tpflt") || defn.includes("fault")) {
-        markup = faultGlyph({ label: displayLabel });
-        width = 40;
-        height = 44;
+        width = 36;
+        height = 36;
+        markup = faultGlyph({ width, height, label: displayLabel });
       } else if (defn.includes("vsc_pwm") || defn.includes("lcc_6pulse") || defn.includes("mmc")) {
         const badge = defn.includes("mmc") ? "MMC" : defn.includes("lcc") ? "LCC" : "VSC";
         markup = converterBridgeGlyph({ badge, label: displayLabel });
         width = 72;
         height = 60;
       } else if (defn.includes("tline") || defn.includes("cable")) {
-        markup = transmissionLineGlyph({ isCable: defn.includes("cable"), label: displayLabel });
-        width = 80;
-        height = 48;
+        const p0x = Math.abs(cmp.ports?.[0]?.position?.x ?? 36);
+        const halfW = Math.max(36, p0x);
+        width = halfW * 2;
+        height = 36;
+        markup = transmissionLineGlyph({ width, height, isCable: defn.includes("cable"), label: displayLabel });
       } else if (defn.includes("pi_ctlr") || defn === "pi" || defn.endsWith(":pi")) {
         markup = csmfBlockGlyph({ kind: "pi", label: cleanName });
         width = 64;
@@ -1206,35 +1306,41 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       }
     }
 
-    // Build ports if present
+    // Build ports positioned at their exact PSCAD local offset relative to component center
     const portGroups: Record<string, unknown> = {
       left: {
         position: "left",
         attrs: {
-          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
-        label: { position: { name: "left", args: { x: -2, y: -9 } } },
+        label: { position: { name: "left", args: { x: -2, y: -8 } } },
       },
       right: {
         position: "right",
         attrs: {
-          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
-        label: { position: { name: "right", args: { x: 2, y: -9 } } },
+        label: { position: { name: "right", args: { x: 2, y: -8 } } },
       },
       top: {
         position: "top",
         attrs: {
-          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
         label: { position: { name: "top", args: { y: -6 } } },
       },
       bottom: {
         position: "bottom",
         attrs: {
-          circle: { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
         label: { position: { name: "bottom", args: { y: 6 } } },
+      },
+      exact: {
+        position: { name: "absolute" },
+        attrs: {
+          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+        },
       },
     };
 
@@ -1243,11 +1349,10 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       const seenPortIds = new Set<string>();
       for (const p of cmp.ports) {
         let group = "left";
-        if (p.position) {
-          if (p.position.x > 10) group = "right";
-          else if (p.position.x < -10) group = "left";
-          else if (p.position.y < -10) group = "top";
-          else if (p.position.y > 10) group = "bottom";
+        const hasExactPos =
+          p.position !== undefined && (Math.abs(p.position.x) > 0.01 || Math.abs(p.position.y) > 0.01);
+        if (hasExactPos) {
+          group = "exact";
         } else if (p.name.toLowerCase().includes("out") || p.name.toLowerCase().includes("term")) {
           group = "right";
         }
@@ -1275,17 +1380,19 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
 
         const isSignalPort =
           p.kind === "signal" || p.name === "in" || p.name === "out" || p.name === "in1" || p.name === "in2";
+        const showPortText = isSubModule && p.name.length > 0;
         portItems.push({
           id: portId,
           group,
+          ...(hasExactPos ? { args: { x: Math.round(width / 2 + lx), y: Math.round(height / 2 + ly) } } : {}),
           attrs: {
             circle: isSignalPort
-              ? { r: 3.5, fill: "#7c3aed", stroke: "#1e1b4b", strokeWidth: 1.5, magnet: true }
-              : { r: 4, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1.5, magnet: true },
+              ? { r: 2.2, fill: "#7c3aed", stroke: "#1e1b4b", strokeWidth: 1, magnet: true }
+              : { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
             text: {
-              text: p.name,
+              text: showPortText ? p.name : "",
               fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
-              fontSize: 9,
+              fontSize: 8.5,
             },
           },
           data: {
@@ -1874,12 +1981,12 @@ export function renderPscadSvg(
           const sw = merged.strokeWidth ?? merged["stroke-width"] ?? 1.5;
           const transform = merged.transform ? ` transform="${merged.transform}"` : "";
           res += `    <path d="${merged.d}" fill="${fill}"${stroke} stroke-width="${sw}"${transform} />\n`;
-        } else if (m.tagName === "polygon") {
+        } else if (m.tagName === "polygon" || m.tagName === "polyline") {
           const stroke = merged.stroke ? ` stroke="${resolveVar(merged.stroke, isDark)}"` : "";
           const fill = resolveVar(merged.fill, isDark) ?? "none";
           const sw = merged.strokeWidth ?? merged["stroke-width"];
           const swStr = sw ? ` stroke-width="${sw}"` : "";
-          res += `    <polygon points="${merged.points}" fill="${fill}"${stroke}${swStr} />\n`;
+          res += `    <${m.tagName} points="${merged.points}" fill="${fill}"${stroke}${swStr} />\n`;
         } else if (m.tagName === "text") {
           const textVal = escapeHtml(String(merged.text ?? ""));
           if (!textVal) continue;

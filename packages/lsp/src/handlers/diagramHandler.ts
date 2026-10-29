@@ -82,27 +82,36 @@ export function registerDiagramHandlers(context: LspContext) {
     },
   );
 
-  context.connection.onRequest("modelscript/getCadComponents", async (params: { uri: string }) => {
-    // Check cache using the same content-hash strategy as the diagram cache
-    const effectiveUri = params.uri.startsWith("modelscript-lib://global")
-      ? "file://" + params.uri.substring("modelscript-lib://global".length)
-      : params.uri;
-    const indexedText = context.validationService.lastIndexedText.get(effectiveUri);
-    const version = indexedText != null ? `idx:${indexedText.length}:${simpleHash(indexedText)}` : "unknown";
-    const cached = cadComponentsCache.get(params.uri);
-    if (cached && cached.version === version) {
-      return cached.data;
-    }
+  context.connection.onRequest(
+    "modelscript/getCadComponents",
+    async (params: { uri: string; documentText?: string | undefined }) => {
+      // Check cache using the same content-hash strategy as the diagram cache
+      const effectiveUri = params.uri.startsWith("modelscript-lib://global")
+        ? "file://" + params.uri.substring("modelscript-lib://global".length)
+        : params.uri;
+      const sourceText =
+        params.documentText ??
+        context.validationService.lastIndexedText.get(effectiveUri) ??
+        context.documentManager.documents.get(effectiveUri)?.getText() ??
+        context.documentManager.documentTrees.get(effectiveUri)?.text;
+      const version = sourceText != null ? `idx:${sourceText.length}:${simpleHash(sourceText)}` : "unknown";
+      const cached = cadComponentsCache.get(params.uri);
+      if (cached && cached.version === version && version !== "unknown" && cached.data.length > 0) {
+        return cached.data;
+      }
 
-    try {
-      const data = await dispatchLanguageRequest(context, "modelscript/getCadComponents", params.uri, params, []);
-      cadComponentsCache.set(params.uri, { version, data });
-      return data;
-    } catch (e: any) {
-      context.connection.console.error(`[cad] Error extracting CAD components: ${e?.message ?? e}`);
-      return [];
-    }
-  });
+      try {
+        const data = await dispatchLanguageRequest(context, "modelscript/getCadComponents", params.uri, params, []);
+        if (version !== "unknown" && Array.isArray(data) && data.length > 0) {
+          cadComponentsCache.set(params.uri, { version, data });
+        }
+        return data;
+      } catch (e: any) {
+        context.connection.console.error(`[cad] Error extracting CAD components: ${e?.message ?? e}`);
+        return [];
+      }
+    },
+  );
 
   context.connection.onRequest(DiagramMethods.applyEdits, async (params: DiagramApplyEditsParams) => {
     return await context.diagramService.getDiagramDispatch().applyEdits(params);

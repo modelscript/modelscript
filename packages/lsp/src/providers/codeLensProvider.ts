@@ -1015,6 +1015,17 @@ export function registerCodeLensProvider(context: LspContext) {
         },
       });
 
+      if (detectedPlugin.id === "psse") {
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: "⊞ Open PSS/E Grid Workbench & Tables",
+            command: "modelscript.openRawWorkbench",
+            arguments: [uri],
+          },
+        });
+      }
+
       const actions: Array<{ id: string; title: string; category?: string }> =
         (detectedPlugin.languageDef as any)?.actions ?? [];
       if (actions.length > 0) {

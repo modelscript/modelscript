@@ -240,12 +240,15 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             }
           : {
               automaticLayout: true,
+              codeLens: false,
               folding: false,
               glyphMargin: false,
               lineDecorationsWidth: 0,
               lineNumbers: "off",
               lineNumbersMinChars: 0,
               minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              padding: { top: 8, bottom: 8 },
               "semanticHighlighting.enabled": true,
             }
       }

@@ -57,20 +57,26 @@ describe("Character Encoding & Multi-Byte Subsystem", () => {
       fs.writeFileSync(filePath, file.content);
     }
 
-    const ascPath =
-      [
-        path.resolve(__dirname, "../../node_modules/.bin/asc"),
-        path.resolve(__dirname, "../../../node_modules/.bin/asc"),
-        "npx asc",
-      ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
+    const repoRoot = path.resolve(__dirname, "../../..");
+    const ascJs = [
+      path.resolve(__dirname, "../node_modules/assemblyscript/bin/asc.js"),
+      path.resolve(__dirname, "../../node_modules/assemblyscript/bin/asc.js"),
+      path.resolve(__dirname, "../../../node_modules/assemblyscript/bin/asc.js"),
+      path.resolve(repoRoot, "node_modules", "assemblyscript", "bin", "asc.js"),
+      path.resolve(repoRoot, "node_modules", ".bin", "asc"),
+    ].find((p) => fs.existsSync(p));
+    const [ascBin, ascPrefixArgs] = ascJs
+      ? ascJs.endsWith(".js")
+        ? [process.execPath, [ascJs]]
+        : [ascJs, []]
+      : ["npx", ["--yes", "assemblyscript", "asc"]];
     const parserTs = path.join(tmpDir, "parser.ts");
     const outWasm = path.join(tmpDir, "parser.wasm");
 
-    const [ascBin, ...ascPrefixArgs] = ascPath.startsWith("npx") ? ["npx", "asc"] : [ascPath];
     childProcess.execFileSync(
       ascBin,
       [...ascPrefixArgs, parserTs, "-o", outWasm, "--exportRuntime", "--enable", "threads", "-O0", "--runtime", "stub"],
-      { stdio: "inherit" },
+      { stdio: "inherit", timeout: 120000 },
     );
 
     const wasm = fs.readFileSync(outWasm);

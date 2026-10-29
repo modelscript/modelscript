@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PeopleIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
 import Box from "../../Box";
@@ -18,23 +17,21 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
 
   return (
     <Card>
-      <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <span style={{ color: "var(--color-accent-purple)", display: "inline-flex" }}>
-          <PeopleIcon size={14} />
-        </span>
+      <Box display="flex" alignItems="center" gap={2} mb={2}>
         <Text
+          as="h2"
           style={{
-            fontSize: "12px",
+            fontSize: "15px",
+            lineHeight: "20px",
             fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "var(--color-text-muted)",
+            margin: 0,
+            color: "var(--color-text-heading)",
           }}
         >
           Who to follow
         </Text>
       </Box>
-      <Box display="flex" flexDirection="column" gap={3}>
+      <Box display="flex" flexDirection="column" gap={2}>
         {filteredSuggestions.map((u) => (
           <Box key={u.id} display="flex" alignItems="center" justifyContent="space-between">
             <ProfileHoverCard username={u.username}>
@@ -45,18 +42,28 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
             <Box
               flex={1}
               minWidth={0}
-              style={{ margin: "0 12px" }}
+              style={{ margin: "0 10px" }}
               display="flex"
               flexDirection="column"
               alignItems="flex-start"
             >
-              <div style={{ maxWidth: "100%", display: "flex", minWidth: 0 }}>
+              <div style={{ maxWidth: "100%", width: "100%", display: "flex", minWidth: 0, overflow: "hidden" }}>
                 <ProfileHoverCard username={u.username}>
-                  <ProfileNameLink to={`/${u.username}`} style={{ maxWidth: "100%" }}>
+                  <ProfileNameLink
+                    to={`/${u.username}`}
+                    style={{
+                      maxWidth: "100%",
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     <Text
                       style={{
-                        fontWeight: "600",
-                        fontSize: "14px",
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        lineHeight: "18px",
                         color: "var(--color-text-heading)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -75,12 +82,11 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  marginTop: "1px",
                   display: "block",
                   maxWidth: "100%",
-                  fontSize: "12.5px",
+                  fontSize: "12px",
+                  lineHeight: "16px",
                   color: "var(--color-text-muted)",
-                  lineHeight: 1.2,
                 }}
                 title={`@${u.username}`}
               >
@@ -93,10 +99,12 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
           </Box>
         ))}
         {filteredSuggestions.length === 0 && (
-          <Text style={{ color: "var(--color-fg-muted)", fontSize: "14px" }}>No suggestions at this time.</Text>
+          <Text style={{ color: "var(--color-fg-muted)", fontSize: "13px", lineHeight: "18px" }}>
+            No suggestions at this time.
+          </Text>
         )}
       </Box>
-      <ShowMoreLink to="/explore" style={{ marginTop: "12px" }}>
+      <ShowMoreLink to="/explore" style={{ marginTop: "10px" }}>
         Explore all creators →
       </ShowMoreLink>
     </Card>

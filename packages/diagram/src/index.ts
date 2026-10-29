@@ -126,6 +126,9 @@ export interface Cell {
   getTargetPoint(): PointLike;
   getVertices(): PointLike[];
   setVertices(vertices: PointLike[], options?: { ignoreSnap?: boolean | undefined }): void;
+  setRouter?: ((router: unknown) => void) | undefined;
+  setConnector?: ((connector: unknown) => void) | undefined;
+  setLabels?: ((labels: unknown[]) => void) | undefined;
   findView?: ((graph: Graph) => CellView | null | undefined) | undefined;
 }
 
@@ -1967,17 +1970,43 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
   const edges: RenderEdgeData[] = [];
 
   for (const node of data.nodes) {
+    let normalizedPorts = node.ports;
+    if (Array.isArray(node.ports)) {
+      const portStroke = isDark ? "#38bdf8" : "#0284c7";
+      const portFill = isDark ? "#0f172a" : "#ffffff";
+      normalizedPorts = {
+        groups: {
+          in: {
+            position: "left",
+            attrs: {
+              circle: { r: 4, magnet: true, stroke: portStroke, fill: portFill, strokeWidth: 1.5 },
+            },
+          },
+          out: {
+            position: "right",
+            attrs: {
+              circle: { r: 4, magnet: true, stroke: portStroke, fill: portFill, strokeWidth: 1.5 },
+            },
+          },
+        },
+        items: (node.ports as { id?: string; name?: string; direction?: string }[]).map((p, idx) => ({
+          id: p.id || p.name || `port_${idx}`,
+          group: p.direction === "in" || p.id === "in" ? "in" : "out",
+        })),
+      };
+    }
+
     const nodeData: RenderNodeData = {
       id: node.id,
       x: node.x ?? 0,
       y: node.y ?? 0,
-      width: node.width ?? 0,
-      height: node.height ?? 0,
+      width: node.width ?? 180,
+      height: node.height ?? 70,
       angle: node.angle,
       zIndex: node.zIndex,
       opacity: node.opacity,
       markup: node.markup,
-      ports: node.ports,
+      ports: normalizedPorts,
       data: {
         properties: node.properties,
         animations: node.animations as ReactiveAnimationBinding[] | undefined,
@@ -1987,21 +2016,129 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
       autoLayout: node.autoLayout,
     };
     // Forward polyglot X6 attrs and shape (selector-based rendering)
-    if (node.attrs) nodeData.attrs = node.attrs as Record<string, Record<string, unknown>>;
+    if (node.attrs) {
+      const attrsCopy = { ...(node.attrs as Record<string, Record<string, unknown>>) };
+      const rawNodeLabel = (node as { label?: string }).label;
+      if (rawNodeLabel && (!attrsCopy["label"] || attrsCopy["label"]["text"] === undefined)) {
+        attrsCopy["label"] = { ...(attrsCopy["label"] || {}), text: rawNodeLabel };
+      }
+      if (!isDark) {
+        const bodyFill = attrsCopy["body"]?.["fill"];
+        if (bodyFill === "#1e1e1e" || bodyFill === "#1e293b" || bodyFill === "#0f172a") {
+          attrsCopy["body"] = { ...attrsCopy["body"], fill: "#ffffff" };
+        }
+        const labelFill = attrsCopy["label"]?.["fill"];
+        if (labelFill === "#e0e0e0" || labelFill === "#f8fafc" || labelFill === "#f1f5f9") {
+          attrsCopy["label"] = { ...attrsCopy["label"], fill: "#0f172a" };
+        }
+        const subFill = attrsCopy["subtitle"]?.["fill"];
+        if (subFill === "#94a3b8" || subFill === "#cbd5e1") {
+          attrsCopy["subtitle"] = { ...attrsCopy["subtitle"], fill: "#475569" };
+        }
+        for (const [selKey, selVal] of Object.entries(attrsCopy)) {
+          if (selKey.startsWith("entry_") && selVal && typeof selVal === "object") {
+            const ef = selVal["fill"];
+            if (ef === "#cbd5e1" || ef === "#e2e8f0" || ef === "#f8fafc") {
+              attrsCopy[selKey] = { ...selVal, fill: "#334155" };
+            }
+          }
+        }
+      }
+      nodeData.attrs = attrsCopy;
+    } else if (!node.markup) {
+      const rawLabel =
+        (node as { label?: string; name?: string }).label ||
+        (node as { name?: string }).name ||
+        node.properties?.name ||
+        node.id;
+      const rawKind = (node as { kind?: string }).kind || node.properties?.className || "component";
+      const lines = String(rawLabel).split(/\r?\n/);
+      const titleText = lines[0] || node.id;
+      const subText = lines.slice(1).join(" ");
+      const strokeColor = isDark ? "#38bdf8" : "#0284c7";
+      const bodyFill = isDark ? "#1e293b" : "#f8fafc";
+      const titleFill = isDark ? "#f1f5f9" : "#0f172a";
+      const subFill = isDark ? "#94a3b8" : "#475569";
+
+      nodeData.markup = [
+        { tagName: "rect", selector: "body" },
+        { tagName: "text", selector: "stereotype" },
+        { tagName: "text", selector: "label" },
+        ...(subText ? [{ tagName: "text", selector: "subtitle" }] : []),
+      ];
+      nodeData.attrs = {
+        body: {
+          fill: bodyFill,
+          stroke: strokeColor,
+          strokeWidth: 1.5,
+          rx: 6,
+          ry: 6,
+          refWidth: "100%",
+          refHeight: "100%",
+        },
+        stereotype: {
+          text: `«${String(rawKind).toLowerCase()}»`,
+          fill: strokeColor,
+          fontSize: 10,
+          fontStyle: "italic",
+          textAnchor: "middle",
+          textVerticalAnchor: "top",
+          refX: 0.5,
+          refY: 6,
+        },
+        label: {
+          text: titleText,
+          fill: titleFill,
+          fontSize: 12,
+          fontWeight: "bold",
+          textAnchor: "middle",
+          textVerticalAnchor: "top",
+          refX: 0.5,
+          refY: subText ? 22 : 26,
+        },
+        ...(subText
+          ? {
+              subtitle: {
+                text: subText,
+                fill: subFill,
+                fontSize: 10,
+                textAnchor: "middle",
+                textVerticalAnchor: "top",
+                refX: 0.5,
+                refY: 42,
+              },
+            }
+          : {}),
+      };
+    }
     if (node.shape) nodeData.shape = node.shape;
     if (node.parent) nodeData.parent = node.parent;
     nodes.push(nodeData);
   }
 
   for (const edge of data.edges) {
+    const rawEdge = edge as {
+      sourcePort?: string | undefined;
+      targetPort?: string | undefined;
+      style?: Record<string, unknown> | undefined;
+    };
+    const resolvedSource =
+      typeof edge.source === "string" && rawEdge.sourcePort
+        ? { cell: edge.source, port: rawEdge.sourcePort }
+        : edge.source;
+    const resolvedTarget =
+      typeof edge.target === "string" && rawEdge.targetPort
+        ? { cell: edge.target, port: rawEdge.targetPort }
+        : edge.target;
+
     const edgeData: RenderEdgeData = {
       id: edge.id,
       shape: edge.shape ?? "edge",
       zIndex: edge.zIndex,
-      source: edge.source,
-      target: edge.target,
+      source: resolvedSource,
+      target: resolvedTarget,
       vertices: edge.vertices,
-      connector: edge.connector,
+      connector: edge.connector ?? { name: "rounded", args: { radius: 8 } },
       router: edge.router ?? { name: "normal" },
     };
     // Polyglot edges pass attrs as a full selector-keyed object;
@@ -2010,13 +2147,91 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
       | { line?: Record<string, unknown> | undefined; [key: string]: Record<string, unknown> | undefined }
       | undefined;
     if (edgeAttrs?.line) {
-      edgeData.attrs = { "z-index": "-10", line: edgeAttrs.line };
+      const lineCopy = { ...edgeAttrs.line };
+      const tm = lineCopy["targetMarker"] as Record<string, unknown> | undefined;
+      if (!isDark && tm && typeof tm === "object" && tm["fill"] === "#1e1e1e") {
+        lineCopy["targetMarker"] = { ...tm, fill: "#ffffff" };
+      }
+      edgeData.attrs = { "z-index": "-10", line: lineCopy };
     } else if (edgeAttrs) {
       edgeData.attrs = edgeAttrs;
+    } else {
+      edgeData.attrs = {
+        line: {
+          stroke: isDark ? "#64748b" : "#475569",
+          strokeWidth: 1.5,
+          targetMarker: {
+            name: "block",
+            width: 8,
+            height: 6,
+          },
+        },
+      };
     }
-    // Forward labels (polyglot edge stereotypes like «connect», «satisfy»)
-    if (edge.labels) edgeData.labels = edge.labels as RenderEdgeData["labels"];
-    if (edge.data) edgeData.data = edge.data;
+    // Forward labels (polyglot edge stereotypes like «connect», «satisfy», or PSS/E branch labels)
+    if (edge.labels) {
+      edgeData.labels = (edge.labels as RenderEdgeData["labels"])?.map((lbl) => {
+        if (!lbl || typeof lbl !== "object" || !lbl.attrs) return lbl;
+        const rectAttr = lbl.attrs.rect as Record<string, unknown> | undefined;
+        const textAttr = lbl.attrs.text as Record<string, unknown> | undefined;
+        const rectFill = rectAttr?.["fill"];
+        if (rectFill === "#1e1e1e" || rectFill === "#1e293b" || rectFill === "#0f172a") {
+          const textFill = typeof textAttr?.["fill"] === "string" ? textAttr["fill"] : undefined;
+          const adaptedTextFill: string = isDark
+            ? textFill === "#999"
+              ? "#cbd5e1"
+              : (textFill ?? "#cbd5e1")
+            : textFill === "#c084fc"
+              ? "#7e22ce"
+              : "#334155";
+          return {
+            ...lbl,
+            attrs: {
+              ...lbl.attrs,
+              text: {
+                ...(textAttr || {}),
+                fill: adaptedTextFill,
+                fontFamily: (textAttr?.["fontFamily"] as string | undefined) ?? "Inter, system-ui, sans-serif",
+              },
+              rect: {
+                ...(rectAttr || {}),
+                fill: isDark ? "#0f172a" : "#f8fafc",
+                stroke: isDark ? "#334155" : "#cbd5e1",
+                strokeWidth: 1,
+                rx: 4,
+                ry: 4,
+              },
+            },
+          };
+        }
+        return lbl;
+      });
+    } else if ((edge as { label?: string }).label) {
+      const rawEdgeLabel = (edge as { label?: string }).label!;
+      edgeData.labels = [
+        {
+          attrs: {
+            text: {
+              text: rawEdgeLabel,
+              fill: isDark ? "#cbd5e1" : "#334155",
+              fontSize: 10,
+              fontFamily: "Inter, system-ui, sans-serif",
+            },
+            rect: {
+              fill: isDark ? "#0f172a" : "#f8fafc",
+              stroke: isDark ? "#334155" : "#cbd5e1",
+              strokeWidth: 1,
+              rx: 4,
+              ry: 4,
+            },
+          },
+          position: 0.5,
+        },
+      ];
+    }
+    if (edge.data || rawEdge.style) {
+      edgeData.data = { ...(rawEdge.style || {}), ...(edge.data || {}) };
+    }
     edges.push(edgeData);
   }
 
@@ -2243,12 +2458,36 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
     });
 
     if (nodesToLayout.length > 0) {
+      const isUpwardHierarchyEdge = (e: RenderEdgeData): boolean => {
+        const edgeType = e.data?.["type"];
+        return (
+          edgeType === "subClassOf" ||
+          edgeType === "inferredSubClassOf" ||
+          edgeType === "classAssertion" ||
+          edgeType === "domain" ||
+          edgeType === "specialization"
+        );
+      };
+      const isHorizontalPeerEdge = (e: RenderEdgeData): boolean => {
+        if (e.data?.["isHorizontalPeer"] === true) return true;
+        const edgeType = e.data?.["type"];
+        return (
+          edgeType === "disjointWith" ||
+          edgeType === "equivalentTo" ||
+          edgeType === "inverseOf" ||
+          edgeType === "objectPropertyAssertion" ||
+          edgeType === "sameAs" ||
+          edgeType === "differentFrom"
+        );
+      };
+      const hasHierarchyEdges = edges.some(isUpwardHierarchyEdge);
+
       const dagreLayout = new DagreLayout({
         type: "dagre",
         rankdir: "TB",
-        align: "UL",
-        ranksep: 60,
-        nodesep: 60,
+        ...(hasHierarchyEdges ? {} : { align: "UL" }),
+        ranksep: hasHierarchyEdges ? 92 : 60,
+        nodesep: hasHierarchyEdges ? 56 : 60,
         begin: [20, 20],
         controlPoints: true,
       });
@@ -2257,18 +2496,26 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
         .filter((e) => {
           const s = typeof e.source === "string" ? e.source : e.source.cell;
           const t = typeof e.target === "string" ? e.target : e.target.cell;
-          return nodesToLayout.includes(s) && nodesToLayout.includes(t);
+          if (!nodesToLayout.includes(s) || !nodesToLayout.includes(t)) return false;
+          if (hasHierarchyEdges && isHorizontalPeerEdge(e)) return false;
+          return true;
         })
-        .map((e) => ({
-          source: typeof e.source === "string" ? e.source : e.source.cell,
-          target: typeof e.target === "string" ? e.target : e.target.cell,
-        }));
+        .map((e) => {
+          const s = typeof e.source === "string" ? e.source : e.source.cell;
+          const t = typeof e.target === "string" ? e.target : e.target.cell;
+          if (isUpwardHierarchyEdge(e)) {
+            return { source: t, target: s };
+          }
+          return { source: s, target: t };
+        });
 
       // Inject fake edges to wrap isolated top-level packages into 2 rows
       const connectedTop = new Set<string>();
-      modelEdges.forEach((e) => {
-        connectedTop.add(e.source);
-        connectedTop.add(e.target);
+      edges.forEach((e) => {
+        const s = typeof e.source === "string" ? e.source : e.source.cell;
+        const t = typeof e.target === "string" ? e.target : e.target.cell;
+        connectedTop.add(s);
+        connectedTop.add(t);
       });
       const isolatedTop = nodes
         .filter((n) => nodesToLayout.includes(n.id ?? ""))
@@ -2374,6 +2621,13 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
       }
       // ── Fast path: incremental update ──
       g.batchUpdate("diagram-diff", () => {
+        if (!data.coordinateSystem) {
+          const bg = g.getCellById("__diagram_background__");
+          if (bg) g.removeCell(bg);
+          const axes = g.getCellById("__diagram_axes__");
+          if (axes) g.removeCell(axes);
+        }
+
         for (const nodeData of nodes) {
           const cell = g.getCellById(nodeData.id);
           if (!cell || !cell.isNode()) continue;
@@ -2410,7 +2664,7 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
           }
         }
 
-        // Update edge vertices, endpoints, attrs, and data
+        // Update edge vertices, endpoints, attrs, labels, router, and data
         for (const edgeData of edges) {
           const cell = g.getCellById(edgeData.id);
           if (!cell || !cell.isEdge()) continue;
@@ -2439,6 +2693,15 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
             if (curTgt?.cell !== edgeData.target.cell || curTgt?.port !== edgeData.target.port) {
               cell.setTarget(edgeData.target);
             }
+          }
+          if (edgeData.router) {
+            cell.setRouter?.(edgeData.router);
+          }
+          if (edgeData.connector) {
+            cell.setConnector?.(edgeData.connector);
+          }
+          if (edgeData.labels) {
+            cell.setLabels?.(edgeData.labels);
           }
           if (edgeData.attrs) {
             cell.setAttrs(edgeData.attrs);

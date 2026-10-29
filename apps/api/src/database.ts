@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  AdminUserSummaryRow,
   ArtifactViewRow,
   AuditLogRow,
   ContentReportRow,
@@ -29,6 +30,7 @@ import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 import type { ComputeProfile } from "./services/hpc/hpc-types.js";
 
 export type {
+  AdminUserSummaryRow,
   ArtifactViewRow,
   AuditLogRow,
   ContentReportRow,
@@ -957,10 +959,14 @@ export class LibraryDatabase {
         reporter_id     INTEGER NOT NULL,
         post_id         INTEGER,
         target_user_id  INTEGER,
+        target_type     TEXT,
+        target_resource_id TEXT,
         reason          TEXT NOT NULL,
         details         TEXT,
         status          TEXT NOT NULL DEFAULT 'pending',
         resolution_notes TEXT,
+        action_taken    TEXT,
+        content_snapshot TEXT,
         created_at      TEXT DEFAULT (datetime('now')),
         resolved_at     TEXT,
         FOREIGN KEY (reporter_id) REFERENCES users(id),
@@ -991,6 +997,8 @@ export class LibraryDatabase {
         resource_id     TEXT,
         ip_address      TEXT,
         details         TEXT,
+        prev_hash       TEXT,
+        entry_hash      TEXT,
         created_at      TEXT DEFAULT (datetime('now'))
       );
 
@@ -1051,6 +1059,14 @@ export class LibraryDatabase {
       "ALTER TABLE linked_repos ADD COLUMN visibility TEXT DEFAULT 'public'",
       "ALTER TABLE linked_repos ADD COLUMN default_branch TEXT DEFAULT 'main'",
       "ALTER TABLE linked_repos ADD COLUMN social_preview_url TEXT",
+      "ALTER TABLE content_reports ADD COLUMN action_taken TEXT",
+      "ALTER TABLE content_reports ADD COLUMN content_snapshot TEXT",
+      "ALTER TABLE content_reports ADD COLUMN target_type TEXT",
+      "ALTER TABLE content_reports ADD COLUMN target_resource_id TEXT",
+      "ALTER TABLE posts ADD COLUMN is_sensitive INTEGER DEFAULT 0",
+      "ALTER TABLE posts ADD COLUMN content_warning TEXT",
+      "ALTER TABLE audit_logs ADD COLUMN prev_hash TEXT",
+      "ALTER TABLE audit_logs ADD COLUMN entry_hash TEXT",
     ];
     for (const sql of userColumns) {
       try {
@@ -1134,8 +1150,8 @@ export class LibraryDatabase {
         WHERE avatar_url IS NULL;
         
         UPDATE users 
-        SET banner_url = 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80' 
-        WHERE banner_url IS NULL;
+        SET banner_url = '/banners/omar.png' 
+        WHERE banner_url IS NULL OR banner_url = '';
       `);
     } catch {
       // Ignore migration errors
@@ -2656,8 +2672,8 @@ export class LibraryDatabase {
     if (!cleanPath.startsWith("/")) {
       cleanPath = "/" + cleanPath;
     }
-    if (cleanPath.length > 1 && cleanPath.endsWith("/")) {
-      cleanPath = cleanPath.replace(/\/+$/, "");
+    while (cleanPath.length > 1 && cleanPath.endsWith("/")) {
+      cleanPath = cleanPath.slice(0, -1);
     }
     if (cleanPath.length > 256) {
       cleanPath = cleanPath.slice(0, 256);
@@ -2866,6 +2882,12 @@ export class LibraryDatabase {
       if (!p.key_id_string && meta.keyIdString) {
         p.key_id_string = meta.keyIdString;
       }
+      if (!p.content_warning && typeof meta.contentWarning === "string" && meta.contentWarning.trim()) {
+        p.content_warning = meta.contentWarning.trim();
+      }
+    }
+    if (p.content_warning && !p.is_sensitive) {
+      p.is_sensitive = 1;
     }
     if (p.artifact_view_id && !p.artifact_view) {
       p.artifact_view = this.getArtifactView(p.artifact_view_id) ?? null;
@@ -3771,6 +3793,117 @@ export class LibraryDatabase {
     }
   }
 
+  getFederationQueueStats(): {
+    pending: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    total: number;
+  } {
+    const rows = this.#db
+      .prepare(`SELECT status, COUNT(*) as count FROM federation_delivery_queue GROUP BY status`)
+      .all() as { status: string; count: number }[];
+    const stats = { pending: 0, processing: 0, completed: 0, failed: 0, total: 0 };
+    for (const r of rows) {
+      if (r.status === "pending") stats.pending = r.count;
+      else if (r.status === "processing") stats.processing = r.count;
+      else if (r.status === "completed") stats.completed = r.count;
+      else if (r.status === "failed") stats.failed = r.count;
+      stats.total += r.count;
+    }
+    return stats;
+  }
+
+  listFederationDeliveries(
+    status?: string,
+    domain?: string,
+    limit: number = 50,
+  ): {
+    id: number;
+    activity_type: string;
+    activity_id: string;
+    target_inbox_url: string;
+    target_domain: string;
+    attempts: number;
+    max_attempts: number;
+    next_retry_at: string;
+    last_error: string | null;
+    status: string;
+    created_at: string;
+    updated_at: string;
+  }[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (status && status !== "all") {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    if (domain && domain.trim()) {
+      clauses.push("LOWER(target_domain) LIKE ?");
+      params.push(`%${domain.trim().toLowerCase()}%`);
+    }
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    params.push(limit);
+    return this.#db
+      .prepare(
+        `SELECT id, activity_type, activity_id, target_inbox_url, target_domain, attempts, max_attempts, next_retry_at, last_error, status, created_at, updated_at
+         FROM federation_delivery_queue
+         ${whereSql}
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(...params) as {
+      id: number;
+      activity_type: string;
+      activity_id: string;
+      target_inbox_url: string;
+      target_domain: string;
+      attempts: number;
+      max_attempts: number;
+      next_retry_at: string;
+      last_error: string | null;
+      status: string;
+      created_at: string;
+      updated_at: string;
+    }[];
+  }
+
+  retryFailedFederationDeliveries(domain?: string): { retriedCount: number } {
+    if (domain && domain.trim()) {
+      const res = this.#db
+        .prepare(
+          `UPDATE federation_delivery_queue
+           SET status = 'pending', attempts = 0, next_retry_at = datetime('now'), updated_at = datetime('now')
+           WHERE status = 'failed' AND LOWER(target_domain) = ?`,
+        )
+        .run(domain.trim().toLowerCase());
+      return { retriedCount: Number(res.changes) };
+    }
+    const res = this.#db
+      .prepare(
+        `UPDATE federation_delivery_queue
+         SET status = 'pending', attempts = 0, next_retry_at = datetime('now'), updated_at = datetime('now')
+         WHERE status = 'failed'`,
+      )
+      .run();
+    return { retriedCount: Number(res.changes) };
+  }
+
+  purgeFederationDeliveries(status?: string, domain?: string): { deletedCount: number } {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (status && status !== "all") {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    if (domain && domain.trim()) {
+      clauses.push("LOWER(target_domain) = ?");
+      params.push(domain.trim().toLowerCase());
+    }
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const res = this.#db.prepare(`DELETE FROM federation_delivery_queue ${whereSql}`).run(...params);
+    return { deletedCount: Number(res.changes) };
+  }
+
   getFollowState(followerId: number, followingId: number): "pending" | "accepted" | "rejected" | null {
     const row = this.#db
       .prepare(`SELECT state FROM follows WHERE follower_id = ? AND following_id = ?`)
@@ -3877,90 +4010,320 @@ export class LibraryDatabase {
 
   // ── Moderation & Content Reports ─────────────────────────────────
 
+  #hydrateContentReport(raw: ContentReportRow): ContentReportRow {
+    let snapshot: {
+      targetType?: string | undefined;
+      targetResourceId?: string | null | undefined;
+      postId?: number | null | undefined;
+      postContent?: string | null | undefined;
+      authorId?: number | null | undefined;
+      authorUsername?: string | null | undefined;
+      authorDomain?: string | null | undefined;
+      apId?: string | null | undefined;
+    } | null = null;
+
+    if (raw.content_snapshot && typeof raw.content_snapshot === "string") {
+      try {
+        snapshot = JSON.parse(raw.content_snapshot);
+      } catch {
+        snapshot = null;
+      }
+    }
+
+    const postContent = raw.post_content ?? snapshot?.postContent ?? null;
+    const postAuthorId = raw.post_author_id ?? snapshot?.authorId ?? raw.target_user_id ?? null;
+    const authorUsername = raw.author_username || raw.target_username || snapshot?.authorUsername || null;
+    const targetUsername = raw.target_username || raw.author_username || snapshot?.authorUsername || null;
+    const authorDomain = raw.author_domain || snapshot?.authorDomain || null;
+    const targetType = raw.target_type || snapshot?.targetType || (raw.post_id != null ? "post" : "user");
+    const targetResourceId =
+      raw.target_resource_id ??
+      snapshot?.targetResourceId ??
+      (raw.post_id != null ? String(raw.post_id) : raw.target_user_id != null ? String(raw.target_user_id) : null);
+
+    return {
+      ...raw,
+      post_content: postContent,
+      post_author_id: postAuthorId,
+      author_username: authorUsername,
+      target_username: targetUsername,
+      author_domain: authorDomain,
+      target_type: targetType,
+      target_resource_id: targetResourceId,
+    };
+  }
+
   createContentReport(
     reporterId: number,
     data: {
       postId?: number | undefined;
       targetUserId?: number | undefined;
+      targetType?: "post" | "user" | "package" | "repo" | "appeal" | string | undefined;
+      targetResourceId?: string | undefined;
       reason: string;
       details?: string | undefined;
     },
   ): { id: number; status: string } {
+    let effectiveTargetUserId = data.targetUserId ?? null;
+    const resolvedTargetType = data.targetType || (data.postId ? "post" : "user");
+    const resolvedResourceId =
+      data.targetResourceId ??
+      (data.postId != null
+        ? String(data.postId)
+        : effectiveTargetUserId != null
+          ? String(effectiveTargetUserId)
+          : null);
+
+    let snapshotObj: Record<string, unknown> = {
+      targetType: resolvedTargetType,
+      targetResourceId: resolvedResourceId,
+      capturedAt: new Date().toISOString(),
+    };
+
+    if (data.postId) {
+      const postInfo = this.#db
+        .prepare(
+          `SELECT p.id, p.content, p.author_id, p.ap_id, p.created_at, u.username, u.remote_domain
+           FROM posts p
+           LEFT JOIN users u ON p.author_id = u.id
+           WHERE p.id = ?`,
+        )
+        .get(data.postId) as
+        | {
+            id: number;
+            content: string | null;
+            author_id: number;
+            ap_id: string | null;
+            created_at: string;
+            username: string | null;
+            remote_domain: string | null;
+          }
+        | undefined;
+
+      if (postInfo) {
+        if (!effectiveTargetUserId) {
+          effectiveTargetUserId = postInfo.author_id;
+        }
+        snapshotObj = {
+          targetType: resolvedTargetType,
+          targetResourceId: resolvedResourceId,
+          postId: postInfo.id,
+          postContent: postInfo.content,
+          authorId: postInfo.author_id,
+          authorUsername: postInfo.username,
+          authorDomain: postInfo.remote_domain,
+          apId: postInfo.ap_id,
+          postCreatedAt: postInfo.created_at,
+          capturedAt: new Date().toISOString(),
+        };
+      }
+    } else if (effectiveTargetUserId) {
+      const userInfo = this.#db
+        .prepare(`SELECT id, username, display_name, bio, remote_domain, status FROM users WHERE id = ?`)
+        .get(effectiveTargetUserId) as
+        | {
+            id: number;
+            username: string;
+            display_name: string | null;
+            bio: string | null;
+            remote_domain: string | null;
+            status: string | null;
+          }
+        | undefined;
+      if (userInfo) {
+        snapshotObj = {
+          targetType: resolvedTargetType,
+          targetResourceId: resolvedResourceId,
+          authorId: userInfo.id,
+          authorUsername: userInfo.username,
+          authorDomain: userInfo.remote_domain,
+          displayName: userInfo.display_name,
+          bio: userInfo.bio,
+          userStatus: userInfo.status,
+          capturedAt: new Date().toISOString(),
+        };
+      }
+    }
+
     const result = this.#db
       .prepare(
-        `INSERT INTO content_reports (reporter_id, post_id, target_user_id, reason, details)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO content_reports (reporter_id, post_id, target_user_id, target_type, target_resource_id, reason, details, content_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(reporterId, data.postId ?? null, data.targetUserId ?? null, data.reason, data.details ?? null);
+      .run(
+        reporterId,
+        data.postId ?? null,
+        effectiveTargetUserId,
+        resolvedTargetType,
+        resolvedResourceId,
+        data.reason,
+        data.details ?? null,
+        JSON.stringify(snapshotObj),
+      );
     return { id: Number(result.lastInsertRowid), status: "pending" };
   }
 
   getContentReport(reportId: number): ContentReportRow | undefined {
-    return this.#db
+    const row = this.#db
       .prepare(
         `SELECT r.*, 
                 u.username as reporter_username, 
                 p.content as post_content,
-                p.author_id as post_author_id
+                p.author_id as post_author_id,
+                author_u.username as author_username,
+                target_u.username as target_username,
+                COALESCE(author_u.remote_domain, target_u.remote_domain) as author_domain
          FROM content_reports r
          LEFT JOIN users u ON r.reporter_id = u.id
          LEFT JOIN posts p ON r.post_id = p.id
+         LEFT JOIN users author_u ON p.author_id = author_u.id
+         LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
          WHERE r.id = ?`,
       )
       .get(reportId) as ContentReportRow | undefined;
+    return row ? this.#hydrateContentReport(row) : undefined;
   }
 
   getModerationQueue(status?: string, limit: number = 50, offset: number = 0): ContentReportRow[] {
-    if (status) {
-      return this.#db
-        .prepare(
-          `SELECT r.*, 
-                  u.username as reporter_username, 
-                  p.content as post_content,
-                  p.author_id as post_author_id
-           FROM content_reports r
-           LEFT JOIN users u ON r.reporter_id = u.id
-           LEFT JOIN posts p ON r.post_id = p.id
-           WHERE r.status = ?
-           ORDER BY r.created_at DESC
-           LIMIT ? OFFSET ?`,
-        )
-        .all(status, limit, offset) as ContentReportRow[];
-    }
-    return this.#db
-      .prepare(
-        `SELECT r.*, 
-                u.username as reporter_username, 
-                p.content as post_content,
-                p.author_id as post_author_id
-         FROM content_reports r
-         LEFT JOIN users u ON r.reporter_id = u.id
-         LEFT JOIN posts p ON r.post_id = p.id
-         ORDER BY r.created_at DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(limit, offset) as ContentReportRow[];
+    const baseQuery = `
+      SELECT r.*, 
+             u.username as reporter_username, 
+             p.content as post_content,
+             p.author_id as post_author_id,
+             author_u.username as author_username,
+             target_u.username as target_username,
+             COALESCE(author_u.remote_domain, target_u.remote_domain) as author_domain,
+             (
+               SELECT COUNT(*) FROM content_reports r2
+               WHERE (r.post_id IS NOT NULL AND r2.post_id = r.post_id)
+                  OR (r.post_id IS NULL AND r.target_resource_id IS NOT NULL AND r2.target_resource_id = r.target_resource_id)
+                  OR (r.post_id IS NULL AND r.target_user_id IS NOT NULL AND r2.target_user_id = r.target_user_id)
+             ) as target_report_count,
+             (
+               SELECT COUNT(*) FROM content_reports r3
+               WHERE r3.status = 'resolved'
+                 AND COALESCE(r3.target_user_id, 0) = COALESCE(r.target_user_id, p.author_id, -1)
+             ) as author_prior_violations
+      FROM content_reports r
+      LEFT JOIN users u ON r.reporter_id = u.id
+      LEFT JOIN posts p ON r.post_id = p.id
+      LEFT JOIN users author_u ON p.author_id = author_u.id
+      LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
+    `;
+
+    const rows = (
+      status
+        ? this.#db
+            .prepare(`${baseQuery} WHERE r.status = ? ORDER BY r.created_at DESC LIMIT ? OFFSET ?`)
+            .all(status, limit, offset)
+        : this.#db.prepare(`${baseQuery} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`).all(limit, offset)
+    ) as ContentReportRow[];
+
+    return rows.map((r) => this.#hydrateContentReport(r));
   }
 
-  resolveContentReport(reportId: number, status: "resolved" | "dismissed", resolutionNotes?: string): boolean {
+  resolveContentReport(
+    reportId: number,
+    status: "resolved" | "dismissed",
+    resolutionNotes?: string,
+    actionTaken?: string,
+    resolveAllForTarget?: boolean,
+  ): boolean {
+    const current = this.getContentReport(reportId);
     const res = this.#db
       .prepare(
         `UPDATE content_reports
-         SET status = ?, resolution_notes = ?, resolved_at = datetime('now')
+         SET status = ?, resolution_notes = ?, action_taken = COALESCE(?, action_taken), resolved_at = datetime('now')
          WHERE id = ?`,
       )
-      .run(status, resolutionNotes ?? null, reportId);
+      .run(status, resolutionNotes ?? null, actionTaken ?? null, reportId);
+
+    if (resolveAllForTarget && current) {
+      if (current.post_id) {
+        this.#db
+          .prepare(
+            `UPDATE content_reports
+             SET status = ?, resolution_notes = ?, action_taken = COALESCE(?, action_taken), resolved_at = datetime('now')
+             WHERE post_id = ? AND status = 'pending' AND id != ?`,
+          )
+          .run(status, resolutionNotes ?? null, actionTaken ?? null, current.post_id, reportId);
+      } else if (current.target_user_id) {
+        this.#db
+          .prepare(
+            `UPDATE content_reports
+             SET status = ?, resolution_notes = ?, action_taken = COALESCE(?, action_taken), resolved_at = datetime('now')
+             WHERE target_user_id = ? AND post_id IS NULL AND status = 'pending' AND id != ?`,
+          )
+          .run(status, resolutionNotes ?? null, actionTaken ?? null, current.target_user_id, reportId);
+      }
+    }
+
+    return res.changes > 0;
+  }
+
+  silencePost(postId: number, silenced: boolean = true): boolean {
+    const res = this.#db
+      .prepare(`UPDATE posts SET is_silenced = ?, updated_at = datetime('now') WHERE id = ?`)
+      .run(silenced ? 1 : 0, postId);
+    return res.changes > 0;
+  }
+
+  markPostSensitive(postId: number, isSensitive: boolean = true, contentWarning?: string | null): boolean {
+    const cw = isSensitive ? contentWarning?.trim() || "Sensitive content flagged by moderation" : null;
+    const res = this.#db
+      .prepare(
+        `UPDATE posts
+         SET is_sensitive = ?,
+             content_warning = ?,
+             updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(isSensitive ? 1 : 0, cw, postId);
     return res.changes > 0;
   }
 
   deletePost(postId: number): { success: boolean; apId?: string | undefined; authorId?: number | undefined } {
-    const post = this.#db.prepare(`SELECT id, author_id, ap_id FROM posts WHERE id = ?`).get(postId) as
-      | { id: number; author_id: number; ap_id: string | null }
+    const post = this.#db
+      .prepare(
+        `SELECT p.id, p.author_id, p.ap_id, p.content, p.created_at, u.username, u.remote_domain
+         FROM posts p
+         LEFT JOIN users u ON p.author_id = u.id
+         WHERE p.id = ?`,
+      )
+      .get(postId) as
+      | {
+          id: number;
+          author_id: number;
+          ap_id: string | null;
+          content: string | null;
+          created_at: string;
+          username: string | null;
+          remote_domain: string | null;
+        }
       | undefined;
     if (!post) {
       return { success: false };
     }
-    this.#db.prepare(`UPDATE content_reports SET post_id = NULL WHERE post_id = ?`).run(postId);
+    const fallbackSnapshot = JSON.stringify({
+      targetType: "post",
+      postId: post.id,
+      postContent: post.content,
+      authorId: post.author_id,
+      authorUsername: post.username,
+      authorDomain: post.remote_domain,
+      apId: post.ap_id,
+      postCreatedAt: post.created_at,
+      deletedAt: new Date().toISOString(),
+    });
+    this.#db
+      .prepare(
+        `UPDATE content_reports
+         SET post_id = NULL,
+             target_user_id = COALESCE(target_user_id, ?),
+             content_snapshot = COALESCE(content_snapshot, ?)
+         WHERE post_id = ?`,
+      )
+      .run(post.author_id, fallbackSnapshot, postId);
     this.#db.prepare(`DELETE FROM notifications WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM likes WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM bookmarks WHERE post_id = ?`).run(postId);
@@ -4007,13 +4370,172 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT * FROM dmca_notices ORDER BY created_at DESC`).all() as DmcaNoticeRow[];
   }
 
-  resolveDmcaNotice(id: number, actionTaken: string): boolean {
+  getDmcaNotice(id: number): DmcaNoticeRow | undefined {
+    return this.#db.prepare(`SELECT * FROM dmca_notices WHERE id = ?`).get(id) as DmcaNoticeRow | undefined;
+  }
+
+  resolveDmcaNotice(id: number, actionTaken: string, status: "resolved" | "rejected" = "resolved"): boolean {
     const res = this.#db
-      .prepare(
-        `UPDATE dmca_notices SET status = 'resolved', action_taken = ?, resolved_at = datetime('now') WHERE id = ?`,
-      )
-      .run(actionTaken, id);
+      .prepare(`UPDATE dmca_notices SET status = ?, action_taken = ?, resolved_at = datetime('now') WHERE id = ?`)
+      .run(status, actionTaken, id);
     return res.changes > 0;
+  }
+
+  // ── Admin Overview & User Governance ─────────────────────────────
+
+  getAdminPendingCounts(): {
+    pendingReports: number;
+    pendingDmca: number;
+    failedDeliveries: number;
+    suspendedDomains: number;
+    restrictedUsers: number;
+  } {
+    const pendingReports =
+      (
+        this.#db.prepare(`SELECT COUNT(*) as c FROM content_reports WHERE status = 'pending'`).get() as
+          | { c: number }
+          | undefined
+      )?.c ?? 0;
+    const pendingDmca =
+      (
+        this.#db.prepare(`SELECT COUNT(*) as c FROM dmca_notices WHERE status = 'pending'`).get() as
+          | { c: number }
+          | undefined
+      )?.c ?? 0;
+    const failedDeliveries =
+      (
+        this.#db.prepare(`SELECT COUNT(*) as c FROM federation_delivery_queue WHERE status = 'failed'`).get() as
+          | { c: number }
+          | undefined
+      )?.c ?? 0;
+    const suspendedDomains =
+      (
+        this.#db.prepare(`SELECT COUNT(*) as c FROM federation_domains WHERE tier IN ('silence', 'suspend')`).get() as
+          | { c: number }
+          | undefined
+      )?.c ?? 0;
+    const restrictedUsers =
+      (
+        this.#db.prepare(`SELECT COUNT(*) as c FROM users WHERE status IN ('frozen', 'suspended')`).get() as
+          | { c: number }
+          | undefined
+      )?.c ?? 0;
+    return {
+      pendingReports,
+      pendingDmca,
+      failedDeliveries,
+      suspendedDomains,
+      restrictedUsers,
+    };
+  }
+
+  listUsersForAdmin(options?: {
+    query?: string | undefined;
+    status?: string | undefined;
+    role?: string | undefined;
+    limit?: number | undefined;
+    offset?: number | undefined;
+  }): { users: AdminUserSummaryRow[]; total: number } {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (options?.query && options.query.trim()) {
+      const q = `%${options.query.trim().toLowerCase()}%`;
+      clauses.push(`(LOWER(u.username) LIKE ? OR LOWER(u.email) LIKE ? OR LOWER(COALESCE(u.display_name, '')) LIKE ?)`);
+      params.push(q, q, q);
+    }
+    if (options?.status && options.status !== "all") {
+      clauses.push(`COALESCE(u.status, 'active') = ?`);
+      params.push(options.status);
+    }
+    if (options?.role && options.role !== "all") {
+      clauses.push(`COALESCE(u.account_type, 'user') = ?`);
+      params.push(options.role);
+    }
+
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const totalRow = this.#db.prepare(`SELECT COUNT(*) as c FROM users u ${whereSql}`).get(...params) as
+      | { c: number }
+      | undefined;
+    const total = totalRow?.c ?? 0;
+
+    const limit = Math.min(100, Math.max(1, options?.limit || 50));
+    const offset = Math.max(0, options?.offset || 0);
+
+    const users = this.#db
+      .prepare(
+        `SELECT u.id,
+                u.username,
+                u.email,
+                u.display_name,
+                COALESCE(u.account_type, 'user') as account_type,
+                COALESCE(u.status, 'active') as status,
+                COALESCE(u.email_verified, 0) as email_verified,
+                COALESCE(u.totp_enabled, 0) as totp_enabled,
+                COALESCE(u.credit_balance, 0) as credit_balance,
+                u.remote_domain,
+                u.created_at,
+                (SELECT COUNT(*) FROM posts p WHERE p.author_id = u.id) as post_count,
+                (SELECT COUNT(*) FROM content_reports r WHERE r.target_user_id = u.id) as report_count,
+                (SELECT COUNT(*) FROM content_reports r WHERE r.target_user_id = u.id AND r.status = 'resolved') as resolved_violation_count
+         FROM users u
+         ${whereSql}
+         ORDER BY u.id DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset) as AdminUserSummaryRow[];
+
+    return { users, total };
+  }
+
+  moderateUserAccount(
+    userId: number,
+    options: {
+      status?: "active" | "frozen" | "suspended" | "pending_verification" | undefined;
+      role?: "user" | "admin" | undefined;
+      revokeSessions?: boolean | undefined;
+      purgePosts?: boolean | undefined;
+    },
+  ): {
+    success: boolean;
+    purgedPostCount: number;
+    sessionsRevoked: boolean;
+  } {
+    const user = this.getUserById(userId);
+    if (!user) {
+      return { success: false, purgedPostCount: 0, sessionsRevoked: false };
+    }
+
+    if (options.status) {
+      this.#db.prepare(`UPDATE users SET status = ? WHERE id = ?`).run(options.status, userId);
+    }
+    if (options.role) {
+      this.#db.prepare(`UPDATE users SET account_type = ? WHERE id = ?`).run(options.role, userId);
+    }
+
+    const shouldRevoke =
+      Boolean(options.revokeSessions) || options.status === "suspended" || options.status === "frozen";
+    if (shouldRevoke) {
+      this.#db.prepare(`UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`).run(userId);
+    }
+
+    let purgedPostCount = 0;
+    if (options.purgePosts) {
+      const userPostIds = this.#db.prepare(`SELECT id FROM posts WHERE author_id = ?`).all(userId) as {
+        id: number;
+      }[];
+      for (const p of userPostIds) {
+        if (this.deletePost(p.id).success) {
+          purgedPostCount++;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      purgedPostCount,
+      sessionsRevoked: shouldRevoke,
+    };
   }
 
   logAudit(data: {
@@ -4026,10 +4548,25 @@ export class LibraryDatabase {
   }): void {
     const detailsStr = typeof data.details === "object" ? JSON.stringify(data.details) : (data.details ?? null);
     try {
+      const prevRow = this.#db
+        .prepare(`SELECT entry_hash FROM audit_logs WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1`)
+        .get() as { entry_hash: string } | undefined;
+      const prevHash = prevRow?.entry_hash || "GENESIS";
+      const canonicalPayload = [
+        prevHash,
+        String(data.actorId ?? ""),
+        data.action,
+        data.resourceType,
+        String(data.resourceId ?? ""),
+        String(data.ipAddress ?? ""),
+        detailsStr ?? "",
+      ].join("|");
+      const entryHash = crypto.createHash("sha256").update(canonicalPayload).digest("hex");
+
       this.#db
         .prepare(
-          `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, ip_address, details)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           data.actorId ?? null,
@@ -4038,34 +4575,103 @@ export class LibraryDatabase {
           data.resourceId ?? null,
           data.ipAddress ?? null,
           detailsStr,
+          prevHash,
+          entryHash,
         );
     } catch (e) {
       console.error("[AuditLog] Failed to insert audit log entry:", e);
     }
   }
 
-  getAuditLogs(limit: number = 50, offset: number = 0, action?: string): AuditLogRow[] {
-    if (action) {
-      return this.#db
-        .prepare(
-          `SELECT a.*, u.username as actor_username
-           FROM audit_logs a
-           LEFT JOIN users u ON a.actor_id = u.id
-           WHERE a.action = ?
-           ORDER BY a.created_at DESC
-           LIMIT ? OFFSET ?`,
-        )
-        .all(action, limit, offset) as AuditLogRow[];
+  verifyAuditLogChain(): {
+    valid: boolean;
+    totalEntries: number;
+    verifiedEntries: number;
+    headHash: string | null;
+    brokenAtId?: number | undefined;
+  } {
+    const rows = this.#db
+      .prepare(
+        `SELECT id, actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash
+         FROM audit_logs
+         ORDER BY id ASC`,
+      )
+      .all() as AuditLogRow[];
+
+    let verifiedEntries = 0;
+    let expectedPrevHash: string | null = null;
+    let headHash: string | null = null;
+
+    for (const row of rows) {
+      if (!row.entry_hash) {
+        continue;
+      }
+      const prevHash: string = expectedPrevHash ?? row.prev_hash ?? "GENESIS";
+      if (expectedPrevHash !== null && row.prev_hash !== expectedPrevHash) {
+        return {
+          valid: false,
+          totalEntries: rows.length,
+          verifiedEntries,
+          headHash,
+          brokenAtId: row.id,
+        };
+      }
+      const canonicalPayload: string = [
+        prevHash,
+        String(row.actor_id ?? ""),
+        row.action,
+        row.resource_type,
+        String(row.resource_id ?? ""),
+        String(row.ip_address ?? ""),
+        row.details ?? "",
+      ].join("|");
+      const recomputedHash: string = crypto.createHash("sha256").update(canonicalPayload).digest("hex");
+      if (recomputedHash !== row.entry_hash) {
+        return {
+          valid: false,
+          totalEntries: rows.length,
+          verifiedEntries,
+          headHash,
+          brokenAtId: row.id,
+        };
+      }
+      verifiedEntries++;
+      expectedPrevHash = row.entry_hash;
+      headHash = row.entry_hash;
     }
+
+    return {
+      valid: true,
+      totalEntries: rows.length,
+      verifiedEntries,
+      headHash,
+    };
+  }
+
+  getAuditLogs(limit: number = 50, offset: number = 0, action?: string, resourceType?: string): AuditLogRow[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+
+    if (action && action.trim()) {
+      clauses.push(`(a.action = ? OR LOWER(a.action) LIKE ?)`);
+      params.push(action.trim(), `%${action.trim().toLowerCase()}%`);
+    }
+    if (resourceType && resourceType.trim() && resourceType !== "all") {
+      clauses.push(`a.resource_type = ?`);
+      params.push(resourceType.trim());
+    }
+
+    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     return this.#db
       .prepare(
         `SELECT a.*, u.username as actor_username
          FROM audit_logs a
          LEFT JOIN users u ON a.actor_id = u.id
-         ORDER BY a.created_at DESC
+         ${whereSql}
+         ORDER BY a.created_at DESC, a.id DESC
          LIMIT ? OFFSET ?`,
       )
-      .all(limit, offset) as AuditLogRow[];
+      .all(...params, limit, offset) as AuditLogRow[];
   }
 
   /**
@@ -4278,22 +4884,47 @@ export class LibraryDatabase {
   }
 
   updateArtifactThumbnail(id: number, thumbnailUrl: string, thumbnailUrlDark?: string): void {
-    const row = this.#db.prepare(`SELECT view_config FROM artifact_views WHERE id = ?`).get(id) as
-      | { view_config?: string | undefined }
-      | undefined;
-    if (row && row.view_config) {
-      try {
-        const config = JSON.parse(row.view_config);
-        config.thumbnailUrl = thumbnailUrl;
-        config.thumbnailUrlLight = thumbnailUrl;
-        config.thumbnailUrlDark = thumbnailUrlDark || thumbnailUrl;
-        this.#db
-          .prepare(`UPDATE artifact_views SET thumbnail_url = ?, view_config = ? WHERE id = ?`)
-          .run(thumbnailUrl, JSON.stringify(config), id);
-        return;
-      } catch {}
-    }
+    const darkUrl = thumbnailUrlDark || thumbnailUrl;
+    try {
+      this.#db
+        .prepare(
+          `UPDATE artifact_views
+           SET thumbnail_url = ?,
+               view_config = CASE
+                 WHEN view_config IS NOT NULL AND json_valid(view_config)
+                 THEN json_set(view_config, '$.thumbnailUrl', ?, '$.thumbnailUrlLight', ?, '$.thumbnailUrlDark', ?)
+                 ELSE view_config
+               END
+           WHERE id = ?`,
+        )
+        .run(thumbnailUrl, thumbnailUrl, thumbnailUrl, darkUrl, id);
+      return;
+    } catch {}
     this.#db.prepare(`UPDATE artifact_views SET thumbnail_url = ? WHERE id = ?`).run(thumbnailUrl, id);
+  }
+
+  updateArtifactThumbnailsByTitle(title: string, thumbnailUrl: string, thumbnailUrlDark?: string): number {
+    const darkUrl = thumbnailUrlDark || thumbnailUrl;
+    try {
+      const res = this.#db
+        .prepare(
+          `UPDATE artifact_views
+           SET thumbnail_url = ?,
+               view_config = CASE
+                 WHEN view_config IS NOT NULL AND json_valid(view_config)
+                 THEN json_set(view_config, '$.thumbnailUrl', ?, '$.thumbnailUrlLight', ?, '$.thumbnailUrlDark', ?)
+                 ELSE view_config
+               END
+           WHERE title = ?`,
+        )
+        .run(thumbnailUrl, thumbnailUrl, thumbnailUrl, darkUrl, title);
+      return res.changes;
+    } catch {
+      const res = this.#db
+        .prepare(`UPDATE artifact_views SET thumbnail_url = ? WHERE title = ?`)
+        .run(thumbnailUrl, title);
+      return res.changes;
+    }
   }
 
   getUserArchiveData(userId: number): UserArchiveData {
@@ -4680,7 +5311,15 @@ export class LibraryDatabase {
 
   getLinkedRepos(userId: number): LinkedRepoRow[] {
     return this.#db
-      .prepare(`SELECT * FROM linked_repos WHERE user_id = ? ORDER BY created_at DESC`)
+      .prepare(
+        `
+        SELECT r.*, u.username, u.display_name, COALESCE(r.avatar_url, u.avatar_url) as avatar_url
+        FROM linked_repos r
+        LEFT JOIN users u ON r.user_id = u.id
+        WHERE r.user_id = ?
+        ORDER BY r.pinned DESC, r.id ASC
+      `,
+      )
       .all(userId) as LinkedRepoRow[];
   }
 
@@ -4692,11 +5331,11 @@ export class LibraryDatabase {
     return this.#db
       .prepare(
         `
-        SELECT r.*, u.username, u.display_name, u.avatar_url
+        SELECT r.*, u.username, u.display_name, COALESCE(r.avatar_url, u.avatar_url) as avatar_url
         FROM linked_repos r
         JOIN users u ON r.user_id = u.id
-        GROUP BY r.namespace, r.project
-        ORDER BY RANDOM()
+        GROUP BY r.provider, r.namespace, r.project
+        ORDER BY r.pinned DESC, r.id ASC
         LIMIT ?
       `,
       )
@@ -4708,25 +5347,54 @@ export class LibraryDatabase {
     provider: string,
     externalId: string,
     repoFullName: string,
-    _defaultBranch?: string,
+    defaultBranch?: string,
     description?: string,
+    avatarUrl?: string,
   ): void {
     const parts = repoFullName.split("/");
     const namespace = parts[0] || "";
     const project = parts.slice(1).join("/") || repoFullName;
+    const branch = defaultBranch || "main";
 
     const existing = this.#db
-      .prepare(`SELECT id FROM linked_repos WHERE user_id = ? AND provider = ? AND external_id = ?`)
-      .get(userId, provider, externalId);
+      .prepare(
+        `SELECT id FROM linked_repos WHERE user_id = ? AND (external_id = ? OR (provider = ? AND namespace = ? AND project = ?))`,
+      )
+      .get(userId, externalId, provider, namespace, project) as { id: number } | undefined;
     if (!existing) {
       this.#db
         .prepare(
           `
-        INSERT INTO linked_repos (user_id, provider, namespace, project, external_id, description)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO linked_repos (user_id, provider, namespace, project, external_id, default_branch, description, avatar_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
         )
-        .run(userId, provider, namespace, project, externalId, description || null);
+        .run(userId, provider, namespace, project, externalId, branch, description || null, avatarUrl || null);
+    } else {
+      this.#db
+        .prepare(
+          `
+        UPDATE linked_repos
+        SET provider = ?,
+            namespace = ?,
+            project = ?,
+            external_id = COALESCE(?, external_id),
+            default_branch = COALESCE(?, default_branch),
+            description = COALESCE(?, description),
+            avatar_url = COALESCE(?, avatar_url)
+        WHERE id = ?
+      `,
+        )
+        .run(
+          provider,
+          namespace,
+          project,
+          externalId || null,
+          defaultBranch || null,
+          description || null,
+          avatarUrl || null,
+          existing.id,
+        );
     }
   }
 
@@ -7053,18 +7721,21 @@ export class LibraryDatabase {
     sizeBytes: number;
     createdAt: string;
   } {
-    const backupDir = path.join(this.dbDir, "backups");
+    const backupDir = path.resolve(this.dbDir, "backups");
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
     }
     const safeLabel = customLabel ? `-${customLabel.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32)}` : "";
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const fileName = `modelscript-backup-${timestamp}${safeLabel}.db`;
-    const backupPath = path.join(backupDir, fileName);
+    const backupPath = path.resolve(backupDir, fileName);
+    const rel = path.relative(backupDir, backupPath);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("Invalid backup path");
+    }
 
-    // Checkpoint WAL and perform online consistent snapshot using VACUUM INTO
-    const escapedPath = backupPath.replace(/'/g, "''");
-    this.#db.exec(`VACUUM INTO '${escapedPath}'`);
+    // Checkpoint WAL and perform online consistent snapshot using parameterized VACUUM INTO
+    this.#db.prepare("VACUUM INTO ?").run(backupPath);
 
     const stats = fs.statSync(backupPath);
     return {
@@ -7295,6 +7966,8 @@ export class LibraryDatabase {
     const costCredits = job.cost_credits || 0;
     const cpuSeconds = job.cpu_seconds || 0;
 
+    const defaultJobThumbnail: string | undefined = undefined;
+
     const viewConfig: Record<string, unknown> = {
       url: `/api/v1/cae/jobs/${job.id}/results`,
       jobId: job.id,
@@ -7307,6 +7980,9 @@ export class LibraryDatabase {
       activeField: options?.activeField,
       scalars,
       title,
+      thumbnailUrl: defaultJobThumbnail,
+      thumbnailUrlLight: defaultJobThumbnail,
+      thumbnailUrlDark: defaultJobThumbnail,
       provenance: {
         solver,
         profile: computeProfile,
@@ -7317,7 +7993,14 @@ export class LibraryDatabase {
       },
     };
 
-    const artifactId = this.createArtifactView(userId, artifactType, "hpc_job", JSON.stringify(viewConfig), title);
+    const artifactId = this.createArtifactView(
+      userId,
+      artifactType,
+      "hpc_job",
+      JSON.stringify(viewConfig),
+      title,
+      defaultJobThumbnail,
+    );
 
     // Auto-generate technical caption using only verified scalar outputs
     let suggestedCaption = "";

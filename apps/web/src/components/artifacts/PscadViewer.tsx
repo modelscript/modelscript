@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, renderSourceToDiagramSvg } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface PscadViewerProps {
   viewConfig: {
@@ -47,9 +47,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -60,7 +60,7 @@ const Toolbar = styled.div`
   height: 44px;
   min-height: 44px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -80,7 +80,7 @@ const HeaderLeft = styled.div`
 const ModelTitle = styled.div`
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--color-text-heading, #f0f6fc);
+  color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -102,19 +102,19 @@ const PillBadge = styled.span<{ $variant?: "pscad" | "ieee" | "warning" }>`
       case "pscad":
         return `
           background: rgba(14, 165, 233, 0.15);
-          color: #38bdf8;
+          color: var(--color-accent-fg, var(--color-fg-default));
           border: 1px solid rgba(14, 165, 233, 0.35);
         `;
       case "ieee":
         return `
           background: rgba(16, 185, 129, 0.15);
-          color: #34d399;
+          color: var(--color-success-fg, var(--color-fg-default));
           border: 1px solid rgba(16, 185, 129, 0.35);
         `;
       default:
         return `
           background: rgba(245, 158, 11, 0.15);
-          color: #fbbf24;
+          color: var(--color-attention-fg, var(--color-fg-default));
           border: 1px solid rgba(245, 158, 11, 0.35);
         `;
     }
@@ -123,8 +123,8 @@ const PillBadge = styled.span<{ $variant?: "pscad" | "ieee" | "warning" }>`
 
 const SegmentedControl = styled.div`
   display: inline-flex;
-  background: var(--color-canvas-inset, #010409);
-  border: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   padding: 2px;
   gap: 2px;
@@ -132,8 +132,8 @@ const SegmentedControl = styled.div`
 
 const SegmentBtn = styled.button<{ $active: boolean }>`
   border: none;
-  background: ${(p) => (p.$active ? "var(--color-accent-emphasis, #1f6feb)" : "transparent")};
-  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted, #8b949e)")};
+  background: ${(p) => (p.$active ? "var(--color-accent-emphasis)" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--color-fg-on-emphasis, var(--color-fg-default))" : "var(--color-fg-muted)")};
   font-size: 11px;
   font-weight: 600;
   padding: 3px 9px;
@@ -145,7 +145,7 @@ const SegmentBtn = styled.button<{ $active: boolean }>`
   transition: all 0.12s ease;
 
   &:hover {
-    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default, #e6edf3)")};
+    color: ${(p) => (p.$active ? "var(--color-fg-on-emphasis, var(--color-fg-default))" : "var(--color-fg-default)")};
   }
 `;
 
@@ -163,7 +163,7 @@ const SvgCanvas = styled.div`
   justify-content: center;
   overflow: auto;
   padding: 16px;
-  background: var(--color-canvas-inset, #010409);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 
   svg {
     max-width: 100%;
@@ -181,8 +181,8 @@ const CodePre = styled.pre`
   font-family: var(--font-mono, "JetBrains Mono", monospace);
   font-size: 12.5px;
   line-height: 1.55;
-  color: var(--color-fg-default, #e6edf3);
-  background: var(--color-canvas-inset, #010409);
+  color: var(--color-fg-default);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
 `;
 
 const CodeLine = styled.div`
@@ -196,7 +196,7 @@ const CodeLine = styled.div`
 const LineNo = styled.span`
   width: 44px;
   flex-shrink: 0;
-  color: var(--color-fg-subtle, #6e7681);
+  color: var(--color-fg-subtle);
   user-select: none;
   text-align: right;
   padding-right: 16px;
@@ -204,8 +204,8 @@ const LineNo = styled.span`
 
 const InspectorSidebar = styled.div`
   width: 260px;
-  border-left: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  border-left: 1px solid var(--color-border-default);
+  background: var(--color-canvas-subtle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -217,10 +217,10 @@ const StatItem = styled.div`
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
+  color: var(--color-fg-muted);
 
   strong {
-    color: var(--color-fg-default, #c9d1d9);
+    color: var(--color-fg-default);
   }
 `;
 
@@ -245,7 +245,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (viewConfig.svg ? "diagram" : "code"));
 
   const title = viewConfig.title || viewConfig.projectTitle || viewConfig.definitionName || "PSCAD Case";
 
@@ -273,14 +273,13 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   const parsedClient = useMemo(() => (rawText ? parsePscadClient(rawText) : undefined), [rawText]);
 
   const sanitizedSvg = useMemo(() => {
-    if (viewConfig.svg) {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (rawText.trim()) {
-      return renderSourceToDiagramSvg(rawText, "pscad", title, true).svg;
-    }
     return "";
-  }, [viewConfig.svg, rawText, title]);
+  }, [viewConfig.svg]);
+
+  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
   const handleCopy = () => {
     if (rawText) {
@@ -325,7 +324,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <ZapIcon size={16} fill="#38bdf8" />
+          <ZapIcon size={16} fill="var(--color-accent-fg, currentColor)" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge $variant="pscad">PSCAD / EMT</PillBadge>
           {viewConfig.ieee2800Compliant === true && (
@@ -335,14 +334,20 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           )}
         </HeaderLeft>
         <Box display="flex" alignItems="center" gap={2}>
-          <SegmentedControl>
-            <SegmentBtn type="button" $active={viewMode === "diagram"} onClick={() => setViewMode("diagram")}>
-              <ZapIcon size={12} /> Schematic
-            </SegmentBtn>
-            <SegmentBtn type="button" $active={viewMode === "code"} onClick={() => setViewMode("code")}>
-              <CodeIcon size={12} /> Source
-            </SegmentBtn>
-          </SegmentedControl>
+          {sanitizedSvg && (
+            <SegmentedControl>
+              <SegmentBtn
+                type="button"
+                $active={effectiveViewMode === "diagram"}
+                onClick={() => setViewMode("diagram")}
+              >
+                <ZapIcon size={12} /> Schematic
+              </SegmentBtn>
+              <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+                <CodeIcon size={12} /> Source
+              </SegmentBtn>
+            </SegmentedControl>
+          )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
               SVG
@@ -364,7 +369,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "code" || !sanitizedSvg ? (
+        ) : effectiveViewMode === "code" || !sanitizedSvg ? (
           <CodePre>
             {lines.length > 0 ? (
               lines.map((line, idx) => (

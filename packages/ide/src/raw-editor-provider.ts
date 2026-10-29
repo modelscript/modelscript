@@ -149,6 +149,11 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           break;
         }
 
+        case "simulateTransient": {
+          await vscode.commands.executeCommand("modelscript.psse.simulate_psse_transient", document.uri.toString());
+          break;
+        }
+
         case "showInfo":
           if (msg.message) {
             vscode.window.showInformationMessage(msg.message);
@@ -500,6 +505,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
         <button id="btn-mode-sld" class="active" onclick="switchView('sld')">⚡ SLD Diagram</button>
         <button id="btn-mode-grid" onclick="switchView('grid')">📋 Grid Tables</button>
       </div>
+      <button onclick="exportAction('simulateTransient')" style="background:#0284c7;color:#fff;border-color:#38bdf8;">▶ Simulate Transient</button>
       <button onclick="exportAction('exportSvg')">📥 Export SVG</button>
       <button onclick="exportAction('exportModelica')">⚡ Modelica</button>
       <button onclick="exportAction('exportPscad')">🌐 PSCAD</button>
@@ -581,6 +587,8 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     const vscode = acquireVsCodeApi();
     let currentData = null;
     let currentGridTab = "buses";
+    let sldZoom = 1.0;
+    let selectedElement = null;
 
     window.addEventListener("message", (event) => {
       const msg = event.data;
@@ -621,9 +629,13 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
       // KPIs
       document.getElementById("kpi-buses").innerText = currentData.buses.length;
       document.getElementById("kpi-gens").innerText = currentData.generators.length;
-      document.getElementById("kpi-gen-p").innerText = currentData.metrics.totalGenMw.toFixed(1) + " MW";
-      document.getElementById("kpi-load-p").innerText = currentData.metrics.totalLoadMw.toFixed(1) + " MW";
-      document.getElementById("kpi-losses").innerText = currentData.metrics.lossesMw.toFixed(2) + " MW";
+      document.getElementById("kpi-gen-p").innerText = (currentData.metrics?.totalGenMw ?? 0).toFixed(1) + " MW";
+      document.getElementById("kpi-load-p").innerText = (currentData.metrics?.totalLoadMw ?? 0).toFixed(1) + " MW";
+      const totalLossesMw =
+        currentData.powerflow && typeof currentData.powerflow.totalLossMw === "number"
+          ? currentData.powerflow.totalLossMw
+          : (currentData.metrics?.lossesMw ?? 0);
+      document.getElementById("kpi-losses").innerText = totalLossesMw.toFixed(2) + " MW";
       document.getElementById("kpi-branches").innerText = currentData.branches.length;
       document.getElementById("kpi-xfmrs").innerText = currentData.transformers.length;
 

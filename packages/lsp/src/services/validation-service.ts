@@ -674,10 +674,13 @@ export class ValidationService {
             const line = Math.max(0, (d.line ?? 1) - 1);
             const col = Math.max(0, (d.column ?? d.col ?? 1) - 1);
             const endLine = Math.max(line, (d.endLine ?? d.line ?? 1) - 1);
+            const explicitEndCol1 = d.endColumn ?? d.endCol;
             const endCol =
               endLine === line
-                ? Math.max(col + 1, (d.endColumn ?? d.endCol ?? col + 10) - 1)
-                : Math.max(0, (d.endColumn ?? d.endCol ?? 1) - 1);
+                ? explicitEndCol1 !== undefined
+                  ? Math.max(col + 1, explicitEndCol1 - 1)
+                  : this.computeTokenEndCharacter(text, line, col)
+                : Math.max(0, (explicitEndCol1 ?? 1) - 1);
             range = {
               start: { line, character: col },
               end: { line: endLine, character: endCol },
@@ -1701,6 +1704,8 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[scad] Validating ${textDocument.uri} (${text.length} chars)`);
+      this.lastIndexedText.set(textDocument.uri, text);
+      await this.parserService?.ensureLanguageParserLoaded?.("scad");
       const { getScadParser, lintScadCst } = await import("@modelscript/scad");
       const parser = plugin?.parser ?? this.parserService?.getParser?.("scad") ?? (await getScadParser());
       if (parser) {
@@ -1841,6 +1846,26 @@ export class ValidationService {
   /**
    * Parses, lints, and indexes a PSCAD (`.pscx`, `.pslx`, `.pswx`, `.psmx`) power systems document.
    */
+  /**
+   * Computes a safe 0-based end character on the given line when `endColumn` is not provided,
+   * clamping to the XML tag name (`<tagName`) or identifier token at `(line, col)` so squiggles
+   * never spill across whitespace into attributes.
+   */
+  private computeTokenEndCharacter(text: string, lineZero: number, colZero: number): number {
+    const lines = text.split(/\r?\n/);
+    const lineText = lines[lineZero] ?? "";
+    const slice = lineText.slice(colZero);
+    const xmlTagMatch = slice.match(/^<\/?[A-Za-z0-9_:-]+/);
+    if (xmlTagMatch) {
+      return colZero + xmlTagMatch[0].length;
+    }
+    const tokenMatch = slice.match(/^[A-Za-z0-9_:-]+/);
+    if (tokenMatch) {
+      return colZero + tokenMatch[0].length;
+    }
+    return Math.min(Math.max(colZero + 1, lineText.length), colZero + 8);
+  }
+
   private async validatePscadDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const pscadDiagnostics: Diagnostic[] = [];
@@ -1857,7 +1882,9 @@ export class ValidationService {
         const endLine = Math.max(line, (lint.endLine ?? lint.line ?? 1) - 1);
         const endCol =
           endLine === line
-            ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
+            ? lint.endColumn !== undefined
+              ? Math.max(col + 1, lint.endColumn - 1)
+              : this.computeTokenEndCharacter(text, line, col)
             : Math.max(0, (lint.endColumn ?? 1) - 1);
         pscadDiagnostics.push({
           severity:
@@ -2050,16 +2077,18 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[fortran] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { lintFortran, parseFortranScript } = await import("@modelscript/fortran");
+      const { lintFortran, parseFortranScript, verifyFortranSource } = await import("@modelscript/fortran");
       const lints = lintFortran(text);
+      const rawLines = text.split(/\r?\n/);
 
       for (const lint of lints) {
         const line = Math.max(0, (lint.line ?? 1) - 1);
         const col = Math.max(0, (lint.column ?? 1) - 1);
         const endLine = Math.max(line, (lint.endLine ?? lint.line ?? 1) - 1);
+        const lineLen = rawLines[endLine]?.length ?? 80;
         const endCol =
           endLine === line
-            ? Math.max(col + 1, (lint.endColumn ?? (lint.column ?? 1) + 10) - 1)
+            ? Math.max(col + 1, (lint.endColumn ?? lineLen + 1) - 1)
             : Math.max(0, (lint.endColumn ?? 1) - 1);
         fortranDiagnostics.push({
           severity:
@@ -2078,10 +2107,39 @@ export class ValidationService {
         });
       }
 
+      // Run formal CFG abstract interpretation & DAE reachability verification
+      const verification = verifyFortranSource(text);
+      for (const check of verification.checks) {
+        if (check.verdict !== "definite_bug" && check.verdict !== "potential_bug") continue;
+        const line0 = Math.max(0, (check.astNodeId ?? 1) - 1);
+        const alreadyReportedOnLine = fortranDiagnostics.some(
+          (d) =>
+            d.range.start.line === line0 &&
+            ((check.category === "division_by_zero" && String(d.code).includes("4072")) ||
+              (check.category === "math_domain" && String(d.code).includes("4084")) ||
+              (check.category === "array_out_of_bounds" && String(d.code).includes("4073"))),
+        );
+        if (!alreadyReportedOnLine) {
+          const lineText = rawLines[line0] ?? "";
+          const firstNonSpace = lineText.search(/\S/);
+          const startChar = firstNonSpace >= 0 ? firstNonSpace : 0;
+          fortranDiagnostics.push({
+            severity: check.verdict === "definite_bug" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+            range: {
+              start: { line: line0, character: startChar },
+              end: { line: line0, character: Math.max(startChar + 1, lineText.length) },
+            },
+            code: "M4085",
+            message: `[M4085] Formal Verifier (${check.category}): ${check.description}`,
+            source: "fortran-verifier",
+          });
+        }
+      }
+
       const stmts = parseFortranScript(text);
       this.documentManager.documentTrees.set(textDocument.uri, {
         text,
-        tree: { rootNode: { text, data: stmts } } as any,
+        tree: { rootNode: { text, data: stmts, verification } } as any,
         classCache: new Map(),
       });
     } catch (err: any) {
@@ -2986,7 +3044,11 @@ export class ValidationService {
             newDiagsByUri.set(locUri, uriDiags);
           }
           const msgPrefix =
-            locUri.endsWith(".owl") || locUri.endsWith(".ofn") || locUri.endsWith(".ttl")
+            locUri.endsWith(".owl") ||
+            locUri.endsWith(".owl2") ||
+            locUri.endsWith(".ofn") ||
+            locUri.endsWith(".fss") ||
+            locUri.endsWith(".ttl")
               ? "Ontology inconsistency: "
               : "Logical contradiction: ";
           uriDiags.push({
@@ -3061,7 +3123,12 @@ export class ValidationService {
         }
       }
 
-      const isOwlFile = currentUri.endsWith(".owl") || currentUri.endsWith(".ofn") || currentUri.endsWith(".ttl");
+      const isOwlFile =
+        currentUri.endsWith(".owl") ||
+        currentUri.endsWith(".owl2") ||
+        currentUri.endsWith(".ofn") ||
+        currentUri.endsWith(".fss") ||
+        currentUri.endsWith(".ttl");
       if (isOwlFile && (!newDiagsByUri.has(currentUri) || (newDiagsByUri.get(currentUri)?.length ?? 0) === 0)) {
         let fallbackRange = {
           start: { line: 0, character: 0 },

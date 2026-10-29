@@ -3,6 +3,7 @@
 import { ColumnsIcon, EyeIcon, PencilIcon, ScreenFullIcon, XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createArtifactView } from "../../api";
 import { createCellId, type NotebookCell, type TutorialDifficulty } from "../../util/notebook";
 import Box from "../Box";
@@ -297,7 +298,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
 
   const computedMaxWidth = editorLayout === "split" || isExpandedWidth ? "1180px" : notebookMode ? "840px" : "600px";
 
-  return (
+  const modal = (
     <>
       <Overlay
         onClick={view === "drafts" ? onClose : view === "compose" ? handleCloseClick : undefined}
@@ -564,6 +565,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
       )}
     </>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default ComposeModal;

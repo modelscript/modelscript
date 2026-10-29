@@ -138,7 +138,7 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
         code,
       };
     } catch (err) {
-      console.warn(`Failed to decode #${dialectMatch[1]} URL:`, err);
+      console.warn("Failed to decode #%s URL:", dialectMatch[1], err);
     }
   }
 

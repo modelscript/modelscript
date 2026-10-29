@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import fs from "node:fs";
+import path from "node:path";
 
 export interface CaeScalarSummary {
   solver: string;
@@ -366,26 +367,45 @@ export const CaeResultProcessor = {
    */
   extractScalarSummary(vtuContentOrPath: string, solver: string): CaeScalarSummary {
     let xml = vtuContentOrPath;
-    if (fs.existsSync(vtuContentOrPath)) {
-      xml = fs.readFileSync(vtuContentOrPath, "utf8");
+    if (!vtuContentOrPath.trim().startsWith("<")) {
+      const resolved = path.resolve(vtuContentOrPath);
+      const rel = path.relative(path.resolve("/"), resolved);
+      if (rel && !rel.startsWith("..") && !path.isAbsolute(rel) && fs.existsSync(resolved)) {
+        xml = fs.readFileSync(resolved, "utf8");
+      }
     }
 
     let maxVonMises = 0;
     let maxDisp = 0;
 
+    // Helper to safely extract DataArray text without polynomial ReDoS
+    const extractArrayText = (name: string): string | null => {
+      const marker = `Name="${name}"`;
+      const markerIdx = xml.indexOf(marker);
+      if (markerIdx === -1) return null;
+      const tagStart = xml.lastIndexOf("<DataArray", markerIdx);
+      if (tagStart === -1) return null;
+      const tagEnd = xml.indexOf(">", markerIdx);
+      if (tagEnd === -1) return null;
+      const closeTag = "</DataArray>";
+      const closeIdx = xml.indexOf(closeTag, tagEnd);
+      if (closeIdx === -1) return null;
+      return xml.slice(tagEnd + 1, closeIdx);
+    };
+
     // Extract Stress_VonMises
-    const stressMatch = xml.match(/<DataArray[^>]*Name="Stress_VonMises"[^>]*>([\s\S]*?)<\/DataArray>/);
-    if (stressMatch && stressMatch[1]) {
-      const vals = stressMatch[1].trim().split(/\s+/).map(Number);
+    const stressText = extractArrayText("Stress_VonMises");
+    if (stressText) {
+      const vals = stressText.trim().split(/\s+/).map(Number);
       for (const v of vals) {
         if (!Number.isNaN(v)) maxVonMises = Math.max(maxVonMises, v);
       }
     }
 
     // Extract Displacement
-    const dispMatch = xml.match(/<DataArray[^>]*Name="Displacement"[^>]*>([\s\S]*?)<\/DataArray>/);
-    if (dispMatch && dispMatch[1]) {
-      const vals = dispMatch[1].trim().split(/\s+/).map(Number);
+    const dispText = extractArrayText("Displacement");
+    if (dispText) {
+      const vals = dispText.trim().split(/\s+/).map(Number);
       for (let i = 0; i < vals.length; i += 3) {
         const mag = Math.hypot(vals[i] || 0, vals[i + 1] || 0, vals[i + 2] || 0);
         maxDisp = Math.max(maxDisp, mag);

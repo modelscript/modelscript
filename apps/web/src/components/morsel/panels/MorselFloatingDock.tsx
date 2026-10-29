@@ -210,15 +210,19 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           onClick={onSaveModel}
         />
       )}
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-      <IconButton
-        icon={FlowchartIcon}
-        size="small"
-        variant="invisible"
-        aria-label={translations.autoLayout}
-        title={translations.autoLayout}
-        onClick={onAutoLayout}
-      />
+      {activeLangInfo.supportsDiagram && (
+        <>
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={FlowchartIcon}
+            size="small"
+            variant="invisible"
+            aria-label={translations.autoLayout}
+            title={translations.autoLayout}
+            onClick={onAutoLayout}
+          />
+        </>
+      )}
       <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
       <div
         style={{
@@ -299,31 +303,35 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           }
         />
       </div>
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-      <IconButton
-        icon={PlayIcon}
-        size="small"
-        variant="invisible"
-        aria-label={translations.simulateModel}
-        title={translations.simulateModel}
-        onClick={onSimulate}
-      />
-      <IconButton
-        icon={ServerIcon}
-        size="small"
-        variant="invisible"
-        aria-label="Run on ModelScript Cloud HPC"
-        title="Run on ModelScript Cloud HPC"
-        onClick={onOpenCloudModal}
-      />
-      <IconButton
-        icon={StackIcon}
-        size="small"
-        variant="invisible"
-        aria-label={translations.flattenModel}
-        title={translations.flattenModel}
-        onClick={onFlatten}
-      />
+      {activeLangInfo.supportsSimulation && (
+        <>
+          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <IconButton
+            icon={PlayIcon}
+            size="small"
+            variant="invisible"
+            aria-label={translations.simulateModel}
+            title={translations.simulateModel}
+            onClick={onSimulate}
+          />
+          <IconButton
+            icon={ServerIcon}
+            size="small"
+            variant="invisible"
+            aria-label="Run on ModelScript Cloud HPC"
+            title="Run on ModelScript Cloud HPC"
+            onClick={onOpenCloudModal}
+          />
+          <IconButton
+            icon={StackIcon}
+            size="small"
+            variant="invisible"
+            aria-label={translations.flattenModel}
+            title={translations.flattenModel}
+            onClick={onFlatten}
+          />
+        </>
+      )}
       {!isPlaygroundRoute && (
         <>
           <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />

@@ -38,7 +38,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>("general");
   const [repoName, setRepoName] = useState(repo.name);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState(repo.visibility || "public");
   const [socialPreviewUrl, setSocialPreviewUrl] = useState<string | null>((repo as any).socialPreviewUrl || null);
   const [showVisibilityModal, setShowVisibilityModal] = useState(false);
@@ -70,10 +70,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
 
   // Pages state
   const [pagesBranch, setPagesBranch] = useState(repo.default_branch || "main");
-  const [pagesEnabled, setPagesEnabled] = useState(true);
+  const [pagesEnabled, setPagesEnabled] = useState(Boolean((repo as any).pagesEnabled));
 
   const showSuccess = (msg = "Settings successfully saved.") => {
-    setErrorMessage(null);
+    setSaveError(null);
     setSavedMessage(msg);
     setTimeout(() => setSavedMessage(null), 3500);
   };
@@ -119,17 +119,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
   }, [activeSection, repo.id]);
 
   const saveRepoUpdates = async (updates: Record<string, any>, successText?: string) => {
-    persistLocalSettings(updates);
+    setSaveError(null);
     try {
       await updateRepo(repo.id, updates);
+      persistLocalSettings(updates);
       showSuccess(successText);
     } catch (err: any) {
-      const status = err?.response?.status;
-      if (status === 404 || status === 401 || !status) {
-        showSuccess(successText || "Settings saved to workspace.");
-      } else {
-        setErrorMessage(err?.response?.data?.error || err?.message || "Failed to update repository settings.");
-      }
+      setSaveError(err?.response?.data?.error || err?.message || "Failed to update repository settings.");
     }
   };
 
@@ -166,12 +162,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
   const handleDelete = async () => {
     if (deleteConfirmText.toLowerCase() !== repo.name.toLowerCase()) return;
     setShowDeleteModal(false);
+    setSaveError(null);
     try {
       await deleteRepo(repo.id);
-    } catch {
-      persistLocalSettings({ deleted: true });
+      navigate("/repos");
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.error || err?.message || "Failed to delete repository.");
     }
-    navigate("/repos");
   };
 
   const handleAddCollaborator = async () => {
@@ -193,6 +190,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+    setSaveError(null);
     try {
       const created = await createRepoWebhook(repo.id, { url: trimmedUrl, events, active: true });
       const hook: RepoWebhook = created?.webhook || {
@@ -206,34 +204,28 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
       persistLocalSettings({ webhooks: next });
       setNewWebhookUrl("");
       showSuccess("Webhook registered.");
-    } catch {
-      const hook: RepoWebhook = {
-        id: Date.now(),
-        url: trimmedUrl,
-        events,
-        active: true,
-      };
-      const next = [...webhooks, hook];
-      setWebhooks(next);
-      persistLocalSettings({ webhooks: next });
-      setNewWebhookUrl("");
-      showSuccess("Webhook saved.");
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.error || err?.message || "Failed to register webhook.");
     }
   };
 
   const handleDeleteWebhook = async (webhookId: number) => {
-    const next = webhooks.filter((w) => w.id !== webhookId);
-    setWebhooks(next);
-    persistLocalSettings({ webhooks: next });
+    setSaveError(null);
     try {
       await deleteRepoWebhook(repo.id, webhookId);
-    } catch {
-      // Local state already updated
+      const next = webhooks.filter((w) => w.id !== webhookId);
+      setWebhooks(next);
+      persistLocalSettings({ webhooks: next });
+      showSuccess("Webhook removed.");
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.error || err?.message || "Failed to remove webhook.");
     }
-    showSuccess("Webhook removed.");
   };
 
-  const publishedDocsUrl = `https://docs.modelscript.org/${repo.path_with_namespace || repo.name}`;
+  const publishedDocsUrl =
+    typeof (repo as any).pagesUrl === "string" && (repo as any).pagesUrl.trim().length > 0
+      ? (repo as any).pagesUrl.trim()
+      : null;
 
   return (
     <Box display="grid" style={{ gridTemplateColumns: "250px 1fr", gap: "32px" }}>
@@ -266,9 +258,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
             {savedMessage}
           </Flash>
         )}
-        {errorMessage && (
+        {saveError && (
           <Flash variant="danger" style={{ marginBottom: "8px" }}>
-            {errorMessage}
+            {saveError}
           </Flash>
         )}
 
@@ -651,14 +643,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo }) => {
                 <Box>
                   <Text style={{ fontWeight: "bold", display: "block" }}>Documentation site status</Text>
                   <Text color="var(--color-fg-muted)" style={{ fontSize: "12px" }}>
-                    Your package documentation is published from branch <strong>{pagesBranch}</strong>:{" "}
-                    <a href={publishedDocsUrl} target="_blank" rel="noreferrer">
-                      {publishedDocsUrl}
-                    </a>
+                    {publishedDocsUrl && pagesEnabled ? (
+                      <>
+                        Your package documentation is published from branch <strong>{pagesBranch}</strong>:{" "}
+                        <a href={publishedDocsUrl} target="_blank" rel="noreferrer">
+                          {publishedDocsUrl}
+                        </a>
+                      </>
+                    ) : (
+                      <>
+                        Documentation site is not published. Source branch: <strong>{pagesBranch}</strong>.
+                      </>
+                    )}
                   </Text>
                 </Box>
-                <Label variant={pagesEnabled ? "success" : "secondary"}>
-                  {pagesEnabled ? "Published" : "Disabled"}
+                <Label variant={publishedDocsUrl && pagesEnabled ? "success" : "secondary"}>
+                  {publishedDocsUrl && pagesEnabled ? "Published" : "Disabled"}
                 </Label>
               </Box>
               <Box display="flex" gap={2} alignItems="center">

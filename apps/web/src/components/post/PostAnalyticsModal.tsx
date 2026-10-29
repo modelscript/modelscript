@@ -3,6 +3,7 @@
 import { BookmarkIcon, CommentIcon, HeartIcon, InfoIcon, RssIcon, SyncIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton, Text, Tooltip } from "@primer/react";
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { getPostAnalytics } from "../../api";
 import { safeCssImageUrl } from "../../util/url";
@@ -24,7 +25,7 @@ const AnalyticsModalOverlay = styled.div`
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(6px);
-  z-index: 1000;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,7 +206,11 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  const impressions = analyticsData?.view_count ?? displayPost.views_count ?? displayPost.view_count ?? 0;
+  const impressions = Math.max(
+    analyticsData?.view_count ?? 0,
+    displayPost.views_count ?? 0,
+    displayPost.view_count ?? 0,
+  );
   const likes = likeCount ?? displayPost.likes_count ?? displayPost.like_count ?? 0;
   const reposts = repostCount ?? displayPost.reposts_count ?? displayPost.repost_count ?? 0;
   const replies = displayPost.replies_count ?? displayPost.reply_count ?? 0;
@@ -213,7 +218,7 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
   const engagements = likes + reposts + replies + bookmarks;
   const engagementRate = impressions > 0 ? `${Math.min(100, (engagements / impressions) * 100).toFixed(1)}%` : "0.0%";
 
-  return (
+  const modal = (
     <AnalyticsModalOverlay
       onClick={(e) => {
         e.stopPropagation();
@@ -445,4 +450,6 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
       </AnalyticsModalContainer>
     </AnalyticsModalOverlay>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };

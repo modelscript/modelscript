@@ -3,7 +3,7 @@
 import { EyeClosedIcon, KebabHorizontalIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Box from "../../Box";
 import { useToast } from "../../ToastContext";
 import { Card, KebabButton, ShowMoreLink, TrendingItem } from "../styles";
@@ -29,6 +29,8 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
   setActiveTrendMenu,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isExplore = location.pathname.startsWith("/explore");
   const toast = useToast();
   const [dismissedIds, setDismissedIds] = useState<Set<number | string>>(() => {
     try {
@@ -63,12 +65,11 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
       <Heading
         as="h2"
         style={{
-          fontSize: "12px",
+          fontSize: "15px",
+          lineHeight: "20px",
           fontWeight: 700,
-          marginBottom: "12px",
-          textTransform: "uppercase",
-          letterSpacing: "0.06em",
-          color: "var(--color-text-muted)",
+          marginBottom: "10px",
+          color: "var(--color-text-heading)",
         }}
       >
         Trending Models & Topics
@@ -80,14 +81,36 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
             return (
               <TrendingItem key={topicKey}>
                 <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
-                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
+                  <div
+                    style={{
+                      fontSize: "11.5px",
+                      lineHeight: "15px",
+                      color: "var(--color-text-muted)",
+                      marginBottom: "1px",
+                    }}
+                  >
                     {topic.location ? `Trending in ${topic.location}` : "Trending"}
                   </div>
-                  <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
+                  <Text
+                    as="div"
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      lineHeight: "18px",
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
                     {topic.display_name}
                   </Text>
                   {topic.post_count ? (
-                    <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                    <div
+                      style={{
+                        fontSize: "11.5px",
+                        lineHeight: "15px",
+                        color: "var(--color-text-muted)",
+                        marginTop: "1px",
+                      }}
+                    >
                       {`${topic.post_count} posts`}
                     </div>
                   ) : null}
@@ -145,18 +168,19 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                               toast.info("Thanks for your feedback — trend hidden.");
                             }}
                             style={{
-                              padding: "10px 12px",
+                              padding: "8px 10px",
                               background: "none",
                               border: "none",
                               textAlign: "left",
                               cursor: "pointer",
-                              fontSize: "14px",
-                              fontWeight: "bold",
+                              fontSize: "13px",
+                              lineHeight: "18px",
+                              fontWeight: 600,
                               color: "var(--color-text-primary)",
                               borderRadius: "8px",
                               display: "flex",
                               alignItems: "center",
-                              gap: "12px",
+                              gap: "10px",
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
@@ -186,10 +210,25 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
             {visibleFallbacks.map((topic, i) => (
               <TrendingItem key={i} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
                 <Box flex={1}>
-                  <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
+                  <div
+                    style={{
+                      fontSize: "11.5px",
+                      lineHeight: "15px",
+                      color: "var(--color-text-muted)",
+                      marginBottom: "1px",
+                    }}
+                  >
                     {topic.category}
                   </div>
-                  <Text as="div" style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-text-primary)" }}>
+                  <Text
+                    as="div"
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      lineHeight: "18px",
+                      color: "var(--color-text-primary)",
+                    }}
+                  >
                     {topic.tag}
                   </Text>
                 </Box>
@@ -198,13 +237,13 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
           </Box>
         ) : (
           <Box py={2} px={1}>
-            <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+            <Text style={{ fontSize: "12.5px", lineHeight: "16px", color: "var(--color-text-muted)" }}>
               No additional trending topics right now.
             </Text>
           </Box>
         )}
 
-        <ShowMoreLink to="/explore">Explore all models →</ShowMoreLink>
+        {!isExplore && <ShowMoreLink to="/explore">Explore all models →</ShowMoreLink>}
       </Box>
     </Card>
   );

@@ -4,7 +4,11 @@ import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { safeCssImageUrl } from "../../util/url";
 
-export const PostWrapper = styled.div<{ $isDetail?: boolean | undefined; $isThread?: boolean | undefined }>`
+export const PostWrapper = styled.div<{
+  $isDetail?: boolean | undefined;
+  $isThread?: boolean | undefined;
+  $menuOpen?: boolean | undefined;
+}>`
   display: flex;
   flex-direction: ${(props) => (props.$isDetail ? "column" : "row")};
   gap: 12px;
@@ -17,10 +21,15 @@ export const PostWrapper = styled.div<{ $isDetail?: boolean | undefined; $isThre
   transition: background-color 0.15s ease;
   cursor: ${(props) => (props.$isDetail ? "default" : "pointer")};
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  z-index: ${(props) => (props.$menuOpen ? 10 : 1)};
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
+
+  &:has([data-post-menu-open="true"]) {
+    z-index: 10;
+  }
 
   &:hover {
     background: ${(props) => (props.$isDetail ? "transparent" : "var(--surface-row-hover)")};
@@ -182,7 +191,7 @@ export const ContentWarningBox = styled.div`
   gap: 8px;
 `;
 
-export const SignatureBadge = styled.span`
+export const SignatureBadge = styled.button.attrs({ type: "button" })`
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -217,7 +226,12 @@ export const QuoteWrapper = styled.div`
   }
 `;
 
-export const ViewsLink = styled.span`
+export const ViewsLink = styled.button.attrs({ type: "button" })`
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
   cursor: pointer;
   &:hover {
     text-decoration: underline;
@@ -267,6 +281,7 @@ export const ActionButton = styled.button<{
   /* Counts flow inline after the icon so they can never overlap the next action. */
   .action-count {
     font-size: 13px;
+    line-height: 16px;
     min-width: 1.5ch;
     padding-right: 4px;
     color: inherit;

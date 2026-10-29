@@ -38,7 +38,7 @@ export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.context.extensionUri],
     };
 
-    webviewView.webview.html = this.getHtmlForWebview();
+    webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage(async (data) => {
       switch (data.type) {
@@ -87,13 +87,13 @@ export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private getHtmlForWebview() {
+  private getHtmlForWebview(webview: vscode.Webview) {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' var(--vscode-style-src); script-src 'unsafe-inline'; connect-src *;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'unsafe-inline'; connect-src *;">
   <title>Packages</title>
   <style>
     body {

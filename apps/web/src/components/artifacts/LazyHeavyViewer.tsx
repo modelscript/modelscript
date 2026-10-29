@@ -6,6 +6,7 @@ import { useTheme } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import Box from "../Box";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
+import { captureCompositeCanvasDataUrl } from "./AutoThumbnailCapture";
 
 interface LazyHeavyViewerProps {
   artifactId: number;
@@ -31,6 +32,14 @@ interface LazyHeavyViewerProps {
   children: React.ReactNode;
 }
 
+export const THUMBNAIL_RADIAL_GREY_LIGHT = "radial-gradient(circle at center, #cdced0 0%, #d6d7d9 50%, #e2e3e4 100%)";
+export const THUMBNAIL_RADIAL_GREY_DARK = "radial-gradient(circle at center, #2b2e36 0%, #1f2229 55%, #14161b 100%)";
+export const THUMBNAIL_RADIAL_GREY_BG = THUMBNAIL_RADIAL_GREY_LIGHT;
+
+export function getThumbnailRadialBg(colorMode?: string): string {
+  return colorMode === "dark" ? THUMBNAIL_RADIAL_GREY_DARK : THUMBNAIL_RADIAL_GREY_LIGHT;
+}
+
 const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   artifactId,
   thumbnailUrl,
@@ -45,12 +54,30 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   const [frozenSnapshot, setFrozenSnapshot] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedColorMode } = useTheme();
+  const radialBg = getThumbnailRadialBg(resolvedColorMode);
+
+  const captureCanvasSnapshot = (): string | null => {
+    const canvas = containerRef.current?.querySelector("canvas");
+    return captureCompositeCanvasDataUrl(canvas);
+  };
 
   useEffect(() => {
     if (isFullScreen) {
       setIsActive(true);
     }
   }, [isFullScreen]);
+
+  // Listen for AutoThumbnailCapture snapshots so client state updates immediately without requiring page reload
+  useEffect(() => {
+    const handleCaptured = (e: Event) => {
+      const detail = (e as CustomEvent<{ artifactId: number; dataUrl: string }>).detail;
+      if (detail && detail.artifactId === artifactId && detail.dataUrl) {
+        setFrozenSnapshot(detail.dataUrl);
+      }
+    };
+    window.addEventListener("artifact-thumbnail-captured", handleCaptured);
+    return () => window.removeEventListener("artifact-thumbnail-captured", handleCaptured);
+  }, [artifactId]);
 
   // Context pooling integration
   useEffect(() => {
@@ -70,17 +97,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           setIsActive(false);
         }
       },
-      captureSnapshot: () => {
-        const canvas = containerRef.current?.querySelector("canvas");
-        if (canvas) {
-          try {
-            return canvas.toDataURL("image/webp", 0.85);
-          } catch {
-            return null;
-          }
-        }
-        return null;
-      },
+      captureSnapshot: () => captureCanvasSnapshot(),
     });
 
     return () => {
@@ -94,6 +111,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
 
   // Missing/404 thumbnails fall back to the placeholder instead of a broken <img>.
   const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
+  const isDefaultThumbnailFailed = Boolean(defaultThumbnailUrl) && failedThumbnailUrl === defaultThumbnailUrl;
   const showThumbnail = Boolean(currentThumbnailUrl) && failedThumbnailUrl !== currentThumbnailUrl;
 
   // Handle global mutual exclusion
@@ -101,6 +119,8 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     const handleActivate = (e: Event) => {
       const activeId = (e as CustomEvent<number>).detail;
       if (activeId !== artifactId && !isFullScreen) {
+        const snap = captureCanvasSnapshot();
+        if (snap) setFrozenSnapshot(snap);
         setIsActive(false);
       }
     };
@@ -116,7 +136,9 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
       (entries) => {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) {
-            // Unload when it goes out of view
+            // Capture snapshot before unloading when it goes out of view
+            const snap = captureCanvasSnapshot();
+            if (snap) setFrozenSnapshot(snap);
             setIsActive(false);
           }
         });
@@ -137,6 +159,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     return (
       <div
         ref={containerRef}
+        data-thumbnail-failed={isDefaultThumbnailFailed ? "true" : undefined}
         style={{
           width: "100%",
           maxWidth: "100%",
@@ -145,7 +168,8 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           position: "relative",
           overflow: "hidden",
           boxSizing: "border-box",
-          borderRadius: isFullScreen ? "0" : "8px",
+          borderRadius: 0,
+          background: radialBg,
         }}
       >
         {/* Floating Deactivate / Sleep Button */}
@@ -154,20 +178,13 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              const canvas = containerRef.current?.querySelector("canvas");
-              if (canvas) {
-                try {
-                  const snap = canvas.toDataURL("image/webp", 0.85);
-                  if (snap) setFrozenSnapshot(snap);
-                } catch {
-                  // Ignore canvas snapshot error
-                }
-              }
+              const snap = captureCanvasSnapshot();
+              if (snap) setFrozenSnapshot(snap);
               setIsActive(false);
             }}
             style={{
               position: "absolute",
-              bottom: 48,
+              top: 52,
               right: 12,
               zIndex: 20,
               display: "flex",
@@ -215,7 +232,8 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
         position: "relative",
         overflow: "hidden",
         boxSizing: "border-box",
-        borderRadius: "8px",
+        borderRadius: 0,
+        background: radialBg,
       }}
     >
       {showThumbnail ? (
@@ -226,18 +244,16 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           style={{
             width: "100%",
             height: "100%",
-            objectFit: "cover",
-            borderTopLeftRadius: "8px",
-            borderTopRightRadius: "8px",
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
+            display: "block",
+            objectFit: "contain",
+            borderRadius: 0,
           }}
         />
       ) : (
         <ArtifactPlaceholder type={placeholderType} title={title} height="100%" />
       )}
 
-      {/* Play button overlay */}
+      {/* Interactive 3D launch overlay */}
       <div
         style={{
           position: "absolute",
@@ -245,61 +261,61 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
           left: 0,
           right: 0,
           bottom: 0,
-          background: "rgba(0,0,0,0.3)",
+          background: "transparent",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           cursor: "pointer",
-          borderTopLeftRadius: "8px",
-          borderTopRightRadius: "8px",
-          borderBottomLeftRadius: 0,
-          borderBottomRightRadius: 0,
+          borderRadius: 0,
         }}
         onClick={() => {
           setIsActive(true);
           window.dispatchEvent(new CustomEvent("activate-3d-viewer", { detail: artifactId }));
         }}
       >
-        {frozenSnapshot ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 16px",
-              borderRadius: 24,
-              background: "rgba(13, 17, 23, 0.88)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
-              border: "1px solid rgba(6, 182, 212, 0.4)",
-              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4), 0 0 12px rgba(6, 182, 212, 0.25)",
-              color: "var(--ms-text-1)",
-              fontSize: 13,
-              fontWeight: 600,
-              fontFamily: "var(--font-mono, monospace)",
-              transition: "transform 0.2s ease, border-color 0.2s ease",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          >
-            <span style={{ fontSize: 16 }}>🧊</span>
-            <span>Click to re-activate 3D</span>
-            <PlayIcon size={14} fill="#06b6d4" />
-          </div>
-        ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "9px 18px",
+            borderRadius: 9999,
+            background: "rgba(13, 17, 23, 0.86)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            border: "1px solid rgba(56, 189, 248, 0.45)",
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4), 0 0 14px rgba(56, 189, 248, 0.22)",
+            color: "#f8fafc",
+            fontSize: 12.5,
+            fontWeight: 600,
+            fontFamily: "var(--font-mono, monospace)",
+            transition: "transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.05)";
+            e.currentTarget.style.borderColor = "rgba(56, 189, 248, 0.8)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.borderColor = "rgba(56, 189, 248, 0.45)";
+          }}
+        >
           <Box
-            display="flex"
+            display="inline-flex"
             alignItems="center"
             justifyContent="center"
-            bg="rgba(0,0,0,0.7)"
             borderRadius="50%"
-            style={{ width: 64, height: 64, transition: "transform 0.2s ease", color: "white" }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.1)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+            style={{
+              width: 22,
+              height: 22,
+              background: "rgba(56, 189, 248, 0.2)",
+              color: "#38bdf8",
+            }}
           >
-            <PlayIcon size={32} />
+            <PlayIcon size={12} />
           </Box>
-        )}
+          <span>{frozenSnapshot ? "Click to re-activate 3D" : "Interact in 3D"}</span>
+        </div>
       </div>
     </div>
   );

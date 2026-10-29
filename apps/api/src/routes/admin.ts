@@ -3,6 +3,7 @@
 import express, { type Request, type Response, type Router } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { requireAdmin } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { allMigrations } from "../migrations/index.js";
 import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import { FederationWorker } from "../services/federation-worker.js";
@@ -27,6 +28,22 @@ export function adminRouter(
   featureFlagService?: FeatureFlagService,
 ): Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
+
+  // ── Admin Overview & Counts ──
+
+  /**
+   * GET /api/v1/admin/overview
+   * Returns pending counts for moderation, DMCA, federation delivery queue, and user governance
+   */
+  router.get("/admin/overview", adminAuth, (_req: Request, res: Response) => {
+    try {
+      const counts = database.getAdminPendingCounts();
+      res.json(counts);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch admin overview" });
+    }
+  });
 
   // ── Moderation Queue ──
 
@@ -41,7 +58,8 @@ export function adminRouter(
       const offset = Math.max(0, parseInt(req.query["offset"] as string, 10) || 0);
 
       const reports = database.getModerationQueue(status, limit, offset);
-      res.json({ reports, count: reports.length, limit, offset });
+      const counts = database.getAdminPendingCounts();
+      res.json({ reports, count: reports.length, limit, offset, pendingCount: counts.pendingReports });
     } catch (err: unknown) {
       console.error("[AdminRouter] GET /admin/moderation/queue error:", err);
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch moderation queue" });
@@ -49,12 +67,21 @@ export function adminRouter(
   });
 
   /**
+  /**
    * POST /api/v1/admin/moderation/reports/:id/resolve
-   * Resolves a report and optionally applies actions (delete post, silence domain, suspend domain)
+   * Resolves a report and optionally applies actions (delete post, silence post, mark sensitive, silence/suspend domain, freeze/suspend/restore user, forward ActivityPub Flag)
    */
   router.post("/admin/moderation/reports/:id/resolve", adminAuth, express.json(), (req: Request, res: Response) => {
     const reportId = Number(req.params["id"]);
-    const { status, resolutionNotes, action } = req.body;
+    const {
+      status,
+      resolutionNotes,
+      action,
+      domain: explicitDomain,
+      resolveAllForTarget,
+      contentWarning,
+      forwardFederatedFlag,
+    } = req.body;
 
     if (!["resolved", "dismissed"].includes(status)) {
       res.status(400).json({ error: "Status must be 'resolved' or 'dismissed'" });
@@ -69,6 +96,10 @@ export function adminRouter(
       }
 
       let tombstoneActivity: Record<string, unknown> | null = null;
+      let flagActivity: Record<string, unknown> | null = null;
+      let federatedFlagQueued = false;
+      const targetUserId = report.post_author_id ?? report.target_user_id ?? null;
+      const preDeletePost = report.post_id ? database.getPost(report.post_id) : null;
 
       // Execute moderation action if specified
       if (action === "delete_post" && report.post_id) {
@@ -79,12 +110,150 @@ export function adminRouter(
             id: `${deleteResult.apId}#delete`,
             type: "Delete",
             actor: `${process.env["PUBLIC_URL"] || "https://hub.modelscript.org"}/actor`,
+            to: ["https://www.w3.org/ns/activitystreams#Public"],
             object: deleteResult.apId,
           };
+          if (deleteResult.authorId) {
+            const fedWorker = worker || new FederationWorker(database);
+            fedWorker.enqueueActivityBroadcast(tombstoneActivity, deleteResult.authorId);
+          }
+        }
+      } else if (action === "silence_post" && report.post_id) {
+        database.silencePost(report.post_id, true);
+      } else if (action === "mark_sensitive" && report.post_id) {
+        database.markPostSensitive(
+          report.post_id,
+          true,
+          (typeof contentWarning === "string" && contentWarning.trim()) || resolutionNotes || report.reason,
+        );
+      } else if (action === "silence_domain" || action === "suspend_domain") {
+        const targetTier = action === "suspend_domain" ? "suspend" : "silence";
+        const inferredDomain =
+          (typeof explicitDomain === "string" && explicitDomain.trim()) ||
+          report.author_domain ||
+          (report.author_username && report.author_username.includes("@")
+            ? report.author_username.split("@").pop()
+            : undefined);
+        if (inferredDomain) {
+          database.setDomainTier(
+            inferredDomain,
+            targetTier,
+            resolutionNotes || `Report #${reportId}: ${report.reason}`,
+          );
+          database.logAudit({
+            actorId: req.user?.id || null,
+            action: `federation_tier_${targetTier}`,
+            resourceType: "domain",
+            resourceId: inferredDomain.toLowerCase(),
+            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            details: { domain: inferredDomain, tier: targetTier, reportId, reason: resolutionNotes },
+          });
+        }
+      } else if ((action === "freeze_user" || action === "suspend_user") && targetUserId) {
+        const newStatus = action === "suspend_user" ? "suspended" : "frozen";
+        database.moderateUserAccount(targetUserId, {
+          status: newStatus,
+          revokeSessions: true,
+        });
+        database.logAudit({
+          actorId: req.user?.id || null,
+          action: `user_${newStatus}`,
+          resourceType: "user",
+          resourceId: String(targetUserId),
+          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          details: { userId: targetUserId, status: newStatus, reportId, reason: resolutionNotes },
+        });
+      } else if (action === "restore_user" && targetUserId) {
+        database.moderateUserAccount(targetUserId, {
+          status: "active",
+          revokeSessions: false,
+        });
+        database.logAudit({
+          actorId: req.user?.id || null,
+          action: "user_restored_appeal",
+          resourceType: "user",
+          resourceId: String(targetUserId),
+          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          details: { userId: targetUserId, status: "active", reportId, reason: resolutionNotes },
+        });
+      }
+
+      // Send automated security_alert notification to affected user when enforcement or restoration occurs
+      if (
+        targetUserId &&
+        action &&
+        ["delete_post", "silence_post", "mark_sensitive", "freeze_user", "suspend_user", "restore_user"].includes(
+          action,
+        )
+      ) {
+        database.createNotification(
+          targetUserId,
+          req.user?.id || targetUserId,
+          "security_alert",
+          action === "delete_post" ? null : (report.post_id ?? null),
+          {
+            moderationAction: action,
+            reportId,
+            reason: resolutionNotes || report.reason,
+            canAppeal: action !== "restore_user",
+          },
+        );
+      }
+
+      // Outbound ActivityPub Flag forwarding to remote server inbox
+      if (forwardFederatedFlag) {
+        const fedInfo = targetUserId ? database.getUserFederationInfo(targetUserId) : undefined;
+        const remoteDomain =
+          (typeof explicitDomain === "string" && explicitDomain.trim()) ||
+          fedInfo?.remote_domain ||
+          report.author_domain ||
+          (report.author_username && report.author_username.includes("@")
+            ? report.author_username.split("@").pop()
+            : undefined);
+
+        if (remoteDomain) {
+          const baseUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+          const flagId = `${baseUrl}/flags/${reportId}-${Date.now()}`;
+          const targetInbox = fedInfo?.inbox_url || `https://${remoteDomain}/inbox`;
+          const targetObjects: string[] = [];
+
+          if (fedInfo?.actor_url) {
+            targetObjects.push(fedInfo.actor_url);
+          } else if (report.author_username) {
+            const handle = report.author_username.split("@")[0] || "actor";
+            targetObjects.push(`https://${remoteDomain}/users/${handle}`);
+          } else {
+            targetObjects.push(`https://${remoteDomain}/actor`);
+          }
+
+          if (preDeletePost?.ap_id) {
+            targetObjects.push(preDeletePost.ap_id);
+          }
+
+          flagActivity = {
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: flagId,
+            type: "Flag",
+            actor: `${baseUrl}/actor`,
+            object: targetObjects.length === 1 ? targetObjects[0] : targetObjects,
+            content: resolutionNotes || `${report.reason}${report.details ? `: ${report.details}` : ""}`,
+          };
+
+          database.enqueueFederationDelivery("Flag", flagId, flagActivity, targetInbox, remoteDomain);
+          federatedFlagQueued = true;
+
+          database.logAudit({
+            actorId: req.user?.id || null,
+            action: "federated_flag_forwarded",
+            resourceType: "domain",
+            resourceId: remoteDomain.toLowerCase(),
+            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            details: { reportId, remoteDomain, targetInbox, flagId },
+          });
         }
       }
 
-      database.resolveContentReport(reportId, status, resolutionNotes);
+      database.resolveContentReport(reportId, status, resolutionNotes, action || "none", Boolean(resolveAllForTarget));
 
       database.logAudit({
         actorId: req.user?.id || null,
@@ -92,7 +261,14 @@ export function adminRouter(
         resourceType: "content_report",
         resourceId: String(reportId),
         ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: { status, resolutionNotes, action, postId: report.post_id },
+        details: {
+          status,
+          resolutionNotes,
+          action,
+          postId: report.post_id,
+          targetUserId,
+          federatedFlagQueued,
+        },
       });
 
       res.json({
@@ -101,6 +277,8 @@ export function adminRouter(
         status,
         actionExecuted: action || "none",
         tombstoneActivity,
+        federatedFlagQueued,
+        flagActivity,
       });
     } catch (err: unknown) {
       console.error("[AdminRouter] Resolve report error:", err);
@@ -108,7 +286,188 @@ export function adminRouter(
     }
   });
 
-  // ── Federation Domain Tiering ──
+  /**
+   * POST /api/v1/admin/moderation/bulk-resolve
+   * Batch resolves or dismisses multiple report IDs
+   */
+  router.post("/admin/moderation/bulk-resolve", adminAuth, express.json(), (req: Request, res: Response) => {
+    const { reportIds, status, resolutionNotes, action, contentWarning } = req.body;
+    if (!Array.isArray(reportIds) || reportIds.length === 0) {
+      res.status(400).json({ error: "reportIds must be a non-empty array" });
+      return;
+    }
+    if (!["resolved", "dismissed"].includes(status)) {
+      res.status(400).json({ error: "Status must be 'resolved' or 'dismissed'" });
+      return;
+    }
+
+    try {
+      let resolvedCount = 0;
+      for (const rawId of reportIds) {
+        const id = Number(rawId);
+        if (!Number.isFinite(id)) continue;
+        const report = database.getContentReport(id);
+        if (!report) continue;
+
+        const targetUserId = report.post_author_id ?? report.target_user_id ?? null;
+
+        if (action === "delete_post" && report.post_id) {
+          database.deletePost(report.post_id);
+        } else if (action === "silence_post" && report.post_id) {
+          database.silencePost(report.post_id, true);
+        } else if (action === "mark_sensitive" && report.post_id) {
+          database.markPostSensitive(
+            report.post_id,
+            true,
+            (typeof contentWarning === "string" && contentWarning.trim()) || resolutionNotes || report.reason,
+          );
+        } else if ((action === "freeze_user" || action === "suspend_user") && targetUserId) {
+          database.moderateUserAccount(targetUserId, {
+            status: action === "suspend_user" ? "suspended" : "frozen",
+            revokeSessions: true,
+          });
+        } else if (action === "restore_user" && targetUserId) {
+          database.moderateUserAccount(targetUserId, {
+            status: "active",
+            revokeSessions: false,
+          });
+        } else if ((action === "silence_domain" || action === "suspend_domain") && report.author_domain) {
+          database.setDomainTier(
+            report.author_domain,
+            action === "suspend_domain" ? "suspend" : "silence",
+            resolutionNotes || `Bulk report #${id}`,
+          );
+        }
+
+        if (
+          targetUserId &&
+          action &&
+          ["delete_post", "silence_post", "mark_sensitive", "freeze_user", "suspend_user", "restore_user"].includes(
+            action,
+          )
+        ) {
+          database.createNotification(
+            targetUserId,
+            req.user?.id || targetUserId,
+            "security_alert",
+            action === "delete_post" ? null : (report.post_id ?? null),
+            {
+              moderationAction: action,
+              reportId: id,
+              reason: resolutionNotes || report.reason,
+              canAppeal: action !== "restore_user",
+            },
+          );
+        }
+
+        if (database.resolveContentReport(id, status, resolutionNotes, action || "none")) {
+          resolvedCount++;
+        }
+      }
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: `report_bulk_${status}`,
+        resourceType: "content_report",
+        resourceId: `batch(${resolvedCount})`,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { reportIds, status, action, resolutionNotes, resolvedCount },
+      });
+
+      res.json({ success: true, resolvedCount, status });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to bulk resolve reports" });
+    }
+  });
+
+  // ── User & Account Governance ──
+
+  /**
+   * GET /api/v1/admin/users
+   * Lists users with post counts, report counts, and account status for governance
+   */
+  router.get("/admin/users", adminAuth, (req: Request, res: Response) => {
+    try {
+      const query = req.query["q"] as string | undefined;
+      const status = req.query["status"] as string | undefined;
+      const role = req.query["role"] as string | undefined;
+      const limit = Math.min(100, Math.max(1, parseInt(req.query["limit"] as string, 10) || 50));
+      const offset = Math.max(0, parseInt(req.query["offset"] as string, 10) || 0);
+
+      const result = database.listUsersForAdmin({ query, status, role, limit, offset });
+      res.json({ users: result.users, total: result.total, count: result.users.length, limit, offset });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list users" });
+    }
+  });
+
+  /**
+   * PATCH /api/v1/admin/users/:id
+   * Updates user account status (active, frozen, suspended), role (user, admin), revokes sessions, or purges spam posts
+   */
+  router.patch("/admin/users/:id", adminAuth, express.json(), (req: Request, res: Response) => {
+    const userId = Number(req.params["id"]);
+    const { status, role, revokeSessions, purgePosts, reason } = req.body;
+
+    if (status !== undefined && !["active", "frozen", "suspended", "pending_verification"].includes(status)) {
+      res.status(400).json({ error: "Invalid user status" });
+      return;
+    }
+    if (role !== undefined && !["user", "admin"].includes(role)) {
+      res.status(400).json({ error: "Invalid user role" });
+      return;
+    }
+
+    try {
+      const result = database.moderateUserAccount(userId, {
+        status,
+        role,
+        revokeSessions: Boolean(revokeSessions),
+        purgePosts: Boolean(purgePosts),
+      });
+
+      if (!result.success) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      if (status && ["frozen", "suspended", "active"].includes(status)) {
+        database.createNotification(userId, req.user?.id || userId, "security_alert", null, {
+          moderationAction: status === "active" ? "restore_user" : `status_${status}`,
+          reason: reason || `Account status updated to ${status}`,
+          canAppeal: status === "frozen" || status === "suspended",
+        });
+      }
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: status ? `user_status_${status}` : role ? `user_role_${role}` : "user_moderated",
+        resourceType: "user",
+        resourceId: String(userId),
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: {
+          status,
+          role,
+          revokeSessions: result.sessionsRevoked,
+          purgedPostCount: result.purgedPostCount,
+          reason,
+        },
+      });
+
+      res.json({
+        success: true,
+        userId,
+        status,
+        role,
+        sessionsRevoked: result.sessionsRevoked,
+        purgedPostCount: result.purgedPostCount,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update user account" });
+    }
+  });
+
+  // ── Federation Domain Tiering & Delivery Queue ──
 
   /**
    * GET /api/v1/admin/federation/domains
@@ -189,6 +548,73 @@ export function adminRouter(
     }
   });
 
+  /**
+   * GET /api/v1/admin/federation/queue
+   * Inspects S2S ActivityPub delivery queue and dead-letter failures
+   */
+  router.get("/admin/federation/queue", adminAuth, (req: Request, res: Response) => {
+    try {
+      const status = req.query["status"] as string | undefined;
+      const domain = req.query["domain"] as string | undefined;
+      const limit = Math.min(100, Math.max(1, parseInt(req.query["limit"] as string, 10) || 50));
+
+      const stats = database.getFederationQueueStats();
+      const deliveries = database.listFederationDeliveries(status, domain, limit);
+      res.json({ stats, deliveries, count: deliveries.length });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch federation delivery queue" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/federation/queue/retry
+   * Resets failed S2S deliveries back to pending for immediate retry
+   */
+  router.post("/admin/federation/queue/retry", adminAuth, express.json(), (req: Request, res: Response) => {
+    try {
+      const domain = typeof req.body?.domain === "string" ? req.body.domain : undefined;
+      const result = database.retryFailedFederationDeliveries(domain);
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "federation_queue_retried",
+        resourceType: "federation_queue",
+        resourceId: domain || "all",
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { domain, ...result },
+      });
+
+      res.json({ success: true, ...result });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to retry federation deliveries" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/admin/federation/queue
+   * Purges matching entries from the S2S delivery queue
+   */
+  router.delete("/admin/federation/queue", adminAuth, (req: Request, res: Response) => {
+    try {
+      const status = (req.query["status"] as string | undefined) || "failed";
+      const domain = req.query["domain"] as string | undefined;
+      const result = database.purgeFederationDeliveries(status, domain);
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "federation_queue_purged",
+        resourceType: "federation_queue",
+        resourceId: `${status}:${domain || "all"}`,
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: { status, domain, ...result },
+      });
+
+      res.json({ success: true, ...result });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to purge federation delivery queue" });
+    }
+  });
+
   // ── Post Management & Tombstone Propagation ──
 
   /**
@@ -250,14 +676,29 @@ export function adminRouter(
   router.get("/admin/audit-logs", adminAuth, (req: Request, res: Response) => {
     try {
       const action = req.query["action"] as string | undefined;
+      const resourceType = req.query["resourceType"] as string | undefined;
       const limit = Math.min(100, Math.max(1, parseInt(req.query["limit"] as string, 10) || 50));
       const offset = Math.max(0, parseInt(req.query["offset"] as string, 10) || 0);
 
-      const logs = database.getAuditLogs(limit, offset, action);
+      const logs = database.getAuditLogs(limit, offset, action, resourceType);
       res.json({ logs, count: logs.length, limit, offset });
     } catch (err: unknown) {
       console.error("[AdminRouter] GET /admin/audit-logs error:", err);
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch audit logs" });
+    }
+  });
+
+  /**
+   * GET /api/v1/admin/audit-logs/verify
+   * Verifies the cryptographic SHA-256 hash chain across audit_logs
+   */
+  router.get("/admin/audit-logs/verify", adminAuth, (_req: Request, res: Response) => {
+    try {
+      const result = database.verifyAuditLogChain();
+      res.json(result);
+    } catch (err: unknown) {
+      console.error("[AdminRouter] GET /admin/audit-logs/verify error:", err);
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to verify audit log hash chain" });
     }
   });
 
@@ -329,7 +770,8 @@ export function adminRouter(
    */
   router.post("/admin/dmca/notices/:id/resolve", adminAuth, express.json(), (req: Request, res: Response) => {
     const id = Number(req.params["id"]);
-    const { actionTaken } = req.body;
+    const { actionTaken, status: rawStatus, quarantineResource } = req.body;
+    const status: "resolved" | "rejected" = rawStatus === "rejected" ? "rejected" : "resolved";
 
     if (!actionTaken || typeof actionTaken !== "string") {
       res.status(400).json({ error: "actionTaken is required" });
@@ -337,7 +779,20 @@ export function adminRouter(
     }
 
     try {
-      const success = database.resolveDmcaNotice(id, actionTaken);
+      const notice = database.getDmcaNotice(id);
+      if (!notice) {
+        res.status(404).json({ error: "DMCA notice not found" });
+        return;
+      }
+
+      if (quarantineResource && status === "resolved" && notice.resource_type === "post" && notice.resource_id) {
+        const postId = Number(notice.resource_id);
+        if (Number.isFinite(postId)) {
+          database.deletePost(postId);
+        }
+      }
+
+      const success = database.resolveDmcaNotice(id, actionTaken, status);
       if (!success) {
         res.status(404).json({ error: "DMCA notice not found" });
         return;
@@ -345,14 +800,14 @@ export function adminRouter(
 
       database.logAudit({
         actorId: req.user?.id || null,
-        action: "dmca_notice_resolved",
+        action: status === "rejected" ? "dmca_notice_rejected" : "dmca_notice_resolved",
         resourceType: "dmca_notice",
         resourceId: String(id),
         ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: { actionTaken },
+        details: { actionTaken, status, quarantineResource: Boolean(quarantineResource) },
       });
 
-      res.json({ success: true, noticeId: id, actionTaken });
+      res.json({ success: true, noticeId: id, status, actionTaken });
     } catch (err: unknown) {
       console.error("[AdminRouter] Resolve DMCA notice error:", err);
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to resolve DMCA notice" });

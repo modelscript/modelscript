@@ -67,6 +67,7 @@ const SHORTCUTS: ShortcutCategory[] = [
     title: "Global Navigation",
     items: [
       { keys: ["Cmd / Ctrl", "K"], description: "Open Command Palette & quick switcher" },
+      { keys: ["Cmd / Ctrl", "Shift", "D"], description: "Toggle Developer Mode toolbar / pill" },
       { keys: ["/"], description: "Focus search bar" },
       { keys: ["?"], description: "Open keyboard shortcuts help" },
       { keys: ["g", "h"], description: "Go to Home Feed" },

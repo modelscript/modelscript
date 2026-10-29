@@ -369,7 +369,7 @@ export interface CoordinateSystem {
 export interface DiagramData {
   nodes: DiagramNode[];
   edges: DiagramEdge[];
-  coordinateSystem: CoordinateSystem;
+  coordinateSystem: CoordinateSystem | null;
   diagramBackground: X6Markup | null;
   isLoading?: boolean | undefined;
   availableViews?: { id: string; label: string; description?: string | undefined }[] | undefined;

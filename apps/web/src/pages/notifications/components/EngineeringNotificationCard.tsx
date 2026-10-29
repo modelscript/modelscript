@@ -10,8 +10,9 @@ import {
   ShieldIcon,
 } from "@primer/octicons-react";
 import { Button, Label, Text } from "@primer/react";
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { submitModerationAppeal } from "../../../api";
 import Box from "../../../components/Box";
 import { formatRelativeTime, getIconForType } from "../formatters";
 import { EngineeringCard, MetricChip, ModelBadge, NotificationWrapper } from "../styles";
@@ -30,6 +31,13 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
   const isPackage = notif.type === "package" || notif.type === "package_published";
   const isSecurity = notif.type === "security_alert";
   const isCredit = notif.type === "credit_warning";
+  const isModerationNotice = isSecurity && Boolean(meta["moderationAction"]);
+  const canAppeal = Boolean(meta["canAppeal"]);
+
+  const [showAppealForm, setShowAppealForm] = useState(false);
+  const [appealDetails, setAppealDetails] = useState("");
+  const [appealSubmitting, setAppealSubmitting] = useState(false);
+  const [appealSubmitted, setAppealSubmitted] = useState(false);
 
   const cardStatus = isSimulation
     ? "completed"
@@ -42,6 +50,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
           : "package";
 
   const handleCardClick = () => {
+    if (showAppealForm) return;
     if (!notif.read) {
       onMarkRead?.(notif.id);
     }
@@ -58,8 +67,28 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
       );
     } else if (isCredit) {
       navigate("/settings/billing");
-    } else if (isSecurity) {
+    } else if (isSecurity && !isModerationNotice) {
       navigate("/settings/security");
+    }
+  };
+
+  const handleSubmitAppeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!appealDetails.trim()) return;
+    setAppealSubmitting(true);
+    try {
+      await submitModerationAppeal(
+        `Appeal for ${String(meta["moderationAction"] || "moderation action")}`,
+        appealDetails.trim(),
+        notif.post_id ? Number(notif.post_id) : undefined,
+      );
+      setAppealSubmitted(true);
+      setShowAppealForm(false);
+    } catch {
+      // Handled silently or retryable
+    } finally {
+      setAppealSubmitting(false);
     }
   };
 
@@ -75,7 +104,15 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
               {isSimulation && <Label variant="success">Simulation Completed</Label>}
               {isSimFailed && <Label variant="danger">Simulation Failed</Label>}
               {isPackage && <Label variant="accent">Package Release</Label>}
-              {isSecurity && <Label variant="danger">Security Advisory</Label>}
+              {isSecurity && (
+                <Label variant={meta["moderationAction"] === "restore_user" ? "success" : "danger"}>
+                  {isModerationNotice
+                    ? meta["moderationAction"] === "restore_user"
+                      ? "Account Restored"
+                      : "Moderation Notice"
+                    : "Security Advisory"}
+                </Label>
+              )}
               {isCredit && <Label variant="attention">Compute Quota</Label>}
               {meta.profile && (
                 <MetricChip>
@@ -88,7 +125,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 </MetricChip>
               )}
             </Box>
-            <Text fontSize="12px" color="var(--color-fg-muted)">
+            <Text style={{ fontSize: "13px", lineHeight: "16px" }} color="var(--color-fg-muted)">
               {formatRelativeTime(notif.created_at || new Date().toISOString())}
             </Text>
           </Box>
@@ -106,9 +143,8 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 borderRadius={6}
                 background="rgba(248, 81, 73, 0.1)"
                 border="1px solid rgba(248, 81, 73, 0.25)"
-                fontSize="13px"
                 color="var(--color-danger-fg)"
-                style={{ fontFamily: "var(--font-mono, monospace)" }}
+                style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "13px", lineHeight: "16px" }}
               >
                 {meta.error}
               </Box>
@@ -121,19 +157,22 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 </ModelBadge>
                 {meta.distTag && <Label variant="secondary">{meta.distTag}</Label>}
                 {meta.totalFiles && (
-                  <Text fontSize="13px" color="var(--color-fg-muted)">
+                  <Text style={{ fontSize: "13px", lineHeight: "16px" }} color="var(--color-fg-muted)">
                     {meta.totalFiles} files
                   </Text>
                 )}
               </Box>
             )}
             {isSecurity && (
-              <Text fontSize="13px" color="var(--color-danger-fg)">
+              <Text style={{ fontSize: "15px", lineHeight: "20px", display: "block" }} color="var(--color-danger-fg)">
                 {meta.reason || "Vulnerability detected in package dependencies."}
               </Text>
             )}
             {isCredit && (
-              <Text fontSize="13px" color="var(--color-attention-fg)">
+              <Text
+                style={{ fontSize: "15px", lineHeight: "20px", display: "block" }}
+                color="var(--color-attention-fg)"
+              >
                 {meta.message || `Account compute balance has dropped to ${meta.balance ?? "< 10"} credits.`}
               </Text>
             )}
@@ -215,18 +254,33 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
               </Button>
             )}
             {isSecurity && (
-              <Button
-                size="small"
-                variant="danger"
-                leadingVisual={ShieldIcon}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!notif.read) onMarkRead?.(notif.id);
-                  navigate("/settings/security");
-                }}
-              >
-                Review Security Settings
-              </Button>
+              <>
+                {canAppeal && !appealSubmitted && (
+                  <Button
+                    size="small"
+                    variant="primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAppealForm((prev) => !prev);
+                    }}
+                  >
+                    {showAppealForm ? "Cancel Appeal" : "Submit Appeal"}
+                  </Button>
+                )}
+                {appealSubmitted && <Label variant="success">Appeal Submitted for Review</Label>}
+                <Button
+                  size="small"
+                  variant="danger"
+                  leadingVisual={ShieldIcon}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!notif.read) onMarkRead?.(notif.id);
+                    navigate("/settings/security");
+                  }}
+                >
+                  Review Security Settings
+                </Button>
+              </>
             )}
             {isCredit && (
               <Button
@@ -242,6 +296,52 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
               </Button>
             )}
           </Box>
+
+          {showAppealForm && (
+            <form
+              onSubmit={handleSubmitAppeal}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                marginTop: 10,
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid var(--color-border-default)",
+                background: "var(--color-canvas-subtle)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <Text fontSize="12px" fontWeight="bold">
+                Explain why this moderation decision should be reconsidered:
+              </Text>
+              <textarea
+                rows={3}
+                value={appealDetails}
+                onChange={(e) => setAppealDetails(e.target.value)}
+                placeholder="Provide context or corrections for the moderation team..."
+                style={{
+                  width: "100%",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-canvas-default)",
+                  color: "var(--color-fg-default)",
+                  fontSize: "12px",
+                }}
+              />
+              <Box display="flex" justifyContent="flex-end" gap={2}>
+                <Button
+                  size="small"
+                  type="submit"
+                  variant="primary"
+                  disabled={appealSubmitting || !appealDetails.trim()}
+                >
+                  {appealSubmitting ? "Submitting..." : "Send Appeal"}
+                </Button>
+              </Box>
+            </form>
+          )}
         </EngineeringCard>
       </Box>
     </NotificationWrapper>

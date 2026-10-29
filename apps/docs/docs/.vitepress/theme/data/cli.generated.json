@@ -1581,7 +1581,8 @@
       {
         "name": "out",
         "aliases": [
-          "o"
+          "o",
+          "output"
         ],
         "type": "string",
         "description": "Output file path (Modelica model, JSON metadata, or synchronized EnergyPlus file)"
@@ -1616,6 +1617,13 @@
           "json"
         ],
         "default": "terminal"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit JSON output",
+        "default": false
       },
       {
         "name": "tamb",

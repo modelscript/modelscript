@@ -44,7 +44,8 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
                 HPC Simulation Cluster Orchestrator
               </div>
               <div style={{ fontSize: "12px", color: "var(--color-text-muted)", fontFamily: "var(--font-mono)" }}>
-                Backend: {clusterInfo?.backend || "slurm"} · Version: {clusterInfo?.version || "23.02-slurmrestd"}
+                Backend: {clusterInfo?.connected ? clusterInfo.backend || "Offline" : "Offline"} · Version:{" "}
+                {clusterInfo?.connected ? clusterInfo.version || "N/A" : "N/A"}
               </div>
             </div>
           </Box>
@@ -57,7 +58,7 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
               padding: "4px 12px",
               borderRadius: "9999px",
               background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(6, 182, 212, 0.15)",
-              color: clusterInfo?.connected ? "#34d399" : "var(--color-accent-cyan)",
+              color: clusterInfo?.connected ? "var(--color-success-fg)" : "var(--color-accent-cyan)",
               border: `1px solid ${clusterInfo?.connected ? "rgba(16, 185, 129, 0.4)" : "rgba(6, 182, 212, 0.4)"}`,
               fontFamily: "var(--font-mono)",
               fontSize: "12px",
@@ -69,7 +70,7 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
                 width: "7px",
                 height: "7px",
                 borderRadius: "50%",
-                backgroundColor: clusterInfo?.connected ? "#10b981" : "#22d3ee",
+                backgroundColor: clusterInfo?.connected ? "var(--color-success-fg)" : "var(--color-accent-cyan)",
               }}
             />
             <span>
@@ -119,7 +120,7 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
                 style={{
                   fontSize: "10px",
                   fontWeight: 700,
-                  color: clusterInfo?.connected ? "#10b981" : "var(--color-text-muted)",
+                  color: clusterInfo?.connected ? "var(--color-success-fg)" : "var(--color-text-muted)",
                   background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)",
                   padding: "1px 6px",
                   borderRadius: "4px",
@@ -142,15 +143,17 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
               }}
             >
               <span>
-                Nodes: <strong>{clusterInfo?.connected ? clusterInfo.nodesCount || 4 : 0}</strong>
+                Nodes: <strong>{clusterInfo?.connected ? (clusterInfo.nodesCount ?? "N/A") : 0}</strong>
               </span>
               <span>
-                Max Time: <strong>04:00:00</strong>
+                Max Time: <strong>{clusterInfo?.connected ? ((clusterInfo as any).maxTime ?? "N/A") : "N/A"}</strong>
               </span>
               <span>
                 State:{" "}
-                <strong style={{ color: clusterInfo?.connected ? "#34d399" : "var(--color-text-muted)" }}>
-                  {clusterInfo?.connected ? "Idle / Ready" : "Offline (Local WASM Active)"}
+                <strong
+                  style={{ color: clusterInfo?.connected ? "var(--color-success-fg)" : "var(--color-text-muted)" }}
+                >
+                  {clusterInfo?.connected ? "Idle / Ready" : "Offline"}
                 </strong>
               </span>
             </div>
@@ -167,13 +170,13 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
           >
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
               <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--color-text-primary)" }}>
-                gpu-accelerated (A100)
+                gpu-accelerated
               </span>
               <span
                 style={{
                   fontSize: "10px",
                   fontWeight: 700,
-                  color: clusterInfo?.connected ? "#10b981" : "var(--color-text-muted)",
+                  color: clusterInfo?.connected ? "var(--color-success-fg)" : "var(--color-text-muted)",
                   background: clusterInfo?.connected ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)",
                   padding: "1px 6px",
                   borderRadius: "4px",
@@ -183,7 +186,7 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
               </span>
             </Box>
             <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-              Dedicated NVIDIA A100 / WebGPU batched nodes for SU2 CFD and large-scale Tet10 FEA inversions.
+              Dedicated GPU / WebGPU batched nodes for SU2 CFD and large-scale Tet10 FEA inversions.
             </div>
             <div
               style={{
@@ -196,15 +199,17 @@ export const ClusterTopologyTab: React.FC<ClusterTopologyTabProps> = ({ clusterI
               }}
             >
               <span>
-                GPUs: <strong>{clusterInfo?.connected ? "16x A100" : "0"}</strong>
+                GPUs: <strong>{clusterInfo?.connected ? ((clusterInfo as any).gpus ?? "N/A") : "N/A"}</strong>
               </span>
               <span>
-                VRAM: <strong>80 GB / node</strong>
+                VRAM: <strong>{clusterInfo?.connected ? ((clusterInfo as any).vramPerNode ?? "N/A") : "N/A"}</strong>
               </span>
               <span>
                 State:{" "}
-                <strong style={{ color: clusterInfo?.connected ? "#34d399" : "var(--color-text-muted)" }}>
-                  {clusterInfo?.connected ? "Ready" : "Offline (Local WebGPU Active)"}
+                <strong
+                  style={{ color: clusterInfo?.connected ? "var(--color-success-fg)" : "var(--color-text-muted)" }}
+                >
+                  {clusterInfo?.connected ? "Ready" : "Offline"}
                 </strong>
               </span>
             </div>

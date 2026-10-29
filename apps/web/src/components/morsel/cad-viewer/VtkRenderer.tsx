@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useFrame } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
 export interface VtkRendererProps {
@@ -11,79 +10,160 @@ export interface VtkRendererProps {
   opacity?: number | undefined;
 }
 
-/**
- * VtkRenderer - Parses VTK buffer payloads and renders isosurfaces.
- *
- * In a full vtk.js integration, this would pipe the Uint8Array into a vtkXMLImageDataReader,
- * run vtkImageMarchingCubes to extract the alpha.polymer=0.5 isosurface, and map the T (temperature)
- * field to a vtkColorTransferFunction.
- *
- * For this architecture, we use a custom shader on a sphere to simulate the expanding melt front.
- */
-export function VtkRenderer({ vtkBuffer, opacity = 0.8 }: VtkRendererProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const [scale, setScale] = useState(0);
+function parseVtkXmlGeometry(vtkBuffer: Uint8Array | null): THREE.BufferGeometry | null {
+  if (!vtkBuffer || vtkBuffer.length === 0) return null;
 
-  // Parse real VTK XML/ASCII or binary buffer payload
-  useEffect(() => {
-    if (!vtkBuffer || vtkBuffer.length === 0) return;
+  const fullText = new TextDecoder().decode(vtkBuffer);
+  if (!fullText.includes("<VTKFile") && !fullText.includes("<PolyData") && !fullText.includes("<UnstructuredGrid")) {
+    return null;
+  }
 
-    const headerStr = new TextDecoder().decode(vtkBuffer.subarray(0, Math.min(256, vtkBuffer.length)));
-    if (headerStr.includes("<VTKFile") || headerStr.includes("vtk")) {
-      const fullText = new TextDecoder().decode(vtkBuffer);
-      const pointsMatch = /<Points>\s*<DataArray[^>]*>([\s\S]*?)<\/DataArray>/i.exec(fullText);
-      if (pointsMatch) {
-        const coords = pointsMatch[1]!.trim().split(/\s+/).map(Number);
-        if (coords.length >= 3) {
-          let maxR = 0.1;
-          for (let i = 0; i < coords.length; i += 3) {
-            const r = Math.hypot(coords[i] || 0, coords[i + 1] || 0, coords[i + 2] || 0);
-            if (r > maxR) maxR = r;
-          }
-          setScale(Math.min(2.0, maxR));
+  const pointsMatch = /<Points>[\s\S]*?<DataArray[^>]*>([\s\S]*?)<\/DataArray>[\s\S]*?<\/Points>/i.exec(fullText);
+  if (!pointsMatch?.[1]) return null;
+
+  const rawCoords = pointsMatch[1]
+    .trim()
+    .split(/\s+/)
+    .map(Number)
+    .filter((n) => Number.isFinite(n));
+  const numPoints = Math.floor(rawCoords.length / 3);
+  if (numPoints < 3) return null;
+
+  // Parse <Polys> or <Cells> connectivity & offsets
+  const polysOrCellsBlock =
+    /<Polys>([\s\S]*?)<\/Polys>/i.exec(fullText)?.[1] ?? /<Cells>([\s\S]*?)<\/Cells>/i.exec(fullText)?.[1] ?? fullText;
+  const connMatch = /<DataArray[^>]*Name=["']connectivity["'][^>]*>([\s\S]*?)<\/DataArray>/i.exec(polysOrCellsBlock);
+  const offsetsMatch = /<DataArray[^>]*Name=["']offsets["'][^>]*>([\s\S]*?)<\/DataArray>/i.exec(polysOrCellsBlock);
+
+  const triIndices: number[] = [];
+  if (connMatch?.[1] && offsetsMatch?.[1]) {
+    const connectivity = connMatch[1]
+      .trim()
+      .split(/\s+/)
+      .map((s) => Number.parseInt(s, 10))
+      .filter((n) => Number.isFinite(n));
+    const offsets = offsetsMatch[1]
+      .trim()
+      .split(/\s+/)
+      .map((s) => Number.parseInt(s, 10))
+      .filter((n) => Number.isFinite(n));
+
+    let prevOffset = 0;
+    for (const endOffset of offsets) {
+      const polyVerts = connectivity.slice(prevOffset, endOffset);
+      prevOffset = endOffset;
+      if (polyVerts.length >= 3) {
+        const v0 = polyVerts[0]!;
+        for (let k = 1; k + 1 < polyVerts.length; k++) {
+          triIndices.push(v0, polyVerts[k]!, polyVerts[k + 1]!);
         }
       }
-      const dataMatch =
-        /<DataArray[^>]*Name=["'](Temperature|Pressure|Velocity|alpha\.polymer)["'][^>]*>([\s\S]*?)<\/DataArray>/i.exec(
-          fullText,
-        );
-      if (dataMatch && materialRef.current) {
-        const vals = dataMatch[2]!.trim().split(/\s+/).map(Number);
-        const avgVal = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
-        const normVal = Math.min(1.0, Math.max(0.0, avgVal / 100.0));
-        const tempColor = new THREE.Color().setHSL((1.0 - normVal) * 0.6, 1.0, 0.5);
-        materialRef.current.color = tempColor;
-        materialRef.current.emissive = tempColor;
-        materialRef.current.emissiveIntensity = 0.4;
-      }
-    } else if (vtkBuffer.length > 4) {
-      const progress = vtkBuffer[4]! / 255.0;
-      setScale(progress * 1.5);
-      if (materialRef.current) {
-        const tempColor = new THREE.Color().setHSL((1.0 - progress) * 0.6, 1.0, 0.5);
-        materialRef.current.color = tempColor;
-        materialRef.current.emissive = tempColor;
-        materialRef.current.emissiveIntensity = 0.4;
+    }
+  } else {
+    // Fallback for unindexed triangle soup in <Points>
+    const triCount = Math.floor(numPoints / 3);
+    for (let i = 0; i < triCount * 3; i++) {
+      triIndices.push(i);
+    }
+  }
+
+  if (triIndices.length < 3) return null;
+
+  // Parse <PointData><DataArray> scalar / vector field
+  const pointDataBlock = /<PointData[^>]*>([\s\S]*?)<\/PointData>/i.exec(fullText)?.[1];
+  const dataArrayMatch = pointDataBlock ? /<DataArray([^>]*)>([\s\S]*?)<\/DataArray>/i.exec(pointDataBlock) : null;
+
+  const pointScalars = new Float32Array(numPoints);
+  if (dataArrayMatch?.[2]) {
+    const attrs = dataArrayMatch[1] ?? "";
+    const compMatch = /NumberOfComponents=["'](\d+)["']/i.exec(attrs);
+    const numComps = compMatch ? Math.max(1, Number.parseInt(compMatch[1]!, 10)) : 1;
+    const rawVals = dataArrayMatch[2]
+      .trim()
+      .split(/\s+/)
+      .map(Number)
+      .filter((n) => Number.isFinite(n));
+
+    for (let i = 0; i < numPoints; i++) {
+      if (numComps === 1) {
+        pointScalars[i] = rawVals[i] ?? 0;
+      } else {
+        let sumSq = 0;
+        for (let c = 0; c < numComps; c++) {
+          const v = rawVals[i * numComps + c] ?? 0;
+          sumSq += v * v;
+        }
+        pointScalars[i] = Math.sqrt(sumSq);
       }
     }
-  }, [vtkBuffer]);
-
-  useFrame((state) => {
-    if (meshRef.current) {
-      // Pulsating organic effect to simulate turbulent melt front
-      const pulse = 1.0 + Math.sin(state.clock.elapsedTime * 10) * 0.05;
-      meshRef.current.scale.setScalar(Math.max(0.01, scale * pulse));
+  } else {
+    for (let i = 0; i < numPoints; i++) {
+      const x = rawCoords[i * 3] ?? 0;
+      const y = rawCoords[i * 3 + 1] ?? 0;
+      const z = rawCoords[i * 3 + 2] ?? 0;
+      pointScalars[i] = Math.hypot(x, y, z);
     }
-  });
+  }
 
-  if (!vtkBuffer) return null;
+  let minScalar = Infinity;
+  let maxScalar = -Infinity;
+  for (let i = 0; i < numPoints; i++) {
+    const val = pointScalars[i]!;
+    if (val < minScalar) minScalar = val;
+    if (val > maxScalar) maxScalar = val;
+  }
+  const span = Math.max(1e-6, maxScalar - minScalar);
+
+  const positions = new Float32Array(triIndices.length * 3);
+  const colors = new Float32Array(triIndices.length * 3);
+  const tmpColor = new THREE.Color();
+
+  for (let i = 0; i < triIndices.length; i++) {
+    const ptIdx = triIndices[i]!;
+    const safeIdx = ptIdx >= 0 && ptIdx < numPoints ? ptIdx : 0;
+    positions[i * 3] = rawCoords[safeIdx * 3] ?? 0;
+    positions[i * 3 + 1] = rawCoords[safeIdx * 3 + 1] ?? 0;
+    positions[i * 3 + 2] = rawCoords[safeIdx * 3 + 2] ?? 0;
+
+    const normT = Math.min(1, Math.max(0, ((pointScalars[safeIdx] ?? minScalar) - minScalar) / span));
+    tmpColor.setHSL((1.0 - normT) * 0.66, 0.85, 0.52);
+    colors[i * 3] = tmpColor.r;
+    colors[i * 3 + 1] = tmpColor.g;
+    colors[i * 3 + 2] = tmpColor.b;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/**
+ * VtkRenderer - Parses VTK XML PolyData / UnstructuredGrid payloads (`<Points>`, `<Polys>`,
+ * and `<PointData><DataArray>`) into a Three.js BufferGeometry with scalar-mapped vertex colors.
+ */
+export function VtkRenderer({ vtkBuffer, opacity = 0.8 }: VtkRendererProps) {
+  const geometry = useMemo(() => parseVtkXmlGeometry(vtkBuffer), [vtkBuffer]);
+
+  useEffect(() => {
+    return () => {
+      geometry?.dispose();
+    };
+  }, [geometry]);
+
+  if (!geometry) return null;
 
   return (
-    <mesh ref={meshRef} position={[0, 0.5, 0]}>
-      {/* 3D marching cubes isosurface simulation */}
-      <icosahedronGeometry args={[1, 4]} />
-      <meshStandardMaterial ref={materialRef} transparent opacity={opacity} roughness={0.2} metalness={0.1} />
+    <mesh geometry={geometry}>
+      <meshStandardMaterial
+        vertexColors
+        transparent={opacity < 1}
+        opacity={opacity}
+        roughness={0.3}
+        metalness={0.15}
+        side={THREE.DoubleSide}
+      />
     </mesh>
   );
 }

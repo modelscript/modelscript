@@ -2,19 +2,23 @@
 
 import React from "react";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Table } from "../styles";
+import { ActionButton, Badge, Select, Table } from "../styles";
 import type { AdminFeatureFlag } from "../types";
 
 export interface AdminFeatureFlagsTabProps {
   featureFlags: AdminFeatureFlag[];
   togglingFlagKey: string | null;
   onToggleFlag: (flag: AdminFeatureFlag) => Promise<void>;
+  onUpdateFlagConfig?:
+    | ((flag: AdminFeatureFlag, allowedRoles: string, rolloutPercentage: number) => Promise<void>)
+    | undefined;
 }
 
 export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
   featureFlags,
   togglingFlagKey,
   onToggleFlag,
+  onUpdateFlagConfig,
 }) => {
   return (
     <Box display="flex" flexDirection="column" gap={3}>
@@ -30,8 +34,8 @@ export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
           Launch Readiness &amp; Subsystem Feature Gates
         </div>
         <div style={{ color: "var(--color-fg-muted)", fontSize: "13px", marginTop: "4px" }}>
-          Control subsystem availability in real time across API routes and web UI. Toggling a flag takes effect
-          immediately without restarting backend services.
+          Control subsystem availability, progressive rollout percentage, and role targeting in real time across API
+          routes and web UI.
         </div>
       </Box>
 
@@ -41,6 +45,7 @@ export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
             <th>Feature Name &amp; Description</th>
             <th>Category</th>
             <th>Maturity</th>
+            <th>Rollout &amp; Roles</th>
             <th>Status</th>
             <th>Default</th>
             <th style={{ textAlign: "right" }}>Action</th>
@@ -84,6 +89,34 @@ export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
                 </Badge>
               </td>
               <td>
+                {(() => {
+                  const rolesStr = Array.isArray(flag.allowedRoles)
+                    ? flag.allowedRoles.join(",")
+                    : flag.allowedRoles || "user,admin,guest";
+                  return onUpdateFlagConfig ? (
+                    <Box display="flex" flexDirection="column" gap={1}>
+                      <Select
+                        style={{ padding: "4px 8px", fontSize: "12px" }}
+                        value={String(flag.rolloutPercentage ?? 100)}
+                        disabled={togglingFlagKey === flag.key}
+                        onChange={(e) => void onUpdateFlagConfig(flag, rolesStr, Number(e.target.value))}
+                      >
+                        <option value="0">0% Rollout</option>
+                        <option value="10">10% Canary</option>
+                        <option value="25">25% Rollout</option>
+                        <option value="50">50% Rollout</option>
+                        <option value="100">100% GA</option>
+                      </Select>
+                      <span style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Roles: {rolesStr}</span>
+                    </Box>
+                  ) : (
+                    <span style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                      {flag.rolloutPercentage ?? 100}% ({rolesStr})
+                    </span>
+                  );
+                })()}
+              </td>
+              <td>
                 <Badge $variant={flag.currentEnabled ? "approved" : "rejected"}>
                   {flag.currentEnabled ? "ACTIVE" : "DISABLED"}
                 </Badge>
@@ -106,7 +139,7 @@ export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
           ))}
           {featureFlags.length === 0 && (
             <tr>
-              <td colSpan={6} style={{ textAlign: "center", padding: "32px", color: "var(--color-fg-muted)" }}>
+              <td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "var(--color-fg-muted)" }}>
                 No feature flags registered.
               </td>
             </tr>

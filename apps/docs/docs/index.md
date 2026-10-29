@@ -17,7 +17,8 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: Try the Playground
-      link: https://modelscript.org/playground
+      link: /playground
+      target: _self
     - theme: alt
       text: Explore Industries
       link: /industries

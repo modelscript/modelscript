@@ -57,12 +57,18 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
           </Box>
           <Box flex={1} display="flex" flexDirection="row">
             <Box flex={1}>
-              <Box display="flex" alignItems="center" gap="4px" mb="4px" fontSize="14px">
+              <Box
+                display="flex"
+                alignItems="center"
+                gap="4px"
+                mb="4px"
+                style={{ fontSize: "15px", lineHeight: "20px" }}
+              >
                 <ProfileHoverCard username={primaryActor.username || ""}>
                   <Link
                     to={`/${primaryActor.username}`}
                     style={{
-                      fontWeight: "bold",
+                      fontWeight: 700,
                       color: "var(--color-fg-default)",
                       textDecoration: "none",
                     }}
@@ -78,7 +84,7 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
                 </span>
               </Box>
               {notif.post_content && (
-                <Box fontSize="14px" color="var(--color-fg-muted)">
+                <Box style={{ fontSize: "15px", lineHeight: "20px" }} color="var(--color-fg-muted)">
                   {formatPostContent(notif.post_content)}
                 </Box>
               )}
@@ -105,11 +111,11 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
                 <Avatar key={a.username} $url={a.avatar_url} />
               ))}
             </AvatarsRow>
-            <Box mt={1} fontSize="14px">
+            <Box mt={1} style={{ fontSize: "15px", lineHeight: "20px" }}>
               {getMessageForType(notif.type, notif.actors, currentUsername)}
             </Box>
             {notif.post_content && (
-              <Box mt={1} color="var(--color-fg-muted)" fontSize="14px">
+              <Box mt={1} color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
                 {formatPostContent(notif.post_content)}
               </Box>
             )}

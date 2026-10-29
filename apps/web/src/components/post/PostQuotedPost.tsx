@@ -27,14 +27,15 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
         navigate(`/${quotePost.username}/status/${quotePost.id}`);
       }}
     >
-      <Box display="flex" alignItems="center" gap={2} mb={1}>
+      <Box display="flex" alignItems="center" gap={1.5} mb={1} style={{ lineHeight: "20px" }}>
         <Avatar $url={quotePost.avatar_url} style={{ width: "20px", height: "20px", fontSize: "10px" }}>
           {!quotePost.avatar_url && quotePost.username.charAt(0).toUpperCase()}
         </Avatar>
         <Text
           style={{
-            fontWeight: "bold",
-            fontSize: "14px",
+            fontWeight: 700,
+            fontSize: "15px",
+            lineHeight: "20px",
             display: "flex",
             alignItems: "center",
             gap: "4px",
@@ -43,12 +44,14 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
           {quotePost.display_name || quotePost.username}
           {quotePost.account_type === "rss" && <RssIcon size={14} color="var(--color-fg-muted)" />}
         </Text>
-        <Text className="handle-text">@{parsedQuoteAuthor?.localUsername || quotePost.username}</Text>
+        <Text className="handle-text" style={{ fontSize: "15px", lineHeight: "20px" }}>
+          @{parsedQuoteAuthor?.localUsername || quotePost.username}
+        </Text>
         {parsedQuoteAuthor?.isFederated && parsedQuoteAuthor.remoteDomain && (
           <FederatedDomainPill domain={parsedQuoteAuthor.remoteDomain} />
         )}
       </Box>
-      <Box style={{ fontSize: "15px", wordBreak: "break-word" }}>
+      <Box style={{ fontSize: "15px", lineHeight: "20px", wordBreak: "break-word" }}>
         <PostMarkdownContent text={quotePost.content} />
       </Box>
       {quotePost.artifact_view_id && (

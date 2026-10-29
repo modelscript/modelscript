@@ -9,4 +9,5 @@ export * from "./tabs/AdminDmcaTab";
 export * from "./tabs/AdminFeatureFlagsTab";
 export * from "./tabs/AdminFederationTab";
 export * from "./tabs/AdminModerationTab";
+export * from "./tabs/AdminUsersTab";
 export type * from "./types";

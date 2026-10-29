@@ -2,6 +2,7 @@
 
 import { Spinner, useTheme } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
@@ -33,15 +34,19 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const [loading, setLoading] = useState(!initialArtifactView);
   const [isLoaded] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(true);
+  const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const { resolvedColorMode } = useTheme();
   const navigate = useNavigate();
 
   const viewConfig: any = useMemo(
-    () => ({ ...safeJsonParse(artifact?.view_config, {}), artifactId }),
-    [artifact?.view_config, artifactId],
+    () => ({
+      ...(artifact?.thumbnail_url ? { thumbnail_url: artifact.thumbnail_url } : {}),
+      ...safeJsonParse(artifact?.view_config, {}),
+      artifactId,
+    }),
+    [artifact, artifactId],
   );
 
   const handleCopyLink = useCallback(() => {
@@ -54,16 +59,28 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   useEffect(() => {
     if (!isFullScreen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isEditable =
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        target?.isContentEditable ||
+        Boolean(target?.closest(".monaco-editor, [contenteditable='true'], input, textarea, select"));
 
       if (e.key === "Escape") {
-        setIsFullScreen(false);
-      } else if (e.key === "i" || e.key === "I") {
+        if (!isEditable) {
+          setIsFullScreen(false);
+        }
+        return;
+      }
+
+      if (isEditable || e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === "i" || e.key === "I") {
         e.preventDefault();
         setIsStudioSidebarOpen((prev) => !prev);
       } else if (e.key === "r" || e.key === "R") {
-        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         navigate(
           buildEditorUrlForArtifact({
@@ -74,15 +91,14 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           }),
         );
       } else if (e.key === "c" || e.key === "C") {
-        if (e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
         handleCopyLink();
       }
     };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isFullScreen,
     artifactId,
@@ -234,6 +250,50 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         ? resolvedThumbnailUrlDark || resolvedThumbnailUrl
         : resolvedThumbnailUrlLight || resolvedThumbnailUrl;
 
+    const fullScreenOverlay = (
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "#090d16",
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <StudioHeader
+          artifact={artifact}
+          artifactId={artifactId}
+          viewConfig={viewConfig}
+          resolvedForkedFromId={resolvedForkedFromId}
+          paramDeltaCount={paramDeltaCount}
+          copiedLink={copiedLink}
+          isStudioSidebarOpen={isStudioSidebarOpen}
+          onExitFullScreen={() => setIsFullScreen(false)}
+          onCopyLink={handleCopyLink}
+          onOpenDiff={() => setIsDiffOpen(true)}
+          onToggleSidebar={() => setIsStudioSidebarOpen((prev) => !prev)}
+        />
+
+        <Box flex={1} display="flex" overflow="hidden" position="relative">
+          <Box flex={1} height="100%" bg="black" overflow="auto" position="relative">
+            {viewerContent}
+          </Box>
+
+          <StudioInspectorSidebar
+            isOpen={isStudioSidebarOpen}
+            artifact={artifact}
+            artifactId={artifactId}
+            viewConfig={viewConfig}
+          />
+        </Box>
+      </div>
+    );
+
     return (
       <>
         <Box
@@ -249,7 +309,15 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           {currentThumbnailUrl ? (
             <img
               src={currentThumbnailUrl}
-              style={{ width: "100%", display: "block", objectFit: "cover" }}
+              style={{
+                width: "100%",
+                display: "block",
+                objectFit: "contain",
+                background:
+                  resolvedColorMode === "dark"
+                    ? "radial-gradient(circle at center, #2b2e36 0%, #1f2229 55%, #14161b 100%)"
+                    : "radial-gradient(circle at center, #cdced0 0%, #d6d7d9 50%, #e2e3e4 100%)",
+              }}
               alt="thumbnail"
             />
           ) : (
@@ -259,48 +327,16 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
               aspectRatio="16 / 9"
             />
           )}
-        </Box>
-
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "#090d16",
-            zIndex: 9999,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <StudioHeader
+          <CardFooter
             artifact={artifact}
             artifactId={artifactId}
             viewConfig={viewConfig}
-            resolvedForkedFromId={resolvedForkedFromId}
-            paramDeltaCount={paramDeltaCount}
-            copiedLink={copiedLink}
-            isStudioSidebarOpen={isStudioSidebarOpen}
-            onExitFullScreen={() => setIsFullScreen(false)}
-            onCopyLink={handleCopyLink}
-            onOpenDiff={() => setIsDiffOpen(true)}
-            onToggleSidebar={() => setIsStudioSidebarOpen((prev) => !prev)}
+            isLoaded={isLoaded}
+            onOpenFullScreen={() => setIsFullScreen(true)}
           />
+        </Box>
 
-          <Box flex={1} display="flex" overflow="hidden" position="relative">
-            <Box flex={1} height="100%" bg="black" overflow="auto" position="relative">
-              {viewerContent}
-            </Box>
-
-            <StudioInspectorSidebar
-              isOpen={isStudioSidebarOpen}
-              artifact={artifact}
-              artifactId={artifactId}
-              viewConfig={viewConfig}
-            />
-          </Box>
-        </div>
+        {typeof document !== "undefined" ? createPortal(fullScreenOverlay, document.body) : fullScreenOverlay}
         {isDiffOpen && resolvedForkedFromId && (
           <Suspense fallback={null}>
             <ArtifactDiffModal

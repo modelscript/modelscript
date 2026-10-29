@@ -101,7 +101,11 @@ export class OidcService {
     redirectUri?: string | undefined;
     adminGroup?: string | undefined;
   }) {
-    this.issuerUrl = (options?.issuerUrl || process.env["OIDC_ISSUER_URL"] || "").replace(/\/+$/, "");
+    let rawIssuer = (options?.issuerUrl || process.env["OIDC_ISSUER_URL"] || "").trim();
+    while (rawIssuer.endsWith("/")) {
+      rawIssuer = rawIssuer.slice(0, -1);
+    }
+    this.issuerUrl = rawIssuer;
     this.clientId = options?.clientId || process.env["OIDC_CLIENT_ID"] || "";
     this.clientSecret = options?.clientSecret || process.env["OIDC_CLIENT_SECRET"] || "";
     this.redirectUri =

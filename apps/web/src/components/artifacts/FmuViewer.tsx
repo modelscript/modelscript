@@ -271,7 +271,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
   const [causalityFilter, setCausalityFilter] = useState<string>("all");
   const [copiedGuid, setCopiedGuid] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [isSimulatedFallback, setIsSimulatedFallback] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
   const [simResults, setSimResults] = useState<{ t: number[]; y: number[] } | null>(null);
 
   // Collect and deduplicate all scalar variables
@@ -332,7 +332,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
 
   const handleRunSimulation = async () => {
     setIsSimulating(true);
-    setIsSimulatedFallback(false);
+    setSimError(null);
     const steps = 100;
     const stopTime = 5.0;
 
@@ -360,7 +360,6 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       const payload = res.data;
       if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
         setSimResults({ t: payload.t, y: payload.y });
-        setIsSimulatedFallback(false);
         setIsSimulating(false);
         return;
       }
@@ -373,11 +372,11 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
         );
         const y = payload.data.map((r: Record<string, unknown>) => Number(r[outKey] ?? 0));
         setSimResults({ t, y });
-        setIsSimulatedFallback(false);
         setIsSimulating(false);
         return;
       }
-    } catch {
+      throw new Error("Simulation endpoint returned no trajectory data.");
+    } catch (fmiErr: unknown) {
       try {
         if (typeof viewConfig.code === "string" && viewConfig.code.trim()) {
           const res = await api.post("/simulate", {
@@ -389,101 +388,23 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
           const payload = res.data;
           if (Array.isArray(payload?.t) && Array.isArray(payload?.y)) {
             setSimResults({ t: payload.t, y: payload.y });
-            setIsSimulatedFallback(false);
             setIsSimulating(false);
             return;
           }
         }
-      } catch {
-        // Fall back to local state-space / DAE step integrator below
+      } catch (simErr: unknown) {
+        const msg = simErr instanceof Error ? simErr.message : "Simulation execution failed.";
+        setSimError(msg);
+        setSimResults(null);
+        setIsSimulating(false);
+        return;
       }
+      const msg =
+        fmiErr instanceof Error ? fmiErr.message : "Backend FMI simulation service is unavailable for this model.";
+      setSimError(msg);
+      setSimResults(null);
+      setIsSimulating(false);
     }
-
-    // Local state-space / DAE step integrator driven by parsed modelVariables
-    const dt = stopTime / steps;
-    const byVr = new Map<number, FmuScalarVariable>();
-    const byName = new Map<string, FmuScalarVariable>();
-    const stateValues = new Map<string, number>();
-
-    for (const v of allVariables) {
-      byVr.set(v.valueReference, v);
-      byName.set(v.name, v);
-      const raw = paramValues[v.name] ?? v.start;
-      const num = Number(raw);
-      stateValues.set(v.name, Number.isFinite(num) ? num : 0);
-    }
-
-    const inputVars = allVariables.filter((v) => v.causality.toLowerCase() === "input");
-    const paramVars = allVariables.filter((v) => v.causality.toLowerCase() === "parameter");
-    const outputVars = allVariables.filter((v) => v.causality.toLowerCase() === "output");
-
-    // Link derivative variables to their corresponding continuous states via valueReference or der(...) naming
-    const stateDerivatives = new Map<string, FmuScalarVariable>();
-    for (const v of allVariables) {
-      if (typeof v.derivative === "number") {
-        const stateVar = byVr.get(v.derivative);
-        if (stateVar) {
-          stateDerivatives.set(stateVar.name, v);
-        }
-      } else {
-        const derMatch = v.name.match(/^der\((.+)\)$/);
-        if (derMatch && derMatch[1]) {
-          const stateVar = byName.get(derMatch[1].trim());
-          if (stateVar) {
-            stateDerivatives.set(stateVar.name, v);
-          }
-        }
-      }
-    }
-
-    const primaryOutput =
-      outputVars[0] ||
-      Array.from(stateDerivatives.keys())
-        .map((n) => byName.get(n))
-        .find((v): v is FmuScalarVariable => Boolean(v)) ||
-      allVariables.find((v) => v.causality.toLowerCase() === "local") ||
-      allVariables[0];
-
-    const inputDrive =
-      inputVars.length > 0
-        ? inputVars.reduce((acc, v) => acc + (stateValues.get(v.name) ?? 0), 0) / inputVars.length
-        : 1.0;
-
-    const paramRates = paramVars
-      .map((v) => Math.abs(stateValues.get(v.name) ?? 0))
-      .filter((val) => val > 0 && Number.isFinite(val));
-    const effectiveRate =
-      paramRates.length > 0
-        ? Math.min(10.0, Math.max(0.1, paramRates.reduce((a, b) => a + b, 0) / paramRates.length))
-        : 1.0;
-
-    const t: number[] = [];
-    const y: number[] = [];
-
-    for (let i = 0; i <= steps; i++) {
-      const time = (i / steps) * stopTime;
-      t.push(time);
-      const currentOut = primaryOutput ? (stateValues.get(primaryOutput.name) ?? 0) : 0;
-      y.push(currentOut);
-
-      // Explicit Euler / DAE step update across states
-      if (stateDerivatives.size > 0) {
-        for (const [stateName, derVar] of stateDerivatives.entries()) {
-          const x = stateValues.get(stateName) ?? 0;
-          const dx = stateValues.get(derVar.name) ?? effectiveRate * (inputDrive - x);
-          stateValues.set(stateName, x + dt * dx);
-          stateValues.set(derVar.name, effectiveRate * (inputDrive - (x + dt * dx)));
-        }
-      } else if (primaryOutput) {
-        const x = stateValues.get(primaryOutput.name) ?? 0;
-        const dx = effectiveRate * (inputDrive - x);
-        stateValues.set(primaryOutput.name, x + dt * dx);
-      }
-    }
-
-    setIsSimulatedFallback(true);
-    setSimResults({ t, y });
-    setIsSimulating(false);
   };
 
   const modelName = viewConfig.modelName || "FMU Simulation Model";
@@ -494,7 +415,10 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     const safeIdent = modelName.replace(/[^A-Za-z0-9_]/g, "_") || "FmuModel";
     const seenSafeNames = new Set<string>();
     const normalizedVars = allVariables
-      .filter((v) => !/^der\(.+\)$/.test(v.name))
+      .filter((v) => {
+        const c = v.causality.toLowerCase();
+        return (c === "parameter" || c === "input" || c === "output") && !/^der\(.+\)$/.test(v.name);
+      })
       .slice(0, 40)
       .map((v) => {
         let safeName = v.name.replace(/[^A-Za-z0-9_]/g, "_") || "v";
@@ -519,62 +443,17 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               : v.causality === "output"
                 ? "output "
                 : "";
-        const defaultStart =
-          v.start !== undefined
-            ? v.start
-            : v.causality === "parameter" || v.causality === "input"
-              ? v.typeName === "Boolean"
-                ? "false"
-                : v.typeName === "String"
-                  ? '""'
-                  : v.typeName === "Integer"
-                    ? 1
-                    : 1.0
-              : undefined;
         const startStr =
-          defaultStart !== undefined
-            ? v.causality === "parameter"
-              ? ` = ${defaultStart}`
-              : `(start = ${defaultStart})`
-            : "";
+          v.start !== undefined ? (v.causality === "parameter" ? ` = ${v.start}` : `(start = ${v.start})`) : "";
         const descStr = v.description ? ` "${v.description.replace(/"/g, "'")}"` : "";
         return `  ${prefix}${v.typeName} ${v.safeName}${startStr}${descStr};`;
       })
       .join("\n");
 
-    const firstInput = normalizedVars.find((v) => v.causality === "input" && v.typeName === "Real")?.safeName;
-    const firstState = normalizedVars.find(
-      (v) =>
-        v.causality !== "parameter" && v.causality !== "input" && v.causality !== "output" && v.typeName === "Real",
-    )?.safeName;
-
-    const eqLines: string[] = [];
-    for (const v of normalizedVars) {
-      if (v.causality === "parameter" || v.causality === "input") continue;
-      if (v.typeName === "Real") {
-        if (v.causality === "output") {
-          const rhs = firstState || firstInput || String(Number.isFinite(Number(v.start)) ? Number(v.start) : 0.0);
-          eqLines.push(`  ${v.safeName} = ${rhs};`);
-        } else {
-          const drive = firstInput || "1.0";
-          eqLines.push(`  der(${v.safeName}) = ${drive} - ${v.safeName};`);
-        }
-      } else if (v.typeName === "Integer") {
-        eqLines.push(`  ${v.safeName} = ${Math.trunc(Number(v.start) || 0)};`);
-      } else if (v.typeName === "Boolean") {
-        eqLines.push(`  ${v.safeName} = ${v.start === true || v.start === "true" ? "true" : "false"};`);
-      } else {
-        eqLines.push(`  ${v.safeName} = "${String(v.start ?? "")}";`);
-      }
-    }
-
-    const finalDecls = varDecls || "  Real x(start = 0.0);\n  output Real y;";
-    const finalEqs = eqLines.length > 0 ? eqLines.join("\n") : varDecls ? "" : "  der(x) = 1.0 - x;\n  y = x;";
-
     const wrapperCode =
       typeof viewConfig.code === "string" && viewConfig.code.trim()
         ? viewConfig.code
-        : `model ${safeIdent} "FMI ${fmiVer} FMU Wrapper (${viewConfig.guid || "unverified"})"\n${finalDecls}\nequation\n${finalEqs}\nend ${safeIdent};\n`;
+        : `block ${safeIdent} "FMI ${fmiVer} FMU Interface (${viewConfig.guid || "unverified"})"\n${varDecls ? `${varDecls}\n` : ""}end ${safeIdent};\n`;
     const hash = compressMorselPayload({
       v: 1,
       lang: "modelica" as any,
@@ -610,15 +489,17 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedGuid ? "Copied" : "GUID"}</Text>
             </Button>
           )}
-          <Button
-            size="small"
-            variant="primary"
-            onClick={handleOpenInPlayground}
-            title="Open FMU interface wrapper in ModelScript Playground"
-          >
-            <CodeIcon size={14} />
-            <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
-          </Button>
+          {Boolean(viewConfig?.standalone) && (
+            <Button
+              size="small"
+              variant="primary"
+              onClick={handleOpenInPlayground}
+              title="Open FMU interface wrapper in ModelScript Playground"
+            >
+              <CodeIcon size={14} />
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
+            </Button>
+          )}
         </ActionButtons>
       </Toolbar>
 
@@ -757,20 +638,18 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               </Button>
             </Box>
 
-            {isSimulatedFallback && simResults && (
+            {simError && (
               <Box
                 px={3}
                 py={2}
-                bg="rgba(245, 158, 11, 0.12)"
-                border="1px solid rgba(245, 158, 11, 0.35)"
+                bg="var(--color-danger-subtle)"
+                border="1px solid var(--color-danger-muted)"
                 borderRadius="6px"
                 display="flex"
                 alignItems="center"
                 gap={2}
               >
-                <Text style={{ fontSize: "11.5px", fontWeight: 600, color: "#fbbf24" }}>
-                  Local Approximation (Backend FMI runtime unavailable)
-                </Text>
+                <Text style={{ fontSize: "11.5px", fontWeight: 600, color: "var(--color-danger-fg)" }}>{simError}</Text>
               </Box>
             )}
 

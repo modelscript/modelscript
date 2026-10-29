@@ -56,6 +56,40 @@ export const ExploreSearchHeader: React.FC<ExploreSearchHeaderProps> = ({
           </button>
         )}
       </SearchInputWrapper>
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
+        title="Ask AI Copilot or open command palette (⌘K)"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "8px 12px",
+          borderRadius: "9999px",
+          background: "var(--color-search-bg, rgba(255, 255, 255, 0.04))",
+          border: "1px solid var(--color-search-border, var(--color-border-glass))",
+          color: "var(--color-text-muted)",
+          fontSize: "12px",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ color: "var(--color-accent-purple)", fontSize: "13px" }}>⚡</span>
+        <span>AI Copilot</span>
+        <kbd
+          style={{
+            background: "rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--color-border-glass)",
+            borderRadius: "4px",
+            padding: "1px 5px",
+            fontSize: "10px",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          ⌘K
+        </kbd>
+      </button>
     </SearchHeader>
   );
 };

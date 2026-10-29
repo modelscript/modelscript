@@ -89,7 +89,7 @@ const ProfilePage: React.FC = () => {
   const handleReportSubmit = async () => {
     if (!token || !username) return;
     try {
-      await reportUser(username, `${reportReason}: ${reportDetails}`);
+      await reportUser(username, reportReason, reportDetails.trim() || undefined);
       setShowReportModal(false);
       setReportDetails("");
       setReportSuccess(true);

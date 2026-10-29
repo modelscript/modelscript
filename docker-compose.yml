@@ -16,8 +16,6 @@ services:
         condition: service_healthy
       web:
         condition: service_healthy
-      ide:
-        condition: service_healthy
     restart: unless-stopped
 
   mqtt:
@@ -89,7 +87,7 @@ services:
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-}
       - TIMESCALE_URL=${TIMESCALE_URL:-}
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
-      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
+      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=1024}
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1"]
       interval: 10s
@@ -115,29 +113,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-    restart: unless-stopped
-
-  ide:
-    image: ghcr.io/modelscript/ide:latest
-    profiles: ["standalone", "internal", "federated"]
-    build:
-      context: .
-      target: ide
-    ports:
-      - "3003:3003"
-    depends_on:
-      api:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=production
-      - PORT=3003
-      - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3003/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     restart: unless-stopped
 
   api-ce:

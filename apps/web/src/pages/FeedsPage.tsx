@@ -56,7 +56,8 @@ const FeedInput = styled.input`
   height: 100%;
   border: none;
   background: transparent;
-  font-size: 16px;
+  font-size: var(--text-md, 15px);
+  line-height: var(--leading-md, 20px);
   color: var(--color-fg-default);
   outline: none;
 
@@ -86,7 +87,8 @@ const TrashIconButton = styled(CircleIconButton)`
 
 const MutedUrl = styled.a`
   display: block;
-  font-size: 13px;
+  font-size: var(--text-sm, 13px);
+  line-height: var(--leading-sm, 16px);
   color: var(--color-fg-muted);
   text-decoration: none;
   white-space: nowrap;
@@ -265,15 +267,14 @@ const FeedsPage: React.FC = () => {
 
       {unsubscribingFeed && (
         <Dialog
-          isOpen={!!unsubscribingFeed}
-          onDismiss={() => {
+          title="Unsubscribe from Feed"
+          onClose={() => {
             if (!isUnsubscribing) setUnsubscribingFeed(null);
           }}
-          aria-labelledby="unsub-dialog-title"
+          width="medium"
         >
-          <Dialog.Header id="unsub-dialog-title">Unsubscribe from Feed</Dialog.Header>
-          <Box p={3}>
-            <Text as="p" color="var(--color-fg-default)" style={{ marginBottom: "16px" }}>
+          <Box display="flex" flexDirection="column" gap={3}>
+            <Text as="p" color="var(--color-fg-default)" style={{ margin: 0, lineHeight: 1.5 }}>
               Are you sure you want to unsubscribe from{" "}
               <strong>{unsubscribingFeed.title || unsubscribingFeed.url}</strong>?
             </Text>

@@ -288,13 +288,11 @@ npm run dev
 
 This launches the primary development stack:
 
-| Service     | Port / URL              | Description                                                        |
-| ----------- | ----------------------- | ------------------------------------------------------------------ |
-| **API**     | `http://localhost:3000` | REST / GraphQL / SPARQL / MCP SSE API server                       |
-| **Web**     | `http://localhost:3001` | Package registry, social engineering hub, and `/playground`        |
-| **IDE**     | `http://localhost:3003` | Browser-based VS Code Web IDE                                      |
-| **Docs**    | `http://localhost:5173` | VitePress documentation portal                                     |
-| **Desktop** | `npm run dev:desktop`   | Native Tauri v2 air-gapped desktop studio (`@modelscript/desktop`) |
+| Service     | Port / URL              | Description                                                                        |
+| ----------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| **API**     | `http://localhost:3000` | REST / GraphQL / SPARQL / MCP SSE API server & embedded VS Code Web IDE host       |
+| **Web**     | `http://localhost:3001` | Unified package registry, social hub, `/playground`, `/ide`, and VitePress `/docs` |
+| **Desktop** | `npm run dev:desktop`   | Native Tauri v2 air-gapped desktop studio (`@modelscript/desktop`)                 |
 
 #### Browser-Local AI Assistant (Optional)
 
@@ -386,13 +384,12 @@ npm run docker:up
 
 ### Deployed Services & Ports
 
-| Service         | Port           | Protocol | Description                                                            |
-| --------------- | -------------- | -------- | ---------------------------------------------------------------------- |
-| **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, and verification API              |
-| **Web**         | `3001`         | HTTP     | Library registry, hub, and visual playground (`/playground`)           |
-| **IDE**         | `3003`         | HTTP     | Browser-based VS Code IDE with language server integration             |
-| **MQTT**        | `1883`, `9001` | TCP, WS  | Eclipse Mosquitto broker for event bus & telemetry streaming           |
-| **TimescaleDB** | `5432`         | TCP      | Time-series database for telemetry historian & simulation trajectories |
+| Service         | Port           | Protocol | Description                                                                        |
+| --------------- | -------------- | -------- | ---------------------------------------------------------------------------------- |
+| **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, verification API, and VS Code Web IDE host    |
+| **Web**         | `3001`         | HTTP     | Unified library registry, hub, `/playground`, `/ide`, and VitePress docs (`/docs`) |
+| **MQTT**        | `1883`, `9001` | TCP, WS  | Eclipse Mosquitto broker for event bus & telemetry streaming                       |
+| **TimescaleDB** | `5432`         | TCP      | Time-series database for telemetry historian & simulation trajectories             |
 
 ---
 

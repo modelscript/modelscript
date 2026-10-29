@@ -191,7 +191,7 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
     try {
       const { data: conflictData } = await api.post("/threads/conflicts/diagnose", { conflictId });
       setActiveConflict(conflictData);
-      setCustomValueInput(String(conflictData.simplexConsensus ?? 18.0));
+      setCustomValueInput(conflictData.simplexConsensus !== undefined ? String(conflictData.simplexConsensus) : "");
     } catch (e) {
       console.error("Failed to diagnose conflict", e);
     }
@@ -495,7 +495,7 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
                           sx={{ fontSize: "10px", py: 0, px: 1, backgroundColor: "#f44336", color: "#fff" }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDiagnoseConflict((node as any).conflictId || node.nodeId || "conflict_bus_voltage");
+                            handleDiagnoseConflict(String((node as any).conflictId ?? node.nodeId));
                           }}
                         >
                           Resolve

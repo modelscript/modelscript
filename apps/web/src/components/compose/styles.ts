@@ -13,8 +13,9 @@ export const TweetButton = styled.button`
   color: var(--ms-brand-contrast);
   border: 1px solid transparent;
   border-radius: var(--ms-radius-pill);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-md, 15px);
+  line-height: var(--leading-md, 20px);
+  font-weight: 700;
   font-family: inherit;
   white-space: nowrap;
   cursor: pointer;
@@ -47,8 +48,9 @@ export const CommandPill = styled.button`
   gap: 6px;
   height: 26px;
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 550;
+  font-size: var(--text-sm, 13px);
+  line-height: var(--leading-sm, 16px);
+  font-weight: 600;
   color: var(--ms-text-2);
   background: transparent;
   border: 1px solid var(--ms-border);
@@ -133,7 +135,8 @@ export const Backdrop = styled.div`
   right: 0;
   bottom: 0;
   pointer-events: none;
-  font-size: 20px;
+  font-size: var(--text-xl, 20px);
+  line-height: var(--leading-xl, 24px);
   padding: 6px 0 4px 0;
   font-family: inherit;
   white-space: pre-wrap;
@@ -146,7 +149,8 @@ export const ComposeInput = styled.textarea`
   width: 100%;
   border: none;
   outline: none;
-  font-size: 20px;
+  font-size: var(--text-xl, 20px);
+  line-height: var(--leading-xl, 24px);
   padding: 6px 0 4px 0;
   resize: none;
   background: transparent !important;

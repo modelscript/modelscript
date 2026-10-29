@@ -225,6 +225,32 @@ export function registerSimulationEndpoints(context: LspContext) {
       }
 
       try {
+        if (/\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(params.uri)) {
+          const text = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
+          if (!text) {
+            return { t: [], y: [], states: [], error: `Could not read Fortran source for ${params.uri}` };
+          }
+          const t0 = Date.now();
+          const { simulateFortranRoutine } = await import("@modelscript/fortran");
+          const startTime = params.startTime ?? 0;
+          const stopTime = params.stopTime ?? 1.0;
+          const dt = params.interval ?? Math.max((stopTime - startTime) / 100, 0.001);
+          const simRes = await simulateFortranRoutine(text, {
+            startTime,
+            stopTime,
+            dt,
+            inputs: params.parameterOverrides,
+          });
+          const executionTimeMs = Date.now() - t0;
+          return {
+            t: simRes.t,
+            y: simRes.y,
+            states: simRes.states,
+            experiment: { startTime, stopTime, interval: dt, tolerance: 1e-4 },
+            telemetry: { executionTimeMs, stepCount: simRes.t.length },
+          };
+        }
+
         const flat = flattenTargetClass(context, params.uri, params.className);
         if ("error" in flat) {
           return { t: [], y: [], states: [], error: flat.error };
@@ -856,6 +882,38 @@ export function registerSimulationEndpoints(context: LspContext) {
       }
 
       try {
+        if (/\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(params.uri)) {
+          const text = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
+          if (!text) {
+            return { error: `Could not read Fortran source for ${params.uri}` };
+          }
+          stepMode = true;
+          const { simulateFortranRoutine } = await import("@modelscript/fortran");
+          const result = await simulateFortranRoutine(text, {
+            startTime: 0,
+            stopTime: 1.0,
+            dt: 0.1,
+            onStatement: async (line, envObj) => {
+              const bps = breakpointsMap.get(params.uri) || [];
+              const isBreakpoint = bps.some((bp: { line: number }) => bp.line === line);
+              if (stepMode || isBreakpoint) {
+                stepMode = false;
+                currentDebugEnv = new Map(Object.entries(envObj));
+                context.connection.sendNotification("modelscript/debuggerStopped", {
+                  uri: params.uri,
+                  line,
+                  column: 1,
+                });
+                await new Promise<void>((resolve) => {
+                  debuggerResumeCallback = resolve;
+                });
+                currentDebugEnv = undefined;
+              }
+            },
+          });
+          return result;
+        }
+
         const flat = flattenTargetClass(context, params.uri, params.className);
         if ("error" in flat) {
           return { error: flat.error };

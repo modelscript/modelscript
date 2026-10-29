@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { PsseErrorCode } from "../errors.js";
 import type { PsseCase, PsseDiagnostic } from "../types.js";
 
 /**
@@ -35,9 +36,9 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
   }
   if (swingBusCount === 0 && c.buses.size > 0) {
     addDiag(
-      "error",
-      "P2002",
-      "Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.",
+      PsseErrorCode.MISSING_SLACK_BUS.severity,
+      PsseErrorCode.MISSING_SLACK_BUS.code,
+      PsseErrorCode.MISSING_SLACK_BUS.message(),
       c.header.span,
     );
   }
@@ -47,37 +48,47 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
   for (const g of c.generators) {
     const key = `${g.i}:${g.id}`;
     if (genKeys.has(key)) {
-      addDiag("error", "P1003", `Duplicate generator ID '${g.id}' at bus ${g.i}.`, g.span);
+      addDiag(
+        PsseErrorCode.DUPLICATE_EQUIPMENT_ID.severity,
+        PsseErrorCode.DUPLICATE_EQUIPMENT_ID.code,
+        PsseErrorCode.DUPLICATE_EQUIPMENT_ID.message(g.id, g.i),
+        g.span,
+      );
     }
     genKeys.add(key);
 
     if (!c.buses.has(g.i)) {
-      addDiag("error", "P1001", `Generator '${g.id}' references non-existent bus ${g.i}.`, g.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Generator", g.id, "", g.i),
+        g.span,
+      );
     }
 
     if (g.qb > g.qt) {
       addDiag(
-        "error",
-        "P3001",
-        `Generator '${g.id}' at bus ${g.i} has inverted reactive limits: Qmin (${g.qb} MVAR) > Qmax (${g.qt} MVAR).`,
+        PsseErrorCode.GENERATOR_REACTIVE_LIMITS_INVERTED.severity,
+        PsseErrorCode.GENERATOR_REACTIVE_LIMITS_INVERTED.code,
+        PsseErrorCode.GENERATOR_REACTIVE_LIMITS_INVERTED.message(g.id, g.i, g.qb, g.qt),
         g.span,
       );
     }
 
     if (g.pb > g.pt) {
       addDiag(
-        "error",
-        "P3002",
-        `Generator '${g.id}' at bus ${g.i} has inverted active power limits: Pmin (${g.pb} MW) > Pmax (${g.pt} MW).`,
+        PsseErrorCode.GENERATOR_POWER_LIMITS_INVERTED.severity,
+        PsseErrorCode.GENERATOR_POWER_LIMITS_INVERTED.code,
+        PsseErrorCode.GENERATOR_POWER_LIMITS_INVERTED.message(g.id, g.i, g.pb, g.pt),
         g.span,
       );
     }
 
     if (g.stat === 1 && (g.vs < 0.8 || g.vs > 1.2)) {
       addDiag(
-        "warning",
-        "P3003",
-        `Generator '${g.id}' scheduled voltage Vs = ${g.vs} p.u. is outside the typical operating band [0.8, 1.2].`,
+        PsseErrorCode.GENERATOR_SCHEDULED_VOLTAGE_BOUNDS.severity,
+        PsseErrorCode.GENERATOR_SCHEDULED_VOLTAGE_BOUNDS.code,
+        PsseErrorCode.GENERATOR_SCHEDULED_VOLTAGE_BOUNDS.message(g.id, g.vs),
         g.span,
       );
     }
@@ -86,14 +97,24 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
   // 3. Validate Loads
   for (const l of c.loads) {
     if (!c.buses.has(l.i)) {
-      addDiag("error", "P1001", `Load '${l.id}' references non-existent bus ${l.i}.`, l.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Load", l.id, "", l.i),
+        l.span,
+      );
     }
   }
 
   // 4. Validate Fixed Shunts
   for (const s of c.fixedShunts) {
     if (!c.buses.has(s.i)) {
-      addDiag("error", "P1001", `Fixed shunt '${s.id}' references non-existent bus ${s.i}.`, s.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Fixed shunt", s.id, "", s.i),
+        s.span,
+      );
     }
   }
 
@@ -110,8 +131,8 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     if (branchKeys.has(key)) {
       addDiag(
         "warning",
-        "P1003",
-        `Duplicate transmission branch between bus ${br.i} and ${br.j} with circuit ID '${br.ckt}'.`,
+        PsseErrorCode.DUPLICATE_EQUIPMENT_ID.code,
+        PsseErrorCode.DUPLICATE_EQUIPMENT_ID.branchMessage(br.i, br.j, br.ckt),
         br.span,
       );
     }
@@ -121,10 +142,20 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     const toBus = c.buses.get(br.j);
 
     if (!fromBus) {
-      addDiag("error", "P1001", `Branch '${br.ckt}' references non-existent 'from' bus ${br.i}.`, br.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Branch", br.ckt, "'from' ", br.i),
+        br.span,
+      );
     }
     if (!toBus) {
-      addDiag("error", "P1001", `Branch '${br.ckt}' references non-existent 'to' bus ${br.j}.`, br.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Branch", br.ckt, "'to' ", br.j),
+        br.span,
+      );
     }
 
     if (fromBus && toBus && br.st === 1) {
@@ -134,9 +165,9 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       // Check base kV match
       if (Math.abs(fromBus.baseKv - toBus.baseKv) > 0.01 && fromBus.baseKv > 0 && toBus.baseKv > 0) {
         addDiag(
-          "warning",
-          "P4002",
-          `Branch '${br.ckt}' connects bus ${br.i} (${fromBus.baseKv} kV) to bus ${br.j} (${toBus.baseKv} kV) without a transformer.`,
+          PsseErrorCode.BRANCH_BASE_KV_MISMATCH.severity,
+          PsseErrorCode.BRANCH_BASE_KV_MISMATCH.code,
+          PsseErrorCode.BRANCH_BASE_KV_MISMATCH.message(br.ckt, br.i, fromBus.baseKv, br.j, toBus.baseKv),
           br.span,
         );
       }
@@ -144,9 +175,9 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
 
     if (br.x <= 0) {
       addDiag(
-        "error",
-        "P4001",
-        `Transmission branch '${br.ckt}' between bus ${br.i} and ${br.j} has zero or negative reactance X = ${br.x} p.u.`,
+        PsseErrorCode.BRANCH_INVALID_REACTANCE.severity,
+        PsseErrorCode.BRANCH_INVALID_REACTANCE.code,
+        PsseErrorCode.BRANCH_INVALID_REACTANCE.message(br.ckt, br.i, br.j, br.x),
         br.span,
       );
     }
@@ -157,16 +188,26 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     const fromBus = c.buses.get(t.i);
     const toBus = c.buses.get(t.j);
     if (!fromBus) {
-      addDiag("error", "P1001", `Transformer '${t.ckt}' references non-existent primary bus ${t.i}.`, t.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Transformer", t.ckt, "primary ", t.i),
+        t.span,
+      );
     }
     if (!toBus) {
-      addDiag("error", "P1001", `Transformer '${t.ckt}' references non-existent secondary bus ${t.j}.`, t.span);
+      addDiag(
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("Transformer", t.ckt, "secondary ", t.j),
+        t.span,
+      );
     }
     if (t.k !== 0 && !c.buses.has(t.k)) {
       addDiag(
-        "error",
-        "P1001",
-        `3-winding transformer '${t.ckt}' references non-existent tertiary bus ${t.k}.`,
+        PsseErrorCode.BUS_NOT_FOUND.severity,
+        PsseErrorCode.BUS_NOT_FOUND.code,
+        PsseErrorCode.BUS_NOT_FOUND.message("3-winding transformer", t.ckt, "tertiary ", t.k),
         t.span,
       );
     }
@@ -178,9 +219,9 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
 
     if (t.windv1 > 0 && (t.windv1 < 0.7 || t.windv1 > 1.3)) {
       addDiag(
-        "warning",
-        "P4003",
-        `Transformer '${t.ckt}' between bus ${t.i} and ${t.j} has off-nominal tap ratio ${t.windv1} outside typical limits [0.7, 1.3].`,
+        PsseErrorCode.TRANSFORMER_TAP_OUT_OF_BOUNDS.severity,
+        PsseErrorCode.TRANSFORMER_TAP_OUT_OF_BOUNDS.code,
+        PsseErrorCode.TRANSFORMER_TAP_OUT_OF_BOUNDS.message(t.ckt, t.i, t.j, t.windv1),
         t.span,
       );
     }
@@ -191,9 +232,9 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     const bus = c.buses.get(busId);
     if (bus && bus.ide !== 4 && count === 0) {
       addDiag(
-        "warning",
-        "P2001",
-        `Bus ${bus.i} ('${bus.name}') is isolated with 0 in-service connecting branches or transformers.`,
+        PsseErrorCode.ISOLATED_BUS.severity,
+        PsseErrorCode.ISOLATED_BUS.code,
+        PsseErrorCode.ISOLATED_BUS.message(bus.i, bus.name),
         bus.span,
       );
     }

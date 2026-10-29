@@ -459,7 +459,12 @@ export default function ProfileSolutions({ username, isOwnProfile }: { username:
 
                 <IframeWrapper>
                   {(() => {
-                    const iframeSrc = solution.bundle_url || `/embed/solution/${solution.id}`;
+                    const rawSrc =
+                      solution.bundle_url || `/static/solutions/${encodeURIComponent(solution.slug)}/index.html`;
+                    const iframeSrc = rawSrc.replace(
+                      /^https?:\/\/cdn\.modelscript\.org\/solutions\//i,
+                      "/static/solutions/",
+                    );
                     let isSameOrigin = iframeSrc.startsWith("/") && !iframeSrc.startsWith("//");
                     if (!isSameOrigin && typeof window !== "undefined") {
                       try {

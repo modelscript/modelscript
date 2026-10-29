@@ -449,14 +449,18 @@ export function registerHoverProvider(
       }
     }
 
+    // ── Custom plugin hover (PSS/E, CFD, FEA, etc.) ──
+    const pluginForHover = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+    if (pluginForHover?.customHandlers?.hover) {
+      const customHover = pluginForHover.customHandlers.hover(offset, text, params.textDocument.uri);
+      if (customHover) return customHover;
+    }
+
     // ── Standard polyglot hover (Modelica/SysML/OWL2 — requires bridge) ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
     if (!bridge) {
-      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+      const plugin = pluginForHover;
       if (plugin) {
-        if (plugin.customHandlers?.hover) {
-          return plugin.customHandlers.hover(offset, text);
-        }
         if (plugin.facade?.getHover) {
           try {
             const hoverText = plugin.facade.getHover(0, offset);

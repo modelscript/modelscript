@@ -57,11 +57,12 @@ export function psseToModelica(psseCase: PsseCase, options?: PsseModelicaOptions
     const baseKv = bus && bus.baseKv > 0 ? bus.baseKv : 138.0;
     const vNomVolts = (baseKv * 1000) / Math.sqrt(3); // Line-to-neutral peak or RMS
     const vSetpoint = gen.vs > 0 ? gen.vs * vNomVolts : vNomVolts;
+    const phaseRad = ((bus?.va ?? 0) * Math.PI) / 180;
     const genId = `gen_${gen.i}_${gen.id.trim() || genIdx}`;
 
     declarations.push(`  // Generator at Bus ${gen.i} (Pg=${gen.pg.toFixed(1)} MW, Qg=${gen.qg.toFixed(1)} MVAr)`);
     declarations.push(
-      `  Modelica.Electrical.Analog.Sources.SineVoltage ${genId}(V=${vSetpoint.toFixed(2)}, f=${freq.toFixed(2)});`,
+      `  Modelica.Electrical.Analog.Sources.SineVoltage ${genId}(V=${vSetpoint.toFixed(2)}, phase=${phaseRad.toFixed(4)}, f=${freq.toFixed(2)});`,
     );
     equations.push(`  connect(${genId}.p, bus_${gen.i});`);
     equations.push(`  connect(${genId}.n, ground.p);`);
@@ -106,6 +107,51 @@ export function psseToModelica(psseCase: PsseCase, options?: PsseModelicaOptions
           equations.push(`  connect(${loadId}_C.p, bus_${load.i});`);
           equations.push(`  connect(${loadId}_C.n, ground.p);`);
         }
+      }
+    }
+  }
+
+  // 3b. Fixed & Switched Shunts
+  if (psseCase.fixedShunts.length > 0 || psseCase.switchedShunts.length > 0) {
+    declarations.push(``);
+    declarations.push(`  // --- Fixed & Switched Shunt Compensators ---`);
+    let shuntIdx = 0;
+    for (const sh of psseCase.fixedShunts) {
+      if (sh.status === 0 || Math.abs(sh.bl) < 1e-3) continue;
+      shuntIdx++;
+      const bus = psseCase.buses.get(sh.i);
+      const baseKv = bus && bus.baseKv > 0 ? bus.baseKv : 138.0;
+      const vBaseVolts = baseKv * 1000;
+      const shId = `shunt_${sh.i}_${sh.id.trim() || shuntIdx}`;
+      if (sh.bl > 0) {
+        const cFarad = (sh.bl * 1e6) / (omega * vBaseVolts * vBaseVolts);
+        declarations.push(`  Modelica.Electrical.Analog.Basic.Capacitor ${shId}_C(C=${cFarad.toExponential(5)});`);
+        equations.push(`  connect(${shId}_C.p, bus_${sh.i});`);
+        equations.push(`  connect(${shId}_C.n, ground.p);`);
+      } else {
+        const lHenry = (baseKv * baseKv) / (omega * Math.abs(sh.bl));
+        declarations.push(`  Modelica.Electrical.Analog.Basic.Inductor ${shId}_L(L=${lHenry.toFixed(5)});`);
+        equations.push(`  connect(${shId}_L.p, bus_${sh.i});`);
+        equations.push(`  connect(${shId}_L.n, ground.p);`);
+      }
+    }
+    for (const sw of psseCase.switchedShunts) {
+      if (sw.stat === 0 || Math.abs(sw.binit) < 1e-3) continue;
+      shuntIdx++;
+      const bus = psseCase.buses.get(sw.i);
+      const baseKv = bus && bus.baseKv > 0 ? bus.baseKv : 138.0;
+      const vBaseVolts = baseKv * 1000;
+      const swId = `swshunt_${sw.i}_${shuntIdx}`;
+      if (sw.binit > 0) {
+        const cFarad = (sw.binit * 1e6) / (omega * vBaseVolts * vBaseVolts);
+        declarations.push(`  Modelica.Electrical.Analog.Basic.Capacitor ${swId}_C(C=${cFarad.toExponential(5)});`);
+        equations.push(`  connect(${swId}_C.p, bus_${sw.i});`);
+        equations.push(`  connect(${swId}_C.n, ground.p);`);
+      } else {
+        const lHenry = (baseKv * baseKv) / (omega * Math.abs(sw.binit));
+        declarations.push(`  Modelica.Electrical.Analog.Basic.Inductor ${swId}_L(L=${lHenry.toFixed(5)});`);
+        equations.push(`  connect(${swId}_L.p, bus_${sw.i});`);
+        equations.push(`  connect(${swId}_L.n, ground.p);`);
       }
     }
   }
@@ -157,7 +203,7 @@ export function psseToModelica(psseCase: PsseCase, options?: PsseModelicaOptions
     }
   }
 
-  // 5. Transformers
+  // 5. Two-Winding & Three-Winding Transformers
   declarations.push(``);
   declarations.push(`  // --- Power Transformers ---`);
   let xfmrIdx = 0;
@@ -186,6 +232,25 @@ export function psseToModelica(psseCase: PsseCase, options?: PsseModelicaOptions
     equations.push(`  connect(${xfmrId}_T.n2, ground.p);`);
     equations.push(`  connect(${xfmrId}_R.n, ${xfmrId}_L.p);`);
     equations.push(`  connect(${xfmrId}_L.n, bus_${xfmr.j});`);
+
+    // Tertiary winding for 3-winding transformers
+    if (xfmr.k !== 0 && psseCase.buses.has(xfmr.k)) {
+      const r3Ohm = Math.max(1e-4, (xfmr.r31 ?? xfmr.r12) * zBase);
+      const x3Ohm = Math.max(1e-4, (xfmr.x31 ?? xfmr.x12) * zBase);
+      const l3Henry = x3Ohm / omega;
+      const tap3 = xfmr.windv3 && xfmr.windv3 > 0 ? xfmr.windv3 : 1.0;
+      const w3Id = `${xfmrId}_W3_${xfmr.k}`;
+      declarations.push(`  // 3-Winding Tertiary Leg ${xfmr.i} -> ${xfmr.k} (Tap=${tap3.toFixed(3)})`);
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Resistor ${w3Id}_R(R=${r3Ohm.toFixed(4)});`);
+      declarations.push(`  Modelica.Electrical.Analog.Basic.Inductor ${w3Id}_L(L=${l3Henry.toFixed(6)});`);
+      declarations.push(`  Modelica.Electrical.Analog.Basic.IdealTransformer ${w3Id}_T(n=${tap3.toFixed(4)});`);
+      equations.push(`  connect(bus_${xfmr.i}, ${w3Id}_T.p1);`);
+      equations.push(`  connect(${w3Id}_T.n1, ground.p);`);
+      equations.push(`  connect(${w3Id}_T.p2, ${w3Id}_R.p);`);
+      equations.push(`  connect(${w3Id}_T.n2, ground.p);`);
+      equations.push(`  connect(${w3Id}_R.n, ${w3Id}_L.p);`);
+      equations.push(`  connect(${w3Id}_L.n, bus_${xfmr.k});`);
+    }
   }
 
   // 6. Assemble Modelica model

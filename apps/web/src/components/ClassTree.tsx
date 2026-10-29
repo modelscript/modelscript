@@ -53,24 +53,67 @@ const TreeToggle = styled.button`
   }
 `;
 
-export function getKindBadgeStyle(kind: string): { bg: string; color: string } | null {
-  const k = kind.toLowerCase();
-  if (k === "package" || k === "class") return null; // Packages are implicit in tree navigation
+export function getKindBadgeStyle(
+  kind: string,
+  allowClassBadge = false,
+): { bg: string; color: string; label?: string } | null {
+  const k = kind
+    .toLowerCase()
+    .replace(/^owl2-/, "")
+    .replace(/^ontology-/, "");
+  if (k === "package" || k === "folder" || (!allowClassBadge && k === "class")) return null;
   switch (k) {
+    case "class":
+      return { bg: "rgba(231, 76, 60, 0.15)", color: "#ef4444", label: "CLASS" };
+    case "definedclass":
+    case "defined_class":
+      return { bg: "rgba(243, 156, 18, 0.16)", color: "#f59e0b", label: "DEFINED" };
+    case "objectproperty":
+    case "object-property":
+      return { bg: "rgba(52, 152, 219, 0.16)", color: "#3b82f6", label: "OBJ PROP" };
+    case "dataproperty":
+    case "data-property":
+      return { bg: "rgba(46, 204, 113, 0.16)", color: "#10b981", label: "DATA PROP" };
+    case "individual":
+    case "namedindividual":
+      return { bg: "rgba(155, 89, 182, 0.16)", color: "#a855f7", label: "INDIVIDUAL" };
+    case "datatype":
+      return { bg: "rgba(6, 182, 212, 0.15)", color: "#06b6d4", label: "DATATYPE" };
     case "model":
-      return { bg: "rgba(6, 182, 212, 0.15)", color: "var(--color-accent-cyan, #06b6d4)" };
+      return { bg: "rgba(6, 182, 212, 0.15)", color: "var(--color-accent-cyan, #06b6d4)", label: "MODEL" };
     case "block":
-      return { bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6" };
+    case "partdefinition":
+    case "partusage":
+      return { bg: "rgba(59, 130, 246, 0.15)", color: "#3b82f6", label: k.startsWith("part") ? "PART" : "BLOCK" };
     case "connector":
-      return { bg: "rgba(234, 179, 8, 0.15)", color: "#eab308" };
+    case "portdefinition":
+    case "portusage":
+      return { bg: "rgba(234, 179, 8, 0.15)", color: "#eab308", label: k.startsWith("port") ? "PORT" : "CONNECTOR" };
     case "record":
     case "type":
-      return { bg: "rgba(16, 185, 129, 0.15)", color: "#10b981" };
+    case "attributedefinition":
+      return {
+        bg: "rgba(16, 185, 129, 0.15)",
+        color: "#10b981",
+        label: k.startsWith("attr") ? "ATTR" : k.toUpperCase(),
+      };
     case "function":
     case "algorithm":
-      return { bg: "rgba(168, 85, 247, 0.15)", color: "#c084fc" };
+    case "actiondefinition":
+      return {
+        bg: "rgba(168, 85, 247, 0.15)",
+        color: "#c084fc",
+        label: k.startsWith("action") ? "ACTION" : k.toUpperCase(),
+      };
+    case "requirementdefinition":
+    case "requirementusage":
+      return { bg: "rgba(244, 63, 94, 0.15)", color: "#f43f5e", label: "REQ" };
     default:
-      return { bg: "var(--color-border-glass, rgba(255, 255, 255, 0.08))", color: "var(--color-text-muted)" };
+      return {
+        bg: "var(--color-border-glass, rgba(148, 163, 184, 0.14))",
+        color: "var(--color-text-muted, #64748b)",
+        label: k.toUpperCase(),
+      };
   }
 }
 

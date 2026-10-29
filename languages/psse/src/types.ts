@@ -158,6 +158,14 @@ export interface TransformerRecord {
   r12: number;
   x12: number;
   sbase12: number;
+  r23?: number | undefined;
+  x23?: number | undefined;
+  sbase23?: number | undefined;
+  r31?: number | undefined;
+  x31?: number | undefined;
+  sbase31?: number | undefined;
+  vmstar?: number | undefined;
+  anstar?: number | undefined;
   windv1: number;
   nomv1: number;
   ang1: number;
@@ -177,6 +185,16 @@ export interface TransformerRecord {
   cnxa1: number;
   windv2: number;
   nomv2: number;
+  ang2?: number | undefined;
+  rata2?: number | undefined;
+  ratb2?: number | undefined;
+  ratc2?: number | undefined;
+  windv3?: number | undefined;
+  nomv3?: number | undefined;
+  ang3?: number | undefined;
+  rata3?: number | undefined;
+  ratb3?: number | undefined;
+  ratc3?: number | undefined;
   span?: SourceSpan | undefined;
 }
 
@@ -204,6 +222,8 @@ export interface TwoTerminalDcRecord {
   vcmod: number;
   rcomp: number;
   deltm: number;
+  ipr?: number | undefined;
+  ipi?: number | undefined;
   span?: SourceSpan | undefined;
 }
 
@@ -214,6 +234,8 @@ export interface VscDcRecord {
   name: string;
   mdc: number;
   rdc: number;
+  ibus1?: number | undefined;
+  ibus2?: number | undefined;
   o1?: number | undefined;
   f1?: number | undefined;
   span?: SourceSpan | undefined;
@@ -253,6 +275,38 @@ export interface SwitchedShuntRecord {
 }
 
 /**
+ * Standard PSS/E Dynamic Model Categories in `.dyr` files.
+ */
+export type PsseDyrCategory = "generator" | "exciter" | "governor" | "stabilizer" | "user";
+
+/**
+ * Parsed PSS/E `.dyr` Dynamic Model Record.
+ *
+ * Standard PSS/E `.dyr` syntax:
+ * `IBUS 'MODEL' ID CON(1) ... CON(N) /`
+ */
+export interface PsseDyrRecord {
+  ibus: number;
+  model: string;
+  id: string;
+  category: PsseDyrCategory;
+  con: number[];
+  namedParams: Record<string, number>;
+  span?: SourceSpan | undefined;
+}
+
+/**
+ * Parsed PSS/E `.dyr` Dynamic Data Collection.
+ */
+export interface PsseDyrCase {
+  records: PsseDyrRecord[];
+  generatorsByBusId: Map<string, PsseDyrRecord>;
+  excitersByBusId: Map<string, PsseDyrRecord>;
+  governorsByBusId: Map<string, PsseDyrRecord>;
+  stabilizersByBusId: Map<string, PsseDyrRecord>;
+}
+
+/**
  * Parsed PSS/E Base Case Document.
  */
 export interface PsseCase {
@@ -269,6 +323,7 @@ export interface PsseCase {
   twoTerminalDc: TwoTerminalDcRecord[];
   vscDc: VscDcRecord[];
   switchedShunts: SwitchedShuntRecord[];
+  dyr?: PsseDyrCase | undefined;
 }
 
 /**

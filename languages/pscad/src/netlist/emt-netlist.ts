@@ -192,6 +192,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           baseKv: b.voltageBaseKv ?? 230.0,
           phaseCount: b.phaseCount,
           connectedBranchIds: [],
+          explicitBaseKv: b.voltageBaseKv !== undefined && b.voltageBaseKv > 0,
         });
       }
     }
@@ -200,6 +201,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     const groundPortIds = new Set<string>();
     const signalPortIds = new Set<string>();
     const signalOutPortToBlockId = new Map<string, string>();
+    const portToComponentId = new Map<string, string>();
     const groundPositions: { x: number; y: number }[] = [];
 
     for (const cmp of mod.components) {
@@ -207,7 +209,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       const isPark = defn.endsWith(":abcdq0");
       const parkInverse = isPark && Number(cmp.parameters["IDir"] ?? 1) === 0;
       const isMerge = defn.endsWith(":datamerge");
+      const qCmpIdForMap = qualifyId(cmp.id);
       for (const port of cmp.ports) {
+        portToComponentId.set(port.id, qCmpIdForMap);
         if (port.kind === "signal" || isPark || isMerge) {
           signalPortIds.add(port.id);
           const qn = qualifyId(localName(cmp));
@@ -470,17 +474,19 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       for (const [pId, s] of assignments) signalPortSourceMap.set(pId, s);
     }
 
-    function getOrCreateBus(portId?: string, defaultPrefix = "Node"): string {
+    function getOrCreateBus(portId?: string, defaultPrefix = "Node", fallbackCmpId?: string): string {
       if (portId && portToBusMap.has(portId)) {
         return portToBusMap.get(portId)!;
       }
       const virtualBusId = qualifyId(`${defaultPrefix}_${virtualBusCounter++}`);
+      const sourceComponentId = (portId ? portToComponentId.get(portId) : undefined) ?? fallbackCmpId;
       buses.set(virtualBusId, {
         id: virtualBusId,
         name: virtualBusId,
         baseKv: 230.0,
         phaseCount: 3,
         connectedBranchIds: [],
+        sourceComponentId,
       });
       if (portId) {
         portToBusMap.set(portId, virtualBusId);
@@ -508,7 +514,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         for (let idx = 0; idx < cmp.ports.length; idx++) {
           const pt = cmp.ports[idx]!;
           if (pt.kind === "signal") continue;
-          const connectedParentBus = getOrCreateBus(pt.id, `${cmp.instanceName}_${pt.name}`);
+          const connectedParentBus = getOrCreateBus(pt.id, `${cmp.instanceName}_${pt.name}`, qCmpId);
           subBoundaryMap.set(pt.name, connectedParentBus);
           subBoundaryMap.set(pt.name.toLowerCase(), connectedParentBus);
           // Also map by positional bus index if the sub-module bus has the same port name or order
@@ -541,8 +547,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       if (defn.includes("xfmr") || defn.includes("transformer")) {
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_P`);
-        const bus2 = getOrCreateBus(p2, `${cmp.instanceName}_S`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_P`, qCmpId);
+        const bus2 = getOrCreateBus(p2, `${cmp.instanceName}_S`, qCmpId);
 
         const mva = parseFloat(String(p["MVA"] ?? p["mva"] ?? "100.0"));
         const v1 = parseFloat(String(p["V1"] ?? p["v1"] ?? p["Vpri"] ?? "16.5"));
@@ -645,8 +651,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       } else if (defn.includes("tline") || defn.includes("cable") || defn.includes("line")) {
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_From`);
-        const bus2 = getOrCreateBus(p2, `${cmp.instanceName}_To`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_From`, qCmpId);
+        const bus2 = getOrCreateBus(p2, `${cmp.instanceName}_To`, qCmpId);
 
         const isCable = defn.includes("cable");
         const len = parseFloat(String(p["length"] ?? p["Length"] ?? p["Len"] ?? "50.0"));
@@ -693,8 +699,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       } else if (lowerClean === "arrester" || lowerClean === "mov" || defn.includes("arrester")) {
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
-        const bus2 = cmp.ports.length > 1 ? getOrCreateBus(p2, `${cmp.instanceName}_Gnd`) : "0";
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
+        const bus2 = cmp.ports.length > 1 ? getOrCreateBus(p2, `${cmp.instanceName}_Gnd`, qCmpId) : "0";
         const vRefKv = parseFloat(String(p["Vref"] ?? p["vref"] ?? p["V_ref"] ?? p["V"] ?? "180.0"));
         surgeArresters.push({
           id: qCmpId,
@@ -705,7 +711,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (lowerClean === "sync_machine" || defn.includes("sync_machine") || defn.includes("sync_gen")) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Term`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Term`, qCmpId);
         const mva = parseFloat(String(p["MVA"] ?? p["mva"] ?? "250.0"));
         const kv = parseFloat(String(p["V"] ?? p["v"] ?? p["Vbase"] ?? "16.5"));
         const freq = parseFloat(String(p["freq"] ?? p["f"] ?? project.settings.frequencyHz));
@@ -749,7 +755,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.includes("wound_rotor")
       ) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Term`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Term`, qCmpId);
         const mva = parseFloat(String(p["Pbase"] ?? p["MVA"] ?? p["mva"] ?? "10.0"));
         const kv = parseFloat(String(p["Vbase"] ?? p["V"] ?? p["v"] ?? "13.8"));
         const freq = parseFloat(String(p["freq"] ?? p["f"] ?? project.settings.frequencyHz));
@@ -802,7 +808,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":fault")
       ) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
         const typeStr = String(p["type"] ?? p["fault_type"] ?? p["FaultType"] ?? "3PH").toUpperCase();
         const faultType: EmtFault["faultType"] =
           typeStr === "SLG" || typeStr === "AG"
@@ -842,7 +848,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.includes("mmc")
       ) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_AC`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_AC`, qCmpId);
         const kind: "vsc_pwm" | "lcc_6pulse" | "mmc_thevenin" = defn.includes("mmc")
           ? "mmc_thevenin"
           : defn.includes("lcc")
@@ -873,7 +879,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_POI`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_POI`, qCmpId);
         const fmuPath = String(p["fmu_path"] ?? p["source"] ?? "inverter.fmu");
         const mva = parseFloat(String(p["MVA"] ?? p["rated_mva"] ?? "100.0"));
         const kv = parseFloat(String(p["V"] ?? p["rated_kv"] ?? "0.69"));
@@ -889,9 +895,10 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           controlMode: modeStr === "grid_forming" ? "grid_forming" : "grid_following",
         };
         fmuInstances.push(fmu);
+        buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (lowerClean === "src_ccin_1" || defn.includes("src_ccin_1")) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
         const cntrl = parseInt(String(p["Cntrl"] ?? "0"), 10);
         const vmRaw = parseFloat(String(p["Vm"] ?? "0"));
         const freq = parseFloat(String(p["f"] ?? p["freq"] ?? "0"));
@@ -916,7 +923,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (lowerClean === "battery" || defn.includes("battery")) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
         const enomRaw = parseFloat(String(p["Enom"] ?? p["Vnom"] ?? p["V"] ?? "0.4"));
         const enomStr = String(p["Enom"] ?? p["Vnom"] ?? "");
         const enomKv = enomStr.includes("[kV]") || enomRaw < 5.0 ? enomRaw : enomRaw / 1000.0;
@@ -941,7 +948,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (defn.includes("source") || defn.includes("gen")) {
         const p1 = cmp.ports[0]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
         const vKv = parseFloat(String(p["V"] ?? p["v"] ?? p["Vbase"] ?? p["kv"] ?? "16.5"));
         const mva = parseFloat(String(p["MVA"] ?? p["mva"] ?? "100.0"));
         const freq = parseFloat(String(p["freq"] ?? p["f"] ?? project.settings.frequencyHz));
@@ -989,7 +996,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const vb = num("VBO") * 1e3;
         const fr = num("FR");
         const f = isNaN(fr) || fr <= 0 ? project.settings.frequencyHz : fr;
-        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_1`);
+        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_1`, qCmpId);
         const addLoadBranch = (suffix: string, r: number, l: number): void => {
           const id = `${qCmpId}_${suffix}`;
           branches.push({
@@ -1024,8 +1031,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_1`);
-        const bus2 = cmp.ports.length > 1 ? getOrCreateBus(p2, `${cmp.instanceName}_2`) : "GND";
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_1`, qCmpId);
+        const bus2 = cmp.ports.length > 1 ? getOrCreateBus(p2, `${cmp.instanceName}_2`, qCmpId) : "GND";
 
         const lRaw = parseFloat(String(p["L"] ?? p["l"] ?? (defn.includes("inductor") ? p["Value"] : "0")));
         const cRaw = parseFloat(String(p["C"] ?? p["c"] ?? (defn.includes("capacitor") ? p["Value"] : "0")));
@@ -1101,7 +1108,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
       } else if (defn.endsWith(":voltmeter") || defn.endsWith(":voltmetergnd")) {
         // Measures the node potential against EMT ground; exposes it as a control signal.
-        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_V`);
+        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_V`, qCmpId);
         controlBlocks.push({ id: qInstName, kind: "sensor_v", inputs: [], params: {}, sensorTarget: bus1 });
         PHASE_SUFFIX.forEach((s, ph) =>
           controlBlocks.push({
@@ -1119,8 +1126,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
             `'${qInstName}' (multimeter): modelled as an ideal in-line meter; P/Q/RMS outputs are not computed (unverified).`,
           );
         }
-        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_A`);
-        const bus2 = getOrCreateBus(cmp.ports[1]?.id, `${cmp.instanceName}_B`);
+        const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_A`, qCmpId);
+        const bus2 = getOrCreateBus(cmp.ports[1]?.id, `${cmp.instanceName}_B`, qCmpId);
         branches.push({
           id: qCmpId,
           kind: "rlc",
@@ -1145,8 +1152,8 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       } else if (defn.includes("breaker") || defn.includes("switch")) {
         const p1 = cmp.ports[0]?.id;
         const p2 = cmp.ports[1]?.id;
-        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_A`);
-        const bus2 = getOrCreateBus(p2, `${cmp.instanceName}_B`);
+        const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_A`, qCmpId);
+        const bus2 = getOrCreateBus(p2, `${cmp.instanceName}_B`, qCmpId);
 
         const statusRaw = String(p["status"] ?? p["Status"] ?? p["state"] ?? "closed").toLowerCase();
         const isOpen = statusRaw === "open" || statusRaw === "0";

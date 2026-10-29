@@ -27,7 +27,7 @@ const Wrapper = styled.div<{ $aspectRatio?: string | undefined; $height?: string
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 0;
 `;
 
 export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
@@ -43,10 +43,8 @@ export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
   const normType = type?.toLowerCase() || "generic";
 
   const bgGradient = isDark
-    ? "linear-gradient(135deg, #090d16 0%, #111827 50%, #0d1527 100%)"
-    : "linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 50%, #edf2f7 100%)";
-
-  const gridColor = isDark ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.04)";
+    ? "radial-gradient(circle at center, #2b2e36 0%, #1f2229 55%, #14161b 100%)"
+    : "radial-gradient(circle at center, #cdced0 0%, #d6d7d9 50%, #e2e3e4 100%)";
   const strokeColor = isDark ? "#38bdf8" : "#0284c7";
   const accentSecondary = isDark ? "#a855f7" : "#7c3aed";
 
@@ -85,9 +83,6 @@ export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
       className={className}
       style={{
         background: bgGradient,
-        backgroundImage: `radial-gradient(${gridColor} 1px, transparent 1px), ${bgGradient}`,
-        backgroundSize: "20px 20px, 100% 100%",
-        border: `1px solid ${isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)"}`,
         ...style,
       }}
     >
@@ -99,15 +94,15 @@ export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
           position: "absolute",
           bottom: 12,
           right: 12,
-          backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
-          border: `1px solid ${isDark ? "rgba(56, 189, 248, 0.3)" : "rgba(2, 132, 199, 0.3)"}`,
+          backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(15, 23, 42, 0.82)",
+          border: "1px solid rgba(56, 189, 248, 0.35)",
           backdropFilter: "blur(6px)",
           padding: "4px 10px",
           borderRadius: "9999px",
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.18)",
         }}
       >
         <span
@@ -115,8 +110,8 @@ export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
             width: "6px",
             height: "6px",
             borderRadius: "50%",
-            backgroundColor: isDark ? "#38bdf8" : "#0284c7",
-            boxShadow: `0 0 6px ${isDark ? "#38bdf8" : "#0284c7"}`,
+            backgroundColor: "#38bdf8",
+            boxShadow: "0 0 6px #38bdf8",
           }}
         />
         <span
@@ -125,7 +120,7 @@ export const ArtifactPlaceholder: React.FC<ArtifactPlaceholderProps> = ({
             fontSize: "11px",
             fontWeight: "bold",
             letterSpacing: "0.5px",
-            color: isDark ? "#e2e8f0" : "#1e293b",
+            color: "#e2e8f0",
           }}
         >
           {title || getBadgeLabel(normType)}

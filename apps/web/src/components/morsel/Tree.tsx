@@ -7,10 +7,23 @@
  * `modelscript/searchClasses` — no in-process `Context` required.
  */
 
-import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CpuIcon,
+  FileDirectoryIcon,
+  GlobeIcon,
+  PackageIcon,
+  ShareAndroidIcon,
+  StackIcon,
+  WorkflowIcon,
+  ZapIcon,
+} from "@primer/octicons-react";
 import { NavList, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import React from "react";
+import { getKindBadgeStyle } from "../ClassTree";
+import { getSemanticKindIcon } from "./ComponentList";
 import { startPlacement } from "./placement";
 import { getClassIcon, getLibraryTree, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
 import { invertSvgColors } from "./util/x6";
@@ -40,13 +53,77 @@ interface TreeWidgetProps {
 
 const iconCache = new Map<string, string | null>();
 
-function ClassIcon({ className }: { className: string }) {
+function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: string, depth = 0): React.ReactElement {
+  const k = (classKind || "").toLowerCase();
+  const n = (className || "").toLowerCase();
+  const id = (nodeId || "").toLowerCase();
+
+  if (k === "owl2-folder" || k === "ontology-folder") {
+    return <FileDirectoryIcon size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />;
+  }
+  if (k === "owl2-ontology" || id.startsWith("__owl2") || /\.(owl|owl2|ofn|fss|ttl)$/i.test(n)) {
+    return <ShareAndroidIcon size={16} style={{ color: "#ec4899", flexShrink: 0 }} />;
+  }
+  if (k === "ontology-package" || id === "__ontology_root__" || n.includes("ontology (polyglot)")) {
+    return <GlobeIcon size={16} style={{ color: "#a855f7", flexShrink: 0 }} />;
+  }
+  if (
+    k.startsWith("owl2-") ||
+    k.startsWith("ontology-") ||
+    k === "objectproperty" ||
+    k === "dataproperty" ||
+    k === "individual"
+  ) {
+    return getSemanticKindIcon(k, 16);
+  }
+  if (k.includes("sysml") || /\.(sysml|sysml2|kerml)$/i.test(n) || n === "sysml2") {
+    return <WorkflowIcon size={16} style={{ color: "#8b5cf6", flexShrink: 0 }} />;
+  }
+  if (/\.(step|stp|p21|scad)$/i.test(n) || k.includes("cad") || k.includes("product")) {
+    return <StackIcon size={16} style={{ color: "#10b981", flexShrink: 0 }} />;
+  }
+  if (/\.(pscx|pslx|pswx|raw)$/i.test(n)) {
+    return <ZapIcon size={16} style={{ color: "#eab308", flexShrink: 0 }} />;
+  }
+  if (depth === 0 && (n === "modelica" || n === "complex" || n === "modelicaservices" || /\.mo$/i.test(n))) {
+    return <CpuIcon size={16} style={{ color: "#06b6d4", flexShrink: 0 }} />;
+  }
+  if (k && k !== "package" && k !== "class") {
+    return getSemanticKindIcon(k, 16);
+  }
+  return <PackageIcon size={16} style={{ color: "var(--fgColor-muted, #64748b)", flexShrink: 0 }} />;
+}
+
+function ClassIcon({
+  className,
+  classKind,
+  nodeId,
+  depth = 0,
+}: {
+  className: string;
+  classKind?: string | undefined;
+  nodeId?: string | undefined;
+  depth?: number | undefined;
+}) {
   const { colorMode } = useTheme();
   const isDark = colorMode === "dark";
-  const [svg, setSvg] = React.useState<string | null>(iconCache.get(className) ?? null);
+  const skipModelicaIconFetch = Boolean(
+    classKind?.startsWith("owl2-") ||
+    classKind?.startsWith("ontology-") ||
+    nodeId?.startsWith("__owl2") ||
+    nodeId?.startsWith("__ontology") ||
+    /\.(owl|owl2|ofn|fss|ttl|sysml|sysml2|kerml|step|stp|scad|pscx|csv)$/i.test(className),
+  );
+  const [svg, setSvg] = React.useState<string | null>(
+    skipModelicaIconFetch ? null : (iconCache.get(className) ?? null),
+  );
   const requested = React.useRef(false);
 
   React.useEffect(() => {
+    if (skipModelicaIconFetch) {
+      setSvg(null);
+      return;
+    }
     if (iconCache.has(className)) {
       setSvg(iconCache.get(className) ?? null);
       return;
@@ -62,10 +139,10 @@ function ClassIcon({ className }: { className: string }) {
       .catch(() => {
         iconCache.set(className, null);
       });
-  }, [className]);
+  }, [className, skipModelicaIconFetch]);
 
   if (!svg) {
-    return <PackageIcon />;
+    return getFallbackTreeIcon(className, classKind, nodeId, depth);
   }
 
   const displaySvg = DOMPurify.sanitize(invertSvgColors(svg, isDark), {
@@ -318,12 +395,71 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           ) : (
             <span style={{ width: 16 }} />
           )}
-          <span>
-            <ClassIcon className={compositeName} />
+          <span style={{ display: "flex", alignItems: "center" }}>
+            <ClassIcon className={compositeName} classKind={node.classKind} nodeId={node.id} depth={depth} />
           </span>
         </span>
-        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName}>
-          {displayName}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flex: 1,
+            gap: 6,
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName}>
+            {displayName}
+          </div>
+          {(() => {
+            const isFolder = node.classKind === "owl2-folder" || node.classKind === "ontology-folder";
+            if (isFolder && node.description) {
+              return (
+                <span
+                  style={{
+                    fontSize: 10,
+                    opacity: 0.6,
+                    fontFamily: "var(--ms-font-mono, monospace)",
+                    flexShrink: 0,
+                  }}
+                >
+                  {node.description}
+                </span>
+              );
+            }
+            if (
+              depth > 0 &&
+              node.classKind &&
+              !isFolder &&
+              node.classKind !== "owl2-ontology" &&
+              node.classKind !== "ontology-package"
+            ) {
+              const badge = getKindBadgeStyle(node.classKind, node.classKind.startsWith("owl2-"));
+              if (badge) {
+                return (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      padding: "1px 5px",
+                      borderRadius: 4,
+                      background: badge.bg,
+                      color: badge.color,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      fontWeight: 600,
+                      fontFamily: "var(--ms-font-mono, monospace)",
+                      lineHeight: "14px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {badge.label ?? node.classKind}
+                  </span>
+                );
+              }
+            }
+            return null;
+          })()}
         </div>
       </li>
       {expanded &&

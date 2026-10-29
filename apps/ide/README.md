@@ -78,28 +78,32 @@ Browser-based VS Code Web engineering environment for polyglot systems modeling,
 
 ## Scripts
 
-| Command                   | Description                                                          |
-| ------------------------- | -------------------------------------------------------------------- |
-| `npm run build`           | Download VS Code Web assets, build extensions, and bundle the server |
-| `npm run build-static`    | Generate a fully static web deployment (`dist/static/`)              |
-| `npm run dev`             | Start development server on port **3003** with extension auto-build  |
-| `npm run download-vscode` | Fetch upstream VS Code Web distribution                              |
-| `npm run download-model`  | Download Qwen3-0.6B WebLLM model weights (~350 MB) for AI assistant  |
-| `npm run lint`            | Run ESLint across `src/`                                             |
+| Command                   | Description                                                            |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `npm run build`           | Download VS Code Web assets and build the ModelScript & GitHub FS exts |
+| `npm run build-static`    | Generate a fully static web deployment (`dist/static/`)                |
+| `npm run download-vscode` | Fetch upstream VS Code Web distribution                                |
+| `npm run download-model`  | Download Qwen3-0.6B WebLLM model weights (~350 MB) for AI assistant    |
+| `npm run lint`            | Run ESLint across `src/` and `scripts/`                                |
 
 ---
 
 ## Running Locally
 
+In the unified development stack (`npm run dev` from the repository root), the IDE workbench (`/ide` and `/vscode/workbench`) is served automatically through `@modelscript/web` (`http://localhost:3001/ide`) and `@modelscript/api` (`http://localhost:3000/vscode/workbench`).
+
+To build the VS Code Web bundle and extension assets or run the standalone IDE preview server:
+
 ```bash
-# 1. Start the IDE development server
-npm run dev
+# 1. Download VS Code Web and build the ModelScript extension bundle
+npm run download-vscode --workspace=@modelscript/ide
+npm run build-extension --workspace=@modelscript/ide
 
 # 2. (Optional) Download browser-local AI model weights
-npm run download-model
+npm run download-model --workspace=@modelscript/ide
 ```
 
-The IDE launches at http://localhost:3003. From the landing page:
+From the IDE workbench (`http://localhost:3001/ide`):
 
 - Paste any public GitHub repository URL (`github://` virtual filesystem via the GitHub REST API) to load it into the workspace.
 - Choose a quick-start template (`Blank Project`, `Polyglot Drone Reachability`, `Bouncing Ball`).
@@ -109,10 +113,4 @@ The IDE launches at http://localhost:3003. From the landing page:
 
 ## Docker
 
-The IDE is available as a containerized service:
-
-```bash
-docker compose up ide
-```
-
-Exposes port **3003**.
+In Docker deployments (`docker compose --profile standalone up -d` or `--profile appliance up -d`), the IDE workbench, extension bundles, and WebLLM model weights are bundled directly into the unified `api` (`:3000`), `web` (`:3001`), and `appliance` (`:8080`) containers.

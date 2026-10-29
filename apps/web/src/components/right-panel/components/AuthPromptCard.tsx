@@ -12,10 +12,14 @@ export const AuthPromptCard: React.FC = () => {
 
   return (
     <Card>
-      <Heading as="h2" style={{ fontSize: "16px", marginBottom: "6px", fontWeight: 700 }}>
+      <Heading as="h2" style={{ fontSize: "15px", lineHeight: "20px", marginBottom: "6px", fontWeight: 700 }}>
         Engineering Platform
       </Heading>
-      <Text as="p" color="var(--color-text-muted)" style={{ fontSize: "13px", marginBottom: "12px", lineHeight: 1.4 }}>
+      <Text
+        as="p"
+        color="var(--color-text-muted)"
+        style={{ fontSize: "12.5px", marginBottom: "12px", lineHeight: 1.4 }}
+      >
         Simulate physical systems, export FMUs, and collaborate with engineers worldwide.
       </Text>
       <Box display="flex" flexDirection="column" gap={2}>

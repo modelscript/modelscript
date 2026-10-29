@@ -3,6 +3,7 @@
 import { GitBranchIcon, MarkGithubIcon, PackageIcon, RepoIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView, getLibraries, getRepos, type LibraryListItem } from "../api";
 import Box from "./Box";
@@ -15,7 +16,7 @@ const ModalOverlay = styled.div`
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(4px);
-  z-index: 1200;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,7 +239,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
     }
   };
 
-  return (
+  const modal = (
     <ModalOverlay onClick={onClose}>
       <ModalContent onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
@@ -394,6 +395,8 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
       </ModalContent>
     </ModalOverlay>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default PackageRepoPickerModal;

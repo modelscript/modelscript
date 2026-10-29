@@ -3,6 +3,7 @@
 import { CodeIcon, XIcon } from "@primer/octicons-react";
 import { Heading, IconButton, Text } from "@primer/react";
 import React from "react";
+import { createPortal } from "react-dom";
 import { createArtifactView } from "../../api";
 import type { NotebookCell } from "../../util/notebook";
 import Box from "../Box";
@@ -58,7 +59,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
 
   const snippetTitle = snippetFilename;
 
-  return (
+  const modal = (
     <>
       <div
         style={{
@@ -247,4 +248,6 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
       </Box>
     </>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };

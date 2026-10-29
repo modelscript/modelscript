@@ -30,6 +30,11 @@
       "@modelscript/simulate": ["./packages/simulate/src/index.ts"],
       "@modelscript/simulate/*": ["./packages/simulate/src/*"],
       "@modelscript/diagram": ["./packages/diagram/src/index.ts"],
+      "@modelscript/diagram/builder": [
+        "./packages/diagram/src/builder.ts",
+        "./packages/diagram/src/polyglot-diagram-builder.ts"
+      ],
+      "@modelscript/diagram/fault-tree": ["./packages/diagram/src/fault-tree.ts"],
       "@modelscript/diagram/*": ["./packages/diagram/src/*"],
       "@modelscript/cad": ["./packages/cad/src/index.ts"],
       "@modelscript/cad/*": ["./packages/cad/src/*"],

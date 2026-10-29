@@ -63,14 +63,14 @@ const LegendGradient = styled.div`
   width: 80px;
   height: 8px;
   border-radius: 4px;
-  background: var(--gradient-cta);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(90deg, #93c5fd 0%, #60a5fa 33%, #2563eb 66%, #0284c7 100%);
+  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.25));
 `;
 
 const BreakdownContainer = styled(Box)`
   padding: 12px 18px 16px;
   border-top: 1px solid var(--color-border);
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--color-canvas-subtle, rgba(148, 163, 184, 0.04));
 `;
 
 const BreakdownTitle = styled.div`
@@ -102,7 +102,7 @@ const RegionPill = styled.span`
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background-color: var(--color-neutral-muted);
+  background-color: var(--color-neutral-muted, rgba(148, 163, 184, 0.16));
   color: var(--color-fg-muted);
   font-family: var(--fontStack-monospace, monospace);
 `;
@@ -118,7 +118,7 @@ const ProgressBar = styled.div<{ $percent: number }>`
   flex: 1;
   height: 6px;
   border-radius: 3px;
-  background-color: var(--color-neutral-muted);
+  background-color: var(--color-neutral-muted, rgba(148, 163, 184, 0.16));
   overflow: hidden;
 
   &::after {
@@ -425,8 +425,61 @@ const regionDisplayNames =
     ? new Intl.DisplayNames(["en"], { type: "region" })
     : null;
 
+const countryNameToIso2: Record<string, string> = (() => {
+  const map: Record<string, string> = {
+    USA: "US",
+    "UNITED STATES OF AMERICA": "US",
+    UK: "GB",
+    "GREAT BRITAIN": "GB",
+    RUSSIA: "RU",
+    "SOUTH KOREA": "KR",
+    "NORTH KOREA": "KP",
+    "SYRIAN ARAB REPUBLIC": "SY",
+    SYRIA: "SY",
+    IRAN: "IR",
+    VIETNAM: "VN",
+    VENEZUELA: "VE",
+    BOLIVIA: "BO",
+    TANZANIA: "TZ",
+    TAIWAN: "TW",
+    MOLDOVA: "MD",
+    LAOS: "LA",
+    BRUNEI: "BN",
+    CZECHIA: "CZ",
+    "CZECH REPUBLIC": "CZ",
+    TURKEY: "TR",
+    TÜRKIYE: "TR",
+  };
+  for (const [iso2, name] of Object.entries(countryNames)) {
+    map[name.toUpperCase()] = iso2;
+  }
+  if (regionDisplayNames) {
+    for (const iso2 of Object.keys(iso2ToNumeric)) {
+      try {
+        const resolved = regionDisplayNames.of(iso2);
+        if (resolved) {
+          map[resolved.toUpperCase()] = iso2;
+        }
+      } catch {
+        // Ignore invalid codes
+      }
+    }
+  }
+  return map;
+})();
+
+function normalizeCountryCode(raw: string): string {
+  const upper = String(raw || "")
+    .toUpperCase()
+    .trim();
+  if (!upper) return "";
+  if (iso2ToNumeric[upper]) return upper;
+  if (countryNameToIso2[upper]) return countryNameToIso2[upper]!;
+  return upper;
+}
+
 function resolveCountryDisplayName(code: string): string {
-  const upper = code.toUpperCase().trim();
+  const upper = normalizeCountryCode(code);
   if (countryNames[upper]) return countryNames[upper];
   if (/^[A-Z]{2}$/.test(upper) && regionDisplayNames) {
     try {
@@ -443,9 +496,21 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
   const [tooltipContent, setTooltipContent] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, flipX: false, flipY: false });
 
-  const resolvedViews = useMemo(() => {
-    return data.reduce((acc, curr) => acc + (curr.views || 0), 0);
+  // Normalize and merge entries that refer to the same country (e.g. "SYRIA" and "SY")
+  const normalizedData = useMemo(() => {
+    const byCountry = new Map<string, number>();
+    for (const d of data) {
+      if (!d.country) continue;
+      const code = normalizeCountryCode(d.country);
+      if (!code) continue;
+      byCountry.set(code, (byCountry.get(code) || 0) + (d.views || 0));
+    }
+    return Array.from(byCountry.entries()).map(([country, views]) => ({ country, views }));
   }, [data]);
+
+  const resolvedViews = useMemo(() => {
+    return normalizedData.reduce((acc, curr) => acc + (curr.views || 0), 0);
+  }, [normalizedData]);
 
   const totalCalculatedViews = useMemo(() => {
     if (typeof totalViews === "number" && totalViews > 0) return Math.max(totalViews, resolvedViews);
@@ -456,30 +521,30 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
 
   // Dynamic blue heat map scale
   const colorScale = useMemo(() => {
-    const maxViews = Math.max(...data.map((d) => d.views), 1);
+    const maxViews = Math.max(...normalizedData.map((d) => d.views), 1);
     return scaleLinear<string>()
       .domain([1, Math.max(2, maxViews * 0.25), Math.max(3, maxViews * 0.6), maxViews])
       .range(["#93c5fd", "#60a5fa", "#2563eb", "#0284c7"]);
-  }, [data]);
+  }, [normalizedData]);
 
   // Build Map of numeric IDs to views
   const dataMap = useMemo(() => {
     const map = new Map<string, number>();
-    data.forEach((d) => {
+    normalizedData.forEach((d) => {
       if (!d.country) return;
-      const code = String(d.country).toUpperCase().trim();
+      const code = normalizeCountryCode(d.country);
       const numId = iso2ToNumeric[code] || code;
       map.set(numId, (map.get(numId) || 0) + d.views);
     });
     return map;
-  }, [data]);
+  }, [normalizedData]);
 
   // Aggregate regions by country
   const regionsByCountry = useMemo(() => {
     const map = new Map<string, string[]>();
     regionData.forEach((r) => {
       if (!r.country || !r.region) return;
-      const c = r.country.toUpperCase();
+      const c = normalizeCountryCode(r.country);
       const existing = map.get(c) || [];
       if (!existing.includes(r.region)) {
         existing.push(r.region);
@@ -505,11 +570,11 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
 
   // Top countries sorted by views
   const topCountries = useMemo(() => {
-    return [...data]
+    return [...normalizedData]
       .filter((d) => d.views > 0)
       .sort((a, b) => b.views - a.views)
       .slice(0, 6);
-  }, [data]);
+  }, [normalizedData]);
 
   return (
     <MapContainer>
@@ -517,7 +582,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
         <HeaderTitle>
           <span>Audience Heat Map</span>
           <span style={{ fontSize: "12px", color: "var(--color-fg-muted)", fontWeight: "normal" }}>
-            ({data.length} {data.length === 1 ? "country" : "countries"})
+            ({normalizedData.length} {normalizedData.length === 1 ? "country" : "countries"})
           </span>
         </HeaderTitle>
         <PrivacyBadge title="Privacy-Preserving Analytics — Zero Raw IP Storage">
@@ -549,8 +614,8 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
-                  fill={hasViews ? colorScale(views) : "rgba(255, 255, 255, 0.05)"}
-                  stroke="var(--color-border)"
+                  fill={hasViews ? colorScale(views) : "var(--color-map-land, rgba(148, 163, 184, 0.16))"}
+                  stroke="var(--color-map-stroke, rgba(148, 163, 184, 0.25))"
                   strokeWidth={0.5}
                   style={{
                     default: {
@@ -558,7 +623,9 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
                       transition: "fill 0.2s ease",
                     },
                     hover: {
-                      fill: hasViews ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.12)",
+                      fill: hasViews
+                        ? "var(--color-accent-cyan)"
+                        : "var(--color-map-land-hover, rgba(148, 163, 184, 0.28))",
                       stroke: hasViews ? "var(--color-accent-cyan)" : "var(--color-border-strong)",
                       strokeWidth: 1,
                       outline: "none",

@@ -39,6 +39,7 @@ export interface PscxComponent {
   ports: PscxPort[];
   line?: number | undefined;
   column?: number | undefined;
+  endColumn?: number | undefined;
   sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
@@ -62,6 +63,7 @@ export interface PscxBus {
   phaseCount: number; // 1 or 3
   line?: number | undefined;
   column?: number | undefined;
+  endColumn?: number | undefined;
   sourceRange?: { startOffset: number; endOffset: number } | undefined;
 }
 
@@ -169,6 +171,8 @@ export interface EmtBus {
   baseKv: number;
   phaseCount: number;
   connectedBranchIds: string[];
+  explicitBaseKv?: boolean | undefined;
+  sourceComponentId?: string | undefined;
 }
 
 export type BranchKind = "rlc" | "transmission_line" | "transformer" | "switch" | "source" | "fmu_ibr";

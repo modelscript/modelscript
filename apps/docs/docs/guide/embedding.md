@@ -9,7 +9,7 @@ The **ModelScript Embed Service** allows you to embed interactive 2D schematics,
 The simplest and cleanest way to embed a ModelScript model in any modern web page or documentation framework is using the custom Web Component:
 
 ```html
-<script type="module" src="https://cdn.modelscript.org/embed/v1/viewer.js"></script>
+<script type="module" src="https://modelscript.org/static/embed.js"></script>
 
 <modelscript-viewer
   dialect="modelica"

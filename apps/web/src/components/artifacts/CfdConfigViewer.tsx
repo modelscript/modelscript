@@ -181,6 +181,17 @@ function parseSu2Client(text: string) {
   return { solver, turbModel, machNumber, aoaDeg, reynoldsNumber, markers };
 }
 
+function computeDeterministicHex64(input: string): string {
+  const seeds = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35, 0x27d4eb2f, 0x165667b1, 0xd3a2646c];
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    for (let j = 0; j < 8; j++) {
+      seeds[j] = Math.imul((seeds[j]! ^ code) + j, 0x01000193) >>> 0;
+    }
+  }
+  return seeds.map((s) => s.toString(16).padStart(8, "0")).join("");
+}
+
 export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -188,7 +199,9 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
   const [simCompleted, setSimCompleted] = useState(false);
   const [completedResultConfig, setCompletedResultConfig] = useState<any>(null);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<"diagram" | "code">(() =>
+    typeof viewConfig?.svg === "string" && viewConfig.svg.includes("<svg") ? "diagram" : "code",
+  );
   const title = viewConfig.title || viewConfig.configName || "SU2 Aerodynamic Config (.cfg)";
 
   useEffect(() => {
@@ -227,28 +240,13 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
   }, [viewConfig.markersEuler, viewConfig.markersFar, viewConfig.markersHeatflux, parsedCfg.markers]);
 
   const sanitizedSvg = useMemo(() => {
-    if (viewConfig.svg) {
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.includes("<svg")) {
       return DOMPurify.sanitize(viewConfig.svg);
     }
-    if (!solver && machNumber === undefined && allMarkers.length === 0) {
-      return "";
-    }
-    return DOMPurify.sanitize(`
-      <svg viewBox="0 0 650 340" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="650" height="340" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        <text x="24" y="30" fill="var(--ms-text-1)" font-size="12" font-weight="bold" font-family="monospace">CFD DOMAIN // ${title}</text>
-        <text x="24" y="48" fill="#38bdf8" font-size="11" font-family="monospace">Solver: ${solver || "N/A"}${turbModel ? ` (${turbModel})` : ""}${machNumber !== undefined ? ` | Mach: ${machNumber}` : ""}${aoaDeg !== undefined ? ` | AoA: ${aoaDeg}°` : ""}</text>
-        <rect x="60" y="70" width="530" height="230" rx="10" fill="rgba(30, 41, 59, 0.4)" stroke="#38bdf8" stroke-dasharray="6 4" stroke-width="1.5" />
-        <g stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6">
-          <path d="M 85 125 Q 250 95 565 120" />
-          <path d="M 85 185 Q 220 145 340 180 Q 460 210 565 190" stroke="#fb923c" stroke-width="2" />
-          <path d="M 85 245 Q 280 275 565 250" />
-        </g>
-        <path d="M 210 185 Q 260 155 370 178 Q 440 190 460 192 Q 410 198 310 196 Q 240 194 210 185 Z" fill="#1e293b" stroke="#fb923c" stroke-width="2" />
-        <text x="325" y="285" fill="#94a3b8" font-size="10" font-family="monospace" text-anchor="middle">Boundaries: ${allMarkers.join(", ") || "default"}</text>
-      </svg>
-    `);
-  }, [viewConfig.svg, solver, turbModel, machNumber, aoaDeg, allMarkers, title]);
+    return "";
+  }, [viewConfig.svg]);
+
+  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
   const [simError, setSimError] = useState<string | null>(null);
 
@@ -256,8 +254,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
     setRunningSim(true);
     setSimError(null);
     try {
-      const geoHash =
-        (viewConfig.geometryHash as string) || "0000000000000000000000000000000000000000000000000000000000000000";
+      const geoHash = (viewConfig.geometryHash as string) || computeDeterministicHex64(rawText || title);
       const studyConfig = {
         type: "CFD",
         workflowClass: "DroneCFDStudy",
@@ -297,58 +294,66 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <FlameIcon size={16} fill="#fb923c" />
+          <FlameIcon size={16} fill="var(--color-attention-fg, currentColor)" />
           <ModelTitle>{title}</ModelTitle>
           <PillBadge>SU2 CFD Config</PillBadge>
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>
-          <Box
-            display="flex"
-            bg="rgba(0,0,0,0.25)"
-            borderRadius="6px"
-            p="2px"
-            border="1px solid var(--color-border-default)"
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode("diagram")}
-              style={{
-                background: viewMode === "diagram" ? "rgba(249, 115, 22, 0.25)" : "transparent",
-                color: viewMode === "diagram" ? "#fb923c" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+          {sanitizedSvg && (
+            <Box
+              display="flex"
+              bg="rgba(0,0,0,0.25)"
+              borderRadius="6px"
+              p="2px"
+              border="1px solid var(--color-border-default)"
             >
-              <WorkflowIcon size={12} /> Domain
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("code")}
-              style={{
-                background: viewMode === "code" ? "rgba(249, 115, 22, 0.25)" : "transparent",
-                color: viewMode === "code" ? "#fb923c" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <CodeIcon size={12} /> Config
-            </button>
-          </Box>
+              <button
+                type="button"
+                onClick={() => setViewMode("diagram")}
+                style={{
+                  background: effectiveViewMode === "diagram" ? "rgba(249, 115, 22, 0.25)" : "transparent",
+                  color:
+                    effectiveViewMode === "diagram"
+                      ? "var(--color-attention-fg, var(--color-fg-default))"
+                      : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <WorkflowIcon size={12} /> Domain
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("code")}
+                style={{
+                  background: effectiveViewMode === "code" ? "rgba(249, 115, 22, 0.25)" : "transparent",
+                  color:
+                    effectiveViewMode === "code"
+                      ? "var(--color-attention-fg, var(--color-fg-default))"
+                      : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <CodeIcon size={12} /> Config
+              </button>
+            </Box>
+          )}
           <Button
             size="small"
             leadingVisual={runningSim ? Spinner : PlayIcon}
@@ -392,7 +397,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>
-        ) : viewMode === "diagram" && sanitizedSvg ? (
+        ) : effectiveViewMode === "diagram" && sanitizedSvg ? (
           <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
         ) : (
           <Box

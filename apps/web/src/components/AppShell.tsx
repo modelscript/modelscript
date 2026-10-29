@@ -4,6 +4,7 @@ import Box from "./Box";
 
 import {
   BellIcon,
+  BookIcon,
   BookmarkIcon,
   CodeIcon,
   GearIcon,
@@ -19,7 +20,6 @@ import {
   ShieldLockIcon,
   SunIcon,
   ThreeBarsIcon,
-  XIcon,
 } from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
@@ -28,11 +28,12 @@ import styled from "styled-components";
 import { getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
+import DevModeBar from "./DevModeBar";
 import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
-import { useFeatureFlag, useFeatureFlags } from "../FeatureFlagContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
 import { OfflineBanner } from "./OfflineBanner";
 
@@ -44,7 +45,7 @@ const ShellContainer = styled.div`
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  background-color: var(--color-bg-primary);
+  background-color: transparent;
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
   box-sizing: border-box;
@@ -322,12 +323,10 @@ const AppShell: React.FC = () => {
   const [isResettingDb, setIsResettingDb] = React.useState(false);
   const [resetError, setResetError] = React.useState<string | null>(null);
   const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(
-    () => localStorage.getItem("modelscript:dev_header") === "true",
+    () => localStorage.getItem("modelscript:dev_header") !== "false",
   );
   const [isDevFlagsModalOpen, setIsDevFlagsModalOpen] = React.useState(false);
-  const { overrides } = useFeatureFlags();
-  const activeOverrideCount = Object.keys(overrides).length;
-  const { user, isAdmin, isLoading: loading, login, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
+  const { user, isAdmin, isLoading: loading, logout, unreadCount, creditBalance, refreshWallet } = useAuth();
   const [clusterStatus, setClusterStatus] = React.useState<ClusterStatus | null>(null);
   const [isTopUpModalOpen, setIsTopUpModalOpen] = React.useState(false);
   const [isTopUpLoading, setIsTopUpLoading] = React.useState(false);
@@ -339,6 +338,18 @@ const AppShell: React.FC = () => {
   const [isMoreOpen, setIsMoreOpen] = React.useState(false);
   const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
   const hasIde = useFeatureFlag("heavy_vscode_ide");
+
+  const handleToggleDevHeader = React.useCallback((next?: boolean) => {
+    setIsDevHeaderVisible((prev) => {
+      const resolved = typeof next === "boolean" ? next : !prev;
+      try {
+        localStorage.setItem("modelscript:dev_header", String(resolved));
+      } catch {
+        // Ignore storage errors
+      }
+      return resolved;
+    });
+  }, []);
 
   React.useEffect(() => {
     setIsMoreOpen(false);
@@ -352,14 +363,32 @@ const AppShell: React.FC = () => {
   // Make wide layout for /settings/*
   const isWideLayout = location.pathname.startsWith("/settings");
 
-  // Make workbench layout for post detail/inspector (/status/:id)
-  const isInspectorLayout = location.pathname.includes("/status/");
+  const [isNotebookInspector, setIsNotebookInspector] = React.useState(false);
 
-  // Make full screen layout for /packages/*, /repos/*, and /ide/*
+  React.useEffect(() => {
+    if (!location.pathname.includes("/status/")) {
+      setIsNotebookInspector(false);
+    }
+  }, [location.pathname]);
+
+  React.useEffect(() => {
+    const handleNotebookInspector = (e: Event) => {
+      const customEvent = e as CustomEvent<{ active?: boolean }>;
+      setIsNotebookInspector(Boolean(customEvent.detail?.active));
+    };
+    window.addEventListener("modelscript:notebook-inspector", handleNotebookInspector);
+    return () => {
+      window.removeEventListener("modelscript:notebook-inspector", handleNotebookInspector);
+    };
+  }, []);
+
+  // Make workbench layout only for multi-section Engineering Notebooks on /status/:id
+  const isInspectorLayout = location.pathname.includes("/status/") && isNotebookInspector;
+
+  // Make full screen layout for /packages/* and /repos/* detail pages
   const isFullScreenLayout =
     (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
-    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/") ||
-    location.pathname.startsWith("/ide");
+    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/");
 
   const showsRightPanel = !isStandaloneRoute && !isWideLayout && !isFullScreenLayout && !isInspectorLayout;
 
@@ -389,6 +418,12 @@ const AppShell: React.FC = () => {
 
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (isDev && (e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        handleToggleDevHeader();
+        return;
+      }
+
       if (location.pathname.startsWith("/playground") || location.pathname.startsWith("/ide")) {
         return;
       }
@@ -414,7 +449,7 @@ const AppShell: React.FC = () => {
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [location.pathname, user, navigate]);
+  }, [location.pathname, user, navigate, isDev, handleToggleDevHeader]);
 
   const [composeInitialState, setComposeInitialState] = React.useState<ComposeInitialState | undefined>(undefined);
 
@@ -440,15 +475,29 @@ const AppShell: React.FC = () => {
     const handleOpenTopUp = () => {
       setIsTopUpModalOpen(true);
     };
+    const handleToggleDev = () => {
+      handleToggleDevHeader();
+    };
+    const handleOpenDevFlags = () => {
+      setIsDevFlagsModalOpen(true);
+    };
+    const handleOpenResetDb = () => {
+      setResetError(null);
+      setIsResetDbDialogOpen(true);
+    };
     window.addEventListener("modelscript:open-compose", handleOpenCompose);
     window.addEventListener("modelscript:open-topup", handleOpenTopUp);
+    window.addEventListener("modelscript:toggle-dev-header", handleToggleDev);
+    window.addEventListener("modelscript:open-dev-flags", handleOpenDevFlags);
+    window.addEventListener("modelscript:open-reset-db", handleOpenResetDb);
     return () => {
       window.removeEventListener("modelscript:open-compose", handleOpenCompose);
       window.removeEventListener("modelscript:open-topup", handleOpenTopUp);
+      window.removeEventListener("modelscript:toggle-dev-header", handleToggleDev);
+      window.removeEventListener("modelscript:open-dev-flags", handleOpenDevFlags);
+      window.removeEventListener("modelscript:open-reset-db", handleOpenResetDb);
     };
-  }, []);
-
-  const LegacyDialog = Dialog as React.ElementType;
+  }, [handleToggleDevHeader]);
 
   return (
     <ComposeContext.Provider value={{ openCompose: handleOpenComposeContext }}>
@@ -460,184 +509,19 @@ const AppShell: React.FC = () => {
           } as React.CSSProperties
         }
       >
-        {!isStandaloneRoute && isDev && isDevHeaderVisible && (
-          <div
-            style={{
-              backgroundColor: "#6f42c1",
-              color: "white",
-              padding: "0 24px",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              zIndex: 1000,
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              height: "40px",
-              boxSizing: "border-box",
+        {!isStandaloneRoute && isDev && (
+          <DevModeBar
+            isExpanded={isDevHeaderVisible}
+            onToggleExpanded={handleToggleDevHeader}
+            onOpenFlagsModal={() => setIsDevFlagsModalOpen(true)}
+            onOpenResetDbDialog={() => {
+              setResetError(null);
+              setIsResetDbDialogOpen(true);
             }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                width: "100%",
-                maxWidth: "1280px",
-                alignItems: "center",
-              }}
-            >
-              <span style={{ fontWeight: "bold", fontSize: "13px", letterSpacing: "1px" }}>DEV MODE</span>
-              <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <button
-                    onClick={() => {
-                      setResetError(null);
-                      setIsResetDbDialogOpen(true);
-                    }}
-                    style={{
-                      background: "rgba(255,255,255,0.2)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      padding: "4px 12px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      marginRight: "8px",
-                    }}
-                  >
-                    Reload DB
-                  </button>
-                  <button
-                    onClick={() => setIsDevFlagsModalOpen(true)}
-                    style={{
-                      background: activeOverrideCount > 0 ? "rgba(245, 158, 11, 0.35)" : "rgba(255,255,255,0.2)",
-                      color: activeOverrideCount > 0 ? "#fef08a" : "white",
-                      border: activeOverrideCount > 0 ? "1px solid rgba(245, 158, 11, 0.7)" : "none",
-                      borderRadius: "4px",
-                      padding: "4px 10px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                      marginRight: "8px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "5px",
-                    }}
-                    title="Configure Feature Flags & Toggles"
-                  >
-                    <span>🚩 Flags</span>
-                    {activeOverrideCount > 0 && (
-                      <span
-                        style={{
-                          background: "#f59e0b",
-                          color: "#000",
-                          borderRadius: "9999px",
-                          padding: "0 5px",
-                          fontSize: "10px",
-                          fontWeight: 800,
-                          lineHeight: "16px",
-                        }}
-                      >
-                        {activeOverrideCount}
-                      </span>
-                    )}
-                  </button>
-                  <span style={{ fontSize: "12px", opacity: 0.8, marginRight: "4px" }}>
-                    {!user ? "Login as:" : "Switch user:"}
-                  </span>
-                  {[
-                    { email: "dev@modelscript.org", initial: "D" },
-                    { email: "alice@modelscript.org", initial: "A" },
-                    { email: "bob@modelscript.org", initial: "B" },
-                  ].map((u) => (
-                    <button
-                      key={u.email}
-                      onClick={() => {
-                        if (!user || user.email !== u.email) {
-                          if (user) logout();
-                          setTimeout(() => login(u.email, "password"), user ? 100 : 0);
-                        }
-                      }}
-                      style={{
-                        width: "26px",
-                        height: "26px",
-                        borderRadius: "50%",
-                        border: user?.email === u.email ? "2px solid white" : "none",
-                        backgroundColor: user?.email === u.email ? "#5a32a3" : "rgba(255,255,255,0.3)",
-                        color: "white",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: "bold",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                      title={!user ? `Login as ${u.email}` : `Switch to ${u.email}`}
-                    >
-                      {u.initial}
-                    </button>
-                  ))}
-                  <button
-                    onClick={toggleTheme}
-                    style={{
-                      background: "rgba(255,255,255,0.2)",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      padding: "4px 8px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginLeft: "8px",
-                    }}
-                    title="Toggle Theme"
-                  >
-                    {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
-                  </button>
-                </div>
-                {user && (
-                  <button
-                    onClick={() => logout()}
-                    style={{
-                      background: "white",
-                      color: "#6f42c1",
-                      border: "none",
-                      borderRadius: "4px",
-                      padding: "4px 12px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    Logout
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsDevHeaderVisible(false)}
-                  style={{
-                    background: "transparent",
-                    color: "white",
-                    border: "none",
-                    padding: "4px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: 0.7,
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
-                  title="Hide Dev Mode Header"
-                >
-                  <XIcon size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
+            onOpenTopUpModal={() => setIsTopUpModalOpen(true)}
+            clusterStatus={clusterStatus}
+            onClusterStatusChange={setClusterStatus}
+          />
         )}
         {isStandaloneRoute ? (
           <ErrorBoundary>
@@ -780,6 +664,9 @@ const AppShell: React.FC = () => {
                   <Link to="/repos">
                     <RepoIcon size={20} /> Repositories
                   </Link>
+                  <Link to="/guide/introduction" reloadDocument>
+                    <BookIcon size={20} /> Docs
+                  </Link>
                   {hasIde && (
                     <Link to="/ide">
                       <CodeIcon size={20} /> IDE
@@ -837,25 +724,24 @@ const AppShell: React.FC = () => {
         )}
 
         {isResetDbDialogOpen && (
-          <LegacyDialog
-            isOpen={isResetDbDialogOpen}
-            onDismiss={() => {
+          <Dialog
+            title="Reset Development Database"
+            onClose={() => {
               if (!isResettingDb) setIsResetDbDialogOpen(false);
             }}
-            aria-labelledby="reset-db-title"
+            width="large"
           >
-            <LegacyDialog.Header id="reset-db-title">Reset Development Database</LegacyDialog.Header>
-            <Box p={3}>
-              <Text as="p" color="var(--color-fg-default)" style={{ marginBottom: "16px" }}>
+            <Box display="flex" flexDirection="column" gap={3}>
+              <Text as="p" color="var(--color-fg-default)" style={{ margin: 0, lineHeight: 1.5 }}>
                 Are you sure you want to reload the database with seed and development data? This will clear all
                 existing test posts, comments, and sessions.
               </Text>
               {resetError && (
-                <Text as="p" color="var(--color-danger-fg)" style={{ marginBottom: "16px", fontSize: "13px" }}>
+                <Text as="p" color="var(--color-danger-fg)" style={{ margin: 0, fontSize: "13px" }}>
                   {resetError}
                 </Text>
               )}
-              <Box display="flex" justifyContent="flex-end" gap={2}>
+              <Box display="flex" justifyContent="flex-end" gap={2} style={{ paddingTop: "4px" }}>
                 <Button onClick={() => setIsResetDbDialogOpen(false)} disabled={isResettingDb}>
                   Cancel
                 </Button>
@@ -882,22 +768,26 @@ const AppShell: React.FC = () => {
                 </Button>
               </Box>
             </Box>
-          </LegacyDialog>
+          </Dialog>
         )}
 
         {isTopUpModalOpen && (
-          <LegacyDialog
-            isOpen={isTopUpModalOpen}
-            onDismiss={() => {
+          <Dialog
+            title="Compute Wallet & Cloud Credits"
+            onClose={() => {
               setIsTopUpModalOpen(false);
               setTopUpSuccess(null);
               setTopUpError(null);
             }}
-            aria-labelledby="wallet-topup-title"
+            width="large"
           >
-            <LegacyDialog.Header id="wallet-topup-title">Compute Wallet &amp; Cloud Credits</LegacyDialog.Header>
-            <Box p={3} display="flex" flexDirection="column" gap={3}>
-              <Box p={3} borderRadius="8px" bg="rgba(255, 255, 255, 0.03)" border="1px solid var(--color-border)">
+            <Box display="flex" flexDirection="column" gap={3}>
+              <Box
+                p={3}
+                borderRadius="8px"
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+              >
                 <Text style={{ fontSize: "12px", color: "var(--color-text-muted)", display: "block" }}>
                   Current Credit Balance
                 </Text>
@@ -976,8 +866,8 @@ const AppShell: React.FC = () => {
                       flex: 1,
                       padding: "10px",
                       borderRadius: "8px",
-                      border: "1px solid var(--color-border-glass)",
-                      background: "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--ms-surface-hover)",
                       color: "var(--color-text-primary)",
                       fontWeight: 600,
                       cursor: isTopUpLoading ? "not-allowed" : "pointer",
@@ -1022,7 +912,7 @@ const AppShell: React.FC = () => {
                 <Button onClick={() => setIsTopUpModalOpen(false)}>Done</Button>
               </Box>
             </Box>
-          </LegacyDialog>
+          </Dialog>
         )}
 
         {isDevFlagsModalOpen && (

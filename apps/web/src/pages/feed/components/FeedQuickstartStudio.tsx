@@ -69,10 +69,10 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
           </div>
           <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
         </HeroCard>
-        <HeroCard onClick={() => navigate("/playground?model=rlc-filter")}>
+        <HeroCard onClick={() => navigate("/playground?model=rlc-circuit")}>
           <div style={{ fontSize: "24px" }}>⚡</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>RLC Filter</div>
+            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>RLC Circuit</div>
             <div
               style={{
                 fontSize: "11px",
@@ -87,10 +87,12 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
           </div>
           <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
         </HeroCard>
-        <HeroCard onClick={() => navigate("/playground?model=chua-circuit")}>
+        <HeroCard onClick={() => navigate("/playground?model=lorenz-attractor")}>
           <div style={{ fontSize: "24px" }}>🌀</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>Chua Circuit</div>
+            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
+              Lorenz Attractor
+            </div>
             <div
               style={{
                 fontSize: "11px",
@@ -105,10 +107,12 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
           </div>
           <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
         </HeroCard>
-        <HeroCard onClick={() => navigate("/playground?model=sysml2-powertrain")}>
+        <HeroCard onClick={() => navigate("/playground?model=sysml-satellite")}>
           <div style={{ fontSize: "24px" }}>🔋</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>EV Powertrain</div>
+            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
+              CubeSat Power Architecture
+            </div>
             <div
               style={{
                 fontSize: "11px",

@@ -237,6 +237,24 @@ export class ScadEvaluator {
   public evaluateParts(rootNode: ScadCstNode): Solid[] {
     const solids: Solid[] = [];
     this.evaluateStatements(rootNode, this.globalScope, solids);
+    if (solids.length === 0 && this.globalScope.modules.size > 0) {
+      for (const [modName, modDef] of this.globalScope.modules) {
+        const modScope = new Scope(modDef.scope);
+        for (const pName of modDef.params) {
+          let val = modDef.defaults.get(pName);
+          const defExpr = modDef.defaultExprs?.get(pName);
+          if (val === undefined && defExpr) {
+            val = this.evaluateExpression(defExpr, modScope);
+          }
+          modScope.setVar(pName, val);
+        }
+        const modSolids: Solid[] = [];
+        this.evaluateStatement(modDef.bodyNode, modScope, modSolids);
+        for (const s of modSolids) {
+          solids.push(s.name ? s : (Object.freeze({ ...s, name: modName }) as Solid));
+        }
+      }
+    }
     return solids;
   }
 
@@ -283,11 +301,60 @@ export class ScadEvaluator {
     }
 
     // Pass 2: Evaluate variable assignments, control flow, and geometry statements in order
+    const pendingPortTags: { portName: string; portType: BoundaryPatchType; normal?: Vec3 | undefined }[] = [];
     for (let i = 0; i < containerNode.childCount; i++) {
       const stmt = containerNode.child(i);
       if (!stmt) continue;
+      const standaloneTag = this.tryExtractStandaloneTagPort(stmt, scope);
+      if (standaloneTag) {
+        pendingPortTags.push(standaloneTag);
+        continue;
+      }
+      const prevLen = outSolids.length;
       this.evaluateStatement(stmt, scope, outSolids);
+      if (pendingPortTags.length > 0 && outSolids.length > prevLen) {
+        let tagged = outSolids[prevLen]!;
+        for (const tag of pendingPortTags) {
+          tagged = tagPatch(tagged, tag);
+        }
+        outSolids[prevLen] = tagged;
+        pendingPortTags.length = 0;
+      }
     }
+    if (pendingPortTags.length > 0 && outSolids.length > 0) {
+      const lastIdx = outSolids.length - 1;
+      let tagged = outSolids[lastIdx]!;
+      for (const tag of pendingPortTags) {
+        tagged = tagPatch(tagged, tag);
+      }
+      outSolids[lastIdx] = tagged;
+    }
+  }
+
+  /**
+   * Detects a standalone `tag_port("name", "type");` statement (parsed as `PrefixSolid` with an
+   * empty `;` child statement) so its boundary patch tag can be attached to the next solid in the block.
+   */
+  private tryExtractStandaloneTagPort(
+    stmtNode: ScadCstNode,
+    scope: Scope,
+  ): { portName: string; portType: BoundaryPatchType; normal?: Vec3 | undefined } | null {
+    const inner = stmtNode.type === "Statement" ? stmtNode.child(0) : stmtNode;
+    if (!inner || inner.type !== "PrefixSolid") return null;
+    const opNode = this.findChildByType(inner, "TagPortOp");
+    if (!opNode) return null;
+    const childNode = this.findChildByType(inner, "Statement") ?? this.findChildByType(inner, "BlockStatement");
+    if (childNode && childNode.text.trim() !== ";") return null;
+
+    const argListNode = this.findChildByType(opNode, "ArgumentList");
+    const args = this.evaluateArgumentList(argListNode, scope);
+    const portName = String(args.positional[0] ?? args.named.get("name") ?? "port");
+    const portType = (args.positional[1] ?? args.named.get("type") ?? "mechanical_flange") as BoundaryPatchType;
+    const rawNorm = args.positional[2] ?? args.named.get("normal");
+    const normal: Vec3 | undefined = Array.isArray(rawNorm)
+      ? [Number(rawNorm[0] ?? 0), Number(rawNorm[1] ?? 0), Number(rawNorm[2] ?? 1)]
+      : undefined;
+    return { portName, portType, normal };
   }
 
   private registerModuleDeclaration(stmtNode: ScadCstNode, scope: Scope): void {
@@ -1048,13 +1115,16 @@ export class ScadEvaluator {
       const modSolids: Solid[] = [];
       this.evaluateStatement(modDef.bodyNode, modScope, modSolids);
       if (modSolids.length === 0) return null;
-      if (modSolids.length === 1) return modSolids[0]!;
+      if (modSolids.length === 1) {
+        const single = modSolids[0]!;
+        return Object.freeze({ ...single, name: modName }) as Solid;
+      }
 
       let acc = modSolids[0]!;
       for (let i = 1; i < modSolids.length; i++) {
         acc = union(acc, modSolids[i]!);
       }
-      return acc;
+      return Object.freeze({ ...acc, name: modName }) as Solid;
     }
 
     return null;

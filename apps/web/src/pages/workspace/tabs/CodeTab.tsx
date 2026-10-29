@@ -59,7 +59,19 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
   const { theme } = useTheme();
   const navigate = useNavigate();
   const defaultBranch = repo.default_branch || "main";
-  const cloneUrl = `${typeof window !== "undefined" ? window.location.origin : "https://modelscript.org"}/git/${repo.path_with_namespace || repo.name}.git`;
+  const upstreamWebUrl =
+    repo.web_url ||
+    (provider === "github"
+      ? `https://github.com/${projectId}`
+      : provider === "gitlab"
+        ? `https://gitlab.com/${projectId}`
+        : `${typeof window !== "undefined" ? window.location.origin : "https://modelscript.org"}/git/${repo.path_with_namespace || repo.name}`);
+  const cloneUrl =
+    provider === "github"
+      ? `https://github.com/${projectId}.git`
+      : provider === "gitlab"
+        ? `https://gitlab.com/${projectId}.git`
+        : `${typeof window !== "undefined" ? window.location.origin : "https://modelscript.org"}/git/${repo.path_with_namespace || repo.name}.git`;
 
   useEffect(() => {
     async function load() {
@@ -76,16 +88,24 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
           setTree([]);
           setReadme(null);
         } else {
-          const [treeData, readmeData] = await Promise.all([
-            getGitlabTree(projectId, defaultBranch, currentPath, provider),
-            currentPath === ""
-              ? getGitlabFileRaw(projectId, "README.md", defaultBranch, provider).catch(() => null)
-              : Promise.resolve(null),
-          ]);
-          setTree(
-            treeData.sort((a, b) => (a.type === "tree" ? -1 : b.type === "tree" ? 1 : a.name.localeCompare(b.name))),
+          const treeData = await getGitlabTree(projectId, defaultBranch, currentPath, provider);
+          const sortedTree = [...treeData].sort((a, b) =>
+            a.type === "tree" ? -1 : b.type === "tree" ? 1 : a.name.localeCompare(b.name),
           );
-          setReadme(readmeData);
+          setTree(sortedTree);
+
+          if (currentPath === "") {
+            const readmeNode = sortedTree.find(
+              (n) => n.type === "blob" && /^readme(\.(md|markdown|rst|txt))?$/i.test(n.name),
+            );
+            const readmeTarget = readmeNode ? readmeNode.path : "README.md";
+            const readmeData = await getGitlabFileRaw(projectId, readmeTarget, defaultBranch, provider).catch(
+              () => null,
+            );
+            setReadme(readmeData);
+          } else {
+            setReadme(null);
+          }
           setFileContent(null);
         }
       } catch (err: unknown) {
@@ -379,6 +399,13 @@ git push -u origin ${defaultBranch}`}
                     }}
                   >
                     {copiedClone ? "✓ Copied to clipboard!" : "Copy Git Clone URL (HTTPS)"}
+                  </ActionList.Item>
+                  <ActionList.Item
+                    onSelect={() => {
+                      window.open(upstreamWebUrl, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    View on {provider === "gitlab" ? "GitLab" : "GitHub"} ↗
                   </ActionList.Item>
                 </ActionList>
               </ActionMenu.Overlay>

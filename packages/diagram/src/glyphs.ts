@@ -573,22 +573,93 @@ export function numericReadoutBadgeGlyph(options?: {
 }
 
 /**
- * IEEE Standard 2-Winding Transformer Glyph (Overlapping Circles).
+ * IEEE / PSCAD Standard 2-Winding 3-Phase Transformer Glyph
+ * (Overlapping Windings, Magnetic Core Bars, Y/Delta Vector Badges, and Terminal Leads).
  */
-export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
+export function transformerGlyph(
+  options?: GlyphOptions & {
+    leftPortX?: number | undefined;
+    rightPortX?: number | undefined;
+    primaryGroup?: string | undefined;
+    secondaryGroup?: string | undefined;
+  },
+): X6Markup[] {
   const stroke = options?.stroke ?? "#0284c7";
-  const strokeWidth = options?.strokeWidth ?? 2;
-  const fill = options?.fill ?? "none";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+  const fill = options?.fill ?? "rgba(2, 132, 199, 0.06)";
+  const width = options?.width ?? 72;
+  const height = options?.height ?? 52;
+  const cy = Math.round(height / 2);
+  const centerX = Math.round(width / 2);
+  const xLeft = options?.leftPortX !== undefined ? centerX + options.leftPortX : 0;
+  const xRight = options?.rightPortX !== undefined ? centerX + options.rightPortX : width;
+  const midX = Math.round((xLeft + xRight) / 2);
+  const r = 13;
+  const priCx = midX - 9;
+  const secCx = midX + 9;
+  const priBadge = options?.primaryGroup ?? "Y";
+  const secBadge = options?.secondaryGroup ?? "Δ";
 
   return [
+    // Primary Terminal Lead
+    {
+      tagName: "line",
+      selector: "primaryLead",
+      attrs: {
+        x1: xLeft,
+        y1: cy,
+        x2: priCx - r,
+        y2: cy,
+        stroke,
+        strokeWidth: 2,
+      },
+    },
+    // Secondary Terminal Lead
+    {
+      tagName: "line",
+      selector: "secondaryLead",
+      attrs: {
+        x1: secCx + r,
+        y1: cy,
+        x2: xRight,
+        y2: cy,
+        stroke,
+        strokeWidth: 2,
+      },
+    },
+    // Magnetic Core Bars
+    {
+      tagName: "line",
+      selector: "coreBar1",
+      attrs: {
+        x1: midX - 1.5,
+        y1: cy - 15,
+        x2: midX - 1.5,
+        y2: cy + 15,
+        stroke: "#64748b",
+        strokeWidth: 1.2,
+      },
+    },
+    {
+      tagName: "line",
+      selector: "coreBar2",
+      attrs: {
+        x1: midX + 1.5,
+        y1: cy - 15,
+        x2: midX + 1.5,
+        y2: cy + 15,
+        stroke: "#64748b",
+        strokeWidth: 1.2,
+      },
+    },
     // Primary Winding Circle
     {
       tagName: "circle",
       selector: "primaryWinding",
       attrs: {
-        cx: 24,
-        cy: 30,
-        r: 16,
+        cx: priCx,
+        cy,
+        r,
         fill,
         stroke,
         strokeWidth,
@@ -599,38 +670,42 @@ export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
       tagName: "circle",
       selector: "secondaryWinding",
       attrs: {
-        cx: 44,
-        cy: 30,
-        r: 16,
+        cx: secCx,
+        cy,
+        r,
         fill,
         stroke,
         strokeWidth,
       },
     },
-    // Primary Lead
+    // Primary Vector Group Symbol
     {
-      tagName: "line",
-      selector: "primaryLead",
+      tagName: "text",
+      selector: "priGroup",
       attrs: {
-        x1: 8,
-        y1: 30,
-        x2: 0,
-        y2: 30,
-        stroke,
-        strokeWidth,
+        text: priBadge,
+        fill: stroke,
+        fontSize: 7.5,
+        fontWeight: "bold",
+        fontFamily: "sans-serif",
+        refX: priCx - 4,
+        refY: cy + 3,
+        textAnchor: "middle",
       },
     },
-    // Secondary Lead
+    // Secondary Vector Group Symbol
     {
-      tagName: "line",
-      selector: "secondaryLead",
+      tagName: "text",
+      selector: "secGroup",
       attrs: {
-        x1: 60,
-        y1: 30,
-        x2: 68,
-        y2: 30,
-        stroke,
-        strokeWidth,
+        text: secBadge,
+        fill: stroke,
+        fontSize: 7.5,
+        fontWeight: "bold",
+        fontFamily: "sans-serif",
+        refX: secCx + 4,
+        refY: cy + 3,
+        textAnchor: "middle",
       },
     },
     {
@@ -641,8 +716,8 @@ export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
-        refX: 34,
-        refY: 56,
+        refX: midX,
+        refY: height + 4,
         textAnchor: "middle",
       },
     },
@@ -650,22 +725,95 @@ export function transformerGlyph(options?: GlyphOptions): X6Markup[] {
 }
 
 /**
- * Synchronous Generator / AC Source Glyph (Circle with Sine Wave).
+ * PSCAD / IEEE Synchronous Generator & Three-Phase AC Voltage Source Glyph
+ * (Stator Circle, Sine Wave, Grounded Neutral Reference, and Terminal Lead).
  */
-export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
+export function generatorGlyph(
+  options?: GlyphOptions & {
+    portOffsetX?: number | undefined;
+  },
+): X6Markup[] {
   const stroke = options?.stroke ?? "#d97706";
-  const strokeWidth = options?.strokeWidth ?? 2;
+  const strokeWidth = options?.strokeWidth ?? 1.8;
   const fill = options?.fill ?? "rgba(217, 119, 6, 0.08)";
+  const width = options?.width ?? 72;
+  const height = options?.height ?? 48;
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const r = 15;
+  const leadEndX = cx + (options?.portOffsetX ?? 36);
 
   return [
-    // Outer Circle
+    // Grounded Neutral Reference Tail (Left)
+    {
+      tagName: "line",
+      selector: "genGndLead",
+      attrs: {
+        x1: cx - r - 9,
+        y1: cy,
+        x2: cx - r,
+        y2: cy,
+        stroke: "#64748b",
+        strokeWidth: 1.5,
+      },
+    },
+    {
+      tagName: "line",
+      selector: "genGndBar1",
+      attrs: {
+        x1: cx - r - 9,
+        y1: cy - 7,
+        x2: cx - r - 9,
+        y2: cy + 7,
+        stroke: "#64748b",
+        strokeWidth: 1.6,
+      },
+    },
+    {
+      tagName: "line",
+      selector: "genGndBar2",
+      attrs: {
+        x1: cx - r - 12,
+        y1: cy - 4.5,
+        x2: cx - r - 12,
+        y2: cy + 4.5,
+        stroke: "#64748b",
+        strokeWidth: 1.4,
+      },
+    },
+    {
+      tagName: "line",
+      selector: "genGndBar3",
+      attrs: {
+        x1: cx - r - 15,
+        y1: cy - 2,
+        x2: cx - r - 15,
+        y2: cy + 2,
+        stroke: "#64748b",
+        strokeWidth: 1.2,
+      },
+    },
+    // Output Terminal Lead (Right)
+    {
+      tagName: "line",
+      selector: "genLead",
+      attrs: {
+        x1: cx + r,
+        y1: cy,
+        x2: leadEndX,
+        y2: cy,
+        stroke: "#0284c7",
+        strokeWidth: 2,
+      },
+    },
+    // Outer Stator Ring
     {
       tagName: "circle",
       selector: "genCircle",
       attrs: {
-        cx: 30,
-        cy: 30,
-        r: 24,
+        cx,
+        cy,
+        r,
         fill,
         stroke,
         strokeWidth,
@@ -676,10 +824,10 @@ export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
       tagName: "path",
       selector: "genSine",
       attrs: {
-        d: "M 18,30 Q 24,20 30,30 Q 36,40 42,30",
+        d: `M ${cx - 9},${cy} Q ${cx - 4.5},${cy - 8} ${cx},${cy} Q ${cx + 4.5},${cy + 8} ${cx + 9},${cy}`,
         fill: "none",
         stroke,
-        strokeWidth: 2,
+        strokeWidth: 1.8,
       },
     },
     {
@@ -690,8 +838,8 @@ export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
-        refX: 30,
-        refY: 64,
+        refX: cx,
+        refY: height + 6,
         textAnchor: "middle",
       },
     },
@@ -699,63 +847,120 @@ export function generatorGlyph(options?: GlyphOptions): X6Markup[] {
 }
 
 /**
- * Inverter-Based Resource (IBR) Glyph (Split AC/DC Box).
+ * PSCAD / IEEE Inverter-Based Resource (IBR / Grid-Forming VSC / BESS) Glyph.
  */
-export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
+export function inverterIbrGlyph(
+  options?: GlyphOptions & {
+    portOffsetX?: number | undefined;
+    badge?: string | undefined;
+  },
+): X6Markup[] {
   const stroke = options?.stroke ?? "#059669";
-  const strokeWidth = options?.strokeWidth ?? 2;
+  const strokeWidth = options?.strokeWidth ?? 1.8;
   const fill = options?.fill ?? "rgba(5, 150, 105, 0.08)";
+  const width = options?.width ?? 64;
+  const height = options?.height ?? 48;
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const portX = cx + (options?.portOffsetX ?? -20);
+  const boxX = Math.max(8, portX);
+  const boxW = width - boxX - 4;
+  const boxY = 4;
+  const boxH = height - 8;
 
   return [
-    // Outer Box
+    // AC Terminal Lead
+    {
+      tagName: "line",
+      selector: "ibrLeadL",
+      attrs: {
+        x1: portX,
+        y1: cy,
+        x2: boxX,
+        y2: cy,
+        stroke: "#0284c7",
+        strokeWidth: 2,
+      },
+    },
+    // Converter Bridge Housing
     {
       tagName: "rect",
       selector: "ibrBox",
       attrs: {
-        x: 4,
-        y: 4,
-        width: 52,
-        height: 52,
-        rx: 4,
-        ry: 4,
+        x: boxX,
+        y: boxY,
+        width: boxW,
+        height: boxH,
+        rx: 3,
+        ry: 3,
         fill,
         stroke,
         strokeWidth,
       },
     },
-    // Diagonal Divider
+    // Diagonal AC/DC Divider
     {
       tagName: "line",
       selector: "ibrDivider",
       attrs: {
-        x1: 4,
-        y1: 56,
-        x2: 56,
-        y2: 4,
+        x1: boxX,
+        y1: boxY + boxH,
+        x2: boxX + boxW,
+        y2: boxY,
         stroke,
         strokeWidth: 1.5,
       },
     },
-    // DC Symbol = (Top-Left)
-    {
-      tagName: "line",
-      selector: "dcLine1",
-      attrs: { x1: 14, y1: 18, x2: 26, y2: 18, stroke, strokeWidth: 1.5 },
-    },
-    {
-      tagName: "line",
-      selector: "dcLine2",
-      attrs: { x1: 14, y1: 22, x2: 26, y2: 22, stroke, strokeWidth: 1.5, strokeDasharray: "2,2" },
-    },
-    // AC Symbol ~ (Bottom-Right)
+    // AC Symbol ~ (Top-Left, AC side)
     {
       tagName: "path",
       selector: "acSine",
       attrs: {
-        d: "M 32,42 Q 38,36 42,42 Q 46,48 50,42",
+        d: `M ${boxX + 6},${boxY + 13} Q ${boxX + 10},${boxY + 7} ${boxX + 14},${boxY + 13} Q ${boxX + 18},${boxY + 19} ${boxX + 22},${boxY + 13}`,
         fill: "none",
         stroke,
-        strokeWidth: 1.5,
+        strokeWidth: 1.6,
+      },
+    },
+    // DC Symbol = (Bottom-Right, DC link / BESS side)
+    {
+      tagName: "line",
+      selector: "dcLine1",
+      attrs: {
+        x1: boxX + boxW - 22,
+        y1: boxY + boxH - 14,
+        x2: boxX + boxW - 8,
+        y2: boxY + boxH - 14,
+        stroke,
+        strokeWidth: 1.6,
+      },
+    },
+    {
+      tagName: "line",
+      selector: "dcLine2",
+      attrs: {
+        x1: boxX + boxW - 22,
+        y1: boxY + boxH - 10,
+        x2: boxX + boxW - 8,
+        y2: boxY + boxH - 10,
+        stroke,
+        strokeWidth: 1.6,
+        strokeDasharray: "3,2",
+      },
+    },
+    // Mode Badge
+    {
+      tagName: "text",
+      selector: "ibrBadge",
+      attrs: {
+        text: options?.badge ?? "VSC",
+        fill: stroke,
+        fontSize: 7,
+        fontWeight: "bold",
+        fontFamily: "monospace",
+        refX: boxX + boxW - 14,
+        refY: boxY + boxH - 2,
+        textAnchor: "middle",
       },
     },
     {
@@ -766,8 +971,8 @@ export function inverterIbrGlyph(options?: GlyphOptions): X6Markup[] {
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 9,
         fontWeight: "bold",
-        refX: 30,
-        refY: 66,
+        refX: cx,
+        refY: height + 6,
         textAnchor: "middle",
       },
     },
@@ -828,38 +1033,53 @@ export function busbarGlyph(options?: {
 }
 
 /**
- * IEEE/IEC Circuit Breaker Glyph (Switch Box with Interrupt Cross).
+ * IEEE/PSCAD Circuit Breaker Glyph (Square Breaker Housing with Interrupt Cross & Leads).
  */
 export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undefined }): X6Markup[] {
   const isOpen = options?.isOpen ?? false;
-  const stroke = options?.stroke ?? (isOpen ? "#d97706" : "#dc2626");
-  const fill = options?.fill ?? (isOpen ? "rgba(217, 119, 6, 0.1)" : "rgba(220, 38, 38, 0.14)");
+  const width = options?.width ?? 36;
+  const height = options?.height ?? 36;
+  const cy = Math.round(height / 2);
+  const cx = Math.round(width / 2);
+  const stroke = options?.stroke ?? (isOpen ? "#16a34a" : "#dc2626");
+  const fill = options?.fill ?? (isOpen ? "rgba(22, 163, 74, 0.12)" : "rgba(220, 38, 38, 0.14)");
+  const boxHalf = 11;
 
   return [
     {
-      tagName: "rect",
-      selector: "brkBox",
-      attrs: { x: 6, y: 10, width: 36, height: 24, rx: 3, ry: 3, fill, stroke, strokeWidth: 2 },
-    },
-    {
       tagName: "line",
       selector: "brkLeadL",
-      attrs: { x1: 0, y1: 22, x2: 6, y2: 22, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: 0, y1: cy, x2: cx - boxHalf, y2: cy, stroke: "#0284c7", strokeWidth: 2 },
     },
     {
       tagName: "line",
       selector: "brkLeadR",
-      attrs: { x1: 42, y1: 22, x2: 48, y2: 22, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: cx + boxHalf, y1: cy, x2: width, y2: cy, stroke: "#0284c7", strokeWidth: 2 },
+    },
+    {
+      tagName: "rect",
+      selector: "brkBox",
+      attrs: {
+        x: cx - boxHalf,
+        y: cy - boxHalf,
+        width: boxHalf * 2,
+        height: boxHalf * 2,
+        rx: 2,
+        ry: 2,
+        fill,
+        stroke,
+        strokeWidth: 1.8,
+      },
     },
     {
       tagName: "line",
       selector: "brkCross1",
-      attrs: { x1: 16, y1: 15, x2: 32, y2: 29, stroke, strokeWidth: 1.8 },
+      attrs: { x1: cx - 6, y1: cy - 6, x2: cx + 6, y2: cy + 6, stroke, strokeWidth: 1.8 },
     },
     {
       tagName: "line",
       selector: "brkCross2",
-      attrs: { x1: 16, y1: 29, x2: 32, y2: 15, stroke, strokeWidth: 1.8 },
+      attrs: { x1: cx - 6, y1: cy + 6, x2: cx + 6, y2: cy - 6, stroke, strokeWidth: 1.8 },
     },
     {
       tagName: "text",
@@ -869,8 +1089,8 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undef
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
-        refX: 24,
-        refY: 44,
+        refX: cx,
+        refY: height + 5,
         textAnchor: "middle",
       },
     },
@@ -883,42 +1103,50 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undef
 export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
   const stroke = options?.stroke ?? "#7c3aed";
   const fill = options?.fill ?? "rgba(124, 58, 237, 0.12)";
+  const width = options?.width ?? 36;
+  const height = options?.height ?? 36;
+  const cx = Math.round(width / 2);
 
   return [
     {
       tagName: "line",
       selector: "arrLeadTop",
-      attrs: { x1: 20, y1: 0, x2: 20, y2: 10, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: cx, y1: 0, x2: cx, y2: 7, stroke: "#0284c7", strokeWidth: 2 },
     },
     {
       tagName: "rect",
       selector: "arrBody",
-      attrs: { x: 11, y: 10, width: 18, height: 26, rx: 2, ry: 2, fill, stroke, strokeWidth: 1.8 },
+      attrs: { x: cx - 7, y: 7, width: 14, height: 18, rx: 1.5, ry: 1.5, fill, stroke, strokeWidth: 1.6 },
     },
     {
       tagName: "polyline",
       selector: "arrNonlinearBar",
-      attrs: { points: "7,28 14,28 26,16 33,16", fill: "none", stroke, strokeWidth: 1.6 },
+      attrs: {
+        points: `${cx - 10},20 ${cx - 5},20 ${cx + 5},11 ${cx + 10},11`,
+        fill: "none",
+        stroke,
+        strokeWidth: 1.5,
+      },
     },
     {
       tagName: "line",
       selector: "arrLeadGnd",
-      attrs: { x1: 20, y1: 36, x2: 20, y2: 44, stroke, strokeWidth: 1.8 },
+      attrs: { x1: cx, y1: 25, x2: cx, y2: 30, stroke, strokeWidth: 1.6 },
     },
     {
       tagName: "line",
       selector: "gnd1",
-      attrs: { x1: 10, y1: 44, x2: 30, y2: 44, stroke, strokeWidth: 1.8 },
+      attrs: { x1: cx - 8, y1: 30, x2: cx + 8, y2: 30, stroke, strokeWidth: 1.6 },
     },
     {
       tagName: "line",
       selector: "gnd2",
-      attrs: { x1: 14, y1: 48, x2: 26, y2: 48, stroke, strokeWidth: 1.5 },
+      attrs: { x1: cx - 5, y1: 33, x2: cx + 5, y2: 33, stroke, strokeWidth: 1.4 },
     },
     {
       tagName: "line",
       selector: "gnd3",
-      attrs: { x1: 17, y1: 52, x2: 23, y2: 52, stroke, strokeWidth: 1.2 },
+      attrs: { x1: cx - 2.5, y1: 36, x2: cx + 2.5, y2: 36, stroke, strokeWidth: 1.2 },
     },
     {
       tagName: "text",
@@ -928,8 +1156,8 @@ export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
-        refX: 20,
-        refY: 62,
+        refX: cx,
+        refY: height + 6,
         textAnchor: "middle",
       },
     },
@@ -937,22 +1165,54 @@ export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
 }
 
 /**
- * Short-Circuit Fault Strike (Lightning Bolt) Glyph.
+ * PSCAD Short-Circuit Fault Branch (`master:tpflt` / `fault`) Glyph.
+ * Connects at top terminal `(0, -18)` (`(cx, 0)`) with tap lead, fault strike bolt, and ground reference.
  */
 export function faultGlyph(options?: GlyphOptions): X6Markup[] {
   const stroke = options?.stroke ?? "#dc2626";
-  const fill = options?.fill ?? "rgba(220, 38, 38, 0.2)";
+  const fill = options?.fill ?? "rgba(220, 38, 38, 0.22)";
+  const width = options?.width ?? 36;
+  const height = options?.height ?? 36;
+  const cx = Math.round(width / 2);
 
   return [
+    // Top tap lead from port (cx, 0)
+    {
+      tagName: "line",
+      selector: "faultLeadTop",
+      attrs: { x1: cx, y1: 0, x2: cx, y2: 6, stroke: "#0284c7", strokeWidth: 2 },
+    },
+    // Lightning strike polygon
     {
       tagName: "polygon",
       selector: "faultBolt",
       attrs: {
-        points: "22,2 10,22 20,22 14,42 32,18 21,18",
+        points: `${cx + 3},4 ${cx - 7},17 ${cx},17 ${cx - 4},29 ${cx + 9},14 ${cx + 1},14`,
         fill,
         stroke,
-        strokeWidth: 1.8,
+        strokeWidth: 1.6,
       },
+    },
+    // Earth ground reference at bottom of fault branch
+    {
+      tagName: "line",
+      selector: "faultGndLead",
+      attrs: { x1: cx, y1: 28, x2: cx, y2: 31, stroke: "#64748b", strokeWidth: 1.5 },
+    },
+    {
+      tagName: "line",
+      selector: "faultGnd1",
+      attrs: { x1: cx - 7, y1: 31, x2: cx + 7, y2: 31, stroke: "#64748b", strokeWidth: 1.5 },
+    },
+    {
+      tagName: "line",
+      selector: "faultGnd2",
+      attrs: { x1: cx - 4.5, y1: 33.5, x2: cx + 4.5, y2: 33.5, stroke: "#64748b", strokeWidth: 1.3 },
+    },
+    {
+      tagName: "line",
+      selector: "faultGnd3",
+      attrs: { x1: cx - 2, y1: 36, x2: cx + 2, y2: 36, stroke: "#64748b", strokeWidth: 1.1 },
     },
     {
       tagName: "text",
@@ -962,8 +1222,8 @@ export function faultGlyph(options?: GlyphOptions): X6Markup[] {
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
-        refX: 20,
-        refY: 52,
+        refX: cx,
+        refY: height + 6,
         textAnchor: "middle",
       },
     },
@@ -982,7 +1242,7 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string |
     {
       tagName: "rect",
       selector: "convBox",
-      attrs: { x: 4, y: 4, width: 64, height: 52, rx: 5, ry: 5, fill, stroke, strokeWidth: 2 },
+      attrs: { x: 4, y: 4, width: 64, height: 52, rx: 4, ry: 4, fill, stroke, strokeWidth: 1.8 },
     },
     {
       tagName: "line",
@@ -1035,30 +1295,316 @@ export function converterBridgeGlyph(options?: GlyphOptions & { badge?: string |
 }
 
 /**
- * Transmission Line / Underground Cable Segment Glyph.
+ * PSCAD Overhead Transmission Line / Underground Coaxial Cable Segment Glyph.
  */
 export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boolean | undefined }): X6Markup[] {
   const isCable = options?.isCable ?? false;
+  const width = options?.width ?? 72;
+  const height = options?.height ?? 36;
+  const cy = Math.round(height / 2);
+  const cx = Math.round(width / 2);
   const stroke = options?.stroke ?? (isCable ? "#c026d3" : "#0284c7");
-  const fill = options?.fill ?? "rgba(2, 132, 199, 0.08)";
+  const fill = options?.fill ?? (isCable ? "rgba(192, 38, 211, 0.08)" : "rgba(2, 132, 199, 0.08)");
 
   return [
+    // Cylinder / Pi-Section Capsule
     {
       tagName: "rect",
       selector: "tlineBox",
-      attrs: { x: 4, y: 12, width: 72, height: 24, rx: 12, ry: 12, fill, stroke, strokeWidth: 1.8 },
+      attrs: {
+        x: 8,
+        y: cy - 9,
+        width: width - 16,
+        height: 18,
+        rx: 9,
+        ry: 9,
+        fill,
+        stroke,
+        strokeWidth: 1.6,
+      },
     },
+    // Through-Conductor Line reaching exact ports at x=0 and x=width
     {
       tagName: "line",
       selector: "tlineCore",
       attrs: {
         x1: 0,
-        y1: 24,
-        x2: 80,
-        y2: 24,
+        y1: cy,
+        x2: width,
+        y2: cy,
         stroke,
         strokeWidth: 2,
         ...(isCable ? { strokeDasharray: "4,2" } : {}),
+      },
+    },
+    // Three-Phase Bundle Slash Marks (///)
+    {
+      tagName: "line",
+      selector: "tlinePhase1",
+      attrs: { x1: cx - 6, y1: cy + 5, x2: cx - 2, y2: cy - 5, stroke, strokeWidth: 1.3 },
+    },
+    {
+      tagName: "line",
+      selector: "tlinePhase2",
+      attrs: { x1: cx - 2, y1: cy + 5, x2: cx + 2, y2: cy - 5, stroke, strokeWidth: 1.3 },
+    },
+    {
+      tagName: "line",
+      selector: "tlinePhase3",
+      attrs: { x1: cx + 2, y1: cy + 5, x2: cx + 6, y2: cy - 5, stroke, strokeWidth: 1.3 },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: options?.label ?? "",
+        fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+        fontSize: 8.5,
+        fontWeight: "bold",
+        refX: cx,
+        refY: height + 6,
+        textAnchor: "middle",
+      },
+    },
+  ];
+}
+
+/**
+ * PSCAD / IEEE Passive Branch Glyph (`master:rlc`, `master:resistor`, `master:inductor`, `master:capacitor`).
+ * Aligned to PSCAD's 18-unit grid ports (`(-18, 0)` to `(+18, 0)` on a `36 x 36` canvas).
+ */
+export function passiveBranchGlyph(
+  options?: GlyphOptions & {
+    kind?: "rlc" | "resistor" | "inductor" | "capacitor" | undefined;
+    hasShuntC?: boolean | undefined;
+  },
+): X6Markup[] {
+  const kind = options?.kind ?? "rlc";
+  const width = options?.width ?? 36;
+  const height = options?.height ?? 36;
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const stroke = options?.stroke ?? "#0284c7";
+  const strokeWidth = options?.strokeWidth ?? 1.8;
+
+  if (kind === "capacitor") {
+    return [
+      {
+        tagName: "line",
+        selector: "passiveLeadL",
+        attrs: { x1: 0, y1: cy, x2: cx - 3, y2: cy, stroke, strokeWidth: 2 },
+      },
+      {
+        tagName: "line",
+        selector: "passiveLeadR",
+        attrs: { x1: cx + 3, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2 },
+      },
+      {
+        tagName: "line",
+        selector: "capPlate1",
+        attrs: { x1: cx - 3, y1: cy - 9, x2: cx - 3, y2: cy + 9, stroke, strokeWidth: 2.2 },
+      },
+      {
+        tagName: "line",
+        selector: "capPlate2",
+        attrs: { x1: cx + 3, y1: cy - 9, x2: cx + 3, y2: cy + 9, stroke, strokeWidth: 2.2 },
+      },
+      {
+        tagName: "text",
+        selector: "label",
+        attrs: {
+          text: options?.label ?? "",
+          fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+          fontSize: 8.5,
+          fontWeight: "bold",
+          refX: cx,
+          refY: height + 5,
+          textAnchor: "middle",
+        },
+      },
+    ];
+  }
+
+  if (kind === "resistor") {
+    return [
+      {
+        tagName: "line",
+        selector: "passiveLeadL",
+        attrs: { x1: 0, y1: cy, x2: 5, y2: cy, stroke, strokeWidth: 2 },
+      },
+      {
+        tagName: "line",
+        selector: "passiveLeadR",
+        attrs: { x1: width - 5, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2 },
+      },
+      {
+        tagName: "polyline",
+        selector: "passiveBody",
+        attrs: {
+          points: `5,${cy} 8,${cy - 6} 12,${cy + 6} 16,${cy - 6} 20,${cy + 6} 24,${cy - 6} 28,${cy + 6} ${width - 5},${cy}`,
+          fill: "none",
+          stroke,
+          strokeWidth,
+        },
+      },
+      {
+        tagName: "text",
+        selector: "label",
+        attrs: {
+          text: options?.label ?? "",
+          fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+          fontSize: 8.5,
+          fontWeight: "bold",
+          refX: cx,
+          refY: height + 5,
+          textAnchor: "middle",
+        },
+      },
+    ];
+  }
+
+  // Inductor or composite RLC / LCL harmonic filter
+  const showShunt = kind === "rlc" && (options?.hasShuntC ?? true);
+  const items: X6Markup[] = [
+    {
+      tagName: "line",
+      selector: "passiveLeadL",
+      attrs: { x1: 0, y1: cy, x2: 4, y2: cy, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "passiveLeadR",
+      attrs: { x1: width - 4, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "path",
+      selector: "passiveBody",
+      attrs: {
+        d: `M 4,${cy} A 3.5,5 0 0,1 11,${cy} A 3.5,5 0 0,1 18,${cy} A 3.5,5 0 0,1 25,${cy} A 3.5,5 0 0,1 ${width - 4},${cy}`,
+        fill: "none",
+        stroke,
+        strokeWidth,
+      },
+    },
+  ];
+
+  if (showShunt) {
+    items.push(
+      {
+        tagName: "line",
+        selector: "shuntTap",
+        attrs: { x1: cx, y1: cy, x2: cx, y2: cy + 6, stroke, strokeWidth: 1.5 },
+      },
+      {
+        tagName: "line",
+        selector: "shuntCap1",
+        attrs: { x1: cx - 5, y1: cy + 6, x2: cx + 5, y2: cy + 6, stroke, strokeWidth: 1.8 },
+      },
+      {
+        tagName: "line",
+        selector: "shuntCap2",
+        attrs: { x1: cx - 5, y1: cy + 9, x2: cx + 5, y2: cy + 9, stroke, strokeWidth: 1.8 },
+      },
+      {
+        tagName: "line",
+        selector: "shuntGndLead",
+        attrs: { x1: cx, y1: cy + 9, x2: cx, y2: cy + 13, stroke: "#64748b", strokeWidth: 1.4 },
+      },
+      {
+        tagName: "line",
+        selector: "shuntGnd1",
+        attrs: { x1: cx - 4, y1: cy + 13, x2: cx + 4, y2: cy + 13, stroke: "#64748b", strokeWidth: 1.4 },
+      },
+      {
+        tagName: "line",
+        selector: "shuntGnd2",
+        attrs: { x1: cx - 2, y1: cy + 15.5, x2: cx + 2, y2: cy + 15.5, stroke: "#64748b", strokeWidth: 1.2 },
+      },
+    );
+  }
+
+  items.push({
+    tagName: "text",
+    selector: "label",
+    attrs: {
+      text: options?.label ?? "",
+      fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+      fontSize: 8.5,
+      fontWeight: "bold",
+      refX: cx,
+      refY: height + 5,
+      textAnchor: "middle",
+    },
+  });
+
+  return items;
+}
+
+/**
+ * PSCAD Earth Ground Symbol (`master:ground`) with top port at `(0, -18)` (`(cx, 0)`).
+ */
+export function pscadGroundGlyph(options?: GlyphOptions): X6Markup[] {
+  const width = options?.width ?? 24;
+  const cx = Math.round(width / 2);
+  const stroke = options?.stroke ?? "#64748b";
+
+  return [
+    {
+      tagName: "line",
+      selector: "gndLead",
+      attrs: { x1: cx, y1: 0, x2: cx, y2: 18, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "gndBar1",
+      attrs: { x1: cx - 9, y1: 18, x2: cx + 9, y2: 18, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "line",
+      selector: "gndBar2",
+      attrs: { x1: cx - 6, y1: 23, x2: cx + 6, y2: 23, stroke, strokeWidth: 1.7 },
+    },
+    {
+      tagName: "line",
+      selector: "gndBar3",
+      attrs: { x1: cx - 3, y1: 28, x2: cx + 3, y2: 28, stroke, strokeWidth: 1.4 },
+    },
+    {
+      tagName: "text",
+      selector: "label",
+      attrs: {
+        text: "",
+        fill: "none",
+        fontSize: 0,
+      },
+    },
+  ];
+}
+
+/**
+ * PSCAD Three-Phase PQ Feeder Load Symbol (`master:fixed_load` / `master:load`).
+ */
+export function loadGlyph(options?: GlyphOptions): X6Markup[] {
+  const width = options?.width ?? 32;
+  const height = options?.height ?? 36;
+  const cx = Math.round(width / 2);
+  const stroke = options?.stroke ?? "#0284c7";
+  const fill = options?.fill ?? "rgba(2, 132, 199, 0.14)";
+
+  return [
+    {
+      tagName: "line",
+      selector: "loadLead",
+      attrs: { x1: cx, y1: 0, x2: cx, y2: 12, stroke, strokeWidth: 2 },
+    },
+    {
+      tagName: "polygon",
+      selector: "loadTriangle",
+      attrs: {
+        points: `${cx - 10},12 ${cx + 10},12 ${cx},30`,
+        fill,
+        stroke,
+        strokeWidth: 1.8,
       },
     },
     {
@@ -1069,8 +1615,8 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
         fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
         fontSize: 8.5,
         fontWeight: "bold",
-        refX: 40,
-        refY: 46,
+        refX: cx,
+        refY: height + 5,
         textAnchor: "middle",
       },
     },

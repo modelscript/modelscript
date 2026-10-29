@@ -41,6 +41,8 @@ jobs:
         uses: nrwl/nx-set-shas@v4
       - name: Run Repository Hygiene Doctor
         run: npm run lint:repo
+      - name: Build DSL Templates
+        run: npm run build:templates --workspace=@modelscript/dsl
       - name: Check Root TypeScript Config
         run: npx tsc --noEmit
       - name: Lint Root Scripts
@@ -461,7 +463,7 @@ jobs:
         with:
           source: .
           files: docker-compose.yml
-          targets: api,api-ce,web,ide,cli,cli-ce,appliance
+          targets: api,api-ce,web,cli,cli-ce,appliance
           push: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
           set: |
             *.cache-from=type=gha
@@ -470,7 +472,6 @@ jobs:
             api.tags=ghcr.io/modelscript/api:latest
             api-ce.tags=ghcr.io/modelscript/api-ce:latest
             web.tags=ghcr.io/modelscript/web:latest
-            ide.tags=ghcr.io/modelscript/ide:latest
             cli.tags=ghcr.io/modelscript/cli:latest
             cli-ce.tags=ghcr.io/modelscript/cli-ce:latest
             appliance.tags=ghcr.io/modelscript/appliance:latest

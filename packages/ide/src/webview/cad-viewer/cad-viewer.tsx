@@ -151,10 +151,12 @@ function PortIndicator({
   position,
   name,
   highlighted,
+  radius = 0.03,
 }: {
   position: [number, number, number];
   name: string;
   highlighted?: boolean;
+  radius?: number | undefined;
 }) {
   const ref = useRef<THREE.Mesh>(null);
 
@@ -166,7 +168,7 @@ function PortIndicator({
 
   return (
     <mesh ref={ref} position={position} name={`port:${name}`}>
-      <sphereGeometry args={[0.03, 16, 16]} />
+      <sphereGeometry args={[radius, 16, 16]} />
       <meshStandardMaterial
         color={highlighted ? "#ff6b35" : "#4fc3f7"}
         emissive={highlighted ? "#ff6b35" : "#4fc3f7"}
@@ -228,6 +230,7 @@ function CadModel({
   onSelect,
   animationController,
   onCommitGizmoDelta,
+  portRadius = 0.03,
 }: {
   component: CadComponent;
   assetBaseUrl: string;
@@ -236,6 +239,7 @@ function CadModel({
   onSelect?: ((name: string | null) => void) | undefined;
   animationController?: AnimationController | null | undefined;
   onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  portRadius?: number | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const groupRef = useRef<THREE.Group>(null);
@@ -244,19 +248,28 @@ function CadModel({
     { variable: string; property: string; index: number; value: number | null }[]
   >([]);
 
+  const effectivePos: [number, number, number] = component.cad.position ?? [0, 0, 0];
+  // Procedural CSG meshes from ManifoldWorker already have rotation and scale baked into vertices
+  const effectiveRot: [number, number, number] = component.proceduralMesh
+    ? [0, 0, 0]
+    : (component.cad.rotation ?? [0, 0, 0]);
+  const effectiveScl: [number, number, number] = component.proceduralMesh
+    ? [1, 1, 1]
+    : (component.cad.scale ?? [1, 1, 1]);
+
   // Gizmo dragging & delta state
   const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
   const [gizmoDelta, setGizmoDelta] = useState<[number, number, number]>([0, 0, 0]);
-  const initialGizmoPosRef = useRef<[number, number, number]>(component.cad.position ?? [0, 0, 0]);
-  const initialGizmoRotRef = useRef<[number, number, number]>(component.cad.rotation ?? [0, 0, 0]);
-  const initialGizmoSclRef = useRef<[number, number, number]>(component.cad.scale ?? [1, 1, 1]);
+  const initialGizmoPosRef = useRef<[number, number, number]>(effectivePos);
+  const initialGizmoRotRef = useRef<[number, number, number]>(effectiveRot);
+  const initialGizmoSclRef = useRef<[number, number, number]>(effectiveScl);
 
   useEffect(() => {
     initialGizmoPosRef.current = component.cad.position ?? [0, 0, 0];
-    initialGizmoRotRef.current = component.cad.rotation ?? [0, 0, 0];
-    initialGizmoSclRef.current = component.cad.scale ?? [1, 1, 1];
+    initialGizmoRotRef.current = component.proceduralMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
+    initialGizmoSclRef.current = component.proceduralMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
     setGizmoDelta([0, 0, 0]);
-  }, [component.cad.position, component.cad.rotation, component.cad.scale]);
+  }, [component.cad.position, component.cad.rotation, component.cad.scale, component.proceduralMesh]);
 
   const handleGizmoChange = useCallback(() => {
     if (!groupRef.current) return;
@@ -378,9 +391,9 @@ function CadModel({
     });
   }, [selected]);
 
-  const pos = component.cad.position ?? [0, 0, 0];
-  const rot = component.cad.rotation ?? [0, 0, 0];
-  const scl = component.cad.scale ?? [1, 1, 1];
+  const pos = effectivePos;
+  const rot = effectiveRot;
+  const scl = effectiveScl;
 
   // Drive transforms from animation controller when animating
   useFrame(() => {
@@ -520,6 +533,7 @@ function CadModel({
             name={`${component.name}.${p.name}`}
             position={p.port.offsetPosition ?? [0, 0, 0]}
             highlighted={selected}
+            radius={portRadius}
           />
         ))}
       </group>
@@ -564,7 +578,77 @@ function SceneContents({
   cfdPayload?: CfdMeshPayload | null | undefined;
   feaPayload?: FeaMeshPayload | null | undefined;
 }) {
-  const { gl } = useThree();
+  const { gl, camera } = useThree();
+  const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
+  const framedSignatureRef = useRef<string>("");
+
+  // Compute scene bounding sphere across procedural meshes and component positions
+  const sceneBounds = useMemo(() => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    let hasPoints = false;
+
+    for (const comp of components) {
+      const p = comp.cad.position ?? [0, 0, 0];
+      if (comp.proceduralMesh && comp.proceduralMesh.vertices.length >= 3) {
+        const verts = comp.proceduralMesh.vertices;
+        for (let i = 0; i < verts.length; i += 3) {
+          const vx = verts[i]! + p[0];
+          const vy = verts[i + 1]! + p[1];
+          const vz = verts[i + 2]! + p[2];
+          if (vx < minX) minX = vx;
+          if (vy < minY) minY = vy;
+          if (vz < minZ) minZ = vz;
+          if (vx > maxX) maxX = vx;
+          if (vy > maxY) maxY = vy;
+          if (vz > maxZ) maxZ = vz;
+          hasPoints = true;
+        }
+      } else {
+        if (p[0] - 1 < minX) minX = p[0] - 1;
+        if (p[1] - 1 < minY) minY = p[1] - 1;
+        if (p[2] - 1 < minZ) minZ = p[2] - 1;
+        if (p[0] + 1 > maxX) maxX = p[0] + 1;
+        if (p[1] + 1 > maxY) maxY = p[1] + 1;
+        if (p[2] + 1 > maxZ) maxZ = p[2] + 1;
+        hasPoints = true;
+      }
+    }
+
+    if (!hasPoints) {
+      return { center: [0, 0, 0] as [number, number, number], radius: 2, minY: 0 };
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const radius = Math.max(1, Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2);
+    return { center: [cx, cy, cz] as [number, number, number], radius, minY };
+  }, [components]);
+
+  // Auto-frame camera when components first load or scale changes significantly
+  useEffect(() => {
+    if (components.length === 0) return;
+    const sig = `${components.length}:${Math.round(Math.log10(Math.max(1, sceneBounds.radius)))}`;
+    if (framedSignatureRef.current === sig) return;
+    framedSignatureRef.current = sig;
+
+    const [cx, cy, cz] = sceneBounds.center;
+    const r = sceneBounds.radius;
+    camera.near = Math.max(0.01, r * 0.002);
+    camera.far = Math.max(1000, r * 30);
+    camera.position.set(cx + r * 1.35, cy + r * 1.1, cz + r * 1.35);
+    camera.lookAt(cx, cy, cz);
+    camera.updateProjectionMatrix();
+
+    if (controlsRef.current) {
+      controlsRef.current.target.set(cx, cy, cz);
+      controlsRef.current.update();
+    }
+  }, [components.length, sceneBounds, camera]);
 
   // Drive the animation clock from the render loop
   useFrame((_, delta) => {
@@ -584,30 +668,40 @@ function SceneContents({
     });
   }, [gl]);
 
+  const r = sceneBounds.radius;
+  const gridScale = r > 15 ? Math.pow(10, Math.floor(Math.log10(r))) : 1;
+  const portRadius = Math.max(0.03, r * 0.02);
+
   return (
     <>
       {/* Lighting */}
-      <ambientLight intensity={dark ? 0.3 : 0.5} />
-      <directionalLight position={[5, 10, 7]} intensity={dark ? 0.8 : 1.0} castShadow />
-      <directionalLight position={[-3, 5, -5]} intensity={0.3} />
+      <ambientLight intensity={dark ? 0.35 : 0.55} />
+      <directionalLight position={[r * 1.5, r * 2.5, r * 2]} intensity={dark ? 0.85 : 1.0} castShadow />
+      <directionalLight position={[-r * 1.2, r * 1.5, -r * 1.5]} intensity={0.35} />
 
       {/* Environment map for realistic reflections */}
       <Environment preset={dark ? "night" : "studio"} />
 
       {/* Ground */}
       <Grid
-        position={[0, -0.001, 0]}
-        args={[20, 20]}
-        cellSize={0.5}
+        position={[0, Math.min(-0.001, sceneBounds.minY - 0.01 * gridScale), 0]}
+        args={[20 * gridScale, 20 * gridScale]}
+        cellSize={0.5 * gridScale}
         cellThickness={0.5}
         cellColor={dark ? "#333" : "#ccc"}
-        sectionSize={2}
+        sectionSize={2 * gridScale}
         sectionThickness={1}
         sectionColor={dark ? "#555" : "#999"}
-        fadeDistance={30}
+        fadeDistance={Math.max(30, r * 4)}
         infiniteGrid
       />
-      <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={20} blur={2} far={4} />
+      <ContactShadows
+        position={[0, Math.min(-0.01, sceneBounds.minY - 0.02 * gridScale), 0]}
+        opacity={0.4}
+        scale={20 * gridScale}
+        blur={2}
+        far={4 * gridScale}
+      />
 
       {/* Models: GPU Instanced rendering for clusters, fallback to CadModel for singletons */}
       <group onPointerMissed={handlePointerMissed}>
@@ -627,6 +721,7 @@ function SceneContents({
               onSelect={onSelect}
               animationController={animationController}
               onCommitGizmoDelta={onCommitGizmoDelta}
+              portRadius={portRadius}
             />
           )}
         />
@@ -639,7 +734,7 @@ function SceneContents({
       {feaPayload && <FeaMeshRenderer payload={feaPayload} />}
 
       {/* Controls */}
-      <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+      <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.1} />
 
       {/* Gizmo */}
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>

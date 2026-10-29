@@ -139,42 +139,96 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
     addY(to, to, gSeries + br.gj, bSeries + bShunt + br.bj);
   }
 
-  // 2. Add Transformers
-  for (const t of c.transformers) {
-    if (t.stat !== 1) continue;
-    const from = busIndices.get(t.i);
-    const to = busIndices.get(t.j);
-    if (from === undefined || to === undefined) continue;
+  // 2. Add Transformers (2-winding and 3-winding)
+  function stampTwoWindingAdmittance(
+    from: number,
+    to: number,
+    r: number,
+    x: number,
+    windv1: number,
+    ang1Deg: number,
+    mag1: number,
+    mag2: number,
+  ) {
+    const denom = r * r + x * x;
+    if (denom <= 0) return;
 
-    const denom = t.r12 * t.r12 + t.x12 * t.x12;
-    if (denom <= 0) continue;
+    const gSeries = r / denom;
+    const bSeries = -x / denom;
 
-    const gSeries = t.r12 / denom;
-    const bSeries = -t.x12 / denom;
-
-    const tap = t.windv1 > 0 ? t.windv1 : 1.0;
-    const phiRad = (t.ang1 * Math.PI) / 180.0;
+    const tap = windv1 > 0 ? windv1 : 1.0;
+    const phiRad = (ang1Deg * Math.PI) / 180.0;
     const tapSq = tap * tap;
 
-    // Complex tap a = tap * (cos(phi) + j*sin(phi))
     const aRe = tap * Math.cos(phiRad);
     const aIm = tap * Math.sin(phiRad);
     const denomA = aRe * aRe + aIm * aIm;
 
-    // y / a* = ((g*aRe - b*aIm) + j(b*aRe + g*aIm)) / denomA
     const yOverAStarRe = (gSeries * aRe - bSeries * aIm) / denomA;
     const yOverAStarIm = (bSeries * aRe + gSeries * aIm) / denomA;
 
-    // y / a = ((g*aRe + b*aIm) + j(b*aRe - g*aIm)) / denomA
     const yOverARe = (gSeries * aRe + bSeries * aIm) / denomA;
     const yOverAIm = (bSeries * aRe - gSeries * aIm) / denomA;
 
     addY(from, to, -yOverAStarRe, -yOverAStarIm);
     addY(to, from, -yOverARe, -yOverAIm);
 
-    // Diagonal
-    addY(from, from, (gSeries + t.mag1) / tapSq, (bSeries + t.mag2) / tapSq);
+    addY(from, from, (gSeries + mag1) / tapSq, (bSeries + mag2) / tapSq);
     addY(to, to, gSeries, bSeries);
+  }
+
+  for (const t of c.transformers) {
+    if (t.stat === 0) continue;
+    const iIdx = busIndices.get(t.i);
+    const jIdx = busIndices.get(t.j);
+    if (iIdx === undefined || jIdx === undefined) continue;
+
+    if (t.k !== 0) {
+      const kIdx = busIndices.get(t.k);
+      if (kIdx !== undefined) {
+        // 3-Winding Transformer: convert pairwise (Z12, Z23, Z31) -> Star (Z1, Z2, Z3) -> Kron-reduced Delta (Z_12, Z_23, Z_31)
+        const r12 = t.r12;
+        const x12 = t.x12;
+        const r23 = t.r23 ?? 0.0;
+        const x23 = t.x23 ?? t.x12;
+        const r31 = t.r31 ?? 0.0;
+        const x31 = t.x31 ?? t.x12;
+
+        const r1 = 0.5 * (r12 + r31 - r23);
+        const x1 = 0.5 * (x12 + x31 - x23);
+        const r2 = 0.5 * (r12 + r23 - r31);
+        const x2 = 0.5 * (x12 + x23 - x31);
+        const r3 = 0.5 * (r23 + r31 - r12);
+        const x3 = 0.5 * (x23 + x31 - x12);
+
+        // Z_sigma = Z1*Z2 + Z2*Z3 + Z3*Z1
+        const z12Re = r1 * r2 - x1 * x2;
+        const z12Im = r1 * x2 + x1 * r2;
+        const z23Re = r2 * r3 - x2 * x3;
+        const z23Im = r2 * x3 + x2 * r3;
+        const z31Re = r3 * r1 - x3 * x1;
+        const z31Im = r3 * x1 + x3 * r1;
+        const zSumRe = z12Re + z23Re + z31Re;
+        const zSumIm = z12Im + z23Im + z31Im;
+
+        const divComplex = (numRe: number, numIm: number, denRe: number, denIm: number): [number, number] => {
+          const d = denRe * denRe + denIm * denIm;
+          if (d <= 1e-12) return [0.0, 0.1];
+          return [(numRe * denRe + numIm * denIm) / d, (numIm * denRe - numRe * denIm) / d];
+        };
+
+        const [rd12, xd12] = divComplex(zSumRe, zSumIm, r3, x3);
+        const [rd23, xd23] = divComplex(zSumRe, zSumIm, r1, x1);
+        const [rd31, xd31] = divComplex(zSumRe, zSumIm, r2, x2);
+
+        stampTwoWindingAdmittance(iIdx, jIdx, rd12, xd12, t.windv1, t.ang1, t.mag1, t.mag2);
+        stampTwoWindingAdmittance(jIdx, kIdx, rd23, xd23, t.windv2, t.ang2 ?? 0.0, 0.0, 0.0);
+        stampTwoWindingAdmittance(kIdx, iIdx, rd31, xd31, t.windv3 ?? 1.0, t.ang3 ?? 0.0, 0.0, 0.0);
+        continue;
+      }
+    }
+
+    stampTwoWindingAdmittance(iIdx, jIdx, t.r12, t.x12, t.windv1, t.ang1, t.mag1, t.mag2);
   }
 
   // 3. Add Fixed Shunts
@@ -222,5 +276,117 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
       totalLoadMvar,
       totalShuntMvar,
     },
+  };
+}
+
+export interface SerializedYbusEntry {
+  fromBus: number;
+  toBus: number;
+  row: number;
+  col: number;
+  gPu: number;
+  bPu: number;
+}
+
+/**
+ * Formats a PowerFlowNetlist and its sparse Ybus admittance matrix into a readable engineering report.
+ */
+export function formatNetlistReport(netlist: PowerFlowNetlist, caseTitle = "PSS/E BASE CASE"): string {
+  const lines: string[] = [];
+  lines.push(`================================================================================`);
+  lines.push(`  PSS/E POWER FLOW NETLIST & NODAL ADMITTANCE (YBUS) REPORT — ${caseTitle}`);
+  lines.push(`================================================================================`);
+  lines.push(`  Total Buses       : ${netlist.nBuses}`);
+  lines.push(
+    `  Total Generation  : ${netlist.metrics.totalGenMw.toFixed(2)} MW / ${netlist.metrics.totalGenMvar.toFixed(2)} Mvar`,
+  );
+  lines.push(
+    `  Total Load        : ${netlist.metrics.totalLoadMw.toFixed(2)} MW / ${netlist.metrics.totalLoadMvar.toFixed(2)} Mvar`,
+  );
+  lines.push(`  Total Shunt       : ${netlist.metrics.totalShuntMvar.toFixed(2)} Mvar`);
+  lines.push(`--------------------------------------------------------------------------------`);
+  lines.push(`  NODAL SCHEDULED INJECTIONS`);
+  lines.push(`  Idx   Bus #   Base kV   Type     Vm (pu)   Va (deg)    P_net (MW)   Q_net (Mvar)`);
+  lines.push(`  ---  ------  --------  ------  ---------  ---------  ------------  -------------`);
+  const typeNames: Record<number, string> = { 1: "PQ", 2: "PV", 3: "Slack", 4: "Isol" };
+  for (let i = 0; i < netlist.nBuses; i++) {
+    const bNum = netlist.busNumbers[i]!;
+    const kv = netlist.vNominalKv[i] ?? 0;
+    const tName = typeNames[netlist.busTypes[i] ?? 1] ?? "PQ";
+    const vm = netlist.vMagPu[i] ?? 1.0;
+    const vaDeg = ((netlist.vAngRad[i] ?? 0) * 180.0) / Math.PI;
+    const pNet = netlist.pNetMw[i] ?? 0;
+    const qNet = netlist.qNetMvar[i] ?? 0;
+    lines.push(
+      `  ${String(i).padStart(3)}  ${String(bNum).padStart(6)}  ${kv.toFixed(2).padStart(8)}  ${tName.padEnd(6)}  ${vm.toFixed(4).padStart(9)}  ${vaDeg.toFixed(3).padStart(9)}  ${pNet.toFixed(2).padStart(12)}  ${qNet.toFixed(2).padStart(13)}`,
+    );
+  }
+  lines.push(`--------------------------------------------------------------------------------`);
+  lines.push(`  SPARSE NODAL ADMITTANCE MATRIX Y_BUS (G_ik + j B_ik in p.u.)`);
+  lines.push(`  Row Bus   Col Bus      G_ik (p.u.)      B_ik (p.u.)     |Y_ik| (p.u.)`);
+  lines.push(`  -------   -------   --------------   --------------   ---------------`);
+  let nnz = 0;
+  for (let i = 0; i < netlist.nBuses; i++) {
+    const rowG = netlist.ybus.g.get(i);
+    const rowB = netlist.ybus.b.get(i);
+    if (!rowG || !rowB) continue;
+    const cols = Array.from(new Set([...rowG.keys(), ...rowB.keys()])).sort((a, b) => a - b);
+    for (const k of cols) {
+      const g = rowG.get(k) ?? 0;
+      const b = rowB.get(k) ?? 0;
+      if (Math.abs(g) < 1e-9 && Math.abs(b) < 1e-9) continue;
+      nnz++;
+      const yMag = Math.sqrt(g * g + b * b);
+      const busI = netlist.busNumbers[i]!;
+      const busK = netlist.busNumbers[k]!;
+      lines.push(
+        `  ${String(busI).padStart(7)}   ${String(busK).padStart(7)}   ${g.toFixed(5).padStart(14)}   ${b.toFixed(5).padStart(14)}   ${yMag.toFixed(5).padStart(15)}`,
+      );
+    }
+  }
+  lines.push(`--------------------------------------------------------------------------------`);
+  lines.push(`  Non-Zero Y_bus Entries: ${nnz}`);
+  lines.push(`================================================================================`);
+  return lines.join("\n");
+}
+
+/**
+ * Converts a PowerFlowNetlist into a plain JSON-serializable object for LSP / IDE transport.
+ */
+export function serializePowerFlowNetlist(netlist: PowerFlowNetlist, caseTitle = "PSS/E BASE CASE") {
+  const ybusEntries: SerializedYbusEntry[] = [];
+  for (let i = 0; i < netlist.nBuses; i++) {
+    const rowG = netlist.ybus.g.get(i);
+    const rowB = netlist.ybus.b.get(i);
+    if (!rowG || !rowB) continue;
+    const cols = Array.from(new Set([...rowG.keys(), ...rowB.keys()])).sort((a, b) => a - b);
+    for (const k of cols) {
+      const g = rowG.get(k) ?? 0;
+      const b = rowB.get(k) ?? 0;
+      if (Math.abs(g) < 1e-9 && Math.abs(b) < 1e-9) continue;
+      ybusEntries.push({
+        fromBus: netlist.busNumbers[i]!,
+        toBus: netlist.busNumbers[k]!,
+        row: i,
+        col: k,
+        gPu: Number(g.toFixed(6)),
+        bPu: Number(b.toFixed(6)),
+      });
+    }
+  }
+
+  return {
+    nBuses: netlist.nBuses,
+    busNumbers: netlist.busNumbers,
+    pNetMw: Array.from(netlist.pNetMw),
+    qNetMvar: Array.from(netlist.qNetMvar),
+    vNominalKv: Array.from(netlist.vNominalKv),
+    vMagPu: Array.from(netlist.vMagPu),
+    vAngRad: Array.from(netlist.vAngRad),
+    busTypes: Array.from(netlist.busTypes),
+    ybusNonZeros: ybusEntries.length,
+    ybusEntries,
+    metrics: netlist.metrics,
+    reportText: formatNetlistReport(netlist, caseTitle),
   };
 }

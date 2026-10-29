@@ -3,6 +3,7 @@
 import express, { type Router } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import {
   createStripeCheckoutSession,
   createStripePaymentIntent,
@@ -24,6 +25,7 @@ function escapeHtml(str: string): string {
 
 export function billingRouter(database: LibraryDatabase): Router {
   const router = express.Router();
+  router.use(defaultApiLimiter);
 
   // ── GET /api/v1/billing/wallet ──
   // Current wallet balance, account tier, and summary stats

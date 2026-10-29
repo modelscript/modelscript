@@ -366,6 +366,15 @@ export async function initWorkspaceAndTree(
       const primaryFile = getTemplatePrimaryFile(template);
       const fileUri = Uri.joinPath(workspaceUri, primaryFile);
 
+      if (memFs) {
+        try {
+          memFs.stat(fileUri);
+        } catch {
+          memFs.createDirectory(workspaceUri);
+          scaffoldTemplateFiles(memFs, workspaceUri);
+        }
+      }
+
       // Pre-open any other files in this memfs template workspace so LSP server tracks them
       try {
         const dirEntries = await workspace.fs.readDirectory(workspaceUri);
@@ -417,6 +426,7 @@ export async function initWorkspaceAndTree(
       if (template === "mbse-verification") {
         try {
           const mdUri = Uri.joinPath(workspaceUri, "VerificationReport.md");
+          await vscode.workspace.fs.stat(mdUri);
           await vscode.commands.executeCommand("markdown.showPreviewToSide", mdUri);
         } catch {
           // Fallback
@@ -424,16 +434,7 @@ export async function initWorkspaceAndTree(
       } else if (template === "cad") {
         try {
           const stepUri = Uri.joinPath(workspaceUri, "drone.step");
-          let attempts = 0;
-          while (attempts < 10) {
-            try {
-              await vscode.workspace.fs.stat(stepUri);
-              break;
-            } catch {
-              await new Promise((r) => setTimeout(r, 100));
-              attempts++;
-            }
-          }
+          await vscode.workspace.fs.stat(stepUri);
           await vscode.commands.executeCommand("vscode.open", stepUri, { viewColumn: 2, preview: false });
         } catch {
           // Fallback

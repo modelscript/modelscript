@@ -661,6 +661,469 @@ function computeSysML2SemanticTokens(
   return builder.build();
 }
 
+function computeFortranSemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  const keywordIdx = tokenTypes.indexOf("keyword");
+  const typeIdx = tokenTypes.indexOf("type");
+  const variableIdx = tokenTypes.indexOf("variable");
+  const parameterIdx = tokenTypes.indexOf("parameter");
+  const functionIdx = tokenTypes.indexOf("function");
+  const stringIdx = tokenTypes.indexOf("string");
+  const numberIdx = tokenTypes.indexOf("number");
+  const operatorIdx = tokenTypes.indexOf("operator");
+  const commentIdx = tokenTypes.indexOf("comment");
+
+  const fortranKeywords = new Set([
+    "program",
+    "subroutine",
+    "function",
+    "module",
+    "end",
+    "endif",
+    "enddo",
+    "if",
+    "then",
+    "else",
+    "elseif",
+    "do",
+    "call",
+    "return",
+    "continue",
+    "common",
+    "parameter",
+    "dimension",
+    "implicit",
+    "none",
+    "intent",
+    "in",
+    "out",
+    "inout",
+    "save",
+    "allocatable",
+    "optional",
+    "value",
+    "kind",
+    "len",
+  ]);
+
+  const fortranTypes = new Set([
+    "real",
+    "integer",
+    "double",
+    "precision",
+    "logical",
+    "complex",
+    "character",
+    "storf",
+    "stori",
+  ]);
+
+  const fortranFunctions = new Set([
+    "sqrt",
+    "abs",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "exp",
+    "log",
+    "log10",
+    "min",
+    "max",
+    "mod",
+    "sign",
+    "realpole",
+    "delay1",
+    "intgrl",
+    "leadlag",
+    "diff",
+    "limiter",
+    "limit",
+    "hardlimit",
+    "cmplx_polar",
+    "sin_cos",
+    "current_source",
+    "e_branch",
+  ]);
+
+  const fortranSpecialConstants = new Set(["time", "delt", "firststep", "nstorf", "nstori"]);
+
+  // Pass 1: Discover dummy arguments and intent(in|out) parameters
+  const paramNames = new Set<string>();
+  const routineNames = new Set<string>();
+  const lines = text.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const clean = rawLine.replace(/!.*$/, "").trim();
+    const subMatch = /^(?:subroutine|function|program|module)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?/i.exec(
+      clean,
+    );
+    if (subMatch) {
+      routineNames.add(subMatch[1]!.toLowerCase());
+      if (subMatch[2]) {
+        for (const arg of subMatch[2].split(",")) {
+          const a = arg.trim().toLowerCase();
+          if (a) paramNames.add(a);
+        }
+      }
+    }
+    const intentMatch = /\bintent\s*\(\s*(?:in\s*out|inout|in|out)\s*\).*?(?:::)\s*(.+)$/i.exec(clean);
+    if (intentMatch) {
+      for (const item of intentMatch[1]!.split(",")) {
+        const m = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(item.trim());
+        if (m) paramNames.add(m[1]!.toLowerCase());
+      }
+    }
+  }
+
+  // Pass 2: Line-by-line lexical classification
+  const tokenPattern =
+    /(?:"[^"]*")|(?:'[^']*')|(?:\$#DIM\([A-Za-z_][A-Za-z0-9_]*\))|(?:\$[A-Za-z_][A-Za-z0-9_]*)|(?:\.(?:AND|OR|NOT|EQ|NE|LT|LE|GT|GE|TRUE|FALSE)\.)|(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][+-]?\d+)?(?:_[A-Za-z0-9_]+)?)|(?:[A-Za-z_][A-Za-z0-9_]*)|(?:::|\*\*|==|\/=|!=|<=|>=|&&|\|\||[=+\-*/<>])/gi;
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx]!;
+    if (!line.trim()) continue;
+
+    // Fixed-form full-line comment (C or * in column 1)
+    if (/^[Cc*]\s/.test(line) && !/^\s*call\b/i.test(line)) {
+      rawTokens.push({
+        line: lineIdx,
+        char: 0,
+        length: line.length,
+        typeIndex: commentIdx,
+        modifier: 0,
+      });
+      continue;
+    }
+
+    // Find inline '!' comment (ignoring '!=' and '!' inside strings)
+    let commentStart = -1;
+    let inSingle = false;
+    let inDouble = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]!;
+      if (ch === "'" && !inDouble) inSingle = !inSingle;
+      else if (ch === '"' && !inSingle) inDouble = !inDouble;
+      else if (ch === "!" && !inSingle && !inDouble && line[i + 1] !== "=") {
+        commentStart = i;
+        break;
+      }
+    }
+
+    const codePart = commentStart >= 0 ? line.slice(0, commentStart) : line;
+    if (commentStart >= 0) {
+      rawTokens.push({
+        line: lineIdx,
+        char: commentStart,
+        length: line.length - commentStart,
+        typeIndex: commentIdx,
+        modifier: 0,
+      });
+    }
+
+    if (!codePart.trim()) continue;
+
+    // Preprocessor directive line (#IF, #STORAGE, #LOCAL, etc.)
+    const dirMatch = /^\s*(#[A-Za-z0-9_]+)/.exec(codePart);
+    if (dirMatch) {
+      const idx = codePart.indexOf(dirMatch[1]!);
+      rawTokens.push({
+        line: lineIdx,
+        char: idx,
+        length: dirMatch[1]!.length,
+        typeIndex: keywordIdx,
+        modifier: 0,
+      });
+    }
+
+    let prevWordLower = "";
+    tokenPattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = tokenPattern.exec(codePart)) !== null) {
+      const tok = match[0]!;
+      const col = match.index;
+      const lower = tok.toLowerCase();
+
+      if (tok.startsWith("'") || tok.startsWith('"')) {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: stringIdx, modifier: 0 });
+      } else if (tok.startsWith("$")) {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: parameterIdx, modifier: 0 });
+      } else if (/^\.(?:true|false)\.$/i.test(tok)) {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: keywordIdx, modifier: 0 });
+      } else if (tok.startsWith(".")) {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: operatorIdx, modifier: 0 });
+      } else if (/^[+-]?(?:\d|\.\d)/.test(tok)) {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: numberIdx, modifier: 0 });
+      } else if (/^[A-Za-z_]/.test(tok)) {
+        if (fortranKeywords.has(lower)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: keywordIdx, modifier: 0 });
+        } else if (fortranTypes.has(lower)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: typeIdx, modifier: 0 });
+        } else if (
+          prevWordLower === "subroutine" ||
+          prevWordLower === "function" ||
+          prevWordLower === "program" ||
+          prevWordLower === "module" ||
+          prevWordLower === "call" ||
+          routineNames.has(lower)
+        ) {
+          const isDecl =
+            prevWordLower === "subroutine" ||
+            prevWordLower === "function" ||
+            prevWordLower === "program" ||
+            prevWordLower === "module";
+          rawTokens.push({
+            line: lineIdx,
+            char: col,
+            length: tok.length,
+            typeIndex: functionIdx,
+            modifier: isDecl ? 1 : 0,
+          });
+        } else if (fortranFunctions.has(lower)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: functionIdx, modifier: 0 });
+        } else if (fortranSpecialConstants.has(lower)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: variableIdx, modifier: 2 });
+        } else if (paramNames.has(lower)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: parameterIdx, modifier: 0 });
+        } else {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: variableIdx, modifier: 0 });
+        }
+        prevWordLower = lower;
+      } else {
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: operatorIdx, modifier: 0 });
+      }
+    }
+  }
+
+  rawTokens.sort((a, b) => (a.line !== b.line ? a.line - b.line : a.char - b.char));
+  for (const t of rawTokens) {
+    builder.push(t.line, t.char, t.length, t.typeIndex, t.modifier);
+  }
+  return builder.build();
+}
+
+function computeOwl2SemanticTokens(builder: SemanticTokensBuilder, text: string): SemanticTokens {
+  const rawTokens: {
+    line: number;
+    char: number;
+    length: number;
+    typeIndex: number;
+    modifier: number;
+  }[] = [];
+
+  const keywordIdx = tokenTypes.indexOf("keyword");
+  const typeIdx = tokenTypes.indexOf("type");
+  const classIdx = tokenTypes.indexOf("class");
+  const functionIdx = tokenTypes.indexOf("function");
+  const stringIdx = tokenTypes.indexOf("string");
+  const numberIdx = tokenTypes.indexOf("number");
+  const operatorIdx = tokenTypes.indexOf("operator");
+  const commentIdx = tokenTypes.indexOf("comment");
+  const namespaceIdx = tokenTypes.indexOf("namespace");
+  const enumMemberIdx = tokenTypes.indexOf("enumMember");
+
+  const owl2Keywords = new Set([
+    "Prefix",
+    "Ontology",
+    "Import",
+    "Declaration",
+    "Class",
+    "Datatype",
+    "ObjectProperty",
+    "DataProperty",
+    "AnnotationProperty",
+    "NamedIndividual",
+    "Annotation",
+    "SubClassOf",
+    "EquivalentClasses",
+    "DisjointClasses",
+    "DisjointUnion",
+    "SubObjectPropertyOf",
+    "ObjectPropertyChain",
+    "EquivalentObjectProperties",
+    "DisjointObjectProperties",
+    "InverseObjectProperties",
+    "ObjectPropertyDomain",
+    "ObjectPropertyRange",
+    "FunctionalObjectProperty",
+    "InverseFunctionalObjectProperty",
+    "ReflexiveObjectProperty",
+    "IrreflexiveObjectProperty",
+    "SymmetricObjectProperty",
+    "AsymmetricObjectProperty",
+    "TransitiveObjectProperty",
+    "SubDataPropertyOf",
+    "EquivalentDataProperties",
+    "DisjointDataProperties",
+    "DataPropertyDomain",
+    "DataPropertyRange",
+    "FunctionalDataProperty",
+    "DatatypeDefinition",
+    "HasKey",
+    "SameIndividual",
+    "DifferentIndividuals",
+    "ClassAssertion",
+    "ObjectPropertyAssertion",
+    "NegativeObjectPropertyAssertion",
+    "DataPropertyAssertion",
+    "NegativeDataPropertyAssertion",
+    "AnnotationAssertion",
+    "SubAnnotationPropertyOf",
+    "AnnotationPropertyDomain",
+    "AnnotationPropertyRange",
+    "ObjectIntersectionOf",
+    "ObjectUnionOf",
+    "ObjectComplementOf",
+    "ObjectOneOf",
+    "ObjectSomeValuesFrom",
+    "ObjectAllValuesFrom",
+    "ObjectHasValue",
+    "ObjectHasSelf",
+    "ObjectMinCardinality",
+    "ObjectMaxCardinality",
+    "ObjectExactCardinality",
+    "ObjectInverseOf",
+    "DataIntersectionOf",
+    "DataUnionOf",
+    "DataComplementOf",
+    "DataOneOf",
+    "DataSomeValuesFrom",
+    "DataAllValuesFrom",
+    "DataHasValue",
+    "DataMinCardinality",
+    "DataMaxCardinality",
+    "DataExactCardinality",
+    "DatatypeRestriction",
+  ]);
+
+  // First pass: collect entity kinds from declarations and axioms
+  const classIris = new Set<string>();
+  const propertyIris = new Set<string>();
+  const individualIris = new Set<string>();
+  const datatypeIris = new Set<string>();
+
+  for (const m of text.matchAll(/Declaration\s*\(\s*Class\s*\(\s*([^\s()]+)/g)) {
+    if (m[1]) classIris.add(m[1]);
+  }
+  for (const m of text.matchAll(/Declaration\s*\(\s*Datatype\s*\(\s*([^\s()]+)/g)) {
+    if (m[1]) datatypeIris.add(m[1]);
+  }
+  for (const m of text.matchAll(
+    /Declaration\s*\(\s*(?:ObjectProperty|DataProperty|AnnotationProperty)\s*\(\s*([^\s()]+)/g,
+  )) {
+    if (m[1]) propertyIris.add(m[1]);
+  }
+  for (const m of text.matchAll(/Declaration\s*\(\s*NamedIndividual\s*\(\s*([^\s()]+)/g)) {
+    if (m[1]) individualIris.add(m[1]);
+  }
+  for (const m of text.matchAll(/SubClassOf\s*\(\s*([^\s()]+)\s+([^\s()]+)/g)) {
+    if (m[1] && !owl2Keywords.has(m[1])) classIris.add(m[1]);
+    if (m[2] && !owl2Keywords.has(m[2])) classIris.add(m[2]);
+  }
+  for (const m of text.matchAll(/ClassAssertion\s*\(\s*([^\s()]+)\s+([^\s()]+)/g)) {
+    if (m[1] && !owl2Keywords.has(m[1])) classIris.add(m[1]);
+    if (m[2] && !owl2Keywords.has(m[2])) individualIris.add(m[2]);
+  }
+  for (const m of text.matchAll(
+    /(?:ObjectPropertyDomain|ObjectPropertyRange|DataPropertyDomain)\s*\(\s*([^\s()]+)\s+([^\s()]+)/g,
+  )) {
+    if (m[1] && !owl2Keywords.has(m[1])) propertyIris.add(m[1]);
+    if (m[2] && !owl2Keywords.has(m[2])) classIris.add(m[2]);
+  }
+  for (const m of text.matchAll(/DataPropertyRange\s*\(\s*([^\s()]+)\s+([^\s()]+)/g)) {
+    if (m[1] && !owl2Keywords.has(m[1])) propertyIris.add(m[1]);
+    if (m[2] && !owl2Keywords.has(m[2])) datatypeIris.add(m[2]);
+  }
+  for (const m of text.matchAll(/ObjectPropertyAssertion\s*\(\s*([^\s()]+)\s+([^\s()]+)\s+([^\s()]+)/g)) {
+    if (m[1] && !owl2Keywords.has(m[1])) propertyIris.add(m[1]);
+    if (m[2] && !owl2Keywords.has(m[2])) individualIris.add(m[2]);
+    if (m[3] && !owl2Keywords.has(m[3])) individualIris.add(m[3]);
+  }
+  for (const m of text.matchAll(/DataPropertyAssertion\s*\(\s*([^\s()]+)\s+([^\s()]+)/g)) {
+    if (m[1] && !owl2Keywords.has(m[1])) propertyIris.add(m[1]);
+    if (m[2] && !owl2Keywords.has(m[2])) individualIris.add(m[2]);
+  }
+
+  // Second pass: tokenize line by line
+  const lines = text.split(/\r?\n/);
+  const tokenPattern =
+    /(#.*$|\/\/.*$)|(<[^>]*>)|("([^"\\]|\\.)*")|(\^\^)|((?:[a-zA-Z_][\w.-]*)?:[a-zA-Z_][\w.-]*)|([a-zA-Z_][\w.-]*:)|(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)|([a-zA-Z_]\w*)/g;
+
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx]!;
+    const isDeclLine = /\bDeclaration\s*\(/.test(line);
+    tokenPattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = tokenPattern.exec(line)) !== null) {
+      const tok = match[0];
+      const col = match.index;
+      if (match[1]) {
+        // Comment
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: commentIdx, modifier: 0 });
+      } else if (match[2] || match[3]) {
+        // <IRI> or "string"
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: stringIdx, modifier: 0 });
+      } else if (match[5]) {
+        // ^^ datatype operator
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: operatorIdx, modifier: 0 });
+      } else if (match[6]) {
+        // Abbreviated IRI: e.g. :CyberPhysicalAsset, xsd:double, :hasComponent, :robot_arm_01
+        const localIdx = tok.indexOf(":");
+        const prefix = tok.slice(0, localIdx);
+        const localName = tok.slice(localIdx + 1);
+        const modifier = isDeclLine ? 1 : 0;
+        if (
+          datatypeIris.has(tok) ||
+          prefix === "xsd" ||
+          prefix === "rdfs" ||
+          prefix === "rdf" ||
+          tok === "owl:Thing" ||
+          tok === "owl:Nothing"
+        ) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: typeIdx, modifier: 0 });
+        } else if (classIris.has(tok)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: classIdx, modifier });
+        } else if (propertyIris.has(tok)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: functionIdx, modifier });
+        } else if (individualIris.has(tok)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: enumMemberIdx, modifier });
+        } else if (/^[A-Z]/.test(localName)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: classIdx, modifier });
+        } else {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: functionIdx, modifier });
+        }
+      } else if (match[7]) {
+        // Prefix declaration token e.g. xsd: in Prefix(xsd: = <...>)
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: namespaceIdx, modifier: 1 });
+      } else if (match[8]) {
+        // Number literal
+        rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: numberIdx, modifier: 0 });
+      } else if (match[9]) {
+        // Bare identifier / keyword
+        if (owl2Keywords.has(tok)) {
+          rawTokens.push({ line: lineIdx, char: col, length: tok.length, typeIndex: keywordIdx, modifier: 0 });
+        }
+      }
+    }
+  }
+
+  rawTokens.sort((a, b) => (a.line !== b.line ? a.line - b.line : a.char - b.char));
+  for (const t of rawTokens) {
+    builder.push(t.line, t.char, t.length, t.typeIndex, t.modifier);
+  }
+  return builder.build();
+}
+
 export function registerSemanticTokensProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
@@ -697,6 +1160,20 @@ export function registerSemanticTokensProvider(
     // FEA input deck files use dedicated semantic tokens
     if (textDocument.uri.match(/\.(inp|inpt|bdf|fea)($|\?|#)/i) || textDocument.languageId === "fea") {
       return computeFeaSemanticTokens(builder, text);
+    }
+
+    // Fortran files use dedicated semantic tokens
+    if (textDocument.uri.match(/\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i) || textDocument.languageId === "fortran") {
+      const tokens = computeFortranSemanticTokens(builder, text);
+      tokensCache.set(textDocument.uri, { version: textDocument.version, tokens });
+      return tokens;
+    }
+
+    // OWL 2 ontology files use dedicated semantic tokens
+    if (textDocument.uri.match(/\.(owl|owl2|ofn|fss|owx|ttl)($|\?|#)/i) || textDocument.languageId === "owl2") {
+      const tokens = computeOwl2SemanticTokens(builder, text);
+      tokensCache.set(textDocument.uri, { version: textDocument.version, tokens });
+      return tokens;
     }
 
     // SysML2 files use a separate parser and node-type classification

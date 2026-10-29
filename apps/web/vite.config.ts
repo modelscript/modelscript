@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import react from "@vitejs/plugin-react";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin } from "vite";
@@ -38,7 +39,7 @@ const LANGUAGE_EXTENSIONS_MAP: Record<string, string[]> = {
   opendrive: [".xodr"],
   opendss: [".dss"],
   openscenario: [".xosc"],
-  owl2: [".ofn", ".owl", ".fss"],
+  owl2: [".ofn", ".owl", ".owl2", ".fss", ".ttl"],
   plcopen: [".st", ".iec", ".plcopen"],
   pscad: [".pscx", ".pslx"],
   psse: [".raw", ".dyr", ".seq"],
@@ -114,6 +115,7 @@ function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
               if (fileName.endsWith(".json")) {
                 res.setHeader("Content-Type", "application/json");
               }
+              res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
               res.end(target.content);
               return;
             }
@@ -122,10 +124,13 @@ function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
               if (fs.existsSync(fullSrc)) {
                 if (fileName.endsWith(".wasm")) {
                   res.setHeader("Content-Type", "application/wasm");
+                  res.setHeader("Cache-Control", "no-cache");
                 } else if (fileName.endsWith(".js")) {
                   res.setHeader("Content-Type", "application/javascript");
+                  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
                 } else if (fileName.endsWith(".json")) {
                   res.setHeader("Content-Type", "application/json");
+                  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
                 } else if (fileName.endsWith(".zip")) {
                   res.setHeader("Content-Type", "application/zip");
                 }
@@ -169,11 +174,191 @@ function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
   };
 }
 
+const DOCS_ROUTE_PREFIXES = [
+  "/docs",
+  "/guide",
+  "/architecture",
+  "/algorithms",
+  "/cli",
+  "/languages",
+  "/reference",
+  "/industries",
+  "/pricing",
+  "/vp-icons",
+];
+
+const DOCS_EXACT_PATHS = new Set([
+  "/",
+  "/docs",
+  "/docs/",
+  "/vp-icons.css",
+  "/llms.txt",
+  "/llms-full.txt",
+  "/sitemap.xml",
+  "/hashmap.json",
+  "/modelscript-reference-manual.pdf",
+]);
+
+function getMimeTypeForDocFile(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".js":
+    case ".mjs":
+      return "application/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".ico":
+      return "image/x-icon";
+    case ".pdf":
+      return "application/pdf";
+    case ".xml":
+      return "application/xml; charset=utf-8";
+    case ".txt":
+      return "text/plain; charset=utf-8";
+    case ".woff":
+      return "font/woff";
+    case ".woff2":
+      return "font/woff2";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function unifiedDocsPlugin(): Plugin {
+  const docsWorkspaceDir = path.resolve(import.meta.dirname, "../docs");
+  const docsSourceDir = path.resolve(docsWorkspaceDir, "docs");
+  const docsDistDir = path.resolve(docsSourceDir, ".vitepress/dist");
+
+  let isBuildingDocs = false;
+  let pendingRebuild = false;
+
+  const triggerDocsBuild = (fullBuild: boolean) => {
+    if (isBuildingDocs) {
+      pendingRebuild = true;
+      return;
+    }
+    isBuildingDocs = true;
+    const args = fullBuild ? ["run", "build"] : ["vitepress", "build", "docs"];
+    const cmd = fullBuild ? "npm" : "npx";
+    const child = spawn(cmd, args, {
+      cwd: docsWorkspaceDir,
+      stdio: "ignore",
+    });
+    child.on("close", () => {
+      isBuildingDocs = false;
+      if (pendingRebuild) {
+        pendingRebuild = false;
+        triggerDocsBuild(false);
+      }
+    });
+  };
+
+  return {
+    name: "unified-docs-portal",
+    configureServer(server) {
+      if (fs.existsSync(docsWorkspaceDir) && !fs.existsSync(path.join(docsDistDir, "index.html"))) {
+        try {
+          execFileSync("npm", ["run", "build"], { cwd: docsWorkspaceDir, stdio: "inherit" });
+        } catch {
+          triggerDocsBuild(true);
+        }
+      }
+
+      if (fs.existsSync(docsSourceDir)) {
+        server.watcher.add(docsSourceDir);
+        server.watcher.on("change", (changedPath) => {
+          const norm = changedPath.replace(/\\/g, "/");
+          if (
+            norm.startsWith(docsSourceDir.replace(/\\/g, "/")) &&
+            !norm.includes("/.vitepress/dist/") &&
+            !norm.includes("/.vitepress/cache/")
+          ) {
+            triggerDocsBuild(false);
+          }
+        });
+      }
+
+      server.middlewares.use((req, res, next) => {
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          next();
+          return;
+        }
+        const rawUrl = req.url?.split("?")[0] || "";
+        if (!rawUrl) {
+          next();
+          return;
+        }
+
+        if (rawUrl === "/docs" || rawUrl === "/docs/") {
+          res.statusCode = 302;
+          res.setHeader("Location", "/guide/introduction");
+          res.end();
+          return;
+        }
+
+        if (!fs.existsSync(docsDistDir)) {
+          next();
+          return;
+        }
+
+        const matchesPrefix = DOCS_ROUTE_PREFIXES.some((p) => rawUrl === p || rawUrl.startsWith(`${p}/`));
+        const matchesExact = DOCS_EXACT_PATHS.has(rawUrl);
+        const isDocsAsset = rawUrl.startsWith("/assets/");
+
+        if (!matchesPrefix && !matchesExact && !isDocsAsset) {
+          next();
+          return;
+        }
+
+        const strippedPath =
+          rawUrl === "/"
+            ? "index.html"
+            : rawUrl.startsWith("/docs/")
+              ? rawUrl.slice("/docs/".length)
+              : rawUrl.replace(/^\/+/, "");
+
+        const safeRel = path
+          .normalize(strippedPath)
+          .replace(/^(\.\.[/\\])+/, "")
+          .replace(/^[/\\]+/, "");
+        const candidates = [
+          path.resolve(docsDistDir, safeRel),
+          path.resolve(docsDistDir, `${safeRel}.html`),
+          path.resolve(docsDistDir, safeRel, "index.html"),
+        ];
+
+        for (const candidate of candidates) {
+          const relToRoot = path.relative(docsDistDir, candidate);
+          if (!relToRoot || relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) {
+            continue;
+          }
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            res.setHeader("Content-Type", getMimeTypeForDocFile(candidate));
+            fs.createReadStream(candidate).pipe(res);
+            return;
+          }
+        }
+
+        next();
+      });
+    },
+  };
+}
+
 const { targets: languageWasmTargets, manifest: languagesManifest } = discoverLanguageWasmTargets();
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    unifiedDocsPlugin(),
     react(),
     tsconfigPaths({ root: import.meta.dirname }),
     inlineStaticCopy(
@@ -302,50 +487,46 @@ export default defineConfig({
     port: 3001,
     strictPort: true,
     proxy: {
-      "/api/models": {
-        target: "http://127.0.0.1:3003",
-        changeOrigin: true,
-      },
-      "/api/languages": {
-        target: "http://127.0.0.1:3003",
-        changeOrigin: true,
-      },
-      "/api/github": {
-        target: "http://127.0.0.1:3003",
-        changeOrigin: true,
-      },
       "/api": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
       "/.well-known": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
       "/nodeinfo": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
       "/actor": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
       "/thumbnails": {
         target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
       "/vscode": {
-        target: "http://127.0.0.1:3003",
+        target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
         ws: true,
       },
       "/vscode-static": {
-        target: "http://127.0.0.1:3003",
+        target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
       "/static": {
-        target: "http://127.0.0.1:3003",
+        target: "http://127.0.0.1:3000",
         changeOrigin: true,
+        xfwd: true,
       },
     },
   },

@@ -26,5 +26,39 @@ export function getAvatarUrl(username: string, originalUrl?: string): string {
     <text x="50" y="50" dy=".35em" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="45" font-weight="500" fill="#000">${initials}</text>
   </svg>`;
 
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+export function getBannerUrl(username: string, originalUrl?: string | null): string {
+  if (originalUrl && originalUrl.trim().length > 0) {
+    return originalUrl.trim();
+  }
+
+  let hash = 0;
+  const cleanName = username || "modelscript";
+  for (let i = 0; i < cleanName.length; i++) {
+    hash = cleanName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h1 = Math.abs(hash) % 360;
+  const h2 = (h1 + 45) % 360;
+  const accent = `hsl(${(h1 + 180) % 360}, 85%, 65%)`;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" width="900" height="240">
+    <defs>
+      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="hsl(${h1}, 65%, 18%)"/>
+        <stop offset="50%" stop-color="hsl(${h2}, 60%, 14%)"/>
+        <stop offset="100%" stop-color="hsl(${h1}, 70%, 10%)"/>
+      </linearGradient>
+      <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+        <path d="M 36 0 L 0 0 0 36" fill="none" stroke="${accent}" stroke-width="0.7" stroke-opacity="0.22"/>
+      </pattern>
+    </defs>
+    <rect width="900" height="240" fill="url(#bg)"/>
+    <rect width="900" height="240" fill="url(#grid)"/>
+    <path d="M 0 175 Q 220 95 450 160 T 900 115" fill="none" stroke="${accent}" stroke-width="2.5" stroke-opacity="0.55"/>
+    <path d="M 0 205 Q 260 140 510 190 T 900 155" fill="none" stroke="${accent}" stroke-width="1.4" stroke-opacity="0.32"/>
+  </svg>`;
+
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
 }

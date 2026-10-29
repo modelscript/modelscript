@@ -397,12 +397,14 @@ export function registerDefinitionProvider(
       if (crossLoc) return crossLoc as any;
     }
 
+    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, docText);
+    if (plugin?.customHandlers?.definition) {
+      const customDef = plugin.customHandlers.definition(offset, docText, params.textDocument.uri);
+      if (customDef) return customDef;
+    }
+
     if (!bridge) {
-      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
       if (plugin) {
-        if (plugin.customHandlers?.definition) {
-          return plugin.customHandlers.definition(offset, document.getText());
-        }
         if (plugin.facade?.getDefinition) {
           try {
             const def = plugin.facade.getDefinition(0, offset);

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { RepoIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -16,23 +15,21 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
 
   return (
     <Card>
-      <Box display="flex" alignItems="center" gap={2} mb={3}>
-        <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
-          <RepoIcon size={14} />
-        </span>
+      <Box display="flex" alignItems="center" gap={2} mb={2}>
         <Text
+          as="h2"
           style={{
-            fontSize: "12px",
+            fontSize: "15px",
+            lineHeight: "20px",
             fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-            color: "var(--color-text-muted)",
+            margin: 0,
+            color: "var(--color-text-heading)",
           }}
         >
           Popular Repositories
         </Text>
       </Box>
-      <Box display="flex" flexDirection="column" gap={3}>
+      <Box display="flex" flexDirection="column" gap={2}>
         {popularRepos.map((repo) => (
           <Box key={repo.id} display="flex" alignItems="center" justifyContent="space-between">
             <Link
@@ -52,8 +49,9 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
               <Box flex={1} minWidth={0} mr={2} display="flex" flexDirection="column">
                 <Text
                   style={{
-                    fontWeight: "bold",
-                    fontSize: "15px",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    lineHeight: "18px",
                     color: "var(--color-text-heading)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -66,7 +64,8 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
                 <Text
                   style={{
                     color: "var(--color-text-muted)",
-                    fontSize: "14px",
+                    fontSize: "12px",
+                    lineHeight: "16px",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
