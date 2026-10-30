@@ -70,8 +70,11 @@ body {
   -webkit-backdrop-filter: saturate(160%) blur(14px);
 }
 
-/* Highlighted 'Playground' pill CTA in top navbar */
-.VPNavBarMenu .VPNavBarMenuLink[href*="playground"] {
+/* ───────────────────────── Highlighted 'Ansatz' Pill CTA in Top Navbar ───────────────────────── */
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
   margin-left: 8px;
   padding: 0 14px !important;
   height: 32px !important;
@@ -80,25 +83,72 @@ body {
   border-radius: 999px;
   font-size: 13px !important;
   font-weight: 650 !important;
-  color: var(--vp-c-brand-1) !important;
-  background: radial-gradient(circle at 20% 20%, rgba(34, 211, 238, 0.18), transparent 70%), var(--vp-c-brand-soft);
-  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 42%, transparent);
+  color: #f8fafc !important;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(129, 140, 248, 0.3), transparent 70%),
+    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.22), transparent 70%),
+    var(--vp-c-bg-elv, rgba(15, 23, 42, 0.8));
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1, #22d3ee) 45%, #818cf8 55%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.16),
-    0 6px 18px -6px rgba(6, 182, 212, 0.45);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 16px -4px rgba(129, 140, 248, 0.45),
+    0 0 12px -2px rgba(34, 211, 238, 0.3);
   transition:
-    transform 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color 0.2s ease,
     box-shadow 0.2s ease,
     background 0.2s ease !important;
 }
 
-.VPNavBarMenu .VPNavBarMenuLink[href*="playground"]:hover {
+/* Pulsing live activity indicator pip */
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  animation: ansatz-pip-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ansatz-pip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 8px #34d399;
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+    box-shadow: 0 0 3px #34d399;
+  }
+}
+
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover {
   transform: translateY(-1px);
-  border-color: var(--vp-c-brand-1);
+  color: #ffffff !important;
+  border-color: var(--vp-c-brand-1, #22d3ee);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    0 10px 24px -6px rgba(6, 182, 212, 0.65);
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 8px 24px -4px rgba(129, 140, 248, 0.65),
+    0 0 18px rgba(34, 211, 238, 0.55);
+}
+
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] .vpi-external-link,
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] svg {
+  opacity: 0.75;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover .vpi-external-link,
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover svg {
+  opacity: 1;
+  transform: translate(1px, -1px);
 }
 
 /* ───────────────────────── Atmospheric CAD Grid & Radial Mesh ───────────────────────── */

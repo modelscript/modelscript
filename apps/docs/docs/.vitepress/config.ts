@@ -292,7 +292,6 @@ export default defineConfig({
       { component: "DocsMegaMenu" },
       ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
       { text: "Ansatz", link: "https://ansatz.social", target: "_blank" },
-      { text: "Playground", link: "/playground", target: "_self" },
     ],
     sidebar: (() => {
       const docsSidebar: DefaultTheme.SidebarItem[] = [

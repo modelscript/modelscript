@@ -32,7 +32,10 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
           <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
             Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
           </a>
-          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript">
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/playground" target="_self">
+            <MsIcon name="play" :size="16" /> Try the Playground
+          </a>
+          <a class="ms-btn ms-btn-lg ms-btn-ghost" href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener">
             <MsIcon name="github" :size="16" /> GitHub
           </a>
         </div>

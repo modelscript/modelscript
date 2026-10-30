@@ -948,9 +948,9 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ---
 
-### Scenario C: Official `modelscript.org` Cloud Production Deployment
+### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` runs the full multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile federated`), serving the Web SPA (`/`), Unified VitePress Documentation & PDF Manual (`/docs`, `/guide/*`, `/languages/*`, `/pricing`), WebGPU IDE (`/ide`, `/vscode`), and Enterprise API (`/api/*`) behind Caddy automatic TLS.
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/playground`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -963,8 +963,10 @@ cp .env.production.example .env.production
 chmod 600 .env.production
 
 # Edit .env.production to set production secrets:
-#   PUBLIC_DOMAIN=modelscript.org
-#   PUBLIC_URL=https://modelscript.org
+#   PUBLIC_DOMAIN=ansatz.social
+#   DOCS_DOMAIN=modelscript.org
+#   PUBLIC_URL=https://ansatz.social
+#   CORS_ALLOWED_ORIGINS=https://ansatz.social,https://modelscript.org,https://ide.ansatz.social,https://ide.modelscript.org
 #   MSX_EDITION=ee
 #   MSX_LICENSE_ENFORCE=true
 #   MSX_LICENSE_KEY=<pre-minted modelscript-cloud-prod Ed25519 token>
@@ -977,19 +979,21 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   --env-file .env.production --profile federated pull
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.production --profile federated up -d --remove-orphans
+  --env-file .env.production --profile federated up -d --wait --remove-orphans
 ```
 
 #### C.2 Automated CI/CD Rollouts (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)
 
-Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` and triggers the `deploy_modelscript_org` rollout job. Configure either SSH or Webhook secrets in GitHub repository settings:
+Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Configure either SSH or Webhook secrets in GitHub repository settings:
 
 | GitHub Secret                          | Description                                                                                  |
 | :------------------------------------- | :------------------------------------------------------------------------------------------- |
-| `PROD_SSH_HOST`                        | Hostname or IP of the `modelscript.org` production server                                    |
+| `PROD_SSH_HOST`                        | Hostname or IP of the shared `modelscript.org` / `ansatz.social` production server           |
 | `PROD_SSH_USER`                        | Deployment SSH user (with `docker` group permissions)                                        |
 | `PROD_SSH_KEY`                         | Ed25519 private SSH key for `PROD_SSH_USER`                                                  |
+| `PROD_SSH_KNOWN_HOSTS` _(optional)_    | Pinned SSH host key entry for `PROD_SSH_HOST` (falls back to `ssh-keyscan` if omitted)       |
 | `PROD_DEPLOY_PATH`                     | Directory on the production host (defaults to `/opt/modelscript`)                            |
+| `PROD_ENV_FILE` _(optional)_           | Complete content of `.env.production` to automatically write and secure on the host          |
 | `PROD_DEPLOY_WEBHOOK_URL` _(optional)_ | Webhook URL if triggering rollouts via an external orchestrator (Portainer / Coolify / Argo) |
 | `PROD_DEPLOY_TOKEN` _(optional)_       | Bearer token for `PROD_DEPLOY_WEBHOOK_URL`                                                   |
 
