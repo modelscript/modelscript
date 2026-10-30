@@ -4,6 +4,12 @@ import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  BillingRepository,
+  PackageRepository,
+  ReferralRepository,
+  UserRepository,
+} from "./database/repositories/index.js";
 import type {
   AdminUserSummaryRow,
   ArtifactViewRow,
@@ -341,6 +347,10 @@ export class LibraryDatabase {
   readonly #db: Database.Database;
   readonly #dbPath: string;
   readonly #runner: SqliteMigrationRunner;
+  readonly referrals: ReferralRepository;
+  readonly users: UserRepository;
+  readonly packages: PackageRepository;
+  readonly billing: BillingRepository;
 
   constructor(dbDir?: string) {
     const dir = dbDir ?? resolveDefaultDbDir();
@@ -360,6 +370,11 @@ export class LibraryDatabase {
     this.#runner = new SqliteMigrationRunner(this.#db, dbPath);
     this.#runner.runPendingSync(allMigrations);
     this.#initialize();
+
+    this.referrals = new ReferralRepository(this.#db, this);
+    this.users = new UserRepository(this.#db, this);
+    this.packages = new PackageRepository(this.#db, this);
+    this.billing = new BillingRepository(this.#db, this);
   }
 
   get db(): Database.Database {
@@ -5921,20 +5936,40 @@ export class LibraryDatabase {
         : map.get("onboardingWizardEnabled") === "true";
 
     return {
-      instanceName: process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "Ansatz",
-      instanceBadge: process.env["MSX_INSTANCE_BADGE"] ?? map.get("instanceBadge") ?? "",
+      instanceName:
+        process.env["ANSATZ_INSTANCE_NAME"] || process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "Ansatz",
+      instanceBadge:
+        process.env["ANSATZ_INSTANCE_BADGE"] ?? process.env["MSX_INSTANCE_BADGE"] ?? map.get("instanceBadge") ?? "",
       instanceTagline:
+        process.env["ANSATZ_INSTANCE_TAGLINE"] ||
         process.env["MSX_INSTANCE_TAGLINE"] ||
         map.get("instanceTagline") ||
         "The Federated Scientific & Engineering Network",
       instanceDescription:
         map.get("instanceDescription") ||
         "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform.",
-      contactEmail: process.env["MSX_CONTACT_EMAIL"] || map.get("contactEmail") || "admin@ansatz.social",
-      brandLogoUrl: process.env["MSX_BRAND_LOGO_URL"] || map.get("brandLogoUrl") || "",
-      brandLogoDarkUrl: process.env["MSX_BRAND_LOGO_DARK_URL"] || map.get("brandLogoDarkUrl") || "",
-      brandFaviconUrl: process.env["MSX_BRAND_FAVICON_URL"] || map.get("brandFaviconUrl") || "",
-      brandAccentColor: process.env["MSX_BRAND_ACCENT_COLOR"] || map.get("brandAccentColor") || "",
+      contactEmail:
+        process.env["ANSATZ_CONTACT_EMAIL"] ||
+        process.env["MSX_CONTACT_EMAIL"] ||
+        map.get("contactEmail") ||
+        "admin@ansatz.social",
+      brandLogoUrl:
+        process.env["ANSATZ_BRAND_LOGO_URL"] || process.env["MSX_BRAND_LOGO_URL"] || map.get("brandLogoUrl") || "",
+      brandLogoDarkUrl:
+        process.env["ANSATZ_BRAND_LOGO_DARK_URL"] ||
+        process.env["MSX_BRAND_LOGO_DARK_URL"] ||
+        map.get("brandLogoDarkUrl") ||
+        "",
+      brandFaviconUrl:
+        process.env["ANSATZ_BRAND_FAVICON_URL"] ||
+        process.env["MSX_BRAND_FAVICON_URL"] ||
+        map.get("brandFaviconUrl") ||
+        "",
+      brandAccentColor:
+        process.env["ANSATZ_BRAND_ACCENT_COLOR"] ||
+        process.env["MSX_BRAND_ACCENT_COLOR"] ||
+        map.get("brandAccentColor") ||
+        "",
       docsBaseUrl: process.env["MSX_DOCS_BASE_URL"] || map.get("docsBaseUrl") || airgapDefaultDocs,
       showPoweredBy,
       registrationMode,
@@ -6752,30 +6787,12 @@ export class LibraryDatabase {
 
   // ── User Referrals, Golden Tickets & Waitlist ──────────────
 
-  getUserOnboardingStatus(userId: number): {
-    completed: boolean;
-    persona: string | null;
-    invitesRemaining: number;
-  } {
-    const row = this.#db
-      .prepare(`SELECT onboarding_completed, engineering_persona, invites_remaining FROM users WHERE id = ?`)
-      .get(userId) as
-      | { onboarding_completed?: number; engineering_persona?: string | null; invites_remaining?: number }
-      | undefined;
-    return {
-      completed: Boolean(row?.onboarding_completed),
-      persona: row?.engineering_persona ?? null,
-      invitesRemaining: row?.invites_remaining ?? 0,
-    };
+  getUserOnboardingStatus(userId: number) {
+    return this.referrals.getUserOnboardingStatus(userId);
   }
 
   completeUserOnboarding(userId: number, persona?: string): boolean {
-    const res = this.#db
-      .prepare(
-        `UPDATE users SET onboarding_completed = 1, engineering_persona = COALESCE(?, engineering_persona) WHERE id = ?`,
-      )
-      .run(persona || null, userId);
-    return res.changes > 0;
+    return this.referrals.completeUserOnboarding(userId, persona);
   }
 
   recordUserReferral(
@@ -6784,66 +6801,19 @@ export class LibraryDatabase {
     inviteId: number | null = null,
     rewardAmount = 50.0,
   ): UserReferralRow {
-    const res = this.#db
-      .prepare(
-        `INSERT INTO user_referrals (referrer_id, referee_id, invite_id, reward_granted, reward_amount, created_at)
-         VALUES (?, ?, ?, 0, ?, datetime('now'))`,
-      )
-      .run(referrerId, refereeId, inviteId, rewardAmount);
-
-    return {
-      id: Number(res.lastInsertRowid),
-      referrer_id: referrerId,
-      referee_id: refereeId,
-      invite_id: inviteId,
-      reward_granted: false,
-      reward_amount: rewardAmount,
-      created_at: new Date().toISOString(),
-    };
+    return this.referrals.recordUserReferral(referrerId, refereeId, inviteId, rewardAmount);
   }
 
   getUserReferrals(referrerId: number): UserReferralRow[] {
-    const rows = this.#db
-      .prepare(
-        `SELECT r.*, u1.username as referrer_username, u2.username as referee_username
-         FROM user_referrals r
-         JOIN users u1 ON r.referrer_id = u1.id
-         JOIN users u2 ON r.referee_id = u2.id
-         WHERE r.referrer_id = ?
-         ORDER BY r.id DESC`,
-      )
-      .all(referrerId) as (UserReferralRow & { reward_granted: number })[];
-    return rows.map((r) => ({
-      ...r,
-      reward_granted: Boolean(r.reward_granted),
-    }));
+    return this.referrals.getUserReferrals(referrerId);
   }
 
   getReferralByReferee(refereeId: number): UserReferralRow | undefined {
-    const row = this.#db.prepare(`SELECT * FROM user_referrals WHERE referee_id = ?`).get(refereeId) as
-      | (UserReferralRow & { reward_granted: number })
-      | undefined;
-    if (!row) return undefined;
-    return {
-      ...row,
-      reward_granted: Boolean(row.reward_granted),
-    };
+    return this.referrals.getReferralByReferee(refereeId);
   }
 
   grantReferralReward(refereeId: number): boolean {
-    const referral = this.#db
-      .prepare(`SELECT * FROM user_referrals WHERE referee_id = ? AND reward_granted = 0`)
-      .get(refereeId) as UserReferralRow | undefined;
-    if (!referral) return false;
-
-    const reward = Number(referral.reward_amount || 50.0);
-    const tx = this.#db.transaction(() => {
-      this.#db.prepare(`UPDATE user_referrals SET reward_granted = 1 WHERE id = ?`).run(referral.id);
-      this.adjustUserCreditsForAdmin(referral.referrer_id, reward, "Peer referral reward bonus");
-      this.adjustUserCreditsForAdmin(referral.referee_id, reward, "Welcome referral bonus");
-    });
-    tx();
-    return true;
+    return this.referrals.grantReferralReward(refereeId);
   }
 
   generateUserGoldenTicket(
@@ -6851,59 +6821,11 @@ export class LibraryDatabase {
     note?: string,
     initialCredits = 100,
   ): ReturnType<LibraryDatabase["createInstanceInvite"]> {
-    const user = this.getUserById(userId);
-    if (!user) {
-      throw new Error(`User with ID ${userId} not found`);
-    }
-    const remaining = typeof user.invites_remaining === "number" ? user.invites_remaining : 5;
-    if (remaining <= 0) {
-      throw new Error("No golden tickets / invites remaining for this account");
-    }
-
-    const tx = this.#db.transaction(() => {
-      this.#db.prepare(`UPDATE users SET invites_remaining = MAX(0, invites_remaining - 1) WHERE id = ?`).run(userId);
-      return this.createInstanceInvite({
-        createdBy: userId,
-        maxUses: 1,
-        initialCredits,
-        note: note || `Golden ticket from @${user.username}`,
-      });
-    });
-    return tx();
+    return this.referrals.generateUserGoldenTicket(userId, note, initialCredits);
   }
 
   getUserInvites(userId: number): ReturnType<LibraryDatabase["listInstanceInvites"]> {
-    const rows = this.#db
-      .prepare(
-        `SELECT i.*, u.username as creator_username
-         FROM instance_invites i
-         LEFT JOIN users u ON i.created_by = u.id
-         WHERE i.created_by = ?
-         ORDER BY i.id DESC`,
-      )
-      .all(userId) as {
-      id: number;
-      code: string;
-      created_by: number | null;
-      creator_username: string | null;
-      max_uses: number;
-      used_count: number;
-      initial_credits: number;
-      assigned_role: string;
-      note: string | null;
-      expires_at: string | null;
-      revoked_at: string | null;
-      created_at: string;
-    }[];
-    return rows.map((r) => ({
-      ...r,
-      createdBy: r.created_by,
-      maxUses: r.max_uses,
-      usesCount: r.used_count,
-      expiresAt: r.expires_at,
-      revoked: Boolean(r.revoked_at),
-      createdAt: r.created_at,
-    }));
+    return this.referrals.getUserInvites(userId);
   }
 
   createWaitlistSubmission(data: {
@@ -6915,39 +6837,7 @@ export class LibraryDatabase {
     statement?: string | null;
     ip_address?: string | null;
   }): WaitlistSubmissionRow {
-    const cleanEmail = data.email.trim().toLowerCase();
-    const existing = this.getWaitlistSubmissionByEmail(cleanEmail);
-    if (existing) {
-      return existing;
-    }
-
-    const res = this.#db
-      .prepare(
-        `INSERT INTO waitlist_submissions (email, full_name, organization, discipline, portfolio_url, statement, status, ip_address, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'))`,
-      )
-      .run(
-        cleanEmail,
-        data.full_name?.trim() || null,
-        data.organization?.trim() || null,
-        data.discipline?.trim() || null,
-        data.portfolio_url?.trim() || null,
-        data.statement?.trim() || null,
-        data.ip_address || null,
-      );
-
-    return {
-      id: Number(res.lastInsertRowid),
-      email: cleanEmail,
-      full_name: data.full_name?.trim() || null,
-      organization: data.organization?.trim() || null,
-      discipline: data.discipline?.trim() || null,
-      portfolio_url: data.portfolio_url?.trim() || null,
-      statement: data.statement?.trim() || null,
-      status: "pending",
-      ip_address: data.ip_address || null,
-      created_at: new Date().toISOString(),
-    };
+    return this.referrals.createWaitlistSubmission(data);
   }
 
   getWaitlistSubmissions(options?: {
@@ -6955,28 +6845,15 @@ export class LibraryDatabase {
     limit?: number;
     offset?: number;
   }): WaitlistSubmissionRow[] {
-    let sql = `SELECT * FROM waitlist_submissions`;
-    const params: unknown[] = [];
-    if (options?.status) {
-      sql += ` WHERE status = ?`;
-      params.push(options.status);
-    }
-    sql += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
-    params.push(Math.max(1, options?.limit ?? 50), Math.max(0, options?.offset ?? 0));
-
-    return this.#db.prepare(sql).all(...params) as WaitlistSubmissionRow[];
+    return this.referrals.getWaitlistSubmissions(options);
   }
 
   getWaitlistSubmissionById(id: number): WaitlistSubmissionRow | undefined {
-    return this.#db.prepare(`SELECT * FROM waitlist_submissions WHERE id = ?`).get(id) as
-      | WaitlistSubmissionRow
-      | undefined;
+    return this.referrals.getWaitlistSubmissionById(id);
   }
 
   getWaitlistSubmissionByEmail(email: string): WaitlistSubmissionRow | undefined {
-    return this.#db.prepare(`SELECT * FROM waitlist_submissions WHERE LOWER(email) = LOWER(?)`).get(email.trim()) as
-      | WaitlistSubmissionRow
-      | undefined;
+    return this.referrals.getWaitlistSubmissionByEmail(email);
   }
 
   approveWaitlistSubmission(
@@ -6987,45 +6864,11 @@ export class LibraryDatabase {
     submission?: WaitlistSubmissionRow | undefined;
     inviteCode?: string | undefined;
   } {
-    const sub = this.getWaitlistSubmissionById(id);
-    if (!sub) {
-      return { success: false };
-    }
-    if (sub.status === "approved" && sub.invite_code_id) {
-      const invite = this.#db.prepare(`SELECT code FROM instance_invites WHERE id = ?`).get(sub.invite_code_id) as
-        | { code: string }
-        | undefined;
-      return { success: true, submission: sub, inviteCode: invite?.code };
-    }
-
-    const invite = this.createInstanceInvite({
-      createdBy: approvedBy,
-      maxUses: 1,
-      initialCredits: 150,
-      note: `Waitlist approval for ${sub.email}`,
-    });
-
-    this.#db
-      .prepare(
-        `UPDATE waitlist_submissions SET status = 'approved', approved_by = ?, invite_code_id = ?, reviewed_at = datetime('now') WHERE id = ?`,
-      )
-      .run(approvedBy, invite.id, id);
-
-    const updated = this.getWaitlistSubmissionById(id);
-    return {
-      success: true,
-      submission: updated,
-      inviteCode: invite.code,
-    };
+    return this.referrals.approveWaitlistSubmission(id, approvedBy);
   }
 
   rejectWaitlistSubmission(id: number, approvedBy: number | null = null): boolean {
-    const res = this.#db
-      .prepare(
-        `UPDATE waitlist_submissions SET status = 'rejected', approved_by = ?, reviewed_at = datetime('now') WHERE id = ?`,
-      )
-      .run(approvedBy, id);
-    return res.changes > 0;
+    return this.referrals.rejectWaitlistSubmission(id, approvedBy);
   }
 
   getSystemDiagnostics(): {

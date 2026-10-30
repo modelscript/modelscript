@@ -775,7 +775,7 @@ Initializes a new `modelscript.json` package manifest in the current directory.
 
 ### `login`, `logout`, `whoami`
 
-Manages authentication sessions against a ModelScript Registry or self-hosted Enterprise Hub. Credentials and Ed25519 signing keys are stored in `~/.modelscriptrc`.
+Manages authentication sessions against the Ansatz Package Registry or self-hosted Ansatz / ModelScript hub node. Credentials and signing keys are stored in `~/.ansatzrc` (or `~/.modelscriptrc`).
 
 <CliCommand name="login" />
 
@@ -787,7 +787,7 @@ Manages authentication sessions against a ModelScript Registry or self-hosted En
 
 ### `install`
 
-Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `modelscript.lock`.
+Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `msx.lock`.
 
 <CliCommand name="install" />
 
@@ -795,7 +795,7 @@ Resolves semantic version constraints, verifies SHA-256 content-addressable dige
 
 ### `pack`, `publish`, `unpublish`
 
-Packages, cryptographically signs, and publishes libraries to the ModelScript Registry.
+Packages, cryptographically signs, and publishes libraries to the Ansatz Package Registry.
 
 <CliCommand name="pack" />
 
@@ -807,7 +807,7 @@ Packages, cryptographically signs, and publishes libraries to the ModelScript Re
 
 ### `cloud`
 
-Manages remote high-performance computing (HPC) simulation sweeps, Slurm batch jobs, and organization compute credit wallets on ModelScript Cloud.
+Manages remote high-performance computing (HPC) simulation sweeps, Slurm batch jobs, and organization compute credit wallets on Ansatz Cloud HPC.
 
 <CliCommand name="cloud" :show-actions="false" />
 
@@ -838,8 +838,8 @@ Administrative CLI commands for operators managing a self-hosted **ModelScript E
 # Initialize Hub configuration or query cluster service health
 msx hub <init|status> [--api-url <url>]
 
-# Inspect PostgreSQL migration state, apply schema upgrades, or verify the SHA-256 audit ledger chain
-msx db <status|upgrade|verify> [--connection-string <postgres://...>]
+# Inspect database migration state, plan schema upgrades, or verify relational and physical integrity (online or offline air-gapped)
+msx db <status|upgrade|rollback|plan|verify> [--db <file.sqlite>] [--dry-run] [--skip-backup]
 
 # Request, poll, or download long-term regulatory cold-storage archives
 msx archive <request|status|download> <targetId> [-o <path>]

@@ -29,11 +29,11 @@ The CLI parser (`apps/cli/src/main.ts`) intercepts global execution flags prior 
 
 ### Environment Variables
 
-| Variable              | Default                 | Description                                                                                                                                                                    |
-| :-------------------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NO_COLOR`            | Unset                   | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                               |
-| `MODELSCRIPT_API_URL` | `http://localhost:3000` | Base URL for the ModelScript Hub, Package Registry, and Cloud HPC dispatch API (`~/.modelscriptrc` fallback).                                                                  |
-| `MODELSCRIPT_TOKEN`   | Unset                   | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `MODELSCRIPT_API_TOKEN`). |
+| Variable                                     | Default                 | Description                                                                                                                                                                                  |
+| :------------------------------------------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NO_COLOR`                                   | Unset                   | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                             |
+| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000` | Base URL for the Ansatz Platform, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                |
+| `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                   | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`). |
 
 ## Persistent Compiler Daemon (`--daemon`)
 
@@ -122,20 +122,20 @@ The `msx` CLI registers **41 commands** (plus ergonomic aliases) organized into 
 
 ### 6. Package Registry, Cloud HPC & Hub Administration
 
-| Command                                             | Aliases    | Summary                                                                                                     |
-| :-------------------------------------------------- | :--------- | :---------------------------------------------------------------------------------------------------------- |
-| [`init`](./commands.md#init)                        | —          | Initialize a new `modelscript.json` package manifest in the current directory.                              |
-| [`login`](./commands.md#login-logout-whoami)        | —          | Authenticate with a ModelScript Registry / Hub server and store credentials in `~/.modelscriptrc`.          |
-| [`logout`](./commands.md#login-logout-whoami)       | —          | Remove stored authentication tokens from `~/.modelscriptrc`.                                                |
-| [`whoami`](./commands.md#login-logout-whoami)       | —          | Display the currently authenticated user, organization roles, and active registry endpoint.                 |
-| [`install`](./commands.md#install)                  | `i`, `add` | Resolve, verify, and install versioned dependencies from the ModelScript Registry into `modelica_modules/`. |
-| [`pack`](./commands.md#pack-publish-unpublish)      | —          | Create a deterministic, SHA-256 content-addressed `.tgz` package tarball from the workspace.                |
-| [`publish`](./commands.md#pack-publish-unpublish)   | —          | Sign (Ed25519) and publish a package tarball to the ModelScript Registry.                                   |
-| [`unpublish`](./commands.md#pack-publish-unpublish) | —          | Retract or deprecate a published package version from the registry.                                         |
-| [`cloud`](./commands.md#cloud)                      | —          | Dispatch containerized simulation and CAE jobs to remote Slurm HPC clusters and manage compute credits.     |
-| [`hub`](./commands.md#hub-db-archive)               | —          | Initialize or check the health status of a self-hosted ModelScript Hub instance.                            |
-| [`db`](./commands.md#hub-db-archive)                | —          | Inspect, migrate, and cryptographically verify the Hub PostgreSQL database schema and audit chains.         |
-| [`archive`](./commands.md#hub-db-archive)           | —          | Request, monitor, and download cold-storage compliance archives from the Hub.                               |
+| Command                                             | Aliases          | Summary                                                                                                        |
+| :-------------------------------------------------- | :--------------- | :------------------------------------------------------------------------------------------------------------- |
+| [`init`](./commands.md#init)                        | —                | Initialize a new `modelscript.json` package manifest in the current directory.                                 |
+| [`login`](./commands.md#login-logout-whoami)        | —                | Authenticate with the Ansatz Package Registry / Platform and store credentials in `~/.ansatzrc`.               |
+| [`logout`](./commands.md#login-logout-whoami)       | —                | Remove stored authentication tokens from `~/.ansatzrc` / `~/.modelscriptrc`.                                   |
+| [`whoami`](./commands.md#login-logout-whoami)       | —                | Display the currently authenticated user, organization roles, and active registry endpoint.                    |
+| [`install`](./commands.md#install)                  | `i`, `add`       | Resolve, verify, and install versioned dependencies from the Ansatz Package Registry into `modelica_modules/`. |
+| [`pack`](./commands.md#pack-publish-unpublish)      | —                | Create a deterministic, SHA-256 content-addressed `.zip` package archive from the workspace.                   |
+| [`publish`](./commands.md#pack-publish-unpublish)   | —                | Sign (Ed25519) and publish a package archive to the Ansatz Package Registry.                                   |
+| [`unpublish`](./commands.md#pack-publish-unpublish) | —                | Retract or deprecate a published package version from the Ansatz Package Registry.                             |
+| [`cloud`](./commands.md#cloud)                      | —                | Dispatch containerized simulation and CAE jobs to remote Slurm HPC clusters and manage compute credits.        |
+| [`hub`](./commands.md#hub-db-archive)               | `ansatz`, `node` | Initialize or check the health status of a self-hosted Ansatz / ModelScript node.                              |
+| [`db`](./commands.md#hub-db-archive)                | —                | Inspect, migrate, and cryptographically verify the Hub SQLite/PostgreSQL database schema and audit chains.     |
+| [`archive`](./commands.md#hub-db-archive)           | —                | Request, monitor, and download cold-storage compliance archives from the Hub.                                  |
 
 ## Return Codes & CI/CD Integration
 

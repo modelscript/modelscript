@@ -70,7 +70,7 @@ function prompt(question: string, hidden = false): Promise<string> {
 
 export const Login: CommandModule<{}, LoginArgs> = {
   command: "login",
-  describe: "Log in to the ModelScript Registry",
+  describe: "Log in to the Ansatz Package Registry & Platform",
   builder: (yargs) => {
     return yargs
       .option("email", {

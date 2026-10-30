@@ -6,17 +6,19 @@ import {
   CheckIcon,
   CpuIcon,
   GlobeIcon,
+  KeyIcon,
   PlayIcon,
   RocketIcon,
   SparkleFillIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { completeUserOnboarding } from "../../api/admin";
 import api from "../../api/client";
 import { useAuth } from "../../AuthContext";
+import { useCapabilities } from "../../CapabilitiesContext";
 import AnsatzMark from "../../components/AnsatzLogo";
 import { useInstanceBranding } from "../../InstanceBrandingContext";
 import { usePageTitle } from "../../util/title";
@@ -245,6 +247,55 @@ const StarterCard = styled.div`
   }
 `;
 
+const GoldenTicketCard = styled.div`
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 16px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+`;
+
+const TicketHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+`;
+
+const TicketIconBadge = styled.div`
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #06b6d4;
+  flex-shrink: 0;
+`;
+
+const TicketPerksGrid = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+`;
+
+const TicketPerk = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  color: var(--color-text-secondary, #cbd5e1);
+
+  span {
+    line-height: 1.4;
+  }
+`;
+
 const ButtonRow = styled.div`
   display: flex;
   justify-content: space-between;
@@ -380,7 +431,54 @@ export default function OnboardingWizardPage() {
   const branding = useInstanceBranding();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const { hasCapability } = useCapabilities();
+  const showBotStep = hasCapability("botAccounts") && hasCapability("activityPubFederation");
+  const showInvitesStep = hasCapability("userInvites");
+  const brandName = branding.instanceName || "Ansatz";
+
+  const steps = useMemo(
+    () => [
+      {
+        id: "persona",
+        title: `Welcome to ${brandName}`,
+        subtitle:
+          "Select your primary engineering discipline to customize your feed, benchmark suites, and suggested models.",
+      },
+      ...(showBotStep
+        ? [
+            {
+              id: "bots",
+              title: "Connect with Curators & Autonomous Bots",
+              subtitle:
+                "Stay synced with official benchmark updates, continuous compilation results, and verified library releases.",
+            },
+          ]
+        : []),
+      ...(showInvitesStep
+        ? [
+            {
+              id: "invites",
+              title: "Your Founding Invites & Golden Tickets",
+              subtitle:
+                "As an early member, you receive exclusive golden ticket invites to grant immediate peer access to colleagues.",
+            },
+          ]
+        : []),
+      {
+        id: "models",
+        title: "Launch Your First Engineering Workspace",
+        subtitle:
+          "Explore interactive multiphysics models compiled in local WebAssembly with instant zero-install solver execution.",
+      },
+    ],
+    [showBotStep, showInvitesStep, brandName],
+  );
+
+  const [stepIndex, setStepIndex] = useState(0);
+  const currentStep = steps[stepIndex] ?? steps[0]!;
+  const isFirst = stepIndex === 0;
+  const isLast = stepIndex === steps.length - 1;
+
   const [selectedPersona, setSelectedPersona] = useState<string>("physical_systems");
   const [followedBots, setFollowedBots] = useState<Record<string, boolean>>({
     "modelica-msl": true,
@@ -411,8 +509,6 @@ export default function OnboardingWizardPage() {
     }
   };
 
-  const brandName = branding.instanceName || "Ansatz";
-
   return (
     <PageContainer>
       <WizardCard>
@@ -421,44 +517,17 @@ export default function OnboardingWizardPage() {
             <AnsatzMark size={44} accentColor={branding.brandAccentColor} />
           </div>
           <StepIndicator>
-            <StepDot $active={step === 1} $completed={step > 1} />
-            <StepDot $active={step === 2} $completed={step > 2} />
-            <StepDot $active={step === 3} $completed={false} />
+            {steps.map((_, idx) => (
+              <StepDot key={idx} $active={stepIndex === idx} $completed={stepIndex > idx} />
+            ))}
           </StepIndicator>
 
-          {step === 1 && (
-            <>
-              <Title>Welcome to {brandName}</Title>
-              <Subtitle>
-                Select your primary engineering discipline to customize your feed, benchmark suites, and suggested
-                models.
-              </Subtitle>
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <Title>Connect with Curators & Autonomous Bots</Title>
-              <Subtitle>
-                Stay synced with official benchmark updates, continuous compilation results, and verified library
-                releases.
-              </Subtitle>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              <Title>Launch Your First Engineering Workspace</Title>
-              <Subtitle>
-                Explore interactive multiphysics models compiled in local WebAssembly with instant zero-install solver
-                execution.
-              </Subtitle>
-            </>
-          )}
+          <Title>{currentStep.title}</Title>
+          <Subtitle>{currentStep.subtitle}</Subtitle>
         </HeaderSection>
 
         {/* STEP 1: CHOOSE PERSONA */}
-        {step === 1 && (
+        {currentStep.id === "persona" && (
           <PersonaGrid>
             {PERSONAS.map((p) => {
               const selected = selectedPersona === p.id;
@@ -477,7 +546,7 @@ export default function OnboardingWizardPage() {
         )}
 
         {/* STEP 2: CONNECT WITH BOTS */}
-        {step === 2 && (
+        {currentStep.id === "bots" && (
           <CuratorList>
             {BOT_CURATORS.map((bot) => {
               const following = Boolean(followedBots[bot.username]);
@@ -507,8 +576,42 @@ export default function OnboardingWizardPage() {
           </CuratorList>
         )}
 
+        {/* STEP: FOUNDING INVITES & GOLDEN TICKETS */}
+        {currentStep.id === "invites" && (
+          <GoldenTicketCard>
+            <TicketHeader>
+              <TicketIconBadge>
+                <KeyIcon size={28} />
+              </TicketIconBadge>
+              <div>
+                <div style={{ fontSize: "18px", fontWeight: 700, color: "#fff", marginBottom: "4px" }}>
+                  Founding Golden Tickets
+                </div>
+                <div style={{ fontSize: "14px", color: "var(--color-text-secondary, #94a3b8)", lineHeight: "1.5" }}>
+                  Every new engineer is granted <strong>5 Golden Ticket invitations</strong>. Invitees bypass any
+                  waitlist or domain restrictions and immediately receive starting computational credits.
+                </div>
+              </div>
+            </TicketHeader>
+            <TicketPerksGrid>
+              <TicketPerk>
+                <SparkleFillIcon size={16} fill="#06b6d4" />
+                <span>Instant waitlist bypass for your research collaborators</span>
+              </TicketPerk>
+              <TicketPerk>
+                <SparkleFillIcon size={16} fill="#06b6d4" />
+                <span>Dual referral credit bonuses on sign-up for both parties</span>
+              </TicketPerk>
+              <TicketPerk>
+                <SparkleFillIcon size={16} fill="#06b6d4" />
+                <span>Generate and manage invite links anytime in Settings &rarr; Invites</span>
+              </TicketPerk>
+            </TicketPerksGrid>
+          </GoldenTicketCard>
+        )}
+
         {/* STEP 3: STARTER MODELS */}
-        {step === 3 && (
+        {currentStep.id === "models" && (
           <StarterGrid>
             {STARTER_MODELS.map((m) => (
               <StarterCard key={m.name}>
@@ -557,16 +660,16 @@ export default function OnboardingWizardPage() {
 
         {/* FOOTER ACTIONS */}
         <ButtonRow>
-          {step > 1 ? (
-            <SecondaryButton type="button" onClick={() => setStep((s) => (s - 1) as 1 | 2)}>
+          {!isFirst ? (
+            <SecondaryButton type="button" onClick={() => setStepIndex((i) => i - 1)}>
               Back
             </SecondaryButton>
           ) : (
             <div />
           )}
 
-          {step < 3 ? (
-            <PrimaryButton type="button" onClick={() => setStep((s) => (s + 1) as 2 | 3)}>
+          {!isLast ? (
+            <PrimaryButton type="button" onClick={() => setStepIndex((i) => i + 1)}>
               Continue <ArrowRightIcon size={16} />
             </PrimaryButton>
           ) : (

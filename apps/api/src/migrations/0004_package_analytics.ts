@@ -17,4 +17,10 @@ export const packageAnalyticsMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_pkg_dl_lookup ON package_downloads_daily(library_name, download_date);
     `);
   },
+  down(ctx: MigrationContext) {
+    ctx.execute(`
+      DROP INDEX IF EXISTS idx_pkg_dl_lookup;
+      DROP TABLE IF EXISTS package_downloads_daily;
+    `);
+  },
 };

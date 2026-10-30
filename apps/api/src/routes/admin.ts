@@ -223,6 +223,56 @@ export function adminRouter(
   });
 
   /**
+   * GET /api/v1/instance/capabilities
+   * Public endpoint declaring active deployment tier and granular platform capability flags
+   */
+  router.get("/instance/capabilities", (_req: Request, res: Response) => {
+    try {
+      const setupStatus = database.getSetupStatus();
+      const { settings } = setupStatus;
+      const airgapEnforced =
+        process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
+      const edition: "ce" | "ee" = isEnterpriseEditionActive() ? "ee" : "ce";
+      const rawTier = (settings as { profileTier?: string }).profileTier || process.env["ANSATZ_TIER"];
+      const tier =
+        rawTier ||
+        (airgapEnforced
+          ? "tier2_corporate"
+          : settings.federationMode === "disabled" && !settings.waitlistEnabled && !settings.userInvitesEnabled
+            ? "tier0_local_dev"
+            : settings.waitlistEnabled
+              ? "tier3_flagship"
+              : "tier1_federated");
+      const isDown = settings.maintenanceLevel === "lockdown";
+      const isReadOnly = settings.maintenanceLevel === "read_only";
+
+      const capabilities = {
+        userInvites: settings.userInvitesEnabled ?? false,
+        waitlist: settings.waitlistEnabled ?? false,
+        onboardingWizard: settings.onboardingWizardEnabled ?? false,
+        academicFastTrack: settings.academicFastTrackEnabled ?? false,
+        activityPubFederation: settings.federationMode !== "disabled",
+        cloudSolvers: !isDown && !isReadOnly,
+        offlineSandbox: true,
+        airgapEnforced,
+        billing: tier === "tier3_flagship",
+        caeCompute: true,
+        cosimMqtt: settings.federationMode !== "disabled" || !airgapEnforced,
+        botAccounts: !airgapEnforced,
+      };
+
+      res.json({
+        tier,
+        edition,
+        airgapEnforced,
+        capabilities,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load instance capabilities" });
+    }
+  });
+
+  /**
    * GET /api/v1/setup/status
    * Public endpoint returning first-boot install wizard status and deployment tier presets
    */

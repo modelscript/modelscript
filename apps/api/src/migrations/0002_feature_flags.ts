@@ -27,4 +27,10 @@ export const featureFlagsMigration: Migration = {
       );
     }
   },
+  down(ctx: MigrationContext) {
+    ctx.execute(`
+      DROP INDEX IF EXISTS idx_feature_flags_enabled;
+      DROP TABLE IF EXISTS feature_flags;
+    `);
+  },
 };

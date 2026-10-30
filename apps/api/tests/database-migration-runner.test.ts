@@ -113,4 +113,162 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
     assert.equal(check.foreignKeysOk, true);
     assert.equal(check.integrityOk, true);
   });
+
+  await t.test("recreateTable safely migrates table data to new schema with column mapping", async () => {
+    const runner = db.migrationRunner;
+    const recreateMigration: Migration = {
+      id: "9998_recreate_test",
+      name: "9998_recreate_test",
+      up(ctx) {
+        ctx.execute("CREATE TABLE legacy_devices (id INTEGER PRIMARY KEY, serial TEXT, legacy_notes TEXT);");
+        ctx.execute("INSERT INTO legacy_devices (id, serial, legacy_notes) VALUES (1, 'SN-001', 'Initial batch');");
+        ctx.recreateTable({
+          table: "legacy_devices",
+          newSchemaSql: `CREATE TABLE legacy_devices (
+            id INTEGER PRIMARY KEY,
+            serial_number TEXT NOT NULL,
+            description TEXT DEFAULT 'Migrated',
+            status TEXT DEFAULT 'active'
+          );`,
+          columnMapping: {
+            serial: "serial_number",
+            legacy_notes: "description",
+          },
+        });
+      },
+      down(ctx) {
+        ctx.execute("DROP TABLE IF EXISTS legacy_devices;");
+      },
+    };
+
+    const res = await runner.runPending([recreateMigration], { skipBackup: true });
+    assert.equal(res.appliedCount, 1);
+
+    const migrated = db.db.prepare("SELECT * FROM legacy_devices WHERE id = 1").get() as {
+      id: number;
+      serial_number: string;
+      description: string;
+      status: string;
+    };
+    assert.ok(migrated, "Row should exist in recreated table");
+    assert.equal(migrated.serial_number, "SN-001");
+    assert.equal(migrated.description, "Initial batch");
+    assert.equal(migrated.status, "active");
+  });
+
+  await t.test("archiveTable snapshots data to archive table and drops original", async () => {
+    const runner = db.migrationRunner;
+    const archiveMigration: Migration = {
+      id: "9997_archive_test",
+      name: "9997_archive_test",
+      up(ctx) {
+        ctx.execute("CREATE TABLE obsolete_logs (id INTEGER PRIMARY KEY, message TEXT);");
+        ctx.execute("INSERT INTO obsolete_logs (message) VALUES ('log entry 1'), ('log entry 2');");
+        const archiveRes = ctx.archiveTable({
+          table: "obsolete_logs",
+          archiveName: "_archived_test_obsolete_logs",
+        });
+        assert.equal(archiveRes.rowCount, 2);
+        assert.equal(archiveRes.archiveTable, "_archived_test_obsolete_logs");
+      },
+      down(ctx) {
+        ctx.execute("DROP TABLE IF EXISTS _archived_test_obsolete_logs;");
+      },
+    };
+
+    await runner.runPending([archiveMigration], { skipBackup: true });
+
+    // Original table should be dropped
+    const orig = db.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='obsolete_logs'").get();
+    assert.equal(orig, undefined, "Original table should be dropped");
+
+    // Archive table should exist with rows preserved
+    const archivedRows = db.db.prepare("SELECT * FROM _archived_test_obsolete_logs ORDER BY id ASC").all();
+    assert.equal(archivedRows.length, 2);
+  });
+
+  await t.test("rollbackLast and migrateDown roll back applied migrations and update ledger", async () => {
+    const runner = db.migrationRunner;
+    const testMig1: Migration = {
+      id: "9996_roll_one",
+      name: "9996_roll_one",
+      up(ctx) {
+        ctx.execute("CREATE TABLE roll_one (id INTEGER PRIMARY KEY);");
+      },
+      down(ctx) {
+        ctx.execute("DROP TABLE IF EXISTS roll_one;");
+      },
+    };
+    const testMig2: Migration = {
+      id: "9995_roll_two",
+      name: "9995_roll_two",
+      up(ctx) {
+        ctx.execute("CREATE TABLE roll_two (id INTEGER PRIMARY KEY);");
+      },
+      down(ctx) {
+        ctx.execute("DROP TABLE IF EXISTS roll_two;");
+      },
+    };
+
+    await runner.runPending([testMig1, testMig2], { skipBackup: true });
+    assert.ok(db.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='roll_two'").get());
+
+    // Rollback last
+    const rollResult = await runner.rollbackLast([testMig1, testMig2], { skipBackup: true });
+    assert.equal(rollResult.rolledBack, "9995_roll_two");
+    assert.equal(db.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='roll_two'").get(), undefined);
+
+    // Rollback remaining
+    const rollResult2 = await runner.rollbackLast([testMig1, testMig2], { skipBackup: true });
+    assert.equal(rollResult2.rolledBack, "9996_roll_one");
+    assert.equal(db.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='roll_one'").get(), undefined);
+  });
+
+  await t.test("bidirectional migration matrix: migrate down to baseline and back up without drift", async () => {
+    const { allMigrations } = await import("../src/migrations/index.js");
+    const freshTmp = fs.mkdtempSync(path.join(os.tmpdir(), "ms-bidirectional-test-"));
+    const freshDb = new LibraryDatabase(freshTmp);
+
+    try {
+      const runner = freshDb.migrationRunner;
+
+      // Rollback all migrations down to baseline (0001_baseline_schema)
+      let downResult;
+      try {
+        downResult = runner.migrateDownSync("0001_baseline_schema", allMigrations, { silent: true });
+      } catch (err) {
+        console.error("MIGRATE DOWN ERROR:", err);
+        throw err;
+      }
+      assert.ok(downResult.rolledBackCount >= 19, "Expected to rollback all subsequent migrations down to baseline");
+
+      const statusAfterDown = runner.getStatus(allMigrations);
+      assert.equal(statusAfterDown.currentVersion, "0001_baseline_schema");
+      assert.equal(statusAfterDown.applied.length, 1);
+
+      // Re-apply all pending migrations up to HEAD
+      let upResult;
+      try {
+        upResult = await runner.runPending(allMigrations, { skipBackup: true, silent: true });
+      } catch (err) {
+        console.error("MIGRATE UP ERROR:", err);
+        throw err;
+      }
+      assert.equal(upResult.appliedCount, downResult.rolledBackCount);
+
+      const statusAfterUp = runner.getStatus(allMigrations);
+      assert.equal(statusAfterUp.pendingCount, 0);
+      assert.equal(statusAfterUp.currentVersion, allMigrations[allMigrations.length - 1]!.name);
+
+      // Physical & relational integrity check
+      const check = runner.verifyIntegrity();
+      assert.equal(check.foreignKeysOk, true);
+      assert.equal(check.integrityOk, true);
+    } finally {
+      try {
+        freshDb.db.close();
+        fs.rmSync(freshTmp, { recursive: true, force: true });
+      } catch {}
+    }
+  });
 });

@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
-import { requireToken } from "../util/auth.js";
+import { getApiUrl, requireToken } from "../util/auth.js";
 import { parsePackageMo } from "../util/package-mo.js";
 
 interface UnpublishArgs {
@@ -14,7 +14,7 @@ interface UnpublishArgs {
 
 export const Unpublish: CommandModule<{}, UnpublishArgs> = {
   command: "unpublish [path]",
-  describe: "Remove a published library version from the ModelScript Registry",
+  describe: "Remove a published library version from the Ansatz Package Registry",
   builder: (yargs) => {
     return yargs
       .version(false)
@@ -118,7 +118,7 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
     const token = requireToken();
 
     try {
-      const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
+      const API_URL = getApiUrl();
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
       const res = await fetch(endpoint, {

@@ -528,7 +528,7 @@ getErrorString();
   // ── 3. POST /api/v1/cloud/dispatch ──
   // Unified entry point for dispatching Modelica, CFD, FEA, or Monte Carlo jobs
   router.post(
-    "/cloud/dispatch",
+    ["/cloud/dispatch", "/cloud/jobs", "/hpc/jobs"],
     enforceExportCompliance(() => database),
     async (req: Request, res: Response): Promise<void> => {
       const payload = req.body as CloudDispatchPayload;

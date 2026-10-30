@@ -61,6 +61,17 @@ test("Ansatz Onboarding, Waitlist & Referral HTTP Routes Suite", async (t) => {
     assert.strictEqual(typeof res.body.onboardingWizardEnabled, "boolean");
   });
 
+  await t.test("GET /api/v1/instance/capabilities exposes tier, edition, and granular capabilities", async () => {
+    const res = await request(app).get("/api/v1/instance/capabilities").expect(200);
+    assert.ok(res.body.tier);
+    assert.ok(["ce", "ee"].includes(res.body.edition));
+    assert.strictEqual(typeof res.body.airgapEnforced, "boolean");
+    assert.ok(res.body.capabilities);
+    assert.strictEqual(typeof res.body.capabilities.userInvites, "boolean");
+    assert.strictEqual(typeof res.body.capabilities.offlineSandbox, "boolean");
+    assert.strictEqual(typeof res.body.capabilities.caeCompute, "boolean");
+  });
+
   await t.test("POST /api/v1/waitlist/apply validates gating, emails, and records applications", async () => {
     // 1. When waitlist is disabled, application is rejected with 400
     db.updateInstanceSettings({ waitlistEnabled: false });

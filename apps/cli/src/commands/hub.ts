@@ -332,7 +332,8 @@ export const HubStatus: CommandModule<{}, { url?: string | undefined }> = {
 
 export const Hub: CommandModule = {
   command: "hub <command>",
-  describe: "Manage, configure, and inspect ModelScript hub nodes",
+  aliases: ["ansatz", "node"],
+  describe: "Manage, configure, and inspect Ansatz & ModelScript hub nodes",
   builder: (yargs) => {
     return yargs.command(HubInit).command(HubStatus).demandCommand(1, "Please specify a hub command (init, status)");
   },

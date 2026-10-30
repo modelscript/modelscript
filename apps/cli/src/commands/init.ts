@@ -122,7 +122,8 @@ export const Init: CommandModule<{}, InitArgs> = {
     writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
     console.log(`\n✅ Created ${packageJsonPath}`);
     console.log("\nNext steps:");
-    console.log(`  npm install @modelscript/msl --registry=https://api.modelscript.org`);
-    console.log(`  npm publish --registry=https://api.modelscript.org`);
+    console.log(`  msx install @modelscript/msl`);
+    console.log(`  msx publish .`);
+    console.log(`  (Inspect & share on Ansatz Package Registry at https://ansatz.social/packages)`);
   },
 };

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import fs from "node:fs";
+import path from "node:path";
 import type { ArgumentsCamelCase, Argv, CommandModule } from "yargs";
 import { getApiUrl, getToken } from "../util/auth.js";
 
@@ -11,6 +13,44 @@ interface DbArgs {
   file?: string | undefined;
   keep?: number | undefined;
   apiUrl?: string | undefined;
+  db?: string | undefined;
+}
+
+interface MigrationRecord {
+  name: string;
+  applied_at: string;
+  execution_ms: number;
+}
+
+interface MigrationRunnerInstance {
+  getStatus: (migrations: unknown[]) => {
+    currentVersion: string | null;
+    applied: MigrationRecord[];
+    pending: { name: string }[];
+  };
+  runPending: (
+    migrations: unknown[],
+    options?: { skipBackup?: boolean },
+  ) => Promise<{
+    appliedCount: number;
+    backupPath?: string;
+  }>;
+  rollbackLast: (
+    migrations: unknown[],
+    options?: { skipBackup?: boolean },
+  ) => Promise<{
+    rolledBack?: string;
+    backupPath?: string;
+  }>;
+  verifyIntegrity: () => {
+    foreignKeysOk: boolean;
+    integrityOk: boolean;
+  };
+}
+
+interface MigrationModule {
+  SqliteMigrationRunner: new (db: unknown, dbPath?: string) => MigrationRunnerInstance;
+  allMigrations: Array<{ name: string }>;
 }
 
 function useColor(): boolean {
@@ -26,6 +66,144 @@ const c = {
   dim: (s: string) => (useColor() ? `\x1b[2m${s}\x1b[0m` : s),
 };
 
+async function loadApiMigrations(): Promise<MigrationModule> {
+  const candidates = [
+    new URL("../../../api/src/migrations/index.js", import.meta.url).href,
+    new URL("../../../api/dist/migrations/index.js", import.meta.url).href,
+    path.resolve(process.cwd(), "apps/api/src/migrations/index.ts"),
+    path.resolve(process.cwd(), "apps/api/dist/migrations/index.js"),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const mod = (await import(candidate)) as Partial<MigrationModule>;
+      if (mod && (mod.SqliteMigrationRunner || mod.allMigrations)) {
+        return mod as MigrationModule;
+      }
+    } catch {
+      // try next
+    }
+  }
+  throw new Error("Unable to locate @modelscript/api migrations module.");
+}
+
+async function handleOfflineDb(args: ArgumentsCamelCase<DbArgs>): Promise<void> {
+  const dbFile = path.resolve(process.cwd(), args.db!);
+  if (!fs.existsSync(dbFile) && args.action !== "upgrade") {
+    console.error(c.red(`Database file not found: ${dbFile}`));
+    process.exit(1);
+  }
+
+  if (args.action === "upgrade" && args.dryRun && !fs.existsSync(dbFile)) {
+    const { allMigrations } = await loadApiMigrations();
+    console.log(c.bold(`Performing offline database upgrade on ${dbFile}...`));
+    console.log(c.yellow(`[Dry-Run] ${allMigrations.length} migration(s) are pending and would be applied:`));
+    for (const m of allMigrations) {
+      console.log(`  ${c.yellow("•")} ${m.name}`);
+    }
+    return;
+  }
+
+  const dbDir = path.dirname(dbFile);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
+  const Database = (await import("better-sqlite3")).default;
+  const db = new Database(dbFile);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("busy_timeout = 5000");
+
+  const { SqliteMigrationRunner, allMigrations } = await loadApiMigrations();
+  const runner = new SqliteMigrationRunner(db, dbFile);
+  const action = args.action;
+
+  if (action === "status") {
+    const status = runner.getStatus(allMigrations);
+    console.log(c.bold(`\nModelScript Offline Database Status (${dbFile}):`));
+    console.log(
+      `  Current Schema Version: ${status.currentVersion ? c.green(status.currentVersion) : c.yellow("none (uninitialized)")}`,
+    );
+    console.log(`  Applied Migrations:     ${c.bold(String(status.applied.length))}`);
+    console.log(
+      `  Pending Migrations:     ${status.pending.length > 0 ? c.yellow(String(status.pending.length)) : c.green("0 (up to date)")}\n`,
+    );
+
+    if (status.applied.length > 0) {
+      console.log(c.bold("Applied History:"));
+      for (const m of status.applied) {
+        console.log(`  ${c.green("✔")} ${m.name} ${c.dim(`(${m.applied_at}, ${m.execution_ms}ms)`)}`);
+      }
+      console.log("");
+    }
+
+    if (status.pending.length > 0) {
+      console.log(c.bold("Pending Migrations to Apply:"));
+      for (const m of status.pending) {
+        console.log(`  ${c.yellow("⏳")} ${m.name}`);
+      }
+      console.log(c.dim(`\nRun 'msx db upgrade --db ${args.db}' to apply pending migrations.`));
+    }
+  } else if (action === "upgrade") {
+    console.log(c.bold(`Performing offline database upgrade on ${dbFile}...`));
+    if (args.dryRun) {
+      const status = runner.getStatus(allMigrations);
+      console.log(c.yellow(`[Dry-Run] ${status.pending.length} migration(s) are pending and would be applied:`));
+      for (const m of status.pending) {
+        console.log(`  ${c.yellow("•")} ${m.name}`);
+      }
+      return;
+    }
+
+    const result = await runner.runPending(allMigrations, {
+      skipBackup: Boolean(args.skipBackup),
+    });
+
+    if (result.backupPath) {
+      console.log(c.green(`[Backup] Automated pre-flight snapshot created at: ${result.backupPath}`));
+    }
+    console.log(c.green(`[Success] Applied ${result.appliedCount} migration(s). Database is fully upgraded.`));
+  } else if (action === "rollback") {
+    console.log(c.bold(`Performing offline rollback on ${dbFile}...`));
+    const result = await runner.rollbackLast(allMigrations, {
+      skipBackup: Boolean(args.skipBackup),
+    });
+    if (result.backupPath) {
+      console.log(c.green(`[Backup] Automated pre-flight snapshot created at: ${result.backupPath}`));
+    }
+    if (result.rolledBack) {
+      console.log(c.green(`[Success] Rolled back migration: ${result.rolledBack}`));
+    } else {
+      console.log(c.yellow("[Notice] No migrations to rollback."));
+    }
+  } else if (action === "verify") {
+    console.log(c.bold(`Verifying physical & relational integrity of ${dbFile}...`));
+    const check = runner.verifyIntegrity();
+    console.log(`  Foreign Key Relations:  ${check.foreignKeysOk ? c.green("VALID") : c.red("INCONSISTENT")}`);
+    console.log(`  Physical Table Storage: ${check.integrityOk ? c.green("HEALTHY") : c.red("CORRUPTED")}\n`);
+  } else if (action === "plan") {
+    const status = runner.getStatus(allMigrations);
+    console.log(c.bold(`\nOffline Migration Plan for ${dbFile}:`));
+    if (status.pending.length === 0) {
+      console.log(c.green("  Database schema is fully up to date. No pending migrations.\n"));
+      return;
+    }
+    console.log(c.yellow(`  Pending Migrations (${status.pending.length}):`));
+    for (const m of status.pending) {
+      console.log(`  ${c.yellow("⏳")} ${m.name}`);
+    }
+    console.log(c.dim(`\nExecute with 'msx db upgrade --db ${args.db}'.\n`));
+  } else {
+    console.error(
+      c.red(
+        `Action '${action}' is not supported in offline mode (--db). Supported: status, upgrade, rollback, plan, verify.`,
+      ),
+    );
+    process.exit(1);
+  }
+}
+
 export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
   command: "db <action>",
   describe: "Database schema migration, health verification, hot WAL backup, and point-in-time restore",
@@ -34,10 +212,12 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
       .positional("action", {
         type: "string",
         describe:
-          "Action to perform: status | upgrade | verify | doctor | support-bundle | backup | backups | restore | prune | export-bundle | import-bundle",
+          "Action to perform: status | upgrade | rollback | plan | verify | doctor | support-bundle | backup | backups | restore | prune | export-bundle | import-bundle",
         choices: [
           "status",
           "upgrade",
+          "rollback",
+          "plan",
           "verify",
           "doctor",
           "support-bundle",
@@ -48,6 +228,10 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
           "export-bundle",
           "import-bundle",
         ],
+      })
+      .option("db", {
+        type: "string",
+        describe: "Path to local SQLite database file for offline air-gapped maintenance",
       })
       .option("dry-run", {
         type: "boolean",
@@ -79,6 +263,11 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
       }) as unknown as Argv<DbArgs>;
   },
   handler: async (args: ArgumentsCamelCase<DbArgs>) => {
+    if (args.db) {
+      await handleOfflineDb(args);
+      return;
+    }
+
     const action = args.action;
     const apiUrl = args.apiUrl || getApiUrl();
     const token = getToken();

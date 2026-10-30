@@ -4,7 +4,15 @@ import type Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { Migration, MigrationContext, MigrationRecord, MigrationStatus } from "./types.js";
+import type {
+  ArchiveTableOptions,
+  ArchiveTableResult,
+  Migration,
+  MigrationContext,
+  MigrationRecord,
+  MigrationStatus,
+  RecreateTableOptions,
+} from "./types.js";
 
 export class SqliteMigrationRunner {
   readonly #db: Database.Database;
@@ -26,6 +34,99 @@ export class SqliteMigrationRunner {
         execution_ms INTEGER NOT NULL
       );
     `);
+  }
+
+  #createContext(): MigrationContext {
+    return {
+      dialect: "sqlite",
+      execute: (sql: string, params?: unknown[]) => {
+        if (params && params.length > 0) {
+          this.#db.prepare(sql).run(...params);
+        } else {
+          this.#db.exec(sql);
+        }
+      },
+      query: <T = unknown>(sql: string, params?: unknown[]): T[] => {
+        if (params && params.length > 0) {
+          return this.#db.prepare(sql).all(...params) as T[];
+        }
+        return this.#db.prepare(sql).all() as T[];
+      },
+      recreateTable: (options: RecreateTableOptions) => {
+        const { table, newSchemaSql, columnMapping, copyWhere } = options;
+        const tempOldTable = `__old_${table}_${Date.now()}`;
+
+        // 1. Rename existing table to temp table
+        this.#db.exec(`ALTER TABLE "${table}" RENAME TO "${tempOldTable}";`);
+
+        // 2. Create the replacement table
+        this.#db.exec(newSchemaSql);
+
+        // 3. Inspect columns of both tables
+        const oldCols = (this.#db.prepare(`PRAGMA table_info("${tempOldTable}")`).all() as { name: string }[]).map(
+          (c) => c.name,
+        );
+        const newCols = (this.#db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map(
+          (c) => c.name,
+        );
+
+        let targetCols: string[] = [];
+        let sourceExprs: string[] = [];
+
+        if (columnMapping) {
+          for (const [oldCol, newCol] of Object.entries(columnMapping)) {
+            if (oldCols.includes(oldCol) && newCols.includes(newCol)) {
+              targetCols.push(`"${newCol}"`);
+              sourceExprs.push(`"${oldCol}"`);
+            }
+          }
+        } else {
+          const common = oldCols.filter((col) => newCols.includes(col));
+          targetCols = common.map((c) => `"${c}"`);
+          sourceExprs = common.map((c) => `"${c}"`);
+        }
+
+        if (targetCols.length > 0) {
+          const whereClause = copyWhere ? ` WHERE ${copyWhere}` : "";
+          this.#db.exec(`
+            INSERT INTO "${table}" (${targetCols.join(", ")})
+            SELECT ${sourceExprs.join(", ")} FROM "${tempOldTable}"${whereClause};
+          `);
+        }
+
+        // 4. Drop temporary table
+        this.#db.exec(`DROP TABLE "${tempOldTable}";`);
+      },
+      archiveTable: (options: string | ArchiveTableOptions): ArchiveTableResult => {
+        const opts: ArchiveTableOptions = typeof options === "string" ? { table: options } : options;
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[-:T.]/g, "")
+          .slice(0, 14);
+        const archiveTable = opts.archiveName || `_archived_${opts.table}_${timestamp}`;
+        const dropOriginal = opts.dropOriginal !== false;
+
+        const exists = this.#db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(opts.table);
+        if (!exists) {
+          return { archiveTable, rowCount: 0, archivedAt: new Date().toISOString() };
+        }
+
+        const countRow = this.#db.prepare(`SELECT COUNT(*) as count FROM "${opts.table}"`).get() as { count: number };
+        const rowCount = countRow ? Number(countRow.count) : 0;
+
+        this.#db.exec(`CREATE TABLE IF NOT EXISTS "${archiveTable}" AS SELECT * FROM "${opts.table}";`);
+
+        if (dropOriginal) {
+          this.#db.exec(`DROP TABLE IF EXISTS "${opts.table}";`);
+        }
+
+        return {
+          archiveTable,
+          rowCount,
+          archivedAt: new Date().toISOString(),
+        };
+      },
+    };
   }
 
   getApplied(): MigrationRecord[] {
@@ -79,22 +180,7 @@ export class SqliteMigrationRunner {
       return { appliedCount: pending.length };
     }
 
-    const context: MigrationContext = {
-      dialect: "sqlite",
-      execute: (sql: string, params?: unknown[]) => {
-        if (params && params.length > 0) {
-          this.#db.prepare(sql).run(...params);
-        } else {
-          this.#db.exec(sql);
-        }
-      },
-      query: <T = unknown>(sql: string, params?: unknown[]): T[] => {
-        if (params && params.length > 0) {
-          return this.#db.prepare(sql).all(...params) as T[];
-        }
-        return this.#db.prepare(sql).all() as T[];
-      },
-    };
+    const context = this.#createContext();
 
     const checkStmt = this.#db.prepare(`
       SELECT 1 FROM _modelscript_migrations WHERE name = ?
@@ -133,6 +219,77 @@ export class SqliteMigrationRunner {
 
     this.verifyIntegrity();
     return { appliedCount: actuallyAppliedCount };
+  }
+
+  rollbackLastSync(
+    allMigrations: Migration[],
+    options?: { silent?: boolean | undefined },
+  ): { rolledBack: string | null } {
+    const applied = this.getApplied();
+    if (applied.length === 0) {
+      return { rolledBack: null };
+    }
+
+    const lastApplied = applied[applied.length - 1]!;
+    const migration = allMigrations.find((m) => m.name === lastApplied.name);
+
+    if (!migration) {
+      throw new Error(`Cannot rollback '${lastApplied.name}': Migration definition not found`);
+    }
+
+    if (!migration.down) {
+      throw new Error(`Cannot rollback '${lastApplied.name}': No down() method defined on migration`);
+    }
+
+    const context = this.#createContext();
+    const deleteStmt = this.#db.prepare(`DELETE FROM _modelscript_migrations WHERE name = ?`);
+
+    const tx = this.#db.transaction(() => {
+      migration.down!(context);
+      deleteStmt.run(lastApplied.name);
+    });
+    tx();
+
+    if (!options?.silent) {
+      console.log(`[MigrationRunner] Rolled back migration: ${lastApplied.name}`);
+    }
+
+    this.verifyIntegrity();
+    return { rolledBack: lastApplied.name };
+  }
+
+  async rollbackLast(
+    allMigrations: Migration[],
+    options?: { skipBackup?: boolean | undefined; silent?: boolean | undefined },
+  ): Promise<{ rolledBack: string | null; backupPath: string | null }> {
+    let backupPath: string | null = null;
+    if (!options?.skipBackup) {
+      backupPath = await this.createBackup();
+      if (backupPath && !options?.silent) {
+        console.log(`[MigrationRunner] Created pre-flight backup snapshot at: ${backupPath}`);
+      }
+    }
+
+    const result = this.rollbackLastSync(allMigrations, options);
+    return { rolledBack: result.rolledBack, backupPath };
+  }
+
+  migrateDownSync(
+    targetMigrationName: string,
+    allMigrations: Migration[],
+    options?: { silent?: boolean | undefined },
+  ): { rolledBackCount: number } {
+    let count = 0;
+    while (true) {
+      const applied = this.getApplied();
+      if (applied.length === 0) break;
+      const current = applied[applied.length - 1]!;
+      if (current.name === targetMigrationName) break;
+
+      this.rollbackLastSync(allMigrations, options);
+      count++;
+    }
+    return { rolledBackCount: count };
   }
 
   async runPending(

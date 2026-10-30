@@ -507,8 +507,17 @@ await yargs(rawArgs)
       "Init",
     ),
   )
-  .command(lazy("login", "Log in to the ModelScript Registry", () => import("./commands/login.js"), "Login"))
-  .command(lazy("logout", "Log out from the ModelScript Registry", () => import("./commands/logout.js"), "Logout"))
+  .command(
+    lazy("login", "Log in to the Ansatz Package Registry & Platform", () => import("./commands/login.js"), "Login"),
+  )
+  .command(
+    lazy(
+      "logout",
+      "Log out from the Ansatz Package Registry & Platform",
+      () => import("./commands/logout.js"),
+      "Logout",
+    ),
+  )
   .command(
     lazy(
       "whoami",
@@ -528,7 +537,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "install [package]",
-      "Install a package from the ModelScript Registry into the local workspace",
+      "Install a package from the Ansatz Package Registry into the local workspace",
       () => import("./commands/install.js"),
       "Install",
       ["i", "add"],
@@ -537,7 +546,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "publish <path>",
-      "Publish a library directory or single Modelica file to the ModelScript Registry",
+      "Publish a library directory or single Modelica file to the Ansatz Package Registry",
       () => import("./commands/publish.js"),
       "Publish",
     ),
@@ -553,7 +562,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "unpublish [path]",
-      "Remove a published library version from the ModelScript Registry",
+      "Remove a published library version from the Ansatz Package Registry",
       () => import("./commands/unpublish.js"),
       "Unpublish",
     ),
@@ -561,9 +570,10 @@ await yargs(rawArgs)
   .command(
     lazy(
       "hub <command>",
-      "Manage, configure, and inspect ModelScript hub nodes",
+      "Manage, configure, and inspect Ansatz & ModelScript hub nodes",
       () => import("./commands/hub.js"),
       "Hub",
+      ["ansatz", "node"],
     ),
   )
   .command(

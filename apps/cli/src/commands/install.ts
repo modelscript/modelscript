@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import path from "node:path";
 import type { Argv, CommandModule } from "yargs";
 import { DependencySolver, type PackageVersionProvider } from "../solver/solver.js";
-import { getToken } from "../util/auth.js";
+import { getApiUrl, getToken } from "../util/auth.js";
 import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
 import { parsePackageUses } from "../util/package-mo.js";
 
@@ -157,7 +157,7 @@ export function installLocalArchive(
 export const Install: CommandModule<{}, InstallArgs> = {
   command: "install [package]",
   aliases: ["i", "add"],
-  describe: "Install a package from the ModelScript Registry into the local workspace",
+  describe: "Install a package from the Ansatz Package Registry into the local workspace",
   builder: (yargs) => {
     return yargs
       .positional("package", {
@@ -185,7 +185,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
       }) as unknown as Argv<InstallArgs>;
   },
   handler: async (args) => {
-    const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
+    const API_URL = getApiUrl();
     const cwd = process.cwd();
     const isFrozen = Boolean(args.frozenLockfile || args.frozen || args.ci);
     const lockfile = readLockfile(cwd);

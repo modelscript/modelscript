@@ -6,14 +6,19 @@ export const migration0013: Migration = {
   id: "0013_social_llm_bots",
   name: "0013_social_llm_bots",
   up(ctx: MigrationContext) {
-    ctx.execute(`
-      -- Enhance users table with bot configuration fields
-      ALTER TABLE users ADD COLUMN bot_scopes TEXT DEFAULT 'social:read,social:write';
-      ALTER TABLE users ADD COLUMN bot_system_prompt TEXT;
-      ALTER TABLE users ADD COLUMN bot_model TEXT DEFAULT 'gemini-1.5-flash';
-      ALTER TABLE users ADD COLUMN bot_last_used_at TEXT;
+    const addColumn = (col: string) => {
+      try {
+        ctx.execute(`ALTER TABLE users ADD COLUMN ${col};`);
+      } catch {
+        // Column may already exist
+      }
+    };
+    addColumn("bot_scopes TEXT DEFAULT 'social:read,social:write'");
+    addColumn("bot_system_prompt TEXT");
+    addColumn("bot_model TEXT DEFAULT 'gemini-1.5-flash'");
+    addColumn("bot_last_used_at TEXT");
 
-      -- Create queue table for background bot mentions
+    ctx.execute(`
       CREATE TABLE IF NOT EXISTS bot_mention_queue (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         bot_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

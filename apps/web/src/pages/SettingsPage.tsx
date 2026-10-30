@@ -9,6 +9,7 @@ import Box from "../components/Box";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 
+import { useCapabilities } from "../CapabilitiesContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 
 // Extracted Tab Subcomponents
@@ -164,6 +165,7 @@ const SettingsPage: React.FC = () => {
 
   const { isAdmin } = useAuth();
   const branding = useInstanceBranding();
+  const { hasCapability } = useCapabilities();
   const navigate = useNavigate();
   usePageTitle("Settings");
 
@@ -239,13 +241,18 @@ const SettingsPage: React.FC = () => {
               keywords: "2fa security access keys ssh token sessions",
               isActive: activeTab === "security",
             },
-            {
-              id: "billing",
-              label: "Subscription & Compute Quotas",
-              tab: "billing" as TabType,
-              keywords: "billing quota compute invoice payment usage subscription commercial license plan credits tier",
-              isActive: activeTab === "billing",
-            },
+            ...(hasCapability("billing")
+              ? [
+                  {
+                    id: "billing",
+                    label: "Subscription & Compute Quotas",
+                    tab: "billing" as TabType,
+                    keywords:
+                      "billing quota compute invoice payment usage subscription commercial license plan credits tier",
+                    isActive: activeTab === "billing",
+                  },
+                ]
+              : []),
             {
               id: "organizations",
               label: "Team & Organizations",
@@ -253,7 +260,7 @@ const SettingsPage: React.FC = () => {
               keywords: "team organization organizations company seats members invite roles collaborate license",
               isActive: activeTab === "organizations",
             },
-            ...(branding.userInvitesEnabled !== false
+            ...(hasCapability("userInvites") && branding.userInvitesEnabled !== false
               ? [
                   {
                     id: "invites",
@@ -264,7 +271,7 @@ const SettingsPage: React.FC = () => {
                   },
                 ]
               : []),
-            ...(hasBots
+            ...(hasBots && hasCapability("botAccounts")
               ? [
                   {
                     id: "bots",

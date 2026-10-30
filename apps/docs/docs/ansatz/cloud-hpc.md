@@ -8,7 +8,7 @@ While client-side simulations execute directly in the browser via WebAssembly, l
 
 ```mermaid
 flowchart LR
-    A["Browser (React 19 / Monaco)"] -->|POST /api/v1/hpc/jobs| B["Ansatz API Gateway"]
+    A["Browser (React 19 / Monaco)"] -->|POST /api/v1/cloud/jobs| B["Ansatz API Gateway"]
     B -->|Slurm sbatch / REST| C["HPC Compute Node / Cluster"]
     C -->|Worker Log Stream| B
     B -->|WebSocket Logs| A

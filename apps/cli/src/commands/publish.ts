@@ -4,7 +4,7 @@ import AdmZip from "adm-zip";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Argv, CommandModule } from "yargs";
-import { requireToken } from "../util/auth.js";
+import { getApiUrl, requireToken } from "../util/auth.js";
 import {
   buildPackageZip,
   collectPackageFiles,
@@ -25,7 +25,7 @@ interface PublishArgs {
 
 export const Publish: CommandModule<{}, PublishArgs> = {
   command: "publish <path>",
-  describe: "Publish a library directory or single Modelica file to the ModelScript Registry",
+  describe: "Publish a library directory or single Modelica file to the Ansatz Package Registry",
   builder: ((yargs: Argv) => {
     return yargs
       .positional("path", {
@@ -171,8 +171,7 @@ export const Publish: CommandModule<{}, PublishArgs> = {
     }
 
     try {
-      // Connects to local dev registry; could be configurable
-      const API_URL = process.env["MODELSCRIPT_API_URL"] || "http://localhost:3000";
+      const API_URL = getApiUrl();
       const endpoint = `${API_URL}/api/v1/libraries/${name}/${version}`;
 
       const headers: Record<string, string> = {

@@ -10,7 +10,7 @@ interface LogoutArgs {
 
 export const Logout: CommandModule<{}, LogoutArgs> = {
   command: "logout",
-  describe: "Log out from the ModelScript Registry",
+  describe: "Log out from the Ansatz Package Registry & Platform",
   builder: (yargs) => {
     return yargs
       .option("registry", {

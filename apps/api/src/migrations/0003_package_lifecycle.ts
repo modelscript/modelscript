@@ -47,4 +47,10 @@ export const packageLifecycleMigration: Migration = {
       CREATE INDEX IF NOT EXISTS idx_pkg_transfer_to ON package_ownership_transfers(to_user_id, status);
     `);
   },
+  down(ctx: MigrationContext) {
+    ctx.execute(`
+      DROP INDEX IF EXISTS idx_pkg_transfer_to;
+      DROP TABLE IF EXISTS package_ownership_transfers;
+    `);
+  },
 };

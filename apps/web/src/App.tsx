@@ -5,6 +5,7 @@ import React, { Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getPublicInstanceBanner, recordPageViewBeacon } from "./api/admin";
 import { AuthProvider, useAuth } from "./AuthContext";
+import { CapabilitiesProvider } from "./CapabilitiesContext";
 import AdminRoute from "./components/AdminRoute";
 import AppShell from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
@@ -630,13 +631,15 @@ function AppWithTheme() {
   return (
     <ThemeContextProvider>
       <InstanceBrandingProvider>
-        <AuthProvider>
-          <FeatureFlagProvider>
-            <ModelingPreferencesProvider>
-              <App />
-            </ModelingPreferencesProvider>
-          </FeatureFlagProvider>
-        </AuthProvider>
+        <CapabilitiesProvider>
+          <AuthProvider>
+            <FeatureFlagProvider>
+              <ModelingPreferencesProvider>
+                <App />
+              </ModelingPreferencesProvider>
+            </FeatureFlagProvider>
+          </AuthProvider>
+        </CapabilitiesProvider>
       </InstanceBrandingProvider>
     </ThemeContextProvider>
   );
