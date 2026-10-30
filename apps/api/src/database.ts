@@ -23,7 +23,9 @@ import type {
   SolutionRow,
   UserArchiveData,
   UserFederationInfo,
+  UserReferralRow,
   UserRow,
+  WaitlistSubmissionRow,
 } from "./database/types.js";
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
@@ -474,6 +476,9 @@ export class LibraryDatabase {
         totp_secret     TEXT,
         totp_enabled    INTEGER DEFAULT 0,
         backup_codes    TEXT DEFAULT '[]',
+        onboarding_completed INTEGER DEFAULT 0,
+        engineering_persona TEXT,
+        invites_remaining INTEGER DEFAULT 5,
         created_at      TEXT DEFAULT (datetime('now'))
       );
 
@@ -1070,6 +1075,36 @@ export class LibraryDatabase {
       );
 
       CREATE INDEX IF NOT EXISTS idx_quarantined_resources_status ON quarantined_resources(status);
+
+      CREATE TABLE IF NOT EXISTS user_referrals (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        referrer_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        referee_id      INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        invite_id       INTEGER REFERENCES instance_invites(id) ON DELETE SET NULL,
+        reward_granted  INTEGER NOT NULL DEFAULT 0,
+        reward_amount   REAL NOT NULL DEFAULT 0.0,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_referrals_referrer ON user_referrals(referrer_id);
+      CREATE INDEX IF NOT EXISTS idx_user_referrals_referee ON user_referrals(referee_id);
+
+      CREATE TABLE IF NOT EXISTS waitlist_submissions (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        email           TEXT NOT NULL UNIQUE,
+        full_name       TEXT,
+        organization    TEXT,
+        discipline      TEXT,
+        portfolio_url   TEXT,
+        statement       TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        approved_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        invite_code_id  INTEGER REFERENCES instance_invites(id) ON DELETE SET NULL,
+        ip_address      TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        reviewed_at     TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist_submissions(status);
+      CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist_submissions(email);
     `);
 
     // Migrations
@@ -5716,6 +5751,12 @@ export class LibraryDatabase {
     customTermsMarkdown: string;
     customPrivacyMarkdown: string;
     requireAdmin2FA: boolean;
+    waitlistEnabled: boolean;
+    userInvitesEnabled: boolean;
+    userDefaultInviteCount: number;
+    academicFastTrackEnabled: boolean;
+    academicDomainPatterns: string[];
+    onboardingWizardEnabled: boolean;
     lockedByEnv: string[];
   } {
     const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
@@ -5733,6 +5774,11 @@ export class LibraryDatabase {
     if (process.env["MSX_SHOW_POWERED_BY"] !== undefined) lockedByEnv.push("showPoweredBy");
     if (process.env["MSX_REGISTRATION_MODE"]) lockedByEnv.push("registrationMode");
     if (process.env["MSX_FEDERATION_MODE"]) lockedByEnv.push("federationMode");
+    if (process.env["MSX_WAITLIST_ENABLED"] !== undefined) lockedByEnv.push("waitlistEnabled");
+    if (process.env["MSX_USER_INVITES_ENABLED"] !== undefined) lockedByEnv.push("userInvitesEnabled");
+    if (process.env["MSX_USER_DEFAULT_INVITES"] !== undefined) lockedByEnv.push("userDefaultInviteCount");
+    if (process.env["MSX_ACADEMIC_FAST_TRACK"] !== undefined) lockedByEnv.push("academicFastTrackEnabled");
+    if (process.env["MSX_ONBOARDING_WIZARD_ENABLED"] !== undefined) lockedByEnv.push("onboardingWizardEnabled");
     if (process.env["MSX_MAINTENANCE_MODE"] !== undefined) {
       lockedByEnv.push("maintenanceMode", "maintenanceLevel");
     }
@@ -5829,6 +5875,51 @@ export class LibraryDatabase {
 
     const maintenanceMode = maintenanceLevel === "read_only" || maintenanceLevel === "lockdown";
 
+    const waitlistEnabled =
+      process.env["MSX_WAITLIST_ENABLED"] !== undefined
+        ? process.env["MSX_WAITLIST_ENABLED"] === "true"
+        : map.get("waitlistEnabled") === "true";
+
+    const userInvitesEnabled =
+      process.env["MSX_USER_INVITES_ENABLED"] !== undefined
+        ? process.env["MSX_USER_INVITES_ENABLED"] === "true"
+        : map.get("userInvitesEnabled") === "true";
+
+    const userDefaultInviteCount = Math.max(
+      0,
+      Number.parseInt(process.env["MSX_USER_DEFAULT_INVITES"] || map.get("userDefaultInviteCount") || "5", 10) || 5,
+    );
+
+    const academicFastTrackEnabled =
+      process.env["MSX_ACADEMIC_FAST_TRACK"] !== undefined
+        ? process.env["MSX_ACADEMIC_FAST_TRACK"] === "true"
+        : map.get("academicFastTrackEnabled") === "true";
+
+    let academicDomainPatterns: string[] = ["edu", "ac.uk", "dlr.de", "nasa.gov", "cern.ch"];
+    try {
+      const rawAcademic = map.get("academicDomainPatterns");
+      if (rawAcademic) {
+        if (rawAcademic.trim().startsWith("[")) {
+          const parsed = JSON.parse(rawAcademic);
+          if (Array.isArray(parsed)) {
+            academicDomainPatterns = parsed.map((p) => String(p).trim().toLowerCase()).filter(Boolean);
+          }
+        } else {
+          academicDomainPatterns = rawAcademic
+            .split(/[,\s]+/)
+            .map((p) => p.trim().toLowerCase().replace(/^@/, ""))
+            .filter(Boolean);
+        }
+      }
+    } catch {
+      // Keep default
+    }
+
+    const onboardingWizardEnabled =
+      process.env["MSX_ONBOARDING_WIZARD_ENABLED"] !== undefined
+        ? process.env["MSX_ONBOARDING_WIZARD_ENABLED"] === "true"
+        : map.get("onboardingWizardEnabled") === "true";
+
     return {
       instanceName: process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "Ansatz",
       instanceBadge: process.env["MSX_INSTANCE_BADGE"] ?? map.get("instanceBadge") ?? "",
@@ -5866,6 +5957,12 @@ export class LibraryDatabase {
       customTermsMarkdown: map.get("customTermsMarkdown") || "",
       customPrivacyMarkdown: map.get("customPrivacyMarkdown") || "",
       requireAdmin2FA: map.get("requireAdmin2FA") === "true",
+      waitlistEnabled,
+      userInvitesEnabled,
+      userDefaultInviteCount,
+      academicFastTrackEnabled,
+      academicDomainPatterns,
+      onboardingWizardEnabled,
       lockedByEnv,
     };
   }
@@ -5938,6 +6035,12 @@ export class LibraryDatabase {
       "customTermsMarkdown",
       "customPrivacyMarkdown",
       "requireAdmin2FA",
+      "waitlistEnabled",
+      "userInvitesEnabled",
+      "userDefaultInviteCount",
+      "academicFastTrackEnabled",
+      "academicDomainPatterns",
+      "onboardingWizardEnabled",
     ];
     const upsertStmt = this.#db.prepare(
       `INSERT INTO instance_settings (key, value, updated_by, updated_at)
@@ -6647,6 +6750,284 @@ export class LibraryDatabase {
     return res.changes > 0;
   }
 
+  // ── User Referrals, Golden Tickets & Waitlist ──────────────
+
+  getUserOnboardingStatus(userId: number): {
+    completed: boolean;
+    persona: string | null;
+    invitesRemaining: number;
+  } {
+    const row = this.#db
+      .prepare(`SELECT onboarding_completed, engineering_persona, invites_remaining FROM users WHERE id = ?`)
+      .get(userId) as
+      | { onboarding_completed?: number; engineering_persona?: string | null; invites_remaining?: number }
+      | undefined;
+    return {
+      completed: Boolean(row?.onboarding_completed),
+      persona: row?.engineering_persona ?? null,
+      invitesRemaining: row?.invites_remaining ?? 0,
+    };
+  }
+
+  completeUserOnboarding(userId: number, persona?: string): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE users SET onboarding_completed = 1, engineering_persona = COALESCE(?, engineering_persona) WHERE id = ?`,
+      )
+      .run(persona || null, userId);
+    return res.changes > 0;
+  }
+
+  recordUserReferral(
+    referrerId: number,
+    refereeId: number,
+    inviteId: number | null = null,
+    rewardAmount = 50.0,
+  ): UserReferralRow {
+    const res = this.#db
+      .prepare(
+        `INSERT INTO user_referrals (referrer_id, referee_id, invite_id, reward_granted, reward_amount, created_at)
+         VALUES (?, ?, ?, 0, ?, datetime('now'))`,
+      )
+      .run(referrerId, refereeId, inviteId, rewardAmount);
+
+    return {
+      id: Number(res.lastInsertRowid),
+      referrer_id: referrerId,
+      referee_id: refereeId,
+      invite_id: inviteId,
+      reward_granted: false,
+      reward_amount: rewardAmount,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  getUserReferrals(referrerId: number): UserReferralRow[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT r.*, u1.username as referrer_username, u2.username as referee_username
+         FROM user_referrals r
+         JOIN users u1 ON r.referrer_id = u1.id
+         JOIN users u2 ON r.referee_id = u2.id
+         WHERE r.referrer_id = ?
+         ORDER BY r.id DESC`,
+      )
+      .all(referrerId) as (UserReferralRow & { reward_granted: number })[];
+    return rows.map((r) => ({
+      ...r,
+      reward_granted: Boolean(r.reward_granted),
+    }));
+  }
+
+  getReferralByReferee(refereeId: number): UserReferralRow | undefined {
+    const row = this.#db.prepare(`SELECT * FROM user_referrals WHERE referee_id = ?`).get(refereeId) as
+      | (UserReferralRow & { reward_granted: number })
+      | undefined;
+    if (!row) return undefined;
+    return {
+      ...row,
+      reward_granted: Boolean(row.reward_granted),
+    };
+  }
+
+  grantReferralReward(refereeId: number): boolean {
+    const referral = this.#db
+      .prepare(`SELECT * FROM user_referrals WHERE referee_id = ? AND reward_granted = 0`)
+      .get(refereeId) as UserReferralRow | undefined;
+    if (!referral) return false;
+
+    const reward = Number(referral.reward_amount || 50.0);
+    const tx = this.#db.transaction(() => {
+      this.#db.prepare(`UPDATE user_referrals SET reward_granted = 1 WHERE id = ?`).run(referral.id);
+      this.adjustUserCreditsForAdmin(referral.referrer_id, reward, "Peer referral reward bonus");
+      this.adjustUserCreditsForAdmin(referral.referee_id, reward, "Welcome referral bonus");
+    });
+    tx();
+    return true;
+  }
+
+  generateUserGoldenTicket(
+    userId: number,
+    note?: string,
+    initialCredits = 100,
+  ): ReturnType<LibraryDatabase["createInstanceInvite"]> {
+    const user = this.getUserById(userId);
+    if (!user) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    const remaining = typeof user.invites_remaining === "number" ? user.invites_remaining : 5;
+    if (remaining <= 0) {
+      throw new Error("No golden tickets / invites remaining for this account");
+    }
+
+    const tx = this.#db.transaction(() => {
+      this.#db.prepare(`UPDATE users SET invites_remaining = MAX(0, invites_remaining - 1) WHERE id = ?`).run(userId);
+      return this.createInstanceInvite({
+        createdBy: userId,
+        maxUses: 1,
+        initialCredits,
+        note: note || `Golden ticket from @${user.username}`,
+      });
+    });
+    return tx();
+  }
+
+  getUserInvites(userId: number): ReturnType<LibraryDatabase["listInstanceInvites"]> {
+    const rows = this.#db
+      .prepare(
+        `SELECT i.*, u.username as creator_username
+         FROM instance_invites i
+         LEFT JOIN users u ON i.created_by = u.id
+         WHERE i.created_by = ?
+         ORDER BY i.id DESC`,
+      )
+      .all(userId) as {
+      id: number;
+      code: string;
+      created_by: number | null;
+      creator_username: string | null;
+      max_uses: number;
+      used_count: number;
+      initial_credits: number;
+      assigned_role: string;
+      note: string | null;
+      expires_at: string | null;
+      revoked_at: string | null;
+      created_at: string;
+    }[];
+    return rows.map((r) => ({
+      ...r,
+      createdBy: r.created_by,
+      maxUses: r.max_uses,
+      usesCount: r.used_count,
+      expiresAt: r.expires_at,
+      revoked: Boolean(r.revoked_at),
+      createdAt: r.created_at,
+    }));
+  }
+
+  createWaitlistSubmission(data: {
+    email: string;
+    full_name?: string | null;
+    organization?: string | null;
+    discipline?: string | null;
+    portfolio_url?: string | null;
+    statement?: string | null;
+    ip_address?: string | null;
+  }): WaitlistSubmissionRow {
+    const cleanEmail = data.email.trim().toLowerCase();
+    const existing = this.getWaitlistSubmissionByEmail(cleanEmail);
+    if (existing) {
+      return existing;
+    }
+
+    const res = this.#db
+      .prepare(
+        `INSERT INTO waitlist_submissions (email, full_name, organization, discipline, portfolio_url, statement, status, ip_address, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'))`,
+      )
+      .run(
+        cleanEmail,
+        data.full_name?.trim() || null,
+        data.organization?.trim() || null,
+        data.discipline?.trim() || null,
+        data.portfolio_url?.trim() || null,
+        data.statement?.trim() || null,
+        data.ip_address || null,
+      );
+
+    return {
+      id: Number(res.lastInsertRowid),
+      email: cleanEmail,
+      full_name: data.full_name?.trim() || null,
+      organization: data.organization?.trim() || null,
+      discipline: data.discipline?.trim() || null,
+      portfolio_url: data.portfolio_url?.trim() || null,
+      statement: data.statement?.trim() || null,
+      status: "pending",
+      ip_address: data.ip_address || null,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  getWaitlistSubmissions(options?: {
+    status?: "pending" | "approved" | "rejected";
+    limit?: number;
+    offset?: number;
+  }): WaitlistSubmissionRow[] {
+    let sql = `SELECT * FROM waitlist_submissions`;
+    const params: unknown[] = [];
+    if (options?.status) {
+      sql += ` WHERE status = ?`;
+      params.push(options.status);
+    }
+    sql += ` ORDER BY id DESC LIMIT ? OFFSET ?`;
+    params.push(Math.max(1, options?.limit ?? 50), Math.max(0, options?.offset ?? 0));
+
+    return this.#db.prepare(sql).all(...params) as WaitlistSubmissionRow[];
+  }
+
+  getWaitlistSubmissionById(id: number): WaitlistSubmissionRow | undefined {
+    return this.#db.prepare(`SELECT * FROM waitlist_submissions WHERE id = ?`).get(id) as
+      | WaitlistSubmissionRow
+      | undefined;
+  }
+
+  getWaitlistSubmissionByEmail(email: string): WaitlistSubmissionRow | undefined {
+    return this.#db.prepare(`SELECT * FROM waitlist_submissions WHERE LOWER(email) = LOWER(?)`).get(email.trim()) as
+      | WaitlistSubmissionRow
+      | undefined;
+  }
+
+  approveWaitlistSubmission(
+    id: number,
+    approvedBy: number | null = null,
+  ): {
+    success: boolean;
+    submission?: WaitlistSubmissionRow | undefined;
+    inviteCode?: string | undefined;
+  } {
+    const sub = this.getWaitlistSubmissionById(id);
+    if (!sub) {
+      return { success: false };
+    }
+    if (sub.status === "approved" && sub.invite_code_id) {
+      const invite = this.#db.prepare(`SELECT code FROM instance_invites WHERE id = ?`).get(sub.invite_code_id) as
+        | { code: string }
+        | undefined;
+      return { success: true, submission: sub, inviteCode: invite?.code };
+    }
+
+    const invite = this.createInstanceInvite({
+      createdBy: approvedBy,
+      maxUses: 1,
+      initialCredits: 150,
+      note: `Waitlist approval for ${sub.email}`,
+    });
+
+    this.#db
+      .prepare(
+        `UPDATE waitlist_submissions SET status = 'approved', approved_by = ?, invite_code_id = ?, reviewed_at = datetime('now') WHERE id = ?`,
+      )
+      .run(approvedBy, invite.id, id);
+
+    const updated = this.getWaitlistSubmissionById(id);
+    return {
+      success: true,
+      submission: updated,
+      inviteCode: invite.code,
+    };
+  }
+
+  rejectWaitlistSubmission(id: number, approvedBy: number | null = null): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE waitlist_submissions SET status = 'rejected', approved_by = ?, reviewed_at = datetime('now') WHERE id = ?`,
+      )
+      .run(approvedBy, id);
+    return res.changes > 0;
+  }
+
   getSystemDiagnostics(): {
     dbSizeBytes: number;
     walSizeBytes: number;
@@ -6733,6 +7114,7 @@ export class LibraryDatabase {
           code: string;
           initialCredits: number;
           assignedRole: string;
+          createdBy?: number | null | undefined;
         }
       | undefined;
   } {
@@ -6744,6 +7126,7 @@ export class LibraryDatabase {
       | {
           id: number;
           code: string;
+          created_by: number | null;
           max_uses: number;
           used_count: number;
           initial_credits: number;
@@ -6773,6 +7156,7 @@ export class LibraryDatabase {
       invite: {
         id: row.id,
         code: row.code,
+        createdBy: row.created_by ?? null,
         initialCredits: Number(row.initial_credits ?? 100),
         assignedRole: row.assigned_role || "user",
       },
@@ -12206,4 +12590,5 @@ export interface ThreadAuditLogEntry {
   created_at: string;
 }
 
+export type { UserReferralRow, WaitlistSubmissionRow } from "./database/types.js";
 export type Database = LibraryDatabase;

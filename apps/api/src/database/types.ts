@@ -46,6 +46,37 @@ export interface UserRow {
   created_at?: string | undefined;
   github_token?: string | null | undefined;
   gitlab_token?: string | null | undefined;
+  onboarding_completed?: number | boolean | undefined;
+  engineering_persona?: string | null | undefined;
+  invites_remaining?: number | undefined;
+}
+
+export interface UserReferralRow {
+  id: number;
+  referrer_id: number;
+  referee_id: number;
+  invite_id?: number | null | undefined;
+  reward_granted: number | boolean;
+  reward_amount: number;
+  created_at?: string | undefined;
+  referrer_username?: string | undefined;
+  referee_username?: string | undefined;
+}
+
+export interface WaitlistSubmissionRow {
+  id: number;
+  email: string;
+  full_name?: string | null | undefined;
+  organization?: string | null | undefined;
+  discipline?: string | null | undefined;
+  portfolio_url?: string | null | undefined;
+  statement?: string | null | undefined;
+  status: "pending" | "approved" | "rejected";
+  approved_by?: number | null | undefined;
+  invite_code_id?: number | null | undefined;
+  ip_address?: string | null | undefined;
+  created_at?: string | undefined;
+  reviewed_at?: string | null | undefined;
 }
 
 export interface ArtifactViewRow {
